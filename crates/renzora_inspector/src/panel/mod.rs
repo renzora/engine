@@ -28,8 +28,10 @@
 //! | [`spec`] | What a section and a field are, before either is built |
 //! | [`collect`] | Reading the registry (and reflection) into those specs |
 //! | [`order`] | The user's own component order, and how it is saved |
+//! | [`pages`] | The page rail, and the Info and Relations pages |
 //! | [`reorder`] | Dragging a section by its grip to change that order |
 //! | [`rebuild`] | The signature, the exclusive rebuild, the top bar |
+//! | [`scene_page`] | The Scene page shown while nothing is selected |
 //! | [`section`] | Building one section, and filling its body on expand |
 //! | [`cull`] | Throwing away the rows of sections scrolled off screen |
 //! | [`fields`] | One field row per [`spec::FieldKind`] |
@@ -50,8 +52,11 @@ pub(crate) mod collect;
 pub(crate) mod cull;
 pub(crate) mod fields;
 pub(crate) mod order;
+pub(crate) mod pages;
 pub(crate) mod rebuild;
 pub(crate) mod reorder;
+pub(crate) mod reveal;
+pub(crate) mod scene_page;
 pub(crate) mod section;
 pub(crate) mod spec;
 pub(crate) mod systems;
@@ -122,6 +127,13 @@ pub(crate) struct InspectorState {
     pub(crate) locked: Option<Entity>,
     /// Lowercased component-name filter (empty = show all).
     pub(crate) filter: String,
+    /// The page the user picked on the rail. Kept across selections even when
+    /// the next entity has no such page, so coming back to one that does
+    /// lands on it again (see [`pages::effective_selection`]).
+    pub(crate) rail: pages::RailSelection,
+    /// The page the last rebuild actually showed, for anything that needs to
+    /// know without recomputing it (Add Component opens on this page).
+    pub(crate) shown: pages::RailSelection,
 }
 
 /// Marks the inspector's expand/collapse-all button in the top bar.
@@ -135,9 +147,8 @@ pub(crate) struct ExpandAllGlyph;
 
 /// Marks an inspector component-section header, so the expand/collapse-all
 /// button can drive just these sections (not other panels' sections). Carries
-/// the section's list position and its category header colour so
-/// [`systems::stripe_collapsed_headers`] can zebra-stripe collapsed headers and
-/// restore the category colour when open.
+/// its category header colour so [`systems::paint_section_headers`] can restore
+/// it after a drag has tinted the header.
 #[derive(Component)]
 pub(crate) struct InspectorSectionHeader {
     /// Which component this section is for — the key both
@@ -146,8 +157,6 @@ pub(crate) struct InspectorSectionHeader {
     /// Deliberately *not* the section's list position. Position is presentation,
     /// not identity: baking it in made adding a component near the top look like
     /// a content change for every section below it.
-    /// `systems::stripe_collapsed_headers` now derives the stripe index from the
-    /// live child order instead.
     pub(crate) type_id: &'static str,
     pub(crate) header_bg: (u8, u8, u8),
 }
@@ -247,7 +256,8 @@ pub fn register(app: &mut App) {
     // Component + filter input + expand-all) stays *fixed* while only the
     // component list scrolls.
     app.register_panel_content("inspector", false, |commands, fonts| {
-        // One column: fixed top bar, fixed entity header, scrolling list.
+        // The entity header across the top, the page strip under it, then the
+        // fixed toolbar over the scrolling card list, all full width.
         let root = commands
             .spawn((
                 Node {
@@ -261,11 +271,12 @@ pub fn register(app: &mut App) {
                 Name::new("inspector-panel"),
             ))
             .id();
-        // Fixed top bar: Add Component + component-filter input + expand-all.
-        let top = rebuild::build_top_bar(commands, fonts);
-        // Fixed entity header (icon · id · label colour · visibility · lock),
-        // sitting directly on top of the component list it identifies.
+        // Fixed entity header (icon tile, name, kind, visibility, lock) first:
+        // it names what the panel is showing.
         let entity_header = crate::entity_header::build_entity_header_host(commands);
+        let rail = pages::build_rail_host(commands);
+        // Fixed toolbar over the cards: Add, the filter, expand-all.
+        let top = rebuild::build_top_bar(commands, fonts);
         // Scrolling component list (`InspectorRoot` is despawned/repopulated by
         // `rebuild_inspector`; the bars around it are stable).
         let content = commands
@@ -273,10 +284,10 @@ pub fn register(app: &mut App) {
                 Node {
                     width: Val::Percent(100.0),
                     flex_direction: FlexDirection::Column,
-                    padding: UiRect::all(Val::Px(4.0)),
-                    // No gap — component sections stack flush against each other
-                    // (each section root's own margin is also zeroed in
-                    // `build_section`); collapsed headers read as one tight list.
+                    padding: UiRect::all(Val::Px(6.0)),
+                    // No gap here: each card carries its own bottom margin (see
+                    // `build_section`), so non-card children such as the drop
+                    // line add no spacing of their own.
                     row_gap: Val::Px(0.0),
                     ..default()
                 },
@@ -285,9 +296,40 @@ pub fn register(app: &mut App) {
             ))
             .id();
         let scroll = scroll_view(commands, content);
-        commands
-            .entity(root)
-            .add_children(&[top, entity_header, scroll]);
+        let column = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    min_width: Val::Px(0.0),
+                    min_height: Val::Px(0.0),
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+                Name::new("inspector-cards-column"),
+            ))
+            .id();
+        // The fixed part (header, page strip, toolbar) is one block on the
+        // theme's header surface, a step lighter than the cards' panel, so the
+        // part that stays put reads as the panel's chrome and the cards as its
+        // content. A theme colour, not a white wash: those read as flat grey.
+        let fixed = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_shrink: 0.0,
+                    flex_direction: FlexDirection::Column,
+                    border: UiRect::bottom(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(renzora_ember::theme::rgb(renzora_ember::theme::header_bg())),
+                BorderColor::all(renzora_ember::theme::rgb(renzora_ember::theme::border())),
+                Name::new("inspector-fixed-header"),
+            ))
+            .id();
+        commands.entity(fixed).add_children(&[entity_header, rail, top]);
+        commands.entity(column).add_child(scroll);
+        commands.entity(root).add_children(&[fixed, column]);
         root
     });
     app.add_systems(
@@ -313,13 +355,21 @@ pub fn register(app: &mut App) {
             rebuild::inspector_filter_sync,
             systems::expand_all_click,
             systems::sync_expand_glyph,
-            systems::stripe_collapsed_headers,
+            systems::paint_section_headers,
             systems::remember_inspector_sections,
             systems::apply_expand_policy_change,
             // Nested: the surrounding tuple is at bevy's 20-element ceiling.
             (
                 reorder::section_reorder_drag,
                 reorder::section_reorder_autoscroll,
+                pages::rail_click,
+                pages::page_strip_wheel,
+                crate::entity_header::entity_name_edit,
+                crate::entity_header::entity_custom_colour_toggle,
+                crate::entity_header::entity_icon_search,
+                scene_page::refresh_scene_stats,
+                scene_page::set_boot_scene_click,
+                scene_page::add_world_env_click,
             ),
         )
             .run_if(in_state(SplashState::Editor))
@@ -336,9 +386,14 @@ pub fn register(app: &mut App) {
         // single place rows are built or thrown away. Putting it ahead of the
         // rebuild also means a scroll and a selection change landing on the same
         // frame resolve in one pass rather than two.
+        //
+        // The reveal goes just ahead of the reconciler: a section opened this
+        // frame still has an unfilled body there, which is how it tells a real
+        // open from any other change.
         (
             cull::cull_offscreen_sections,
             rebuild::rebuild_inspector,
+            reveal::note_opened_section.pipe(reveal::reveal_opened_section),
             section::reconcile_section_bodies,
         )
             .chain()

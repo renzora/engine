@@ -129,6 +129,13 @@ pub(crate) fn code_measure(
             let vis = ((size.y / ed.line_h).floor() as usize).max(1);
             if ed.visible != vis {
                 ed.visible = vis;
+                // A taller panel shows more rows, so the end of the file may
+                // now be reachable with less scroll: pull the view back rather
+                // than leaving empty space under the last line.
+                let max = ed.max_scroll(ed.rows().len());
+                if ed.scroll > max {
+                    ed.scroll = max;
+                }
                 ed.dirty = true;
             }
             if (ed.view_w - size.x).abs() > 0.5 {
@@ -352,7 +359,7 @@ pub(crate) fn code_scroll(
     for (rcp, vp) in &viewports {
         if rcp.cursor_over {
             if let Ok(mut ed) = editors.get_mut(vp.editor) {
-                let max = ed.rows().len().saturating_sub(1) as i32;
+                let max = ed.max_scroll(ed.rows().len()) as i32;
                 let new = (ed.scroll as i32 - (dy * 3.0) as i32).clamp(0, max) as usize;
                 if new != ed.scroll {
                     ed.scroll = new;
@@ -1089,6 +1096,19 @@ mod tests {
             before.iter().map(|(e, _)| *e).collect::<Vec<_>>(),
             after.iter().map(|(e, _)| *e).collect::<Vec<_>>(),
         );
+    }
+
+    /// The view stops once the last row reaches the bottom of the viewport,
+    /// not once it reaches the top with the rest of the panel empty.
+    #[test]
+    fn the_view_stops_with_the_last_row_at_the_bottom() {
+        let (mut app, editor) = harness("a\nb\nc\nd\ne\nf\ng\nh");
+        let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+        ed.visible = 3;
+        assert_eq!(ed.max_scroll(ed.rows().len()), 5);
+        // A file shorter than the viewport does not scroll at all.
+        ed.visible = 20;
+        assert_eq!(ed.max_scroll(ed.rows().len()), 0);
     }
 
     #[test]

@@ -100,6 +100,7 @@ pub fn extract_animations_from_glb(
                 translations: Vec::new(),
                 rotations: Vec::new(),
                 scales: Vec::new(),
+                muted: false,
             });
 
             match reader.read_outputs() {

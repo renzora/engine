@@ -71,9 +71,18 @@ pub struct EmberTextInput {
     /// selection. Set on press by the drag-select system; collapsed by caret
     /// motion and consumed (deleted/replaced) by edits. Single-line fields only.
     pub sel_anchor: Option<usize>,
+    /// Extra left indent (logical px) of the text past [`PAD_X`], for an icon
+    /// drawn inside the box (see [`search_input`]). The caret, the selection
+    /// and click-to-caret all add it, so they stay on the text it pushes right.
+    pub lead: f32,
 }
 
 impl EmberTextInput {
+    /// Where the text starts, in logical px from the box's left edge.
+    fn text_left(&self) -> f32 {
+        PAD_X + self.lead
+    }
+
     /// The normalized `(start, end)` char range of the drag selection, or
     /// `None` when nothing is selected. `start < end` always.
     pub fn selection_range(&self) -> Option<(usize, usize)> {
@@ -200,6 +209,28 @@ fn build_input(
             BackgroundColor(Color::NONE),
         ))
         .id();
+    // The text rides in its own clipping node rather than relying on the box's
+    // `overflow`. Callers restyle the box by inserting a whole new `Node`, and
+    // nearly every one of them dropped the clip doing it, so a long value ran out
+    // of the box and under whatever sat beside it (the inspector's entity name
+    // under its colour dot and eye). A child the caller never touches keeps the
+    // clip whatever the box's `Node` says. `min_width: 0` is what lets it shrink
+    // below the text's own width at all.
+    let clip = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                flex_shrink: 1.0,
+                min_width: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            PASS_THROUGH,
+            Name::new("text-input-clip"),
+        ))
+        .id();
+    commands.entity(clip).add_child(text);
     // Drag-selection highlight, positioned/sized by `text_input_selection_pos`.
     // Spawned before the text child so the glyphs draw over it.
     let sel = commands
@@ -249,9 +280,60 @@ fn build_input(
         advance: FALLBACK_ADVANCE,
         offsets: Vec::new(),
         sel_anchor: None,
+        lead: 0.0,
     });
-    commands.entity(box_e).add_children(&[sel, text, car]);
+    commands.entity(box_e).add_children(&[sel, clip, car]);
     box_e
+}
+
+/// How far a [`search_input`]'s text sits past [`PAD_X`]: the magnifier and
+/// the gap after it. A caller that replaces the box's `Node` must keep its left
+/// padding at `PAD_X + SEARCH_LEAD`.
+pub const SEARCH_LEAD: f32 = 19.0;
+
+/// A [`text_input`] with a magnifying glass inside its left edge, for filter
+/// and search fields.
+///
+/// The glass is inside the box rather than beside it, so the field reads as
+/// one control. Putting it there used to be impossible: the caret and
+/// click-to-caret assumed the text began at [`PAD_X`], so any icon that pushed
+/// the text right put the caret off it. The input's `lead` now carries the
+/// extra indent and every one of those positions adds it.
+pub fn search_input(
+    commands: &mut Commands,
+    fonts: &crate::font::EmberFonts,
+    placeholder: &str,
+    value: &str,
+) -> Entity {
+    let input = build_input(commands, &fonts.ui, placeholder, value, false);
+    let glass = crate::font::icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 13.0);
+    commands.entity(glass).insert(PASS_THROUGH);
+    // Out of flow, full height, so the glyph centres vertically however tall
+    // the caller makes the box.
+    let slot = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(PAD_X),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            PASS_THROUGH,
+            Name::new("search-input-glass"),
+        ))
+        .id();
+    commands.entity(slot).add_child(glass);
+    commands.entity(input).add_child(slot);
+    commands.entity(input).insert(crate::style::StyleOwnsPadding);
+    commands.entity(input).entry::<Node>().and_modify(|mut n| {
+        n.padding = UiRect::new(Val::Px(PAD_X + SEARCH_LEAD), Val::Px(PAD_X), Val::Px(5.0), Val::Px(5.0));
+    });
+    commands.entity(input).entry::<EmberTextInput>().and_modify(|mut i| {
+        i.lead = SEARCH_LEAD;
+    });
+    input
 }
 
 /// Two-way bind a [`text_input`] to a `String` piece of state. While the input
@@ -406,7 +488,7 @@ fn wipe_selection(inp: &mut EmberTextInput, range: Option<(usize, usize)>, idx: 
 /// ends).
 fn index_at_cursor(inp: &EmberTextInput, cn: &ComputedNode, nrm: Vec2) -> usize {
     let width = cn.size().x * cn.inverse_scale_factor();
-    let local_x = (nrm.x + 0.5) * width - PAD_X;
+    let local_x = (nrm.x + 0.5) * width - inp.text_left();
     let n = inp.value.chars().count();
     if inp.offsets.len() == n + 1 {
         // Nearest measured glyph boundary — exact for proportional fonts.
@@ -495,7 +577,7 @@ pub(crate) fn text_input_selection_pos(
         match (inp.focused, inp.selection_range()) {
             (true, Some((a, b))) => {
                 let (xa, xb) = (inp.caret_x(a), inp.caret_x(b));
-                let left = Val::Px(PAD_X + xa);
+                let left = Val::Px(inp.text_left() + xa);
                 let width = Val::Px(xb - xa);
                 if n.display != Display::Flex || n.left != left || n.width != width {
                     n.display = Display::Flex;
@@ -853,7 +935,7 @@ pub(crate) fn text_input_caret_pos(
 ) {
     for inp in &inputs {
         if let Ok(mut n) = nodes.get_mut(inp.caret) {
-            let left = Val::Px(PAD_X + inp.caret_x(inp.caret_index));
+            let left = Val::Px(inp.text_left() + inp.caret_x(inp.caret_index));
             if n.left != left {
                 n.left = left;
             }

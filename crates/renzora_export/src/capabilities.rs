@@ -267,7 +267,7 @@ pub const CAPABILITIES: &[Capability] = &[
         id: "particles",
         section: "simulation",
         label: "Particles",
-        help: "The GPU particle system (bevy_hanabi). ~5 MB — drop if your game has no particle effects.",
+        help: "Particle effects: the `.vfx` particle system, which also plays old `.particle` effects. Drop it if your game has no particle effects.",
         bevy_features: &[],
         runtime_features: &["particles"],
         default_on: true,
@@ -830,7 +830,7 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
         "animation" => &["anim", "animsm"],
         // An authored effect asset is a clear intention even if no scene has
         // placed one yet.
-        "particles" => &["particle"],
+        "particles" => &["particle", "vfx"],
         // Audio files a script may play without any scene naming an emitter.
         "audio" => &["mp3", "ogg", "wav", "flac"],
         // Mirrors `image_extra`'s `bevy_features` — an extension listed here that has
@@ -959,7 +959,19 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "antialiasing" => &["renzora_antialiasing::"],
 
         // ── Simulation & gameplay ────────────────────────────────────────────
-        "particles" => &["renzora_hanabi::", "bevy_hanabi::"],
+        "particles" => &[
+            // A scene saved before Hanabi was retired still names its old
+            // component by this path, and plays it through the particle
+            // system's migration, so it still needs the capability.
+            "renzora_hanabi::",
+            "renzora_particles::",
+            "vfx_play",
+            "vfx_pause",
+            "vfx_stop",
+            "vfx_restart",
+            "vfx_burst",
+            "vfx_set_time_scale",
+        ],
         "navmesh" => &[
             "renzora_navmesh::",
             "vleue_navigator::",
@@ -1417,12 +1429,10 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
 /// cannot show a green toggle for something the build is about to drop — which
 /// is exactly what it used to do for all twenty-odd of these.
 ///
-/// `particles` is deliberately NOT here. It was, on the grounds that bevy_hanabi
-/// reached for bevy_pbr in its asset path; it no longer does — the only mention
-/// left in the vendored crate is a doc comment, and the whole 2D-particle path
-/// (`plane_2d` effects, the 2D emitters) landed since. Verified by compiling a 2D
-/// lean binary with `particles` kept, which is the only way to be sure of a claim
-/// like that. Leaving it here silently dropped a 2D game's particle effects.
+/// `particles` is deliberately NOT here. It was once, when the particle system
+/// was bevy_hanabi and reached for bevy_pbr in its asset path. Its replacement
+/// gates its 3D renderer on its own `render_3d` feature and keeps a 2D one, so
+/// a 2D game keeps its effects; listing it here silently dropped them.
 pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "terrain",
     // the sky set

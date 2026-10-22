@@ -41,7 +41,9 @@ pub fn icon_for(path: &Path, is_dir: bool) -> &'static str {
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
-        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => "image",
+        // The shared list, so a format the engine learns to load (SVG was the
+        // last) gets its icon without this table being found and edited.
+        e if renzora::is_image_extension(e) => "image",
         "ttf" | "otf" | "woff" | "woff2" => "text-aa",
         "glb" | "gltf" | "obj" | "fbx" => "cube",
         "material" => "palette",
@@ -53,7 +55,12 @@ pub fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         "anim" => "person-simple-run",
         "animsm" => "tree-structure",
         "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
+        // The old effect format, still played (and converted) but no longer
+        // edited as itself.
         "particle" => "sparkle",
+        // The node-graph effect. Its own glyph so a project holding both kinds
+        // tells them apart at a glance; same family as the old sparkle.
+        "vfx" => "magic-wand",
         "ply" | "gcloud" | "sog" | "ssog" => "cloud",
         "blueprint" | "bp" => "blueprint",
         "html" => "browser",
@@ -75,14 +82,16 @@ pub fn type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
         "lua" => ((120, 170, 255), "Lua Script"),
         "wgsl" | "wesl" | "glsl" | "vert" | "frag" => ((220, 120, 255), "Shader"),
         "rs" => ((230, 140, 90), "Rust Script"),
-        "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => {
-            ((150, 210, 120), "Texture")
-        }
+        // Same colour as a raster texture: it loads as one and fits every slot
+        // one does. The label says vector so the scalability is discoverable.
+        e if renzora::is_vector_image_extension(e) => ((150, 210, 120), "Vector Image"),
+        e if renzora::is_image_extension(e) => ((150, 210, 120), "Texture"),
         "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
         "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
         "anim" => ((90, 215, 205), "Animation"),
         "animsm" => ((90, 215, 205), "State Machine"),
         "particle" => ((230, 160, 90), "Particle"),
+        "vfx" => ((255, 140, 70), "Particle Effect"),
         "ply" | "gcloud" | "sog" | "ssog" => ((190, 150, 255), "Gaussian Splat"),
         "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
         "html" => ((230, 120, 90), "UI Template"),
@@ -135,6 +144,22 @@ mod tests {
         assert_eq!(icon_for(Path::new("models/character/Idle.anim"), false), "person-simple-run");
         assert_eq!(type_info(Path::new("models/character/Idle.anim")).1, "Animation");
         assert_eq!(icon_for(Path::new("locomotion.animsm"), false), "tree-structure");
+    }
+
+    #[test]
+    fn node_graph_effects_have_their_own_identity() {
+        assert_eq!(icon_for(Path::new("effects/fire.vfx"), false), "magic-wand");
+        assert_eq!(type_info(Path::new("effects/fire.vfx")).1, "Particle Effect");
+    }
+
+    #[test]
+    fn svg_is_an_image() {
+        assert_eq!(icon_for(Path::new("ui/icons/heart.svg"), false), "image");
+        assert_eq!(icon_for(Path::new("ui/icons/heart.SVGZ"), false), "image");
+        assert_eq!(type_info(Path::new("ui/icons/heart.svg")).1, "Vector Image");
+        assert_eq!(type_info(Path::new("tex/wall.png")).1, "Texture");
+        // Its settings sidecar is a TOML file, not a second image.
+        assert_eq!(icon_for(Path::new("ui/icons/heart.svg.toml"), false), "brackets-curly");
     }
 
     #[test]

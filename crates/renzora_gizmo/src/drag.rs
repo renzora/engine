@@ -58,7 +58,7 @@ pub(crate) struct DragGeom<'w, 's> {
             Option<&'static bevy::camera::primitives::Aabb>,
             &'static GlobalTransform,
         ),
-        With<Mesh3d>,
+        crate::BoundsMeshes,
     >,
     children: Query<'w, 's, &'static Children>,
 }

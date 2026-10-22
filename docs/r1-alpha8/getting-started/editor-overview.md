@@ -10,7 +10,7 @@ The editor is the engine. What you see while editing is how your game runs.
 
 | Area | What it is |
 |---|---|
-| Top bar | The menu button, Settings, undo, redo, save, Play, and the workspace ribbon. Anything that acts on the whole session. |
+| Top bar | The menu button, Settings, undo, redo, save, the scene switcher, the workspace ribbon, and Play on the right. Anything that acts on the whole session. |
 | Viewport | Your live 3D view, in the middle. Its own tools sit in a strip along its top edge. |
 | Hierarchy | The tree of everything in the current scene. |
 | Inspector | The settings of whatever you have selected. |
@@ -86,7 +86,11 @@ Where the engine talks to you. Messages stream in as you work and while you test
 
 ![The Console panel streaming engine log messages, with Clear and Copy buttons, info, warning and error filters, a search box, and a command input at the bottom.](/assets/previews/console.png)
 
-Filter to warnings or errors, search to find a message, and type slash commands in the box at the bottom. Start with `/help`.
+The pills along the top show how many Info, Success, Warn and Error lines there are; click one to hide or show that level. Beside them are a search box, a menu for hiding categories, and **Follow**, which takes you back to the newest line after you scroll up.
+
+Each message is one line. Click it to open its details on the right: the whole message, a **Copy** button, and any entity ids it mentions, which select that entity when clicked. Click the line again, or the **x**, to close them.
+
+Type slash commands in the box at the bottom. Typing `/` lists the commands that match: Up and Down choose one, Tab completes it, Esc closes the list. Start with `/help`.
 
 The Console keeps the most recent 100 messages and drops the oldest. Identical messages collapse into one row with a count. Raise the limit under **Settings > Editor > Console Log Limit** if you need deeper scrollback.
 

@@ -10,7 +10,9 @@ pub fn derive_inspectable(input: DeriveInput) -> syn::Result<TokenStream> {
     // Parse #[inspectable(...)] attributes
     let mut display_name = title_case(&struct_name.to_string());
     let mut icon = "CUBE".to_string();
-    let mut category = "component".to_string();
+    // An Inspector page id (see `renzora::inspector_pages`); a component that
+    // names none sits on the entity's own page.
+    let mut category = "object".to_string();
     let mut type_id: Option<String> = None;
 
     for attr in &input.attrs {

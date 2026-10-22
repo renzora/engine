@@ -443,9 +443,15 @@ fn make_workspace_from_panel(
     dirty.0 = true;
 }
 
-/// A top-bar ribbon entry (workspace switcher). Full height so the active
-/// item's blue underline pins to the bottom edge. Clicking switches workspace
-/// `index`; dragging reorders, right-click renames/removes (see [`ribbon_interact`]).
+/// A top-bar ribbon entry (workspace switcher): a pill, filled with a wash of
+/// the accent while it is the active workspace and with a faint one while
+/// hovered. Clicking switches workspace `index`; dragging reorders, right-click
+/// renames/removes (see [`ribbon_interact`]).
+///
+/// The active workspace used to be marked by a 2px accent underline along the
+/// bar's bottom edge, with no hover state at all, so nothing said an item was
+/// clickable until it was clicked. The pill marks both, and it matches the
+/// rounded selection the trees and the scene switcher use.
 fn ribbon_item(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
@@ -456,17 +462,35 @@ fn ribbon_item(
     let item = commands
         .spawn((
             Node {
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
+                height: Val::Px(24.0),
                 align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
+            BackgroundColor(Color::NONE),
             UiInteraction::default(),
             RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("ribbon:{label}")),
         ))
         .id();
+    // `active` is baked in: switching workspace changes the snapshot's content
+    // hash, which rebuilds exactly the two items whose state flipped.
+    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| {
+        let hot = matches!(
+            w.get::<UiInteraction>(item),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
+        );
+        // Hover is a faint wash of the active pill's own accent, not grey: a
+        // grey fill over muted text read as a disabled control, the opposite
+        // of what hovering it means.
+        match (active, hot) {
+            (true, false) => rgb(accent()).with_alpha(0.24),
+            (true, true) => rgb(accent()).with_alpha(0.32),
+            (false, true) => rgb(accent()).with_alpha(0.12),
+            (false, false) => Color::NONE,
+        }
+    });
     // Localize the *display* of built-in workspace names (Scene, Scripting, …)
     // via `layout.<slug>`; the stored `label` stays the workspace's identity (it's
     // the persisted key + the entity Name). A user-renamed/added workspace has no
@@ -482,27 +506,25 @@ fn ribbon_item(
     let text_wrap = commands
         .spawn((
             Node {
-                flex_grow: 1.0,
+                height: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                padding: UiRect::horizontal(Val::Px(7.0)),
+                padding: UiRect::horizontal(Val::Px(10.0)),
                 ..default()
             },
+            PASS_THROUGH,
             Name::new("ribbon-label"),
         ))
         .id();
     commands.entity(text_wrap).add_child(text);
-    let underline = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(2.0),
-                ..default()
-            },
-            BackgroundColor(if active { rgb(accent()) } else { Color::NONE }),
-            Name::new("ribbon-underline"),
-        ))
-        .id();
+    // The label brightens on hover too, so the item lights up as a whole.
+    renzora_ember::reactive::tracked::bind_text_color(commands, text, move |w| {
+        let hot = matches!(
+            w.get::<UiInteraction>(item),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
+        );
+        rgb(if active || hot { text_primary() } else { text_muted() })
+    });
     // Insertion marker: a thin accent bar pinned to the item's edge, hidden until
     // a reorder drag points at this slot (see [`ribbon_interact`]). Absolutely
     // positioned so it never affects the ribbon's layout.
@@ -533,7 +555,7 @@ fn ribbon_item(
     if active {
         commands.entity(item).insert(renzora_ember::widgets::OverflowKeep);
     }
-    commands.entity(item).add_children(&[text_wrap, underline, marker]);
+    commands.entity(item).add_children(&[text_wrap, marker]);
     item
 }
 

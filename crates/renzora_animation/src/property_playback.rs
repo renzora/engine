@@ -80,6 +80,12 @@ pub fn apply_property_tracks(
     verbose: bool,
 ) {
     for (i, track) in tracks.iter().enumerate() {
+        // Disabled in the timeline: the field keeps whatever value it has. This
+        // is the one sampler both play mode and the editor's scrub preview
+        // call, so muting reads the same in both.
+        if track.muted {
+            continue;
+        }
         if verbose
             && track.keys.len() >= 2
             && track.keys.iter().all(|k| k.value == track.keys[0].value)

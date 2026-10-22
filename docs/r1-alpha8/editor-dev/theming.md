@@ -40,7 +40,7 @@ A representative slice of the accessors (see `renzora_ember::theme` for all 24):
 
 | Accessor | Default (dark) | Role |
 |---|---|---|
-| `window_bg()` | `(24, 24, 30)` | Chrome: top bar, doc tabs, status bar, dock gaps |
+| `window_bg()` | `(24, 24, 30)` | Chrome: top bar, status bar, dock gaps |
 | `panel_bg()` | `(26, 26, 31)` | Panel leaf content |
 | `header_bg()` | `(30, 30, 36)` | Tab headers |
 | `accent()` | `(80, 140, 255)` | Buttons, active underline, selection |
@@ -109,7 +109,7 @@ the global UI font-size scale, so theming typography is additive and never
 fights existing sizing. All three are `serde(default)`, so themes saved before
 they existed still load.
 
-Beyond the per-`Role` tokens, `Theme` also has **bespoke multi-element styles** as direct fields — `node_graph` (`NodeGraphStyle`), `asset_tile` (`AssetTileStyle`), `dock` (`DockStyle`: leaf/tab-bar/divider/shadow chrome), `top_bar` / `doc_tabs` / `status_bar` (`BarStyle`), and `timeline` (`TimelineStyle`). These let one element (e.g. a node-graph cable) be retargeted without smearing across the rest of the widget. Note that `doc_tabs` (and the matching `effects.doc_tabs` shader surface) no longer paints anything in the shell: the document tabs moved out of the chrome column and into the viewport panel, where the bar takes the `panel` surface and the tabs are vertical gradients built from the same tokens: the active one runs from a 16% `accent` tint down to `panel` (the fill it shares with the tool strip below), the inactive ones from a `faint`/`panel` blend down to `faint`. The active tab also carries an `accent` rule on its top edge, and the boundary between two inactive tabs is a hairline from `divider`.
+Beyond the per-`Role` tokens, `Theme` also has **bespoke multi-element styles** as direct fields: `node_graph` (`NodeGraphStyle`), `asset_tile` (`AssetTileStyle`), `dock` (`DockStyle`: leaf/tab-bar/divider/shadow chrome), `top_bar` / `doc_tabs` / `status_bar` (`BarStyle`), and `timeline` (`TimelineStyle`). These let one element (e.g. a node-graph cable) be retargeted without smearing across the rest of the widget. Note that `doc_tabs` (and the matching `effects.doc_tabs` shader surface) no longer paints anything in the shell: there is no document tab strip, since the open documents are listed in the top bar's scene switcher. Themes may still set it, and it is still read where the dock's own tab strips use it. Likewise `timeline.lane_even` and `timeline.lane_odd` are still accepted but no longer painted: Timeline lanes are flat, separated by a faint hairline, and the track list defaults to 260 px wide.
 
 > `Rgba` is the theme color type: sRGBA bytes serialized to/from `#RRGGBB` / `#RRGGBBAA`. `Rgba::rgb((r,g,b))` builds an opaque color; `.color()` converts to a bevy `Color`.
 

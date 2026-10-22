@@ -201,9 +201,22 @@ Click an object to select it. `Ctrl+Click` adds or removes, `Shift+Click` extend
 
 ## Adding shapes
 
-The shapes dropdown at the left end of the toolbar lists every built-in primitive, grouped into Basic, Curved, Level and Advanced. Picking one drops it at the origin. The menu stays open so you can add several, and each add is one undo step.
+The shapes dropdown at the left end of the toolbar lists every built-in shape (83 of them), plus any a plugin registers. Picking one drops it at the origin. The menu stays open so you can add several, and each add is one undo step.
 
 It is the same list as the Shape Library panel and the Hierarchy's **Add Entity** menu.
+
+The **Shape Library** panel shows each shape as a lit 3D render, grouped into Primitives, Blocks, Architecture, Stairs and ramps, Pipes, and Props. The sidebar lists the groups with their counts (following the search) and narrows the grid to one; click a section header to fold it, and drag the slider in the toolbar to make the tiles bigger or smaller. Click a tile to add the shape at the origin, or drag it into the viewport to place it.
+
+| Group | Shapes |
+|---|---|
+| Primitives | Cube, Sphere, Cylinder, Plane, Cone, Torus, Capsule, Hemisphere, Prism, Pyramid, Ring, Tetrahedron, Octahedron, Dodecahedron, Icosahedron, Rounded Cube, Disc, Star, Ellipsoid, Hexagonal Prism, Domed Cylinder |
+| Blocks | Wedge, Half Cylinder, Quarter Pipe, Corner, L-Shape, T-Shape, Cross, Pillar, Beveled Block, Step Block, Inner Corner Wedge, Outer Corner Wedge, Slope 2:1, Rounded Edge Block, Gear, Frame |
+| Architecture | Wall, Curved Wall, Doorway, Window Wall, Arch, Column, Gable Roof, Hip Roof, Dome, Archway, Battlement Wall, Railing, Fence, Window Frame, Door Frame, Wall Corner, Floor Tile, Balcony |
+| Stairs and ramps | Stairs, Spiral Stairs, Ramp, L-Stairs, U-Stairs, Curved Ramp, Ladder, Slab Stairs |
+| Pipes | Pipe, Funnel, Gutter, Pipe Elbow, Pipe Tee, Pipe Cross, Pipe Flange, Channel Bend, Spring, Torus Knot |
+| Props | Crate, Barrel, Platform, Bridge, Bench, Table, Pedestal, Rock, Sign Post, Lamp Post |
+
+Shapes come in at real-world sizes (a 2.2 m door frame, a 1 m railing) and are centred on their bounds. The pipe fittings share the Pipe's 0.5 m bore so they join it flush, and the Tee and Cross pivot on their hub so their openings line up with a Pipe at the same height. The Rock is the same rock every time, so a saved scene reopens unchanged.
 
 New shapes arrive with a generated grid material on them, so you can see their form and scale before you have made any materials. Replace it by dropping a material on the object.
 

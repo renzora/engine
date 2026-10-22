@@ -71,6 +71,7 @@ struct PinnedRow {
     icon: &'static str,
     icon_color: [u8; 3],
     label_color: Option<[u8; 3]>,
+    label_color_own: bool,
     depth: usize,
 }
 
@@ -144,6 +145,7 @@ pub(crate) fn hierarchy_parent_stack(
                         icon: n.icon,
                         icon_color: n.icon_color,
                         label_color: n.label_color,
+                        label_color_own: n.label_color_own,
                         depth,
                     })
                     .collect()
@@ -201,10 +203,14 @@ pub(crate) fn hierarchy_parent_stack(
 /// label, and a transparent click layer that selects the ancestor.
 fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) -> Entity {
     let content_x = BASE_X + p.depth as f32 * INDENT;
-    let label_color = p
-        .label_color
-        .map(|[r, g, b]| Color::srgb_u8(r, g, b))
-        .unwrap_or_else(|| rgb(text_primary()));
+    // Drawn like a real row (see `row::build_row`): the name in the normal
+    // text colour, the label colour as the softened edge line and, on the
+    // entity it was set on, the icon.
+    let label_color = rgb(text_primary());
+    let icon_color = match p.label_color {
+        Some(c) if p.label_color_own => super::row::soft_label(c),
+        _ => Color::srgb_u8(p.icon_color[0], p.icon_color[1], p.icon_color[2]),
+    };
 
     let row = commands
         .spawn((
@@ -281,10 +287,10 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
             Text::new(icon_glyph(p.icon).unwrap_or('\u{E4C6}').to_string()),
             TextFont {
                 font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
-                font_size: bevy::text::FontSize::Px(14.0),
+                font_size: bevy::text::FontSize::Px(renzora_ember::inspector::LIST_ROW_ICON),
                 ..default()
             },
-            TextColor(Color::srgb_u8(p.icon_color[0], p.icon_color[1], p.icon_color[2])),
+            TextColor(icon_color),
             Node {
                 margin: UiRect::left(Val::Px(6.0)),
                 ..default()
@@ -296,7 +302,7 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
     let label = commands
         .spawn((
             Text::new(&p.name),
-            ui_font(&fonts.ui, 13.0),
+            ui_font(&fonts.ui, renzora_ember::inspector::LIST_ROW_TEXT),
             TextColor(label_color),
             bevy::text::TextLayout::no_wrap(),
             Node {
@@ -340,9 +346,27 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
         ))
         .id();
 
-    commands
-        .entity(row)
-        .add_children(&[bg, sel_tint, spacer, icon, label, click]);
+    let mut kids = vec![bg, sel_tint];
+    if let Some(c) = p.label_color {
+        kids.push(
+            commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(0.0),
+                        top: Val::Px(0.0),
+                        bottom: Val::Px(0.0),
+                        width: Val::Px(2.0),
+                        ..default()
+                    },
+                    BackgroundColor(super::row::soft_label(c)),
+                    Pickable::IGNORE,
+                ))
+                .id(),
+        );
+    }
+    kids.extend([spacer, icon, label, click]);
+    commands.entity(row).add_children(&kids);
     row
 }
 

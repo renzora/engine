@@ -580,11 +580,57 @@ const DEFERRED_CONFIGS: [&[&str]; 3] = [
     ],
 ];
 
+/// The particle pipeline (`renzora_particles`' `render::surface`), which a
+/// shader that reads a Particle node is bound in too: the particle vertex
+/// shader writes a UV, a colour and a tangent whatever the particle mesh holds,
+/// and the particle inputs exist only here.
+const PARTICLE_CONFIGS: [&[&str]; 2] = [
+    &["VERTEX_UVS_A", "VERTEX_COLORS", "VERTEX_TANGENTS", "RENZORA_PARTICLE_SURFACE"],
+    &["VERTEX_UVS_A", "VERTEX_COLORS", "VERTEX_TANGENTS", "RENZORA_PARTICLE_SURFACE", "ENVIRONMENT_MAP"],
+];
+
+/// The particle pipeline's deferred G-buffer pass: a solid particle on a
+/// deferred camera runs a graph's deferred branch with the particle's
+/// attributes and inputs, as `PARTICLE_CONFIGS` does forward.
+const PARTICLE_DEFERRED_CONFIGS: [&[&str]; 2] = [
+    &[
+        "PREPASS_PIPELINE",
+        "PREPASS_FRAGMENT",
+        "DEFERRED_PREPASS",
+        "NORMAL_PREPASS_OR_DEFERRED_PREPASS",
+        "MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS",
+        "VERTEX_UVS_A",
+        "VERTEX_COLORS",
+        "VERTEX_TANGENTS",
+        "RENZORA_PARTICLE_SURFACE",
+    ],
+    &[
+        "PREPASS_PIPELINE",
+        "PREPASS_FRAGMENT",
+        "DEFERRED_PREPASS",
+        "NORMAL_PREPASS",
+        "MOTION_VECTOR_PREPASS",
+        "NORMAL_PREPASS_OR_DEFERRED_PREPASS",
+        "MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS",
+        "VERTEX_UVS_A",
+        "VERTEX_COLORS",
+        "VERTEX_TANGENTS",
+        "RENZORA_PARTICLE_SURFACE",
+    ],
+];
+
 /// Every configuration `source` is bound in.
 fn configs_for(source: &str) -> Vec<&'static [&'static str]> {
     let mut configs: Vec<&[&str]> = FRAGMENT_CONFIGS.to_vec();
-    if super::codegen::supports_deferred(source) {
+    let deferred = super::codegen::supports_deferred(source);
+    if deferred {
         configs.extend(DEFERRED_CONFIGS);
+    }
+    if source.contains("RENZORA_PARTICLE_SURFACE") {
+        configs.extend(PARTICLE_CONFIGS);
+        if deferred {
+            configs.extend(PARTICLE_DEFERRED_CONFIGS);
+        }
     }
     configs
 }
@@ -952,6 +998,46 @@ mod tests {
                     .join("\n")
             )
         });
+    }
+
+    /// A graph reading every Particle node, in each domain a particle can
+    /// wear, compiles in the particle pipeline (where the particle inputs
+    /// exist) and in every mesh one (where they read as constants), including
+    /// the deferred G-buffer pass a Surface shader is also bound in.
+    #[test]
+    fn particle_nodes_validate_on_particles_and_on_meshes() {
+        use crate::material::graph::MaterialDomain;
+        for domain in [MaterialDomain::Surface, MaterialDomain::Unlit] {
+            let mut graph = MaterialGraph::new("particle", domain);
+            let output_id = graph.output_node().unwrap().id;
+            let color = graph.add_node("input/particle_color", [0.0, 0.0]);
+            let age = graph.add_node("input/particle_age", [0.0, 0.0]);
+            let seed = graph.add_node("input/particle_random", [0.0, 0.0]);
+            let vel = graph.add_node("input/particle_velocity", [0.0, 0.0]);
+            let mul = graph.add_node("math/multiply", [0.0, 0.0]);
+            graph.connect(age, "age", mul, "a");
+            graph.connect(seed, "value", mul, "b");
+            let (color_pin, alpha_pin) = match domain {
+                MaterialDomain::Unlit => ("color", "alpha"),
+                _ => ("base_color", "alpha"),
+            };
+            graph.connect(color, "color", output_id, color_pin);
+            graph.connect(mul, "result", output_id, alpha_pin);
+            if domain == MaterialDomain::Surface {
+                graph.connect(vel, "speed", output_id, "roughness");
+                graph.connect(vel, "direction", output_id, "emissive");
+            }
+            let result = codegen::compile(&graph);
+            assert!(result.errors.is_empty(), "{domain:?}: {:?}", result.errors);
+            assert!(result.fragment_shader.contains("RENZORA_PARTICLE_SURFACE"), "{}", result.fragment_shader);
+            validator().validate(&result).unwrap_or_else(|errors| {
+                panic!(
+                    "{domain:?} particle nodes must validate:\n{}\n{}",
+                    errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n"),
+                    result.fragment_shader
+                )
+            });
+        }
     }
 
     /// A broken `custom/code` snippet must point at its own line — and,

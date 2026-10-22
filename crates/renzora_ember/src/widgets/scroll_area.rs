@@ -104,6 +104,13 @@ impl EmberScroll {
         }
     }
 
+    /// Whether a pinned view is following the bottom right now: false once the
+    /// reader scrolls up, true again when they return. What a log's "Follow"
+    /// toggle shows.
+    pub fn following(&self) -> bool {
+        self.pinned && self.stick
+    }
+
     /// Set both scroll targets at once (both-axis views). Pair with writing
     /// `ScrollPosition` directly for an immediate, un-eased jump — used by
     /// zoom-to-cursor, which must re-anchor the content the same frame it scales.

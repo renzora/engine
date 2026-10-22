@@ -63,7 +63,14 @@ impl PreviewMesh {
     pub fn to_mesh(&self) -> Mesh {
         match self {
             PreviewMesh::Quad => Mesh::from(Rectangle::new(2.0, 2.0)),
-            PreviewMesh::Sphere => Sphere::new(1.0).mesh().ico(5).unwrap(),
+            // UV sphere: an icosphere's zigzag UV seam reads as a crack on
+            // any shader that samples by UV.
+            // Poles turned from Z to Y and the seam to the back: Bevy's UV
+            // sphere otherwise runs its seam across the front.
+            PreviewMesh::Sphere => Sphere::new(1.0).mesh().uv(64, 32).rotated_by(
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
+                    * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+            ),
             PreviewMesh::Cube => Mesh::from(Cuboid::new(1.5, 1.5, 1.5)),
             PreviewMesh::Cylinder => Mesh::from(Cylinder::new(0.8, 1.5)),
             PreviewMesh::Capsule => Mesh::from(Capsule3d::new(0.5, 1.0)),

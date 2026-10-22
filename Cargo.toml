@@ -29,7 +29,6 @@ members = [
     "crates/bevy_interleave",
     "crates/bevy_interleave_interface",
     "crates/bevy_interleave_macros",
-    "crates/bevy_hanabi",
     "crates/bevy_hui",
     "crates/bevy_silk",
     # Patched over Bevy's own copy; see `[patch.crates-io]` below.

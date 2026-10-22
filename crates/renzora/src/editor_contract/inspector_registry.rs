@@ -150,7 +150,18 @@ impl InspectorRegistry {
     /// else is appended in registration order. (There is no `name` entry any
     /// more — the entity id moved into the inspector's fixed header, which sits
     /// above this list rather than in it.)
+    ///
+    /// Registering a `type_id` that is already present replaces the old entry
+    /// in place. Appending made a second copy whenever one was registered
+    /// twice, which is what put "Water Surface" in Add Component twice; the
+    /// water plugin registers it from a single place, so the second copy came
+    /// from its `build` running twice in one session. The newer entry is the one to keep: if a
+    /// plugin image was reloaded, its function pointers are the live ones.
     pub fn register(&mut self, entry: InspectorEntry) {
+        if let Some(slot) = self.entries.iter_mut().find(|e| e.type_id == entry.type_id) {
+            *slot = entry;
+            return;
+        }
         match entry.type_id {
             "transform" => self.entries.insert(0, entry),
             "material_ref" => {

@@ -19,6 +19,10 @@ impl Plugin for MixerPlugin {
 #[cfg(not(target_arch = "wasm32"))]
 mod inspectors;
 #[cfg(not(target_arch = "wasm32"))]
+mod metering;
+#[cfg(not(target_arch = "wasm32"))]
+mod routing;
+#[cfg(not(target_arch = "wasm32"))]
 mod strips;
 #[cfg(not(target_arch = "wasm32"))]
 mod wiring;

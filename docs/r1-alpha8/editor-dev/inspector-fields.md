@@ -66,7 +66,7 @@ All optional; each has a sensible default derived from the struct name.
 |---|---|---|
 | `name = "..."` | title-cased struct name | Section header shown in the Inspector |
 | `icon = "..."` | `"CUBE"` | Phosphor icon **constant** (`SCREAMING_SNAKE_CASE`); emitted as a kebab-case name (`HEART` → `heart`, `SNEAKER_MOVE` → `sneaker-move`) that the native inspector resolves to a glyph |
-| `category = "..."` | `"component"` | Grouping key (e.g. `"gameplay"`) |
+| `category = "..."` | `"object"` | The Inspector page the card appears on, and its Add Component group (e.g. `"physics"`); see the page list in [Editor API](../extending/editor-api.md#declarative-fields) |
 | `type_id = "..."` | snake_case struct name | Stable string key for the entry in the registry |
 
 ### `#[field(...)]` — field attributes
@@ -176,7 +176,7 @@ fn register_spawn_config(app: &mut App) {
         type_id: "spawn_config",
         display_name: "Spawn Config",
         icon: "sparkle", // already kebab-case here, not a constant
-        category: "gameplay",
+        category: "scripting", // the Inspector page; see the page list in Editor API
         has_fn: |w, e| w.get::<SpawnConfig>(e).is_some(),
         add_fn: Some(|w, e| { w.entity_mut(e).insert(SpawnConfig::default()); }),
         remove_fn: Some(|w, e| { w.entity_mut(e).remove::<SpawnConfig>(); }),

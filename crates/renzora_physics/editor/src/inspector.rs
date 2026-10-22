@@ -278,6 +278,23 @@ pub fn default_collider_for_shape(id: &str) -> Option<CollisionShapeData> {
         "torus" => CollisionShapeData::mesh(),
         "funnel" => CollisionShapeData::mesh(),
         "gutter" => CollisionShapeData::mesh(),
+
+        // Second-wave shapes. The few that are genuinely box- or drum-like
+        // and likely to be knocked about as dynamic props (a crate, a barrel)
+        // get a primitive; everything else is level geometry with holes,
+        // steps or overhangs a primitive would fill in, so it gets its mesh.
+        "rounded_cube" | "beveled_block" | "crate" => CollisionShapeData::cuboid(Vec3::splat(0.5)),
+        "barrel" => CollisionShapeData::cylinder(0.43, 0.55),
+        "disc" => CollisionShapeData::cylinder(0.5, 0.025),
+        "tetrahedron" | "octahedron" | "dodecahedron" | "icosahedron" | "star_prism"
+        | "ellipsoid" | "hex_prism" | "domed_cylinder" | "step_block" | "inner_corner_wedge"
+        | "outer_corner_wedge" | "slope_2_1" | "rounded_edge_block" | "gear" | "frame"
+        | "column" | "gable_roof" | "hip_roof" | "dome_shell" | "archway"
+        | "crenellated_wall" | "railing" | "fence" | "window_frame" | "door_frame"
+        | "wall_corner" | "floor_tile" | "balcony" | "l_stairs" | "u_stairs" | "curved_ramp"
+        | "ladder" | "slab_stairs" | "pipe_elbow" | "pipe_tee" | "pipe_cross" | "pipe_flange"
+        | "channel_bend" | "spring" | "torus_knot" | "platform" | "bridge" | "bench"
+        | "table" | "pedestal" | "rock" | "sign_post" | "lamp_post" => CollisionShapeData::mesh(),
         _ => return None,
     })
 }
@@ -327,7 +344,7 @@ fn subtree_has_collision_shape(world: &Rx, root: Entity) -> bool {
 /// Native (bevy_ui / ember) drawer for `PhysicsBodyData` — mirrors the inspector layout.
 fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
     use renzora_ember::font::ui_font;
-    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::inspector::{inspector_body, inspector_row};
     use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::theme::{rgb, text_muted};
     use renzora_ember::widgets::{drag_value, dropdown, DragRange};
@@ -403,10 +420,6 @@ fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
         rows.push(float_row(commands, fonts, "Linear Damping", lin, 0.01, 0.0, 100.0, |b| b.linear_damping, |b, v| b.linear_damping = v));
         rows.push(float_row(commands, fonts, "Angular Damping", ang, 0.01, 0.0, 100.0, |b| b.angular_damping, |b, v| b.angular_damping = v));
 
-        // Alternating row stripe (matches the inspector look).
-        for (i, r) in rows.iter().enumerate() {
-            commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
-        }
         commands.entity(col).add_children(&rows);
 
         // "Lock Axes" sub-header + the two grouped X/Y/Z checkbox rows.
@@ -420,8 +433,6 @@ fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
             .id();
         let trans = lock_row(commands, fonts, entity, "Translation", false);
         let rot = lock_row(commands, fonts, entity, "Rotation", true);
-        commands.entity(trans).insert(BackgroundColor(inspector_stripe(0)));
-        commands.entity(rot).insert(BackgroundColor(inspector_stripe(1)));
         commands.entity(col).add_children(&[header, trans, rot]);
 
         col
@@ -552,7 +563,7 @@ fn shape_of(w: &Rx, e: Entity) -> Option<CollisionShapeType> {
 /// (shown/hidden by shape type), and offset/friction/restitution/sensor.
 fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
     use renzora_ember::font::{icon_text, ui_font};
-    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::inspector::{inspector_body, inspector_row};
     use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
     use renzora_ember::theme::{accent, card_bg, rgb, text_muted, text_primary};
     use renzora_ember::widgets::{drag_value, dropdown, toggle_switch, DragRange};
@@ -716,9 +727,6 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
         let r_sensor = inspector_row(commands, &fonts.ui, "Is Sensor", sensor);
 
         let rows = [r_edit, r_apply, r_shape, r_half_extents, r_radius, r_half_height, r_mesh, r_offset, r_friction, r_restitution, r_sensor];
-        for (i, r) in rows.iter().enumerate() {
-            commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
-        }
         commands.entity(col).add_children(&rows);
         col
     })

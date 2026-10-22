@@ -100,8 +100,11 @@ pub(super) struct SectionBodySpec {
 }
 
 /// Build the declarative field rows for a section body (shared by the initial
-/// build and the fill-on-expand path so the two can't drift — notably the stripe
-/// colour, which is derived from row index).
+/// build and the fill-on-expand path so the two can't drift).
+///
+/// Rows are unpainted: they sit flat on the card (see [`build_section`]). The
+/// card is what groups a component's fields now, so an odd/even stripe per row
+/// would only add a second, competing structure inside it.
 fn fill_section_rows(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -110,13 +113,48 @@ fn fill_section_rows(
     type_id: &'static str,
     body: Entity,
 ) {
-    for (i, field) in fields.iter().enumerate() {
+    for field in fields {
         let r = build_field_row(commands, fonts, field, entity, type_id);
-        commands
-            .entity(r)
-            .insert(BackgroundColor(renzora_ember::inspector::inspector_stripe(i)));
         commands.entity(body).add_child(r);
     }
+}
+
+/// Corner radius of a component card.
+pub(super) const CARD_RADIUS: f32 = 8.0;
+
+/// Space between two component cards. The reorder drag centres its drop line
+/// in it (see `reorder::section_reorder_drag`).
+pub(super) const CARD_GAP: f32 = 6.0;
+
+/// How far the header sits in from the card's edges.
+///
+/// The header used to run edge to edge as the card's top band, rounded on top
+/// only. Pressed against the border like that it read as a strip glued on;
+/// inset and rounded on every corner it reads as a control sitting inside the
+/// card, and the card's edge stays one unbroken line.
+const CARD_INSET: f32 = 4.0;
+
+/// The header's radius: the card's, less the inset, so the two curves run
+/// parallel.
+const CARD_HEADER_RADIUS: f32 = CARD_RADIUS - CARD_INSET;
+
+/// The card's surface: a small step lighter than the panel and neutral like
+/// it. Mixed between two theme colours, so a light theme gets a card a step
+/// darker instead.
+pub(super) fn card_bg() -> Color {
+    use renzora_ember::theme::{mix, panel_bg, text_primary};
+    mix(panel_bg(), text_primary(), 0.03)
+}
+
+/// The 1px edge of the card and of the header inside it: a translucent black,
+/// so it always lands a little darker than whatever it is drawn over, the
+/// card on the panel and the tinted header on the card.
+///
+/// An earlier card had a light border, a step brighter than its surface. That
+/// one outlined the card like a box drawn around a box; a darker edge reads as
+/// the card's shadow instead, which separates without adding a line to look at.
+fn card_edge() -> Color {
+    Color::srgba(0.0, 0.0, 0.0, 0.22)
 }
 
 /// Keep each section body's contents in sync with its header's open flag: fill
@@ -251,35 +289,7 @@ pub(super) fn build_section(
     // be dragged puts it in.
     let grip = build_grip(commands, fonts, root);
     commands.entity(header).insert_children(0, &[grip]);
-    // Compact the shared section for the inspector: kill the widget's 8px
-    // bottom margin + header↔body gap so component cards stack flush, and
-    // tighten the header's vertical padding. (Full `Node` overrides — mirror
-    // the widget's other layout fields when changing them.)
-    commands.entity(root).insert(Node {
-        width: Val::Percent(100.0),
-        flex_direction: FlexDirection::Column,
-        ..default()
-    });
-    commands.entity(header).insert(Node {
-        width: Val::Percent(100.0),
-        flex_direction: FlexDirection::Row,
-        align_items: AlignItems::Center,
-        column_gap: Val::Px(6.0),
-        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-        border_radius: BorderRadius::all(Val::Px(4.0)),
-        ..default()
-    });
-    commands.entity(body).insert(Node {
-        width: Val::Percent(100.0),
-        flex_direction: FlexDirection::Column,
-        padding: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(4.0)),
-        // Preserve the collapsed state `section_with_header_open` encoded in the
-        // body's `display`; a bare `Node` would default to `Flex` and show a
-        // start-collapsed section, desyncing it from its `Section.open` flag (the
-        // first collapse click would then no-op).
-        display: if sec.open { Display::Flex } else { Display::None },
-        ..default()
-    });
+    card_frame(commands, root, header, body, sec.open);
     // A COLLAPSED section builds nothing — it records how to fill itself and
     // `reconcile_section_bodies` does so when (if) the user expands it.
     //
@@ -303,6 +313,93 @@ pub(super) fn build_section(
         // it has a height to reserve. See `SectionCull::placeholder_h`.
         SectionCull::default(),
     ));
+    build_section_rest(commands, fonts, sec, entity, header, body);
+    (root, body)
+}
+
+/// A card that is not a component: the same frame, header and collapse as a
+/// component's card, with the body left for the caller to fill. The Scene
+/// page uses it for what belongs to the scene rather than to any entity.
+///
+/// Built open, and with none of a component card's machinery (no grip, no
+/// remembered open state, no culling), since there is no component behind it
+/// to reorder, remember or rebuild.
+pub(super) fn info_card(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    title: &str,
+    accent: (u8, u8, u8),
+    header_bg: (u8, u8, u8),
+) -> (Entity, Entity) {
+    let (root, header, body) =
+        renzora_ember::widgets::section_with_header_open(commands, fonts, icon, title, accent, header_bg, true);
+    card_frame(commands, root, header, body, true);
+    (root, body)
+}
+
+/// Turn a shared ember section into a card: the root gets the surface and
+/// rounding, and the header sits inside it, inset by `CARD_INSET`. Before
+/// this, a header floated above a run of striped rows with nothing marking
+/// where one component ended and the next began; the card's edge is that
+/// boundary now. (Full `Node` overrides: mirror the widget's other layout
+/// fields when changing them.)
+///
+/// No `Overflow::clip()` on the card to tidy its corners: a clipping parent
+/// eats every dropdown and colour picker its rows open.
+fn card_frame(commands: &mut Commands, root: Entity, header: Entity, body: Entity, open: bool) {
+    commands.entity(root).insert((
+        Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            border_radius: BorderRadius::all(Val::Px(CARD_RADIUS)),
+            border: UiRect::all(Val::Px(1.0)),
+            padding: UiRect::all(Val::Px(CARD_INSET)),
+            margin: UiRect::bottom(Val::Px(CARD_GAP)),
+            ..default()
+        },
+        BackgroundColor(card_bg()),
+        BorderColor::all(card_edge()),
+    ));
+    // The vertical padding is a pixel less than before the border, so the
+    // header keeps its height.
+    commands.entity(header).insert((
+        Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            border: UiRect::all(Val::Px(1.0)),
+            padding: UiRect::axes(Val::Px(5.0), Val::Px(4.0)),
+            border_radius: BorderRadius::all(Val::Px(CARD_HEADER_RADIUS)),
+            ..default()
+        },
+        BorderColor::all(card_edge()),
+    ));
+    commands.entity(body).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(1.0),
+        padding: UiRect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0)),
+        // Preserve the collapsed state `section_with_header_open` encoded in the
+        // body's `display`; a bare `Node` would default to `Flex` and show a
+        // start-collapsed section, desyncing it from its `Section.open` flag (the
+        // first collapse click would then no-op).
+        display: if open { Display::Flex } else { Display::None },
+        ..default()
+    });
+}
+
+/// The rest of [`build_section`] after the frame: the body's first fill and
+/// the header affordances.
+fn build_section_rest(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    sec: &SectionSpec,
+    entity: Entity,
+    header: Entity,
+    body: Entity,
+) {
     if !sec.open {
         // nothing built — `reconcile_section_bodies` fills it on expand
     } else if sec.native_drawer.is_some() {
@@ -366,6 +463,20 @@ pub(super) fn build_section(
         );
         extra.push(sw);
     }
+    // Scripts adds from its header: the picker is a header action like the
+    // trash on every other card, and it left the drop zone in the body free to
+    // be only a drop zone. Styled like the trash glyph beside it.
+    if sec.type_id == "script_component" {
+        let plus = phosphor_glyph(commands, fonts, "plus", renzora_ember::theme::text_muted(), 13.0);
+        commands.entity(plus).insert((
+            UiInteraction::default(),
+            BLOCK,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("comp.script.add")),
+            crate::scripts::AddScriptBtn { entity },
+        ));
+        extra.push(plus);
+    }
     // Scripts and Material hide the header trash: both manage their own
     // contents (per-script remove; the material drawer's own binding controls),
     // so a whole-component delete here is a one-click data-loss hazard. Their
@@ -385,6 +496,4 @@ pub(super) fn build_section(
         extra.push(trash);
     }
     commands.entity(header).add_children(&extra);
-
-    (root, body)
 }

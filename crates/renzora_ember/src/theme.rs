@@ -210,11 +210,16 @@ pub fn hover_bg() -> (u8, u8, u8) {
 ///
 /// A menu row is the one place a hover is also a *selection* — the thing that
 /// will happen if you let the button go — and the grey fill read as "this row is
-/// under the cursor" rather than "this is the one". Rows tinted this way switch
-/// their icon and label to [`on_accent`] while hovered; nothing else should use
+/// under the cursor" rather than "this is the one". Nothing else should use
 /// it, or the accent stops meaning "about to act".
-pub fn menu_hover_bg() -> (u8, u8, u8) {
-    palette().accent
+///
+/// A soft wash of the accent, the same pill the tree rows select with, not the
+/// solid accent it used to be. The solid block was the loudest thing on screen
+/// whenever a menu was open, and it forced every icon on the row to white, so
+/// colour-coded icons lost their colour exactly on the row you were reading.
+pub fn menu_hover_bg() -> Color {
+    use bevy::color::Alpha;
+    rgb(palette().accent).with_alpha(0.24)
 }
 pub fn card_bg() -> (u8, u8, u8) {
     palette().card_bg

@@ -39,6 +39,16 @@ pub(crate) fn create_asset(world: &mut World, kind: NewAsset) {
 /// finished `String`, which is what keeps that borrow from colliding with the
 /// `&mut World` the write needs.
 pub(crate) fn create_registered_asset(world: &mut World, id: &str) {
+    // An item that opens its own flow (a template gallery) writes the file
+    // itself, into the folder the browser publishes as `AssetBrowserCwd`.
+    let action = world
+        .get_resource::<renzora::CreateMenuRegistry>()
+        .and_then(|r| r.get(id))
+        .and_then(|i| i.action);
+    if let Some(action) = action {
+        action(world);
+        return;
+    }
     let boilerplate = boilerplate(world);
     let Some((filename, content)) = world
         .get_resource::<renzora::CreateMenuRegistry>()
@@ -319,7 +329,10 @@ pub(crate) fn crumb_click(
     mut state: ResMut<NativeAssets>,
 ) {
     for (interaction, nav) in &q {
-        if *interaction == UiInteraction::Pressed {
+        // The current folder's chip opens its subfolder menu instead (see
+        // `breadcrumb::crumb_menu_open`); "navigating" to it would only clear
+        // the selection out from under that menu.
+        if *interaction == UiInteraction::Pressed && state.current.as_deref() != Some(nav.0.as_path()) {
             state.current = Some(nav.0.clone());
             state.selected = None;
         }

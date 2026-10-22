@@ -68,6 +68,12 @@ pub struct CreateMenuItem {
     /// project-level file with no entity to hang it on.
     pub attaches: bool,
     pub starter: CreateStarter,
+    /// Run this instead of writing `starter` to a file. For a type whose new
+    /// file is a choice rather than one fixed text: the particle editor opens
+    /// its template gallery here, and the gallery writes the file it picks.
+    /// `starter` is still the content for the hierarchy's Attach route, which
+    /// has no room for a dialog.
+    pub action: Option<fn(&mut World)>,
 }
 
 impl CreateMenuItem {
@@ -91,7 +97,15 @@ impl CreateMenuItem {
             folder: "assets".to_string(),
             attaches: false,
             starter: Box::new(starter),
+            action: None,
         }
+    }
+
+    /// Open something (a dialog, a gallery) instead of writing the starter.
+    /// See [`Self::action`].
+    pub fn opens(mut self, action: fn(&mut World)) -> Self {
+        self.action = Some(action);
+        self
     }
 
     pub fn label(mut self, key: impl Into<String>, fallback: impl Into<String>) -> Self {

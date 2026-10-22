@@ -1,7 +1,7 @@
 //! JavaScript ↔ WASM bridge via wasm-bindgen.
 //!
 //! Communication uses a Resource-based command queue (same pattern as the engine's
-//! AnimationCommandQueue / ParticleCommandQueue). JS pushes commands into a global
+//! AnimationCommandQueue). JS pushes commands into a global
 //! static queue, and a Bevy system drains it each frame into a Bevy Resource.
 
 use bevy::prelude::*;

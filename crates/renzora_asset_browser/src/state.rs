@@ -150,7 +150,8 @@ pub(crate) struct NativeAssets {
     /// breadcrumb keeps a readable share of the row. Also set by
     /// `responsive_layout`.
     pub(crate) compact: bool,
-    /// Which list the narrow browser shows (Project | Recent | Favs tabs).
+    /// Which list the tree pane shows, chosen with the sliding switch in the
+    /// pane's header (Project | Recent | Favourites).
     pub(crate) tree_tab: TreeTab,
     /// Narrow-mode filename filter (the tree pane's own search box).
     pub(crate) tree_search: String,
@@ -161,6 +162,9 @@ pub(crate) struct NativeAssets {
     /// Active marquee rubber-band, in window logical px: press origin + current.
     pub(crate) marquee_start: Option<Vec2>,
     pub(crate) marquee_current: Option<Vec2>,
+    /// The active marquee started in the tree rather than the grid, so it
+    /// sweeps tree rows and scrolls the tree.
+    pub(crate) marquee_in_tree: bool,
     /// Selection captured when the marquee began (swept tiles add to it).
     pub(crate) pre_marquee: HashSet<PathBuf>,
     /// The current folder's entries in display order — for shift-range select.
@@ -179,6 +183,11 @@ pub(crate) struct NativeAssets {
     /// Which surface [`Self::hovered`] was found on, so a right-click menu knows
     /// where the asset it is acting on is drawn.
     pub(crate) hovered_surface: RenameSurface,
+    /// How many breadcrumb levels after the project root are folded into the
+    /// "…" button because the full path does not fit the toolbar. Set by
+    /// [`crate::breadcrumb::fit_breadcrumb`] from measured widths; 0 shows
+    /// every level.
+    pub(crate) crumb_hidden: usize,
 }
 
 /// Which of the panel's two surfaces an inline rename is happening on.
@@ -234,12 +243,14 @@ impl Default for NativeAssets {
             selection_anchor: None,
             marquee_start: None,
             marquee_current: None,
+            marquee_in_tree: false,
             pre_marquee: HashSet::new(),
             visible_order: Vec::new(),
             renaming: None,
             rename_surface: RenameSurface::Grid,
             rename_arm: None,
             hovered_surface: RenameSurface::Grid,
+            crumb_hidden: 0,
         }
     }
 }
@@ -437,12 +448,13 @@ pub(crate) fn load_persisted(
 pub(crate) struct AssetRoot;
 #[derive(Component)]
 pub(crate) struct DragGhost;
-/// The toolbar "Add" button — clicking it opens the new-asset menu.
+/// A button that opens the Import overlay (the create-asset list).
 #[derive(Component)]
 pub(crate) struct AddMenuBtn;
-/// Marks the tree strip's "+" key (an [`AddMenuBtn`] too). Its menu also carries
-/// New Folder and Import, because the tree-only layout hides the toolbar that
-/// would otherwise offer them.
+/// Marks an [`AddMenuBtn`] whose overlay also leads with the import tiles
+/// (Files, Folder, Marketplace). Both Import buttons carry it, the toolbar's and
+/// the tree-only layout's: there is one button for getting assets into the
+/// project, whether they are brought in or made new.
 #[derive(Component)]
 pub(crate) struct TreeAddBtn;
 #[derive(Component)]
@@ -479,10 +491,9 @@ pub(crate) struct AssetBack;
 #[derive(Component)]
 pub(crate) struct AssetSearch;
 
-/// Which list the tree pane shows. Folders / Recent / Favorites are tabs (in
-/// both the wide sidebar and the narrow tree-only browser) so each list gets
-/// the full pane height, replacing the old collapsible FAVORITES / RECENT
-/// sections stacked above the folder tree.
+/// Which list the tree pane shows. One at a time, so each list gets the full
+/// pane height and a long Favourites or Recent list scrolls on its own instead
+/// of pushing the project tree down (the stacked sections this replaced).
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum TreeTab {
     Folders,
@@ -490,8 +501,44 @@ pub(crate) enum TreeTab {
     Favorites,
 }
 
+impl TreeTab {
+    pub(crate) const ALL: [TreeTab; 3] = [TreeTab::Folders, TreeTab::Recent, TreeTab::Favorites];
+
+    /// Position in the header switch, left to right.
+    pub(crate) fn index(self) -> usize {
+        match self {
+            TreeTab::Folders => 0,
+            TreeTab::Recent => 1,
+            TreeTab::Favorites => 2,
+        }
+    }
+
+    /// The header label for the list on show.
+    pub(crate) fn label(self) -> String {
+        match self {
+            TreeTab::Folders => renzora::lang::t_or("assets.list.project", "Project"),
+            TreeTab::Recent => renzora::lang::t_or("assets.list.recent", "Recent"),
+            TreeTab::Favorites => renzora::lang::t_or("assets.list.favourites", "Favourites"),
+        }
+    }
+
+    pub(crate) fn icon(self) -> &'static str {
+        match self {
+            TreeTab::Folders => "folder",
+            TreeTab::Recent => "clock-counter-clockwise",
+            TreeTab::Favorites => "star",
+        }
+    }
+}
+
+/// One segment of the header's list switch.
 #[derive(Component)]
 pub(crate) struct TreeTabBtn(pub(crate) TreeTab);
+
+/// The accent knob behind the selected segment of the list switch; eased
+/// sideways by [`crate::list_switch::slide_list_knob`].
+#[derive(Component)]
+pub(crate) struct ListSwitchKnob;
 /// The narrow-mode search field. Separate marker (and state field) from the
 /// toolbar's [`AssetSearch`]: both inputs coexist as entities, and a shared
 /// field would make the hidden one fight the visible one every frame.
@@ -505,9 +552,26 @@ pub(crate) struct TreeNav(pub(crate) PathBuf);
 #[derive(Component)]
 pub(crate) struct NewAssetBtn(pub(crate) NewAsset);
 #[derive(Component)]
-pub(crate) struct ImportBtn;
-#[derive(Component)]
 pub(crate) struct CrumbNav(pub(crate) PathBuf);
+/// The breadcrumb's container in the toolbar: its measured width against its
+/// children's is what [`crate::breadcrumb::fit_breadcrumb`] folds levels by.
+#[derive(Component)]
+pub(crate) struct CrumbBar;
+/// The flexible gap after the breadcrumb: its width is the free room a folded
+/// level needs before it can come back.
+#[derive(Component)]
+pub(crate) struct CrumbSpacer;
+/// One visible breadcrumb level (chip plus its chevron), for measuring.
+#[derive(Component)]
+pub(crate) struct CrumbSeg(pub(crate) PathBuf);
+/// A breadcrumb chevron (or the current folder's caret): opens a menu of that
+/// folder's subfolders.
+#[derive(Component)]
+pub(crate) struct CrumbMenuBtn(pub(crate) PathBuf);
+/// The "…" breadcrumb button, carrying the levels it stands for, root side
+/// first.
+#[derive(Component)]
+pub(crate) struct CrumbEllipsisBtn(pub(crate) Vec<PathBuf>);
 #[derive(Component)]
 pub(crate) struct ShortcutClick {
     pub(crate) path: PathBuf,
@@ -516,13 +580,24 @@ pub(crate) struct ShortcutClick {
 
 #[derive(Component)]
 pub(crate) struct SortMenuBtn;
+/// One of the toolbar's two view keys; `list` is the view it selects.
 #[derive(Component)]
-pub(crate) struct ViewToggleBtn;
+pub(crate) struct ViewToggleBtn {
+    pub(crate) list: bool,
+}
 #[derive(Component)]
 pub(crate) struct AssetGrid;
 /// The grid viewport — a marquee starts on an empty press here.
 #[derive(Component)]
 pub(crate) struct GridArea;
+/// The tree's scroll viewport: a marquee also starts on an empty press here.
+#[derive(Component)]
+pub(crate) struct TreeArea;
+/// A tree row's hit zone (folder or file), as a tree marquee sweeps it. Kept
+/// apart from `AssetTile` because a folder row carries `TreeNav` instead, and
+/// so a sweep in the tree never picks up grid tiles under a long drag.
+#[derive(Component)]
+pub(crate) struct TreeHit(pub(crate) PathBuf);
 /// The rubber-band selection rectangle overlay (top-level, unclipped).
 #[derive(Component)]
 pub(crate) struct MarqueeRect;
@@ -534,7 +609,6 @@ pub(crate) enum NewAsset {
     Material,
     Blueprint,
     Rust,
-    Particle,
     Template,
     Bsn,
 }
@@ -546,14 +620,17 @@ impl NewAsset {
     /// `register_create_menu_item`, so the row is present exactly when an
     /// interpreter is. The engine used to offer it unconditionally and write a
     /// `.lua` nothing could run.
-    pub(crate) const MENU: [NewAsset; 6] = [
+    ///
+    /// No particle effect either, for the same reason: `renzora_particles_editor`
+    /// registers its "Particle Effect" (`.vfx`) entry itself. The built-in row
+    /// that was here wrote a Hanabi `.particle`, a format that is now only read.
+    pub(crate) const MENU: [NewAsset; 5] = [
         NewAsset::Material,
         NewAsset::Blueprint,
         // Next to Lua: the two are the same choice (`renzora_rust_script`
         // claims `.rs` the way the Lua plugin claims `.lua`), and picking
         // between them is the first thing anyone scripting has to do.
         NewAsset::Rust,
-        NewAsset::Particle,
         NewAsset::Template,
         NewAsset::Bsn,
     ];
@@ -564,7 +641,6 @@ impl NewAsset {
             NewAsset::Material => "NewMaterial.material",
             NewAsset::Blueprint => "NewBlueprint.blueprint",
             NewAsset::Rust => "new_script.rs",
-            NewAsset::Particle => "NewParticle.particle",
             NewAsset::Template => "NewTemplate.html",
             NewAsset::Bsn => "NewScene.bsn",
         }
@@ -582,7 +658,6 @@ impl NewAsset {
             // see `renzora_blueprint::starter`.
             NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
             NewAsset::Rust => renzora_scripting::starter_rust(boilerplate),
-            NewAsset::Particle => "(name: \"New Particle\")".to_string(),
             NewAsset::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
             NewAsset::Bsn => "// renzora interim bsn v1\n".to_string(),
@@ -595,7 +670,6 @@ impl NewAsset {
             NewAsset::Material => renzora::lang::t("assets.new.material"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint"),
             NewAsset::Rust => renzora::lang::t_or("assets.new.rust", "Rust Script"),
-            NewAsset::Particle => renzora::lang::t("assets.new.particle"),
             NewAsset::Template => renzora::lang::t("assets.new.template"),
             NewAsset::Bsn => renzora::lang::t("assets.new.bsn"),
         }
@@ -608,7 +682,6 @@ impl NewAsset {
             NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint_sub"),
             NewAsset::Rust => renzora::lang::t_or("assets.new.rust_sub", "Rust Script"),
-            NewAsset::Particle => renzora::lang::t("assets.new.particle_sub"),
             NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
             NewAsset::Bsn => renzora::lang::t("assets.new.scene_sub"),
         }
@@ -620,7 +693,6 @@ impl NewAsset {
             NewAsset::Material => "palette",
             NewAsset::Blueprint => "blueprint",
             NewAsset::Rust | NewAsset::Template => "code",
-            NewAsset::Particle => "sparkle",
             NewAsset::Bsn => "film-slate",
         }
     }
@@ -635,7 +707,6 @@ impl NewAsset {
             // Matches `file_kind::type_info`'s `.rs` accent, so the menu card and
             // the tile the file lands as are the same colour.
             NewAsset::Rust => (230, 140, 90),
-            NewAsset::Particle => (230, 160, 90),
             NewAsset::Template => (230, 120, 90),
             NewAsset::Bsn => (115, 191, 242),
         }

@@ -224,6 +224,18 @@ pub fn initialize_animation_graphs(
             .entity(player_entity)
             .insert(AnimationGraphHandle(graph_handle))
             .try_insert(AnimationTransitions::new());
+        // A rebuild (a clip added or removed) renumbers the graph's nodes, but
+        // the player keeps whatever it was already running under the OLD
+        // numbers, which now name different clips or none. Those leftovers
+        // kept playing beside whatever was picked next, so after re-adding an
+        // animator and its clips one by one, choosing another clip appeared
+        // to do nothing. Start the new graph from a clean player.
+        commands
+            .entity(player_entity)
+            .entry::<AnimationPlayer>()
+            .and_modify(|mut player| {
+                player.stop_all();
+            });
 
         state.initialized = true;
 
@@ -379,11 +391,23 @@ pub struct AnimationCommandQueue {
 }
 
 /// System that processes animation commands.
+///
+/// `Play` and `Crossfade` are dropped while editing, for the same reason
+/// [`auto_play_default`] is gated: in the editor the timeline preview owns the
+/// pose. Several editor controls (picking a clip in the timeline's clip menu or
+/// the Animation panel, the inspector's default-clip dropdown) pushed a `Play`
+/// as a side effect of *selecting* a clip, which started the player at full
+/// speed, looping forever, with the timeline's own transport still reading
+/// stopped and nothing in edit mode that would ever stop it. So adding a clip
+/// to an animator and choosing it to edit set the model running in the
+/// viewport. A shipped game has no `PlayModeState`, so nothing changes there.
 pub fn process_animation_commands(
     mut cmd_queue: ResMut<AnimationCommandQueue>,
     mut animators: Query<(&mut AnimatorComponent, &mut AnimatorState)>,
     mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
 ) {
+    let running = renzora::core::game_running(play_mode);
     if !cmd_queue.commands.is_empty() {
         info!(
             "[animation] Processing {} command(s): {:?}",
@@ -399,6 +423,9 @@ pub fn process_animation_commands(
                 looping,
                 speed,
             } => {
+                if !running {
+                    continue;
+                }
                 let Ok((animator, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };
@@ -591,6 +618,9 @@ pub fn process_animation_commands(
                 duration,
                 looping,
             } => {
+                if !running {
+                    continue;
+                }
                 let Ok((_, mut state)) = animators.get_mut(entity) else {
                     continue;
                 };

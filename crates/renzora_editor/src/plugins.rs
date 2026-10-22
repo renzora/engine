@@ -54,8 +54,9 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_network_editor::NetworkEditorPlugin::default());
     app.add_plugins(renzora_oit_editor::OitEditorPlugin::default());
     app.add_plugins(renzora_parkour_editor::ParkourEditorPlugin::default());
-    app.add_plugins(renzora_particle_editor::ParticleEditorPlugin::default());
+    app.add_plugins(renzora_particles_editor::ParticlesEditorPlugin::default());
     app.add_plugins(renzora_physics_editor::PhysicsEditorPlugin::default());
+    app.add_plugins(renzora_planar_reflection_editor::PlanarReflectionEditorPlugin::default());
     app.add_plugins(renzora_postprocess_editor::PostProcessEditorPlugin::default());
     app.add_plugins(renzora_project_watch::ProjectWatchPlugin::default());
     app.add_plugins(renzora_scene::ScenePlugin::default());

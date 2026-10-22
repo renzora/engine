@@ -170,7 +170,7 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 |---|---|---|
 | `name = "..."` | Card title in the Inspector. | Title-cased struct name |
 | `icon = "..."` | Phosphor icon constant (`SCREAMING_SNAKE_CASE`, e.g. `HEART`, `SNEAKER_MOVE`); lowercased to a kebab-case glyph name. | `"CUBE"` |
-| `category = "..."` | Grouping bucket in the Add-Component overlay. | `"component"` |
+| `category = "..."` | The Inspector page the card appears on, which is also its group in Add Component (`"physics"`, `"rendering"`, ...; full list in [Editor API](../extending/editor-api.md#declarative-fields)). | `"object"` |
 | `type_id = "..."` | Stable string id for the entry. | snake_case of the struct name |
 
 ### `#[field(...)]` — field attributes

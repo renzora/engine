@@ -293,6 +293,7 @@ fn bvh_to_clip(bvh: &BvhFile) -> AnimClip {
             translations,
             rotations,
             scales: Vec::new(),
+            muted: false,
         });
     }
 

@@ -67,7 +67,9 @@ pub(crate) struct ArcData {
 }
 
 fn make_arc(value: f32, pivot: f32) -> ArcMaterial {
-    let track = rgb(card_bg()).to_linear();
+    // The border tone, not the card colour: on a card the card-coloured track
+    // all but vanished, so a pan knob at dead centre (no fill) was invisible.
+    let track = rgb(border()).to_linear();
     let fill = rgb(accent()).to_linear();
     ArcMaterial {
         track: Vec4::new(track.red, track.green, track.blue, 1.0),

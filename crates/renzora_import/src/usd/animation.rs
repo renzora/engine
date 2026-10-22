@@ -23,6 +23,7 @@ pub fn to_anim_clip(anim: &UsdAnimation) -> AnimClip {
             translations: jt.translations.clone(),
             rotations: jt.rotations.clone(),
             scales: jt.scales.clone(),
+            muted: false,
         });
     }
 

@@ -78,8 +78,15 @@ impl MatShape {
     }
     fn mesh(self) -> Mesh {
         match self {
-            // ico(5) gives a smooth, seam-free sphere for shaders that key off UV.
-            MatShape::Sphere => Sphere::new(0.9).mesh().ico(5).unwrap(),
+            // A UV sphere: one straight seam. An icosphere's seam zigzags along
+            // its triangle edges and shows as a jagged crack on any UV-driven
+            // material, which is most of what this viewer shows.
+            // Bevy's UV sphere has its poles on Z, which runs the seam across
+            // the front; turn the poles to Y and the seam to the back.
+            MatShape::Sphere => Sphere::new(0.9).mesh().uv(64, 32).rotated_by(
+                Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
+                    * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+            ),
             MatShape::Cube => Cuboid::new(1.4, 1.4, 1.4).into(),
             MatShape::Plane => Plane3d::new(Vec3::Y, Vec2::splat(1.1)).into(),
             MatShape::Torus => Torus::new(0.45, 0.9).into(),

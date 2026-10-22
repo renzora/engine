@@ -99,12 +99,6 @@ const CREDITS: &[Credit] = &[
         url: "https://github.com/avianphysics/avian",
     },
     Credit {
-        name: "bevy_hanabi",
-        by: "Jérôme Humbert (djeedai)",
-        desc: "GPU-accelerated particle effects",
-        url: "https://github.com/djeedai/bevy_hanabi",
-    },
-    Credit {
         name: "bevy_heavy",
         by: "Joona Aalto",
         desc: "Mass-property computation for geometric primitives",

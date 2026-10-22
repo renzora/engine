@@ -16,9 +16,9 @@ use super::project_config::{CurrentProject, ProjectConfig};
 /// Marker resource: present when the runtime is running as a dedicated server
 /// (`renzora-runtime --server`). Inserted before engine plugins build so they
 /// can opt out of client/render-only setup. A dedicated server has no render
-/// world (`backends: None`), so GPU-only plugins (e.g. `bevy_hanabi`) must
-/// check this and skip their render-side initialization to avoid panicking on
-/// the absent `RenderApp`. Networking uses it to skip client-side setup.
+/// world (`backends: None`), so GPU-only plugins must check this and skip
+/// their render-side initialization to avoid panicking on the absent
+/// `RenderApp`. Networking uses it to skip client-side setup.
 #[derive(Resource, Default)]
 pub struct DedicatedServer;
 

@@ -8,6 +8,8 @@ pub mod backend;
 pub mod data;
 pub mod properties;
 pub mod read_state;
+#[cfg(any(feature = "avian3d", feature = "avian2d"))]
+pub mod scene_query;
 #[cfg(feature = "scripting")]
 pub mod script_extension;
 
@@ -74,6 +76,13 @@ impl Plugin for PhysicsPlugin {
 
         #[cfg(feature = "avian2d")]
         app.add_plugins(backend::avian_2d::Avian2dBackendPlugin { start_paused });
+
+        // Ray and sphere casts against the colliders, for the crates that may
+        // not link Avian themselves (particles colliding with the level). Only
+        // with a backend: without one there is nothing to hit, and the missing
+        // resource tells consumers exactly that.
+        #[cfg(any(feature = "avian3d", feature = "avian2d"))]
+        app.insert_resource(renzora::scene_query::SceneQueries::new(scene_query::AvianSceneQuery));
 
         app.add_systems(Update, (auto_init_physics, sync_physics_data));
         app.add_systems(

@@ -15,7 +15,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "world_env_fog",
         display_name: "Fog",
         icon: "cloud-fog",
-        category: "rendering",
+        category: "environment",
         has_fn: |world, entity| world.get::<WorldEnvironment>(entity).is_some(),
         // Intrinsic to the WorldEnvironment — not added or removed on its own.
         add_fn: None,
@@ -38,7 +38,7 @@ fn inspector_entry() -> InspectorEntry {
 /// Native (bevy_ui) drawer for the fog section: a light-color picker plus bound
 /// numeric rows, all editing `WorldEnvironment::fog`.
 fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
-    use renzora_ember::inspector::{color_field, inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::inspector::{color_field, inspector_body, inspector_row};
     use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::widgets::{drag_value, DragRange};
 
@@ -104,11 +104,6 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
         kids.push(frow!("End", end, end, 0.5, 0.0, 10000.0));
         kids.push(frow!("Density", density, density, 0.001, 0.0, 1.0));
 
-        for (i, &row) in kids.iter().enumerate() {
-            commands
-                .entity(row)
-                .insert(BackgroundColor(inspector_stripe(i)));
-        }
         commands.entity(col).add_children(&kids);
         col
     })

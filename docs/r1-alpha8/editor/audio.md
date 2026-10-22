@@ -108,17 +108,28 @@ Renzora starts you with four buses:
 | Music | Background music |
 | Ambient | Environmental loops such as wind or rain |
 
-On each strip, drag the **fader** to set volume, with the gain in dB underneath. Turn the **Pan** knob to move it left or right. **M** mutes and **S** solos.
+On each strip, drag the **fader** to set volume, with the gain in dB underneath. Turn the **Pan** knob to move it left or right, or scroll over it: each notch moves 5% of the way, `Ctrl`+scroll 1%, and it stops on centre on the way past. **M** mutes and **S** solos.
+
+### Pages
+
+The tabs at the top left switch between three pages:
+
+| Page | What it is for |
+|---|---|
+| Mixer | The channel strips: faders, pan, mute and solo |
+| Routing | Where each bus goes, and how much it sends to the reverb and delay |
+| Metering | Long meters with a peak hold and a clip light per bus |
 
 ### Laying the board out
 
-A slim strip across the top sets the board's shape. Nothing here changes your sound.
+On the Mixer page, the right end of the top bar sets the board's shape. Nothing here changes your sound.
 
-| Key | What it does |
+| Control | What it does |
 |---|---|
-| Compact | Narrower strips, so more channels fit at once |
-| Wide | Roomier strips, the default, with a bigger pan knob |
-| Columns or rows | Flips the channels between standing columns and stacked rows |
+| Compact | Narrower strips, so more channels fit at once. The default. |
+| Large | Roomier strips, with a bigger pan knob and a dB scale beside the fader |
+| Horizontal | Lit while channels run as stacked rows; click to switch between rows and standing columns |
+| Add bus | Adds a channel (see below) |
 
 **Vertical** is the classic mixing desk, with the fader as tall as the panel allows. The longer a fader, the more precisely you can set it.
 
@@ -130,7 +141,7 @@ Master keeps its place either way, at the far right in vertical and at the botto
 
 ### Adding your own buses
 
-Click the **+** tile at the end of the row. You get a new channel immediately, already named and coloured. Point an AudioPlayer's **Bus** field at it and it is wired up.
+Click **Add bus** in the top bar. You get a new channel immediately, already named and coloured. Point an AudioPlayer's **Bus** field at it and it is wired up.
 
 Double-click the name at the top of a strip to rename it. `Enter` keeps the change, `Esc` abandons it.
 
@@ -154,9 +165,27 @@ Devices are listed fresh each time you open the menu, so a microphone plugged in
 
 Each strip's colour shows as a bar across its top and a tint on its frame, so you can pick a channel out of a crowded board at a glance.
 
+### Routing
+
+By default every bus feeds Master. On the **Routing** page each bus has a row:
+
+| Column | What it does |
+|---|---|
+| Output | The bus this one feeds: Master, or another bus. Turning a group bus down turns down everything routed into it. |
+| Reverb send / Delay send | How much of this bus, after its fader, goes to the shared reverb and delay, 0 to 100. This adds to whatever each sound sends on its own. |
+| Signal path | The whole route spelled out, such as `Footsteps › SFX › Master` |
+
+The Output menu only offers buses that cannot create a loop, so you cannot route a bus back into one that already feeds it. A strip routed anywhere but Master shows where it goes under its name.
+
+Solo follows the routing. Soloing a group plays everything routed into it, and soloing a bus inside a group keeps that group open so you still hear it. Deleting a bus sends whatever fed it to Master.
+
+### Metering
+
+The **Metering** page shows every bus on one long meter, post-fader. A white mark holds the highest peak for two seconds before it falls, with that peak in dB beside it. The **CLIP** light turns red if a bus goes over full scale, and stays on until you click it, or **Reset peaks** for all of them, so a clip on a page you were not looking at is not missed.
+
 ### The mixer is saved with your project
 
-Bus volumes, panning, mute and solo, colours and every custom channel are stored in `project.toml`. They come back when you reopen the project, and they ship with your game.
+Bus volumes, panning, mute and solo, colours, routing, sends and every custom channel are stored in `project.toml`. They come back when you reopen the project, and they ship with your game.
 
 An exported game builds the same board before the first scene loads, so an AudioPlayer routed to a bus called `Footsteps` plays on `Footsteps` rather than falling back.
 

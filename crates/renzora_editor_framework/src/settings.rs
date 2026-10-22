@@ -153,13 +153,16 @@ impl InspectorExpandDefault {
 /// Available proportional (UI) font families.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum UiFont {
+    /// Inter, embedded. The default: see `renzora_ember::font::INTER` for why.
+    #[default]
+    Inter,
     /// The operating system's default UI font (Segoe UI on Windows, San
     /// Francisco on macOS, …), resolved via Parley's system-font discovery.
     /// Always available, so it's the reliable "change something" option.
     System,
     Roboto,
     OpenSans,
-    #[default]
+    /// Noto Sans, embedded. The default before Inter.
     NotoSans,
     /// A custom `.ttf`/`.otf` from the project's `fonts/` directory.
     Custom(String),
@@ -168,6 +171,7 @@ pub enum UiFont {
 impl UiFont {
     pub fn label(&self) -> &str {
         match self {
+            Self::Inter => "Inter",
             Self::System => "System UI",
             Self::Roboto => "Roboto",
             Self::OpenSans => "Open Sans",
@@ -177,10 +181,11 @@ impl UiFont {
     }
 
     pub const BUILTIN: &'static [UiFont] =
-        &[Self::System, Self::Roboto, Self::OpenSans, Self::NotoSans];
+        &[Self::Inter, Self::System, Self::Roboto, Self::OpenSans, Self::NotoSans];
 
     pub fn font_key(&self) -> &str {
         match self {
+            Self::Inter => "inter",
             Self::System => "system",
             Self::Roboto => "roboto",
             Self::OpenSans => "open-sans",
@@ -332,13 +337,6 @@ pub struct EditorSettings {
     /// current dock layout; `true` switches to the dedicated "Scripting" layout.
     pub code_open_switch_layout: bool,
 
-    /// Where the open-document tabs live: `false` (default) is the strip under
-    /// the top bar, `true` folds them into a dropdown in the top bar beside
-    /// Play, giving the row back to the dock. Per-user rather than per-project:
-    /// how much vertical room the tabs are worth is a property of the screen
-    /// you are on, not of the game.
-    pub doc_tabs_dropdown: bool,
-
     /// What the global bottom panel does after an asset drag that auto-hid it.
     ///
     /// Dragging a file out of the Assets tab slides the panel shut so you can
@@ -430,7 +428,6 @@ impl Default for EditorSettings {
             code_show_whitespace: false,
             code_word_wrap: false,
             code_open_switch_layout: false,
-            doc_tabs_dropdown: false,
             bottom_panel_reopen_after_drag: true,
             console_log_limit: renzora::core::console_log::DEFAULT_MAX_LOG_ENTRIES,
         }

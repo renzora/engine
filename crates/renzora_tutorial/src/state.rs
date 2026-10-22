@@ -814,12 +814,17 @@ fn count_models(project: &CurrentProject) -> usize {
 /// materials and themes. The marketplace can install any of those, so the import
 /// step's model-only count would miss most purchases.
 fn count_assets(project: &CurrentProject) -> usize {
+    // Images come from the shared list (SVG included); `basis` stays here
+    // because it is a marketplace texture container, not something that loads
+    // as an `Image` on every target.
     const ASSET_EXTS: &[&str] = &[
-        "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend", "png",
-        "jpg", "jpeg", "tga", "exr", "hdr", "ktx2", "basis", "rmip", "wav", "ogg", "mp3", "flac",
-        "material", "particle", "anim", "lua", "wgsl", "wesl", "toml",
+        "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend",
+        "basis", "wav", "ogg", "mp3", "flac", "material", "particle", "anim", "lua", "wgsl",
+        "wesl", "toml",
     ];
-    count_files(&project.path, |ext| ASSET_EXTS.contains(&ext))
+    count_files(&project.path, |ext| {
+        ASSET_EXTS.contains(&ext) || renzora::is_image_extension(ext)
+    })
 }
 
 /// `.lua` files anywhere in the project — the scripting chapter's "you made a

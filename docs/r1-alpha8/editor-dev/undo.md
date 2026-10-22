@@ -58,7 +58,7 @@ For anything bespoke, implement `UndoCommand` directly (see the built-ins in `re
 
 ## The change-observer pattern (for single-buffer editors)
 
-When an editor edits **one cheaply-`Clone` "document"** through many scattered code paths (a material/blueprint graph, a `.particle` buffer, a `.anim` clip), don't wrap every edit site. Instead run one observer system that snapshots the document whenever it changes:
+When an editor edits **one cheaply-`Clone` "document"** through many scattered code paths (a material/blueprint graph, a `.vfx` effect, a `.anim` clip), don't wrap every edit site. Instead run one observer system that snapshots the document whenever it changes:
 
 1. Keep a shadow copy (in a `Resource`) of the document plus a cheap identity of *which* document it is (path / entity / selection key).
 2. Each frame, compare the current document to the shadow. Use `PartialEq` if the type derives it, or a serialized string (e.g. `ron::to_string`) when it doesn't — full serialization catches every field.

@@ -57,7 +57,10 @@ use bevy::prelude::*;
 pub enum AssetKind {
     /// 3D model: `glb`, `gltf`, `obj`, `fbx`, `usd*`, `dae`, `abc`, `blend`.
     Model,
-    /// Image format Bevy can decode at runtime. Includes HDR/EXR and `.rmip`.
+    /// Anything that loads as an `Image`: see [`IMAGE_EXTENSIONS`]. Includes
+    /// HDR/EXR, `.rmip` and SVG.
+    ///
+    /// [`IMAGE_EXTENSIONS`]: super::image_formats::IMAGE_EXTENSIONS
     Texture,
     /// Renzora `.material` file consumed by `renzora_shader`.
     Material,
@@ -105,9 +108,7 @@ impl AssetKind {
         match ext.as_str() {
             "glb" | "gltf" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae"
             | "blend" => AssetKind::Model,
-            "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "exr" | "rmip" => {
-                AssetKind::Texture
-            }
+            e if super::image_formats::is_image_extension(e) => AssetKind::Texture,
             "material" | "material_bp" => AssetKind::Material,
             "bsn" => AssetKind::Scene,
             "wav" | "ogg" | "mp3" | "flac" | "opus" => AssetKind::Audio,
@@ -438,6 +439,14 @@ mod tests {
     #[test]
     fn extensions_are_case_insensitive() {
         assert_eq!(AssetKind::from_path(Path::new("T.PNG")), AssetKind::Texture);
+    }
+
+    #[test]
+    fn svg_is_a_texture() {
+        // It loads as an `Image` like a PNG, so everything that asks "is this
+        // an image" through `AssetKind` must get the same answer for it.
+        assert_eq!(AssetKind::from_path(Path::new("ui/heart.svg")), AssetKind::Texture);
+        assert_eq!(AssetKind::from_path(Path::new("ui/heart.svgz")), AssetKind::Texture);
     }
 
     #[test]

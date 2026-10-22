@@ -75,8 +75,8 @@ pub(crate) struct SectionDrag {
 
 impl SectionDrag {
     /// The section root being carried, if any. Read by
-    /// `systems::stripe_collapsed_headers`, which would otherwise repaint the
-    /// dragged header back to its stripe on the very next frame.
+    /// `systems::paint_section_headers`, which would otherwise repaint the
+    /// dragged header back to its category colour on the very next frame.
     pub(crate) fn dragged(&self) -> Option<Entity> {
         self.active
     }
@@ -126,7 +126,7 @@ pub(super) fn section_reorder_drag(
     if !mouse.pressed(MouseButton::Left) {
         if let Some(dragged) = drag.active.take() {
             record_drop(&mut order, &roots, &sections, dragged, drag.at);
-            // The tint is not undone here: `stripe_collapsed_headers` owns every
+            // The tint is not undone here: `paint_section_headers` owns every
             // header's colour and repaints this one the moment it stops being
             // skipped, which is now.
         }
@@ -150,7 +150,7 @@ pub(super) fn section_reorder_drag(
             (Some((root, origin)), Some(c)) if c.distance(origin) > DRAG_THRESHOLD => {
                 drag.active = Some(root);
                 // Painted once, not every frame: from here until the drop,
-                // `stripe_collapsed_headers` leaves this header alone.
+                // `paint_section_headers` leaves this header alone.
                 if let Some(header) = roots.get(root).ok().map(|r| r.header) {
                     if let Ok(mut bg) = backgrounds.get_mut(header) {
                         bg.0 = rgb(accent()).with_alpha(0.45);
@@ -192,21 +192,23 @@ pub(super) fn section_reorder_drag(
         })
         .count();
 
-    // The seam the line sits on: the top of the section that would follow it, or
-    // the bottom of the one it would follow.
+    // The seam the line sits on: centred in the gap above the card that would
+    // follow it, or below the one it would follow. Each card's gap is its own
+    // bottom margin, which its rect leaves out.
     let Some((container_tl, _)) = node_rect(container, &geom) else {
         return;
     };
+    let half_gap = super::section::CARD_GAP * 0.5;
     let seam = if drag.at == 0 {
         others
             .first()
             .and_then(|e| node_rect(*e, &geom))
-            .map(|(tl, _)| tl.y)
+            .map(|(tl, _)| tl.y - half_gap)
     } else {
         others
             .get(drag.at - 1)
             .and_then(|e| node_rect(*e, &geom))
-            .map(|(tl, size)| tl.y + size.y)
+            .map(|(tl, size)| tl.y + size.y + half_gap)
     };
     let Some(seam) = seam else {
         return;
@@ -336,8 +338,7 @@ fn spawn_line(commands: &mut Commands, container: Entity, top: Val) {
             Name::new("inspector-drop-line"),
         ))
         .id();
-    // Appended last, which keeps it out of the way of `stripe_collapsed_headers`
-    // — that derives a section's zebra stripe from its index in this list.
+    // Appended last, so it never sits between two cards in the list's order.
     commands.entity(container).add_child(line);
 }
 

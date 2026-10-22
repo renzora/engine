@@ -68,6 +68,12 @@ pub use crate::shortcuts::EditorClipboard;
 pub use crate::types::{BoxSelectionState, GizmoAxis, GizmoMode, GizmoSpace, GizmoState};
 
 pub(crate) use crate::drag::snap_rotation;
+
+/// The meshes whose bounds stand for an entity's shape: the selection box,
+/// pivot, hover outline and frame-selected all read through this, so a mesh
+/// marked [`renzora::NoSelectionBounds`] (a particle renderer) is left out of
+/// every one of them at once.
+pub(crate) type BoundsMeshes = (With<Mesh3d>, Without<renzora::NoSelectionBounds>);
 pub(crate) use crate::lines::{draw_angle_label, draw_rotation_pie};
 pub(crate) use crate::pivot::compute_gizmo_pivot;
 

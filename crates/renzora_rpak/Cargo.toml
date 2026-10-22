@@ -19,6 +19,9 @@ zstd = "0.13"
 # Parallel per-entry compression during packing. Export is desktop-only; the
 # wasm runtime only reads archives, so rayon stays out of the wasm build.
 rayon = "1"
+# Inflates `.svgz` during packing so the files it references are found and
+# shipped. Pure Rust (miniz_oxide), already in the lockfile via usvg and png.
+flate2 = "1"
 
 # Pure-Rust zstd DECODER for the web build (no packing there — `mod pack` is
 # desktop-only). Same version Bevy already pulls for its `zstd_rust` feature, so

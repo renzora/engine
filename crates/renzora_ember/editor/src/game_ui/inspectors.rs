@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 use renzora::{AppEditorExt, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::inspector::{color_field_rgba, inspector_body, inspector_row, inspector_stripe};
+use renzora_ember::inspector::{color_field_rgba, inspector_body, inspector_row};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, icon_label_button, text_input, DragRange};
@@ -110,9 +110,6 @@ fn stroke_native(world: &mut World, entity: Entity) -> Entity {
         let r_sides = inspector_row(commands, &fonts.ui, "Sides", group);
 
         let rows = [r_color, r_width, r_sides];
-        for (i, r) in rows.iter().enumerate() {
-            commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
-        }
         commands.entity(col).add_children(&rows);
         col
     })
@@ -297,9 +294,6 @@ fn build_dropdown_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity
     commands.entity(btn_group).add_children(&btns);
     rows.push(btn_group);
 
-    for (i, r) in rows.iter().enumerate() {
-        commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
-    }
     commands.entity(root).add_children(&rows);
 }
 
@@ -504,9 +498,6 @@ fn build_fill_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, en
         UiFill::None => {}
     }
 
-    for (i, r) in rows.iter().enumerate() {
-        commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
-    }
     commands.entity(root).add_children(&rows);
 }
 
@@ -725,21 +716,15 @@ fn interaction_native(world: &mut World, entity: Entity) -> Entity {
             .id();
 
         let mut children: Vec<Entity> = Vec::new();
-        let mut stripe = 0usize;
         for (state_idx, name) in ["Normal", "Hovered", "Pressed", "Disabled"].iter().enumerate() {
             children.push(section_header(commands, fonts, name));
             for kind in 0u8..7 {
-                let row = override_row(commands, fonts, entity, state_idx, kind);
-                commands.entity(row).insert(BackgroundColor(inspector_stripe(stripe)));
-                stripe += 1;
-                children.push(row);
+                children.push(override_row(commands, fonts, entity, state_idx, kind));
             }
         }
 
         children.push(section_header(commands, fonts, "Transition"));
-        let trow = transition_row(commands, fonts, entity);
-        commands.entity(trow).insert(BackgroundColor(inspector_stripe(stripe)));
-        children.push(trow);
+        children.push(transition_row(commands, fonts, entity));
 
         commands.entity(col).add_children(&children);
         col

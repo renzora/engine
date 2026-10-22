@@ -189,6 +189,17 @@ pub struct Bus {
     pub pan: f32,
     pub muted: bool,
     pub soloed: bool,
+    /// Post-fader sends to the shared reverb and delay, 0..1.
+    pub reverb_send: f32,
+    pub delay_send: f32,
+    /// Index of the bus this one is summed into; 0 is Master. Set through
+    /// [`Engine::set_bus_output`], which refuses loops, and never read for
+    /// Master itself.
+    output: usize,
+    /// Whether solo lets this bus through this block: it is soloed, feeds a
+    /// soloed bus, or is fed by one. Scratch for [`Engine::render`], kept here
+    /// so deciding it allocates nothing.
+    solo_pass: bool,
     /// Peak amplitude seen in the last rendered block, for the mixer's VU
     /// meters. Written by [`Engine::render`], read by the host between blocks.
     pub peak: f32,
@@ -223,17 +234,21 @@ impl Bus {
             pan: 0.0,
             muted: false,
             soloed: false,
+            reverb_send: 0.0,
+            delay_send: 0.0,
+            output: 0,
+            solo_pass: false,
             peak: 0.0,
             scratch: Vec::new(),
             feed: VecDeque::with_capacity(FEED_CAPACITY),
         }
     }
 
-    /// Amplitude after mute and solo. Mirrors the engine's
-    /// `ChannelStrip::effective_volume` exactly — the two must agree, or the
-    /// mixer panel shows one thing and the speakers do another.
+    /// Amplitude after mute and solo. A bus on a soloed path passes: soloing a
+    /// group has to keep the buses feeding it audible, and soloing a bus has to
+    /// keep the group it feeds open, or the solo would silence itself.
     fn effective_gain(&self, any_solo: bool) -> f32 {
-        if self.muted || (any_solo && !self.soloed) {
+        if self.muted || (any_solo && !self.solo_pass) {
             return 0.0;
         }
         self.gain
@@ -265,6 +280,11 @@ pub struct Engine {
     /// Kept on the engine so rendering allocates nothing.
     reverb_bus: Vec<f32>,
     delay_bus: Vec<f32>,
+    /// Non-master bus indices, deepest first, so a bus is always summed after
+    /// every bus feeding it. Rebuilt when the topology changes, never in
+    /// [`Engine::render`]; its capacity is reserved as buses are added, so the
+    /// rebuild a routing change triggers on the audio thread allocates nothing.
+    order: Vec<usize>,
 }
 
 /// How a voice should start.
@@ -319,6 +339,7 @@ impl Engine {
             delay: Delay::new(sample_rate.max(1)),
             reverb_bus: Vec::new(),
             delay_bus: Vec::new(),
+            order: Vec::new(),
         }
     }
 
@@ -340,7 +361,64 @@ impl Engine {
             return i;
         }
         self.buses.push(Bus::new(String::from(key)));
+        self.order.reserve(self.buses.len());
+        self.rebuild_order();
         self.buses.len() - 1
+    }
+
+    /// Route bus `key` into bus `target` (`None` = Master).
+    ///
+    /// An unknown target, and one that would close a loop (the target is `key`
+    /// or already feeds it), route to Master instead. Refused here and not only
+    /// in the mixer panel, because a hand-edited project.toml can describe any
+    /// graph, and a loop would sum a bus into itself forever.
+    pub fn set_bus_output(&mut self, key: &str, target: Option<&str>) {
+        let Some(index) = self.bus_index(key).filter(|i| *i != 0) else {
+            return;
+        };
+        let mut out = target.and_then(|t| self.bus_index(t)).unwrap_or(0);
+        if self.feeds(out, index) {
+            out = 0;
+        }
+        if self.buses[index].output != out {
+            self.buses[index].output = out;
+            self.rebuild_order();
+        }
+    }
+
+    /// Whether bus `from` is `to`, or reaches it by following outputs. Bounded
+    /// by the bus count, so a loop already in the graph cannot hang it.
+    fn feeds(&self, from: usize, to: usize) -> bool {
+        let mut cur = from;
+        for _ in 0..=self.buses.len() {
+            if cur == to {
+                return true;
+            }
+            if cur == 0 {
+                return false;
+            }
+            cur = self.buses[cur].output;
+        }
+        true
+    }
+
+    /// Hops from bus `i` down to Master.
+    fn depth(buses: &[Bus], i: usize) -> usize {
+        let mut cur = i;
+        let mut d = 0;
+        while cur != 0 && d <= buses.len() {
+            cur = buses[cur].output;
+            d += 1;
+        }
+        d
+    }
+
+    fn rebuild_order(&mut self) {
+        self.order.clear();
+        self.order.extend(1..self.buses.len());
+        let buses = &self.buses;
+        self.order
+            .sort_unstable_by_key(|&i| core::cmp::Reverse(Self::depth(buses, i)));
     }
 
     /// Remove a bus and reseat every voice that was playing on it.
@@ -362,6 +440,15 @@ impl Engine {
                 voice.bus -= 1;
             }
         }
+        // Buses that fed the removed one now feed Master, like its voices.
+        for bus in &mut self.buses {
+            if bus.output == index {
+                bus.output = 0;
+            } else if bus.output > index {
+                bus.output -= 1;
+            }
+        }
+        self.rebuild_order();
         true
     }
 
@@ -598,6 +685,43 @@ impl Engine {
     /// reused thereafter. `out.len()` must be even; a trailing half-frame is
     /// ignored rather than panicking, because this runs in a device callback
     /// where a panic is an abort.
+    /// Decide [`Bus::solo_pass`] for every bus while something is soloed: a
+    /// soloed bus opens itself and every bus downstream of it (so it reaches
+    /// Master), and a bus downstream of nothing soloed but fed *by* a soloed
+    /// group stays open too, so soloing a group plays its members.
+    fn mark_solo_paths(&mut self) {
+        let n = self.buses.len();
+        for bus in &mut self.buses {
+            bus.solo_pass = false;
+        }
+        for i in 1..n {
+            if !self.buses[i].soloed {
+                continue;
+            }
+            let mut cur = i;
+            for _ in 0..=n {
+                if cur == 0 {
+                    break;
+                }
+                self.buses[cur].solo_pass = true;
+                cur = self.buses[cur].output;
+            }
+        }
+        for i in 1..n {
+            let mut cur = self.buses[i].output;
+            for _ in 0..=n {
+                if cur == 0 {
+                    break;
+                }
+                if self.buses[cur].soloed {
+                    self.buses[i].solo_pass = true;
+                    break;
+                }
+                cur = self.buses[cur].output;
+            }
+        }
+    }
+
     pub fn render(&mut self, out: &mut [f32]) {
         let frames = out.len() / 2;
         for s in out.iter_mut() {
@@ -668,26 +792,50 @@ impl Engine {
         // Solo is a property of the whole board, so it has to be decided before
         // any bus is summed — a bus cannot know whether it is the soloed one.
         let any_solo = self.buses.iter().skip(1).any(|b| b.soloed);
+        if any_solo {
+            self.mark_solo_paths();
+        }
 
-        // Buses → master. Master is index 0 and is summed last, after everything
-        // has been folded into it, so its own gain applies to the whole mix.
-        let (master, rest) = self.buses.split_at_mut(1);
-        let master = &mut master[0];
-        for bus in rest.iter_mut() {
+        // Buses → the bus each one feeds, deepest first, so a group has heard
+        // every bus feeding it before it is summed on in turn. Master is index
+        // 0, never in `order`, and is summed last, so its own gain applies to
+        // the whole mix.
+        for oi in 0..self.order.len() {
+            let i = self.order[oi];
+            let out = self.buses[i].output;
+            // `out` is never `i` (loops are refused), so the two can be
+            // borrowed apart.
+            let (bus, target) = if i < out {
+                let (a, b) = self.buses.split_at_mut(out);
+                (&mut a[i], &mut b[0])
+            } else {
+                let (a, b) = self.buses.split_at_mut(i);
+                (&mut b[0], &mut a[out])
+            };
             let gain = bus.effective_gain(any_solo);
             let [gl, gr] = balance_gains(bus.pan);
+            let (rs, ds) = (bus.reverb_send, bus.delay_send);
             let mut peak = 0.0f32;
             for f in 0..frames {
                 let l = bus.scratch[f * 2] * gain * gl;
                 let r = bus.scratch[f * 2 + 1] * gain * gr;
-                master.scratch[f * 2] += l;
-                master.scratch[f * 2 + 1] += r;
+                target.scratch[f * 2] += l;
+                target.scratch[f * 2 + 1] += r;
+                if rs > 0.0 {
+                    self.reverb_bus[f * 2] += l * rs;
+                    self.reverb_bus[f * 2 + 1] += r * rs;
+                }
+                if ds > 0.0 {
+                    self.delay_bus[f * 2] += l * ds;
+                    self.delay_bus[f * 2 + 1] += r * ds;
+                }
                 peak = peak.max(l.abs()).max(r.abs());
             }
             // Metered post-fader: the meter should answer "what is this bus
             // contributing", so muting a bus must take its meter to zero.
             bus.peak = peak;
         }
+        let master = &mut self.buses[0];
 
         // The two effect returns land on master, after the dry buses. They are
         // deliberately not routed through a bus of their own: a reverb return

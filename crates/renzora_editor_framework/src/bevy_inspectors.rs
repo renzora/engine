@@ -626,14 +626,11 @@ fn sprite_image_entry() -> InspectorEntry {
             FieldDef {
                 name: "Add Sheet",
                 field_type: FieldType::Asset {
-                    extensions: vec![
-                        "png".into(),
-                        "jpg".into(),
-                        "jpeg".into(),
-                        "webp".into(),
-                        "ktx2".into(),
-                        "rmip".into(),
-                    ],
+                    // Every format that loads as an `Image`, SVG included.
+                    extensions: renzora::IMAGE_EXTENSIONS
+                        .iter()
+                        .map(|e| (*e).to_string())
+                        .collect(),
                 },
                 // Empty prompt — write-only ("drag to add").
                 get_fn: |_world, _entity| Some(FieldValue::Asset(None)),
@@ -886,7 +883,7 @@ fn transform_entry() -> InspectorEntry {
         type_id: "transform",
         display_name: "Transform",
         icon: "arrows-out-cardinal",
-        category: "transform",
+        category: "object",
         has_fn: |world, entity| world.get::<Transform>(entity).is_some(),
         add_fn: None,
         remove_fn: None,

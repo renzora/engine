@@ -746,13 +746,12 @@ fn image_node_entry() -> InspectorEntry {
         fields: vec![FieldDef {
             name: "Source",
             field_type: FieldType::Asset {
-                extensions: vec![
-                    "png".into(),
-                    "jpg".into(),
-                    "jpeg".into(),
-                    "webp".into(),
-                    "ktx2".into(),
-                ],
+                // Every format that loads as an `Image`; an SVG icon is the
+                // common case for UI, and it stays sharp at any `scale`.
+                extensions: renzora::IMAGE_EXTENSIONS
+                    .iter()
+                    .map(|e| (*e).to_string())
+                    .collect(),
             },
             get_fn: |_world, _entity| {
                 // Image handle → asset path lookup is one-way without holding

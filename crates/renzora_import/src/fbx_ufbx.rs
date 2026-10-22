@@ -747,6 +747,7 @@ fn sample_node_track(
         translations: Vec::with_capacity(n_samples),
         rotations: Vec::with_capacity(n_samples),
         scales: Vec::with_capacity(n_samples),
+        muted: false,
     };
     for i in 0..n_samples {
         let t = time_begin + dt * i as f64;

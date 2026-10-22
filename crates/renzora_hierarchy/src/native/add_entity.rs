@@ -133,11 +133,18 @@ pub(crate) fn spawn_entries(
     }
 
     if let Some(reg) = inspector_reg {
-        const CATS: [&str; 4] = ["rendering", "post_process", "effects", "Audio"];
+        // The pages whose components make sense as an entity of their own (a
+        // sky, a fog volume, an emitter, a sound). Matched by page rather than
+        // by category string, so a registration still using an older name for
+        // its page is offered too.
+        use renzora::inspector_pages::InspectorPage as P;
+        const PAGES: [P; 5] = [P::Rendering, P::Environment, P::PostProcess, P::Particles, P::Audio];
         for e in reg.iter() {
-            if e.add_fn.is_some() && CATS.contains(&e.category) && allows(e.category) {
+            let page = P::for_entry(e.category, e.type_id);
+            if e.add_fn.is_some() && PAGES.contains(&page) && allows(e.category) {
                 let (type_id, display_name) = (e.type_id.to_string(), e.display_name.to_string());
-                let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(e.category)), e.category);
+                let category =
+                    renzora::lang::t_or(&format!("entity.cat.{}", page.id()), &page.display_name());
                 entries.push(SearchEntry::new(
                     e.icon,
                     e.display_name,

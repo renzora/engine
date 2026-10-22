@@ -161,7 +161,9 @@ pub(crate) fn category_rgb(
         "plugin" => &theme.categories.plugin,
         "nodes2d" | "nodes_2d" => &theme.categories.nodes_2d,
         "ui" => &theme.categories.ui,
-        "rendering" => &theme.categories.rendering,
+        // Post Process took SSAO and SSR out of Rendering; the theme has no
+        // colour of its own for it, so its cards keep the one they had.
+        "rendering" | "post_process" => &theme.categories.rendering,
         "effects" | "particles" => &theme.categories.effects,
         _ => &theme.categories.transform,
     };

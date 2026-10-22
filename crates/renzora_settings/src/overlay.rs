@@ -268,8 +268,8 @@ fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
         ))
         .id();
-    // Themed ember icon button (Styled IconButton) — editable under "Icon Button".
-    let close = renzora_ember::widgets::icon_button(commands, fonts, "x");
+    // The shared dialog close button, so Settings' X matches every overlay's.
+    let close = renzora_ember::widgets::close_button(commands, fonts);
     commands
         .entity(close)
         .insert((BLOCK, CloseBtn));

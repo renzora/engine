@@ -72,6 +72,7 @@ mod accent;
 mod card;
 mod decor;
 mod divider;
+mod ellipsis;
 mod tabs;
 
 // Navigation.
@@ -191,6 +192,7 @@ pub use accent::*;
 pub use card::*;
 pub use decor::*;
 pub use divider::*;
+pub use ellipsis::{ellipsize, EllipsisText};
 pub use tabs::*;
 
 pub use breadcrumb::*;
@@ -249,12 +251,15 @@ pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
 pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_styled};
+// The scene front-end below takes the `EmberDropdown` name, so the widget's own
+// state is reachable crate-wide under another one (`inspector_row` checks for it).
+pub(crate) use dropdown::EmberDropdown as DropdownState;
 pub use scene::{
     EmberButtonWidget, EmberCheckbox, EmberClip, EmberDropdown, EmberInput, EmberProgress,
     EmberSliderWidget, EmberTable, EmberTabs, EmberTimeline, EmberToggle, EmberTrack,
 };
 pub use timeline::*;
-pub use timeline_view::{timeline_view, TimelineHandle, TimelineView, LANE_INSET};
+pub use timeline_view::{timeline_ticks, timeline_view, TimelineHandle, TimelineView, TlScrub, LANE_INSET};
 
 pub use gallery::*;
 
@@ -307,6 +312,11 @@ impl Plugin for WidgetsPlugin {
                 .after(bevy::ui::UiSystems::Focus)
                 .before(form::form_enter_submit),
         );
+        // In Update, reading the layout the last frame computed: a shortened
+        // string written here is laid out in this frame's PostUpdate.
+        app.add_systems(Update, ellipsis::ellipsize_text);
+        // On their own: the main widget tuple is at Bevy's 20-system limit.
+        app.add_systems(Update, (search::search_footer_update, search::search_resize));
         app.add_systems(
             Update,
             (
@@ -320,6 +330,7 @@ impl Plugin for WidgetsPlugin {
                     checkbox::checkbox_apply,
                     radio::radio_interact,
                     segmented::segmented_interact,
+                    segmented::segmented_apply,
                     stepper::stepper_interact,
                     dropdown::dropdown_toggle,
                     dropdown::dropdown_select,
@@ -349,7 +360,15 @@ impl Plugin for WidgetsPlugin {
                     popup::popup_dismiss,
                     popup::popup_position,
                     color_picker::color_picker_sync,
-                    knob::knob_drag,
+                    // Nested for the 20-system tuple limit. The wheel pass
+                    // raises the capture flag the field pass just wrote, so it
+                    // must follow that pass and precede the scroll areas.
+                    (
+                        knob::knob_drag,
+                        knob::knob_wheel
+                            .after(drag_value::drag_value_scroll)
+                            .before(scroll_area::scroll_wheel),
+                    ),
                     fader::fader_drag,
                     fader::fader_apply,
                     xy_pad::xy_pad_drag,
@@ -384,6 +403,9 @@ impl Plugin for WidgetsPlugin {
                     search::search_list_select,
                     search::search_cat_toggle,
                     search::search_sidebar_jump,
+                    search::search_section_slide,
+                    search::search_scroll_spy,
+                    search::search_sidebar_paint,
                     search::search_list_enter,
                 ),
                 (

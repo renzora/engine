@@ -150,7 +150,7 @@ pub fn menu_submenu_parts(
         ))
         .id();
     bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(menu_hover_bg()),
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => menu_hover_bg(),
         _ => Color::NONE,
     });
 

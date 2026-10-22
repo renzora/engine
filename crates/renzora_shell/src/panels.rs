@@ -24,7 +24,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Scene / editing
     ("hierarchy", "Hierarchy", "tree-structure", "Scene"),
     ("inspector", "Inspector", "sliders-horizontal", "Editing"),
-    ("scenes", "Scenes", "film-slate", "Scene"),
     ("scene_diagnostics", "Scene Diagnostics", "first-aid", "Debug"),
     ("streaming_debug", "Streaming", "broadcast", "Debug"),
     ("assets", "Assets", "folder-open", "Assets"),
@@ -53,10 +52,8 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("material_preview", "Material Preview", "sphere", "Material"),
     ("material_inspector", "Material", "palette", "Material"),
     ("material_graph", "Material Graph", "graph", "Material"),
-    // Particle
-    ("particle_preview", "Particle Preview", "sparkle", "Particle"),
-    ("particle_editor", "Particle Editor", "sparkle", "Particle"),
-    ("particle_graph", "Particle Graph", "graph", "Particle"),
+    // Particle: none here. The effect editor's panels register their own
+    // entries from `renzora_particles_editor`.
     // Shader
     ("shader_properties", "Shader", "graphics-card", "Shader"),
     ("shader_preview", "Shader Preview", "image", "Shader"),

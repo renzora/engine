@@ -612,11 +612,16 @@ fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
 /// Returns `true` if the file extension is a supported image thumbnail format.
 /// EXR is excluded — Bevy's EXR loader doesn't support all compression methods
 /// or single-channel layouts, which causes errors on common PBR texture sets.
+///
+/// SVG is included: it loads through the same `AssetServer` path as a PNG and
+/// lands as RGBA8, so the cache encodes it like any other source. Not the
+/// shared `renzora::IMAGE_EXTENSIONS`, because this list is deliberately
+/// narrower (no EXR, KTX2, DDS or `.rmip`, for the reasons above).
 pub fn supports_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(
         ext.as_str(),
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr"
+        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz"
     )
 }
 

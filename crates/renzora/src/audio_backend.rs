@@ -68,6 +68,14 @@ pub struct BusState {
     pub pan: f32,
     pub muted: bool,
     pub soloed: bool,
+    /// Routing key of the bus this one feeds. `None`, or a key the board does
+    /// not have, feeds Master; a choice that would close a loop is refused by
+    /// the backend and also feeds Master.
+    pub output: Option<String>,
+    /// How much of this bus, post-fader, reaches the shared reverb and delay,
+    /// 0..1. Adds to whatever each voice sends on its own.
+    pub reverb_send: f32,
+    pub delay_send: f32,
 }
 
 /// How a positioned voice is heard.

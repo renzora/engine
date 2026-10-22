@@ -96,7 +96,6 @@ jobs:
             --exclude bevy_firefly \
             --exclude bevy_gauge \
             --exclude bevy_gaussian_splatting \
-            --exclude bevy_hanabi \
             --exclude bevy_hui \
             --exclude bevy_interleave \
             --exclude bevy_interleave_interface \
@@ -245,7 +244,6 @@ jobs:
             --exclude bevy_args \
             --exclude bevy_firefly \
             --exclude bevy_gaussian_splatting \
-            --exclude bevy_hanabi \
             --exclude bevy_hui \
             --exclude bevy_interleave \
             --exclude bevy_interleave_interface \

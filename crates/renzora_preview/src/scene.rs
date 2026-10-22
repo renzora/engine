@@ -156,7 +156,12 @@ pub fn handle_scene_commands(
                     continue;
                 };
                 let new_mesh = match c.shape.as_str() {
-                    "sphere" => Sphere::new(0.8).mesh().ico(5).unwrap(),
+                    // UV sphere: an icosphere's UV seam zigzags into a crack.
+                    // Poles from Z to Y and the seam to the back.
+                    "sphere" => Sphere::new(0.8).mesh().uv(64, 32).rotated_by(
+                        Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)
+                            * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
+                    ),
                     "cube" => Cuboid::new(1.2, 1.2, 1.2).into(),
                     "plane" => Plane3d::new(Vec3::Y, Vec2::splat(1.5)).into(),
                     "cylinder" => Cylinder::new(0.6, 1.5).into(),

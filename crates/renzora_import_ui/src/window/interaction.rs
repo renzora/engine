@@ -221,14 +221,64 @@ pub(super) fn commit_click(
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
         commands.queue(|w: &mut World| {
-            // Always commit index 0: `apply_decision` removes what it takes, so
-            // the set shortens under the loop rather than being walked.
-            while !w.resource::<ImportOverlayState>().staged.is_empty() {
-                w.resource_mut::<ImportOverlayState>().active = 0;
-                decide(w, crate::staged::PreviewDecision::Commit);
+            // The worker baked its paths in when it converted, so a set built
+            // for another folder (or other settings) has to be rebuilt first or
+            // Import lands it in the wrong place. See `commit_when_converted`.
+            if staged_is_stale(w.resource::<ImportOverlayState>()) {
+                crate::overlay::request_reimport(w);
+                w.resource_mut::<ImportOverlayState>().commit_when_converted = true;
+                return;
             }
+            commit_all(w);
         });
     }
+}
+
+/// Does the staged set no longer describe what the window is showing?
+fn staged_is_stale(s: &ImportOverlayState) -> bool {
+    !s.staged.is_empty()
+        && s.converted_with
+            .as_ref()
+            .is_some_and(|c| !c.matches(&s.settings, &s.target_directory, s.layout))
+}
+
+fn commit_all(w: &mut World) {
+    // Always commit index 0: `apply_decision` removes what it takes, so the set
+    // shortens under the loop rather than being walked.
+    while !w.resource::<ImportOverlayState>().staged.is_empty() {
+        w.resource_mut::<ImportOverlayState>().active = 0;
+        decide(w, crate::staged::PreviewDecision::Commit);
+    }
+}
+
+/// Finish an Import that had to reconvert first: commit once the rebuilt set is
+/// all staged and nothing is still running.
+///
+/// The destination is checked again rather than trusted, because the user can
+/// pick another folder while the reconvert runs; that is just one more rebuild.
+/// A reconvert that staged nothing (every file failed) drops the request, so a
+/// later conversion does not commit itself without being asked.
+pub(super) fn commit_when_converted(world: &mut World) {
+    let Some(s) = world.get_resource::<ImportOverlayState>() else {
+        return;
+    };
+    if !s.commit_when_converted
+        || s.reimport_requested
+        || s.active_task.is_some()
+        || !s.pending_files.is_empty()
+    {
+        return;
+    }
+    if s.staged.is_empty() {
+        world.resource_mut::<ImportOverlayState>().commit_when_converted = false;
+        return;
+    }
+    if staged_is_stale(s) {
+        crate::overlay::request_reimport(world);
+        return;
+    }
+    world.resource_mut::<ImportOverlayState>().commit_when_converted = false;
+    commit_all(world);
 }
 
 /// The trash on a staged row: delete that one converted tree, leave the rest.

@@ -67,7 +67,11 @@ impl Plugin for InfiniteGridPlugin {
             .add_render_command::<Transparent3d, DrawInfiniteGrid>()
             .add_systems(
                 ExtractSchedule,
-                (extract_infinite_grids, extract_per_camera_grid_settings),
+                (
+                    extract_infinite_grids,
+                    extract_per_camera_grid_settings,
+                    extract_reflection_views,
+                ),
             )
             .add_systems(
                 Render,
@@ -307,6 +311,27 @@ fn extract_per_camera_grid_settings(
     commands.try_insert_batch(extracted);
 }
 
+/// Render-world tag on a view that renders a reflection of the scene (see
+/// [`renzora::ReflectionCamera`]). The grid is editor chrome on the scene's own
+/// layer, so layer filtering alone would draw it into every planar mirror; a
+/// reflected floor grid reads as part of the level, which is worse than the
+/// mirror simply not showing it.
+#[derive(Component, Clone, Copy, Default)]
+pub struct ReflectionView;
+
+type ReflectionCameraFilter = (With<Camera>, With<renzora::ReflectionCamera>);
+
+/// Tag reflection cameras' render entities with [`ReflectionView`]. The marker
+/// is permanent on those cameras, so there is nothing to remove: the render
+/// entity goes away with the camera.
+fn extract_reflection_views(
+    mut commands: Commands,
+    cameras: Extract<Query<RenderEntity, ReflectionCameraFilter>>,
+) {
+    let tagged: Vec<_> = cameras.iter().map(|e| (e, ReflectionView)).collect();
+    commands.try_insert_batch(tagged);
+}
+
 /// The render-world copy of a grid's [`RenderLayers`].
 ///
 /// A component of its own rather than reusing `RenderLayers` directly, so it
@@ -443,6 +468,16 @@ fn prepare_bind_groups_for_infinite_grids(
     });
 }
 
+type GridViewItem = (
+    &'static ExtractedView,
+    &'static RenderVisibleEntities,
+    &'static Msaa,
+    Option<&'static RenderLayers>,
+);
+
+/// Every camera view except reflection captures (see [`ReflectionView`]).
+type GridViewFilter = (With<ExtractedCamera>, Without<ReflectionView>);
+
 fn queue_infinite_grids(
     pipeline_cache: Res<PipelineCache>,
     transparent_draw_functions: Res<DrawFunctions<Transparent3d>>,
@@ -450,15 +485,7 @@ fn queue_infinite_grids(
     mut pipelines: ResMut<SpecializedRenderPipelines<InfiniteGridPipeline>>,
     infinite_grids: Query<(&GlobalTransform, Option<&GridLayers>), With<InfiniteGridSettings>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
-    mut views: Query<
-        (
-            &ExtractedView,
-            &RenderVisibleEntities,
-            &Msaa,
-            Option<&RenderLayers>,
-        ),
-        With<ExtractedCamera>,
-    >,
+    mut views: Query<GridViewItem, GridViewFilter>,
 ) {
     let Some(draw_function_id) = transparent_draw_functions
         .read()

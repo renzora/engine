@@ -123,7 +123,7 @@ pub(crate) fn draw_line_gizmos(
             Without<GizmoMesh>,
         ),
     >,
-    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children_q: Query<&Children>,
     camera_q: Query<&GlobalTransform, With<EditorCamera>>,
     viewport_settings: Option<Res<ViewportSettings>>,

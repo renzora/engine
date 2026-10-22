@@ -5,9 +5,10 @@
 //! drag-drop, default-clip selector, blend slider) that was reduced to a bare
 //! blend-duration field during the egui purge. This restores it natively:
 //!
-//! - clip list: play button, rename, speed, loop, remove,
+//! - clip list: play button (plays the clip on the timeline preview), rename,
+//!   speed, loop, remove,
 //! - drop/browse `.anim` files to add clips,
-//! - default clip dropdown (selecting also plays it),
+//! - default clip dropdown,
 //! - blend duration,
 //! - `.animsm` state machine assignment.
 
@@ -18,13 +19,13 @@ use bevy::prelude::*;
 
 use renzora::{AppEditorExt, FieldValue};
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
+use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::inspector::{inspector_row, inspector_stripe};
-use renzora_ember::reactive::tracked::{bind_2way, bind_text_color};
-use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
-use renzora_ember::widgets::{
-    bind_text_input, checkbox, drag_value, dropdown, text_input, DragRange,
-};
+use renzora_ember::inspector::inspector_row;
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_text_color};
+use renzora_ember::theme::{accent, border, faint_bg, rgb, text_muted};
+use renzora_ember::widgets::{bind_text_input, drag_value, dropdown, text_input, DragRange};
 use renzora_ember::UiInteraction;
 use renzora_inspector::asset_drop_field;
 
@@ -34,9 +35,22 @@ pub fn register(app: &mut App) {
     app.register_native_inspector_ui("animator", animator_native);
     app.add_systems(
         Update,
-        (rebuild_animator, play_clip_click, remove_clip_click)
+        (
+            rebuild_animator,
+            play_clip_click,
+            remove_clip_click,
+            loop_clip_click,
+            add_clip_drop,
+            add_clip_drop_highlight,
+        )
             .run_if(in_state(renzora::SplashState::Editor)),
     );
+}
+
+/// The "drop .anim files here" target under the clip list.
+#[derive(Component)]
+struct AddClipDropZone {
+    entity: Entity,
 }
 
 #[derive(Component)]
@@ -51,6 +65,11 @@ struct PlayClipBtn {
 }
 #[derive(Component)]
 struct RemoveClipBtn {
+    entity: Entity,
+    index: usize,
+}
+#[derive(Component)]
+struct LoopClipBtn {
     entity: Entity,
     index: usize,
 }
@@ -116,15 +135,19 @@ fn rebuild_animator(world: &mut World) {
     }
 }
 
+/// A group label inside the card ("Clips", "Playback", "State Machine"):
+/// muted, so it reads as a heading over the rows rather than as another row.
 fn header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
     let h = commands
         .spawn(Node {
-            margin: UiRect { top: Val::Px(6.0), bottom: Val::Px(1.0), ..default() },
+            margin: UiRect { top: Val::Px(8.0), bottom: Val::Px(3.0), ..default() },
+            padding: UiRect::left(Val::Px(4.0)),
             ..default()
         })
         .id();
+    // 12 lands on the 11px rung, a step under the rows' 13px.
     let t = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(h).add_child(t);
     h
@@ -138,41 +161,14 @@ fn build_body(
     data: &AnimatorComponent,
 ) {
     let mut children: Vec<Entity> = Vec::new();
-    let mut stripe = 0usize;
-    let striped = |commands: &mut Commands, row: Entity, stripe: &mut usize| {
-        commands
-            .entity(row)
-            .insert(BackgroundColor(inspector_stripe(*stripe)));
-        *stripe += 1;
-        row
-    };
 
     // ── Clips ──
     children.push(header(commands, fonts, &renzora::lang::t("animation.animation_clips")));
-    if data.clips.is_empty() {
-        let note = commands
-            .spawn((
-                Text::new(renzora::lang::t("animation.no_clips_drop")),
-                ui_font(&fonts.ui, 10.0),
-                TextColor(rgb(text_muted())),
-            ))
-            .id();
-        children.push(note);
-    }
     for (i, slot) in data.clips.iter().enumerate() {
         let block = clip_block(commands, fonts, entity, i, slot);
-        children.push(striped(commands, block, &mut stripe));
+        children.push(block);
     }
-    let add = asset_drop_field(
-        commands,
-        fonts,
-        entity,
-        animator_add_get,
-        animator_add_clip,
-        vec!["anim".to_string()],
-    );
-    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.add_clip"), add);
-    children.push(striped(commands, r, &mut stripe));
+    children.push(build_clip_drop_zone(commands, fonts, entity));
 
     // ── Playback ──
     children.push(header(commands, fonts, &renzora::lang::t("animation.playback")));
@@ -202,26 +198,17 @@ fn build_body(
         },
         move |w, i: &usize| {
             let name = if *i == 0 { None } else { names_b.get(*i - 1).cloned() };
+            // Only the setting. It used to play the clip as well, like the egui
+            // inspector, which set the model running in the viewport with the
+            // timeline stopped; the default is what a game starts on, not a
+            // preview control.
             if let Some(mut a) = w.get_mut::<AnimatorComponent>(entity) {
-                a.default_clip = name.clone();
-            }
-            // Selecting a default clip also plays it, like the egui inspector.
-            if let Some(name) = name {
-                if let Some(mut queue) =
-                    w.get_resource_mut::<renzora_animation::AnimationCommandQueue>()
-                {
-                    queue.commands.push(renzora_animation::AnimationCommand::Play {
-                        entity,
-                        name,
-                        looping: true,
-                        speed: 1.0,
-                    });
-                }
+                a.default_clip = name;
             }
         },
     );
     let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.default_clip"), dd);
-    children.push(striped(commands, r, &mut stripe));
+    children.push(r);
 
     // Blend duration.
     let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), 0.2, 0.01);
@@ -237,7 +224,7 @@ fn build_body(
         },
     );
     let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.blend_time"), dv);
-    children.push(striped(commands, r, &mut stripe));
+    children.push(r);
 
     // ── State Machine ──
     children.push(header(commands, fonts, &renzora::lang::t("animation.state_machine")));
@@ -250,12 +237,20 @@ fn build_body(
         vec!["animsm".to_string()],
     );
     let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.file"), sm);
-    children.push(striped(commands, r, &mut stripe));
+    children.push(r);
 
     commands.entity(root).add_children(&children);
 }
 
-/// One clip slot: `[▶] name … [trash]` over `path · speed · loop`.
+/// One clip slot, as a small card: `[▶] name  [Speed 1] [loop] [trash]` over
+/// the clip's file path.
+///
+/// It used to be two loose rows: the name, then the path with an unlabelled
+/// number box and a checkbox squeezed after it. The number was the playback
+/// speed, which nothing said, and a long path pushed both controls off the
+/// edge. Now the controls sit on the name's line with a "Speed" prefix and a
+/// loop icon that lights when looping, and the path has the second line to
+/// itself, ending in "…" when it is too long.
 fn clip_block(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -264,17 +259,24 @@ fn clip_block(
     slot: &AnimClipSlot,
 ) -> Entity {
     let block = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(2.0),
-            padding: UiRect::axes(Val::Px(4.0), Val::Px(3.0)),
-            border_radius: BorderRadius::all(Val::Px(3.0)),
-            ..default()
-        })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                padding: UiRect::new(Val::Px(4.0), Val::Px(4.0), Val::Px(4.0), Val::Px(5.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            // Recessed under the card, not lifted above it: the white wash it
+            // had read as a grey slab on every clip.
+            BackgroundColor(rgb(faint_bg())),
+            BorderColor::all(rgb(border()).with_alpha(0.5)),
+        ))
         .id();
 
-    // Row 1: play + name + trash.
+    // Row 1: play + name + speed + loop + trash.
     let r1 = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -296,13 +298,15 @@ fn clip_block(
             },
             UiInteraction::default(),
             PlayClipBtn { entity, index },
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("animation.play_clip", "Play")),
         ))
         .id();
-    let play_ic = icon_text(commands, &fonts.phosphor, "play-circle", text_muted(), 14.0);
+    let play_ic = icon_text(commands, &fonts.phosphor, "play-circle", text_muted(), 16.0);
     {
         let name = slot.name.clone();
         bind_text_color(commands, play_ic, move |w| {
-            let playing = selected_is_playing(w.untracked(), entity, &name);
+            let playing = selected_is_playing(w, entity, &name);
             rgb(if playing { accent() } else { text_muted() })
         });
     }
@@ -311,8 +315,10 @@ fn clip_block(
     let name_in = text_input(commands, &fonts.ui, "name", &slot.name);
     commands.entity(name_in).insert(Node {
         flex_grow: 1.0,
-        min_width: Val::Px(50.0),
-        padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+        flex_basis: Val::Px(0.0),
+        min_width: Val::Px(40.0),
+        height: Val::Px(24.0),
+        padding: UiRect::axes(Val::Px(renzora_ember::widgets::PAD_X), Val::Px(2.0)),
         align_items: AlignItems::Center,
         border: UiRect::all(Val::Px(1.0)),
         border_radius: BorderRadius::all(Val::Px(3.0)),
@@ -364,39 +370,46 @@ fn clip_block(
             },
             UiInteraction::default(),
             RemoveClipBtn { entity, index },
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("animation.remove_clip", "Remove clip")),
         ))
         .id();
-    let trash_ic = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 12.0);
+    let trash_ic = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 13.0);
     commands.entity(trash).add_child(trash_ic);
-    commands.entity(r1).add_children(&[play, name_in, trash]);
 
-    // Row 2: path + speed + loop.
+    // Row 2: the clip's file, alone on its line.
     let r2 = commands
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
-            padding: UiRect::left(Val::Px(24.0)),
+            padding: UiRect::new(Val::Px(26.0), Val::Px(4.0), Val::Px(0.0), Val::Px(0.0)),
             ..default()
         })
         .id();
     let path_lbl = commands
         .spawn((
             Text::new(slot.path.clone()),
-            ui_font(&fonts.ui, 9.0),
+            // 12 lands on the 11px rung.
+            ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::no_wrap(),
-            Node {
-                flex_grow: 1.0,
-                min_width: Val::Px(0.0),
-                overflow: Overflow::clip(),
-                ..default()
-            },
         ))
         .id();
-    let speed = drag_value(commands, &fonts.ui, "", (210, 210, 220), 1.0, 0.05);
-    commands.entity(speed).insert(DragRange { min: 0.05, max: 5.0 });
+    renzora_ember::widgets::ellipsize(commands, path_lbl, slot.path.clone(), None);
+    // The speed, labelled: the bare number box it used to be read as a
+    // mystery slider. 0.05x to 5x, 1 is the clip's own speed.
+    let speed = drag_value(commands, &fonts.ui, "Speed", text_muted(), 1.0, 0.05);
+    commands.entity(speed).insert((
+        DragRange { min: 0.05, max: 5.0 },
+        renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+            "animation.speed_tip",
+            "Playback speed (1 = normal)",
+        )),
+    ));
+    commands.entity(speed).entry::<Node>().and_modify(|mut n| {
+        n.min_width = Val::Px(84.0);
+        n.flex_shrink = 0.0;
+    });
     bind_2way(
         commands,
         speed,
@@ -414,49 +427,190 @@ fn clip_block(
             }
         },
     );
-    let loop_cb = checkbox(commands, true);
-    bind_2way(
-        commands,
-        loop_cb,
-        move |w| {
-            w.get::<AnimatorComponent>(entity)
-                .and_then(|a| a.clips.get(index))
-                .map(|c| c.looping)
-                .unwrap_or(true)
-        },
-        move |w, v: &bool| {
-            if let Some(mut a) = w.get_mut::<AnimatorComponent>(entity) {
-                if let Some(slot) = a.clips.get_mut(index) {
-                    slot.looping = *v;
-                }
-            }
-        },
-    );
-    let loop_lbl = commands
-        .spawn((Text::new("loop"), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted()))))
+    // Loop as an icon toggle: lit in the accent while the clip loops.
+    let loop_btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(24.0),
+                height: Val::Px(24.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_shrink: 0.0,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            UiInteraction::default(),
+            LoopClipBtn { entity, index },
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("animation.loop", "Loop")),
+        ))
         .id();
-    commands
-        .entity(r2)
-        .add_children(&[path_lbl, speed, loop_cb, loop_lbl]);
+    let looping = move |w: &renzora_ember::reactive::Rx| {
+        w.get::<AnimatorComponent>(entity)
+            .and_then(|a| a.clips.get(index))
+            .map(|c| c.looping)
+            .unwrap_or(true)
+    };
+    bind_bg(commands, loop_btn, move |w| {
+        if looping(w) {
+            rgb(accent()).with_alpha(0.22)
+        } else {
+            Color::NONE
+        }
+    });
+    let loop_ic = icon_text(commands, &fonts.phosphor, "repeat", text_muted(), 14.0);
+    bind_text_color(commands, loop_ic, move |w| rgb(if looping(w) { accent() } else { text_muted() }));
+    commands.entity(loop_btn).add_child(loop_ic);
 
+    commands.entity(r1).add_children(&[play, name_in, speed, loop_btn, trash]);
+    commands.entity(r2).add_child(path_lbl);
     commands.entity(block).add_children(&[r1, r2]);
     block
 }
 
-fn selected_is_playing(w: &World, entity: Entity, clip: &str) -> bool {
-    w.get::<renzora_animation::AnimatorState>(entity)
-        .and_then(|s| s.current_clip.as_deref())
-        == Some(clip)
+/// Toggle a clip's looping.
+fn loop_clip_click(
+    q: Query<(&UiInteraction, &LoopClipBtn), Changed<UiInteraction>>,
+    mut animators: Query<&mut AnimatorComponent>,
+) {
+    for (interaction, btn) in &q {
+        if *interaction != UiInteraction::Pressed {
+            continue;
+        }
+        if let Ok(mut a) = animators.get_mut(btn.entity) {
+            if let Some(slot) = a.clips.get_mut(btn.index) {
+                slot.looping = !slot.looping;
+            }
+        }
+    }
 }
 
-// ── asset_drop_field accessors ───────────────────────────────────────────────
-
-fn animator_add_get(_w: &World, _e: Entity) -> Option<FieldValue> {
-    Some(FieldValue::Asset(None))
+/// Lit while the timeline preview is playing this clip on this entity, which
+/// is what the play button now starts. It read the runtime's current clip
+/// before, which the editor no longer sets.
+fn selected_is_playing(w: &renzora_ember::reactive::Rx, entity: Entity, clip: &str) -> bool {
+    w.get_resource::<crate::AnimationEditorState>().is_some_and(|s| {
+        s.is_previewing
+            && s.selected_entity == Some(entity)
+            && s.selected_clip.as_deref() == Some(clip)
+    })
 }
 
-fn animator_add_clip(w: &mut World, e: Entity, v: FieldValue) {
-    let FieldValue::Asset(Some(path)) = v else { return };
+/// The clip list's add target: a full-width well saying what to drop, in place
+/// of the "Add Clip [Drag asset here] x" row it replaces. That row looked like
+/// a field holding a value (it never did; it only ever accepted a drop), and
+/// its clear button cleared nothing. It doubles as the empty state.
+fn build_clip_drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
+    let zone = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(10.0)),
+                margin: UiRect::top(Val::Px(2.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(faint_bg())),
+            BorderColor::all(rgb(border())),
+            bevy::ui::RelativeCursorPosition::default(),
+            AddClipDropZone { entity },
+            Name::new("animator-clip-drop-zone"),
+        ))
+        .id();
+    let ic = icon_text(commands, &fonts.phosphor, "file-plus", text_muted(), 14.0);
+    commands.entity(ic).insert(PASS_THROUGH);
+    let txt = commands
+        .spawn((
+            Text::new(renzora::lang::t_or("animation.drop_clips", "Drop .anim files here to add clips")),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+            PASS_THROUGH,
+        ))
+        .id();
+    commands.entity(zone).add_children(&[ic, txt]);
+    zone
+}
+
+/// Every `.anim` in the drag, so a multi-select from the asset browser adds
+/// all of its clips in one drop.
+fn dragged_clips(payload: &renzora_ui::AssetDragPayload) -> Vec<std::path::PathBuf> {
+    payload
+        .paths
+        .iter()
+        .filter(|p| p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("anim")))
+        .cloned()
+        .collect()
+}
+
+fn add_clip_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    zones: Query<(&bevy::ui::RelativeCursorPosition, &AddClipDropZone)>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let (Some(payload), Some(cmds)) = (payload, cmds) else { return };
+    if !payload.is_detached {
+        return;
+    }
+    let Some((_, zone)) = zones.iter().find(|(rcp, _)| rcp.cursor_over) else { return };
+    let paths: Vec<String> = dragged_clips(&payload)
+        .iter()
+        .map(|p| {
+            project
+                .as_ref()
+                .map(|pr| pr.make_asset_relative(p))
+                .unwrap_or_else(|| p.to_string_lossy().to_string())
+        })
+        .collect();
+    if paths.is_empty() {
+        return;
+    }
+    let entity = zone.entity;
+    cmds.push(move |w: &mut World| {
+        for path in &paths {
+            animator_add_clip(w, entity, path.clone());
+        }
+    });
+}
+
+/// Light the well in the accent while `.anim` files are dragged over it. Must
+/// agree with [`add_clip_drop`]: a well that lights up but refuses the drop is
+/// worse than one that never lights.
+fn add_clip_drop_highlight(
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor, &mut BackgroundColor), With<AddClipDropZone>>,
+) {
+    for (rcp, mut bc, mut bg) in &mut zones {
+        let active = payload
+            .as_ref()
+            .is_some_and(|p| p.is_detached && rcp.cursor_over && !dragged_clips(p).is_empty());
+        let (want_bc, want_bg) = if active {
+            (BorderColor::all(rgb(accent())), BackgroundColor(rgb(accent()).with_alpha(0.12)))
+        } else {
+            (BorderColor::all(rgb(border())), BackgroundColor(rgb(faint_bg())))
+        };
+        if *bc != want_bc {
+            *bc = want_bc;
+        }
+        if *bg != want_bg {
+            *bg = want_bg;
+        }
+    }
+}
+
+// ── Clip and state-machine accessors ─────────────────────────────────────────
+
+fn animator_add_clip(w: &mut World, e: Entity, path: String) {
     let Some(mut a) = w.get_mut::<AnimatorComponent>(e) else { return };
     if a.clips.iter().any(|c| c.path == path) {
         return;
@@ -494,31 +648,42 @@ fn animator_sm_set(w: &mut World, e: Entity, v: FieldValue) {
 
 // ── Click systems ────────────────────────────────────────────────────────────
 
+/// The clip's play button: plays (or pauses) it on the timeline preview.
+///
+/// It used to push a runtime `Play`, which ran the clip at full speed with the
+/// timeline's transport still showing stopped and no control that stopped it
+/// again. The runtime now ignores `Play` while editing, so the button drives
+/// the same preview the timeline's Play does, and the timeline shows it.
 fn play_clip_click(
     q: Query<(&UiInteraction, &PlayClipBtn), Changed<UiInteraction>>,
     animators: Query<&AnimatorComponent>,
-    queue: Option<ResMut<renzora_animation::AnimationCommandQueue>>,
+    state: Option<ResMut<crate::AnimationEditorState>>,
     bridge: Option<Res<AnimEditorBridge>>,
 ) {
-    let Some(mut queue) = queue else { return };
+    let Some(mut state) = state else { return };
     for (interaction, btn) in &q {
         if *interaction != UiInteraction::Pressed {
             continue;
         }
         let Ok(animator) = animators.get(btn.entity) else { continue };
         let Some(slot) = animator.clips.get(btn.index) else { continue };
-        queue.commands.push(renzora_animation::AnimationCommand::Play {
-            entity: btn.entity,
-            name: slot.name.clone(),
-            looping: slot.looping,
-            speed: slot.speed,
-        });
-        // Keep the animation panels in sync with what was just played.
-        if let Some(bridge) = &bridge {
-            if let Ok(mut p) = bridge.pending.lock() {
-                p.push(AnimEditorAction::SelectClip(Some(slot.name.clone())));
+        let same = state.selected_entity == Some(btn.entity)
+            && state.selected_clip.as_deref() == Some(slot.name.as_str());
+        if same && state.is_previewing {
+            state.is_previewing = false;
+            continue;
+        }
+        if !same {
+            // Through the bridge so the panels re-read the clip (duration,
+            // fit) exactly as when it is picked in the timeline.
+            state.selected_entity = Some(btn.entity);
+            if let Some(bridge) = &bridge {
+                if let Ok(mut p) = bridge.pending.lock() {
+                    p.push(AnimEditorAction::SelectClip(Some(slot.name.clone())));
+                }
             }
         }
+        state.is_previewing = true;
     }
 }
 

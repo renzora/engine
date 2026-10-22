@@ -475,6 +475,29 @@ pub(crate) fn fragment_input_aliases() -> String {
     .to_string()
 }
 
+/// The fragment parameters a graph with a Particle node takes beside
+/// `VertexOutput`: what the particle vertex shader writes past Bevy's own
+/// locations (`vec4(life, seed, frame, speed)` at 10, the world velocity at
+/// 11). Declared only under `RENZORA_PARTICLE_SURFACE`, which the particle
+/// pipeline alone sets, so a mesh's pipeline, whose vertex stage writes
+/// nothing there, never asks for them.
+pub(crate) const PARTICLE_FRAGMENT_PARAMS: &str = ", @if(RENZORA_PARTICLE_SURFACE) @location(10) particle_in: vec4<f32>, @if(RENZORA_PARTICLE_SURFACE) @location(11) particle_velocity_in: vec3<f32>";
+
+/// The Particle nodes' aliases, the way [`fragment_input_aliases`] does UVs:
+/// the particle's values in a particle pipeline, white, zeros and no
+/// velocity anywhere else. The colour is the vertex colour, which the
+/// particle pipeline always has (it sets `VERTEX_COLORS` itself).
+pub(crate) fn particle_input_aliases() -> String {
+    r#"    @if(RENZORA_PARTICLE_SURFACE) let mat_particle = particle_in;
+    @if(!RENZORA_PARTICLE_SURFACE) let mat_particle = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    @if(RENZORA_PARTICLE_SURFACE) let mat_particle_velocity = particle_velocity_in;
+    @if(!RENZORA_PARTICLE_SURFACE) let mat_particle_velocity = vec3<f32>(0.0, 0.0, 0.0);
+    @if(RENZORA_PARTICLE_SURFACE) let mat_particle_color = mat_vertex_color;
+    @if(!RENZORA_PARTICLE_SURFACE) let mat_particle_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+"#
+    .to_string()
+}
+
 pub(crate) fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     // Extension-material texture slots live at bindings 100..118 in group 3,
     // alongside StandardMaterial's own bindings (which occupy 0..~30). The

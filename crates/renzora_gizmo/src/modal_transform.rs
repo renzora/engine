@@ -240,7 +240,7 @@ pub fn modal_transform_input_system(
     // Same AABB-center pivot the tool gizmo uses, so the modal anchors on the
     // visible mesh — not the entity origin, which for baked-vertex GLBs (their
     // transform sits at world 0,0,0) is nowhere near what's on screen.
-    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children: Query<&Children>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,

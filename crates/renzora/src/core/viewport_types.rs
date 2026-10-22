@@ -147,7 +147,9 @@ pub const SHADER_PREVIEW_LAYER: usize = 9;
 pub const STUDIO_PREVIEW_LAYER: usize = 10;
 /// The material editor's live preview panel (mesh + HDRI backdrop).
 pub const MATERIAL_PREVIEW_LAYER: usize = 11;
-/// The particle editor's preview panel (effect + checkerboard floor).
+/// Was the retired particle editor's preview panel. Nothing in the engine uses
+/// it now; it stays defined (and the layer unclaimed) so a plugin that names it
+/// still builds and still gets a layer nobody else draws on.
 pub const PARTICLE_PREVIEW_LAYER: usize = 12;
 /// The hub's model viewer.
 pub const MODEL_VIEWER_LAYER: usize = 13;
@@ -161,6 +163,11 @@ pub const IMPORT_MATERIAL_PREVIEW_LAYER: usize = 17;
 /// sprite, checkerboard). Separate from [`MATERIAL_PREVIEW_LAYER`] so the 3D
 /// rig's lights and sphere never reach the 2D camera.
 pub const MATERIAL_PREVIEW_2D_LAYER: usize = 18;
+/// The Shape Library's one-off thumbnail renders (one lit mesh per shape).
+pub const SHAPE_THUMBNAIL_LAYER: usize = 15;
+/// The `.vfx` effect editor's live preview (its own 3D and 2D cameras, a
+/// ground, and the effect).
+pub const VFX_PREVIEW_LAYER: usize = 19;
 /// The runtime's render-scale upscale blit (sprite + present camera).
 pub const RENDER_SCALE_BLIT_LAYER: usize = 30;
 /// The runtime's viewport-stretch blit (sprite + present camera). Distinct from
@@ -170,7 +177,7 @@ pub const VIEWPORT_STRETCH_BLIT_LAYER: usize = 31;
 // Layer 0 is the scene and layer 1 the shared world-space overlays; 20..23 are
 // the per-slot 2D grids and 24..27 the per-slot 3D gizmos (the two `_BASE`
 // constants above, one each per `VIEWPORT_COUNT` slot). That leaves 2, 3, 4, 5,
-// 15, 18, 19, 28 and 29 free for the next rig.
+// 28 and 29 free for the next rig.
 
 /// Per-slot state for one editor viewport: its render-target image, panel rect,
 /// and its own orbit camera (focus / distance / yaw / pitch).

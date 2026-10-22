@@ -1,0 +1,34 @@
+[package]
+name = "renzora_planar_reflection"
+version = "0.1.0"
+edition = "2021"
+description = "Planar reflections: a PlanarReflection component on a flat mesh renders the scene from a mirrored camera with an oblique near plane and shows it on the surface, the way Unreal's Planar Reflection actor does."
+
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list. The inspector entry and the
+# Mirror preset are the nested `renzora_planar_reflection_editor` crate in
+# `editor/`, linked only by the editor bundle.
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = ["render_3d"]
+# The renderer half (mirror cameras, the overlay material and its shader). A
+# lean 2D export strips `bevy_pbr`, which all of it needs. The component and its
+# registration are always compiled, so a scene that carries a mirror still
+# loads in that build; the surface simply shows its own material.
+render_3d = []
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# tests/shaders.rs compiles the overlay WESL against Bevy's own shader
+# libraries with the material validator's compiler, as renzora_particles does.
+renzora_shader = { path = "../renzora_shader", features = ["editor"] }
+renzora_test_harness = { path = "../renzora_test_harness" }
+
+[lints]
+workspace = true

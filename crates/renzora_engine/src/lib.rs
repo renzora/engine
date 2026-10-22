@@ -21,6 +21,7 @@ pub mod material_binding;
 pub mod mesh_lod;
 pub mod named_entities;
 pub mod procedural_meshes;
+pub mod procedural_meshes_more;
 pub mod scene_io;
 pub mod scene_stream;
 mod shapes;

@@ -20,7 +20,7 @@ fn ssao_entry() -> InspectorEntry {
         type_id: "world_env_ssao",
         display_name: "SSAO",
         icon: "circle-half",
-        category: "rendering",
+        category: "post_process",
         has_fn: |world, entity| world.get::<WorldEnvironment>(entity).is_some(),
         // Intrinsic to the WorldEnvironment — not added or removed on its own.
         add_fn: None,
@@ -45,7 +45,7 @@ fn ssao_entry() -> InspectorEntry {
 /// only under `Custom`, because every preset overrides them and leaving them
 /// visible reads as four live knobs when only two are.
 fn ssao_native_ui(world: &mut World, entity: Entity) -> Entity {
-    use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
+    use renzora_ember::inspector::{inspector_body, inspector_row};
     use renzora_ember::reactive::tracked::{bind_2way, bind_display};
     use renzora_ember::widgets::{drag_value, dropdown, DragRange, DragSnap};
 
@@ -146,11 +146,6 @@ fn ssao_native_ui(world: &mut World, entity: Entity) -> Entity {
         rows.push(slice_row);
         rows.push(sample_row);
 
-        for (i, &row) in rows.iter().enumerate() {
-            commands
-                .entity(row)
-                .insert(BackgroundColor(inspector_stripe(i)));
-        }
         // Hidden under a preset. These are the LAST two rows on purpose — hiding
         // a row in the middle would leave two same-colored stripes adjacent.
         for row in [slice_row, sample_row] {

@@ -18,6 +18,14 @@ pub(crate) fn text_node(
         .id()
 }
 
+/// From here up a value is treated as infinity: shown as `∞`, and what typing
+/// `∞` stores is [`INFINITY_STAND_IN`]. Far above any real distance or scale,
+/// far below `f32::MAX` so arithmetic on it does not overflow.
+pub(crate) const INFINITY_STAND_IN_MIN: f32 = 1.0e30;
+/// The finite value a typed infinity is stored as, since serde_json writes a
+/// real `f32::INFINITY` as `null` and the field is then lost on reload.
+pub(crate) const INFINITY_STAND_IN: f32 = 1.0e37;
+
 /// Format a number compactly (integers without a trailing decimal).
 ///
 /// The decimal count scales with the magnitude, because a fixed one destroyed
@@ -29,16 +37,21 @@ pub(crate) fn text_node(
 /// Trailing zeros are trimmed afterwards so widening the precision doesn't turn
 /// `0.5` into `0.50`.
 pub(crate) fn format_num(v: f32) -> String {
-    if !v.is_finite() {
+    let m = v.abs();
+    // Values this big are never measurements, they are stand-ins for infinity:
+    // the material output's attenuation distance defaults to 1e37 ("never
+    // attenuates") because JSON cannot hold a real infinity. Printing it as
+    // `1e37` read as a bug, so say what it means.
+    if m >= INFINITY_STAND_IN_MIN || v.is_infinite() {
+        return if v < 0.0 { "-∞".into() } else { "∞".into() };
+    }
+    if v.is_nan() {
         return format!("{v}");
     }
-    let m = v.abs();
-    // Past a billion, the digits stop being information and start being a wall:
-    // the material output's attenuation distance defaults to 1e37 (a stand-in
-    // for "never attenuates"), which spelled out is thirty-eight characters in a
-    // field a few centimetres wide. Scientific notation keeps it readable, and
-    // the threshold sits high enough that ordinary large numbers still print
-    // plainly.
+    // Past a billion, the digits stop being information and start being a wall
+    // in a field a few centimetres wide. Scientific notation keeps it readable,
+    // and the threshold sits high enough that ordinary large numbers still
+    // print plainly.
     if m >= 1.0e9 {
         return format!("{v:e}");
     }
@@ -215,6 +228,14 @@ mod tests {
         assert_eq!(format_num(0.5), "0.5");
         assert_eq!(format_num(1.5), "1.5");
         assert_eq!(format_num(2.5), "2.5");
+    }
+
+    #[test]
+    fn infinity_stand_ins_print_as_infinity() {
+        assert_eq!(format_num(1.0e37), "∞");
+        assert_eq!(format_num(-1.0e37), "-∞");
+        assert_eq!(format_num(f32::INFINITY), "∞");
+        assert_eq!(format_num(2.5e9), "2.5e9");
     }
 
     #[test]

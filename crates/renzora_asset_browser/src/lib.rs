@@ -1,20 +1,24 @@
-//! The editor's Asset Browser: a toolbar and breadcrumb row over a wrapping
-//! grid of folder/file tiles, with a folder tree beside it. Thumbnails,
-//! drag-drop, rename/delete and the context menus all live here.
+//! The editor's Asset Browser: a toolbar (with the breadcrumb in it) over a
+//! wrapping grid of folder/file tiles and a footer, with a folder tree beside
+//! it. Thumbnails, drag-drop, rename/delete and the context menus all live here.
 //!
 //! The panel is split by region rather than by layer:
 //!
-//! - [`panel`] — `build`, the whole node tree, and the breadcrumbs
-//! - [`grid`] — the cached listing, the tiles and the list rows
-//! - [`tree`] — the folder tree (and, when narrow, the whole browser)
-//! - [`state`] — [`state::NativeAssets`] and every marker component
-//! - [`interact`] / [`menus`] / [`ops`] — clicks, menus, and the file operations
-//! - [`selection`] / [`rename`] / [`drag_drop`] / [`layout`] — the gestures
+//! - [`panel`]: `build`, the whole node tree (toolbar, grid and footer)
+//! - [`breadcrumb`]: the toolbar's path, its folding and its menus
+//! - [`list_switch`]: the tree pane's Project / Recent / Favourites switch
+//! - [`grid`]: the cached listing, the tiles and the list rows
+//! - [`tree`]: the folder tree (and, when narrow, the whole browser)
+//! - [`state`]: [`state::NativeAssets`] and every marker component
+//! - [`interact`] / [`menus`] / [`ops`]: clicks, menus, and the file operations
+//! - [`selection`] / [`rename`] / [`drag_drop`] / [`layout`]: the gestures
 
+mod breadcrumb;
 mod drag_drop;
 mod grid;
 mod interact;
 mod layout;
+mod list_switch;
 mod menus;
 mod ops;
 mod panel;
@@ -90,7 +94,8 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::Do
     if name.ends_with(".material_bp") || name.ends_with(".material") {
         return Some(DocTabKind::Material);
     }
-    if name.ends_with(".particle") {
+    // `.vfx` too: see the same table in `renzora_editor_framework`.
+    if name.ends_with(".particle") || name.ends_with(".vfx") {
         return Some(DocTabKind::Particle);
     }
     if name.ends_with(".blueprint") || name.ends_with(".bp") {
@@ -146,7 +151,6 @@ impl Plugin for AssetBrowserPlugin {
                 interact::tree_tab_click,
                 interact::tree_search_sync,
                 menus::create_asset_click,
-                menus::import_click,
                 ops::crumb_click,
                 state::load_persisted,
                 ops::shortcut_click,
@@ -155,6 +159,18 @@ impl Plugin for AssetBrowserPlugin {
                 layout::view_toggle_click,
                 layout::update_grid_layout,
                 layout::responsive_layout,
+            )
+                .run_if(in_state(SplashState::Editor))
+                .run_if(panel_active("assets")),
+        );
+        // The toolbar's breadcrumb and the tree pane's list switch.
+        app.add_systems(
+            Update,
+            (
+                breadcrumb::fit_breadcrumb,
+                breadcrumb::crumb_menu_open,
+                breadcrumb::crumb_ellipsis_open,
+                list_switch::slide_list_knob,
             )
                 .run_if(in_state(SplashState::Editor))
                 .run_if(panel_active("assets")),

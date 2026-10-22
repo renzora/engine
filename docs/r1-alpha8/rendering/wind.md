@@ -101,6 +101,13 @@ in the same gust that flattens the grass beneath it. The world wind occupies the
 first slot in the cloth wind list; any extra forces a scene pushes (a scripted
 downdraft, a fan) add on top rather than being overwritten.
 
+### Particles
+
+`.vfx` effects feel the instantaneous wind, gusts included, through a **Wind
+Force** node in their graph, with a coupling per emitter so smoke streams away
+while embers drift and flames only lean. The built-in Realistic Fire uses it on
+every layer. See [Particle System: Wind](particle-system.md#wind).
+
 ### Clouds
 
 The cloud deck takes its heading from the world wind and scales its drift with

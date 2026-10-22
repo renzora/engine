@@ -19,10 +19,19 @@ use super::components::{
 };
 use super::drag::HierDrag;
 
-pub(crate) const INDENT: f32 = 12.0;
-pub(crate) const ROW_H: f32 = 24.0;
+/// Per-level indent: one caret width, so a child's caret sits directly under
+/// its parent's icon and every level has its own column.
+///
+/// Briefly zero, with each level instead shaded a little lighter: with no
+/// step, parent and child rows looked the same, and a shade faint enough not to
+/// bring the stripes back was too faint to tell them apart. The indent is the
+/// signal every tree uses; what had made the old one look busy was the guide
+/// lines drawn through it, which stay off.
+pub(crate) const INDENT: f32 = 16.0;
+pub(crate) const ROW_H: f32 = 26.0;
 pub(crate) const BASE_X: f32 = 4.0;
-const LINE_OFFSET: f32 = INDENT / 2.0 - 1.0; // 5.0
+// Centres a drag line under its level's caret.
+const LINE_OFFSET: f32 = INDENT / 2.0 - 1.0;
 const CENTER_Y: f32 = ROW_H / 2.0;
 /// Right-edge zone reserved for the eye + lock toggles (2 × (18 icon + 4 margin)).
 const SUFFIX_W: f32 = 44.0;
@@ -42,6 +51,9 @@ pub(crate) struct RowSnapshot {
     pub icon: &'static str,
     pub icon_color: Color,
     pub label_color: Option<[u8; 3]>,
+    /// `label_color` was set on this entity, not inherited (it then tints the
+    /// icon as well as drawing the edge line).
+    pub label_color_own: bool,
     pub is_visible: bool,
     pub is_locked: bool,
     pub is_default_camera: bool,
@@ -92,11 +104,23 @@ impl RowSnapshot {
         self.has_material.hash(&mut h);
         self.is_emitting.hash(&mut h);
         self.label_color.hash(&mut h);
+        self.label_color_own.hash(&mut h);
         self.parent_lines.hash(&mut h);
         self.ancestors.hash(&mut h);
         self.is_renaming.hash(&mut h);
         h.finish()
     }
+}
+
+/// An entity label colour, softened for the list: mixed a third of the way
+/// toward the muted text grey.
+///
+/// The swatches are saturated so they are easy to tell apart in the picker.
+/// Painted at full strength across row fills and names they were the loudest
+/// thing in the panel, and several coloured entities together clashed; pulled
+/// toward a neutral they still read as their colour without fighting.
+pub(crate) fn soft_label([r, g, b]: [u8; 3]) -> Color {
+    renzora_ember::theme::mix((r, g, b), renzora_ember::theme::text_muted(), 0.35)
 }
 
 /// Composite `top` over `base` (straight sRGBA) — for the hover wash.
@@ -144,16 +168,22 @@ fn drag_highlight_parent(world: &Rx) -> Option<Entity> {
     }
 }
 
-/// While a hierarchy drag is in progress, paint a tree connector line WHITE when
-/// its owning ancestor is the highlighted parent group — so the whole group's
-/// guide lines light up. Falls back to the normal `tree_line()` color otherwise.
-/// Value-diffed, so it's free on non-drag frames.
+/// Show a tree connector line only while a drag makes it mean something: WHITE
+/// when its owning ancestor is the highlighted parent group (so the whole
+/// group's guide lines light up), invisible otherwise.
+///
+/// The lines used to be drawn all the time. With the indent, they were most of
+/// what made the tree look deep and busy, and the indent alone shows nesting.
+/// During a drag they still earn their place: they are the only thing that
+/// shows which group a drop would land in. Value-diffed, so it's free on
+/// non-drag frames.
 fn highlight_line_on_drag(commands: &mut Commands, line: Entity, owner: Entity) {
+    commands.entity(line).insert(BackgroundColor(Color::NONE));
     bind_bg(commands, line, move |world: &Rx| {
         if drag_highlight_parent(world) == Some(owner) {
             Color::WHITE
         } else {
-            rgb(tree_line())
+            Color::NONE
         }
     });
 }
@@ -163,21 +193,16 @@ pub(crate) fn build_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
     s: &RowSnapshot,
-    row_index: usize,
 ) -> Entity {
     let content_x = BASE_X + s.depth as f32 * INDENT;
 
-    // An entity's label color tints its row; otherwise alternate odd/even
-    // striping (shared with the inspector for a consistent look).
-    let base_bg = if let Some([r, g, b]) = s.label_color {
-        Color::srgba_u8(r, g, b, 26)
-    } else {
-        renzora_ember::inspector::inspector_stripe(row_index)
-    };
-    let label_color = s
-        .label_color
-        .map(|[r, g, b]| Color::srgb_u8(r, g, b))
-        .unwrap_or_else(|| rgb(text_primary()));
+    // Rows are flat, coloured or not. A label colour used to fill the row's
+    // highlight pill and paint the name: the pill is inset from the row above
+    // and below, so a coloured subtree showed as a stack of bands with gaps
+    // between them, and the saturated names fought each other. The colour is
+    // now the edge line below and, on the entity it was set on, the icon.
+    let base_bg = Color::NONE;
+    let label_color = rgb(text_primary());
 
     let row = commands
         .spawn((
@@ -223,7 +248,10 @@ pub(crate) fn build_row(
         kids.push(hline);
     }
 
-    if let Some([r, g, b]) = s.label_color {
+    // The label colour's edge line: the row's full height, so a coloured
+    // entity and its subtree (which inherits the colour) draw one unbroken
+    // line down the left of the panel.
+    if let Some(c) = s.label_color {
         kids.push(
             commands
                 .spawn((
@@ -232,10 +260,10 @@ pub(crate) fn build_row(
                         left: Val::Px(0.0),
                         top: Val::Px(0.0),
                         bottom: Val::Px(0.0),
-                        width: Val::Px(3.0),
+                        width: Val::Px(2.0),
                         ..default()
                     },
-                    BackgroundColor(Color::srgb_u8(r, g, b)),
+                    BackgroundColor(soft_label(c)),
                     Pickable::IGNORE,
                 ))
                 .id(),
@@ -303,7 +331,7 @@ pub(crate) fn build_row(
             Text::new(glyph_str(s.icon)),
             TextFont {
                 font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
-                font_size: bevy::text::FontSize::Px(14.0),
+                font_size: bevy::text::FontSize::Px(renzora_ember::inspector::LIST_ROW_ICON),
                 ..default()
             },
             TextColor(s.icon_color),
@@ -345,7 +373,7 @@ pub(crate) fn build_row(
         let label = commands
             .spawn((
                 Text::new(&s.name),
-                ui_font(&fonts.ui, 13.0),
+                ui_font(&fonts.ui, renzora_ember::inspector::LIST_ROW_TEXT),
                 TextColor(label_color),
                 bevy::text::TextLayout::no_wrap(),
                 Pickable::IGNORE,
@@ -474,6 +502,13 @@ pub(crate) fn build_row(
     if s.is_renaming {
         commands.entity(click_layer).insert(Pickable::IGNORE);
     }
+    // A name wider than the row ends in "…" before the badges and icons
+    // instead of being cut mid-letter by the label box's clip; the full name is
+    // the row's tooltip while it is shortened. The click layer is the host
+    // because the label itself ignores the pointer.
+    if let Some(label) = label_ent {
+        renzora_ember::widgets::ellipsize(commands, label, s.name.clone(), Some(click_layer));
+    }
     // Drop-indicator lines at the row's top/bottom edges (hidden until a drag
     // targets this row Before/After).
     let edge_before = commands
@@ -516,17 +551,11 @@ pub(crate) fn build_row(
         .id();
     kids.push(edge_before);
     kids.push(edge_after);
-    // Full-row background layer (visual, lowest z).
+    // The row's highlight (visual, lowest z): a rounded pill inset from the
+    // panel's sides, which carries hover and selection.
     let bg_visual = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                right: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                ..default()
-            },
+            renzora_ember::inspector::list_row_highlight_node(),
             BackgroundColor(base_bg),
             Pickable::IGNORE,
             Name::new("hier-row-bg"),
@@ -561,13 +590,13 @@ pub(crate) fn build_row(
             .get_resource::<EditorSelection>()
             .is_some_and(|sel| sel.is_selected(ent))
         {
-            return rgb(accent()).with_alpha(0.63);
+            return over(base, renzora_ember::inspector::list_row_selected());
         }
         let hovered = world
             .get::<UiInteraction>(click)
             .is_some_and(|i| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed));
         if hovered {
-            over(base, Color::srgba(1.0, 1.0, 1.0, 0.06))
+            over(base, renzora_ember::inspector::list_row_hover())
         } else {
             base
         }

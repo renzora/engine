@@ -11,17 +11,21 @@ use crate::state::OverlayState;
 
 /// Map the persisted [`UiFont`] choice to a renderable [`FontSource`]. Built-ins
 /// and custom project fonts resolve by family name via Parley's system-font
-/// discovery (`system_font_discovery` feature); `NotoSans` is the embedded
-/// default already loaded as a handle.
+/// discovery (`system_font_discovery` feature); `Inter` (the default) and
+/// `NotoSans` are embedded and already loaded as handles.
 fn ui_font_source(
     choice: &UiFont,
     fonts: &EmberFonts,
+    builtin: Option<&renzora_ember::font::BuiltinUiFonts>,
     registry: &renzora_ember::font::FontRegistry,
 ) -> bevy::text::FontSource {
     use bevy::text::FontSource;
     match choice {
+        UiFont::Inter => fonts.default_ui.clone(),
         UiFont::System => FontSource::system_ui(),
-        UiFont::NotoSans => fonts.default_ui.clone(),
+        UiFont::NotoSans => builtin
+            .map(|b| b.noto_sans.clone())
+            .unwrap_or_else(|| fonts.default_ui.clone()),
         UiFont::Roboto => FontSource::Family("Roboto".into()),
         UiFont::OpenSans => FontSource::Family("Open Sans".into()),
         // A project `fonts/` file: use its loaded handle; fall back to a family
@@ -69,6 +73,7 @@ pub(crate) fn refresh_settings_on_font_change(
 pub(crate) fn apply_font_settings(
     settings: Res<EditorSettings>,
     registry: Res<renzora_ember::font::FontRegistry>,
+    builtin: Option<Res<renzora_ember::font::BuiltinUiFonts>>,
     fonts: Option<ResMut<EmberFonts>>,
     // The theme font override applied last run, so a theme switching its font
     // on/off re-triggers the swap even when settings/registry are unchanged.
@@ -90,7 +95,8 @@ pub(crate) fn apply_font_settings(
     }
     *last_theme_ui = theme_ui.clone();
     // Compute both before mutating so the immutable borrow of `fonts` is done.
-    let new_ui = theme_ui.unwrap_or_else(|| ui_font_source(&settings.ui_font, &fonts, &registry));
+    let new_ui = theme_ui
+        .unwrap_or_else(|| ui_font_source(&settings.ui_font, &fonts, builtin.as_deref(), &registry));
     let new_mono = mono_font_source(&settings.mono_font, &fonts, &registry);
 
     if new_ui != fonts.ui {

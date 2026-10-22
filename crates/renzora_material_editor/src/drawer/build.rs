@@ -7,7 +7,6 @@ use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_editor_framework::MaterialThumbnailRegistry;
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{border, placeholder, rgb, text_primary};
 
@@ -203,10 +202,8 @@ fn build_body(
     // ── Overrides ──
     if !params.is_empty() {
         children.push(section_header(commands, fonts, "Overrides", "Parameters this instance overrides on its master"));
-        for (i, param) in params.iter().enumerate() {
-            let row = super::overrides::param_row(commands, fonts, param);
-            commands.entity(row).insert(BackgroundColor(inspector_stripe(i)));
-            children.push(row);
+        for param in params.iter() {
+            children.push(super::overrides::param_row(commands, fonts, param));
         }
     }
 

@@ -35,12 +35,15 @@ use crate::UiInteraction;
 /// ([`INSPECTOR_LABEL_PCT`] of the row) capped at this, so on a wide panel the
 /// value controls line up at a familiar fixed offset, while a narrow panel
 /// gives the width back to the controls instead of squashing them.
-pub const INSPECTOR_LABEL_W: f32 = 112.0;
+///
+/// 136 fits labels like "Suppress Shadows" and "Angular Diameter" at the
+/// inspector's label size; the 112 before cut them mid-word.
+pub const INSPECTOR_LABEL_W: f32 = 136.0;
 
 /// The label column's share of the row before the [`INSPECTOR_LABEL_W`] cap
-/// kicks in (cap wins above ~320px-wide rows). Every row uses the same
+/// kicks in (cap wins above ~340px-wide rows). Every row uses the same
 /// fraction, so labels and controls still line up in columns at any width.
-pub const INSPECTOR_LABEL_PCT: f32 = 35.0;
+pub const INSPECTOR_LABEL_PCT: f32 = 40.0;
 
 /// Alternating row background for an inspector/list row at `row_index`. Insert
 /// as the row's `BackgroundColor` so panels stripe consistently.
@@ -51,6 +54,54 @@ pub fn inspector_stripe(row_index: usize) -> Color {
         rgb(row_odd())
     } else {
         rgb(row_even())
+    }
+}
+
+/// Label size for a row in a tree list (the hierarchy, the asset tree). Both
+/// panels list things side by side in the same editor, so they share one size
+/// rather than each picking its own.
+///
+/// 14 lands on the 13px rung of `font::FONT_SIZE_LADDER` (after
+/// `TEXT_SCALE`); 12 and 13, which the two panels used before, both snapped to
+/// 11px, which is what made the trees read as cramped next to a design drawn
+/// at 13.
+pub const LIST_ROW_TEXT: f32 = 14.0;
+
+/// Icon size for a tree row. 16 is a ladder rung itself (icons skip
+/// `TEXT_SCALE`); the 13 and 14 used before both drew at 13px, small beside the
+/// larger label.
+pub const LIST_ROW_ICON: f32 = 16.0;
+
+/// How far a tree row's highlight sits in from the panel's sides, and its
+/// corner radius. The highlight is a rounded pill rather than a full-width
+/// band: with the odd/even stripes gone, rows are flat, and a band running into
+/// both panel edges read as a stripe that had been left behind.
+pub const LIST_ROW_INSET: f32 = 4.0;
+pub const LIST_ROW_RADIUS: f32 = 4.0;
+
+/// The highlight behind a selected tree row: a soft wash of the theme's accent.
+/// The old near-solid accent band was loud once nothing else in the list had a
+/// background to compete with it.
+pub fn list_row_selected() -> Color {
+    rgb(accent()).with_alpha(0.24)
+}
+
+/// The highlight behind a hovered tree row.
+pub fn list_row_hover() -> Color {
+    rgb(hover_bg())
+}
+
+/// The node for a tree row's highlight: absolute, inset by [`LIST_ROW_INSET`]
+/// and rounded. Callers paint its `BackgroundColor` reactively.
+pub fn list_row_highlight_node() -> Node {
+    Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(LIST_ROW_INSET),
+        right: Val::Px(LIST_ROW_INSET),
+        top: Val::Px(1.0),
+        bottom: Val::Px(1.0),
+        border_radius: BorderRadius::all(Val::Px(LIST_ROW_RADIUS)),
+        ..default()
     }
 }
 
@@ -99,7 +150,35 @@ pub fn inspector_row(
         ))
         .id();
     commands.entity(row).add_children(&[label_col, control]);
+    fill_if_growable(commands, control);
     row
+}
+
+/// [`fill_control`] for a control that is a number, text or dropdown box
+/// itself, leaving toggles, swatches and composite rows at their own size.
+///
+/// The declarative field rows stretch their controls, but a native drawer that
+/// handed a bare `drag_value` to [`inspector_row`] got one at its 58px minimum.
+/// Side by side in one inspector, Fog's fields stopped a third of the way
+/// across the row while Clouds' ran to the edge, and the column looked broken.
+/// Checking here fixes every drawer at once. It runs as a queued command
+/// because the widget's components are only in the world once the builder's
+/// commands apply.
+fn fill_if_growable(commands: &mut Commands, control: Entity) {
+    commands.queue(move |w: &mut World| {
+        let Ok(mut e) = w.get_entity_mut(control) else { return };
+        let grows = e.contains::<crate::widgets::EmberDragValue>()
+            || e.contains::<crate::widgets::DropdownState>()
+            || e.contains::<crate::widgets::EmberTextInput>();
+        if !grows {
+            return;
+        }
+        if let Some(mut n) = e.get_mut::<Node>() {
+            n.flex_grow = 1.0;
+            n.flex_basis = Val::Px(0.0);
+            n.min_width = Val::Px(0.0);
+        }
+    });
 }
 
 /// Stretch an already-built control so it absorbs the row's free width. Widgets

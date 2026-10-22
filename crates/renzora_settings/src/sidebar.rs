@@ -443,6 +443,7 @@ mod tests {
             advance: 0.0,
             offsets: Vec::new(),
             sel_anchor: None,
+            lead: 0.0,
         }
     }
 

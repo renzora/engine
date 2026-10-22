@@ -894,6 +894,13 @@ The destination counts as a setting here. The worker bakes the final paths into
 each staged import and into the `.material` writes it is holding, so pointing
 the window at another folder has to rebuild them too.
 
+**Import never commits a stale set.** Pressing Import while the destination,
+layout or settings differ from what the staged files were converted with
+reconverts them first and commits automatically once the rebuild is staged. A
+drop starts converting into the folder the asset browser is showing, which after
+an earlier import is often that model's own folder, so committing as-is put the
+new model inside the old one even after picking another destination.
+
 **Boolean settings are switches, not checkboxes.** The rail's options are
 *options*; the window's one real checkbox is the include-box in the scene tree,
 which means something else entirely. Two controls that looked alike and meant
@@ -1020,6 +1027,9 @@ Key `scene_io` entry points: `save_scene` / `save_current_scene`, `load_scene`, 
 | `.hdr` | ✅ Decodes (Bevy default image features) |
 | `.exr` | ❌ **Not functional** — see warning below |
 | `.bmp` / `.tga` / `.webp` / `.ktx2` / `.dds` | Recognized for browser icons/thumbnails only; not enabled for runtime decode |
+| `.svg` / `.svgz` | ✅ Rasterized at load time by `renzora_svg`, never baked on import; hot-reloads, including the pictures it embeds. See [SVG Images](/docs/r1-alpha8/engine-core/svg) |
+
+Which extensions count as an image is one list, `renzora::IMAGE_EXTENSIONS` in the contract crate. The asset browser's icons, the project watcher's `AssetKind::Texture`, the material, particle, sprite, tileset and UI image slots, and the import dialog all read it.
 
 > ⚠️ **`.exr` is not a working texture format today.** The workspace `bevy` dependency keeps default image features (png, hdr) and adds jpeg, but **never enables the `exr` feature**; no other crate enables it either, and the thumbnail generator explicitly excludes EXR. The registry's `AssetKind` *classifies* `.exr` as a texture, but it cannot be decoded at runtime. Use `.hdr` for high-dynamic-range images.
 
@@ -1042,7 +1052,8 @@ Key `scene_io` entry points: `save_scene` / `save_current_scene`, `load_scene`, 
 | `.ron` | Scene (`DynamicScene` as RON) |
 | `.material` | JSON-serialized `MaterialGraph` (legacy `.material_instance` / `.material_bp` still read) |
 | `.blueprint` (alias `.bp`) | JSON-serialized `BlueprintGraph` (visual scripting) |
-| `.particle` | RON effect definition for `renzora_hanabi` |
+| `.vfx` | RON particle effect (`renzora_particles`) |
+| `.particle` | RON effect in the retired Hanabi format; loads as a `.vfx` through `renzora_particles::legacy`, and the editor converts it to one on project open |
 | `.wgsl` / `.glsl` / `.vert` / `.frag` | Shader source |
 | `.html` | UI markup (parsed by `renzora_ember`'s markup runtime) |
 | `.rmip` | Renzora mipmapped texture format (`renzora_rmip`) |

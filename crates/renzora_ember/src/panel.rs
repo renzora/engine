@@ -143,7 +143,7 @@ impl RegisterPanelContent for App {
 
 /// Build the content for any active leaf whose panel has a registered builder and
 /// no pane yet. One system serves every panel that opts into the sugar.
-fn build_active_panels(
+pub(crate) fn build_active_panels(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     builders: Res<NativePanelBuilders>,

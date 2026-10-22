@@ -1,6 +1,11 @@
-//! Drag-and-drop particle-effect spawning — detects `.particle` asset drops on
-//! the viewport and spawns an entity carrying a `HanabiEffect` (resolved into a
-//! live `bevy_hanabi` effect by `renzora_hanabi::sync_hanabi_effects`).
+//! Drag-and-drop particle-effect spawning: a `.vfx` dropped on the viewport
+//! spawns an entity carrying a `renzora_particles::ParticleSystem`, which loads
+//! itself from the saved path exactly as a scene-loaded one does.
+//!
+//! An old Hanabi `.particle` takes the same route and gets the same component
+//! pointing at it: the runtime plays it through its in-memory conversion, and
+//! the editor moves the path onto the `.vfx` beside it as soon as there is one
+//! (`renzora_particles_editor::legacy`).
 
 use std::path::PathBuf;
 
@@ -9,13 +14,12 @@ use bevy::prelude::*;
 use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 use renzora::core::{CurrentProject, EditorCamera, EditorCamera2d, Node2d};
 use renzora_editor_framework::EditorSelection;
-use renzora_hanabi::{EffectSource, HanabiEffect};
 
 use crate::ViewportState;
 
-pub(crate) const PARTICLE_EXTENSIONS: &[&str] = &["particle"];
+pub(crate) const PARTICLE_EXTENSIONS: &[&str] = &["particle", "vfx"];
 
-/// Commit a `.particle` drop at the given viewport-space pointer. Shared by the
+/// Commit an effect drop at the given viewport-space pointer. Shared by the
 /// bevy_ui drop (`drop_target::commit_viewport_drop`). `screen_pos` /
 /// `vp_rect` are in window logical pixels.
 pub(crate) fn commit_particle_drop(
@@ -37,10 +41,10 @@ pub(crate) fn commit_particle_drop(
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Particle Effect".to_string());
 
-    // In 2D view the drop lands on the 2D plane through the ortho camera;
-    // hanabi renders the effect through the `Transparent2d` phase of the same
-    // `Camera2d`, so the entity needs no extra render wiring — just a `Node2d`
-    // marker so the 2D picker and hierarchy treat it as a 2D node.
+    // In 2D view the drop lands on the 2D plane through the ortho camera; the
+    // effect's 2D renderer draws through the same `Camera2d`, so the entity
+    // needs no extra render wiring, only a `Node2d` marker so the 2D picker
+    // and hierarchy treat it as a 2D node.
     let is_2d = world
         .get_resource::<ViewportSettings>()
         .is_some_and(|s| s.viewport_view == ViewportView::Two);
@@ -60,10 +64,7 @@ pub(crate) fn commit_particle_drop(
             Name::new(name),
             Transform::from_translation(pos),
             Visibility::default(),
-            HanabiEffect {
-                source: EffectSource::Asset { path: rel },
-                ..default()
-            },
+            renzora_particles::ParticleSystem::from_path(rel),
         ))
         .id();
     if node_2d {

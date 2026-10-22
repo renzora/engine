@@ -15,7 +15,9 @@
 use bevy::prelude::*;
 use renzora::core::ShapeRegistry;
 
+mod groups;
 mod panel;
+mod thumbs;
 
 /// Add icons to shapes already registered by the engine (editor only).
 fn add_shape_icons(registry: &mut ShapeRegistry) {
@@ -51,6 +53,59 @@ fn add_shape_icons(registry: &mut ShapeRegistry) {
         ("gutter", "cylinder"),
         ("prism", "hexagon"),
         ("pyramid", "diamond"),
+        ("tetrahedron", "triangle"),
+        ("octahedron", "diamond"),
+        ("dodecahedron", "pentagon"),
+        ("icosahedron", "polygon"),
+        ("rounded_cube", "cube"),
+        ("disc", "disc"),
+        ("star_prism", "star"),
+        ("ellipsoid", "egg"),
+        ("hex_prism", "hexagon"),
+        ("domed_cylinder", "cylinder"),
+        ("beveled_block", "cube"),
+        ("step_block", "steps"),
+        ("inner_corner_wedge", "triangle"),
+        ("outer_corner_wedge", "triangle"),
+        ("slope_2_1", "triangle"),
+        ("rounded_edge_block", "square"),
+        ("gear", "gear-six"),
+        ("frame", "frame-corners"),
+        ("column", "columns"),
+        ("gable_roof", "house"),
+        ("hip_roof", "house-line"),
+        ("dome_shell", "globe-hemisphere-west"),
+        ("archway", "door-open"),
+        ("crenellated_wall", "castle-turret"),
+        ("railing", "rows"),
+        ("fence", "rows"),
+        ("window_frame", "frame-corners"),
+        ("door_frame", "door"),
+        ("wall_corner", "wall"),
+        ("floor_tile", "squares-four"),
+        ("balcony", "building"),
+        ("l_stairs", "stairs"),
+        ("u_stairs", "stairs"),
+        ("curved_ramp", "spiral"),
+        ("ladder", "ladder-simple"),
+        ("slab_stairs", "steps"),
+        ("pipe_elbow", "pipe"),
+        ("pipe_tee", "pipe"),
+        ("pipe_cross", "plus"),
+        ("pipe_flange", "pipe"),
+        ("channel_bend", "pipe"),
+        ("spring", "spiral"),
+        ("torus_knot", "infinity"),
+        ("crate", "package"),
+        ("barrel", "database"),
+        ("platform", "stack-simple"),
+        ("bridge", "bridge"),
+        ("bench", "armchair"),
+        ("table", "table"),
+        ("pedestal", "trophy"),
+        ("rock", "mountains"),
+        ("sign_post", "signpost"),
+        ("lamp_post", "lamp"),
     ];
     for (id, icon) in icons {
         if let Some(entry) = registry.get_mut(id) {

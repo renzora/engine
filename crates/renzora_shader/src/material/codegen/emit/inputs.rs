@@ -150,6 +150,9 @@ impl Ctx<'_> {
                 self.set_out(id, "rgb", format!("{v}.rgb"));
                 self.set_out(id, "a", format!("{v}.a"));
             }
+            "input/particle_color" | "input/particle_age" | "input/particle_random" | "input/particle_velocity" => {
+                self.gen_particle_input(node, id);
+            }
             "input/camera_position" => {
                 self.set_out(id, "position", "view.world_position.xyz".into());
             }
@@ -162,6 +165,45 @@ impl Ctx<'_> {
                 );
             }
             unknown => self.unknown_node(unknown),
+        }
+    }
+
+    /// The Particle nodes. A Surface, Unlit or Vegetation shader reads the
+    /// `mat_particle*` aliases, which the fragment declares from the particle
+    /// vertex outputs under `RENZORA_PARTICLE_SURFACE` and as constants
+    /// otherwise (see `wgsl::particle_input_aliases`). A sprite or terrain
+    /// layer can never be drawn on a particle, so it gets the constants
+    /// directly and its shader carries no particle inputs at all.
+    fn gen_particle_input(&mut self, node: &MaterialNode, id: NodeId) {
+        let on_particles = matches!(
+            self.graph.domain,
+            MaterialDomain::Surface | MaterialDomain::Unlit | MaterialDomain::Vegetation
+        );
+        if on_particles {
+            self.uses_particle = true;
+        }
+        let (color, data, velocity) = if on_particles {
+            ("mat_particle_color", "mat_particle", "mat_particle_velocity")
+        } else {
+            ("vec4<f32>(1.0, 1.0, 1.0, 1.0)", "vec4<f32>(0.0, 0.0, 0.0, 0.0)", "vec3<f32>(0.0, 0.0, 0.0)")
+        };
+        match node.node_type.as_str() {
+            "input/particle_color" => {
+                self.set_out(id, "color", color.to_string());
+                self.set_out(id, "rgb", format!("{color}.rgb"));
+                self.set_out(id, "a", format!("{color}.a"));
+            }
+            // `mat_particle` is `vec4(life, seed, frame, speed)`.
+            "input/particle_age" => self.set_out(id, "age", format!("{data}.x")),
+            "input/particle_random" => self.set_out(id, "value", format!("{data}.y")),
+            _ => {
+                let v = self.next_var("particle_vel");
+                self.emit(format!("    let {v} = {velocity};"));
+                self.set_out(id, "velocity", v.clone());
+                self.set_out(id, "speed", format!("length({v})"));
+                // Zero velocity has no direction: zero rather than NaN.
+                self.set_out(id, "direction", format!("({v} / max(length({v}), 1e-6))"));
+            }
         }
     }
 

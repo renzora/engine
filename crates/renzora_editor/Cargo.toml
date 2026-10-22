@@ -74,7 +74,6 @@ editor = [
     "dep:renzora_material_editor",
     "dep:renzora_mixer",
     "dep:renzora_network_editor",
-    "dep:renzora_particle_editor",
     "dep:renzora_settings",
     "dep:renzora_shader_editor",
     "dep:renzora_shape_library",
@@ -151,7 +150,6 @@ renzora_marketplace        = { path = "../renzora_marketplace", optional = true 
 renzora_material_editor    = { path = "../renzora_material_editor", optional = true }
 renzora_mixer              = { path = "../renzora_mixer", optional = true }
 renzora_network_editor     = { path = "../renzora_network_editor", optional = true }
-renzora_particle_editor    = { path = "../renzora_particle_editor", optional = true }
 renzora_settings           = { path = "../renzora_settings", optional = true }
 renzora_shader_editor      = { path = "../renzora_shader_editor", optional = true }
 renzora_shape_library      = { path = "../renzora_shape_library", optional = true }
@@ -182,7 +180,6 @@ renzora_scripting       = { path = "../renzora_scripting" }
 renzora_scripting_editor = { path = "../renzora_scripting/editor", optional = true }
 renzora_lighting        = { path = "../renzora_lighting" }
 renzora_lighting_editor = { path = "../renzora_lighting/editor", optional = true }
-renzora_hanabi          = { path = "../renzora_hanabi" }
 renzora_tonemapping     = { path = "../renzora_tonemapping" }
 renzora_tonemapping_editor = { path = "../renzora_tonemapping/editor", optional = true }
 renzora_bloom_effect    = { path = "../renzora_bloom_effect" }
@@ -234,6 +231,8 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 # it. If you hit that, delete the offending line below.
 renzora_http = { path = "../renzora_http" }
 renzora_parkour_editor = { path = "../renzora_parkour/editor" }
+renzora_particles_editor = { path = "../renzora_particles/editor" }
+renzora_planar_reflection_editor = { path = "../renzora_planar_reflection/editor" }
 renzora_project_watch = { path = "../renzora_project_watch" }
 renzora_update = { path = "../renzora_update" }
 # ── end generated ──

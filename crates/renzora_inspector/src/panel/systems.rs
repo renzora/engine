@@ -3,6 +3,7 @@
 
 use bevy::prelude::*;
 
+use renzora::inspector_pages::InspectorPage;
 use renzora_editor_framework::{
     EditorCommands, EditorSelection, EditorSettings, FieldValue, InspectorExpandDefault,
 };
@@ -10,11 +11,12 @@ use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{set_section_open, Section};
 use renzora_ember::UiInteraction;
 
+use super::pages::RailSelection;
 use super::rebuild::AddButton;
 use super::section::{AddKeyframeBtn, FieldButton, LockBtn, RemoveBtn, ResetBtn};
 use super::undo::{AddComponentCmd, RemoveComponentCmd};
 use super::{
-    policy_open, record_field_change, InspectorRoot, InspectorSectionHeader, InspectorSectionsOpen,
+    policy_open, record_field_change, InspectorSectionHeader, InspectorSectionsOpen,
     InspectorState, Mutate,
 };
 
@@ -80,43 +82,29 @@ pub(super) fn expand_all_click(
     }
 }
 
-/// Zebra-stripe collapsed component headers: a closed section's header takes
-/// the odd/even row colour (by its position in the component list) so the
-/// flush-stacked collapsed cards read as distinct rows; an open header keeps
-/// its per-category colour. Runs off the live [`Section`] flag, so it tracks
-/// header clicks and the expand/collapse-all button without a rebuild.
-pub(super) fn stripe_collapsed_headers(
-    root: Query<&Children, With<InspectorRoot>>,
-    sections: Query<&Children>,
+/// Keep each component card's header in its category colour, restoring it
+/// once a reorder drag has stopped tinting it.
+///
+/// Closed headers used to take an odd/even stripe instead of their colour, so
+/// flush-stacked collapsed sections read as separate rows. Every section is
+/// its own bordered card now, which separates them already, so a closed card
+/// keeps its colour like an open one.
+pub(super) fn paint_section_headers(
     drag: Res<super::reorder::SectionDrag>,
-    mut headers: Query<(&Section, &InspectorSectionHeader, &mut BackgroundColor)>,
+    roots: Query<&super::reorder::InspectorSectionRoot>,
+    mut headers: Query<(Entity, &InspectorSectionHeader, &mut BackgroundColor)>,
 ) {
-    // Derive the stripe index from the LIVE child order rather than a baked-in
-    // position. Position is presentation, not identity — storing it on the header
-    // made inserting a section near the top look like a content change for
-    // everything below it, which would force needless rebuilds once the section
-    // list is reconciled rather than rewritten.
-    let Ok(children) = root.single() else {
-        return;
-    };
-    for (i, section_root) in children.iter().enumerate() {
-        // The section being dragged wears the drag's own tint until it is
-        // dropped; repainting it here would erase that every frame.
-        if drag.dragged() == Some(section_root) {
+    // The section being dragged wears the drag's own tint until it is dropped;
+    // repainting it here would erase that every frame.
+    let dragged = drag
+        .dragged()
+        .and_then(|root| roots.get(root).ok())
+        .map(|r| r.header);
+    for (header, hdr, mut bg) in &mut headers {
+        if dragged == Some(header) {
             continue;
         }
-        // A section's header is its first child (see `build_section`).
-        let Some(header) = sections.get(section_root).ok().and_then(|c| c.iter().next()) else {
-            continue;
-        };
-        let Ok((sec, hdr, mut bg)) = headers.get_mut(header) else {
-            continue;
-        };
-        let want = if sec.is_open() {
-            renzora_ember::theme::rgb(hdr.header_bg)
-        } else {
-            renzora_ember::inspector::inspector_stripe(i)
-        };
+        let want = renzora_ember::theme::rgb(hdr.header_bg);
         if bg.0 != want {
             bg.0 = want;
         }
@@ -278,28 +266,46 @@ fn open_add_component(world: &mut World) {
         &'static str,
         &'static str,
         &'static str,
+        InspectorPage,
         fn(&World, Entity) -> bool,
         fn(&mut World, Entity),
         Option<fn(&mut World, Entity)>,
     );
-    let specs: Vec<Spec> = world
+    let mut specs: Vec<Spec> = world
         .get_resource::<renzora_editor_framework::InspectorRegistry>()
         .map(|reg| {
             reg.iter()
                 .filter_map(|e| {
-                    e.add_fn
-                        .map(|af| (e.display_name, e.icon, e.category, e.has_fn, af, e.remove_fn))
+                    e.add_fn.map(|af| {
+                        (
+                            e.display_name,
+                            e.icon,
+                            e.type_id,
+                            InspectorPage::for_entry(e.category, e.type_id),
+                            e.has_fn,
+                            af,
+                            e.remove_fn,
+                        )
+                    })
                 })
                 .collect()
         })
         .unwrap_or_default();
+    // Grouped in the rail's page order, so the picker's categories run in the
+    // same order as the pages beside the cards. Stable, so registry order
+    // still decides within a page.
+    specs.sort_by_key(|s| InspectorPage::ALL.iter().position(|p| *p == s.3));
 
-    // Per-camera effects only render on a `Camera3d`: the curated `"camera"`
+    // Per-camera effects only render on a `Camera3d`: the curated Camera-page
     // image-quality set (tonemapping, exposure, bloom, DOF, AA, …) and the open
-    // `"post_process"` shader effects (rain, glitch, CRT, … — they carry an
+    // shader post effects (rain, glitch, CRT, …; they carry an
     // `extract_component_filter(With<Camera3d>)`). Offer them only when a camera
     // is selected, so they don't show on a cube where they'd silently do nothing.
+    //
+    // The post effects are named by type rather than by page: SSAO and SSR share
+    // their page and live on the world environment, not on a camera.
     let is_camera = world.get::<Camera3d>(entity).is_some();
+    let camera_only = |page: InspectorPage, type_id: &str| page == InspectorPage::Camera || type_id == "post_effects";
 
     // The `"ui"` set (~31 entries: layout, text, images, the widget behaviours)
     // is `bevy_ui` state, and `bevy_ui` only lays out a node that is inside a UI
@@ -324,20 +330,20 @@ fn open_add_component(world: &mut World) {
     };
 
     let mut entries: Vec<renzora_ember::widgets::SearchEntry> = Vec::new();
-    for (label, icon, category, has_fn, add_fn, remove_fn) in specs {
+    for (label, icon, type_id, page, has_fn, add_fn, remove_fn) in specs {
         if has_fn(world, entity) {
             continue; // already present
         }
-        if matches!(category, "camera" | "post_process") && !is_camera {
+        if camera_only(page, type_id) && !is_camera {
             continue; // per-camera effect on a non-camera entity
         }
-        if category == "ui" && !in_ui_canvas {
+        if page == InspectorPage::Ui && !in_ui_canvas {
             continue; // bevy_ui state on an entity no UI layout will ever reach
         }
         entries.push(renzora_ember::widgets::SearchEntry::new(
             icon,
             label,
-            category,
+            page.display_name(),
             move |w: &mut World| {
                 let ctx = renzora_undo::active_context(w);
                 renzora_undo::execute(
@@ -352,6 +358,8 @@ fn open_add_component(world: &mut World) {
                         remove_fn: remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
                     }),
                 );
+                // Show what was just added: the panel turns to its page.
+                w.resource_mut::<InspectorState>().rail = RailSelection::Page(page);
             },
         ));
     }
@@ -373,10 +381,22 @@ fn open_add_component(world: &mut World) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
+    // Open on the page on screen, so adding a collider from Physics starts
+    // among the physics components. Info and Relations have no category.
+    let focus = match world.resource::<InspectorState>().shown {
+        RailSelection::Page(p) => Some(p.display_name()),
+        _ => None,
+    };
     let mut queue = CommandQueue::default();
     {
         let mut commands = Commands::new(&mut queue, world);
-        renzora_ember::widgets::search_overlay(&mut commands, &fonts, &renzora::lang::t("inspector.add_component"), entries);
+        renzora_ember::widgets::search_overlay_focused(
+            &mut commands,
+            &fonts,
+            &renzora::lang::t("inspector.add_component"),
+            entries,
+            focus.as_deref(),
+        );
     }
     queue.apply(world);
 }

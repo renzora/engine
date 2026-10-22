@@ -1276,6 +1276,20 @@ pub struct BusConfig {
     /// Strip tint, RGB 0–255. Cosmetic; nothing in the audio path reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<[u8; 3]>,
+    /// Routing key of the bus this one feeds; absent feeds Master. Unlike a
+    /// device this is part of the mix, so a shipped game needs it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Post-fader send to the shared reverb, 0..1.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub reverb_send: f32,
+    /// Post-fader send to the shared delay, 0..1.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub delay_send: f32,
+}
+
+fn is_zero_f32(v: &f32) -> bool {
+    *v == 0.0
 }
 
 /// The project's mixer bus graph, stored under `[audio]` in project.toml.
@@ -1655,6 +1669,9 @@ mod tests {
                     muted: false,
                     soloed: false,
                     color: Some([120, 200, 80]),
+                    output: Some("Sfx".into()),
+                    reverb_send: 0.25,
+                    delay_send: 0.0,
                 }],
             },
         };

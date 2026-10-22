@@ -99,7 +99,6 @@ pub fn migrate_legacy_prefs() {
         "ui_scale",
         "scroll_speed",
         "dev_mode",
-        "doc_tabs_dropdown",
         "hierarchy_toggle_on_click",
         "console_log_limit",
     ];
@@ -107,9 +106,10 @@ pub fn migrate_legacy_prefs() {
     let mut app = toml::Table::new();
     for (k, v) in old {
         match k.as_str() {
-            // The old play-target choices. There is one way to play now, so
-            // they carry nothing worth keeping.
-            "play_runtime_window" | "play_vr" => {}
+            // The old play-target choices, and the old document tabs layout.
+            // There is one way to play and one place the open documents are
+            // listed now, so they carry nothing worth keeping.
+            "play_runtime_window" | "play_vr" | "doc_tabs_dropdown" => {}
             k if EDITOR_KEYS.contains(&k) => {
                 editor.insert(k.into(), v);
             }

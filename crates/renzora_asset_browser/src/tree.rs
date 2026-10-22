@@ -3,8 +3,8 @@
 //! carry an `AssetTile` so they select, open, drag and right-click through
 //! exactly the same systems as the grid's.
 //!
-//! Indent guides match the hierarchy panel: 1.5px absolute line nodes, the same
-//! INDENT / LINE_OFFSET geometry, and `inspector_stripe` odd/even row bands.
+//! Rows match the hierarchy panel: the same indent, row height and label size,
+//! and the same inset rounded highlight on otherwise flat rows.
 
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -14,30 +14,29 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
-use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::reactive::tracked::bind_bg;
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::interaction::PASS_THROUGH;
-use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
+use renzora_ember::theme::{rgb, text_muted, text_primary};
 use renzora_ember::UiInteraction;
 
 use crate::grid::{display_name, rename_field_for};
 use crate::ops::{asset_type_info, current_folder, folder_color, icon_for, project_root};
 use crate::state::{
     file_name_of, hash_path_set, is_hidden_name, AssetNameLabel, AssetTile, NativeAssets,
-    RenameSurface, ShortcutClick, TreeNav, TreeTab, TreeToggle,
+    RenameSurface, ShortcutClick, TreeHit, TreeNav, TreeTab, TreeToggle,
 };
 
-/// Row label size. A notch under the grid's 13px: the tree is a dense list of
-/// names in a narrow pane, so the smaller type fits more path in the same width
-/// and reads as secondary to the grid it navigates. One constant because the
-/// folder rows and the Recent/Favorites rows have to agree.
-const TREE_TEXT: f32 = 12.0;
-const TREE_INDENT: f32 = 12.0;
-const TREE_ROW_H: f32 = 24.0;
+/// Row label size: the hierarchy's, so the two tree lists in the editor match.
+/// One constant because the folder rows and the Recent/Favorites rows have to
+/// agree.
+const TREE_TEXT: f32 = renzora_ember::inspector::LIST_ROW_TEXT;
+const TREE_ICON: f32 = renzora_ember::inspector::LIST_ROW_ICON;
+/// One caret width per level, as in the hierarchy (see its `INDENT`): a
+/// child's caret sits under its parent's icon.
+const TREE_INDENT: f32 = 16.0;
+const TREE_ROW_H: f32 = 26.0;
 const TREE_BASE_X: f32 = 4.0;
-const TREE_LINE_OFFSET: f32 = TREE_INDENT / 2.0 - 1.0; // 5.0
-const TREE_CENTER_Y: f32 = TREE_ROW_H / 2.0;
 
 struct TreeRow {
     path: PathBuf,
@@ -45,11 +44,6 @@ struct TreeRow {
     depth: usize,
     expanded: bool,
     has_children: bool,
-    /// Whether this is the last child of its parent (the elbow vs. tee join).
-    is_last: bool,
-    /// For each ancestor level, whether that ancestor has more siblings below
-    /// (i.e. draw a pass-through vertical line at that level).
-    parent_lines: Vec<bool>,
     /// A file row (tree-only narrow mode) rather than a folder — rendered with a
     /// file icon + `AssetTile` so it selects/opens/drags like a grid tile.
     is_file: bool,
@@ -94,26 +88,31 @@ fn has_subdirs(dir: &Path) -> bool {
     dir_kinds(dir).iter().any(|(_, _, is_dir)| *is_dir)
 }
 
-/// A 1.5px vertical guide line. `full` runs the whole row height; otherwise it
-/// stops at `height` (used for the elbow on a last child).
 /// Whether `dir` contains any non-hidden file (used to decide if a folder is
 /// expandable in tree-only file mode).
 fn has_visible_files(dir: &Path) -> bool {
     dir_kinds(dir).iter().any(|(_, _, is_dir)| !*is_dir)
 }
 
-/// The tree's flattened visible order, as bare paths — what a shift-range
-/// select in the tree walks. Computed on demand (only on the click that needs
-/// it, never per frame), which is why this hands back paths rather than exposing
-/// [`TreeRow`] to the click systems.
-pub(crate) fn flat_folder_order(
-    root: &Path,
-    expanded: &HashSet<PathBuf>,
-    show_files: bool,
-) -> Vec<PathBuf> {
-    let mut rows = Vec::new();
-    flatten_dirs(root, 0, expanded, show_files, &mut Vec::new(), &mut rows);
-    rows.into_iter().map(|r| r.path).collect()
+/// Every file and folder under `dir`, at any depth, for shift-click on a tree
+/// folder. Walked on the click that needs it, never per frame, and capped so a
+/// shift-click on the project root of a huge project cannot stall the editor.
+pub(crate) fn descendants(dir: &Path) -> Vec<PathBuf> {
+    const MAX: usize = 5_000;
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for (path, _, is_dir) in dir_kinds(&d) {
+            if out.len() >= MAX {
+                return out;
+            }
+            if is_dir {
+                stack.push(path.clone());
+            }
+            out.push(path);
+        }
+    }
+    out
 }
 
 fn flatten_dirs(
@@ -121,7 +120,6 @@ fn flatten_dirs(
     depth: usize,
     expanded: &HashSet<PathBuf>,
     show_files: bool,
-    ancestors: &mut Vec<bool>,
     out: &mut Vec<TreeRow>,
 ) {
     let mut subs: Vec<(PathBuf, String)> = Vec::new();
@@ -135,11 +133,7 @@ fn flatten_dirs(
     }
     subs.sort_by_key(|a| a.1.to_lowercase());
     files.sort_by_key(|a| a.1.to_lowercase());
-    let has_files = !files.is_empty();
-    let last = subs.len().saturating_sub(1);
-    for (idx, (path, name)) in subs.into_iter().enumerate() {
-        // A folder isn't truly last if files follow it below.
-        let more_after = idx != last || has_files;
+    for (path, name) in subs {
         let is_exp = expanded.contains(&path);
         let has = has_subdirs(&path) || (show_files && has_visible_files(&path));
         out.push(TreeRow {
@@ -148,30 +142,21 @@ fn flatten_dirs(
             depth,
             expanded: is_exp,
             has_children: has,
-            is_last: !more_after,
-            parent_lines: ancestors.clone(),
             is_file: false,
         });
         if is_exp && has {
-            // Descendants draw a pass-through line at this level iff this node
-            // has a sibling (folder or file) after it.
-            ancestors.push(more_after);
-            flatten_dirs(&path, depth + 1, expanded, show_files, ancestors, out);
-            ancestors.pop();
+            flatten_dirs(&path, depth + 1, expanded, show_files, out);
         }
     }
     // Files of this folder sort after its subfolders, at the same depth.
     if show_files {
-        let last_f = files.len().saturating_sub(1);
-        for (idx, (path, name)) in files.into_iter().enumerate() {
+        for (path, name) in files {
             out.push(TreeRow {
                 path,
                 name,
                 depth,
                 expanded: false,
                 has_children: false,
-                is_last: idx == last_f,
-                parent_lines: ancestors.clone(),
                 is_file: true,
             });
         }
@@ -210,8 +195,6 @@ fn search_tree(dir: &Path, query: &str, visited: &mut usize, out: &mut Vec<TreeR
                 depth: 0,
                 expanded: false,
                 has_children: false,
-                is_last: true,
-                parent_lines: Vec::new(),
                 is_file: !is_dir,
             });
         }
@@ -327,17 +310,13 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
                     depth: 0,
                     expanded: root_open,
                     has_children: true,
-                    // Nothing follows it at depth 0, so it draws the elbow and
-                    // no pass-through line.
-                    is_last: true,
-                    parent_lines: Vec::new(),
                     is_file: false,
                 }));
                 // Files appear in the tree only in the narrow layout, where the
                 // tree IS the browser; the wide sidebar stays folders-only.
                 if root_open {
                     let mut rows = Vec::new();
-                    flatten_dirs(&root, 1, &expanded, narrow, &mut vec![false], &mut rows);
+                    flatten_dirs(&root, 1, &expanded, narrow, &mut rows);
                     items.extend(rows.into_iter().map(TreeItem::Folder));
                 }
             } else {
@@ -353,10 +332,12 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
         }
     }
 
+    // A row's hash is its own content only, not its position. Rows used to fold
+    // in their index for the odd/even stripe, so expanding one folder rebuilt
+    // every row below it.
     let keyed: Vec<(u64, u64)> = items
         .iter()
-        .enumerate()
-        .map(|(idx, it)| {
+        .map(|it| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             let mut h = std::collections::hash_map::DefaultHasher::new();
             match it {
@@ -366,15 +347,12 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
                 }
                 TreeItem::Shortcut { name, path, is_dir } => {
                     (1u8, path).hash(&mut k);
-                    // The stripe is baked in at build time from the row index, so
-                    // a row whose position shifts must rebuild even when its own
-                    // content didn't change — fold the index into the hash.
-                    (name, is_dir, idx).hash(&mut h);
+                    (name, is_dir).hash(&mut h);
                 }
                 TreeItem::Folder(r) => {
                     (2u8, &r.path).hash(&mut k);
                     (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
-                    (r.is_last, &r.parent_lines, r.is_file, idx).hash(&mut h);
+                    r.is_file.hash(&mut h);
                     // Rebuild this row when it enters/leaves inline-rename.
                     (renaming.as_deref() == Some(r.path.as_path())).hash(&mut h);
                 }
@@ -386,9 +364,9 @@ pub(crate) fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
         items: keyed,
         build: Box::new(move |c, f, i| match &items[i] {
             TreeItem::Header { label } => tree_header(c, f, label),
-            TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir, i),
+            TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir),
             TreeItem::Folder(r) => {
-                tree_row(c, f, r, i, renaming.as_deref() == Some(r.path.as_path()))
+                tree_row(c, f, r, renaming.as_deref() == Some(r.path.as_path()))
             }
         }),
     }
@@ -419,17 +397,15 @@ fn tree_header(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entit
     row
 }
 
-/// A Recent/Favorites row: zebra-striped like the folder tree, icon carrying the
-/// asset type's accent color (folders keep their name-derived tint).
+/// A Recent/Favorites row: flat like the folder tree, icon carrying the asset
+/// type's accent color (folders keep their name-derived tint).
 fn shortcut_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
     name: &str,
     path: &Path,
     is_dir: bool,
-    row_index: usize,
 ) -> Entity {
-    let stripe = inspector_stripe(row_index);
     let row = commands
         .spawn((
             Node {
@@ -437,12 +413,13 @@ fn shortcut_row(
                 align_items: AlignItems::Center,
                 width: Val::Percent(100.0),
                 height: Val::Px(TREE_ROW_H),
-                padding: UiRect::left(Val::Px(8.0)),
+                // The right side keeps a shortened name's "…" off the panel edge.
+                padding: UiRect::horizontal(Val::Px(8.0)),
                 column_gap: Val::Px(4.0),
+                position_type: PositionType::Relative,
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(stripe),
             UiInteraction::default(),
             ShortcutClick {
                 path: path.to_path_buf(),
@@ -451,29 +428,37 @@ fn shortcut_row(
             Name::new("tree-shortcut"),
         ))
         .id();
-    bind_bg(commands, row, move |w| {
+    // The hover highlight is the same inset pill as the folder tree's.
+    let highlight = commands
+        .spawn((
+            renzora_ember::inspector::list_row_highlight_node(),
+            BackgroundColor(Color::NONE),
+            Pickable::IGNORE,
+        ))
+        .id();
+    bind_bg(commands, highlight, move |w| {
         if let Some(tint) = crate::drag_drop::drop_target_tint(w, row, is_dir) {
             return tint;
         }
         match w.get::<UiInteraction>(row) {
             Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => {
-                rgb(renzora_ember::theme::border())
+                renzora_ember::inspector::list_row_hover()
             }
-            _ => stripe,
+            _ => Color::NONE,
         }
     });
+    commands.entity(row).add_child(highlight);
     let (icon_name, icon_color) = if is_dir {
         ("folder", folder_color(name))
     } else {
         (icon_for(path, false), asset_type_info(path).0)
     };
-    let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 13.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, TREE_ICON);
     let label = commands
         .spawn((
             Text::new(name.to_string()),
             ui_font(&fonts.ui, TREE_TEXT),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::no_wrap(),
             Node {
                 min_width: Val::Px(0.0),
                 overflow: Overflow::clip(),
@@ -481,6 +466,7 @@ fn shortcut_row(
             },
         ))
         .id();
+    renzora_ember::widgets::ellipsize(commands, label, name, Some(row));
     commands.entity(row).add_children(&[ic, label]);
     row
 }
@@ -489,11 +475,9 @@ fn tree_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
     r: &TreeRow,
-    row_index: usize,
     is_renaming: bool,
 ) -> Entity {
     let content_x = TREE_BASE_X + r.depth as f32 * TREE_INDENT;
-    let stripe = inspector_stripe(row_index);
 
     let row = commands
         .spawn((
@@ -547,6 +531,8 @@ fn tree_row(
                 min_width: Val::Px(0.0),
                 height: Val::Percent(100.0),
                 column_gap: Val::Px(4.0),
+                // Keeps a shortened name's "…" off the panel edge.
+                padding: UiRect::right(Val::Px(8.0)),
                 overflow: Overflow::clip(),
                 ..default()
             },
@@ -559,15 +545,16 @@ fn tree_row(
     } else {
         commands.entity(nav).insert(TreeNav(r.path.clone()));
     }
+    commands.entity(nav).insert(TreeHit(r.path.clone()));
     let folder_icon = if r.is_file {
-        icon_text(commands, &fonts.phosphor, icon_for(&r.path, false), asset_type_info(&r.path).0, 14.0)
+        icon_text(commands, &fonts.phosphor, icon_for(&r.path, false), asset_type_info(&r.path).0, TREE_ICON)
     } else {
         icon_text(
             commands,
             &fonts.phosphor,
             if r.expanded { "folder-open" } else { "folder" },
             folder_color(&r.name),
-            14.0,
+            TREE_ICON,
         )
     };
     let name = if is_renaming {
@@ -597,12 +584,12 @@ fn tree_row(
         // row's rename is a `Tree` rename even though the row carries an
         // `AssetTile`, because the tree is where it is drawn -- the grid is
         // hidden in the narrow layout that shows files here at all.
-        commands
+        let shown = display_name(&r.name, !r.is_file).to_string();
+        let label = commands
             .spawn((
-                Text::new(display_name(&r.name, !r.is_file).to_string()),
+                Text::new(shown.clone()),
                 ui_font(&fonts.ui, TREE_TEXT),
                 TextColor(rgb(text_primary())),
-                bevy::text::TextLayout::no_wrap(),
                 Node {
                     min_width: Val::Px(0.0),
                     overflow: Overflow::clip(),
@@ -612,22 +599,21 @@ fn tree_row(
                 PASS_THROUGH,
                 AssetNameLabel { path: r.path.clone(), surface: RenameSurface::Tree },
             ))
-            .id()
+            .id();
+        // A long name (a model's generated folder names run well past the
+        // panel) ends in "…" instead of being cut mid-letter at the panel's
+        // edge, and shows in full as the label's tooltip while shortened.
+        renzora_ember::widgets::ellipsize(commands, label, shown, Some(label));
+        label
     };
     commands.entity(nav).add_children(&[folder_icon, name]);
 
-    // Full-row background (odd/even stripe + selection + hover), lowest z.
+    // The row's highlight (selection + hover), lowest z: a rounded pill inset
+    // from the panel's sides, on an otherwise flat row.
     let bg_visual = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                right: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                ..default()
-            },
-            BackgroundColor(stripe),
+            renzora_ember::inspector::list_row_highlight_node(),
+            BackgroundColor(Color::NONE),
             Pickable::IGNORE,
             Name::new("tree-row-bg"),
         ))
@@ -641,38 +627,33 @@ fn tree_row(
         if let Some(tint) = crate::drag_drop::drop_target_tint(w, nav, !is_file) {
             return tint;
         }
-        let active = if is_file {
-            w.get_resource::<NativeAssets>()
-                .map(|s| s.is_selected(&sel_path))
-                .unwrap_or(false)
-        } else {
-            current_folder(w).as_deref() == Some(sel_path.as_path())
-        };
+        // A folder is lit while it is the open folder or part of a
+        // multi-selection (a marquee, a ctrl-click, a shift-click on its
+        // parent): a selection you cannot see is one you cannot trust to delete.
+        let selected = w
+            .get_resource::<NativeAssets>()
+            .map(|s| s.is_selected(&sel_path) && (is_file || s.selection.len() > 1))
+            .unwrap_or(false);
+        let active = selected
+            || (!is_file && current_folder(w).as_deref() == Some(sel_path.as_path()));
         if active {
-            return rgb(accent()).with_alpha(0.30);
+            return renzora_ember::inspector::list_row_selected();
         }
         if matches!(
             w.get::<UiInteraction>(nav),
             Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
         ) {
-            return rgb(renzora_ember::theme::border());
+            return renzora_ember::inspector::list_row_hover();
         }
-        stripe
+        Color::NONE
     });
 
-    // bg first (behind), then guide lines, then the indent spacer + content.
+    // bg first (behind), then the indent spacer + content. No guide lines: the
+    // indent alone shows nesting, and the lines were most of what made the tree
+    // look deep and busy. (The hierarchy keeps its lines for one job, showing
+    // which group a drag would drop into; nothing is dragged into a folder
+    // here by its row's position, so they would have no job at all.)
     let mut kids = vec![bg_visual];
-    for (level, &has_more) in r.parent_lines.iter().enumerate() {
-        if has_more {
-            let x = TREE_BASE_X + level as f32 * TREE_INDENT + TREE_LINE_OFFSET;
-            kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, true, 0.0));
-        }
-    }
-    if r.depth > 0 {
-        let x = TREE_BASE_X + (r.depth - 1) as f32 * TREE_INDENT + TREE_LINE_OFFSET;
-        kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, !r.is_last, TREE_CENTER_Y));
-        kids.push(renzora_ember::widgets::tree_hline(commands, x, TREE_CENTER_Y, 5.0));
-    }
     // Indent spacer up to the caret column.
     kids.push(
         commands

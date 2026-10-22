@@ -104,6 +104,10 @@ pub static ALL_NODES: &[&MaterialNodeDef] = &[
     &SPRITE_COLOR,
     &CAMERA_POSITION,
     &OBJECT_POSITION,
+    &PARTICLE_COLOR,
+    &PARTICLE_AGE,
+    &PARTICLE_RANDOM,
+    &PARTICLE_VELOCITY,
     // Parameter
     &PARAM_FLOAT,
     &PARAM_COLOR,

@@ -17,8 +17,16 @@ use super::super::graph::{MaterialDomain, MaterialGraph, MaterialNode, NodeId};
 use super::ctx::Ctx;
 use super::wgsl::{
     emit_ext_shader_header, emit_module_prelude, fragment_input_aliases, noise_helpers,
-    texture_bindings_at, texture_bindings_wgsl, PARALLAX_FRAGMENT_WGSL,
+    particle_input_aliases, texture_bindings_at, texture_bindings_wgsl, PARALLAX_FRAGMENT_WGSL,
+    PARTICLE_FRAGMENT_PARAMS,
 };
+
+/// The 3D fragment entry point, with the particle inputs when a Particle node
+/// reads them (see `wgsl::PARTICLE_FRAGMENT_PARAMS`).
+fn fragment_signature(ctx: &Ctx) -> String {
+    let particle = if ctx.uses_particle { PARTICLE_FRAGMENT_PARAMS } else { "" };
+    format!("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool{particle}) -> FragmentOutput {{\n")
+}
 
 /// Bevy's own alpha step before lighting, called the way `bevy_pbr`'s
 /// `pbr.wesl` calls it. Bevy 0.20 takes the material's flags and cutoff
@@ -139,7 +147,7 @@ pub(crate) fn build_pbr_shader(
     emit_module_prelude(ctx, &mut shader);
 
     shader.push_str("\n@fragment\n");
-    shader.push_str("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {\n");
+    shader.push_str(&fragment_signature(ctx));
     shader.push_str("    var pbr_input = pbr_input_from_standard_material(in, is_front);\n");
     // Alias mesh-conditional VertexOutput fields so generated graph code can
     // reference them unconditionally. Bevy's pipeline specialization defines
@@ -147,6 +155,9 @@ pub(crate) fn build_pbr_shader(
     // meshes without those attributes don't get the corresponding fields, so
     // referencing `in.uv` directly would fail to compile for them.
     shader.push_str(&fragment_input_aliases());
+    if ctx.uses_particle {
+        shader.push_str(&particle_input_aliases());
+    }
 
     // Must land between the aliases and the body: it consumes `mat_uv` and
     // replaces it, and every sampler in the body reads it afterwards.
@@ -418,9 +429,12 @@ pub(crate) fn build_unlit_shader(
     emit_module_prelude(ctx, &mut shader);
 
     shader.push_str("\n@fragment\n");
-    shader.push_str("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {\n");
+    shader.push_str(&fragment_signature(ctx));
     shader.push_str("    var pbr_input = pbr_input_from_standard_material(in, is_front);\n");
     shader.push_str(&fragment_input_aliases());
+    if ctx.uses_particle {
+        shader.push_str(&particle_input_aliases());
+    }
 
     let body_base = shader.matches('\n').count() as u32 + 1;
     for line in &ctx.lines {

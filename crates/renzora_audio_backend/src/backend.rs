@@ -72,21 +72,31 @@ fn emitter_from(e: &renzora::audio_backend::EmitterState) -> Emitter {
 ///
 /// `order` mirrors the device's own bus list and is updated to match — see
 /// [`RenzoraAudio::device_buses`] for why that has to be tracked separately.
+///
+/// Every bus is created before any is set, because a strip's output names
+/// another bus by key and the mixer resolves it when the strip is set: a bus
+/// routed into one further down the list would otherwise find nothing there and
+/// fall back to Master.
 fn send_board(device: &mut AudioDevice, buses: &[BusState], order: &mut Vec<String>) {
     for bus in buses {
         device.send(Command::AddBus(bus.key.clone()));
+        // `add_bus` is idempotent and appends, so the mirror only grows for a
+        // key the device did not already have.
+        if !order.iter().any(|k| k == &bus.key) {
+            order.push(bus.key.clone());
+        }
+    }
+    for bus in buses {
         device.send(Command::SetBus {
             key: bus.key.clone(),
             gain: bus.gain,
             pan: bus.pan,
             muted: bus.muted,
             soloed: bus.soloed,
+            output: bus.output.clone(),
+            reverb_send: bus.reverb_send,
+            delay_send: bus.delay_send,
         });
-        // `add_bus` is idempotent and appends, so the mirror only grows for a
-        // key the device did not already have.
-        if !order.iter().any(|k| k == &bus.key) {
-            order.push(bus.key.clone());
-        }
     }
 }
 
@@ -125,6 +135,9 @@ impl Backend for RenzoraAudio {
                     pan: 0.0,
                     muted: false,
                     soloed: false,
+                    output: None,
+                    reverb_send: 0.0,
+                    delay_send: 0.0,
                 })
                 .collect();
             if let Some(device) = self.device.as_mut() {
@@ -382,6 +395,9 @@ mod tests {
             pan: 0.0,
             muted: false,
             soloed: false,
+            output: None,
+            reverb_send: 0.0,
+            delay_send: 0.0,
         }]);
         b.stop(&StopRequest {
             target: StopTarget::All,
@@ -470,6 +486,9 @@ mod tests {
             pan: 0.0,
             muted: false,
             soloed: false,
+            output: None,
+            reverb_send: 0.0,
+            delay_send: 0.0,
         };
         b.set_buses(&[bus("Sfx"), bus("Music")]);
         assert_eq!(b.buses, ["Sfx", "Music"]);
@@ -491,6 +510,9 @@ mod tests {
             pan: 0.0,
             muted: false,
             soloed: false,
+            output: None,
+            reverb_send: 0.0,
+            delay_send: 0.0,
         };
 
         // A host board that never mentions Master.

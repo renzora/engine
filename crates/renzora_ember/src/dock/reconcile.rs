@@ -496,6 +496,32 @@ pub(crate) enum DockPart {
     Tab,
 }
 
+/// Pad the dock area's left and right so a panel at the window's edge sits as
+/// far from it as two panels sit from each other.
+///
+/// Panels are separated by `leaf_margin` on every side of each leaf plus the
+/// 1px divider between them, so neighbours are `2 * margin + 1` apart, while a
+/// panel against the window edge had only its own margin and looked pressed
+/// up against the window frame. Follows the theme like the rest of the chrome.
+pub(crate) fn pad_dock_edges(
+    theme: Res<crate::style::Theme>,
+    // Not the global bottom panel: it is a full-width band with its own
+    // background, and padding would show as strips of it either side.
+    mut areas: Query<(Ref<super::DockArea>, &mut Node), Without<super::FixedDockArea>>,
+) {
+    let repaint = theme.is_changed();
+    let side = theme.dock.leaf_margin + 1.0;
+    for (area, mut node) in &mut areas {
+        if !repaint && !area.is_added() {
+            continue;
+        }
+        let want = UiRect::horizontal(Val::Px(side));
+        if node.padding != want {
+            node.padding = want;
+        }
+    }
+}
+
 /// Paint every [`DockPart`] from the live `Theme.dock` on theme change / spawn —
 /// the dock's panel chrome (leaf bg/border/radius/padding + drop shadow, tab bar,
 /// dividers) follows the theme and is editable in the Theme tab.

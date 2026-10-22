@@ -40,6 +40,8 @@ fn is_already_compressed(path: &str) -> bool {
         ".ogg", ".mp3", ".flac",
         // GPU/baked textures and other already-compressed containers
         ".rmip", ".ktx2", ".basis", ".dds",
+        // Gzipped SVG
+        ".svgz",
         ".zst", ".zip",
     ];
     let lower = path.to_ascii_lowercase();
@@ -305,6 +307,12 @@ where
         if visited.contains(key) {
             return;
         }
+        // A reference that still climbs (`../secret.png` at the root) names a
+        // file outside the project; `Path::strip_prefix` is lexical, so it
+        // would otherwise be packed under a `..` key.
+        if key.split('/').any(|seg| seg == "..") {
+            return;
+        }
         if let Some(exts) = allowed_extensions {
             let ext = Path::new(key)
                 .extension()
@@ -332,8 +340,21 @@ where
                     // stays because a project can be exported without its
                     // materials ever being re-saved, and stripping the sidecar
                     // would ship those unrenderable.
-                    if actual_key.ends_with(".wgsl") {
-                        let meta_key = format!("{}.meta", actual_key);
+                    //
+                    // An SVG's rasterization settings live in a
+                    // `<path>.svg.toml` sidecar that nothing names by path
+                    // either (`renzora_svg` derives it), so it rides along the
+                    // same way. Without it an exported game would rasterize
+                    // every SVG at its default size.
+                    let sidecar_suffix = if actual_key.ends_with(".wgsl") {
+                        Some("meta")
+                    } else if is_svg_key(&actual_key) {
+                        Some("toml")
+                    } else {
+                        None
+                    };
+                    if let Some(suffix) = sidecar_suffix {
+                        let meta_key = format!("{}.{}", actual_key, suffix);
                         if !visited.contains(&meta_key) {
                             if let Some(meta_disk) = resolve(&meta_key) {
                                 if let Some(meta_actual) = archive_key_for(&meta_disk) {
@@ -429,6 +450,18 @@ where
             let Some(data) = packer.get(&file_key) else {
                 continue;
             };
+            // `.svgz` is gzipped XML; inflate it so its `<image href>`s are
+            // found like a plain `.svg`'s.
+            let inflated;
+            let data: &[u8] = if data.starts_with(&[0x1f, 0x8b]) && is_svg_key(&file_key) {
+                let Some(bytes) = gunzip(data) else {
+                    continue;
+                };
+                inflated = bytes;
+                &inflated
+            } else {
+                data
+            };
             // Binary GLBs aren't UTF-8 — pull out the JSON chunk so we can
             // discover externally-referenced textures and .bin files.
             let text: &str = if file_key.ends_with(".glb") {
@@ -441,7 +474,15 @@ where
             } else {
                 continue;
             };
-            extract_quoted_asset_paths(text)
+            let mut refs = extract_quoted_asset_paths(text);
+            if is_svg_key(&file_key) {
+                // XML allows single-quoted attributes, and Inkscape and
+                // Illustrator both write them; the double-quote scan alone
+                // would miss `href='img/a.png'`.
+                refs.extend(extract_delimited_asset_paths(text, b'\''));
+                refs.extend(svg_font_file_refs(text));
+            }
+            refs
         };
 
         // Parent dir of the referrer (forward-slashed). Used to resolve
@@ -456,7 +497,13 @@ where
             let stripped = normalize_archive_key(&reference);
             let mut candidates: Vec<String> = vec![stripped.clone()];
             if !parent_dir.is_empty() {
-                candidates.push(format!("{}/{}", parent_dir, stripped));
+                // `..` is resolved here rather than left in the key: the
+                // runtime looks a file up by its collapsed path, so an entry
+                // keyed `ui/../img/a.png` would never be found. A climb above
+                // the project root yields no candidate at all.
+                if let Some(joined) = join_relative(&parent_dir, &stripped) {
+                    candidates.push(joined);
+                }
             }
             for candidate in candidates {
                 if !visited.contains(&candidate) {
@@ -1111,6 +1158,12 @@ const ASSET_EXTENSIONS: &[&str] = &[
     ".tga",
     ".hdr",
     ".exr",
+    ".webp",
+    ".gif",
+    // Vector images (`renzora_svg`), and the raster files they embed are
+    // covered by the entries above.
+    ".svg",
+    ".svgz",
     // Renzora baked textures (pre-mipmapped, GPU-compressed; referenced by
     // `.material` files as literal paths next to the source model).
     ".rmip",
@@ -1169,13 +1222,18 @@ fn extract_toml_value(text: &str, key: &str) -> Option<String> {
 
 /// Scan text for quoted strings that look like asset paths.
 fn extract_quoted_asset_paths(text: &str) -> Vec<String> {
+    extract_delimited_asset_paths(text, b'"')
+}
+
+/// [`extract_quoted_asset_paths`] for any one-byte quote character.
+fn extract_delimited_asset_paths(text: &str, quote: u8) -> Vec<String> {
     let bytes = text.as_bytes();
     let len = bytes.len();
     let mut refs = Vec::new();
     let mut i = 0;
 
     while i < len {
-        if bytes[i] == b'"' {
+        if bytes[i] == quote {
             let start = i + 1;
             i += 1;
             while i < len {
@@ -1183,7 +1241,7 @@ fn extract_quoted_asset_paths(text: &str) -> Vec<String> {
                     i += 2;
                     continue;
                 }
-                if bytes[i] == b'"' {
+                if bytes[i] == quote {
                     break;
                 }
                 i += 1;
@@ -1201,6 +1259,104 @@ fn extract_quoted_asset_paths(text: &str) -> Vec<String> {
     }
 
     refs
+}
+
+/// Whether an archive key is an SVG (`.svg` or gzipped `.svgz`).
+fn is_svg_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    lower.ends_with(".svg") || lower.ends_with(".svgz")
+}
+
+/// Inflate a gzip stream, or `None` if it is not one. Capped so a gzip bomb
+/// posing as an `.svgz` cannot exhaust memory during an export.
+fn gunzip(data: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Read;
+    const MAX: u64 = 64 * 1024 * 1024;
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(data)
+        .take(MAX)
+        .read_to_end(&mut out)
+        .ok()?;
+    Some(out)
+}
+
+/// `dir` + `rel` with `.` and `..` collapsed, or `None` when `rel` climbs
+/// above the root. A `/`-rooted `rel` (an SVG's project-root form) is taken
+/// from the root rather than from `dir`.
+fn join_relative(dir: &str, rel: &str) -> Option<String> {
+    let mut segments: Vec<&str> = Vec::new();
+    if !rel.starts_with('/') {
+        segments.extend(dir.split('/').filter(|s| !s.is_empty() && *s != "."));
+    }
+    for seg in rel.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            s => segments.push(s),
+        }
+    }
+    (!segments.is_empty()).then(|| segments.join("/"))
+}
+
+/// Font files an SVG reaches by family name rather than by path.
+///
+/// `renzora_svg` looks a `font-family` it does not know up as a file under
+/// `fonts/` or beside the SVG, trying the names a font file is conventionally
+/// saved under. Nothing quotes those paths, so the reference scan cannot see
+/// them; this produces the same guesses (mirroring
+/// `renzora_svg::refs::font_file_candidates`) so `try_pack` can pick up the
+/// ones that exist. A guess that names no file costs one `is_file` check.
+fn svg_font_file_refs(text: &str) -> Vec<String> {
+    if !text.contains("<text") {
+        return Vec::new();
+    }
+    // A quoted family inside a `style` attribute arrives entity-escaped.
+    let text = text.replace("&quot;", "\"").replace("&apos;", "'");
+    let mut families: Vec<String> = Vec::new();
+    let mut rest = text.as_str();
+    while let Some(at) = rest.find("font-family") {
+        rest = &rest[at + "font-family".len()..];
+        // `font-family="A, B"` (attribute) or `font-family: A, B;` (CSS).
+        let Some(sep) = rest.find(['=', ':']) else { break };
+        if !rest[..sep].trim().is_empty() {
+            continue;
+        }
+        let value = rest[sep + 1..].trim_start();
+        let value = value.strip_prefix(['"', '\'']).unwrap_or(value);
+        let end = value.find(['"', ';', '}', '>', '\n']).unwrap_or(value.len());
+        for name in value[..end].split(',') {
+            let name = name.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+            // CSS generics resolve to the bundled font, never to a file.
+            let generic = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"]
+                .iter()
+                .any(|g| g.eq_ignore_ascii_case(name));
+            if !name.is_empty()
+                && !generic
+                && !families.iter().any(|f| f.eq_ignore_ascii_case(name))
+            {
+                families.push(name.to_string());
+            }
+        }
+        rest = &value[end..];
+    }
+    let mut out = Vec::new();
+    for family in families {
+        for stem in [family.clone(), family.replace(' ', ""), family.replace(' ', "-")] {
+            for suffix in ["", "-Regular"] {
+                for ext in ["ttf", "otf"] {
+                    let file = format!("{stem}{suffix}.{ext}");
+                    // Project fonts folder first, then beside the SVG (the
+                    // bare name resolves against the referrer's folder).
+                    out.push(format!("/fonts/{file}"));
+                    out.push(file);
+                }
+            }
+        }
+    }
+    out.dedup();
+    out
 }
 
 /// Extract the JSON chunk from a binary glTF (GLB) file.
@@ -1615,6 +1771,50 @@ mod tests {
         assert!(packer.get("assets/a.png").is_none());
         // …and `project.toml` still loses its editor section.
         assert!(packer.get("project.toml").is_some());
+    }
+
+    /// An SVG ships with its sidecar, the images it embeds (both quote styles,
+    /// `..` resolved), and a font it names only by family; a reference that
+    /// climbs out of the project does not.
+    #[test]
+    fn an_svg_ships_with_everything_it_references() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+            <image href="img/a.png"/>
+            <image href='../shared/b.jpg'/>
+            <image href="../../outside.png"/>
+            <text font-family="Brand Sans">hi</text>
+        </svg>"#;
+        let p = TempProject::new(
+            "svg_refs",
+            &[
+                ("project.toml", "main_scene = \"scenes/level.bsn\"\n"),
+                ("scenes/level.bsn", "entity 1 {\n \"ui/logo.svg\"\n}\n"),
+                ("ui/logo.svg", svg),
+                ("ui/logo.svg.toml", "width = 256\n"),
+                ("ui/img/a.png", "a"),
+                ("shared/b.jpg", "b"),
+                ("fonts/BrandSans-Regular.ttf", "f"),
+            ],
+        );
+        let keys = referenced_keys(&p.0).unwrap();
+        for want in [
+            "ui/logo.svg",
+            "ui/logo.svg.toml",
+            "ui/img/a.png",
+            "shared/b.jpg",
+            "fonts/BrandSans-Regular.ttf",
+        ] {
+            assert!(keys.iter().any(|k| k == want), "{want} missing: {keys:?}");
+        }
+        assert!(!keys.iter().any(|k| k.contains("..") || k.contains("outside")), "{keys:?}");
+    }
+
+    #[test]
+    fn join_relative_collapses_and_refuses_climbs() {
+        assert_eq!(join_relative("ui/icons", "../img/a.png").as_deref(), Some("ui/img/a.png"));
+        assert_eq!(join_relative("ui", "./a.png").as_deref(), Some("ui/a.png"));
+        assert_eq!(join_relative("ui", "/fonts/a.ttf").as_deref(), Some("fonts/a.ttf"));
+        assert_eq!(join_relative("ui", "../../a.png"), None);
     }
 }
 

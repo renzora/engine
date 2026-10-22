@@ -60,7 +60,7 @@ Attach **Animator** to a model and it holds everything about how that model anim
 
 Each clip slot has a **name**, a **path**, a **looping** toggle, a **speed**, and optional **blend in** and **blend out** times.
 
-The Inspector drawer covers the common workflow without leaving the panel: every slot with play, rename, speed, loop and remove controls, plus a drop field for adding an `.anim` file as a new slot.
+The Inspector drawer covers the common workflow without leaving the panel. Each slot is a small card: a play button, the name (click to rename), a **Speed** field (1 is the clip's own speed, from 0.05 to 5), a loop toggle that lights while the clip loops, and remove, with the clip's file under them. Drop `.anim` files on the area under the list to add them as new slots; a multi-selection from the Assets panel adds every clip in it.
 
 <!-- screenshot: animation_panel.png - the Animation panel showing the clip library for a selected model -->
 
@@ -76,7 +76,7 @@ Open it from the ribbon. Five panels follow whichever entity is selected.
 | Parameters | Live parameter values fed into the state machine |
 | Studio Preview | An isolated render of the model with an orbit camera and skeleton overlay |
 
-Selection is forgiving. Clicking a mesh child or an individual bone resolves to the ancestor carrying the animator, so every panel follows along.
+Selection is forgiving. Clicking a mesh child or an individual bone resolves to the ancestor carrying the animator, so every panel follows along. Deselecting (clicking empty space, `Escape`) leaves the panels on the entity they were showing; they switch only when you pick another entity. Each entity remembers the clip you last had open on it, so selecting it again brings that clip back rather than its default.
 
 Editing a parameter in the **Parameters** panel pushes it straight into the running animator, so you can preview transitions without playing the game.
 
@@ -92,15 +92,79 @@ The panels offer the next step rather than sitting empty.
 
 <!-- screenshot: timeline.png - the Timeline panel with track lanes, keyframes and the playhead -->
 
+### The toolbar
+
+Everything sits on one row.
+
+- **Left:** the clip picker, showing the entity and clip (click it to switch clips, **Rename clip...** the current one, start a **New clip...**, or **Use an existing clip...** from the project; picking a clip frames it to fill the lanes), a **+** that creates a new clip straight away, and the red **Record** toggle.
+- **Centre:** the transport (first frame, previous key, play/pause, next key, last frame, loop) and the time readout: the playhead's time, the clip's length and the frame number, each in a fixed-width slot so the buttons never shift as the numbers change. First frame goes to the loop start, and pressed again there to `0`; last frame goes to the loop end, then to the clip's end.
+- **Right:** playback speed, snap, the **Keys / Curves** switch, and **⋯**.
+
+The **⋯** menu holds what used to crowd the bar: the clip **Length**, a name field and **Add at playhead** for event markers, zoom in, zoom out and **Frame all**, the **Row height** (**Compact**, **Normal** or **Roomy**), **Add property track**, **Key every property track**, and **Save now**.
+
+### Tracks and keys
+
+The track list on the left has a filter box, **+ Track**, a right edge you can drag to widen it for long bone names, and an **All tracks** row (marked with a stack icon) whose lane summarises every key in the clip: a diamond at each key time on any track, and a tinted bar wherever some track keys continuously (every frame or two, as an imported clip does). Drag a summary diamond to retime every key at that moment on every track at once; it snaps like any key drag and can be undone. Diamonds closer together than a few pixels are thinned out; zoom in to reach each one. Bones nest under their parent bone; click the caret to fold a subtree. Each bone row shows **T**, **R** and **S** chips for the translation, rotation and scale channels it animates, tinted to match their keys. Lanes are flat. A scrollbar along the bottom scrolls through time and one down the right scrolls the rows; drag a thumb, or click the bar beside it to jump there. Dragging a scrollbar never moves the playhead.
+
+Right-click a bone or property row in the track list for its menu:
+
+- **Delete track** removes the track and its keys from the clip.
+- **Disable track** keeps the track and its keys but leaves it out of playback, in the editor preview and in play mode, so you can see how the clip plays without it. A disabled row and its lane are dimmed and the row shows an eye-slash; **Enable track** in the same menu turns it back on. The flag is saved in the `.anim` file as `muted: true`.
+
+Both are ordinary clip edits, so they can be undone.
+
+A stretch of every-frame keys, which is what an imported clip is made of, draws as one bar with a diamond at each end. Zoom in until the keys are far enough apart and the inner keys become diamonds you can pick. Lone keys always draw as diamonds. Selected keys are amber with a ring.
+
 | Action | How |
 |---|---|
-| Retime a keyframe | Drag it horizontally. Snap-aware. |
-| Select a keyframe | Click it. The playhead jumps to it and its value shows in the toolbar. |
-| Delete | `Delete` with a key selected, or right-click the key |
-| Zoom the time axis | Mouse wheel |
-| Set clip length | The **Length** field in the toolbar |
+| Select a key | Click it. `Shift` + click adds or removes it from the selection. |
+| Box-select | Drag on empty lane space. `Shift` adds to the selection. |
+| Retime | Drag a selected key; every selected key moves with it. Snap-aware. |
+| Edit a key | Click a key without dragging to open its popover |
+| Move the playhead | Click empty lane space, press or drag in the lower half of the ruler, or drag the playhead itself by its needle or its time badge |
+| Set the loop region | Drag its start or end handle in the upper half of the ruler, drag the blue band to move it whole, or press `I` / `O` to set its start / end at the playhead. The clip's keys are not changed. |
+| Set clip length | Drag the clip-length marker (the tab on the ruler's bottom edge), or the **Length** field in **⋯** |
+| Scroll the tracks | Mouse wheel, or the right-hand scrollbar |
+| Pan the time axis | `Shift` + wheel, a sideways trackpad swipe, or the bottom scrollbar |
+| Zoom the time axis | `Ctrl` + wheel, about the cursor. Deep enough that one frame spans over a hundred pixels. |
+| Taller or shorter rows | `Alt` + wheel, or **Row height** in **⋯** |
+| Pan freely | Middle-drag anywhere over the lanes, or right-drag from empty lane space (a right-click that does not move still opens the menu) |
 
-Dense keyframe runs draw as range bars rather than thousands of diamonds. Zoom in and they split back into editable keys.
+The ruler has two halves. The **upper half** holds the preview loop region: a blue band between a start handle and an end handle, brighter and with a thin line along its top while looping is on. Drag either handle to resize it, or drag the band to move it, keeping its length. The **lower half** scrubs, and carries the **clip-length marker**: a small tab in the muted text colour at the clip's end, which is the one control here that changes the clip itself. On a fresh clip the region is the whole clip, so the loop end sits right above the length marker; the upper half takes the loop end and the lower half the length. While the band still spans the whole clip it has nowhere to move, so the upper half scrubs too.
+
+With looping on, preview playback runs to the loop end and wraps back to the loop start. Started from past the loop end, it plays on to the clip's end first and then wraps. The region only affects the editor preview, never the clip's keys or runtime playback, and it resets to the whole clip when you switch clips. A region left at the clip's end follows it when the length changes.
+
+Where a loop handle and the playhead overlap, the handle is taken; grab the playhead by the side of its badge instead. Dragging the badge does not jump the playhead under the cursor first. The time labels run across the whole ruler, past the clip's end too, so none disappear while a handle is dragged. The cursor is a grab hand over a key, the playhead or the band, a resize arrow over a handle or the length marker, and the ordinary pointer over empty space.
+
+### Particles
+
+When the selected entity, or the entity the Timeline resolved it to, has a [Particle System](../rendering/particle-system.md) (on itself or on a child), its effect's [keyed parameters](../rendering/particle-system.md#keyed-parameters) appear under the animation tracks as a **Particles · *effect name*** group, in the same rows, diamonds and bars, with a sparkle where a bone row has its bone:
+
+- one row per **emitter**, whose bar shows where it is on (a key on it switches it on or off);
+- one row per **burst** track, a diamond per burst;
+- one row per keyed **parameter**, named like **Flames · Spawn Rate**.
+
+**+ Track** then offers **Property track** and a **Particle parameter** submenu: each emitter's **Enabled**, **Burst**, and every unwired number, vector or colour input of its graph. Keys work as everywhere else: right-click a row's lane for **Add keyframe here** (on a parameter it keys the value it has there; on an emitter row it switches the emitter), drag to retime, `Delete` to remove, click for the key card (time, value, and **Linear**, **Smooth** or **Step**), or right-click a key for delete and interpolation. `K` keys every parameter at the playhead. Right-click a row in the track list to delete it.
+
+The playhead drives the effect: scrub and it shows exactly that moment (the effect is replayed to it, so it is deterministic); press Play and it plays with the animation from the same clock, wrapping with the loop region. Until you scrub or play, a selected effect keeps playing on its own, and it gets its own playback back when you select something else.
+
+An entity with a Particle System and no animation clip still gets the Timeline: the clip picker shows the effect's name and the ruler is the effect's duration (dragging the length marker changes it). On a `.vfx` document tab the Timeline shows that effect. Edits go through the effect editor's document, so they show in the viewport at once, are undone with `Ctrl` + `Z`, and are saved with the effect (Save in either panel, or automatically when the effect is not open in a tab). A built-in effect is shown but cannot be keyed: copy it into the project first.
+
+### The key popover
+
+Clicking a key opens a small card beside it with the key's **Time** and its values (bone rotations as degrees), six easing buttons (Linear, Smooth, Ease in, Ease out, Step, Bounce), and **Copy** and **Delete**. Easing applies to property keys; bone keys always blend linearly. An easing button applies to every selected key. Every edit made here can be undone. `Escape` closes it.
+
+### Curves
+
+**Curves** swaps the lanes for a value graph of the selected track: a labelled value grid aligned with the ruler, the sampled curve, and its keys. For a bone, the toolbar picks which channel to plot (Position, Rotation or Scale); for a property track it offers **Smooth**, **Linear** and **Step** for the selected keys. **Frame all** fits the clip. Hovering reads out the time and value under the cursor, and keys can be dragged here too.
+
+### No clip yet
+
+With an animatable entity selected but no clip open, the Timeline offers three cards:
+
+- **Record** creates a clip with translation, rotation and scale tracks and arms record mode, so posing the object keys it.
+- **Key a property** creates a clip and opens the property picker for its first track.
+- **Use an existing clip** opens an `.anim` file from the project.
 
 ### Shortcuts
 
@@ -109,11 +173,15 @@ While the cursor is over the Timeline:
 | Key | Action |
 |---|---|
 | `Space` | Play or pause |
-| `Home` / `End` | Jump to start or end |
-| `←` / `→` | Step one frame |
+| `Home` / `End` | Jump to the loop region's start or end (the clip's, until a region is set) |
+| `Shift` + `Home` / `Shift` + `End` | Jump to the clip's start or end |
+| `I` / `O` | Set the loop region's start / end at the playhead |
+| `←` / `→` (or `,` / `.`) | Step one frame |
 | `K` | Add a keyframe on every track at the playhead |
 | `N` | New track |
-| `Delete` | Delete the selected keyframe |
+| `Delete` / `Backspace` | Delete the selected keys |
+| `Ctrl` + `C` / `Ctrl` + `V` | Copy the selected keys / paste them at the playhead |
+| `Escape` | Close the popover, then clear the selection |
 
 ## Animating a property
 

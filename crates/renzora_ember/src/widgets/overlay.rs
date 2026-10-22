@@ -150,21 +150,8 @@ pub fn overlay_val_parts(
         ))
         .id();
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
-    let close = commands
-        .spawn((
-            Node {
-                padding: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            UiInteraction::default(),
-            OverlayClose,
-            Name::new("overlay-close"),
-        ))
-        .id();
-    let close_icon = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
-    commands.entity(close).add_child(close_icon);
+    let close = close_button(commands, fonts);
+    commands.entity(close).insert((OverlayClose, Name::new("overlay-close")));
     commands
         .entity(titlebar)
         .add_children(&[title_text, spacer, close]);
@@ -185,6 +172,60 @@ pub fn overlay_val_parts(
     commands.entity(card).add_children(&[titlebar, content]);
     commands.entity(root).add_child(card);
     OverlayParts { root, card, titlebar, content }
+}
+
+/// The X in a dialog's title bar: a 22px rounded square with a dark fill of
+/// its own, so it reads as a button. Carries `UiInteraction` and the pointer
+/// cursor; the caller adds whatever marker its close system listens for.
+///
+/// One helper for every overlay, modal and floating window, so their close
+/// buttons match. A bare glyph in the corner was easy to miss and gave no
+/// sign it was something to press; a light fill (white at 6%) read as a
+/// disabled grey box against the title bar. Darker than the bar at rest, a
+/// step lighter on hover, with the glyph brightening to match.
+pub fn close_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let close = commands
+        .spawn((
+            Node {
+                width: Val::Px(22.0),
+                height: Val::Px(22.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(close_button_rest()),
+            UiInteraction::default(),
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+        ))
+        .id();
+    let hovered = move |w: &crate::reactive::Rx| {
+        matches!(
+            w.get::<UiInteraction>(close),
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
+        )
+    };
+    crate::reactive::tracked::bind_bg(commands, close, move |w| {
+        if hovered(w) {
+            Color::srgba(1.0, 1.0, 1.0, 0.10)
+        } else {
+            close_button_rest()
+        }
+    });
+    let close_icon = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
+    commands.entity(close_icon).insert(crate::interaction::PASS_THROUGH);
+    crate::reactive::tracked::bind_text_color(commands, close_icon, move |w| {
+        rgb(if hovered(w) { text_primary() } else { text_muted() })
+    });
+    commands.entity(close).add_child(close_icon);
+    close
+}
+
+/// The close button's fill at rest: black at 28%, so it lands a step darker
+/// than whatever title bar it sits on, in any theme.
+fn close_button_rest() -> Color {
+    Color::srgba(0.0, 0.0, 0.0, 0.28)
 }
 
 /// Escape, a backdrop click (outside the card), or the X closes the overlay.

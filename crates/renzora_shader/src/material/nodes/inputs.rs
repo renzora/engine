@@ -187,6 +187,61 @@ pub static SPRITE_COLOR: MaterialNodeDef = MaterialNodeDef {
     color: CLR_INPUT,
 };
 
+// ── Particles ───────────────────────────────────────────────────────────────
+//
+// What a particle wearing this material knows about itself, from the particle
+// vertex shader (`renzora_particles`' particle_surface.wesl). On anything that
+// is not a particle (a mesh, the material preview) each reads as a neutral
+// constant, so one material can dress a level and a burst of its debris.
+
+pub static PARTICLE_COLOR: MaterialNodeDef = MaterialNodeDef {
+    node_type: "input/particle_color",
+    display_name: "Particle Color",
+    category: CAT_INPUT,
+    description: "The particle's colour, after its colour over life. White outside particles",
+    pins: || {
+        vec![
+            PinTemplate::output("color", "Color", PinType::Color),
+            PinTemplate::output("rgb", "RGB", PinType::Vec3),
+            PinTemplate::output("a", "A", PinType::Float),
+        ]
+    },
+    color: CLR_INPUT,
+};
+
+pub static PARTICLE_AGE: MaterialNodeDef = MaterialNodeDef {
+    node_type: "input/particle_age",
+    display_name: "Particle Age",
+    category: CAT_INPUT,
+    description: "The particle's age over its lifetime: 0 at birth, 1 at death. 0 outside particles",
+    pins: || vec![PinTemplate::output("age", "Age", PinType::Float)],
+    color: CLR_INPUT,
+};
+
+pub static PARTICLE_RANDOM: MaterialNodeDef = MaterialNodeDef {
+    node_type: "input/particle_random",
+    display_name: "Particle Random",
+    category: CAT_INPUT,
+    description: "A 0-1 random fixed for each particle's whole life, so no two look alike. 0 outside particles",
+    pins: || vec![PinTemplate::output("value", "Value", PinType::Float)],
+    color: CLR_INPUT,
+};
+
+pub static PARTICLE_VELOCITY: MaterialNodeDef = MaterialNodeDef {
+    node_type: "input/particle_velocity",
+    display_name: "Particle Velocity",
+    category: CAT_INPUT,
+    description: "The particle's world-space velocity, its speed and its direction. Zero outside particles",
+    pins: || {
+        vec![
+            PinTemplate::output("velocity", "Velocity", PinType::Vec3),
+            PinTemplate::output("speed", "Speed", PinType::Float),
+            PinTemplate::output("direction", "Direction", PinType::Vec3),
+        ]
+    },
+    color: CLR_INPUT,
+};
+
 pub static OBJECT_POSITION: MaterialNodeDef = MaterialNodeDef {
     node_type: "input/object_position",
     display_name: "Object Position",

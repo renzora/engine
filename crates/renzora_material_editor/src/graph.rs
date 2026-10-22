@@ -22,9 +22,9 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{dropdown, graph_comment_view, graph_node_view, graph_wire_view, icon_button, icon_label_button, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
+use renzora_ember::widgets::{comment_search_entry, dropdown, graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_ember::UiInteraction;
 use renzora_shader::material::codegen;
 use renzora_shader::material::graph::{
@@ -52,9 +52,6 @@ fn category_icon(category: &str) -> &'static str {
     }
 }
 
-/// Image extensions accepted when dropping an asset onto the graph to spawn a
-/// texture-sample node (matches the inspector's texture-field drop set).
-const IMG_EXTS: [&str; 10] = ["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
 
 /// Texture-sample node variants the node-header switcher cycles between. All bind
 /// a plain **2D** texture via `input_values["texture"]`, so switching one for
@@ -245,6 +242,8 @@ enum ViewOp {
     Center,
     ZoomIn,
     ZoomOut,
+    /// Not a view op strictly, but it acts on this view's selection.
+    Comment,
 }
 /// A pan/zoom toolbar button, bound to **its own** graph viewport.
 ///
@@ -271,28 +270,62 @@ struct MaterialTabsRoot {
 /// which query by marker regardless of where the button lives.
 fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, view: Entity) -> Entity {
     // Content-sized row — the strip host supplies the background and centering.
+    // Full width, with room around the buttons: the old content-sized row
+    // packed every control against the next. Document actions on the left,
+    // view controls pushed to the right edge (see the spacer below).
     let bar = commands
         .spawn((
-            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(8.0)), flex_shrink: 0.0, ..default() },
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(38.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(12.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
             Name::new("material-graph-toolbar"),
         ))
         .id();
-    let add = icon_label_button(commands, fonts, "plus", "Add Node");
+    // Flat buttons rather than ember's filled grey blocks, which sat on the
+    // graph like a row of slabs: an action reads by its icon and label, the
+    // hover wash says it is clickable, and only Apply (the one action that
+    // changes anything outside this panel) is filled, in the accent.
+    let add = tool_button(commands, fonts, "plus", Some("Add Node"), "Add a node (or right-click the graph)", ToolLook::Flat);
     // `add_node_open` reads the button's `RelativeCursorPosition` to place the
-    // add-node menu under the cursor; the ember button doesn't carry one, so add
-    // it here (the old hand-rolled button included it).
+    // add-node menu under it.
     commands.entity(add).insert((AddNodeBtn, RelativeCursorPosition::default()));
-    let apply = icon_label_button(commands, fonts, "check", "Apply");
+    let apply = tool_button(commands, fonts, "check", Some("Apply"), "Apply the graph to the material", ToolLook::Primary);
     commands.entity(apply).insert(ApplyBtn);
-    let sep = toolbar_divider(commands);
-    let fit = icon_label_button(commands, fonts, "arrows-in", "Fit");
+    // Comments were reachable only through the C key with nodes selected, which
+    // nothing on screen mentioned.
+    let comment = tool_button(commands, fonts, "chat-text", Some("Comment"), "Group the selected nodes in a comment box, or add an empty one (C)", ToolLook::Flat);
+    commands.entity(comment).insert(ViewOpBtn { op: ViewOp::Comment, view });
+    let sep = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    // The view controls sit together at the right edge as plain icon keys.
+    // They used to be boxed in a recessed group, which read as a black slab.
+    let view_group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Name::new("material-graph-view-group"),
+        ))
+        .id();
+    let fit = tool_button(commands, fonts, "arrows-in", None, "Fit the graph in view", ToolLook::Flat);
     commands.entity(fit).insert(ViewOpBtn { op: ViewOp::Fit, view });
-    let center = icon_label_button(commands, fonts, "crosshair-simple", "Center");
+    let center = tool_button(commands, fonts, "crosshair-simple", None, "Center the view", ToolLook::Flat);
     commands.entity(center).insert(ViewOpBtn { op: ViewOp::Center, view });
-    let zin = icon_button(commands, fonts, "magnifying-glass-plus");
+    let zin = tool_button(commands, fonts, "magnifying-glass-plus", None, "Zoom in", ToolLook::Flat);
     commands.entity(zin).insert(ViewOpBtn { op: ViewOp::ZoomIn, view });
-    let zout = icon_button(commands, fonts, "magnifying-glass-minus");
+    let zout = tool_button(commands, fonts, "magnifying-glass-minus", None, "Zoom out", ToolLook::Flat);
     commands.entity(zout).insert(ViewOpBtn { op: ViewOp::ZoomOut, view });
+    commands.entity(view_group).add_children(&[fit, center, zin, zout]);
 
     // Material picker — a dropdown of every material in the selected entity's
     // subtree (a model can have many, so a dropdown beats a tab row; it scrolls
@@ -313,8 +346,68 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, view: Entity) -> E
         w.get_resource::<MaterialEditorState>().is_some_and(|s| !s.tabs.is_empty())
     });
 
-    commands.entity(bar).add_children(&[mat_section, add, apply, sep, fit, center, zin, zout]);
+    commands.entity(bar).add_children(&[mat_section, add, comment, apply, sep, view_group]);
     bar
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ToolLook {
+    /// No fill at rest, a hover wash.
+    Flat,
+    /// Filled in the accent: the panel's one primary action.
+    Primary,
+}
+
+/// A toolbar button: an icon, an optional label, a tooltip.
+fn tool_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: Option<&str>, tip: &str, look: ToolLook) -> Entity {
+    let primary = look == ToolLook::Primary;
+    let btn = commands
+        .spawn((
+            Node {
+                height: Val::Px(28.0),
+                min_width: Val::Px(28.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(if label.is_some() { 12.0 } else { 0.0 })),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            UiInteraction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(tip),
+            Name::new("material-graph-tool"),
+        ))
+        .id();
+    bind_bg(commands, btn, move |w| {
+        let hot = matches!(w.get::<UiInteraction>(btn), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed));
+        match (primary, hot) {
+            (true, false) => rgb(accent()),
+            (true, true) => renzora_ember::theme::mix(accent(), text_primary(), 0.15),
+            (false, true) => rgb(hover_bg()),
+            (false, false) => Color::NONE,
+        }
+    });
+    let icon_color = if primary { on_accent() } else if label.is_some() { accent() } else { text_muted() };
+    let glyph = icon_text(commands, &fonts.phosphor, icon, icon_color, 14.0);
+    commands.entity(glyph).insert(renzora_ember::interaction::PASS_THROUGH);
+    let mut kids = vec![glyph];
+    if let Some(label) = label {
+        let t = commands
+            .spawn((
+                Text::new(label),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(if primary { on_accent() } else { text_primary() })),
+                renzora_ember::interaction::PASS_THROUGH,
+            ))
+            .id();
+        kids.push(t);
+    }
+    commands.entity(btn).add_children(&kids);
+    btn
 }
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -353,16 +446,6 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(root).add_children(&[toolbar, handle.viewport]);
     renzora_editor_framework::mark_drop_zone(commands, root);
     root
-}
-
-/// A thin vertical separator between toolbar button groups.
-fn toolbar_divider(commands: &mut Commands) -> Entity {
-    commands
-        .spawn((
-            Node { width: Val::Px(1.0), height: Val::Px(18.0), margin: UiRect::horizontal(Val::Px(2.0)), flex_shrink: 0.0, ..default() },
-            BackgroundColor(rgb(border())),
-        ))
-        .id()
 }
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
@@ -1080,6 +1163,7 @@ fn view_op_click(q: Query<(&UiInteraction, &ViewOpBtn), Changed<UiInteraction>>,
             ViewOp::Center => v.center_request = true,
             ViewOp::ZoomIn => v.zoom_request = Some(1.25),
             ViewOp::ZoomOut => v.zoom_request = Some(0.8),
+            ViewOp::Comment => v.request_comment(None),
         }
     }
 }
@@ -1112,13 +1196,16 @@ fn context_menu_open(
     fonts: Option<Res<EmberFonts>>,
     state: Option<Res<MaterialEditorState>>,
     mut commands: Commands,
-    mut views: Query<&mut NodeGraphView, With<MatGraph>>,
+    mut views: Query<(Entity, &mut NodeGraphView), With<MatGraph>>,
 ) {
     let Some(fonts) = fonts else { return };
     let domain = state.map(|s| s.graph.domain).unwrap_or_default();
-    for mut v in &mut views {
+    for (view, mut v) in &mut views {
         if let Some((screen, canvas)) = v.context_menu.take() {
-            open_add_menu(&mut commands, &fonts, screen.x, screen.y, [canvas.x, canvas.y], domain);
+            // Comment leads the list: it is the one entry that is not a node.
+            let mut entries = vec![comment_search_entry(view, canvas)];
+            entries.extend(mat_node_entries([canvas.x, canvas.y], domain));
+            search_menu(&mut commands, &fonts, screen.x, screen.y, entries);
         }
         // Cable dragged onto empty canvas → palette that auto-wires to the pin.
         if let Some(cd) = v.connect_drag.take() {
@@ -1262,7 +1349,9 @@ fn mat_graph_image_drop(
     let all = if payload.paths.is_empty() { std::slice::from_ref(&payload.path) } else { payload.paths.as_slice() };
     let imgs: Vec<&std::path::PathBuf> = all
         .iter()
-        .filter(|p| p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).is_some_and(|e| IMG_EXTS.contains(&e.as_str())))
+        // The shared image list (the inspector's texture fields use it too),
+        // so an SVG dropped here spawns a texture-sample node like a PNG.
+        .filter(|p| renzora::is_image_path(p))
         .collect();
     if imgs.is_empty() {
         return;
@@ -1311,6 +1400,27 @@ fn open_add_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, ba
 /// adding the node at `base` and recompiling the shader. Nodes `domain`
 /// refuses are left out: a Sprite material never offers Scene Depth, and a 3D
 /// one never offers Sprite Color.
+/// A node's pins in a few characters, for the add-node menu: up to two input
+/// names, then up to two output names, "UV, Scale +3 › Value". Enough to tell
+/// two similar nodes apart without opening either.
+fn pin_hint(pins: &[PinTemplate]) -> String {
+    let side = |dir: PinDir| {
+        let names: Vec<&str> = pins.iter().filter(|p| p.direction == dir).map(|p| p.label.as_str()).collect();
+        let mut s = names.iter().take(2).copied().collect::<Vec<_>>().join(", ");
+        if names.len() > 2 {
+            s.push_str(&format!(" +{}", names.len() - 2));
+        }
+        s
+    };
+    let (ins, outs) = (side(PinDir::Input), side(PinDir::Output));
+    match (ins.is_empty(), outs.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => outs,
+        (false, true) => ins,
+        (false, false) => format!("{ins} \u{203a} {outs}"),
+    }
+}
+
 fn mat_node_entries(base: [f32; 2], domain: MaterialDomain) -> Vec<SearchEntry> {
     let mut entries = Vec::new();
     for category in categories() {
@@ -1323,7 +1433,7 @@ fn mat_node_entries(base: [f32; 2], domain: MaterialDomain) -> Vec<SearchEntry> 
                 continue;
             }
             let node_type = def.node_type;
-            entries.push(SearchEntry::new(icon, def.display_name, category, move |w| {
+            let entry = SearchEntry::new(icon, def.display_name, category, move |w| {
                 if let Some(mut s) = w.get_resource_mut::<MaterialEditorState>() {
                     s.graph.add_node(node_type, base);
                     let graph = s.graph.clone();
@@ -1332,7 +1442,10 @@ fn mat_node_entries(base: [f32; 2], domain: MaterialDomain) -> Vec<SearchEntry> 
                     s.compile_errors = result.errors;
                     s.is_dirty = true;
                 }
-            }));
+            })
+            .with_detail(pin_hint(&(def.pins)()))
+            .with_description(def.description);
+            entries.push(entry);
         }
     }
     entries

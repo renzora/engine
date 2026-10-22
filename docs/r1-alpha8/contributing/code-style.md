@@ -39,7 +39,6 @@ CI denies all warnings. Lint locally with `renzora check`, which runs the follow
 ```bash
 cargo clippy --workspace --no-deps \
     --exclude bevy_gauge \
-    --exclude bevy_hanabi \
     --exclude bevy_mod_outline \
     --exclude bevy_silk \
     --exclude vleue_navigator \
@@ -65,7 +64,7 @@ Tests run with the same first-party scope as Clippy, excluding the vendored crat
 
 ```bash
 cargo test --workspace \
-    --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
+    --exclude bevy_gauge --exclude bevy_mod_outline \
     --exclude bevy_silk --exclude vleue_navigator \
     --exclude bevy_args --exclude bevy_interleave \
     --exclude bevy_interleave_interface --exclude bevy_interleave_macros \

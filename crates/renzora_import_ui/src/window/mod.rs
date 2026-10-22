@@ -133,6 +133,7 @@ pub(crate) fn register(app: &mut App) {
                 interaction::reconvert_click,
                 lifecycle::settings_watch,
                 crate::overlay::drive_reimport,
+                interaction::commit_when_converted,
                 lifecycle::auto_start_import,
                 lifecycle::on_staged_changed,
                 lifecycle::close_when_finished,

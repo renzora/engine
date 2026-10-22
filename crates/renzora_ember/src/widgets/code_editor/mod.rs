@@ -279,6 +279,14 @@ impl CodeEditor {
         layout::build_rows(&self.text, &self.folds, self.wrap_cols)
     }
 
+    /// The furthest the view scrolls: the last row sits at the bottom of the
+    /// viewport. It used to be `rows - 1`, which let the wheel push the whole
+    /// file up and out of view until only its last line was left at the top,
+    /// over a panel of empty space.
+    fn max_scroll(&self, rows: usize) -> usize {
+        rows.saturating_sub(self.visible.max(1))
+    }
+
     /// Reset per-document transient state on a document switch: fold anchors
     /// (they index the old buffer), undo history, and click tracking.
     fn reset_view_state(&mut self) {

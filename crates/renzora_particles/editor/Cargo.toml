@@ -1,0 +1,27 @@
+[package]
+name = "renzora_particles_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_particles: the .vfx effect editor (ember node graph, live preview, emitter settings, template gallery), the Particle System Add Entity preset and its inspector. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_particles = { path = ".." }
+# The viewport gizmo: the overlay gizmo group and the selection it follows.
+renzora_gizmo = { path = "../../renzora_gizmo" }
+renzora_editor_framework = { path = "../../renzora_editor_framework" }
+# The effect editor's panels: the node graph view, inline editors, menus.
+renzora_ember = { path = "../../renzora_ember" }
+# Edits go on the document's own undo stack, as the material editor's do.
+renzora_undo = { path = "../../renzora_undo" }
+# The inspector drawer reuses its asset drop slot.
+renzora_inspector = { path = "../../renzora_inspector" }
+ron = "0.8"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The texture slot's Browse button.
+rfd = "0.15"
+
+[lints]
+workspace = true

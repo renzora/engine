@@ -296,39 +296,14 @@ fn build_header_commit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commit
 }
 
-/// The window's close control: an × in the title bar's right corner.
+/// The window's close control: an × in the title bar's right corner, the
+/// shared dialog close button so it matches every overlay's.
 fn build_header_close(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                width: Val::Px(28.0),
-                height: Val::Px(28.0),
-                flex_shrink: 0.0,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(5.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            UiInteraction::default(),
-            CancelBtn,
-            hover_cursor(),
-            renzora_ember::widgets::HoverTooltip::new("Close without importing"),
-        ))
-        .id();
-    bind_bg(commands, btn, move |w| {
-        if matches!(
-            w.get::<UiInteraction>(btn),
-            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
-        ) {
-            rgb(super::RED).with_alpha(0.25)
-        } else {
-            Color::NONE
-        }
-    });
-    let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 15.0);
-    commands.entity(x).insert(PASS_THROUGH);
-    commands.entity(btn).add_child(x);
+    let btn = renzora_ember::widgets::close_button(commands, fonts);
+    commands.entity(btn).insert((
+        CancelBtn,
+        renzora_ember::widgets::HoverTooltip::new("Close without importing"),
+    ));
     btn
 }
 

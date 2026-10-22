@@ -194,7 +194,7 @@ projects are unaffected. The editor rewrites the section when the mixer changes
 the four built-ins and every emitter routed to a custom bus falls through to the
 SFX fallback: right volume, wrong bus, no error.
 
-`editor_open_tabs` records every document tab that was open when the project was last used (`{ path, kind }` entries, in display order, `kind` one of `scene`/`material`/`particle`/`blueprint`/`script`/`shader`/`other`). The editor rewrites it whenever a pathed tab is added, closed, or reordered and restores the whole tab set on project load; the *active* scene still comes from `editor_last_scene`, which also updates as you switch between scene tabs. Both fields are stripped from exported builds.
+`editor_open_tabs` records every document that was open when the project was last used (`{ path, kind }` entries, in the order the scene switcher lists them, `kind` one of `scene`/`material`/`particle`/`blueprint`/`script`/`shader`/`other`). The editor rewrites it whenever a document with a file is opened or closed and restores the whole set on project load; the *active* scene still comes from `editor_last_scene`, which also updates as you switch between scenes. Both fields are stripped from exported builds.
 
 `CurrentProject` provides `resolve_path("scenes/foo.ron")`, `main_scene_path()`, `make_relative(..)`, and `save_config()` (writes `project.toml` back).
 

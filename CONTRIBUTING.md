@@ -222,7 +222,7 @@ renzora test host_client_promoted     # a single test by substring
 
 > **`cargo test --workspace` does not pass natively**, and that's expected. It builds *example* targets, and two vendored XR crates have examples that never got a Bevy 0.19 rename. CI doesn't hit this because it excludes those crates. Test per-crate, or use `renzora test`.
 
-CI runs `cargo test` and `cargo clippy -D warnings` inside the shared base image, excluding the vendored Bevy-ecosystem crates (`bevy_gauge`, `bevy_hanabi`, `bevy_mod_outline`, `bevy_silk`, `vleue_navigator`, `bevy_mod_openxr`, `bevy_mod_xr`, `bevy_xr_utils`) — they're third-party code copied into the tree, and running their suites just re-tests upstream. New first-party crates are covered automatically by `--workspace`.
+CI runs `cargo test` and `cargo clippy -D warnings` inside the shared base image, excluding the vendored Bevy-ecosystem crates (`bevy_gauge`, `bevy_mod_outline`, `bevy_silk`, `vleue_navigator`, `bevy_mod_openxr`, `bevy_mod_xr`, `bevy_xr_utils`): they're third-party code copied into the tree, and running their suites just re-tests upstream. New first-party crates are covered automatically by `--workspace`.
 
 ### Writing Tests
 

@@ -63,6 +63,10 @@ pub enum Command {
         pan: f32,
         muted: bool,
         soloed: bool,
+        /// Key of the bus this one feeds; `None` feeds Master.
+        output: Option<String>,
+        reverb_send: f32,
+        delay_send: f32,
     },
     Play {
         id: VoiceId,
@@ -319,13 +323,19 @@ fn apply(engine: &mut Engine, command: Command) {
             pan,
             muted,
             soloed,
+            output,
+            reverb_send,
+            delay_send,
         } => {
             if let Some(bus) = engine.bus_mut(&key) {
                 bus.gain = gain;
                 bus.pan = pan;
                 bus.muted = muted;
                 bus.soloed = soloed;
+                bus.reverb_send = reverb_send;
+                bus.delay_send = delay_send;
             }
+            engine.set_bus_output(&key, output.as_deref());
         }
         Command::Play { id, source, params } => engine.play(id, source, &params),
         Command::Stop { id, fade } => engine.stop(id, fade),

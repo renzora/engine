@@ -1,6 +1,10 @@
 //! A **reusable, data-driven** timeline canvas: a fixed left track-header column,
-//! a time ruler, striped keyframe/clip lanes, a playhead and a click/drag scrub
+//! a time ruler, flat keyframe/clip lanes, a playhead and a click/drag scrub
 //! layer — all sharing one time→pixel mapping driven by the caller's own state.
+//!
+//! Lanes are flat, split by a faint hairline, not striped odd/even: the
+//! stripes made a dense dopesheet read as a grid of bands competing with the
+//! keys, and they had to be rebuilt whenever rows scrolled past each other.
 //!
 //! Unlike the self-contained [`crate::widgets::timeline`] demo (which owns its
 //! pps/scroll/playhead), `timeline_view` is a *shell*: the caller mounts its own
@@ -30,8 +34,10 @@ use crate::UiInteraction;
 /// Left gutter (px) between the lane pane's edge and `t=0`, so the playhead and
 /// the `t=0` keyframe aren't flush against (and clipped by) the header column.
 /// The ruler, playhead, scrub mapping AND the caller's keyframe placement all
-/// add this, so everything stays aligned.
-pub const LANE_INSET: f32 = 14.0;
+/// add this, so everything stays aligned. 24 rather than the 14 it was: at 14
+/// the loop region's start handle sat half under the header column and time
+/// zero read as jammed against it.
+pub const LANE_INSET: f32 = 24.0;
 
 /// Live geometry of a [`timeline_view`], owned on its root entity. The caller
 /// writes the fields each frame from its own state (via [`TimelineView::set_geom`])
@@ -50,9 +56,20 @@ pub struct TimelineView {
     pub track_height: f32,
     /// Number of track rows.
     pub track_count: usize,
+    /// Vertical scroll of the rows, px: row `i` sits at `i * track_height -
+    /// vscroll`. The caller owns it (and offsets its own rows to match); the
+    /// widget only uses it to place the lane separators.
+    pub vscroll: f32,
     /// Set by the widget when the user scrubs; the caller takes it and applies.
     pub scrub_out: Option<f32>,
+    /// Header column width the user dragged the splitter to, px. `None`
+    /// follows the theme's [`TimelineStyle::header_width`].
+    pub header_width: Option<f32>,
 }
+
+/// Header column width limits for the splitter, px.
+const HEADER_MIN: f32 = 120.0;
+const HEADER_MAX: f32 = 640.0;
 
 impl TimelineView {
     /// Push the caller's current geometry in one call.
@@ -98,14 +115,26 @@ pub struct TimelineHandle {
 struct TlPlayhead {
     root: Entity,
 }
+/// The transparent surface over the lanes that turns a press into a scrub.
+/// Public so a caller that knows what is under the cursor (a key, a handle,
+/// empty space) can set this surface's `HoverCursor` to match.
 #[derive(Component)]
-struct TlScrub {
+pub struct TlScrub {
     root: Entity,
 }
 #[derive(Component)]
-struct TlHeaderCol;
+struct TlHeaderCol {
+    root: Entity,
+}
 #[derive(Component)]
 struct TlRulerRow;
+/// The splitter between the header column and the lanes. `grab` holds the
+/// cursor x and column width at the press while a drag is under way.
+#[derive(Component)]
+struct TlSplitter {
+    root: Entity,
+    grab: Option<(f32, f32)>,
+}
 
 /// Build a timeline shell. Returns the host entities the caller fills.
 pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHandle {
@@ -132,10 +161,13 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
                 width: Val::Px(st.header_width),
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Column,
+                // Rows scroll vertically with the lanes (the caller offsets
+                // `header_list`), so the column clips what scrolls past it.
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
-            TlHeaderCol,
+            TlHeaderCol { root },
         ))
         .id();
     let header_corner = commands
@@ -157,17 +189,49 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
+            position_type: PositionType::Relative,
             ..default()
         })
         .id();
-    commands.entity(header_col).add_children(&[header_corner, header_list]);
+    // The caller scrolls rows by nudging `header_list` up by part of a row, so
+    // the rows need a clip of their own under the corner: clipping only the
+    // column let the top row slide over the filter and "+ Track".
+    let header_rows = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_grow: 1.0,
+            min_height: Val::Px(0.0),
+            flex_direction: FlexDirection::Column,
+            overflow: Overflow::clip(),
+            ..default()
+        })
+        .id();
+    commands.entity(header_rows).add_child(header_list);
+    commands.entity(header_col).add_children(&[header_corner, header_rows]);
 
+    // The separator doubles as a resize handle: an 8px grab strip around a
+    // 3px line (a hairline was too thin to find), which lights in the accent while hovered or dragged. A strip
+    // overhanging its neighbours would lose its right half to the pane's scrub
+    // layer, which is drawn later, so it takes its own few pixels instead.
     let sep = commands
         .spawn((
-            Node { width: Val::Px(1.0), height: Val::Percent(100.0), flex_shrink: 0.0, ..default() },
-            BackgroundColor(rgb(border())),
+            Node { width: Val::Px(8.0), height: Val::Percent(100.0), flex_shrink: 0.0, justify_content: JustifyContent::Center, ..default() },
+            BackgroundColor(Color::NONE),
+            UiInteraction::default(),
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::EwResize),
+            TlSplitter { root, grab: None },
+            Name::new("timeline-view-splitter"),
         ))
         .id();
+    let sep_line = commands
+        .spawn((Node { width: Val::Px(3.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(rgb(border())), PASS_THROUGH))
+        .id();
+    bind_bg(commands, sep_line, move |w| {
+        let live = w.get::<TlSplitter>(sep).is_some_and(|s| s.grab.is_some())
+            || matches!(w.get::<UiInteraction>(sep), Some(UiInteraction::Hovered | UiInteraction::Pressed));
+        rgb(if live { crate::theme::accent() } else { border() })
+    });
+    commands.entity(sep).add_child(sep_line);
 
     // ── Right timeline pane ──
     let pane = commands
@@ -212,7 +276,14 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
         })
         .id();
     let lanes_bg = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(0.0),
+            left: Val::Px(0.0),
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            ..default()
+        })
         .id();
     keyed_list(commands, lanes_bg, move |w| lane_bg_snapshot(w, root));
     // Vertical gridlines (behind keyframes), aligned with the ruler ticks.
@@ -305,9 +376,10 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
             RelativeCursorPosition::default(),
-            // Grab cursor over the whole scrub surface (the needle + keys sit
-            // beneath it, so hovering them shows the grab cursor too).
-            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
+            // A plain cursor by default. A grab hand over the whole surface
+            // said "drag me" over empty space where a drag does not move
+            // anything; a caller that hit-tests its keys sets `Grab` over them.
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Default),
             TlScrub { root },
             Name::new("timeline-view-scrub"),
         ))
@@ -337,12 +409,12 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
 
 fn ruler_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     let Some(v) = world.get::<TimelineView>(root) else { return empty() };
-    let (zoom, scroll, dur) = (v.zoom.max(1.0), v.scroll, v.duration);
+    let (zoom, scroll) = (v.zoom.max(1.0), v.scroll);
     let st = tl_style(world);
     let ruler_h = st.ruler_height;
     let (major_col, minor_col) = (st.tick_major.color(), st.tick_minor.color());
 
-    let (ticks, label_step) = timeline_ticks(zoom, scroll, dur);
+    let (ticks, label_step) = timeline_ticks(zoom, scroll);
     let items: Vec<(u64, u64)> = ticks
         .iter()
         .map(|(time, major)| {
@@ -415,10 +487,21 @@ fn ruler_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
 /// aligned. Returns `(ticks, label_step)` where each tick is `(time, is_major)`;
 /// major (labeled) ticks land on round `label_step`-second boundaries, with
 /// `divs` minor gridlines between each. `label_step` drives the label format.
-fn timeline_ticks(zoom: f32, scroll: f32, dur: f32) -> (Vec<(f32, bool)>, f32) {
+///
+/// Public so a caller drawing its own grid over the lanes (the animation
+/// timeline's curves view) lines up with the ruler exactly.
+///
+/// Ticks run across the whole visible window, not just the content's length.
+/// They used to stop one tick past the duration, so dragging a clip's end
+/// handle inward wiped every time label to its right as it went, and the
+/// ruler past the end was blank exactly where the handle was being dragged
+/// back out to.
+pub fn timeline_ticks(zoom: f32, scroll: f32) -> (Vec<(f32, bool)>, f32) {
     // Labeled spacing (seconds) — a round number scaled to keep labels readable.
-    let label_step = if zoom >= 700.0 {
+    let label_step = if zoom >= 1400.0 {
         1.0 / 30.0 // per-frame
+    } else if zoom >= 700.0 {
+        0.1
     } else if zoom >= 360.0 {
         0.25
     } else if zoom >= 160.0 {
@@ -442,7 +525,7 @@ fn timeline_ticks(zoom: f32, scroll: f32, dur: f32) -> (Vec<(f32, bool)>, f32) {
     let mut i = start_i;
     loop {
         let t = i as f32 * minor;
-        if t > end || t > dur + minor {
+        if t > end {
             break;
         }
         if t >= 0.0 {
@@ -457,9 +540,9 @@ fn timeline_ticks(zoom: f32, scroll: f32, dur: f32) -> (Vec<(f32, bool)>, f32) {
 /// are slightly brighter than minor ones; both are dim so keyframes stay legible.
 fn gridlines_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     let Some(v) = world.get::<TimelineView>(root) else { return empty() };
-    let (zoom, scroll, dur) = (v.zoom.max(1.0), v.scroll, v.duration);
+    let (zoom, scroll) = (v.zoom.max(1.0), v.scroll);
     let st = tl_style(world);
-    let (ticks, _) = timeline_ticks(zoom, scroll, dur);
+    let (ticks, _) = timeline_ticks(zoom, scroll);
     let major = st.tick_major.color().with_alpha(0.16);
     let minor = st.tick_minor.color().with_alpha(0.07);
     let items: Vec<(u64, u64)> = ticks
@@ -494,25 +577,38 @@ fn gridlines_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     }
 }
 
+/// One faint hairline under each row, placed at `(i + 1) * th - vscroll`.
+/// The theme's `lane_even` / `lane_odd` are no longer painted (see the module
+/// doc); they stay in [`TimelineStyle`] so themes written against them load.
 fn lane_bg_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     let Some(v) = world.get::<TimelineView>(root) else { return empty() };
-    let (n, th) = (v.track_count, v.track_height.max(1.0));
-    let st = tl_style(world);
-    let (even, odd) = (st.lane_even.color(), st.lane_odd.color());
+    let (n, th, vs) = (v.track_count, v.track_height.max(1.0), v.vscroll.max(0.0));
+    let line = crate::theme::rgb(crate::theme::text_primary()).with_alpha(0.035);
     let items: Vec<(u64, u64)> = (0..n)
         .map(|i| {
             let mut k = hasher();
             i.hash(&mut k);
             let mut h = hasher();
-            (th.to_bits(), rgba_key(st.lane_even), rgba_key(st.lane_odd)).hash(&mut h);
+            (th.to_bits(), vs.to_bits()).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
         build: Box::new(move |c, _f, i| {
-            let bg = if i.is_multiple_of(2) { even } else { odd };
-            c.spawn((Node { width: Val::Percent(100.0), height: Val::Px(th), ..default() }, BackgroundColor(bg))).id()
+            c.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px((i as f32 + 1.0) * th - vs - 1.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Px(1.0),
+                    ..default()
+                },
+                BackgroundColor(line),
+                PASS_THROUGH,
+            ))
+            .id()
         }),
     }
 }
@@ -565,12 +661,13 @@ fn timeline_view_scrub(
 /// Apply the themeable header-column width + ruler height live.
 fn timeline_view_geometry(
     theme: Option<Res<Theme>>,
-    mut cols: Query<&mut Node, (With<TlHeaderCol>, Without<TlRulerRow>)>,
+    views: Query<&TimelineView>,
+    mut cols: Query<(&mut Node, &TlHeaderCol), Without<TlRulerRow>>,
     mut rulers: Query<&mut Node, With<TlRulerRow>>,
 ) {
     let st = theme.map(|t| t.timeline.clone()).unwrap_or_default();
-    let w = Val::Px(st.header_width);
-    for mut n in &mut cols {
+    for (mut n, col) in &mut cols {
+        let w = Val::Px(views.get(col.root).ok().and_then(|v| v.header_width).unwrap_or(st.header_width));
         if n.width != w {
             n.width = w;
         }
@@ -583,13 +680,47 @@ fn timeline_view_geometry(
     }
 }
 
+/// Drag the splitter to resize the header column. Tracked against the raw
+/// mouse button once grabbed, so the drag keeps going when the cursor runs
+/// ahead of the 5px strip.
+fn timeline_view_splitter(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    theme: Option<Res<Theme>>,
+    ui_scale: Option<Res<UiScale>>,
+    mut splitters: Query<(&UiInteraction, &mut TlSplitter)>,
+    mut views: Query<&mut TimelineView>,
+) {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
+    let scale = ui_scale.map(|s| s.0).unwrap_or(1.0).max(0.01);
+    let theme_w = theme.map(|t| t.timeline.header_width).unwrap_or_else(|| TimelineStyle::default().header_width);
+    for (interaction, mut sp) in &mut splitters {
+        let Ok(mut view) = views.get_mut(sp.root) else { continue };
+        if !mouse.pressed(MouseButton::Left) {
+            if sp.grab.is_some() {
+                sp.grab = None;
+            }
+            continue;
+        }
+        if sp.grab.is_none() && *interaction == UiInteraction::Pressed && mouse.just_pressed(MouseButton::Left) {
+            sp.grab = Some((cursor.x, view.header_width.unwrap_or(theme_w)));
+        }
+        if let Some((x0, w0)) = sp.grab {
+            let w = (w0 + (cursor.x - x0) / scale).clamp(HEADER_MIN, HEADER_MAX);
+            if view.header_width != Some(w) {
+                view.header_width = Some(w);
+            }
+        }
+    }
+}
+
 pub(crate) struct TimelineViewPlugin;
 
 impl Plugin for TimelineViewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (timeline_view_playhead, timeline_view_scrub, timeline_view_geometry),
+            (timeline_view_playhead, timeline_view_scrub, timeline_view_splitter, timeline_view_geometry).chain(),
         );
     }
 }

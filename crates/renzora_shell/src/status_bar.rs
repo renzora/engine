@@ -31,11 +31,10 @@ pub(crate) struct ThemeMenuOpen(pub(crate) bool);
 /// Which chrome bar an entity is, so [`apply_chrome_style`] can repaint each from
 /// `Theme.chrome` (fill / height / separator edge / rounding / padding).
 ///
-/// There's no `DocTabs` variant, even though the document tabs are a shell bar
-/// again: `build_doc_tabs` paints its own band from the palette (a `mix` of
-/// `panel` toward `header`) rather than from `Theme.chrome`, so there is nothing
-/// here to repaint. `Theme.chrome.doc_tabs` still exists — themes on disk set
-/// it, and the dock's own tab strips read it.
+/// There's no `DocTabs` variant: the shell has no document strip (the open
+/// documents are in the top bar's scene switcher). `Theme.chrome.doc_tabs`
+/// still exists, since themes on disk set it and the dock's own tab strips read
+/// it.
 #[derive(Component, Clone, Copy)]
 pub(crate) enum ChromeBar {
     Top,
@@ -105,22 +104,32 @@ pub(crate) fn build_status_bar(
         ))
         .id();
 
-    // Left items (Ready + left-aligned status) fill the bar, pushing the theme
-    // picker + right-aligned metrics to the right.
-    let left_content = commands
-        .spawn((
-            Node {
-                flex_grow: 1.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(14.0),
-                min_width: Val::Px(0.0),
-                ..default()
-            },
-            Name::new("status-left"),
-        ))
-        .id();
-    renzora_ember::reactive::tracked::keyed_list(commands, left_content, status_snapshot_left);
+    // Left items (Ready, the scene's saved state, then left-aligned status) fill
+    // the bar, pushing the theme picker + right-aligned metrics to the right.
+    // Ready and the plugin items are two keyed lists either side of the badge,
+    // since a keyed list owns all of its parent's children.
+    let row = |commands: &mut Commands, name: &'static str, grow: f32| {
+        commands
+            .spawn((
+                Node {
+                    flex_grow: grow,
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(14.0),
+                    min_width: Val::Px(0.0),
+                    ..default()
+                },
+                Name::new(name),
+            ))
+            .id()
+    };
+    let left_content = row(commands, "status-left", 1.0);
+    let ready = row(commands, "status-ready", 0.0);
+    renzora_ember::reactive::tracked::keyed_list(commands, ready, status_snapshot_ready);
+    let saved = crate::scene_switcher::build_saved_badge(commands, &fonts.ui);
+    let left_items = row(commands, "status-left-items", 1.0);
+    renzora_ember::reactive::tracked::keyed_list(commands, left_items, status_snapshot_left);
+    commands.entity(left_content).add_children(&[ready, saved, left_items]);
 
     // The language + theme dropups — fixed elements on the right, before metrics.
     let lang_picker = language_dropup(commands, fonts);
@@ -440,17 +449,20 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
     }
 }
 
-/// Left side: a Ready label + left-aligned status items. A plugin can swap the
+/// The Ready label at the head of the left side. A plugin can swap the
 /// "Ready" text via [`renzora::ShellReadyStatus`] (e.g. the auto-save countdown).
-fn status_snapshot_left(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
+fn status_snapshot_ready(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     let (label, color) = world
         .get_resource::<renzora::ShellReadyStatus>()
         .and_then(|r| r.label.clone().map(|t| (t, r.color)))
         .map(|(t, c)| (t, c.map(|c| (c[0], c[1], c[2])).unwrap_or_else(text_muted)))
         .unwrap_or_else(|| (renzora::lang::t_or("status.ready", "Ready"), text_muted()));
-    let mut rows = vec![StatusRow::Label(label, color)];
-    rows.extend(status_rows(world, renzora::ShellStatusAlign::Left));
-    rows_snapshot(rows)
+    rows_snapshot(vec![StatusRow::Label(label, color)])
+}
+
+/// Left side after Ready and the saved badge: the left-aligned plugin items.
+fn status_snapshot_left(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
+    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Left))
 }
 
 /// Right side: the right-aligned metrics.

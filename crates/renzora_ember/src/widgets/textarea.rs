@@ -55,6 +55,7 @@ pub fn textarea(commands: &mut Commands, font: &bevy::text::FontSource, placehol
         advance: 6.0,
         offsets: Vec::new(),
         sel_anchor: None,
+        lead: 0.0,
     });
     commands.entity(box_e).add_children(&[text, car]);
     box_e

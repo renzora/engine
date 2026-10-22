@@ -675,3 +675,106 @@ fn a_higher_pitch_consumes_the_source_faster() {
     };
     assert!(level_after(2.0) > level_after(1.0));
 }
+
+/// A voice on a bus routed into a group: `Sfx` feeds `Group`, `Group` feeds
+/// Master. Returns the engine with the voice playing on `Sfx`.
+fn routed_board() -> Engine {
+    let mut e = Engine::new(RATE);
+    e.add_bus("Sfx");
+    e.add_bus("Group");
+    e.set_bus_output("Sfx", Some("Group"));
+    e.play(
+        VoiceId(1),
+        dc(64),
+        &PlayParams {
+            bus: "Sfx".into(),
+            ..Default::default()
+        },
+    );
+    e
+}
+
+/// The group's fader has to apply to what is routed into it, and its meter has
+/// to show it: that is what routing a bus somewhere means.
+#[test]
+fn a_bus_routed_into_a_group_goes_through_the_group() {
+    let mut e = routed_board();
+    e.bus_mut("Group").unwrap().gain = 0.5;
+    let mut out = vec![0.0; 16];
+    e.render(&mut out);
+    approx(out[0], unity_centre(0.5));
+    assert!(e.bus_mut("Group").unwrap().peak > 0.0);
+}
+
+/// A loop would sum a bus into itself forever, so routing back into a bus that
+/// already feeds this one falls back to Master instead.
+#[test]
+fn a_routing_loop_is_refused_and_falls_back_to_master() {
+    let mut e = routed_board();
+    e.set_bus_output("Group", Some("Sfx"));
+    e.bus_mut("Group").unwrap().gain = 0.0;
+    let mut out = vec![0.0; 16];
+    e.render(&mut out);
+    // Group still feeds Master (it was refused), and at zero gain takes Sfx
+    // with it: nothing reaches the output.
+    approx(out[0], 0.0);
+    e.set_bus_output("Sfx", Some("Sfx"));
+    e.bus_mut("Group").unwrap().gain = 1.0;
+    let mut out = vec![0.0; 16];
+    e.render(&mut out);
+    // Routing a bus into itself is refused too, which puts Sfx on Master.
+    approx(out[0], unity_centre(1.0));
+}
+
+/// Removing a group re-routes everything that fed it to Master, the way its
+/// voices already fall back.
+#[test]
+fn removing_a_group_sends_its_inputs_to_master() {
+    let mut e = routed_board();
+    assert!(e.remove_bus("Group"));
+    let mut out = vec![0.0; 16];
+    e.render(&mut out);
+    approx(out[0], unity_centre(1.0));
+}
+
+/// Soloing a group plays the buses feeding it, and soloing a bus inside a group
+/// keeps the group open; either way the soloed sound is heard.
+#[test]
+fn solo_follows_the_routing() {
+    let mut e = routed_board();
+    e.add_bus("Other");
+    e.bus_mut("Group").unwrap().soloed = true;
+    let mut out = vec![0.0; 16];
+    e.render(&mut out);
+    approx(out[0], unity_centre(1.0));
+
+    e.bus_mut("Group").unwrap().soloed = false;
+    e.bus_mut("Sfx").unwrap().soloed = true;
+    let mut out = vec![0.0; 16];
+    e.render(&mut out);
+    approx(out[0], unity_centre(1.0));
+}
+
+/// A bus-level send feeds the shared effects even when the voice sends
+/// nothing: it is how a whole group gets its reverb.
+#[test]
+fn a_bus_send_reaches_the_reverb() {
+    let tail = |send: f32| {
+        let mut e = Engine::new(RATE);
+        e.add_bus("Sfx");
+        e.bus_mut("Sfx").unwrap().reverb_send = send;
+        e.play(
+            VoiceId(1),
+            dc(16),
+            &PlayParams {
+                bus: "Sfx".into(),
+                ..Default::default()
+            },
+        );
+        let mut out = vec![0.0; 8_000 * 2];
+        e.render(&mut out);
+        out[200..].iter().fold(0.0f32, |a, s| a.max(s.abs()))
+    };
+    approx(tail(0.0), 0.0);
+    assert!(tail(1.0) > 0.0);
+}

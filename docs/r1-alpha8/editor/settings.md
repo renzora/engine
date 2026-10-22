@@ -41,7 +41,7 @@ Everything under **Project** is stored in the project's `project.toml` and trave
 
 ## Interface
 
-**Fonts** picks the UI font, the code font and a base size.
+**Fonts** picks the UI font, the code font and a base size. The UI font defaults to **Inter**; **Noto Sans**, the earlier default, is still in the list.
 
 **Display** holds **UI Scale**, from 75% to 300%, applied on top of your operating system's own scaling. `Ctrl+0` snaps back to 100% if you pick something awkward. **Scroll Speed** is here too.
 
@@ -49,7 +49,7 @@ Everything under **Project** is stored in the project's `project.toml` and trave
 
 **Hierarchy** and **Inspector** hold how those two panels behave: whether parents stack, whether clicking a row toggles it, how much of the Inspector is expanded by default.
 
-**UI Workspace** covers document tabs, what happens after you drag a panel out of the bottom panel, and whether new files start with boilerplate.
+**UI Workspace** covers what happens after you drag a panel out of the bottom panel, and whether new files start with boilerplate.
 
 ## General
 
@@ -126,7 +126,7 @@ Your preferences are in `~/.renzora/settings.toml`, in sections.
 | `[editor]` | Everything on the Settings pages above |
 | `[viewport]` | Camera sensitivities, the grid, gizmos and snapping |
 | `[keybindings]` | Only the shortcuts you have rebound |
-| `[projects."<path>"]` | Per project: the scene you had open and your document tabs |
+| `[projects."<path>"]` | Per project: the scene you had open and your open documents |
 | `[plugins]` | One entry per plugin that saves settings |
 
 It is plain TOML and safe to read or hand-edit. The editor rewrites a section when something in it changes and leaves the others alone.

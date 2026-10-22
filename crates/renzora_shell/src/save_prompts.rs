@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::UiInteraction;
 
-use crate::doc_tabs::close_doc_tab_by_id;
+use crate::documents::close_doc_tab_by_id;
 
 // ── Save-before-exit flow ────────────────────────────────────────────────────
 
@@ -229,7 +229,8 @@ pub(crate) fn pending_exit_after_save(
 
 // ── Close-tab save prompt ─────────────────────────────────────────────────────
 
-/// Set by `doc_tab_close` when the × is clicked on a tab with unsaved changes.
+/// Set by `request_close_doc` when a document with unsaved changes is closed
+/// from the scene switcher.
 /// Consumed by [`process_tab_close_request`], which foregrounds the tab and
 /// opens the save-confirmation prompt.
 #[derive(Resource)]

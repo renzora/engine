@@ -18,7 +18,7 @@ use crate::state::{
     thumb_kind, AssetBack, AssetNameLabel, AssetSearch, AssetTile, NativeAssets, RenameSurface,
     ThumbKind, TreeNav, TreeSearch, TreeTabBtn, TreeToggle,
 };
-use crate::tree::flat_folder_order;
+use crate::tree::descendants;
 use crate::thumbnails::ThumbnailCache;
 
 pub(crate) fn tree_toggle_click(
@@ -43,7 +43,6 @@ pub(crate) fn tree_nav_click(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     windows: Query<&Window>,
-    project: Option<Res<renzora::core::CurrentProject>>,
     mut state: ResMut<NativeAssets>,
     mut press: Local<Option<(PathBuf, Vec2, bool)>>,
     mut last_click: Local<Option<(PathBuf, f64)>>,
@@ -82,16 +81,24 @@ pub(crate) fn tree_nav_click(
                 KeyCode::SuperRight,
             ]);
             let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-            if ctrl || shift {
-                // Ctrl/Shift click multi-selects tree folders (for a batch delete)
-                // instead of navigating. Shift-range walks the tree's flattened
-                // visible order, computed on demand (only on this click, not per
-                // frame).
-                let order: Vec<PathBuf> = project
-                    .as_ref()
-                    .map(|p| flat_folder_order(&p.path, &state.expanded, state.narrow))
-                    .unwrap_or_default();
-                state.click_select_in(&path, ctrl, shift, &order);
+            if shift {
+                // Shift-click selects the folder and everything in it, at any
+                // depth: the quick way to grab a whole imported model or a
+                // texture set for a move or a delete. Ctrl held as well adds to
+                // the selection rather than replacing it. The folder opens so
+                // what was selected is on screen.
+                if !ctrl {
+                    state.selection.clear();
+                }
+                state.selection.insert(path.clone());
+                state.selection.extend(descendants(&path));
+                state.selected = Some(path.clone());
+                state.selection_anchor = Some(path.clone());
+                state.expanded.insert(path);
+            } else if ctrl {
+                // Ctrl-click toggles a folder in the selection (for a batch
+                // delete) instead of navigating.
+                state.click_select_in(&path, true, false, &[]);
             } else {
                 let now = time.elapsed_secs_f64();
                 let double = last_click

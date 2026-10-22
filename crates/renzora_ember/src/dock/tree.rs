@@ -20,7 +20,7 @@ pub enum SplitDirection {
 /// `Serialize`/`Deserialize` so the editor shell can persist each workspace's
 /// layout (split ratios, panel placement, active tabs) to disk and restore it
 /// across sessions. The recursive `Box<DockTree>` children serialize fine.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum DockTree {
     Split {
         direction: SplitDirection,

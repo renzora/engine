@@ -68,7 +68,7 @@ Full documentation — getting started, scripting, UI, plugins, exporting, and m
 | `.lua` / `.rs` | Scripts |
 | `.blueprint` | Visual script graphs |
 | `.material` | Material graphs |
-| `.particle` | Particle effects |
+| `.vfx` / `.particle` | Particle effects (`.particle` is the legacy format) |
 | `.png` / `.jpg` / `.hdr` / `.exr` | Textures |
 | `.ogg` / `.mp3` / `.wav` / `.flac` | Audio (native only) |
 | `.rpak` | Compressed asset archives |

@@ -11,7 +11,12 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ember = { path = "../renzora_ember" }
 renzora_animation = { path = "../renzora_animation" }
 renzora_inspector = { path = "../renzora_inspector" }
+renzora_ui = { path = "../renzora_ui" }
 renzora_undo = { path = "../renzora_undo" }
+# The timeline's Particles group: keyed effect parameters, edited through the
+# effect editor's document so the two editors never hold two copies.
+renzora_particles = { path = "../renzora_particles" }
+renzora_particles_editor = { path = "../renzora_particles/editor" }
 ron = "0.8"
 
 [lints]

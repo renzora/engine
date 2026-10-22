@@ -51,7 +51,6 @@ renzora_forward_decal_editor 0.0
 renzora_gaussian_splatting 0.0
 renzora_gizmo 14.8
 renzora_grid 0.0
-renzora_hanabi 26.4
 renzora_hierarchy 0.0
 renzora_history 43.4
 renzora_import 21.5
@@ -82,7 +81,6 @@ renzora_network 35.7
 renzora_network_editor 0.0
 renzora_oit 0.0
 renzora_oit_editor 0.0
-renzora_particle_editor 0.0
 renzora_physics 38.9
 renzora_physics_editor 0.0
 renzora_postprocess 0.0

@@ -1,5 +1,363 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-22 06:21
+- fix(particles): GPU emitters no longer crash the editor with a pipeline validation error on the state buffer
+- feat(particles): the effect library generator gains a showcase set and an `--only <category>` option
+
+## 2026-10-22 05:34
+- fix(svg): the bundled Noto Sans font ships with its SIL Open Font License text
+
+## 2026-10-22 04:58
+- feat(particles): solid particles write the deferred G-buffer on deferred cameras, with a per-emitter Render Method (Auto, Forward, Deferred)
+
+## 2026-10-22 04:54
+- feat(assets): `.svg` and `.svgz` files load as images everywhere an image is accepted, and hot-reload
+- feat(assets): an SVG's output size, sRGB, mipmaps and alpha are set in an optional `name.svg.toml` beside it
+- feat(assets): pictures embedded in an SVG load from `data:` URIs or project paths, and editing one redraws the SVG
+- feat(assets): SVG text uses the bundled Noto Sans plus the project's own fonts, never system fonts
+- feat(editor): SVGs show an image icon and thumbnail in the asset browser and drop into material, particle, sprite, tileset and UI image slots
+- feat(export): an exported game ships each SVG with its settings file, embedded pictures and fonts
+- fix(export): a reference that climbs out of the project with `../` is no longer packed
+- refactor(assets): every image extension list now reads one shared `renzora::IMAGE_EXTENSIONS`
+
+## 2026-10-22 04:02
+- feat(particles): any 3D particle can wear a project `.material` (quads, ribbons and meshes) with the material's full PBR shader
+- feat(particles): particles wearing a project material run on the GPU backend too
+- feat(particles): solid particles cast shadows and write the depth, normal and motion-vector prepasses, on both backends
+- feat(particles): a Cast Shadows setting turns shadows on for blended particles or off for solid ones
+- feat(particles): Multiply and Alpha to Coverage blend modes, on both backends and in 2D
+- feat(material): Particle Color, Particle Age, Particle Random and Particle Velocity nodes read the particle a material is drawn on
+- feat(particles): converted Hanabi effects keep their multiply blending
+
+## 2026-10-22 03:58
+- feat(particles): sub-emitters run on the GPU backend, every trigger, on both sides of a rule
+- feat(particles): ribbons of both kinds run on the GPU backend
+- feat(particles): a ribbon can be a round tube, on both backends
+- feat(particles): an emitter's Draw Order can be Index, Oldest First, Youngest First or View Depth
+- feat(particles): a World emitter can inherit a share of its entity's velocity
+- feat(particles): the Particle Output's Emission pin scales the colour's HDR brightness over a particle's life
+- feat(particles): emitters joined by a sub-emitter rule share one backend, and Running On names the partner that keeps them on the CPU
+- feat(particles): converted Hanabi effects carry their HDR intensity as the Emission pin
+
+## 2026-10-21 20:31
+- refactor(particles): the old bevy_hanabi particle system and its editor are removed; `.vfx` is the only particle system
+- feat(particles): `.particle` files still play, converted to an effect in memory as they load
+- feat(particles): scenes with old Hanabi effects load with a Particle System in their place
+- feat(editor): opening a project writes a `.vfx` beside each `.particle` that has none and lists each one in the Console
+- feat(editor): scene effects that use a `.particle` are pointed at its `.vfx` once one exists
+- feat(editor): double-clicking a `.particle` opens its `.vfx` in the effect editor
+- feat(preview): the marketplace preview plays `.vfx` effects and still plays old particle definitions
+- fix(editor): the Assets panel and the hierarchy no longer create old-format `.particle` files
+
+## 2026-10-21 19:13
+- feat(particles): Gravity Well and Orbit forces, stable at any frame rate, and the Attractor no longer overshoots its point
+- feat(particles): a Conform To Sphere force that draws particles onto a sphere and holds them there, as Hanabi's did
+- feat(particles): a Collide Scene node bounces particles off the scene's physics colliders (CPU only)
+- feat(scripting): `vfx_set_param` and friends set an effect's Parameter nodes by name while it plays
+- feat(particles): converted Hanabi effects keep their conform to sphere, attractors and orbit instead of approximating them
+
+## 2026-10-21 18:54
+- feat(particles): emitters can draw each particle as a built-in or model mesh that tumbles, follows its velocity or turns about an axis, on the CPU and the GPU
+- feat(particles): particles can be lit by the scene's lights, and mesh particles can wear a project `.material`
+- feat(particles): Opaque and Alpha Mask blend modes write depth and draw with the scene's solid geometry, with no sort
+- feat(particles): particle sizes can be set in screen pixels, so they stay the same size at any distance
+
+## 2026-10-21 17:02
+- fix(rendering): Fit to Mesh takes a planar reflection's angle from the glass itself, so a window wall turned off the mesh's axis reflects in the right place
+
+## 2026-10-21 16:34
+- fix(rendering): Fit to Mesh puts a planar reflection on the mesh's largest sheet of glass facing the chosen axis, and faces it the way the glass faces
+- fix(editor): planar reflection warnings appear in the Console
+
+## 2026-10-21 16:23
+- fix(rendering): a planar reflection's plane goes through its mesh (Fit to Mesh) instead of the entity's origin, so imported windows reflect the right place
+- feat(rendering): planar reflections gain Flip and Plane Offset, and the gizmo shows the plane actually used, in amber when the mesh is too deep to be one flat surface
+
+## 2026-10-21 16:18
+- feat(particles): large emitters simulate and draw on the GPU from the same graphs, with the CPU as the fallback
+- feat(particles): an emitter Backend setting (Auto, CPU, GPU), with a Running On row explaining the choice
+- feat(particles): emitters can sort their particles back to front
+- feat(particles): the preview stats chip shows CPU or GPU
+- feat(particles): a GPU Stress template with 200,000 sparks
+- feat(materials): mirror and wet ground example materials for testing planar reflections (test project only)
+
+## 2026-10-21 15:24
+- feat(particles): curl noise takes octaves, lacunarity and persistence
+- feat(particles): a Max Speed output pin and Speed Limit and Drag force nodes
+- feat(particles): emitters can light the scene with point lights that follow their particles
+- feat(particles): ribbon rendering, as per-particle trails or strips through the particles
+- feat(particles): sub-emitters spawn another emitter's particles on birth, death or an interval
+- feat(particles): plane, sphere and box collision nodes with bounce, friction and kill on hit
+- feat(particles): the fire presets light their surroundings and their embers bounce off the ground
+- feat(particles): the .particle converter now maps noise octaves, velocity limits, kill zones, ribbons and the effect light
+
+## 2026-10-21 14:40
+- feat(particles): effects can key parameters, bursts and emitter on/off over their own time
+- feat(timeline): the Timeline shows and edits the selected particle effect's tracks beside its animation, on one clock
+- feat(particles): right-click a value field in the effect graph to Animate it
+
+## 2026-10-21 14:33
+- fix(particles): the Particle System inspector shows one transport control (play, pause, stop, restart) with the current state, and the effect slot's edit button beside it
+- feat(particles): particles react to the world wind through new Wind and Wind Force nodes
+- feat(particles): procedural flame and smoke shading, a Blackbody node and a layered Realistic Fire preset
+
+## 2026-10-21 14:10
+- fix(particles): the effect graph's emitters are chips on one header strip with the graph actions, and the preview keeps only its dropdowns, Restart and an options menu over a dark grid by default
+
+## 2026-10-21 13:46
+- feat(particles): convert `.particle` effects to `.vfx` from the Assets panel, the Hanabi editor's banner, the Effect slot, or the `convert_particles` example
+- fix(particles): opening a `.particle` shows the Hanabi editor in the Particles workspace again
+
+## 2026-10-21 13:01
+- fix(editor): asset slots in the Inspector no longer show a reset button that did the same as their clear button
+
+## 2026-10-21 12:56
+- feat(editor): a selected Planar Reflection shows its reflecting surface and normal in the viewport, in red with a console hint when the entity has no mesh to reflect on
+
+## 2026-10-21 12:33
+- feat(rendering): Planar Reflection component and Add Entity > Mirror, with true reflections that include particles and transparent objects
+- feat(particles): a node-graph editor for `.vfx` effects, with live preview, emitter tabs, curve and gradient editing, undo and Save
+- feat(particles): New Particle Effect opens a template gallery from the Assets panel and the editor
+- feat(particles): `.vfx` files open in the Particles workspace from the Assets panel and can be dragged into the viewport
+
+## 2026-10-21 11:30
+- feat(editor): particle systems have a viewport gizmo (a sparkle icon, plus the emitter shape when selected) and can be clicked to select
+- fix(editor): the selection box and transform gizmo on a particle system no longer jump around with the particles
+
+## 2026-10-21 10:57
+- feat(particles): new node-graph particle system for 2D and 3D (`.vfx`) with a Particle System preset, playback inspector and five built-in effects
+- feat(scripting): `vfx_play`, `vfx_pause`, `vfx_stop`, `vfx_restart`, `vfx_burst` and `vfx_set_time_scale` control `.vfx` effects
+
+## 2026-10-21 09:22
+- fix(animation): picking another clip while previewing switches the model to it, including after clips were added to an animator one by one
+
+## 2026-10-21 09:17
+- feat(editor): the Shape Library gains 53 new shapes, including polyhedra, roofs, turning stairs, pipe fittings and a new Props group
+
+## 2026-10-21 09:11
+- feat(timeline): drag the ruler's loop band to move it, and its right edge to set the loop end
+- fix(timeline): ruler time labels no longer disappear while dragging a handle
+- feat(timeline): All tracks shows a diamond per key time; drag one to retime that moment on every track
+- fix(timeline): thinner loop strip line in the ruler
+- fix(timeline): the transport no longer shifts as the time readout changes
+- feat(timeline): I/O set the loop range at the playhead, Home/End jump to it, Shift+Home/End to the clip ends
+
+## 2026-10-21 08:51
+- fix(editor): preview spheres stand pole-up with their UV seam behind them, so UV patterns no longer split across the middle
+- fix(editor): Shape Library thumbnails are lit from the side with a rim light so shapes read in 3D instead of as silhouettes
+
+## 2026-10-21 08:41
+- fix(editor): opening a material with a rigged model selected no longer crashes the editor
+
+## 2026-10-21 08:20
+- feat(editor): the Shape Library shows lit 3D renders of each shape in categories, with a sidebar, foldable sections and a tile-size slider
+- fix(editor): Backspace or Delete while typing in a node graph comment or number field no longer deletes the selected nodes
+
+## 2026-10-21 07:52
+- fix(editor): material, shader and asset preview spheres no longer show a jagged seam on UV-driven materials
+
+## 2026-10-21 07:46
+- feat(timeline): drag the ruler's start handle to set where preview looping restarts
+- fix(timeline): dragging a scrollbar no longer moves the playhead
+- feat(timeline): drag the playhead by its needle or time badge
+- feat(timeline): right-click a track to delete or disable it
+- fix(timeline): the All tracks row shows a stack icon instead of a caret that did nothing
+- feat(editor): the asset right-click menu leads with its actions, keeps Delete last, and moves the create list into a New submenu
+- fix(editor): clicking empty space in the Hierarchy no longer deselects
+- fix(editor): a narrow Assets panel switches to the tree-only view sooner instead of squeezing one tile column
+- feat(editor): scroll over a mixer pan knob to adjust it, Ctrl+scroll for fine steps
+- fix(editor): search overlay section headers and labels are back to the original, smaller style
+- fix(animation): adding or choosing a clip in the editor no longer starts the model animating while the timeline is stopped
+
+## 2026-10-21 06:54
+- fix(editor): procedural materials show in the Material Preview and asset thumbnails instead of a plain white mesh in deferred projects
+- feat(editor): the timeline pans with a middle-drag, or a right-drag on empty space
+- feat(editor): the timeline ruler marks the clip as a blue band between a start and an end handle, with more room before time zero
+- fix(editor): the timeline shows the ordinary pointer over empty space and a grab hand only over keys
+- fix(editor): animation panels keep their entity when the selection is cleared and restore the clip last open on each entity
+
+## 2026-10-21 06:44
+- feat(editor): the empty-scene starter in the Hierarchy is a grid of starter tiles with one-click common entities (Cube, Sphere, Plane, Light, Camera, Empty)
+- feat(editor): node graphs have a Comment toolbar button and a Comment entry in the right-click menu, and C with nothing selected adds an empty comment at the cursor
+
+## 2026-10-21 06:32
+- fix(editor): number fields show an unlimited value such as the default attenuation distance as ∞ instead of 1e37, and accept ∞ or inf when typed
+
+## 2026-10-21 06:26
+- feat(editor): node graph nodes use a darker body so they stand out from the canvas
+
+## 2026-10-21 06:15
+- fix(import): a model imports into the folder picked in Destination, not the folder the asset browser was showing when it was dropped
+
+## 2026-10-21 06:07
+- fix(editor): the Assets breadcrumb folds a long path into one "…" instead of shortening every folder to "…"
+
+## 2026-10-21 05:40
+- fix(editor): switching workspace no longer rebuilds the dock a second time, which made the panels flicker
+- fix(editor): dragging a cable out of an input pin and releasing it on the canvas opens the add-node menu
+- feat(editor): the add-node menu resizes from its corner, and its category column can be dragged wider
+- feat(editor): the scene switcher keeps its search and scenes fixed while open documents scroll, and sets the boot scene from a star on each scene
+- feat(editor): the Mixer's pan knob is larger, easier to see, and shows its value in the middle
+- feat(editor): graph nodes have a dark body, a shadowed edge and short pin labels, with values right after them
+- feat(editor): the material graph's toolbar has more room, with the view controls at the right edge
+- feat(editor): the Inspector's fixed header sits on a slightly lighter surface
+
+## 2026-10-21 05:02
+- feat(editor): the add-node menu is wider, keeps names on one line, shows each node's pins and category counts, and describes the node under the cursor
+
+## 2026-10-21 04:51
+- feat(editor): the scene switcher has a search box, project scenes beside open documents, and open documents grouped by type
+- feat(editor): the Mixer's strips are wider cards with a full-width colour bar, a dB scale, the bus's inserts and full-width mute and solo
+- feat(editor): graph canvases draw a square line grid
+- feat(editor): an unconnected graph pin is drawn as a ring, a connected one filled
+- feat(editor): the material graph's toolbar uses flat buttons, with Apply as the one filled action
+- fix(editor): graph nodes size to their value fields and line them up, instead of letting them spill past the edge
+- fix(editor): the code editor stops scrolling once the last line reaches the bottom
+
+## 2026-10-21 04:12
+- feat(editor): graph nodes are compact, with each value editor on its pin's row and inputs and outputs sharing rows
+- feat(editor): graph node headers fade from the node's colour
+- fix(editor): the Timeline, Console and Inspector no longer use flat grey fills
+
+## 2026-10-21 04:01
+- feat(editor): the Mixer has Mixer, Routing and Metering pages
+- feat(editor): the Mixer's Routing page sets each bus's output and its reverb and delay sends
+- feat(editor): the Mixer's Metering page shows peak hold and latched clip lights per bus
+- feat(editor): the Mixer's top bar has labelled Compact / Large, Horizontal and Add bus controls
+- feat(editor): a Large mixer strip shows a dB scale, and a routed strip shows where it feeds
+- feat(ui): ember's segmented control can be two-way bound
+
+## 2026-10-21 02:55
+- feat(editor): the Console has a new flat layout with level pills that show counts, a category menu and a Follow button
+- feat(editor): clicking a Console line opens its details, with Copy and clickable entity ids
+- feat(editor): typing `/` in the Console lists matching commands, completed with Tab
+- fix(editor): pressing Enter in the Console's command box runs the command again
+
+## 2026-10-21 02:39
+- feat(editor): the Assets tree box-selects files and folders by dragging in its empty space
+- feat(editor): Shift+Click on a folder in the Assets tree selects it and everything inside it
+- fix(editor): folders selected together in the Assets tree are highlighted
+- feat(audio): a bus can be routed into another bus, and can send to the shared reverb and delay
+
+## 2026-10-21 01:52
+- fix(editor): selecting a clip in the Timeline frames it to fill the panel
+- feat(editor): clips can be renamed from the Timeline's clip picker
+- feat(editor): the Timeline's track list can be resized by dragging its edge
+- fix(editor): scrolling the Timeline's track list no longer draws the top row over the filter box
+- feat(editor): the Inspector's page strip has an All page showing every component, and opens on it
+- feat(editor): the Timeline's track list resize bar is thicker
+- fix(editor): the Inspector's page tooltips spell out the component count
+- fix(editor): the Timeline's zoom readout no longer wraps, and its clip picker has no tooltip
+- feat(editor): the Animator component adds clips through a drop area, several at once, and its clip cards are darker
+
+## 2026-10-20 15:47
+- fix(editor): the cursor returns to where you pressed after a right- or middle-drag in the viewport
+
+## 2026-10-20 15:31
+- feat(editor): the Timeline has horizontal and vertical scrollbars
+- feat(editor): the Timeline zooms in much further, and its rows can be made taller from the ⋯ menu or with Alt+wheel
+- fix(editor): the Timeline's clip picker has no grey background until hovered
+
+## 2026-10-20 14:24
+- feat(editor): the Timeline has a single-row toolbar, a nested track list with a filter, and key runs instead of walls of diamonds
+- feat(editor): Timeline box-select, multi-key drag, copy/paste and a key popover for time, value and easing
+- feat(editor): a Timeline Curves view of the selected track
+- feat(editor): the Timeline's empty state offers Record, Key a property, or Use an existing clip
+- fix(editor): Timeline lanes are flat, with no odd/even stripes, and the rows scroll vertically
+
+## 2026-10-20 14:01
+- feat(editor): Animator clips are tidy cards with a labelled Speed field and a loop toggle beside the name, and the file path on its own line
+
+## 2026-10-20 13:54
+- feat(editor): with nothing selected, the Inspector shows the scene: its world environment's settings, the boot scene and start camera, and entity, mesh and triangle counts
+- fix(editor): the Inspector header's eye and lock sit on the name field's line, and the lock turns red while the Inspector is pinned
+- fix(editor): Hierarchy label colours show as a soft line down the row's edge and a tinted icon, with no row fills or coloured names
+- feat(editor): dialog and overlay close buttons share one darker style
+- feat(editor): Add Component, Add Entity and Add Panel category headers sit on a soft band of their colour instead of a line
+- fix(editor): the Add Component, Add Entity and Add Panel category sidebar scrolls when it has more categories than fit
+
+## 2026-10-20 13:24
+- feat(editor): the Inspector's pages are a strip of icon tabs under the header instead of a rail down its left edge, so the cards use the full panel width
+- feat(editor): the Inspector header's name is an always-visible text field
+
+## 2026-10-20 13:19
+- fix(editor): panels at the left and right of the window sit as far from its edge as they do from each other
+- feat(editor): the Assets breadcrumb shows no pill at rest and takes the toolbar buttons' hover colour
+
+## 2026-10-20 12:59
+- feat(editor): the category list in Add Component, Add Entity and Add Panel scrolls to a section instead of filtering, and section headers slide their section open and shut
+
+## 2026-10-20 12:34
+- feat(editor): Add Component, Add Entity and Add Panel share one compact picker, three items to a row with each icon beside its name
+
+## 2026-10-20 11:54
+- feat(editor): the Assets toolbar has one Import button, New Folder, the breadcrumb, a "Search in folder" box, sort and grid/list buttons, with item count and tile size in a footer
+- feat(editor): the Assets breadcrumb folds long paths into "…" and every level opens a menu of its subfolders
+- feat(editor): the Assets folder tree switches between Project, Recent and Favourites with a sliding switch instead of a tab row
+
+## 2026-10-20 11:49
+- feat(editor): the Inspector shows one page of components at a time, picked by category, with Info and Relations pages
+- feat(editor): the Inspector header shows a large icon tile in the entity's colour, its name as click-to-edit text, and what it is and which model it came from
+- feat(editor): clicking the Inspector's icon tile opens one popover for the label colour swatches and a searchable icon grid
+- feat(editor): the Inspector toolbar leads with a solid Add button and its filter has the magnifier inside
+- feat(editor): Add Component groups by the Inspector's pages, opens on the current page, and switches to the added component's page
+- fix(editor): sky, fog, atmosphere, terrain and environment map components file under Environment, and SSAO and SSR under Post Process
+
+## 2026-10-20 10:47
+- feat(editor): the active document in the switcher's list has a save button, amber while it has unsaved changes
+- feat(editor): opening an Inspector component scrolls the panel just far enough to show it
+- feat(editor): Add Component and Add Entity tiles are flat until hovered, and long names wrap instead of being cut
+
+## 2026-10-20 10:30
+- feat(editor): Add Component and Add Entity show a grid of tiles coloured by category instead of a striped list
+- fix(editor): a component registered twice no longer appears twice in Add Component
+
+## 2026-10-20 10:23
+- feat(editor): menu rows highlight with a soft accent pill instead of a solid block
+- feat(editor): the main menu colour-codes its icons: create, open, save, import, export and Marketplace each have a colour
+
+## 2026-10-20 09:39
+- feat(editor): the top bar's switcher names the open document of any kind, such as `test / gold.material`, and lists every open document with a close button
+- feat(editor): the document tab strip and its Settings option are removed; open documents live in the switcher
+
+## 2026-10-20 08:44
+- feat(editor): the Import overlay's tiles are tinted in their own colour and carry one-word names
+- feat(editor): the scene's Saved or Unsaved state shows in the status bar beside Ready
+- fix(editor): long values no longer run out of text inputs, so the Inspector's entity name stays inside its box
+- feat(editor): the Inspector's entity header sits at the top, with the filter, Add Component and expand-all in one toolbar beneath it
+- feat(editor): the Scripts card's "+" moves to its header and opens a searchable script picker overlay
+- feat(editor): the Scripts drop zone has no background and outlines itself only while a script is dragged over it
+- fix(editor): long names in the hierarchy and asset tree end in "…" instead of being cut mid-letter, with the full name on hover
+
+## 2026-10-20 08:34
+- feat(editor): Inspector cards and their headers have a faint dark edge
+- feat(editor): number field value bars are rounded at both ends and mark the value with a brighter edge
+- fix(editor): number, text and dropdown fields in every Inspector component stretch to the row's width
+- fix(editor): the Inspector label column is wider, so longer field names are no longer cut off
+- feat(editor): Inspector action buttons span the row instead of repeating their name in a label
+
+## 2026-10-20 06:41
+- feat(editor): tree rows in the hierarchy and asset tree indent one caret width per level, so a child's caret sits under its parent's icon
+- feat(editor): the assets Import and Add buttons open a centred overlay with colour-coded rows
+- feat(editor): the Play button matches the Marketplace button's style
+- feat(editor): the top bar is a step lighter than the Windows title bar
+- feat(editor): workspace tabs show a hover wash, and the active one is a blue pill instead of an underline
+
+## 2026-10-20 06:05
+- feat(editor): a scene switcher at the left of the top bar shows the current scene and its saved state, and opens any project scene
+- feat(editor): Play moves to the right of the top bar, beside the Marketplace
+- feat(editor): the Scenes panel is removed; the scene switcher does its job
+- feat(editor): on Windows 11 the title bar takes the top bar's colour
+- feat(editor): the hierarchy and asset tree drop their guide lines and use larger text, icons and rows
+- feat(editor): the assets tree button is called Import, and create-asset menus show one line per type
+- feat(editor): menus use larger text and roomier rows
+- feat(editor): Inspector cards hold their header inset and fully rounded, on a neutral surface
+
+## 2026-10-20 05:29
+- feat(editor): each Inspector component is a card with its header inside, and its rows are no longer striped
+- feat(editor): the hierarchy and asset tree drop their odd/even stripes and highlight the selected row with a rounded pill
+- feat(editor): Inter is the default UI font, with Noto Sans still available in Settings
+
 ## 2026-10-20 04:04
 - fix(editor): the Game panel registers its window placement through the panel scope, so the test suite passes again
 

@@ -58,7 +58,6 @@ const MARKER: &str = "panel-systems-ungated:";
 const SKIP_DIRS: &[&str] = &[
     "bevy_firefly",
     "bevy_gaussian_splatting",
-    "bevy_hanabi",
     "bevy_heavy",
     "bevy_hui",
     "bevy_silk",

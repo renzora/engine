@@ -8,9 +8,9 @@
 //! structural signature (script ids/paths/enabled + variable names/types) changes
 //! (the inspector's own rebuild only fires on the component *set* changing).
 //!
-//! v1: per-script header (name + enabled toggle + remove) and an editor per
-//! variable for all 8 `ScriptValue` types. Tabs, the Add-Script search, and the
-//! script-path asset-drop are follow-ups.
+//! Per-script header (name + enabled toggle + remove), an editor per variable
+//! for all 8 `ScriptValue` types, a drop zone for script files, and the
+//! Add-Script picker the card header's "+" opens.
 
 use std::hash::{Hash, Hasher};
 
@@ -23,15 +23,15 @@ use std::sync::Arc;
 
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
+use renzora_ember::inspector::{color_field, inspector_row};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
-use renzora_ember::reactive::tracked::bind_2way;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display};
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, icon_menu_button, section_with_header_icon_open, text_input,
-    toggle_switch, HoverTooltip, Section,
+    bind_text_input, drag_value, overlay_val_parts, scroll_area, section_with_header_icon_open,
+    text_input, toggle_switch, EmberTextInput, HoverTooltip, MenuAction, ScreenMenu, Section,
 };
-use renzora_ember::theme::{accent, border, rgb, section_bg, text_muted};
+use renzora_ember::theme::{accent, faint_bg, rgb, section_bg, text_muted, text_primary};
 use renzora_ember::UiInteraction;
 use renzora_scripting::{ScriptComponent, ScriptEngine, ScriptValue};
 
@@ -69,6 +69,8 @@ pub fn register(app: &mut App) {
             script_open_click,
             add_script_drop,
             add_script_drop_highlight,
+            add_script_open,
+            focus_script_search,
         )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
@@ -227,14 +229,12 @@ fn collect_script_specs(world: &Rx, entity: Entity) -> Vec<ScriptSpec> {
     out
 }
 
-fn scripts_sig(specs: &[ScriptSpec], root: Entity, index_hash: u64) -> u64 {
+fn scripts_sig(specs: &[ScriptSpec], root: Entity) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     root.to_bits().hash(&mut h);
-    // `build_add_bar` bakes the available-script list into the Add-Script menu's
-    // click closure, so the menu is a snapshot rather than a live read — a script
-    // that appears on disk only reaches it when the drawer rebuilds. Folding the
-    // index hash in is what triggers that, and only when the set really changed.
-    index_hash.hash(&mut h);
+    // The project's script list is not in here. The Add-Script picker used to
+    // be a menu baked into the drawer, so a new script on disk had to rebuild
+    // the drawer to reach it; the picker now reads `ScriptIndex` when it opens.
     for s in specs {
         s.id.hash(&mut h);
         s.name.hash(&mut h);
@@ -458,19 +458,13 @@ fn rebuild_scripts(world: &mut World) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
-    // Snapshot the cached project index once for every drawer: an `Arc` clone,
-    // no filesystem access. `refresh_script_index` owns keeping it current.
-    let (available, index_hash) = world
-        .get_resource::<ScriptIndex>()
-        .map(|i| (i.scripts.clone(), i.hash))
-        .unwrap_or_default();
     let mut q = world.query::<(Entity, &ScriptsRoot)>();
     let roots: Vec<(Entity, Entity, Option<u64>)> =
         q.iter(world).map(|(re, sr)| (re, sr.entity, sr.sig)).collect();
 
     for (root, entity, old_sig) in roots {
         let specs = collect_script_specs(&Rx::new(&*world), entity);
-        let sig = scripts_sig(&specs, root, index_hash);
+        let sig = scripts_sig(&specs, root);
         if old_sig == Some(sig) {
             continue;
         }
@@ -495,9 +489,9 @@ fn rebuild_scripts(world: &mut World) {
             for ch in existing {
                 commands.entity(ch).despawn();
             }
-            // Always show the add/drop bar, above the scripts — it's also the
+            // Always show the drop zone, above the scripts: it's also the
             // empty state.
-            let bar = build_add_bar(&mut commands, &fonts, entity, &available);
+            let bar = build_drop_zone(&mut commands, &fonts, entity);
             commands.entity(root).add_child(bar);
             for (spec, open) in specs.iter().zip(&open_states) {
                 let section = build_script_section(&mut commands, &fonts, entity, spec, *open);
@@ -625,11 +619,8 @@ fn build_script_section(
         .entity(header)
         .add_children(&[spacer, play, toggle, trash]);
 
-    for (i, var) in spec.vars.iter().enumerate() {
+    for var in &spec.vars {
         let row = build_var_row(commands, fonts, entity, spec.id, var);
-        commands
-            .entity(row)
-            .insert(BackgroundColor(inspector_stripe(i)));
         commands.entity(body).add_child(row);
     }
 
@@ -865,32 +856,28 @@ fn script_open_click(
     }
 }
 
-// ── Add-script bar (drop target + floating "+" menu) ─────────────────────────
+// ── Drop zone + Add-Script picker ────────────────────────────────────────────
 
-/// Always-shown bar at the top of the drawer: the "Drop to add script" target
-/// with a compact "+" icon button floating over its right edge that opens a
-/// scrolling list of the project's scripts. It doubles as the empty state when
-/// no scripts are attached.
-fn build_add_bar(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    entity: Entity,
-    available: &[(String, PathBuf)],
-) -> Entity {
-    let root = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                margin: UiRect::bottom(Val::Px(4.0)),
-                // Anchor for the absolutely-positioned "+" button.
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            Name::new("script-add-bar"),
-        ))
-        .id();
+/// The Scripts card header's "+" (built in `panel::section`): opens the
+/// Add-Script picker for `entity`.
+#[derive(Component)]
+pub(crate) struct AddScriptBtn {
+    pub(crate) entity: Entity,
+}
 
-    // Drop-to-add target (full width; the floated button overlays its right edge).
+/// The picker's search field, focused the frame it spawns.
+#[derive(Component)]
+struct ScriptSearch;
+
+/// Always-shown "Drop to add script" target at the top of the drawer. It
+/// doubles as the empty state when no scripts are attached.
+///
+/// Just muted text with no fill: it sat in the card as a grey slab with a "+"
+/// floating over it, a second panel inside the card for a control most people
+/// never drag onto. The outline appears only while a script is dragged over it
+/// (see [`add_script_drop_highlight`]), which is the one moment it is a target.
+/// The "+" moved to the card header.
+fn build_drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
     let drop_txt = commands
         .spawn((
             Text::new(renzora::lang::t("comp.script.drop")),
@@ -905,59 +892,215 @@ fn build_add_bar(
                 width: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(10.0)),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(6.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.02)),
-            BorderColor::all(rgb(border())),
+            BorderColor::all(Color::NONE),
             bevy::ui::RelativeCursorPosition::default(),
             AddScriptDropZone { entity },
             Name::new("script-drop-zone"),
         ))
         .id();
     commands.entity(drop).add_child(drop_txt);
+    drop
+}
 
-    // "+" icon button opening a floating menu of the project's scripts. An
-    // empty project shows one inert row — its index misses `paths` below, so
-    // picking it no-ops.
-    let none_msg = renzora::lang::t("comp.script.none_in_project");
-    let names: Vec<&str> = if available.is_empty() {
-        vec![none_msg.as_str()]
-    } else {
-        available.iter().map(|(d, _)| d.as_str()).collect()
+/// Open the Add-Script picker when a Scripts header "+" is pressed: a centred
+/// overlay with a search field over the project's scripts.
+///
+/// An overlay rather than the dropdown it replaces. The dropdown hung off a
+/// button at the panel's right edge, listed every script as a raw
+/// `scripts\name.rs` path, and had no way to narrow a long list. It reads the
+/// index here, at open, so it never needs the drawer rebuilt to see a new file.
+///
+/// The root carries [`ScreenMenu`], so a picked row's [`MenuAction`] closes it;
+/// Escape, the backdrop and the X are the overlay's own dismissal.
+fn add_script_open(
+    q: Query<(&UiInteraction, &AddScriptBtn), Changed<UiInteraction>>,
+    index: Res<ScriptIndex>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    let Some((_, btn)) = q.iter().find(|(i, _)| **i == UiInteraction::Pressed) else {
+        return;
     };
-    let paths: Vec<PathBuf> = available.iter().map(|(_, p)| p.clone()).collect();
-    let dd = icon_menu_button(commands, fonts, "plus", "file-code", &names, move |w, i| {
-        let Some(abs) = paths.get(i) else { return };
-        let rel = w
-            .get_resource::<renzora::core::CurrentProject>()
-            .map(|p| make_rel(abs, p))
-            .unwrap_or_else(|| abs.clone());
-        attach_file_script(w, entity, rel);
-    });
+    let entity = btn.entity;
+    let title = renzora::lang::t("comp.script.add");
+    let parts = overlay_val_parts(&mut commands, &fonts, &title, Val::Px(380.0), Val::Auto, true);
+    commands.entity(parts.root).insert(ScreenMenu);
     commands
-        .entity(dd)
-        .insert(HoverTooltip::new(renzora::lang::t("comp.script.add")));
-    // Float the button over the drop zone's right edge, vertically centered.
-    let float = commands
+        .entity(parts.titlebar)
+        .insert(BackgroundColor(rgb(faint_bg())));
+    commands.entity(parts.content).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(6.0),
+        padding: UiRect::all(Val::Px(8.0)),
+        ..default()
+    });
+
+    let search = text_input(
+        &mut commands,
+        &fonts.ui,
+        &renzora::lang::t_or("comp.script.search", "Search scripts..."),
+        "",
+    );
+    commands.entity(search).insert(ScriptSearch);
+    renzora_ember::inspector::fill_control(&mut commands, search);
+
+    let list = commands
         .spawn((
             Node {
-                position_type: PositionType::Absolute,
-                right: Val::Px(4.0),
-                top: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                align_items: AlignItems::Center,
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
                 ..default()
             },
-            Name::new("script-add-float"),
+            Name::new("script-picker-list"),
         ))
         .id();
-    commands.entity(float).add_child(dd);
+    let scripts = index.scripts.clone();
+    if scripts.is_empty() {
+        let none = muted_line(&mut commands, &fonts, &renzora::lang::t("comp.script.none_in_project"));
+        commands.entity(list).add_child(none);
+    } else {
+        // Lower-cased "folder/name" per script, matched against the query. One
+        // shared copy for the "no match" line, which has to know whether any row
+        // is showing.
+        let keys: Arc<Vec<String>> =
+            Arc::new(scripts.iter().map(|(d, _)| d.replace('\\', "/").to_lowercase()).collect());
+        for (i, (display, abs)) in scripts.iter().enumerate() {
+            let row = picker_row(&mut commands, &fonts, entity, display, abs.clone());
+            let keys = keys.clone();
+            bind_display(&mut commands, row, move |w| query_matches(w, search, &keys[i]));
+            commands.entity(list).add_child(row);
+        }
+        let none = muted_line(&mut commands, &fonts, &renzora::lang::t_or("comp.script.no_match", "No scripts match."));
+        bind_display(&mut commands, none, move |w| !keys.iter().any(|k| query_matches(w, search, k)));
+        commands.entity(list).add_child(none);
+    }
+    let scroll = scroll_area(&mut commands, list, 320.0);
+    commands.entity(parts.content).add_children(&[search, scroll]);
+}
 
-    commands.entity(root).add_children(&[drop, float]);
-    root
+/// Whether the picker's current query matches a lower-cased script key. An
+/// empty query matches everything.
+fn query_matches(w: &Rx, search: Entity, key: &str) -> bool {
+    w.get::<EmberTextInput>(search)
+        .is_none_or(|t| key.contains(&t.value.trim().to_lowercase()))
+}
+
+/// One picker row: the file icon, the script's file name, and its folder as a
+/// muted subtitle when it lives anywhere but the plain `scripts` folder. The
+/// highlight is the tree rows' accent pill, so a hovered row looks the same
+/// here as it does in the hierarchy.
+fn picker_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    display: &str,
+    abs: PathBuf,
+) -> Entity {
+    use renzora_ember::inspector::{list_row_selected, LIST_ROW_ICON, LIST_ROW_RADIUS, LIST_ROW_TEXT};
+    let display = display.replace('\\', "/");
+    let (folder, name) = match display.rsplit_once('/') {
+        Some((f, n)) => (f.to_string(), n.to_string()),
+        None => (String::new(), display.clone()),
+    };
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(LIST_ROW_RADIUS)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            UiInteraction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            MenuAction(Box::new(move |w: &mut World| {
+                let rel = w
+                    .get_resource::<renzora::core::CurrentProject>()
+                    .map(|p| make_rel(&abs, p))
+                    .unwrap_or_else(|| abs.clone());
+                attach_file_script(w, entity, rel);
+            })),
+            Name::new("script-picker-row"),
+        ))
+        .id();
+    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => list_row_selected(),
+        _ => Color::NONE,
+    });
+    let icon = icon_text(commands, &fonts.phosphor, "file-code", accent(), LIST_ROW_ICON);
+    commands.entity(icon).insert(PASS_THROUGH);
+    let label = commands
+        .spawn((
+            Text::new(name),
+            ui_font(&fonts.ui, LIST_ROW_TEXT),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+            PASS_THROUGH,
+        ))
+        .id();
+    let mut kids = vec![icon, label];
+    if !folder.is_empty() && folder != "scripts" {
+        let sub = commands
+            .spawn((
+                Node {
+                    margin: UiRect::left(Val::Auto),
+                    padding: UiRect::left(Val::Px(12.0)),
+                    ..default()
+                },
+                Text::new(folder),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(text_muted())),
+                bevy::text::TextLayout::no_wrap(),
+                PASS_THROUGH,
+            ))
+            .id();
+        kids.push(sub);
+    }
+    commands.entity(row).add_children(&kids);
+    row
+}
+
+/// A muted, centred line for the picker's empty and no-match states.
+fn muted_line(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
+    let t = commands
+        .spawn((
+            Text::new(text),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            PASS_THROUGH,
+        ))
+        .id();
+    let line = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(10.0)),
+                ..default()
+            },
+            PASS_THROUGH,
+        ))
+        .id();
+    commands.entity(line).add_child(t);
+    line
+}
+
+/// Focus the picker's search field the frame it spawns, so typing filters at
+/// once.
+fn focus_script_search(mut q: Query<&mut EmberTextInput, Added<ScriptSearch>>) {
+    for mut inp in &mut q {
+        inp.focused = true;
+    }
 }
 
 /// Recursively scan `root` for `.lua`/`.rhai` files, returning
@@ -1108,7 +1251,8 @@ fn add_script_drop(
     }
 }
 
-/// Highlight the drop target's border while a compatible script is dragged over.
+/// Outline the drop target while a compatible script is dragged over it; at
+/// rest it has no outline at all.
 fn add_script_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor), With<AddScriptDropZone>>,
@@ -1123,11 +1267,7 @@ fn add_script_drop_highlight(
         let active = payload
             .as_ref()
             .is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(&exts));
-        let want = BorderColor::all(if active {
-            Color::srgb_u8(120, 140, 200)
-        } else {
-            rgb(border())
-        });
+        let want = BorderColor::all(if active { rgb(accent()) } else { Color::NONE });
         if *bc != want {
             *bc = want;
         }

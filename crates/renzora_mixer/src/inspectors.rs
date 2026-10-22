@@ -33,7 +33,7 @@ fn audio_player_entry() -> InspectorEntry {
         type_id: "audio_player",
         display_name: "Audio Player",
         icon: "speaker-high",
-        category: "Audio",
+        category: "audio",
         has_fn: |world, entity| world.get::<AudioPlayer>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(AudioPlayer::default());
@@ -52,7 +52,7 @@ fn audio_listener_entry() -> InspectorEntry {
         type_id: "audio_listener",
         display_name: "Audio Listener",
         icon: "ear",
-        category: "Audio",
+        category: "audio",
         has_fn: |world, entity| world.get::<AudioListener>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world
@@ -98,7 +98,7 @@ use bevy::ecs::world::CommandQueue;
 use renzora_audio::AudioPlayer as ApComp;
 use renzora::AppEditorExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::inspector::{inspector_row, inspector_stripe};
+use renzora_ember::inspector::inspector_row;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
 use renzora_ember::theme::{hover_bg, rgb, text_muted, text_primary, value_text};
 use renzora_ember::UiInteraction;
@@ -524,52 +524,45 @@ fn audio_pool_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, i
 #[allow(clippy::too_many_lines)]
 fn build_audio_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, entity: Entity, data: &ApComp, buses: &[String]) {
     let mut children: Vec<Entity> = Vec::new();
-    let mut stripe = 0usize;
     let exts: Vec<String> = AUDIO_EXTS.iter().map(|s| s.to_string()).collect();
-
-    let field = |commands: &mut Commands, row: Entity, stripe: &mut usize| {
-        commands.entity(row).insert(BackgroundColor(inspector_stripe(*stripe)));
-        *stripe += 1;
-        row
-    };
 
     // ── Clip ──
     children.push(audio_header(commands, fonts, "Clip"));
     let file = asset_drop_field(commands, fonts, entity, audio_clip_get, audio_clip_set, exts.clone());
     let r = inspector_row(commands, &fonts.ui, "File", file);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
 
     // ── Clip Pool ──
     children.push(audio_header(commands, fonts, "Clip Pool"));
     for (i, clip) in data.clips.iter().enumerate() {
         let r = audio_pool_row(commands, fonts, entity, i, clip);
-        children.push(field(commands, r, &mut stripe));
+        children.push(r);
     }
     let add = asset_drop_field(commands, fonts, entity, audio_pool_get, audio_pool_add, exts.clone());
     let r = inspector_row(commands, &fonts.ui, "Add", add);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
 
     // ── Playback ──
     children.push(audio_header(commands, fonts, "Playback"));
     let r = audio_toggle_row(commands, fonts, entity, "Autoplay", g_autoplay, s_autoplay);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_toggle_row(commands, fonts, entity, "Looping", g_looping, s_looping);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_drag_row(commands, fonts, entity, "Fade In", g_fade, s_fade, 0.0, 10.0, 0.05);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
 
     // ── Mix ──
     children.push(audio_header(commands, fonts, "Mix"));
     let r = audio_slider_row(commands, fonts, entity, "Volume", g_volume, s_volume, 0.0, 2.0, 1.0);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_slider_row(commands, fonts, entity, "Vol Jitter", g_vol_jitter, s_vol_jitter, 0.0, 1.0, 0.0);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_slider_row(commands, fonts, entity, "Pitch", g_pitch, s_pitch, 0.1, 4.0, 1.0);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_slider_row(commands, fonts, entity, "Pitch Jitter", g_pitch_jitter, s_pitch_jitter, 0.0, 0.5, 0.0);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_pan_row(commands, fonts, entity);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     // Bus dropdown.
     let labels: Vec<&str> = buses.iter().map(|s| s.as_str()).collect();
     let sel = buses.iter().position(|b| *b == data.bus).unwrap_or(0);
@@ -592,19 +585,19 @@ fn build_audio_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, e
         },
     );
     let r = inspector_row(commands, &fonts.ui, "Bus", dd);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
 
     // ── Spatial ──
     children.push(audio_header(commands, fonts, "Spatial"));
     let r = audio_toggle_row(commands, fonts, entity, "Enabled", g_spatial, s_spatial);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     // Conditional rows — shown only while spatial is enabled.
     let r_min = audio_drag_row(commands, fonts, entity, "Min Distance", g_min, s_min, 0.01, 1000.0, 0.1);
     bind_display(commands, r_min, move |w| w.get::<ApComp>(entity).map(g_spatial).unwrap_or(false));
-    children.push(field(commands, r_min, &mut stripe));
+    children.push(r_min);
     let r_max = audio_drag_row(commands, fonts, entity, "Max Distance", g_max, s_max, 0.1, 10000.0, 0.5);
     bind_display(commands, r_max, move |w| w.get::<ApComp>(entity).map(g_spatial).unwrap_or(false));
-    children.push(field(commands, r_max, &mut stripe));
+    children.push(r_max);
     let roll = dropdown(commands, fonts, ROLLOFF_LABELS, rolloff_to_index(&data.spatial_rolloff));
     bind_2way(
         commands,
@@ -618,14 +611,14 @@ fn build_audio_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, e
     );
     let r_roll = inspector_row(commands, &fonts.ui, "Rolloff", roll);
     bind_display(commands, r_roll, move |w| w.get::<ApComp>(entity).map(g_spatial).unwrap_or(false));
-    children.push(field(commands, r_roll, &mut stripe));
+    children.push(r_roll);
 
     // ── Sends ──
     children.push(audio_header(commands, fonts, "Sends"));
     let r = audio_slider_row(commands, fonts, entity, "Reverb", g_reverb, s_reverb, 0.0, 1.0, 0.0);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
     let r = audio_slider_row(commands, fonts, entity, "Delay", g_delay, s_delay, 0.0, 1.0, 0.0);
-    children.push(field(commands, r, &mut stripe));
+    children.push(r);
 
     commands.entity(root).add_children(&children);
 }
@@ -772,7 +765,7 @@ mod tests {
     #[test]
     fn the_entries_are_filed_under_audio() {
         for entry in [audio_player_entry(), audio_listener_entry()] {
-            assert_eq!(entry.category, "Audio");
+            assert_eq!(entry.category, "audio");
             assert!(!entry.display_name.is_empty());
             assert!(!entry.icon.is_empty());
         }

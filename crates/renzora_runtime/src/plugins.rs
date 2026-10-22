@@ -50,8 +50,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_forward_decal::DecalPlugin::default());
     #[cfg(feature = "gaussian_splatting")]
     app.add_plugins(renzora_gaussian_splatting::GaussianSplatPlugin::default());
-    #[cfg(feature = "particles")]
-    app.add_plugins(renzora_hanabi::HanabiParticlePlugin::default());
     #[cfg(feature = "light2d")]
     app.add_plugins(renzora_light2d::Light2dPlugin::default());
     app.add_plugins(renzora_lighting::LightingPlugin::default());
@@ -66,6 +64,9 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_oit::OitPlugin::default());
     #[cfg(feature = "parkour")]
     app.add_plugins(renzora_parkour::ParkourPlugin::default());
+    #[cfg(feature = "particles")]
+    app.add_plugins(renzora_particles::ParticlesPlugin::default());
+    app.add_plugins(renzora_planar_reflection::PlanarReflectionPlugin::default());
     app.add_plugins(renzora_postprocess::PostProcessPlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
@@ -84,6 +85,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_ssao::SsaoPlugin::default());
     #[cfg(feature = "ssr")]
     app.add_plugins(renzora_ssr::SsrPlugin::default());
+    app.add_plugins(renzora_svg::SvgPlugin::default());
     #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain::TerrainPlugin::default());
     #[cfg(feature = "terrain")]

@@ -65,7 +65,7 @@ Type new numbers into the Transform fields and watch the cube move.
 
 Scripts give an entity behaviour. Renzora compiles Rust scripts on save.
 
-In the **Assets** panel, click **Add** and pick **Rust Script**. You get `new_script.rs`, and the file opens in the code editor with a working starter in it:
+In the **Assets** panel, click **Import** and pick **Rust Script** from the list of new assets. You get `new_script.rs`, and the file opens in the code editor with a working starter in it:
 
 ```rust
 use bevy::prelude::*;

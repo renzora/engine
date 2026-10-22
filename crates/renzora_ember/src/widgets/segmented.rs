@@ -14,6 +14,14 @@ pub(crate) struct EmberSegment {
     value: usize,
 }
 
+/// The control's container. Carries the selection as `Bound<usize>`, the way
+/// [`super::dropdown`] does, so `bind_2way` can drive a segmented control both
+/// ways: a click writes the model, and a model changed elsewhere moves the
+/// highlight. Without it a segmented control could only be read by querying
+/// its segments' styles, so panels hand-built their own tab rows instead.
+#[derive(Component)]
+pub(crate) struct EmberSegmented;
+
 /// A segmented control (a row of buttons, one selected). Returns the container.
 pub fn segmented(
     commands: &mut Commands,
@@ -30,6 +38,8 @@ pub fn segmented(
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
+            EmberSegmented,
+            crate::reactive::Bound::<usize>(selected),
             Name::new("segmented"),
         ))
         .id();
@@ -78,6 +88,7 @@ pub fn segmented(
 
 pub(crate) fn segmented_interact(
     pressed: Query<(&UiInteraction, &EmberSegment), Changed<UiInteraction>>,
+    mut groups: Query<&mut crate::reactive::Bound<usize>, With<EmberSegmented>>,
     mut segments: Query<(&EmberSegment, &mut Styled)>,
 ) {
     let mut chosen: Option<(Entity, usize)> = None;
@@ -90,14 +101,39 @@ pub(crate) fn segmented_interact(
     let Some((group, value)) = chosen else {
         return;
     };
-    for (s, mut styled) in &mut segments {
+    if let Ok(mut bound) = groups.get_mut(group) {
+        if bound.0 != value {
+            bound.0 = value;
+        }
+    }
+    highlight(&mut segments, group, value);
+}
+
+type ChangedGroup = (With<EmberSegmented>, Changed<crate::reactive::Bound<usize>>);
+
+/// Model (`Bound<usize>`) → highlight, when the selection changes from outside
+/// (a `bind_2way` syncing from a resource).
+pub(crate) fn segmented_apply(
+    groups: Query<(Entity, &crate::reactive::Bound<usize>), ChangedGroup>,
+    mut segments: Query<(&EmberSegment, &mut Styled)>,
+) {
+    for (group, bound) in &groups {
+        highlight(&mut segments, group, bound.0);
+    }
+}
+
+fn highlight(segments: &mut Query<(&EmberSegment, &mut Styled)>, group: Entity, value: usize) {
+    for (s, mut styled) in segments.iter_mut() {
         if s.group != group {
             continue;
         }
-        styled.state = if s.value == value {
+        let want = if s.value == value {
             WidgetState::Active
         } else {
             WidgetState::Normal
         };
+        if styled.state != want {
+            styled.state = want;
+        }
     }
 }

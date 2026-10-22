@@ -171,6 +171,19 @@ pub fn sync_camera_preview_activation(
     }
 }
 
+/// The cameras the preview may show: scene cameras, not the editor's own.
+///
+/// `Without<IsolatedCamera>` because offscreen utility cameras (thumbnails,
+/// previews, planar-mirror captures) are not scene cameras. Without it, a scene
+/// with no `DefaultCamera` previewed whichever of them the query met first, and
+/// a mirror camera is a `Camera3d` that is there whenever a mirror is in view.
+type PreviewableCameraFilter = (
+    With<Camera3d>,
+    Without<CameraPreviewMarker>,
+    Without<EditorCamera>,
+    Without<IsolatedCamera>,
+);
+
 pub fn update_camera_preview(
     mut commands: Commands,
     selection: Res<EditorSelection>,
@@ -182,11 +195,7 @@ pub fn update_camera_preview(
             &Projection,
             Option<&DefaultCamera>,
         ),
-        (
-            With<Camera3d>,
-            Without<CameraPreviewMarker>,
-            Without<EditorCamera>,
-        ),
+        PreviewableCameraFilter,
     >,
     mut preview_cameras: Query<
         (Entity, &mut Transform, &mut Projection),

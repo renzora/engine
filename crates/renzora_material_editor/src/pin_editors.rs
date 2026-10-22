@@ -32,7 +32,8 @@ use crate::MaterialEditorState;
 
 const AXES: [(&str, (u8, u8, u8)); 4] =
     [("X", (230, 90, 90)), ("Y", (90, 200, 90)), ("Z", (90, 130, 230)), ("W", (200, 200, 90))];
-const IMG_EXTS: [&str; 10] = ["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
+/// The shared image list, so a texture pin takes an SVG like any other slot.
+const IMG_EXTS: &[&str] = renzora::IMAGE_EXTENSIONS;
 
 /// Carries the systems the texture pin editor needs (asset drop, clear, browse).
 /// The editors themselves are built on demand by the graph, so there's no panel
@@ -66,8 +67,11 @@ pub(crate) fn has_pin_editor(pin_type: PinType) -> bool {
 /// container entity, sized to its content so the node it mounts on can grow to
 /// fit it.
 pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin: &PinTemplate) -> Entity {
+    // Stretched by the node view across the rest of the pin's row; the number
+    // fields inside stretch with it (see `num_field`), so a value reads as a
+    // slider bar the width of the node rather than a small box.
     let cell = commands
-        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), ..default() })
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), flex_grow: 1.0, min_width: Val::Px(0.0), ..default() })
         .id();
     let name = pin.name.clone();
     let default = pin.default_value.clone();
@@ -179,6 +183,11 @@ where
     if max > min {
         commands.entity(dv).insert(DragRange { min, max });
     }
+    commands.entity(dv).entry::<Node>().and_modify(|mut n| {
+        n.flex_grow = 1.0;
+        n.flex_basis = Val::Px(0.0);
+        n.min_width = Val::Px(36.0);
+    });
     bind_2way(commands, dv, get, set);
     dv
 }
@@ -255,7 +264,7 @@ fn tex_drop(
         return;
     }
     let (Some(payload), Some(mut state)) = (payload, state) else { return };
-    if !payload.is_detached || !payload.matches_extensions(&IMG_EXTS) {
+    if !payload.is_detached || !payload.matches_extensions(IMG_EXTS) {
         return;
     }
     for (rcp, zone) in &zones {
@@ -300,7 +309,7 @@ fn tex_browse(
             continue;
         }
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(file) = rfd::FileDialog::new().add_filter("Image", &IMG_EXTS).pick_file() {
+        if let Some(file) = rfd::FileDialog::new().add_filter("Image", IMG_EXTS).pick_file() {
             let path = project.as_ref().map(|p| p.make_asset_relative(&file)).unwrap_or_else(|| file.to_string_lossy().to_string());
             if let Some(node) = state.graph.get_node_mut(zone.node_id) {
                 node.input_values.insert(zone.pin.clone(), PinValue::TexturePath(path));
@@ -313,7 +322,7 @@ fn tex_browse(
 /// Accent the zone border while a compatible asset is dragged over it.
 fn tex_drop_highlight(payload: Option<Res<AssetDragPayload>>, mut zones: Query<(&RelativeCursorPosition, &mut BorderColor), With<TexDropZone>>) {
     for (rcp, mut bc) in &mut zones {
-        let active = payload.as_ref().is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(&IMG_EXTS));
+        let active = payload.as_ref().is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(IMG_EXTS));
         let want = BorderColor::all(rgb(if active { accent() } else { border() }));
         if *bc != want {
             *bc = want;

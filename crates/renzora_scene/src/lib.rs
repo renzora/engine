@@ -35,9 +35,7 @@ mod diagnostics;
 mod conflict_prompt;
 mod hot_reload;
 mod missing_assets;
-mod scenes;
 use diagnostics::SceneDiagnostics;
-use scenes::ScenesPanel;
 
 // Runtime warning capture now lives in the shared `renzora` dylib so the
 // capture layer (installed by the runtime binary) and this panel (in the
@@ -1430,7 +1428,7 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
         type_id: "scene_instance",
         display_name: "Scene Instance",
         icon: "film-slate",
-        category: "component",
+        category: "object",
         has_fn: |world, entity| world.get::<renzora::SceneInstance>(entity).is_some(),
         add_fn: None,
         remove_fn: None,
@@ -1572,7 +1570,6 @@ impl Plugin for ScenePlugin {
                 missing_assets::report_missing_assets.run_if(in_state(SplashState::Editor)),
             )
             .add_plugins(SceneDiagnostics)
-            .add_plugins(ScenesPanel)
             // When the user closes a tab, drop its strong handles so
             // the assets it pinned can evict (assuming no other tab
             // still references them).

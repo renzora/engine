@@ -15,7 +15,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "environment_map",
         display_name: "Environment Map",
         icon: "sun-horizon",
-        category: "rendering",
+        category: "environment",
         has_fn: |world, entity| {
             world
                 .get::<EnvironmentMapComponentSettings>(entity)

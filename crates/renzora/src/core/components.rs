@@ -98,8 +98,8 @@ pub struct Node2d;
 /// is fine for point-like things (lights, occluders) but useless for entities
 /// with real spatial extent and no sprite — a particle emitter spanning
 /// hundreds of pixels would only be grabbable in a 20px square at its origin.
-/// A system that knows the entity's true footprint (e.g. the hanabi sync from
-/// the effect's emitter shape) inserts this, and the 2D picker/overlay use it
+/// A system that knows the entity's true footprint (e.g. from an effect's
+/// emitter shape) inserts this, and the 2D picker/overlay use it
 /// in place of the marker box. Derived data — deliberately NOT reflected, so
 /// scene save never serializes it.
 #[derive(Component, Clone, Copy, Debug)]
@@ -264,6 +264,25 @@ impl Default for ReflectionProbeSource {
 #[derive(Component)]
 pub struct HideInHierarchy;
 
+/// Keeps this entity's mesh out of the editor's selection bounds: the orange
+/// box, the transform pivot and hover outline.
+///
+/// For meshes whose bounds are not the object's shape. A particle renderer's
+/// mesh is rebuilt every frame around wherever the particles happen to be, so
+/// a selection box taken from it jumped about with the effect.
+#[derive(Component, Default)]
+pub struct NoSelectionBounds;
+
+/// Makes an entity clickable in the viewport when it has no mesh a ray could
+/// hit: a sphere of `radius` (world units) at the entity's position stands in
+/// for it. Lights and particle systems are the cases; a particle mesh's
+/// vertices all sit on the particle centres (the shader spreads the quads), so
+/// the mesh raycast never hits it.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PickProxy {
+    pub radius: f32,
+}
+
 /// Set on an entity while a sound it owns is actually sounding.
 ///
 /// Maintained by `renzora_audio` from its live-voice bookkeeping, and read by the
@@ -378,6 +397,23 @@ pub struct SelectionStop;
 /// Marker component — camera should be excluded from scene-wide effects (skybox, post-processing).
 #[derive(Component)]
 pub struct IsolatedCamera;
+
+/// Marker on a camera that renders a *reflection* of the scene on behalf of
+/// another camera: the mirror cameras `renzora_planar_reflection` spawns, one
+/// per visible mirror per viewing camera.
+///
+/// Such a camera also carries [`IsolatedCamera`], which already keeps the
+/// routed effects off it. This marker is for the narrower question "is this a
+/// view of the scene the user is looking at, or a capture feeding one?", which
+/// matters to editor chrome that does draw into isolated previews but must
+/// never appear *inside* the scene's own reflections. The infinite grid is the
+/// case in point: it sits on layer 0 with the scene, so a floor mirror would
+/// otherwise show the editor grid reflected under everything.
+///
+/// Here rather than in the reflection crate so a consumer can test for it
+/// without linking that crate.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ReflectionCamera;
 
 /// Marks an entity as the root of a nested-scene instance.
 ///

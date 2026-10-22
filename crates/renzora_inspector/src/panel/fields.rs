@@ -71,14 +71,36 @@ pub(super) fn build_field_row(
         let reset = build_reset_button(commands, fonts, field.name, field.get_fn.clone(), field.set_fn.clone(), entity);
         commands.entity(value).add_child(reset);
     }
+    // An action button already says what it does, and the label column beside
+    // it repeated the same words, clipped ("Reset Temporal His" next to a
+    // "Reset Temporal History" button). It spans the row instead.
+    if matches!(field.kind, FieldKind::Button { .. }) {
+        let row = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+                    ..default()
+                },
+                Name::new("inspector-row"),
+            ))
+            .id();
+        commands.entity(row).add_child(value);
+        return row;
+    }
     let label = field_label_loc(field.name);
     renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value)
 }
 
 /// Whether a field carries an editable value worth a reset button. `Button` is a
 /// fire-and-forget action and `ReadOnly` can't be edited, so neither gets one.
+///
+/// Nor does `Asset`: an asset's type default is "no asset", which is exactly
+/// what the slot's own ✕ already does, so the two sat side by side doing the
+/// same thing and the reset read as a "reload" that wasn't one.
 fn field_is_resettable(kind: FieldKind) -> bool {
-    !matches!(kind, FieldKind::Button { .. } | FieldKind::ReadOnly)
+    !matches!(kind, FieldKind::Button { .. } | FieldKind::ReadOnly | FieldKind::Asset)
 }
 
 /// A small icon button that resets a field to its type-appropriate default

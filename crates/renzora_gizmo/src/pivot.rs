@@ -22,7 +22,7 @@ use bevy::prelude::*;
 /// object stays standing rather than sinking through the surface.
 pub(crate) fn compute_gizmo_pivot(
     entity: Entity,
-    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children: &Query<&Children>,
     fallback_gt: &GlobalTransform,
     bottom: bool,
@@ -45,7 +45,7 @@ pub(crate) fn compute_gizmo_pivot(
 
 fn collect_pivot_aabb(
     entity: Entity,
-    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children: &Query<&Children>,
     min: &mut Vec3,
     max: &mut Vec3,
@@ -84,7 +84,7 @@ mod tests {
     ) -> Vec3 {
         world
             .run_system_once(
-                move |aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
+                move |aabbs: Query<(Option<&Aabb>, &GlobalTransform), crate::BoundsMeshes>,
                       children: Query<&Children>| {
                     compute_gizmo_pivot(entity, &aabbs, &children, &fallback, bottom)
                 },

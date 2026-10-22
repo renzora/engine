@@ -1,6 +1,6 @@
-//! Every menu the browser opens: the Add button's create-asset list, the Import
-//! two-row picker, the per-asset and background right-click menus, and the sort
-//! dropdown — plus the hover tracking the right-click menus target off.
+//! Every menu the browser opens: the Import overlay (import tiles over the
+//! create-asset list), the per-asset and background right-click menus, and the
+//! sort dropdown, plus the hover tracking the right-click menus target off.
 
 use std::path::PathBuf;
 
@@ -8,8 +8,8 @@ use bevy::prelude::*;
 
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{
-    clipboard, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
-    screen_menu_est_height, screen_menu_flip, screen_menu_under, trigger_rect,
+    clipboard, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, menu_submenu, overlay_val_parts,
+    screen_menu, screen_menu_flip, MenuAction, ScreenMenu,
 };
 use renzora_ember::UiInteraction;
 
@@ -19,7 +19,7 @@ use crate::ops::{
 };
 use crate::rename::start_rename;
 use crate::state::{
-    unique_path, AddMenuBtn, AssetRoot, AssetTile, ImportBtn, NativeAssets, NewAsset, NewAssetBtn,
+    unique_path, AddMenuBtn, AssetRoot, AssetTile, NativeAssets, NewAsset, NewAssetBtn,
     RenameSurface, SortMenuBtn, SortMode, TreeAddBtn, TreeNav,
 };
 
@@ -70,57 +70,9 @@ pub(crate) fn create_asset_click(
     }
 }
 
-/// Click the toolbar's Import button → open a two-row menu asking *what* to
-/// import, rather than going straight to a picker.
-///
-/// It used to insert [`ImportRequested`](renzora::core::ImportRequested) and let
-/// the importer open the multi-select **file** dialog. That made folder import
-/// unreachable and, worse, look broken: no OS dialog selects files and folders
-/// in one pass, so clicking a folder in a file dialog just navigates into it —
-/// which reads as "Import refuses to import a folder". One extra click buys a
-/// choice that is actually visible.
-pub(crate) fn import_click(
-    q: Query<
-        (
-            &UiInteraction,
-            &bevy::ui::RelativeCursorPosition,
-            &bevy::ui::ComputedNode,
-        ),
-        (With<ImportBtn>, Changed<UiInteraction>),
-    >,
-    windows: Query<&Window>,
-    fonts: Option<Res<EmberFonts>>,
-    mut commands: Commands,
-) {
-    let Some(fonts) = fonts else {
-        return;
-    };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, ..)| **i == UiInteraction::Pressed) else {
-        return;
-    };
-    let Some((win_h, cursor)) = windows
-        .iter()
-        .find_map(|w| w.cursor_position().map(|c| (w.height(), c)))
-    else {
-        return;
-    };
-    // Hang the menu off the button's own box, flipping up only if the two rows
-    // genuinely don't fit below. The window-half rule the Add menu uses is wrong
-    // here: the Assets panel is docked at the bottom, so its toolbar is always in
-    // the lower half and a short dropdown flipped up over the panel's own tabs
-    // with the whole file grid free underneath it.
-    let menu = screen_menu_under(
-        &mut commands,
-        trigger_rect(cursor, rcp, cn),
-        win_h,
-        screen_menu_est_height(2, 0),
-    );
-    let kids = import_menu_items(&mut commands, &fonts);
-    commands.entity(menu).add_children(&kids);
-}
-
-/// The Files / Folder rows, shared by the Import button and both right-click
-/// menus so no entry point can quietly offer only half the choice.
+/// The Files / Folder / Marketplace rows, shared by both right-click menus so
+/// no entry point can quietly offer only half the choice. The Import button's
+/// overlay offers the same three as tiles (see [`add_menu_open`]).
 pub(crate) fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     vec![
         menu_item(
@@ -243,6 +195,8 @@ pub(crate) fn asset_context_menu(
     state: Res<NativeAssets>,
     roots: Query<&bevy::ui::RelativeCursorPosition, With<AssetRoot>>,
     registry: Option<Res<renzora::CreateMenuRegistry>>,
+    actions: Option<Res<renzora::AssetActionRegistry>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -263,7 +217,8 @@ pub(crate) fn asset_context_menu(
     let win_h = win.height();
     // Nothing under the cursor → the click targets the *folder*, not an asset.
     let Some(path) = state.hovered.clone() else {
-        background_context_menu(&mut commands, &fonts, &state, cursor, win_h, registry.as_deref());
+        let folder = state.current.clone().or_else(|| project.as_ref().map(|p| p.path.clone()));
+        background_context_menu(&mut commands, &fonts, &state, cursor, win_h, registry.as_deref(), actions.as_deref(), folder);
         return;
     };
     let fav_label = if state.favorites.contains(&path) {
@@ -271,27 +226,26 @@ pub(crate) fn asset_context_menu(
     } else {
         renzora::lang::t("assets.context.favorite")
     };
-    // Flip the menu upward when the click lands low in the window so the (often
-    // tall) "Create Asset" list grows up from the cursor instead of being clipped.
+    // Flip the menu upward when the click lands low in the window, so it grows
+    // up from the cursor instead of being clipped.
     let menu = screen_menu_flip(&mut commands, cursor.x, cursor.y, win_h);
-    // Same color-coded "create new X" rows as the Add button, led by the
-    // "Create Asset" header — at the TOP of the menu so a new asset can be made
-    // straight from the right-click menu (lands in the current folder).
-    let mut kids = new_asset_menu_items(&mut commands, &fonts, registry.as_deref());
-    kids.push(menu_sep(&mut commands));
+    // Actions on the asset first, Delete last, and "make something new" folded
+    // into one New submenu. The create list used to lead this menu, nine
+    // tall cards of it, which pushed Delete below the menu's height cap: the
+    // thing you right-clicked an asset to do was behind a scroll.
+    let mut kids = Vec::new();
     // "Open in <Editor>" routes editor-backed assets to their panel/layout.
     if let Some((icon, label)) = open_action(&path) {
         kids.push(menu_item(&mut commands, &fonts, icon, &label, {
             let path = path.clone();
             move |w| open_from_menu(w, &path)
         }));
-        kids.push(menu_sep(&mut commands));
     }
+    // Rows other crates registered for this kind of file (or folder), right
+    // under Open: they are about what this asset *is*, like Open, rather than
+    // the file housekeeping below.
+    kids.extend(registered_action_items(&mut commands, &fonts, actions.as_deref(), &path, path.is_dir()));
     kids.extend([
-        menu_item(&mut commands, &fonts, "star", &fav_label, {
-            let path = path.clone();
-            move |w| toggle_favorite(w, &path)
-        }),
         menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("assets.context.rename"), {
             let path = path.clone();
             let surface = state.hovered_surface;
@@ -301,6 +255,11 @@ pub(crate) fn asset_context_menu(
             let path = path.clone();
             move |_| duplicate_asset(&path)
         }),
+        menu_item(&mut commands, &fonts, "star", &fav_label, {
+            let path = path.clone();
+            move |w| toggle_favorite(w, &path)
+        }),
+        menu_sep(&mut commands),
         menu_item(
             &mut commands,
             &fonts,
@@ -322,6 +281,24 @@ pub(crate) fn asset_context_menu(
             let path = path.clone();
             move |_| reveal_in_explorer(&path)
         }),
+        menu_sep(&mut commands),
+    ]);
+    // New ▸ : the same colour-coded create rows as the Add button (landing in
+    // the current folder), then Folder, in a hover panel of their own.
+    let (new_row, new_content) =
+        menu_submenu(&mut commands, &fonts, "plus", &renzora::lang::t_or("assets.context.new", "New"));
+    let mut new_kids = new_asset_rows(&mut commands, &fonts, registry.as_deref());
+    new_kids.push(menu_sep(&mut commands));
+    new_kids.push(menu_item(
+        &mut commands,
+        &fonts,
+        "folder-plus",
+        &renzora::lang::t("assets.new_folder"),
+        |w| create_asset(w, NewAsset::Folder),
+    ));
+    commands.entity(new_content).add_children(&new_kids);
+    kids.extend([
+        new_row,
         menu_sep(&mut commands),
         menu_item_styled(&mut commands, &fonts, "trash", &renzora::lang::t("assets.context.delete"), (224, 96, 88), (224, 96, 88), {
             let path = path.clone();
@@ -357,6 +334,7 @@ pub(crate) fn asset_context_menu(
 /// housekeeping around it, but the housekeeping is one line each and the
 /// create list is a block of cards, so putting the short rows first buried the
 /// answer under the question every time.
+#[allow(clippy::too_many_arguments)]
 fn background_context_menu(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -364,11 +342,21 @@ fn background_context_menu(
     cursor: Vec2,
     win_h: f32,
     registry: Option<&renzora::CreateMenuRegistry>,
+    actions: Option<&renzora::AssetActionRegistry>,
+    folder: Option<PathBuf>,
 ) {
     // Same upward flip as the per-asset menu: the create-asset list is tall
     // enough to be clipped by a click low in the window.
     let menu = screen_menu_flip(commands, cursor.x, cursor.y, win_h);
     let mut kids = new_asset_menu_items(commands, fonts, registry);
+    // Actions on the folder being shown ("Convert all .particle files here").
+    if let Some(folder) = folder {
+        let rows = registered_action_items(commands, fonts, actions, &folder, true);
+        if !rows.is_empty() {
+            kids.push(menu_sep(commands));
+            kids.extend(rows);
+        }
+    }
     kids.push(menu_sep(commands));
     kids.push(menu_item(
         commands,
@@ -391,61 +379,224 @@ fn background_context_menu(
     commands.entity(menu).add_children(&kids);
 }
 
-/// Click an "Add" button → open the shared ember menu of new-asset types at the
-/// cursor. The tree strip's "+" ([`TreeAddBtn`]) follows that list with New
-/// Folder and Import: in the tree-only layout it is the *only* action key on
-/// screen, so the menu has to carry everything the hidden toolbar would have
-/// offered. See [`background_context_menu`] for why Create Asset comes first.
+/// Menu rows for the actions other crates registered against `path`: its file
+/// actions, or (for a folder) the folder actions that have a matching file in
+/// it. See [`renzora::asset_actions`].
+fn registered_action_items(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    actions: Option<&renzora::AssetActionRegistry>,
+    path: &std::path::Path,
+    is_dir: bool,
+) -> Vec<Entity> {
+    let Some(actions) = actions else {
+        return Vec::new();
+    };
+    let matching: Vec<&renzora::AssetAction> = if is_dir {
+        actions.for_folder(path)
+    } else {
+        actions.for_file(path).collect()
+    };
+    matching
+        .into_iter()
+        .map(|action| {
+            let run = action.run;
+            let path = path.to_path_buf();
+            menu_item(commands, fonts, &action.icon, &action.label_text(), move |w| run(w, &path))
+        })
+        .collect()
+}
+
+/// Click an Import button → open the Import overlay, centred. A button marked
+/// [`TreeAddBtn`] (both Import keys are) leads it with the ways to bring files
+/// in, then the list of assets to create; an [`AddMenuBtn`] without the mark
+/// opens on the create list alone.
+///
+/// An overlay rather than a menu hung off the button: the Assets panel is
+/// usually docked at the bottom, so a list this long had no room below its
+/// button and opened as a tall drop-up over the panels above, reading as
+/// something that had gone wrong. Centred, it has the whole window.
+///
+/// The overlay root also carries [`ScreenMenu`], which is what makes picking a
+/// row close it: `menu_action_run` runs the row's action and despawns every
+/// screen menu. It has no `RelativeCursorPosition`, so the screen-menu
+/// click-outside rule (which would need one) leaves it to the overlay's own
+/// dismissal, and its full-window box is already inside the screen clamp.
 pub(crate) fn add_menu_open(
     registry: Option<Res<renzora::CreateMenuRegistry>>,
-    q: Query<
-        (
-            &UiInteraction,
-            &bevy::ui::RelativeCursorPosition,
-            &bevy::ui::ComputedNode,
-            Has<TreeAddBtn>,
-        ),
-        (With<AddMenuBtn>, Changed<UiInteraction>),
-    >,
-    windows: Query<&Window>,
+    q: Query<(&UiInteraction, Has<TreeAddBtn>), (With<AddMenuBtn>, Changed<UiInteraction>)>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else {
         return;
     };
-    let Some((_, rcp, cn, file_actions)) = q.iter().find(|(i, ..)| **i == UiInteraction::Pressed) else {
+    let Some((_, file_actions)) = q.iter().find(|(i, ..)| **i == UiInteraction::Pressed) else {
         return;
     };
-    let Some((win_h, cursor)) = windows
-        .iter()
-        .find_map(|w| w.cursor_position().map(|c| (w.height(), c)))
-    else {
-        return;
-    };
-    // Anchor the menu to the button's bottom-left (stable, cursor-independent) —
-    // except for the narrow layout's bottom action bar, where "below the button"
-    // is off-screen. There, grow the menu up from the button's top edge instead.
-    let size = cn.size() * cn.inverse_scale_factor();
-    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = if top_left.y > win_h * 0.5 {
-        screen_menu_flip(&mut commands, top_left.x, top_left.y - 2.0, win_h)
+    let title = if file_actions {
+        renzora::lang::t("assets.import")
     } else {
-        screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0)
+        renzora::lang::t("assets.new.header")
     };
-    let mut kids = new_asset_menu_items(&mut commands, &fonts, registry.as_deref());
+    let parts = overlay_val_parts(&mut commands, &fonts, &title, Val::Px(440.0), Val::Auto, true);
+    let (root, content) = (parts.root, parts.content);
+    commands.entity(root).insert(ScreenMenu);
+    // The title bar a step darker than the overlay's default, so it sits back
+    // behind the colourful tiles rather than competing with them.
+    commands
+        .entity(parts.titlebar)
+        .insert(BackgroundColor(renzora_ember::theme::rgb(renzora_ember::theme::faint_bg())));
+    commands.entity(content).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(1.0),
+        padding: UiRect::all(Val::Px(8.0)),
+        ..default()
+    });
+
+    let mut kids = Vec::new();
     if file_actions {
+        kids.push(import_grid(&mut commands, &fonts));
         kids.push(menu_sep(&mut commands));
-        kids.push(menu_item(
-            &mut commands,
-            &fonts,
-            "folder-plus",
-            &renzora::lang::t("assets.new_folder"),
-            |w| create_asset(w, NewAsset::Folder),
-        ));
-        kids.extend(import_menu_items(&mut commands, &fonts));
     }
-    commands.entity(menu).add_children(&kids);
+    kids.extend(new_asset_menu_items(&mut commands, &fonts, registry.as_deref()));
+    commands.entity(content).add_children(&kids);
+}
+
+/// The ways to bring files in, as a row of equal tiles along the top of the
+/// overlay: Files, Folder and the Marketplace, each a coloured icon tile over
+/// its name and a line saying what it does.
+///
+/// A grid rather than more rows: these are three answers to one question
+/// ("where is it coming from?"), so side by side they read as a choice, and the
+/// list of asset types to create underneath stays visibly a separate thing.
+/// New Folder is not here: it makes something rather than bringing it in, and
+/// it has its own key on the toolbar and in the right-click menu.
+fn import_grid(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let grid = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::bottom(Val::Px(4.0)),
+                ..default()
+            },
+            Name::new("import-grid"),
+        ))
+        .id();
+    let tiles = [
+        import_tile(
+            commands,
+            fonts,
+            "file",
+            &renzora::lang::t_or("assets.import_files_tile", "Files"),
+            &renzora::lang::t_or("assets.import_files_sub", "From disk"),
+            (96, 165, 250),
+            |w| request_import(w, renzora::core::ImportPick::Files),
+        ),
+        import_tile(
+            commands,
+            fonts,
+            "folder-open",
+            &renzora::lang::t_or("assets.import_folder_tile", "Folder"),
+            &renzora::lang::t_or("assets.import_folder_sub", "A whole folder"),
+            (240, 180, 80),
+            |w| request_import(w, renzora::core::ImportPick::Folder),
+        ),
+        import_tile(
+            commands,
+            fonts,
+            "storefront",
+            &renzora::lang::t_or("assets.search_marketplace_tile", "Marketplace"),
+            &renzora::lang::t_or("assets.search_marketplace_sub", "Browse assets"),
+            // The Marketplace's own top-bar hue, so it reads as the same place.
+            (167, 130, 245),
+            |w| renzora::ShellActionInvoked::invoke(w, renzora::ACTION_MARKETPLACE),
+        ),
+    ];
+    commands.entity(grid).add_children(&tiles);
+    grid
+}
+
+/// One tile of [`import_grid`]. Carries a [`MenuAction`], so a press runs it and
+/// closes the overlay exactly as a menu row would (see [`add_menu_open`]).
+fn import_tile(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    title: &str,
+    subtitle: &str,
+    hue: (u8, u8, u8),
+    on_click: impl Fn(&mut World) + Send + Sync + 'static,
+) -> Entity {
+    use renzora_ember::font::{icon_text, ui_font};
+    use renzora_ember::theme::{rgb, text_muted, text_primary};
+    let tile = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                flex_basis: Val::Px(0.0),
+                min_width: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                ..default()
+            },
+            // Tinted with the tile's own hue rather than a neutral grey: grey
+            // tiles read as disabled buttons, and the hue already says which
+            // source each one is.
+            BackgroundColor(rgb(hue).with_alpha(0.07)),
+            BorderColor::all(rgb(hue).with_alpha(0.18)),
+            UiInteraction::default(),
+            MenuAction(Box::new(on_click)),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("import-tile"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_bg(commands, tile, move |w| match w.get::<UiInteraction>(tile) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hue).with_alpha(0.16),
+        _ => rgb(hue).with_alpha(0.07),
+    });
+    let glyph = icon_text(commands, &fonts.phosphor, icon, hue, 20.0);
+    commands.entity(glyph).insert(renzora_ember::interaction::PASS_THROUGH);
+    let badge = commands
+        .spawn((
+            Node {
+                width: Val::Px(38.0),
+                height: Val::Px(38.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(9.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(hue).with_alpha(0.14)),
+            renzora_ember::interaction::PASS_THROUGH,
+        ))
+        .id();
+    commands.entity(badge).add_child(glyph);
+    let label = |commands: &mut Commands, text: &str, size: f32, color: (u8, u8, u8)| {
+        commands
+            .spawn((
+                Text::new(text),
+                ui_font(&fonts.ui, size),
+                TextColor(rgb(color)),
+                bevy::text::TextLayout::no_wrap(),
+                renzora_ember::interaction::PASS_THROUGH,
+            ))
+            .id()
+    };
+    // The tiles take one-word names of their own ("Files", not the menu row's
+    // "Import Files..."): the overlay's title already says Import, and the
+    // longer names overflowed a third of a 440px card.
+    let name = label(commands, title, 14.0, text_primary());
+    let sub = label(commands, subtitle, 11.0, text_muted());
+    commands.entity(tile).add_children(&[badge, name, sub]);
+    tile
 }
 
 /// The color-coded "create new X" rows shared by the Add button and the
@@ -458,7 +609,18 @@ fn new_asset_menu_items(
     registry: Option<&renzora::CreateMenuRegistry>,
 ) -> Vec<Entity> {
     let mut kids = vec![menu_header(commands, fonts, &renzora::lang::t("assets.new.header"))];
-    kids.extend(NewAsset::MENU.iter().map(|&kind| {
+    kids.extend(new_asset_rows(commands, fonts, registry));
+    kids
+}
+
+/// The create rows alone, without the header: the asset menu's New submenu is
+/// already labelled by the row that opens it.
+fn new_asset_rows(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    registry: Option<&renzora::CreateMenuRegistry>,
+) -> Vec<Entity> {
+    let mut kids: Vec<Entity> = NewAsset::MENU.iter().map(|&kind| {
         menu_card(
             commands,
             fonts,
@@ -468,7 +630,7 @@ fn new_asset_menu_items(
             kind.color(),
             move |w| create_asset(w, kind),
         )
-    }));
+    }).collect();
     kids.extend(registered_menu_items(registry, commands, fonts));
     kids
 }

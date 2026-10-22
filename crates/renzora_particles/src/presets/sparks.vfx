@@ -1,0 +1,65 @@
+// Sparks: one burst of velocity-stretched streaks that fall under gravity.
+// Not looping: plays once over 1.5 s and is then finished.
+(
+  version: 1,
+  name: "Sparks Burst",
+  dimension: ThreeD,
+  duration: 1.5,
+  looping: false,
+  emitters: [
+    (
+      name: "sparks",
+      capacity: 256,
+      space: World,
+      seed: 5,
+      graph: (
+        nodes: [
+          (id: 1, node_type: "output/particle", position: (600.0, 0.0), input_values: {
+            "spawn_rate": Float(0.0),
+            "burst_count": Float(140.0),
+            "burst_interval": Float(1.0),
+            "burst_cycles": Float(1.0),
+            "size": Vec2((0.025, 0.22)),
+            "gravity": Vec3((0.0, -9.81, 0.0)),
+            "drag": Float(0.8),
+            "color": Color((1.0, 0.75, 0.35, 1.0)),
+          }),
+          (id: 2, node_type: "shape/point", position: (0.0, 0.0)),
+          (id: 3, node_type: "random/range", position: (0.0, 140.0), input_values: {
+            "min": Float(3.5), "max": Float(9.0),
+          }),
+          (id: 4, node_type: "math/multiply", position: (300.0, 60.0)),
+          (id: 5, node_type: "random/range", position: (0.0, 280.0), input_values: {
+            "min": Float(0.35), "max": Float(0.9), "salt": Float(1.0),
+          }),
+          (id: 6, node_type: "curve/curve", position: (300.0, 280.0), input_values: {
+            "points": Curve([
+              (t: 0.0, value: 1.0),
+              (t: 1.0, value: 0.15, ease: EaseIn),
+            ]),
+          }),
+          (id: 7, node_type: "curve/gradient", position: (300.0, 420.0), input_values: {
+            "stops": Gradient([
+              (t: 0.0, color: (1.0, 1.0, 1.0, 1.0)),
+              (t: 0.4, color: (1.0, 0.8, 0.4, 1.0)),
+              (t: 1.0, color: (1.0, 0.25, 0.05, 0.0)),
+            ]),
+          }),
+        ],
+        connections: [
+          (from_node: 2, from_pin: "position", to_node: 1, to_pin: "position"),
+          (from_node: 2, from_pin: "direction", to_node: 4, to_pin: "a"),
+          (from_node: 3, from_pin: "value", to_node: 4, to_pin: "b"),
+          (from_node: 4, from_pin: "value", to_node: 1, to_pin: "velocity"),
+          (from_node: 5, from_pin: "value", to_node: 1, to_pin: "lifetime"),
+          (from_node: 6, from_pin: "value", to_node: 1, to_pin: "size_over_life"),
+          (from_node: 7, from_pin: "color", to_node: 1, to_pin: "color_over_life"),
+        ],
+      ),
+      render: (
+        blend: Additive,
+        facing: VelocityAligned,
+      ),
+    ),
+  ],
+)

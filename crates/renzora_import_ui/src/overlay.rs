@@ -111,6 +111,15 @@ pub struct ImportOverlayState {
     /// running worker has finished, since two workers must never stage into the
     /// same directories at once.
     pub(crate) reimport_requested: bool,
+    /// Import was pressed while the staged set was stale, so it is being
+    /// reconverted and should be committed the moment that finishes.
+    ///
+    /// Committing the stale set straight away put the files wherever the
+    /// *first* conversion was pointed. That is usually the folder the asset
+    /// browser was showing at drop time, which after a previous import is the
+    /// last model's own folder: picking `models` in Destination and pressing
+    /// Import then nested the new model inside the old one.
+    pub(crate) commit_when_converted: bool,
     /// The settings the staged set was converted with, so a change to the ones
     /// on screen can be spotted and reconverted. `None` until the first
     /// conversion starts.
@@ -149,6 +158,7 @@ impl Default for ImportOverlayState {
             active: 0,
             last_files: Vec::new(),
             reimport_requested: false,
+            commit_when_converted: false,
             converted_with: None,
             staging_seq: 0,
             scale_is_user_set: false,
@@ -375,6 +385,7 @@ pub(crate) fn close_overlay(world: &mut World) {
     state.last_files.clear();
     state.converted_with = None;
     state.reimport_requested = false;
+    state.commit_when_converted = false;
     state.staging_seq = 0;
 }
 

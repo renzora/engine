@@ -42,7 +42,6 @@ A bare `renzora test` (which runs `cargo test --workspace`) also tries to run th
 ```bash
 renzora test \
   --exclude bevy_gauge \
-  --exclude bevy_hanabi \
   --exclude bevy_mod_outline \
   --exclude bevy_silk \
   --exclude vleue_navigator \
@@ -229,7 +228,7 @@ Two jobs:
 ```bash
 # job: test — first-party crates only
 cargo test --workspace \
-  --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
+  --exclude bevy_gauge --exclude bevy_mod_outline \
   --exclude bevy_silk --exclude vleue_navigator \
   --exclude bevy_args --exclude bevy_interleave \
   --exclude bevy_interleave_interface --exclude bevy_interleave_macros \
@@ -237,7 +236,7 @@ cargo test --workspace \
 
 # job: clippy — lints, warnings are errors
 cargo clippy --workspace --no-deps \
-  --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
+  --exclude bevy_gauge --exclude bevy_mod_outline \
   --exclude bevy_silk --exclude vleue_navigator \
   --exclude bevy_args --exclude bevy_interleave \
   --exclude bevy_interleave_interface --exclude bevy_interleave_macros \

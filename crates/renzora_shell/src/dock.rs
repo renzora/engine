@@ -204,6 +204,16 @@ const RETIRED_PANELS: &[&str] = &[
     // other entities against one playhead, with markers — is what the animation
     // Timeline already does, against clips that do save.
     "sequencer",
+    // The Scenes list. Tabbed behind the Hierarchy it was usually out of sight,
+    // and everything it did (list the project's scenes, open one, make a new
+    // one, set the boot scene) is in the top bar's scene switcher now.
+    "scenes",
+    // The Hanabi particle editor's preview, property editor and graph. Hanabi
+    // was removed; a `.particle` now opens as its converted `.vfx` in the
+    // effect editor (`vfx_preview`, `vfx_emitter`, `vfx_graph`).
+    "particle_preview",
+    "particle_editor",
+    "particle_graph",
 ];
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
@@ -576,8 +586,7 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
 /// watch a HUD against the scene it sits over.
 ///
 /// `code_editor` is tabbed with the canvas because a `.html` template has a
-/// text form worth reaching; `scenes` is not tabbed beside the hierarchy the way
-/// Scene does it, since the document here is a template rather than a scene.
+/// text form worth reaching.
 fn layout_ui() -> DockTree {
     // Widgets sit *under* the hierarchy rather than tabbed with it. Tabbed, the
     // two hid each other — and you want them at the same time, since adding a
@@ -706,16 +715,29 @@ fn layout_materials() -> DockTree {
     )
 }
 
-/// Particles: ParticlePreview | ParticleEditor
+/// Particles: (EffectPreview over EmitterSettings) | EffectGraph.
+///
+/// The `.vfx` node-graph editor from `renzora_particles_editor`: a big live
+/// preview on the left with the emitter's settings under it, the graph on the
+/// right. Opening a `.vfx` brings these panels to the front
+/// (`renzora_particles_editor::workspace`, which mirrors this tree). This only
+/// shapes a fresh install or a Reset Workspace: a layout saved by an older
+/// build loses its Hanabi panels to [`RETIRED_PANELS`] and gets the effect
+/// panels slotted in the first time a `.vfx` opens.
 fn layout_particles() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("particle_preview"),
-        DockTree::leaf("particle_editor"),
-        0.8,
+        DockTree::vertical(
+            DockTree::leaf("vfx_preview"),
+            DockTree::leaf("vfx_emitter"),
+            0.6,
+        ),
+        DockTree::leaf("vfx_graph"),
+        0.42,
     )
 }
 
-/// Scene workspace: hierarchy/scenes | the viewport | the inspector.
+/// Scene workspace: hierarchy | the viewport | the inspector. (The Scenes list
+/// that shared the hierarchy's column is the top bar's scene switcher now.)
 ///
 /// **The tree gets the left column, not a shelf above the inspector.** For a
 /// while these two shared one right-hand column, tree stacked over inspector, on
@@ -748,7 +770,7 @@ fn layout_particles() -> DockTree {
 /// click. Both are still one click away in the panel menu.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::tabs(&["hierarchy", "scenes"]),
+        DockTree::leaf("hierarchy"),
         DockTree::horizontal(
             DockTree::tabs(&["viewport", "code_editor"]),
             DockTree::leaf("inspector"),

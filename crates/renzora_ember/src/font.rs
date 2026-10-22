@@ -1,15 +1,32 @@
 //! Fonts + text/icon helpers shared by every ember component and the editor
-//! chrome. Noto Sans (proportional) is embedded; the Phosphor icon font is
-//! reused from `renzora_hui` (folded into ember later).
+//! chrome. Inter (the default UI font) and Noto Sans are embedded; the Phosphor
+//! icon font is reused from `renzora_hui` (folded into ember later).
 
 use bevy::prelude::*;
 use bevy::text::{Font, FontSize, FontSource};
 
 use crate::theme::rgb;
 
-/// Noto Sans, embedded so it's available regardless of the running app's
-/// asset-root.
+/// Inter, the default UI font. Embedded so it's available regardless of the
+/// running app's asset-root. SIL Open Font License; see
+/// `embedded/Inter-LICENSE.txt`.
+///
+/// It replaced Noto Sans as the default because it is drawn for dense
+/// interfaces: narrower letters and tighter spacing fit more of a name into a
+/// tree row or an inspector label at the same pixel size, where Noto's wide,
+/// tall lowercase read as large and soft.
+const INTER: &[u8] = include_bytes!("../embedded/Inter-Regular.ttf");
+
+/// Noto Sans, the previous default, kept as a choice in Settings.
 const NOTO_SANS: &[u8] = include_bytes!("../embedded/NotoSans-Regular.ttf");
+
+/// The embedded UI fonts that are not the default, by name, so the settings
+/// can offer them without a reload. The default lives in
+/// [`EmberFonts::default_ui`].
+#[derive(Resource, Clone)]
+pub struct BuiltinUiFonts {
+    pub noto_sans: FontSource,
+}
 
 /// JetBrains Mono — the monospace font for the code editor.
 const JETBRAINS_MONO: &[u8] = include_bytes!("../embedded/JetBrainsMono-Regular.ttf");
@@ -54,7 +71,7 @@ pub fn theme_ui_font() -> Option<FontSource> {
     THEME_UI_FONT.read().ok().and_then(|g| g.clone())
 }
 
-/// The fonts ember renders with. `ui` = the proportional UI font (Noto by
+/// The fonts ember renders with. `ui` = the proportional UI font (Inter by
 /// default, user-changeable via the theme); `mono` = the monospace font;
 /// `phosphor` = the icon font.
 ///
@@ -87,8 +104,11 @@ pub(crate) fn load_fonts(
         return;
     };
     // 0.19/Parley: `Font::from_bytes` (Result) → `Font::from_bytes` (infallible).
-    let ui = FontSource::Handle(fonts.add(Font::from_bytes(NOTO_SANS.to_vec())));
+    let ui = FontSource::Handle(fonts.add(Font::from_bytes(INTER.to_vec())));
     let mono = FontSource::Handle(fonts.add(Font::from_bytes(JETBRAINS_MONO.to_vec())));
+    commands.insert_resource(BuiltinUiFonts {
+        noto_sans: FontSource::Handle(fonts.add(Font::from_bytes(NOTO_SANS.to_vec()))),
+    });
     commands.insert_resource(EmberFonts {
         ui: ui.clone(),
         phosphor: phosphor.0.clone(),

@@ -1,64 +1,13 @@
-//! Scenes panel helpers — scene-file listing and open/create utilities shared by
-//! the `scenes` panel in [`crate::scenes`].
-
-use std::path::PathBuf;
+//! Opening a scene file in a document tab, for `OpenScenePathRequested` (the
+//! top bar's scene switcher, the asset browser's double-click).
+//!
+//! The Scenes panel that once shared this module is gone; its list moved into
+//! the scene switcher (`renzora_shell::scene_switcher`).
 
 use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_camera::OrbitCameraState;
 use renzora_engine::scene_io;
-
-pub(crate) const EMPTY_SCENE_RON: &str = "(\n    resources: {},\n    entities: {},\n)\n";
-
-pub(crate) fn list_scenes(dir: &std::path::Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let Ok(read) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for entry in read.flatten() {
-        let p = entry.path();
-        if p.extension().and_then(|s| s.to_str()) == Some("bsn") {
-            out.push(p);
-        }
-    }
-    out.sort_by(|a, b| {
-        a.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase()
-            .cmp(
-                &b.file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_lowercase(),
-            )
-    });
-    out
-}
-
-pub(crate) fn unique_scene_path(dir: &std::path::Path, base: &str) -> PathBuf {
-    let mut i = 0u32;
-    loop {
-        let name = if i == 0 {
-            format!("{base}.bsn")
-        } else {
-            format!("{base}_{i}.bsn")
-        };
-        let p = dir.join(&name);
-        if !p.exists() {
-            return p;
-        }
-        i += 1;
-    }
-}
-
-pub(crate) fn paths_equal(a: &std::path::Path, b: &std::path::Path) -> bool {
-    std::fs::canonicalize(a)
-        .ok()
-        .zip(std::fs::canonicalize(b).ok())
-        .map(|(a, b)| a == b)
-        .unwrap_or_else(|| a == b)
-}
 
 pub(crate) fn open_scene(world: &mut World, path: &std::path::Path) {
     let relative = world

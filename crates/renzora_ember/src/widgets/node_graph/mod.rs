@@ -42,7 +42,7 @@ pub(crate) const MIN_ZOOM: f32 = 0.25;
 pub(crate) const MAX_ZOOM: f32 = 1.5;
 
 mod view;
-pub use view::{graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, ConnectDrag, GraphEdit, NodeGraphHandle, NodeGraphView};
+pub use view::{comment_search_entry, graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, ConnectDrag, GraphEdit, NodeGraphHandle, NodeGraphView};
 
 /// Registers the cable material + shader and the node-graph systems.
 pub(crate) struct NodeGraphPlugin;
@@ -175,6 +175,8 @@ pub(crate) struct GraphGrid {
 /// Grid spacing in canvas-logical px (matches the egui editor's 20px dot grid).
 /// Also what a dragged node snaps to, so its corner sits on a dot.
 pub(crate) const GRID_SPACING: f32 = 20.0;
+/// A stronger line every this many grid steps (160px at 1x).
+const GRID_MAJOR_EVERY: f32 = 8.0;
 
 /// Spawn a full-viewport dotted-grid background node that tracks `canvas`'s
 /// pan/zoom. Add it behind the canvas in the viewport.
@@ -223,9 +225,10 @@ fn update_grid(
     }
     let bg_c = theme.node_graph.canvas_bg.color();
     let bg = bg_c.to_linear();
-    // Dots a touch lighter than the canvas (egui: 25 → 35).
+    // Minor lines a touch lighter than the canvas; the shader puts the major
+    // lines twice as far from it.
     let bg_s = bg_c.to_srgba();
-    let dot = Color::srgb(bg_s.red + 0.045, bg_s.green + 0.045, bg_s.blue + 0.05).to_linear();
+    let dot = Color::srgb(bg_s.red + 0.022, bg_s.green + 0.022, bg_s.blue + 0.028).to_linear();
     for (grid, cn, mat) in &grids {
         let Ok(view) = views.get(grid.canvas) else {
             continue;
@@ -233,10 +236,11 @@ fn update_grid(
         let isf = cn.inverse_scale_factor().max(1e-5);
         let pan = view.pan / isf; // logical → physical px
         let spacing = GRID_SPACING / isf;
-        let dot_r = (1.5 * view.zoom.sqrt()) / isf;
+        // One logical pixel wide at any zoom, so lines stay crisp.
+        let line_w = 1.0 / isf;
         if let Some(mut m) = materials.get_mut(&mat.0) {
             m.view = Vec4::new(view.zoom, pan.x, pan.y, spacing);
-            m.size = Vec4::new(dot_r, 0.0, 0.0, 0.0);
+            m.size = Vec4::new(line_w, GRID_MAJOR_EVERY, 0.0, 0.0);
             m.bg = Vec4::new(bg.red, bg.green, bg.blue, 1.0);
             m.dot = Vec4::new(dot.red, dot.green, dot.blue, 1.0);
         }

@@ -1072,7 +1072,7 @@ pub(crate) fn ensure_visible(ed: &mut CodeEditor) {
     } else if cr >= ed.scroll + ed.visible {
         ed.scroll = cr + 1 - ed.visible;
     }
-    let max = rows.len().saturating_sub(1);
+    let max = ed.max_scroll(rows.len());
     ed.scroll = ed.scroll.min(max);
 }
 

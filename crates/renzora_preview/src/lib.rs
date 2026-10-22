@@ -33,7 +33,7 @@
 //! ┌────────────▼────────────────────┐
 //! │  Engine crates                  │
 //! │  - renzora_shader (compiler)    │
-//! │  - renzora_hanabi (particles)   │
+//! │  - renzora_particles (vfx)      │
 //! │  - renzora_animation            │
 //! │  - renzora_lighting             │
 //! │  - Bevy 0.18 (rendering)       │
@@ -76,7 +76,7 @@ pub fn preview_init() {
         )
         // Engine plugins (runtime only, no editor features)
         .add_plugins(renzora_shader::ShaderPlugin)
-        .add_plugins(renzora_hanabi::HanabiParticlePlugin)
+        .add_plugins(renzora_particles::ParticlesPlugin)
         // Preview harness plugins
         .add_plugins((bridge::BridgePlugin, scene::ScenePlugin, modes::ModesPlugin))
         .insert_resource(ClearColor(Color::srgb(0.06, 0.06, 0.08)))

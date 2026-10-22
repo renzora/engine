@@ -241,28 +241,6 @@ pub(crate) fn tab_interface(
         &renzora::lang::t_or("settings.new_file_boilerplate", "Boilerplate in new files"),
         t,
     );
-    // Where the open documents are listed: the full-width strip under the top
-    // bar, or a dropdown in the top bar beside Play that gives that row back to
-    // the dock. Persisted per-user, so the shell builds the right chrome on the
-    // first frame of the next session.
-    let doc_tab_opts = [
-        tr("settings.opt.doc_tabs_strip"),
-        tr("settings.opt.doc_tabs_dropdown"),
-    ];
-    let doc_tab_refs: Vec<&str> = doc_tab_opts.iter().map(|s| s.as_str()).collect();
-    let dd = ctl_dropdown(
-        commands,
-        fonts,
-        &doc_tab_refs,
-        usize::from(settings.doc_tabs_dropdown),
-        |w| usize::from(w.resource::<EditorSettings>().doc_tabs_dropdown),
-        |w, &i| {
-            let dropdown = i == 1;
-            w.resource_mut::<EditorSettings>().doc_tabs_dropdown = dropdown;
-        },
-    );
-    settings_row(commands, fonts, body, 1, &tr("settings.row.doc_tabs"), dd);
-
     // Dragging an asset out of the bottom panel hides it so you can see the
     // viewport / hierarchy / inspector slot you are aiming at. This is what
     // happens when you let go. A dropdown rather than a toggle: "on" and "off"
@@ -308,29 +286,27 @@ fn ui_scale_index(v: f32) -> usize {
         .unwrap_or(1)
 }
 
+/// Dropdown position for a UI font: the built-ins in [`UiFont::BUILTIN`] order,
+/// then the project's custom fonts. Derived from that list rather than written
+/// out per variant, so adding a built-in can't leave the two directions
+/// disagreeing.
 fn ui_font_index(f: &UiFont, custom: &[String]) -> usize {
     match f {
-        UiFont::System => 0,
-        UiFont::Roboto => 1,
-        UiFont::OpenSans => 2,
-        UiFont::NotoSans => 3,
         UiFont::Custom(name) => {
-            4 + custom.iter().position(|n| n == name).unwrap_or(0)
+            UiFont::BUILTIN.len() + custom.iter().position(|n| n == name).unwrap_or(0)
         }
+        builtin => UiFont::BUILTIN.iter().position(|b| b == builtin).unwrap_or(0),
     }
 }
 
 fn ui_font_from_index(i: usize, custom: &[String]) -> UiFont {
-    match i {
-        0 => UiFont::System,
-        1 => UiFont::Roboto,
-        2 => UiFont::OpenSans,
-        3 => UiFont::NotoSans,
-        n => custom
-            .get(n - 4)
-            .map(|s| UiFont::Custom(s.clone()))
-            .unwrap_or(UiFont::NotoSans),
+    if let Some(builtin) = UiFont::BUILTIN.get(i) {
+        return builtin.clone();
     }
+    custom
+        .get(i - UiFont::BUILTIN.len())
+        .map(|s| UiFont::Custom(s.clone()))
+        .unwrap_or_default()
 }
 
 fn mono_font_index(f: &MonoFont, custom: &[String]) -> usize {

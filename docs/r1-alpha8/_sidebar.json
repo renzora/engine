@@ -49,6 +49,7 @@
             { "slug": "scripting/physics", "title": "Physics" },
             { "slug": "scripting/parkour", "title": "Parkour & Traversal" },
             { "slug": "scripting/ragdoll", "title": "Ragdoll Physics" },
+            { "slug": "scripting/particles", "title": "Particle Effects" },
             { "slug": "scripting/game-ui", "title": "Game UI" }
           ]
         },
@@ -90,6 +91,7 @@
           "category": "Languages & API",
           "pages": [
             { "slug": "scripting/rust-scripts", "title": "Rust Scripts" },
+            { "slug": "api/scripting", "title": "Scripting API" },
             { "slug": "api/material", "title": "Material API" },
             { "slug": "api/material-node-reference", "title": "Material Node Reference" }
           ]
@@ -116,6 +118,7 @@
             { "slug": "engine-core/systems", "title": "Writing Systems" },
             { "slug": "engine-core/resources", "title": "Resources & State" },
             { "slug": "engine-core/asset-pipeline", "title": "Asset Pipeline" },
+            { "slug": "engine-core/svg", "title": "SVG Images" },
             { "slug": "engine-core/file-watching", "title": "File Watching" },
             { "slug": "engine-core/streaming", "title": "Streaming" }
           ]
@@ -155,9 +158,11 @@
             { "slug": "rendering/camera", "title": "Camera System" },
             { "slug": "rendering/water", "title": "Water & Oceans" },
             { "slug": "rendering/wind", "title": "Wind" },
+            { "slug": "rendering/particle-system", "title": "Particle System (.vfx)" },
             { "slug": "rendering/2d-lighting", "title": "2D Lighting" },
             { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" },
-            { "slug": "rendering/solari", "title": "Solari Ray-Traced GI" }
+            { "slug": "rendering/solari", "title": "Solari Ray-Traced GI" },
+            { "slug": "rendering/planar-reflections", "title": "Planar Reflections" }
           ]
         },
         {

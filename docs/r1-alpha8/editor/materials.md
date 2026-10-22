@@ -87,13 +87,13 @@ A dragged node snaps its top-left corner to the dots of the background grid. Hol
 
 ### Editing values
 
-Every input pin that is not wired shows its editor right under the pin: a scrub field for numbers, X/Y/Z fields for vectors, a colour swatch, a checkbox. Wire a cable in and the editor disappears, because the wire is supplying the value now.
+Every input pin that is not wired shows its editor on the pin's own row, beside its name: a slider field for numbers that fills the rest of the row, X/Y/Z fields for vectors, a colour swatch, a checkbox. Wire a cable in and the editor disappears, because the wire is supplying the value now. A node's inputs and outputs share rows, so nodes stay compact.
 
 The **Material** panel on the left is the same values in list form, with one labelled row per pin. Useful when a node's pins are not obvious, or when you are zoomed out too far to read the node.
 
 ### Comments
 
-Select some nodes and press `C` to wrap them in a labelled box. Dragging the box moves everything inside it. Comments are visual only and saved with the material.
+A comment is a labelled box that groups nodes. Make one with the **Comment** toolbar button, the **Comment** entry at the top of the right-click menu, or `C` over the graph. With nodes selected it wraps them; with nothing selected it adds an empty box (at the cursor for `C` and the right-click menu, in the middle of the view for the button). Click the title to rename it, drag the box to move everything inside it, and use the corner grip to resize it. Comments are visual only and saved with the material. The blueprint and particle graphs work the same way.
 
 ## The Surface Output node
 

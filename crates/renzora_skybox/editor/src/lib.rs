@@ -22,7 +22,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "skybox",
         display_name: "Skybox",
         icon: "sun",
-        category: "rendering",
+        category: "environment",
         has_fn: |world, entity| world.get::<SkyboxData>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(SkyboxData::default());
@@ -45,7 +45,7 @@ mod native_inspector {
     use bevy::prelude::*;
     use renzora::FieldValue;
     use renzora_ember::font::EmberFonts;
-    use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
+    use renzora_ember::inspector::{color_field, inspector_row};
     use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::widgets::{drag_value, dropdown, icon_label_button, DragRange};
     use renzora_ember::UiInteraction;
@@ -253,9 +253,6 @@ mod native_inspector {
             }
         }
 
-        for (i, r) in rows.iter().enumerate() {
-            commands.entity(*r).insert(BackgroundColor(inspector_stripe(i)));
-        }
         commands.entity(root).add_children(&rows);
     }
 

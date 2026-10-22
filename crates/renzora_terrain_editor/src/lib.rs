@@ -256,7 +256,7 @@ fn terrain_data_entry() -> InspectorEntry {
         type_id: "terrain_data",
         display_name: "Terrain",
         icon: "mountains",
-        category: "component",
+        category: "environment",
         has_fn: |world, entity| world.get::<TerrainData>(entity).is_some(),
         add_fn: None,
         remove_fn: None,

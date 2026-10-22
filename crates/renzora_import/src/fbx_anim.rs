@@ -326,6 +326,7 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
                 translations: Vec::new(),
                 rotations: Vec::new(),
                 scales: Vec::new(),
+                muted: false,
             };
 
             // Translations

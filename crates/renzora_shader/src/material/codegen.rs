@@ -330,6 +330,9 @@ mod tests {
             (MaterialDomain::Surface, "scene/env_map_sample"),
             (MaterialDomain::Surface, "scene/env_map_reflect"),
             (MaterialDomain::Surface, "input/vertex_color"),
+            (MaterialDomain::Surface, "input/particle_color"),
+            (MaterialDomain::Surface, "input/particle_velocity"),
+            (MaterialDomain::Unlit, "input/particle_age"),
             (MaterialDomain::Surface, "texture/sample_normal"),
             (MaterialDomain::Vegetation, "input/uv"),
             (MaterialDomain::TerrainLayer, "input/uv"),
@@ -494,6 +497,54 @@ mod tests {
             s.contains("var sprite_color = sprite_fn::sample_sprite_texture(mat_uv, in.instance_index);"),
             "{s}"
         );
+    }
+
+    /// A Particle node gives the fragment the particle inputs, behind the
+    /// define only the particle pipeline sets, and its aliases fall back to
+    /// white and zeros; a graph without one is the shader it always was.
+    #[test]
+    fn particle_nodes_declare_their_inputs_only_when_used() {
+        let mut graph = MaterialGraph::new("Sparks", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let age = graph.add_node("input/particle_age", [0.0, 0.0]);
+        let random = graph.add_node("input/particle_random", [0.0, 0.0]);
+        let vel = graph.add_node("input/particle_velocity", [0.0, 0.0]);
+        let color = graph.add_node("input/particle_color", [0.0, 0.0]);
+        graph.connect(age, "age", out, "roughness");
+        graph.connect(random, "value", out, "metallic");
+        graph.connect(vel, "direction", out, "emissive");
+        graph.connect(color, "color", out, "base_color");
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        let s = &result.fragment_shader;
+        assert!(s.contains("@if(RENZORA_PARTICLE_SURFACE) @location(10) particle_in: vec4<f32>"), "{s}");
+        assert!(s.contains("@if(RENZORA_PARTICLE_SURFACE) @location(11) particle_velocity_in: vec3<f32>"), "{s}");
+        assert!(s.contains("@if(!RENZORA_PARTICLE_SURFACE) let mat_particle_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);"), "{s}");
+        assert!(s.contains("@if(!RENZORA_PARTICLE_SURFACE) let mat_particle = vec4<f32>(0.0, 0.0, 0.0, 0.0);"), "{s}");
+        assert!(s.contains("mat_particle.x"), "age reads life: {s}");
+        assert!(s.contains("mat_particle.y"), "random reads the seed: {s}");
+        assert!(s.contains("mat_particle_velocity"), "{s}");
+        // A plain graph keeps its old signature.
+        let plain = compile(&MaterialGraph::new("Plain", MaterialDomain::Surface)).fragment_shader;
+        assert!(!plain.contains("particle_in"), "{plain}");
+        assert!(plain.contains("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {"));
+    }
+
+    /// A sprite is never a particle, so its Particle nodes are plain
+    /// constants and its fragment declares nothing extra.
+    #[test]
+    fn particle_nodes_on_a_sprite_are_constants() {
+        let mut g = MaterialGraph::new("Sprite", MaterialDomain::Sprite);
+        let color = g.add_node("input/particle_color", [0.0, 0.0]);
+        let age = g.add_node("input/particle_age", [0.0, 0.0]);
+        let out = g.output_node().unwrap().id;
+        g.connect(color, "color", out, "color");
+        g.connect(age, "age", out, "alpha");
+        let result = compile(&g);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        let s = &result.fragment_shader;
+        assert!(!s.contains("particle_in") && !s.contains("RENZORA_PARTICLE_SURFACE"), "{s}");
+        assert!(s.contains("vec4<f32>(1.0, 1.0, 1.0, 1.0)"), "{s}");
     }
 
     /// The one rule the add-node menu, the wiring check and codegen share.

@@ -29,8 +29,17 @@ use crate::widgets::text_input::{text_input, EmberTextInput};
 use crate::UiInteraction;
 
 const NODE_W: f32 = 160.0;
-const HEAD_H: f32 = 26.0;
-const ROW_H: f32 = 22.0;
+/// Header and pin-row heights. Compact on purpose: a pin row holds its label
+/// *and* its value editor on one line (see [`pin_row`]), so a material's
+/// output node with twenty inputs is twenty short rows rather than forty.
+const HEAD_H: f32 = 24.0;
+const ROW_H: f32 = 18.0;
+/// A node's body: clearly darker than the canvas. At (27,28,33) it sat within a
+/// few steps of the grid background, so a node only read as a node by its
+/// outline.
+const NODE_BODY: (u8, u8, u8) = (18, 19, 23);
+/// The widest a pin label gets before it ends in "...".
+const LABEL_MAX_W: f32 = 104.0;
 const WIRE_W: f32 = 2.5;
 /// Width of a port's connection grab overlay (the interactive slot holding the
 /// dot). Kept tight to the dot so the rest of the label is free to drag the node;
@@ -45,12 +54,12 @@ pub(crate) struct NodeGraphViewPlugin;
 
 impl Plugin for NodeGraphViewPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_highlight_slots, ngv_context, ngv_open_key));
+        app.add_systems(Update, (ngv_cable_attach, ngv_drag, ngv_connect, ngv_box, ngv_apply_selection, ngv_keys, ngv_port_rmb, ngv_preview, ngv_highlight_slots, ngv_context, ngv_open_key, ngv_pin_fill));
         // A fit measures the nodes that are mounted *now*. Loading a different
         // graph swaps the whole node set through the keyed list, so running
         // before it would frame the outgoing graph and then clear the request.
         app.add_systems(Update, ngv_view_ops.after(crate::reactive::run_keyed_lists));
-        app.add_systems(Update, (ngv_comment_drag, ngv_comment_resize, ngv_comment_title, ngv_comment_delete, ngv_comment_key));
+        app.add_systems(Update, (ngv_comment_drag, ngv_comment_resize, ngv_comment_title, ngv_comment_delete, ngv_comment_key, ngv_comment_request.after(ngv_comment_key)));
         // `ngv_apply_selection` bumps a selected node's tier, so it has to land
         // before the rebase turns tiers into the depths the renderer sees.
         app.configure_sets(Update, ZTierSet.after(ngv_apply_selection));
@@ -119,6 +128,18 @@ pub struct NodeGraphView {
     /// picks a node. The widget draws it and clears it on the next click (a menu
     /// pick or a dismiss).
     pub(crate) frozen_cable: Option<FrozenCable>,
+    /// A comment asked for and not yet made; see [`Self::request_comment`].
+    pub(crate) comment_request: Option<Option<Vec2>>,
+}
+
+impl NodeGraphView {
+    /// Ask for a comment box: around the selected nodes if any, else an empty
+    /// one with its top-left at `at` (canvas px), or centred in the view when
+    /// `at` is `None`. Arrives in [`Self::pending`] as `GraphEdit::AddComment`
+    /// on the next update, like a comment made with the C key.
+    pub fn request_comment(&mut self, at: Option<Vec2>) {
+        self.comment_request = Some(at);
+    }
 }
 
 /// A cable parked from a pin to a fixed screen point (the open connect-drag menu),
@@ -186,6 +207,11 @@ struct NgvWire {
 #[derive(Component)]
 struct NgvPortDot {
     is_output: bool,
+    /// The pin this dot belongs to and its type colour, so [`ngv_pin_fill`]
+    /// can fill it while a wire is attached and hollow it while none is.
+    node_id: u64,
+    pin: String,
+    color: (u8, u8, u8),
 }
 /// The rubber-band selection rectangle (spawned while box-selecting).
 #[derive(Component)]
@@ -297,8 +323,8 @@ pub fn graph_node_view(
     node_id: u64,
     title: &str,
     color: (u8, u8, u8),
-    inputs: &[(String, String, (u8, u8, u8), u32)],
-    outputs: &[(String, String, (u8, u8, u8), u32)],
+    inputs: &[Port],
+    outputs: &[Port],
     x: f32,
     y: f32,
     selected: bool,
@@ -327,8 +353,11 @@ pub fn graph_node_view(
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(rgb(hover_bg())),
-            BorderColor::all(rgb(tree_line())),
+            // A dark body with a near-black edge and a shadow under it, so a
+            // node sits above the grid as a solid object (the mockup's look).
+            BackgroundColor(rgb(NODE_BODY)),
+            BorderColor::all(rgb((10, 10, 13))),
+            BoxShadow::new(Color::BLACK.with_alpha(0.45), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0), Val::Px(12.0)),
             Outline {
                 width: Val::Px(2.0),
                 offset: Val::Px(1.0),
@@ -344,10 +373,22 @@ pub fn graph_node_view(
             Name::new("ngv-node"),
         ))
         .id();
+    // The header fades from the node's colour into the body across its width:
+    // the colour still says what kind of node it is at a glance, without a
+    // solid block of it on every node competing with the wires.
+    let fade = |t: f32| {
+        let c = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t).round() as u8;
+        let body = NODE_BODY;
+        rgb((c(color.0, body.0), c(color.1, body.1), c(color.2, body.2)))
+    };
     let title_bar = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(HEAD_H), align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::top(Val::Px(5.0)), ..default() },
-            BackgroundColor(rgb(color)),
+            Node { width: Val::Percent(100.0), height: Val::Px(HEAD_H), align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::new(Val::Px(10.0), Val::Px(8.0), Val::Px(0.0), Val::Px(0.0)), border_radius: BorderRadius::top(Val::Px(5.0)), ..default() },
+            BackgroundColor(Color::NONE),
+            BackgroundGradient(vec![Gradient::Linear(LinearGradient::new(
+                90f32.to_radians(),
+                vec![ColorStop::auto(rgb(color)), ColorStop::auto(fade(0.35)), ColorStop::auto(fade(0.8))],
+            ))]),
             PASS_THROUGH,
             Name::new("ngv-node-title"),
         ))
@@ -356,10 +397,12 @@ pub fn graph_node_view(
     // node (the press falls through to the node root). An optional caller control
     // (e.g. a type switcher) sits at the trailing edge and captures its own clicks,
     // so it never steals a header drag.
+    let mut title_font = ui_font(&fonts.ui, 12.0);
+    title_font.weight = bevy::text::FontWeight::SEMIBOLD;
     let label = commands
         .spawn((
             Text::new(title.to_string()),
-            ui_font(&fonts.ui, 12.0),
+            title_font,
             TextColor(rgb(on_accent())),
             bevy::text::TextLayout::no_wrap(),
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
@@ -372,38 +415,28 @@ pub fn graph_node_view(
     }
     commands.entity(node).add_child(title_bar);
 
-    for (idx, (pin, label, pin_color, group)) in inputs.iter().enumerate() {
-        let r = port_row(commands, fonts, node_id, viewport, pin, label, false, *pin_color, *group);
+    // A little air under the header and after the last row.
+    let pad = |commands: &mut Commands| commands.spawn((Node { height: Val::Px(3.0), ..default() }, PASS_THROUGH)).id();
+    let top_pad = pad(commands);
+    commands.entity(node).add_child(top_pad);
+
+    // Without a preview, input i and output i share row i (the way Unreal and
+    // Substance lay a node out): a node with two inputs and one output is two
+    // rows, not three. With a preview the outputs keep their own column below
+    // the inputs, so the preview can sit beside them (see below).
+    let shared = thumbnail.is_none();
+    let rows = if shared { inputs.len().max(outputs.len()) } else { inputs.len() };
+    // Every input label is as wide as the node's longest, so the value fields
+    // start on one line down the node instead of wherever each name happens
+    // to end. Measured in characters, which is close enough at 11px for a
+    // column edge; the field absorbs the difference.
+    // Values sit right after their label (the mockup's look), not in a column.
+    let label_w = 0.0;
+    for idx in 0..rows {
+        let editor = input_editors.get(idx).copied().flatten();
+        let output = if shared { outputs.get(idx) } else { None };
+        let r = pin_row(commands, fonts, node_id, viewport, inputs.get(idx), editor, output, label_w);
         commands.entity(node).add_child(r);
-        // Inline value editor for an unconnected input, on its own row. Left-aligned
-        // to sit under the pin it belongs to — input pins hug the left edge, so a
-        // right-aligned editor would read as belonging to the outputs opposite it.
-        if let Some(editor) = input_editors.get(idx).copied().flatten() {
-            let erow = commands
-                .spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(0.0), Val::Px(3.0)),
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        justify_content: JustifyContent::FlexStart,
-                        ..default()
-                    },
-                    // Click-through, and deliberately UNmarked: the row is full
-                    // width while the editor inside it is content-sized, so carrying
-                    // `NgvInputEditor` here made the whole line — including the empty
-                    // space beside a scrub field — refuse to start a node drag. That
-                    // space is node body and has to drag like it. The guard lives on
-                    // the editor instead, where it is exactly as wide as the control
-                    // it protects.
-                    PASS_THROUGH,
-                    Name::new("ngv-input-editor-row"),
-                ))
-                .id();
-            commands.entity(editor).insert((NgvInputEditor, RelativeCursorPosition::default()));
-            commands.entity(erow).add_child(editor);
-            commands.entity(node).add_child(erow);
-        }
     }
     // Output rows go in their own column when there's a preview to place, so the
     // preview can anchor to the *top of the outputs* rather than to a row count
@@ -423,9 +456,11 @@ pub fn graph_node_view(
     } else {
         node
     };
-    for (pin, label, pin_color, group) in outputs {
-        let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color, *group);
-        commands.entity(out_col).add_child(r);
+    if !shared {
+        for output in outputs {
+            let r = pin_row(commands, fonts, node_id, viewport, None, None, Some(output), 0.0);
+            commands.entity(out_col).add_child(r);
+        }
     }
     // Optional preview thumbnail (e.g. texture nodes). Output pins hug the right
     // edge, so the left of the node below the inputs is dead space — drop the
@@ -466,28 +501,42 @@ pub fn graph_node_view(
             .id();
         commands.entity(out_col).add_child(thumb);
     }
+    let bottom_pad = pad(commands);
+    commands.entity(node).add_child(bottom_pad);
     node
 }
 
-/// A pin row: a click-through label, plus a **connection slot** (the interactive
-/// [`NgvPort`], holding the dot) that's an *absolute overlay* over the dot + the
-/// start of the label — so grabbing a cable works right where the dot and its name
-/// are, with no layout gap. Being overlaid (not in flow) means it never shifts the
-/// label. Its trailing portion of the row stays click-through, so the node still
-/// drags from there. The slot hugs the edge, so `port_map`'s `centre ± width/2`
-/// lands the cable endpoint at the node edge. Hovering the slot tints the row (see
-/// [`ngv_highlight_slots`]) to advertise the grab.
+type Port = (String, String, (u8, u8, u8), u32);
+
+/// One pin row: an input on the left with its value editor stretched across
+/// the rest of the line, and/or an output on the right.
+///
+/// The editor used to get a line of its own under its pin, which doubled the
+/// height of every node with values and made a material's output node most of
+/// a screen tall. On the pin's own line, the label says what the number is and
+/// the field shows it, the way a properties panel reads.
 #[allow(clippy::too_many_arguments)]
-fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport: Entity, pin: &str, label: &str, is_output: bool, color: (u8, u8, u8), group: u32) -> Entity {
+fn pin_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    node_id: u64,
+    viewport: Entity,
+    input: Option<&Port>,
+    editor: Option<Entity>,
+    output: Option<&Port>,
+    // Width for the input label, so a node's value fields line up. Only
+    // applied when the row has an editor; a bare pin label stays text-sized.
+    label_w: f32,
+) -> Entity {
     let row = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(ROW_H),
+                min_height: Val::Px(ROW_H),
                 position_type: PositionType::Relative,
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                justify_content: if is_output { JustifyContent::FlexEnd } else { JustifyContent::FlexStart },
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                column_gap: Val::Px(6.0),
                 ..default()
             },
             BackgroundColor(Color::NONE),
@@ -495,24 +544,96 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
             Name::new("ngv-port-row"),
         ))
         .id();
-    let text = commands
+    let mut kids = Vec::new();
+    let mut slots = Vec::new();
+    if let Some((pin, label, color, group)) = input {
+        let text = port_label(commands, fonts, label, false);
+        if editor.is_some() && label_w > 0.0 {
+            commands.entity(text).entry::<Node>().and_modify(move |mut n| n.min_width = Val::Px(label_w));
+        }
+        kids.push(text);
+        slots.push(port_slot(commands, node_id, viewport, pin, false, *color, *group, text));
+    }
+    match editor {
+        Some(editor) => {
+            // The editor takes whatever the label leaves, up to the output (or
+            // the node's edge). Marked as an editor so a press on it scrubs
+            // rather than drags the node; the empty node body around it still
+            // drags. See `NgvInputEditor`.
+            commands.entity(editor).insert((NgvInputEditor, RelativeCursorPosition::default()));
+            // Grows into spare width but keeps its own minimum: with a zero
+            // basis the editor counted for nothing when the node sized itself
+            // to its content, so the node came out label-wide and every field
+            // spilled past its right edge.
+            let right = if output.is_some() { 0.0 } else { 8.0 };
+            commands.entity(editor).entry::<Node>().and_modify(move |mut n| {
+                n.flex_grow = 1.0;
+                n.margin = UiRect::new(Val::Px(2.0), Val::Px(right), Val::Px(1.0), Val::Px(1.0));
+            });
+            kids.push(editor);
+        }
+        None => kids.push(commands.spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH)).id()),
+    }
+    if let Some((pin, label, color, group)) = output {
+        let text = port_label(commands, fonts, label, true);
+        kids.push(text);
+        slots.push(port_slot(commands, node_id, viewport, pin, true, *color, *group, text));
+    }
+    // Slots last, so they overlay their labels and capture the grab.
+    kids.extend(slots);
+    commands.entity(row).add_children(&kids);
+    row
+}
+
+/// A pin's name, sized to its text (its background tints while the grab slot
+/// is hovered), clearing the dot at the node's edge.
+///
+/// Short on purpose: a parenthetical ("Displacement (Height)", "Ambient
+/// Occlusion (AO)") is dropped, and anything still past [`LABEL_MAX_W`] ends in
+/// "...". A long label pushed the value field to the node's far side and
+/// widened the whole node for one pin.
+fn port_label(commands: &mut Commands, fonts: &EmberFonts, label: &str, is_output: bool) -> Entity {
+    let short = label.split(" (").next().unwrap_or(label).trim().to_string();
+    let text = port_label_node(commands, fonts, &short, is_output);
+    super::super::ellipsize(commands, text, short, None);
+    text
+}
+
+fn port_label_node(commands: &mut Commands, fonts: &EmberFonts, label: &str, is_output: bool) -> Entity {
+    commands
         .spawn((
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::no_wrap(),
-            // Sized to the text; its background is tinted on grab-hover, and the
-            // margin clears the dot at the node edge.
             Node {
-                margin: if is_output { UiRect::right(Val::Px(14.0)) } else { UiRect::left(Val::Px(14.0)) },
-                padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)),
+                margin: if is_output { UiRect::right(Val::Px(10.0)) } else { UiRect::left(Val::Px(10.0)) },
+                padding: UiRect::axes(Val::Px(3.0), Val::Px(0.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
+                flex_shrink: 0.0,
+                max_width: Val::Px(LABEL_MAX_W),
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(Color::NONE),
             PASS_THROUGH,
         ))
-        .id();
+        .id()
+}
+
+/// A pin row: a click-through label, plus a **connection slot** (the interactive
+/// [`NgvPort`], holding the dot) that's an *absolute overlay* over the dot + the
+/// start of the label, so grabbing a cable works right where the dot and its name
+/// are, with no layout gap. Being overlaid (not in flow) means it never shifts the
+/// label. Its trailing portion of the row stays click-through, so the node still
+/// drags from there. The slot hugs the edge, so `port_map`'s `centre ± width/2`
+/// lands the cable endpoint at the node edge. Hovering the slot tints the row (see
+/// [`ngv_highlight_slots`]) to advertise the grab.
+///
+/// With inputs and outputs sharing a row, a row can hold two slots, one at
+/// each edge. Each is anchored to its own edge, so they never overlap.
+#[allow(clippy::too_many_arguments)]
+fn port_slot(commands: &mut Commands, node_id: u64, viewport: Entity, pin: &str, is_output: bool, color: (u8, u8, u8), group: u32, text: Entity) -> Entity {
     // The grab overlay: absolute, edge-anchored, on top of the dot + label start.
     let slot = commands
         .spawn((
@@ -537,24 +658,27 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
                 position_type: PositionType::Absolute,
                 left: if is_output { Val::Auto } else { Val::Px(-5.0) },
                 right: if is_output { Val::Px(-5.0) } else { Val::Auto },
-                top: Val::Px((ROW_H - 10.0) * 0.5),
+                // Centred on the row whatever its height: a row grows to fit
+                // a taller editor (a colour field, a texture slot).
+                top: Val::Percent(50.0),
+                margin: UiRect::top(Val::Px(-5.0)),
                 width: Val::Px(10.0),
                 height: Val::Px(10.0),
-                border: UiRect::all(Val::Px(1.0)),
+                // Two pixels so an unconnected pin reads as a ring (see
+                // `ngv_pin_fill`), not a faint hairline.
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..default()
             },
             BackgroundColor(rgb(color)),
             BorderColor::all(rgb(color)),
-            NgvPortDot { is_output },
+            NgvPortDot { is_output, node_id, pin: pin.to_string(), color },
             PASS_THROUGH,
             Name::new("ngv-port-dot"),
         ))
         .id();
     commands.entity(slot).add_child(dot);
-    // Slot is added last so it overlays the label and captures the grab.
-    commands.entity(row).add_children(&[text, slot]);
-    row
+    slot
 }
 
 /// Build a wire between two model pins. Returns the cable entity (add it to
@@ -959,13 +1083,24 @@ fn ngv_connect(
         }
     }
     if mouse.just_released(MouseButton::Left) {
+        // Prefer a hovered port over a pressed one: the source pin stays
+        // `Pressed` until release, so the port actually under the cursor is the
+        // hovered one.
         let target = ports
             .iter()
-            .find(|(i, _)| matches!(i, UiInteraction::Hovered | UiInteraction::Pressed))
+            .find(|(i, _)| matches!(i, UiInteraction::Hovered))
+            .or_else(|| ports.iter().find(|(i, _)| matches!(i, UiInteraction::Pressed)))
             .map(|(_, p)| (p.viewport, p.node_id, p.pin.clone(), p.is_output, p.color, p.group));
         let cur = cursor(&windows);
         for (vp, mut g, rcp, vcn, children) in &mut graphs {
             let Some((snode, spin, s_out, scol, sgroup)) = g.pending_connect.take() else { continue };
+            // The pin the drag started on is not a target. A press keeps its
+            // port `Pressed` until release wherever the cursor went, so without
+            // this the release found the source pin "under the cursor" and
+            // neither connected nor opened the add-node menu.
+            let target = target.clone().filter(|(tvp, tnode, tpin, t_out, _, _)| {
+                !(*tvp == vp && *tnode == snode && *tpin == spin && *t_out == s_out)
+            });
             // 1) Released over a compatible port → make the connection.
             if let Some((tvp, tnode, tpin, t_out, _, tgroup)) = &target {
                 if *tvp == vp && *t_out != s_out && *tgroup == sgroup && *tnode != snode {
@@ -1043,7 +1178,8 @@ fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &U
                 if node.width != want {
                     node.width = want;
                     node.height = want;
-                    node.top = Val::Px((ROW_H - size) * 0.5);
+                    node.top = Val::Percent(50.0);
+                    node.margin = UiRect::top(Val::Px(-size * 0.5));
                     let off = Val::Px(-size * 0.5);
                     if dot.is_output {
                         node.right = off;
@@ -1136,7 +1272,23 @@ fn ngv_open_key(
 /// Keyboard ops over the graph under the cursor: Delete/Backspace removes the
 /// selection, Ctrl+A selects all, Esc cancels a pending connection then clears
 /// the selection.
-fn ngv_keys(keys: Res<ButtonInput<KeyCode>>, all_nodes: Query<&NgvNode>, mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition)>) {
+///
+/// None of it while a text field is focused. Backspace in a comment's title, or
+/// in a node's number field, is editing that text, and without this check it
+/// also deleted every selected node, which a new comment has just been wrapped
+/// around.
+fn ngv_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    text_inputs: Query<&EmberTextInput>,
+    drag_editing: Option<Res<crate::widgets::drag_value::AnyDragValueEditing>>,
+    all_nodes: Query<&NgvNode>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition)>,
+) {
+    // A number field being typed into is not an `EmberTextInput`; it reports
+    // through its own flag.
+    if text_inputs.iter().any(|t| t.focused) || drag_editing.is_some_and(|d| d.0) {
+        return;
+    }
     let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
     let del = keys.just_pressed(KeyCode::Delete) || keys.just_pressed(KeyCode::Backspace);
     let all = ctrl && keys.just_pressed(KeyCode::KeyA);
@@ -1298,6 +1450,29 @@ fn ngv_box(
         }
     }
     *active = None;
+}
+
+/// Fill a pin's dot while a wire is attached to it, and hollow it to a ring
+/// in its type colour while none is, so which inputs are fed and which still
+/// take their inline value reads off the node edge at a glance.
+///
+/// Writes only on a change, so a still graph costs a set build and a compare.
+fn ngv_pin_fill(wires: Query<&NgvWire>, mut dots: Query<(&NgvPortDot, &mut BackgroundColor)>) {
+    let mut wired: HashSet<(u64, &str, bool)> = HashSet::default();
+    for w in &wires {
+        wired.insert((w.from_node, w.from_pin.as_str(), true));
+        wired.insert((w.to_node, w.to_pin.as_str(), false));
+    }
+    for (dot, mut bg) in &mut dots {
+        let want = if wired.contains(&(dot.node_id, dot.pin.as_str(), dot.is_output)) {
+            rgb(dot.color)
+        } else {
+            rgb(NODE_BODY)
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
 }
 
 /// Map `(node, pin, is_output) → (cable endpoint, colour)`. The port row spans
@@ -1608,27 +1783,59 @@ fn ngv_comment_delete(changed: Query<(&UiInteraction, &NgvCommentDelete), Change
     }
 }
 
-/// `C` over the graph with nodes selected → wrap them in a comment box. Ignored
-/// while typing in a field (so 'c' in the search/title box is text).
+/// `C` over the graph → a comment: around the selection if there is one, else
+/// an empty box at the cursor. Ignored while typing in a field (so 'c' in the
+/// search/title box is text) and with Ctrl held (that is a copy, not a comment).
+///
+/// It used to do nothing at all without a selection, which made the key the
+/// only way to make a comment *and* a key that silently failed half the time.
 #[allow(clippy::type_complexity)]
 fn ngv_comment_key(
     keys: Res<ButtonInput<KeyCode>>,
     text_inputs: Query<&EmberTextInput>,
-    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
-    node_rects: Query<(&NgvNode, &Node, &ComputedNode)>,
 ) {
     if !keys.just_pressed(KeyCode::KeyC) {
+        return;
+    }
+    if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
         return;
     }
     if text_inputs.iter().any(|t| t.focused) {
         return;
     }
-    for (vp, mut g, rcp, children) in &mut graphs {
-        if !rcp.cursor_over || g.selected.is_empty() {
+    for (mut g, rcp, vcn, children) in &mut graphs {
+        if !rcp.cursor_over {
             continue;
         }
-        let zoom = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| v.zoom).unwrap_or(1.0);
+        let (pan, zoom) = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| (v.pan, v.zoom)).unwrap_or((Vec2::ZERO, 1.0));
+        let size = vcn.size() * vcn.inverse_scale_factor();
+        let canvas = size * 0.5 + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
+        g.request_comment(Some(canvas));
+    }
+}
+
+/// Size of a comment made with nothing selected: room for a few nodes, so it is
+/// immediately something to drop nodes into rather than a sliver to resize.
+const EMPTY_COMMENT: Vec2 = Vec2::new(360.0, 220.0);
+
+/// Turn a [`NodeGraphView::request_comment`] into an `AddComment` edit.
+///
+/// One place for the rect, whatever asked for it (the C key, a toolbar button,
+/// the right-click menu), so the three cannot disagree about what a comment
+/// covers: the selection's bounds plus padding and a header strip, or with no
+/// selection an empty box whose top-left sits at the requested point (the view's
+/// centre when no point was given).
+#[allow(clippy::type_complexity)]
+fn ngv_comment_request(
+    mut graphs: Query<(Entity, &mut NodeGraphView, &ComputedNode, &Children)>,
+    views: Query<&GraphView>,
+    node_rects: Query<(&NgvNode, &Node, &ComputedNode)>,
+) {
+    for (vp, mut g, vcn, children) in &mut graphs {
+        let Some(at) = g.comment_request.take() else { continue };
+        let (pan, zoom) = children.iter().find_map(|ch| views.get(ch).ok()).map(|v| (v.pan, v.zoom)).unwrap_or((Vec2::ZERO, 1.0));
         let (mut mn, mut mx, mut any) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false);
         for (n, node, ncn) in &node_rects {
             if n.viewport != vp || !g.selected.contains(&n.id) {
@@ -1640,13 +1847,43 @@ fn ngv_comment_key(
             mx = mx.max(pos + size);
             any = true;
         }
-        if any {
+        let rect = if any {
             let pad = 28.0;
             let header = 26.0;
-            let rect = [mn.x - pad, mn.y - pad - header, (mx.x - mn.x) + pad * 2.0, (mx.y - mn.y) + pad * 2.0 + header];
-            g.pending.push(GraphEdit::AddComment { rect });
-        }
+            [mn.x - pad, mn.y - pad - header, (mx.x - mn.x) + pad * 2.0, (mx.y - mn.y) + pad * 2.0 + header]
+        } else {
+            let size = vcn.size() * vcn.inverse_scale_factor();
+            // The view's centre in canvas space, nudged so the box is centred on
+            // it rather than hanging off to the lower right.
+            let p = at.unwrap_or(size * 0.5 - pan / zoom.max(0.01) - EMPTY_COMMENT * 0.5);
+            [p.x, p.y, EMPTY_COMMENT.x, EMPTY_COMMENT.y]
+        };
+        g.pending.push(GraphEdit::AddComment { rect });
     }
+}
+
+/// A "Comment" row for a graph editor's add-node menu: picking it makes a
+/// comment exactly as **C** would (around the selection, else an empty box at
+/// `canvas`, the point the menu was opened over).
+///
+/// Shared so the material, blueprint and particle menus offer the same entry
+/// with the same behaviour; each only has to push it into its list.
+pub fn comment_search_entry(viewport: Entity, canvas: Vec2) -> crate::widgets::SearchEntry {
+    crate::widgets::SearchEntry::new(
+        "chat-text",
+        renzora::lang::t_or("node_graph.comment", "Comment"),
+        renzora::lang::t_or("node_graph.category.layout", "Layout"),
+        move |w: &mut World| {
+            if let Some(mut g) = w.get_mut::<NodeGraphView>(viewport) {
+                g.request_comment(Some(canvas));
+            }
+        },
+    )
+    .with_detail("C")
+    .with_description(renzora::lang::t_or(
+        "node_graph.comment_desc",
+        "Group the selected nodes in a titled box, or add an empty one here",
+    ))
 }
 
 // ── Local copies of the demo's curve math ────────────────────────────────────

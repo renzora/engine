@@ -30,7 +30,7 @@ use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
 use crate::UiInteraction;
 
-use super::common::{format_num, text_node};
+use super::common::{format_num, text_node, INFINITY_STAND_IN, INFINITY_STAND_IN_MIN};
 
 #[derive(Component)]
 pub(crate) struct EmberDragValue {
@@ -111,11 +111,20 @@ const CLICK_SLOP: f32 = 3.0;
 /// sweep lives.
 const RAIL_PX: f32 = 6.0;
 /// Gap (logical px) between the field's edge and the value fill, horizontally
-/// and vertically. The vertical one is larger because that is the one doing the
-/// work: it slims the bar down off the field's full height, which is what keeps
-/// a filled row from reading as a solid block of accent.
-const FILL_INSET_X: f32 = 2.0;
+/// and vertically. The vertical gap slims the bar down off the field's full
+/// height, which is what keeps a filled row from reading as a solid block of
+/// accent. The two are equal so the gap runs evenly round the bar: a narrower
+/// side gap pressed the bar's start against the field's curved corner, and the
+/// start read as squared off.
+const FILL_INSET_X: f32 = 3.0;
 const FILL_INSET_Y: f32 = 3.0;
+/// The bar's corner radius: rounded at both ends, to sit in the field's own
+/// rounded box rather than look cut out of it.
+const FILL_RADIUS: f32 = 3.0;
+/// Width (logical px) of the brighter edge at the bar's leading end, the mark
+/// for exactly where the value sits. Without it the end of a translucent bar
+/// was a soft boundary the eye had to find.
+const FILL_EDGE_W: f32 = 2.0;
 /// Opacity of the value bar. It is a tint over the field's own background, not a
 /// solid block of accent: at full opacity a panel of ranged fields was a column
 /// of saturated bars competing with the numbers they were behind, and a filled
@@ -191,7 +200,8 @@ fn rail_value(norm_x: f32, computed: &bevy::ui::ComputedNode, r: &DragRange) -> 
 
 /// Set true for the frame the wheel turns *and* a value field owns the gesture,
 /// so the scroll area beneath swallows the wheel. Read by
-/// [`super::scroll_area::scroll_wheel`].
+/// [`super::scroll_area::scroll_wheel`]. A wheel-enabled knob
+/// ([`super::KnobWheel`]) raises it too, after this field pass has written it.
 #[derive(Resource, Default)]
 pub(crate) struct WheelOverDragValue(pub bool);
 
@@ -232,7 +242,7 @@ pub(crate) struct WheelGesture {
 
 /// Idle gap (seconds) between wheel events that ends a gesture. The next event
 /// past this gap re-decides ownership from where the cursor is then.
-const GESTURE_GAP: f32 = 0.18;
+pub(crate) const GESTURE_GAP: f32 = 0.18;
 
 /// A scrubbable numeric field with the standard inset (dark box + border) look.
 /// `axis` is an optional colored prefix (e.g. "X").
@@ -347,7 +357,7 @@ fn drag_value_impl(
                     width: Val::Percent(0.0),
                     height: Val::Percent(100.0),
                     display: Display::None,
-                    border_radius: BorderRadius::all(Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Px(FILL_RADIUS)),
                     ..default()
                 },
                 BackgroundColor(rgb(accent()).with_alpha(FILL_ALPHA)),
@@ -355,6 +365,23 @@ fn drag_value_impl(
                 Name::new("drag-value-fill"),
             ))
             .id();
+        let edge = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    width: Val::Px(FILL_EDGE_W),
+                    border_radius: BorderRadius::right(Val::Px(FILL_RADIUS)),
+                    ..default()
+                },
+                BackgroundColor(rgb(accent()).with_alpha(0.85)),
+                PASS_THROUGH,
+                Name::new("drag-value-fill-edge"),
+            ))
+            .id();
+        commands.entity(bar).add_child(edge);
         commands.entity(well).add_child(bar);
         Some((well, bar))
     };
@@ -445,12 +472,34 @@ fn drag_value_impl(
 /// A full-precision, round-trippable string for the edit buffer (so committing
 /// an untouched field doesn't snap it to the 1-decimal display rounding).
 fn edit_string(v: f32) -> String {
+    // An infinity stand-in spelled out in full is 38 digits; show the symbol the
+    // field displays, which `parse_commit` reads back to the same value.
+    if v.abs() >= INFINITY_STAND_IN_MIN || v.is_infinite() {
+        return format_num(v);
+    }
     format!("{v}")
 }
 
 /// Parse the edit buffer into a (range-clamped) value.
+///
+/// `∞`, `inf` and `infinity` are accepted and stored as [`INFINITY_STAND_IN`],
+/// never as a real infinity, which would not survive a save.
 fn parse_commit(buffer: &str, range: Option<&DragRange>) -> Option<f32> {
-    let mut v: f32 = buffer.trim().parse().ok()?;
+    let t = buffer.trim();
+    let (neg, body) = match t.strip_prefix('-') {
+        Some(rest) => (true, rest.trim()),
+        None => (false, t.strip_prefix('+').unwrap_or(t).trim()),
+    };
+    let mut v: f32 = if body == "∞" || body.eq_ignore_ascii_case("inf") || body.eq_ignore_ascii_case("infinity") {
+        if neg { -INFINITY_STAND_IN } else { INFINITY_STAND_IN }
+    } else {
+        let parsed: f32 = t.parse().ok()?;
+        if parsed.is_infinite() {
+            parsed.signum() * INFINITY_STAND_IN
+        } else {
+            parsed
+        }
+    };
     if let Some(r) = range {
         v = v.clamp(r.min, r.max);
     }
@@ -816,11 +865,8 @@ pub(crate) fn drag_value_edit(
         // even when the value it was showing never changed.
         if let Some(f) = dv.fill {
             if let Ok(mut n) = nodes.get_mut(f) {
-                let d = if dv.editing || range.is_none() {
-                    Display::None
-                } else {
-                    Display::Flex
-                };
+                let shown = !dv.editing && range.is_some_and(|r| fill_fraction(bound.0, r) > 0.0);
+                let d = if shown { Display::Flex } else { Display::None };
                 if n.display != d {
                     n.display = d;
                 }
@@ -853,6 +899,14 @@ pub(crate) fn drag_value_edit(
     }
 }
 
+/// How full the value bar is: `v`'s fraction of the range, 0..1.
+///
+/// A bar at exactly zero is hidden rather than drawn zero-wide, since its
+/// leading-edge mark would otherwise sit alone at the field's start.
+fn fill_fraction(v: f32, r: &DragRange) -> f32 {
+    ((v - r.min) / (r.max - r.min).max(1e-4)).clamp(0.0, 1.0)
+}
+
 /// Model (`Bound<f32>`) → displayed text + the value fill (drag or external
 /// `bind_2way` push). The fill shows only for ranged fields.
 pub(crate) fn drag_value_apply(
@@ -875,8 +929,8 @@ pub(crate) fn drag_value_apply(
         };
         match range {
             Some(r) => {
-                let f = ((b.0 - r.min) / (r.max - r.min).max(1e-4)).clamp(0.0, 1.0);
-                n.display = Display::Flex;
+                let f = fill_fraction(b.0, r);
+                n.display = if f > 0.0 { Display::Flex } else { Display::None };
                 n.width = Val::Percent(f * 100.0);
             }
             None => n.display = Display::None,

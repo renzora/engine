@@ -17,7 +17,7 @@ bevy = { workspace = true }
 # Engine crates
 renzora_shader = { path = "../renzora_shader" }
 renzora_lighting = { path = "../renzora_lighting" }
-renzora_hanabi = { path = "../renzora_hanabi" }
+renzora_particles = { path = "../renzora_particles" }
 renzora_animation = { path = "../renzora_animation" }
 renzora = { path = "../renzora", default-features = false }
 

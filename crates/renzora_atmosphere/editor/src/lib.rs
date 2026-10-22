@@ -16,7 +16,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "atmosphere",
         display_name: "Atmosphere",
         icon: "cloud-sun",
-        category: "rendering",
+        category: "environment",
         has_fn: |world, entity| world.get::<AtmosphereComponentSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world

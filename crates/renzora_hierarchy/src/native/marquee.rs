@@ -3,8 +3,11 @@
 //! Press on empty space in the tree viewport (below the last row, where there's
 //! no row to click or drag-reorder) and drag: every row the band sweeps over
 //! becomes selected. Ctrl/Shift keep the prior selection so a sweep *adds* to it;
-//! a plain press first clears it (so clicking empty space also deselects). The
-//! band autoscrolls the list at its top/bottom edges so it can reach off-screen
+//! a plain sweep replaces it. A plain *click* on empty space (or a band that
+//! never touches a row) leaves the selection alone: it used to clear it on press,
+//! which made empty hierarchy space the one place in the editor where clicking
+//! away deselected, and the selection should only change when a row is picked.
+//! Escape / the explicit deselect paths are untouched. The band autoscrolls the list at its top/bottom edges so it can reach off-screen
 //! rows.
 //!
 //! Starting only on empty space is what keeps this from fighting the row
@@ -35,6 +38,14 @@ pub(crate) struct HierMarquee {
     /// Selection captured when the band began — swept rows add to this, so a
     /// Ctrl/Shift-started band extends the prior selection instead of replacing it.
     pre: Vec<Entity>,
+    /// Selection at press time, restored whenever the band
+    /// sweeps no rows. A plain press no longer clears the selection, so a band
+    /// that grows over rows and then shrinks back off them must put back what was
+    /// there rather than leave its last sweep behind.
+    orig: Vec<Entity>,
+    /// Whether this band has written a sweep into the selection, so an empty
+    /// sweep only restores `orig` once instead of rewriting it every frame.
+    touched: bool,
 }
 
 impl HierMarquee {
@@ -80,6 +91,8 @@ pub(crate) fn hier_marquee(
         marquee.start = None;
         marquee.current = None;
         marquee.pre.clear();
+        marquee.orig.clear();
+        marquee.touched = false;
         return;
     }
     let Some(selection) = selection else {
@@ -126,12 +139,14 @@ pub(crate) fn hier_marquee(
             ]);
             marquee.start = Some(cursor);
             marquee.current = Some(cursor);
+            marquee.touched = false;
+            // Not cleared here: a plain click on empty space keeps the selection,
+            // and only a band that actually sweeps rows replaces it.
+            marquee.orig = selection.get_all();
             if additive {
-                marquee.pre = selection.get_all();
+                marquee.pre = marquee.orig.clone();
             } else {
                 marquee.pre.clear();
-                // A plain empty-space press deselects; a sweep re-fills below.
-                selection.clear();
             }
         }
     }
@@ -150,6 +165,17 @@ pub(crate) fn hier_marquee(
                 })
                 .collect();
             swept.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+            if swept.is_empty() {
+                // Nothing under the band: put back the press-time selection (if
+                // a sweep replaced it) instead of writing an empty one.
+                if marquee.touched {
+                    selection.set_multiple(marquee.orig.clone());
+                    marquee.touched = false;
+                }
+                return;
+            }
+            marquee.touched = true;
 
             let mut sel = marquee.pre.clone();
             for (_, e) in swept {

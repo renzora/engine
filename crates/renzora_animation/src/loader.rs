@@ -67,7 +67,9 @@ impl AssetLoader for AnimClipLoader {
         let mut clip = AnimationClip::default();
         clip.set_duration(anim_clip.duration);
 
-        for track in &anim_clip.tracks {
+        // A track disabled in the timeline gets no curve, so the bone holds its
+        // rest pose and the clip plays as if the track were not there.
+        for track in anim_clip.tracks.iter().filter(|t| !t.muted) {
             let target = crate::bone_target(&track.bone_name);
 
             // Translations

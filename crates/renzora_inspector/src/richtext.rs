@@ -21,7 +21,6 @@ use bevy::text::{TextColor, TextFont, TextSpan};
 
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::theme::{rgb, section_bg, text_muted};
 use renzora_ember::widgets::{
@@ -120,9 +119,8 @@ fn rebuild_text_spans(world: &mut World) {
                 let l = muted_label(&mut commands, &fonts, &renzora::lang::t("comp.text_rich.empty"));
                 commands.entity(root).add_child(l);
             }
-            for (i, span) in spans.iter().enumerate() {
+            for span in spans.iter() {
                 let row = build_span_row(&mut commands, &fonts, *span);
-                commands.entity(row).insert(BackgroundColor(inspector_stripe(i)));
                 commands.entity(root).add_child(row);
             }
             let add = build_add_button(&mut commands, &fonts, entity);

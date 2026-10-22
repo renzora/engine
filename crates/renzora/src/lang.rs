@@ -327,3 +327,28 @@ pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
 pub struct LanguageChanged {
     pub code: String,
 }
+
+#[cfg(test)]
+mod tests {
+    /// Every shipped pack must parse. A pack that fails is skipped at load with
+    /// only a log line, and for `en` that is drastic: English vanished from the
+    /// language menu after a duplicated key (`comp.script.search`, added a
+    /// second time further down the file) made TOML reject the whole file.
+    #[test]
+    fn shipped_language_packs_parse() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../languages");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&dir).expect("languages/ is readable") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("pack is readable");
+            if let Err(e) = super::parse_pack(&src) {
+                panic!("{} does not parse: {e}", path.display());
+            }
+            seen += 1;
+        }
+        assert!(seen > 0, "no language packs found in {}", dir.display());
+    }
+}

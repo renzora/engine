@@ -66,18 +66,7 @@ pub fn update_animation_preview(
     // Seek the source entity's AnimationPlayer
     if let Some(player_entity) = state.player_entity {
         if let Ok((mut player, transitions)) = players.get_mut(player_entity) {
-            // Ensure the animation node is active
-            if let Some(anim) = player.animation_mut(node_idx) {
-                anim.seek_to(scrub);
-            } else if let Some(mut transitions) = transitions {
-                // Node not active — start it
-                let playing = transitions.play(&mut player, node_idx, Duration::ZERO);
-                playing.set_speed(0.0); // We control time via seek
-                playing.repeat();
-                if let Some(anim) = player.animation_mut(node_idx) {
-                    anim.seek_to(scrub);
-                }
-            }
+            show_only(&mut player, transitions, node_idx, scrub);
         }
     }
 
@@ -91,22 +80,54 @@ pub fn update_animation_preview(
             find_player_in_children(root, &children_query, &player_query)
         {
             if let Ok((mut player, transitions)) = players.get_mut(preview_player_entity) {
+                show_only(&mut player, transitions, node_idx, scrub);
                 if need_start {
-                    // Start the animation node on the preview player
-                    if let Some(mut transitions) = transitions {
-                        let playing = transitions.play(&mut player, node_idx, Duration::ZERO);
-                        playing.set_speed(0.0); // We drive time via seek_to
-                        playing.repeat();
-                        playback.preview_started = true;
-                        playback.started_clip = Some(clip_name.clone());
-                    }
-                }
-
-                if let Some(anim) = player.animation_mut(node_idx) {
-                    anim.seek_to(scrub);
+                    playback.preview_started = true;
+                    playback.started_clip = Some(clip_name.clone());
                 }
             }
         }
+    }
+}
+
+/// Make `node` the one animation on `player`, frozen (speed 0) at `time`.
+///
+/// Switching clips used to start the new node only through
+/// `AnimationTransitions`, and only when that component was present; with it
+/// missing, or with an older node still active (a Play from before the editor
+/// gated them, or a node left over from a graph rebuild), the old clip kept
+/// playing and picking another in the dropdown looked like it did nothing.
+/// So every other active node is stopped here, and the new one is started
+/// directly on the player when there are no transitions to go through.
+fn show_only(
+    player: &mut AnimationPlayer,
+    transitions: Option<Mut<AnimationTransitions>>,
+    node: AnimationNodeIndex,
+    time: f32,
+) {
+    let stale: Vec<AnimationNodeIndex> = player
+        .playing_animations()
+        .map(|(idx, _)| *idx)
+        .filter(|idx| *idx != node)
+        .collect();
+    for idx in stale {
+        player.stop(idx);
+    }
+    if player.animation(node).is_none() {
+        match transitions {
+            Some(mut transitions) => {
+                transitions.play(player, node, Duration::ZERO).set_speed(0.0).repeat();
+            }
+            None => {
+                player.play(node).set_speed(0.0).repeat();
+            }
+        }
+    }
+    if let Some(anim) = player.animation_mut(node) {
+        // Zeroed every frame, not only on start: a node something else started
+        // runs at full speed, and seeking alone only drags it back once a frame.
+        anim.set_speed(0.0);
+        anim.seek_to(time);
     }
 }
 

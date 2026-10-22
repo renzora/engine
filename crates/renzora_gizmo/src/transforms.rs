@@ -56,7 +56,7 @@ pub(crate) fn update_gizmo_transforms(
     mut gizmo_state: ResMut<GizmoState>,
     mut per_slot: ResMut<PerSlotGizmo>,
     transforms: Query<&GlobalTransform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
-    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children_q: Query<&Children>,
     mut gizmo_roots: Query<(&GizmoSlot, &mut Transform, &mut Visibility), With<GizmoRoot>>,
     mut gizmo_parts: Query<(&GizmoPart, &mut Visibility), (With<GizmoMesh>, Without<GizmoRoot>)>,

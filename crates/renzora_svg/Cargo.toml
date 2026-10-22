@@ -1,0 +1,44 @@
+[package]
+name = "renzora_svg"
+version = "0.1.0"
+edition = "2021"
+description = "SVG / SVGZ asset loader: rasterizes vector files to a standard Bevy Image, so every image consumer accepts them unchanged."
+
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list and the linker pulls straight
+# into the binary.
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+# Pure-Rust SVG renderer (usvg parser + tiny-skia rasterizer), so it builds for
+# wasm and every other target without a C toolchain.
+#
+# Default features are OFF on purpose. `system-fonts` would read the machine's
+# installed fonts, so the same SVG would rasterize differently on two machines
+# (and there are no system fonts on the web at all); `memmap-fonts` reaches for
+# mmap, which wasm does not have. What is kept:
+# * `text`: shape `<text>` against the font database this crate builds,
+# * `svgz`: gzip-compressed `.svgz` input,
+# * `raster-images`: JPEG/GIF/WebP decoding for embedded `<image>` elements
+#   (PNG comes from tiny-skia itself).
+resvg = { version = "=0.48.1", default-features = false, features = ["text", "svgz", "raster-images"] }
+# The `<file>.svg.toml` sidecar (see `settings.rs`). Same major the rest of the
+# workspace uses, so it adds no second copy.
+toml = "0.8"
+
+# The integration test drives the real `AssetServer` over a temp folder, and
+# its hot-reload case needs Bevy's file watcher, which the root crate turns on
+# for desktop builds but a `-p renzora_svg` test build would not otherwise see.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+bevy = { workspace = true, features = ["file_watcher"] }
+
+[lints]
+workspace = true

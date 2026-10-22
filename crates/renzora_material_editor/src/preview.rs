@@ -347,7 +347,7 @@ fn setup_material_preview(
     ));
 
     // Preview sphere — all texture slots filled with fallback for stable pipeline layout
-    let sphere_mesh = meshes.add(with_tangents(Sphere::new(1.0).mesh().ico(5).unwrap()));
+    let sphere_mesh = meshes.add(with_tangents(preview_sphere()));
     let material = materials.add(new_graph_material(&fallback));
 
     commands.spawn((
@@ -766,6 +766,8 @@ fn swap_preview_shape(
     mut meshes: ResMut<Assets<Mesh>>,
     mut preview_mesh: Query<(&mut Mesh3d, &mut Transform), With<MaterialPreviewMesh>>,
     mut applied: Local<Option<AppliedShape>>,
+    // The skin-free copy made for a rigged source mesh, keyed by the source.
+    mut stripped: Local<Option<(AssetId<Mesh>, Handle<Mesh>)>>,
 ) {
     // The selected mesh can disappear under us (deselect, despawn, or opening a
     // standalone `.material` with nothing selected). Fall back to the sphere
@@ -786,8 +788,31 @@ fn swap_preview_shape(
                 if *applied == (Some(AppliedShape::Selected { id, fitted: true })) {
                     continue;
                 }
-                if mesh3d.0.id() != id {
-                    mesh3d.0 = handle.clone();
+                // Never draw the scene's handle before it can be inspected: a
+                // rigged mesh drawn without its skeleton is what crashed the
+                // editor, and whether it is rigged is only known once loaded.
+                let Some(src) = meshes.get(handle) else {
+                    *applied = Some(AppliedShape::Selected { id, fitted: false });
+                    continue;
+                };
+                let draw = match preview_drawable(src) {
+                    Drawable::AsIs => handle.clone(),
+                    Drawable::Stripped(copy) => match stripped.as_ref() {
+                        Some((sid, h)) if *sid == id => h.clone(),
+                        _ => {
+                            let h = meshes.add(*copy);
+                            *stripped = Some((id, h.clone()));
+                            h
+                        }
+                    },
+                    Drawable::Unusable => {
+                        orbit.shape = PreviewShape::Sphere;
+                        *applied = None;
+                        continue;
+                    }
+                };
+                if mesh3d.0.id() != draw.id() {
+                    mesh3d.0 = draw;
                 }
                 // Normalize into the primitives' size band and recentre on the
                 // mesh's own centroid — an imported mesh can be authored at any
@@ -819,9 +844,7 @@ fn swap_preview_shape(
                     PreviewShape::Plane => Plane3d::new(Vec3::Y, Vec2::splat(1.5)).into(),
                     // `Selected` can't reach here (it fell back above), so the
                     // sphere doubles as its guard.
-                    PreviewShape::Sphere | PreviewShape::Selected => {
-                        Sphere::new(1.0).mesh().ico(5).unwrap()
-                    }
+                    PreviewShape::Sphere | PreviewShape::Selected => preview_sphere(),
                 };
                 mesh3d.0 = meshes.add(with_tangents(new_mesh));
                 *transform = Transform::default();
@@ -829,6 +852,46 @@ fn swap_preview_shape(
             }
         }
     }
+}
+
+/// What the preview can safely draw for a scene mesh.
+enum Drawable {
+    AsIs,
+    /// A copy without its joint attributes. Boxed so the two empty variants
+    /// don't each carry a whole `Mesh` worth of stack.
+    Stripped(Box<Mesh>),
+    /// Can't be drawn here (or can't be inspected); the preview uses the sphere.
+    Unusable,
+}
+
+/// A rigged mesh drawn without a `SkinnedMesh` crashes the renderer: the joint
+/// attributes in its vertex layout make Bevy pick the skinned pipeline, while
+/// the entity, having no skeleton, gets the plain mesh bind group, and wgpu
+/// rejects the mismatch ("skinned_motion_mesh_layout ... binding 1 not found"
+/// in the deferred prepass). That is exactly what the preview did with a rigged
+/// model selected, so it draws a copy with the joints removed: the bind pose,
+/// which is all a material preview needs.
+///
+/// Morph targets cause the same mismatch and Bevy has no way to drop them from
+/// a mesh, so a morphing mesh falls back to the sphere. So does a mesh whose
+/// data has already moved to the GPU, because its layout can't be checked.
+fn preview_drawable(mesh: &Mesh) -> Drawable {
+    let (Ok(joints), Ok(weights)) = (
+        mesh.try_contains_attribute(Mesh::ATTRIBUTE_JOINT_INDEX),
+        mesh.try_contains_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT),
+    ) else {
+        return Drawable::Unusable;
+    };
+    if mesh.try_has_morph_targets().unwrap_or(true) {
+        return Drawable::Unusable;
+    }
+    if !joints && !weights {
+        return Drawable::AsIs;
+    }
+    let mut copy = mesh.clone();
+    let _ = copy.try_remove_attribute(Mesh::ATTRIBUTE_JOINT_INDEX);
+    let _ = copy.try_remove_attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT);
+    Drawable::Stripped(Box::new(copy))
 }
 
 /// Give a preview primitive the tangents parallax mapping needs.
@@ -842,6 +905,26 @@ fn swap_preview_shape(
 /// A failure here is not worth refusing to draw over: `generate_tangents`
 /// only fails on degenerate UVs, and the mesh is still perfectly renderable
 /// without the attribute — it just loses parallax.
+/// The preview sphere: a UV sphere, not an icosphere. Bevy's `ico` tessellation
+/// has no clean UV layout, so its seam zigzags along the triangle edges and any
+/// UV-driven material (a gradient, a noise, a scrolling pattern) showed it as a
+/// jagged crack down one side. A UV sphere has one straight seam.
+///
+/// Turned so that seam is out of sight. Bevy builds the UV sphere with its
+/// poles on Z, so from the preview camera the u = 0 / 1 meridian ran straight
+/// across the middle of the ball and every UV pattern was cut along the
+/// equator. Rotated, the poles are up and down and the seam faces away from the
+/// default view, the way a DCC tool's material ball is set up.
+pub(crate) fn preview_sphere() -> Mesh {
+    Sphere::new(1.0).mesh().uv(64, 32).rotated_by(seam_away())
+}
+
+/// Poles from Z to Y (about X), then the u seam from +X round to -Z (about Y),
+/// which is behind the ball for a camera on +Z.
+pub(crate) fn seam_away() -> Quat {
+    Quat::from_rotation_y(std::f32::consts::FRAC_PI_2) * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+}
+
 fn with_tangents(mut mesh: Mesh) -> Mesh {
     if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
         warn!("material preview: couldn't generate tangents, parallax will be inactive");
@@ -1022,7 +1105,12 @@ fn update_preview_material(
     // it into the fragment stage.
     let preview_uuid = Uuid::new_v4();
     let preview_handle: Handle<Shader> = Handle::Uuid(preview_uuid, PhantomData);
-    let shader = renzora::shader_source::shader(result.fragment_shader.clone(), "graph_material/preview.wgsl");
+    // Unique per compile: Bevy's shader cache is keyed by module path, and a
+    // shared one let each recompile replace the shader under the previous one.
+    let shader = renzora::shader_source::shader(
+        result.fragment_shader.clone(),
+        format!("graph_material/preview_{preview_uuid}.wesl"),
+    );
     let _ = shaders.insert(&preview_handle, shader);
 
     // Seed the parameter UBO from the graph's authored defaults. Without the
@@ -1048,6 +1136,18 @@ fn update_preview_material(
     let mut material = new_graph_material(&fallback);
     material.extension.shader_uuid = Some(preview_uuid);
     material.extension.params.slots = default_slots;
+    // A project in deferred mode shades every opaque mesh from the G-buffer
+    // pass, the preview camera's too, and `specialize` only puts the graph's
+    // shader into that pass when this is set. Left false, the preview drew the
+    // empty base: a white cube for any procedural material. The base is filled
+    // the same way the scene resolver fills it, for the passes that read it.
+    material.extension.writes_gbuffer =
+        renzora_shader::material::codegen::supports_deferred(&result.fragment_shader);
+    renzora_shader::material::standard_build::apply_base_approximation(
+        &mut material.base,
+        &editor_state.graph,
+        &asset_server,
+    );
 
     for tb in &result.texture_bindings {
         if tb.asset_path.is_empty() {

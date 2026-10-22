@@ -65,14 +65,11 @@ type TileQuery<'w, 's> = Query<
     ),
 >;
 
-/// Image extensions accepted as a tileset atlas when dropped on the panel.
-const TILESET_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "ktx2", "rmip"];
-
-/// Whether `path` has a tileset-image extension.
+/// Whether `path` can be a tileset atlas: anything that loads as an `Image`
+/// (the shared list, SVG included). A vector tileset rasterizes at its
+/// intrinsic size, so its cells line up exactly as authored.
 pub(crate) fn is_tileset(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| TILESET_EXTENSIONS.iter().any(|x| e.eq_ignore_ascii_case(x)))
+    renzora::is_image_path(path)
 }
 
 /// The tilemap the panel and paint brush operate on. Driven by the panel's tab

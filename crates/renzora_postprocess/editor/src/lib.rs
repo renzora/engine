@@ -20,7 +20,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use renzora::{AppEditorExt, EditorCommands, InspectorEntry, PostEffect, PostEffects, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::inspector::{fill_control, inspector_row, inspector_stripe};
+use renzora_ember::inspector::{fill_control, inspector_row};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::theme::{accent, border, rgb, section_bg, text_muted};
@@ -352,9 +352,6 @@ fn effect_section(
             false,
         )],
     };
-    for (i, row) in rows.iter().enumerate() {
-        commands.entity(*row).insert(BackgroundColor(inspector_stripe(i)));
-    }
     commands.entity(body).add_children(&rows);
     root
 }

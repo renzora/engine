@@ -88,6 +88,15 @@ noted; they're where data *enters* the graph.
 | `input/sprite_color` — **Sprite Color** | `uv` (Vec2, the sprite's UV when unwired) | `color` (Color), `rgb` (Vec3), `a` (Float) | The sprite's own texture at a UV, with its flip, tiling and slicing applied. Wire a distorted UV in for waves or wobble. Sprite materials only; white elsewhere, with a warning. |
 | `input/camera_position` — **Camera Position** | — | `position` (Vec3) | World-space camera position. |
 | `input/object_position` — **Object Position** | — | `position` (Vec3) | The object's pivot in world space (handy for wind anchoring). |
+| `input/particle_color`, **Particle Color** | none | `color` (Color), `rgb` (Vec3), `a` (Float) | On a [particle wearing this material](../rendering/particle-system.md#project-materials), the particle's colour after its colour over life. White anywhere else. |
+| `input/particle_age`, **Particle Age** | none | `age` (Float) | On a particle, its age over its lifetime: 0 at birth, 1 at death. 0 anywhere else. |
+| `input/particle_random`, **Particle Random** | none | `value` (Float) | On a particle, a 0 to 1 random fixed for its whole life, so no two particles look alike. 0 anywhere else. |
+| `input/particle_velocity`, **Particle Velocity** | none | `velocity` (Vec3), `speed` (Float), `direction` (Vec3) | On a particle, its world-space velocity, speed and direction (zero when still). Zero anywhere else. |
+
+The four Particle nodes let one material dress both a level and its own
+particles: on a mesh (and in the material preview) they read as the constants
+above, so the material still looks right there. A sprite material can hold
+them too, as constants, since a sprite is never a particle.
 
 ---
 
@@ -422,7 +431,7 @@ The full PBR master; maps 1:1 onto Bevy's `StandardMaterial`.
 | `diffuse_transmission` | Float | `0` | Light through thin surfaces (foliage, skin) |
 | `thickness` | Float | `0` | Volume thickness |
 | `ior` | Float | `1.5` | Index of refraction |
-| `attenuation_distance` | Float | `1e37` | Volume attenuation distance |
+| `attenuation_distance` | Float | `1e37` | Volume attenuation distance. `1e37` means "never attenuates" and the editor shows it as `∞`; type `∞` or `inf` to set it back |
 | `attenuation_color` | Vec3 | `1` | Colour light attenuates toward over that distance |
 | `clearcoat` | Float | `0` | Second specular layer (car paint) |
 | `clearcoat_roughness` | Float | `0.5` | Clearcoat roughness |

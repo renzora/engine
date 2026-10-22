@@ -38,7 +38,7 @@ The first two never touch the bottom panel, and the third never touches a worksp
 
 <!-- screenshot: panel_add.png - the Add Panel picker with categories and a search box -->
 
-Click **Add Panel** in any tab bar for a searchable picker with every panel grouped by category.
+Click **Add Panel** in any tab bar for a searchable picker with every panel grouped by category, laid out like Add Component: a category sidebar, and the panels three to a row with their icons.
 
 | Gesture | What it does |
 |---|---|
@@ -57,25 +57,30 @@ Every tab bar has a grip handle at its far left. Drag that to move the whole gro
 
 When a group holds more tabs than fit, hover the tabs and scroll to slide the rest into view.
 
-## Document tabs
+## The scene switcher
 
-The strip directly under the top bar is your open documents: one per scene, plus any materials, scripts, shaders or particles you have opened. Each is a chip with an icon in its type's colour and the document's name.
+The left of the top bar names your project and the document you are in, with an icon in its type's colour: `test / main` for a scene, `test / gold.material` for a material. Whether that document is **Saved** or **Unsaved** shows in the status bar, beside **Ready**. Click the switcher for a menu of:
 
-Clicking a tab brings up both the document and the workspace it belongs to. Click a material tab and you land in the Materials workspace with that material loaded. Switching workspace from the ribbon works the other way, bringing that workspace's document forward.
+- **Open**: every document you have open, scenes plus any materials, scripts, shaders or particles. The one you are in has a save button, amber while it has unsaved changes; any other document with unsaved changes has an amber dot.
+- **Project scenes**: every scene in your project's `scenes/` folder. The boot scene has a star.
+- **New Scene**, **Open Scene File...**, and, while a scene is in front of you, **Set as Boot Scene**, which makes it the one the game starts on.
+
+**Play** is at the right of the top bar, beside the Marketplace.
+
+## Open documents
+
+Picking a document in the switcher brings up both the document and the workspace it belongs to. Pick a material and you land in the Materials workspace with that material loaded. Switching workspace from the ribbon works the other way, bringing that workspace's document forward.
 
 | | |
 |---|---|
 | Open | Double-click something in the Assets panel. Already open means it activates rather than opening twice. |
-| New scene | `Ctrl+N`, or the **+** at the end of the strip. It opens in its own tab. |
-| Close | The **×** on the active tab. The last scene keeps no ×. |
-| Reorder | Drag sideways. |
-| Rename | Double-click. For a saved document this renames the file on disk. |
+| New scene | `Ctrl+N`, or **New Scene** in the scene switcher. |
+| Close | Hover a document in the switcher's **Open** list and click its **×**. The last scene has no ×. |
+| Rename | Rename the file in the Assets panel; the open document follows it. A new scene takes its name when you first save it. |
 
-A tab with unsaved edits shows a `*` after its name, and the save button in the top bar turns amber. Closing one with unsaved changes asks first, and so does closing the editor.
+A document with unsaved edits makes the save button in the top bar turn amber. Closing one with unsaved changes asks first, and so does closing the editor.
 
-If you would rather not spend a row on the strip, **Settings > Interface > UI Workspace > Document Tabs** swaps it for a dropdown beside Play.
-
-Your tabs are remembered per project and restored when you reopen it.
+Your open documents are remembered per project and restored when you reopen it.
 
 ## The bottom panel
 
@@ -146,4 +151,4 @@ All three honour **Settings > Interface > Display > Scroll Speed**.
 
 Drag a panel narrower and its toolbar stays on one row. Labels drop away, buttons become icon-only with the name in a tooltip, and search boxes shrink around them.
 
-Narrow enough and the Assets panel drops its grid and becomes a tree-only file browser, with its actions folded into a single **+ Add** dropdown. Nothing is lost at any width.
+Narrow enough and the Assets panel drops its grid and becomes a tree-only file browser, with a search box and the same **Import** button the wide toolbar has, and the same Project / Recent / Favourites switch over the tree. Import opens a picker in the middle of the window: tiles to import files, import a folder or search the Marketplace, and below them the list of new assets you can create. Nothing is lost at any width.

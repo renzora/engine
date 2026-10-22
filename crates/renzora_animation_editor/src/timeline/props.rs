@@ -15,7 +15,8 @@ use renzora_ember::UiInteraction;
 
 use crate::AnimationEditorState;
 
-use super::clip::{clip_entity, cur_clip, Lane, SelKey, SelectedKey, TimelineClip};
+use super::clip::{clip_entity, cur_clip, SelKey, SelectedKey, SelectedKeys, TimelineClip};
+use super::layout::{RowKind, TrackLayout};
 use super::snapshots::title_case;
 use super::{AddKeyTrackBtn, AddTrackBtn, DeletePropTrack, PropTrackCombo};
 
@@ -34,8 +35,21 @@ pub(crate) struct TimelineOps {
     pub(super) delete_track: Option<usize>,
     /// Insert a key at the playhead on just this one property track.
     pub(super) add_key_track: Option<usize>,
-    /// Delete the currently selected keyframe.
+    /// Delete every selected keyframe.
     pub(super) delete_selected_key: bool,
+    /// Copy the selected keyframes to the timeline clipboard.
+    pub(super) copy_keys: bool,
+    /// Paste the clipboard at the playhead.
+    pub(super) paste_keys: bool,
+    /// Empty-state "Key a property": once the new clip has loaded, add a track
+    /// and open its property picker here.
+    pub(super) pending_property_pick: Option<Vec2>,
+    /// Empty-state "Record": once the new clip has loaded, add Transform tracks
+    /// and arm record.
+    pub(super) pending_record_setup: bool,
+    /// "+ Track" with an effect shown: open the menu offering a property
+    /// track and the effect's parameters, at this window position.
+    pub(super) open_add_track_menu: Option<Vec2>,
 }
 
 /// Upsert a keyframe at `time` on a property track (replace if one already sits
@@ -178,10 +192,18 @@ pub(super) fn prop_header_click(
     addks: Query<(&UiInteraction, &AddKeyTrackBtn), Changed<UiInteraction>>,
     add_track: Query<&UiInteraction, (With<AddTrackBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
+    cache: Res<TimelineClip>,
     mut ops: ResMut<TimelineOps>,
 ) {
     if add_track.iter().any(|i| *i == UiInteraction::Pressed) {
-        ops.add_empty_track = true;
+        // With an effect in the panel "+ Track" is a choice (property track
+        // or effect parameter); without one it stays the one-click add.
+        if cache.fx.is_some() {
+            let cursor = windows.iter().find_map(|w| w.cursor_position()).unwrap_or(Vec2::splat(200.0));
+            ops.open_add_track_menu = Some(cursor + Vec2::new(0.0, 12.0));
+        } else {
+            ops.add_empty_track = true;
+        }
     }
     for (interaction, rcp, cn, combo) in &combos {
         if *interaction != UiInteraction::Pressed {
@@ -208,11 +230,15 @@ pub(super) fn prop_header_click(
 /// Apply deferred ops that need full world access (reflection): add/delete a
 /// property track, open a track's property picker, or key all tracks.
 pub(super) fn apply_timeline_ops(world: &mut World) {
-    let (add_empty, add_key, open_menu, delete, add_key_track, delete_key) = {
+    apply_pending_setup(world);
+    if let Some(pos) = world.get_resource_mut::<TimelineOps>().and_then(|mut o| o.open_add_track_menu.take()) {
+        super::fx::open_add_track_menu(world, pos);
+    }
+    let (add_empty, add_key, open_menu, delete, add_key_track, delete_key, copy, paste) = {
         let Some(o) = world.get_resource::<TimelineOps>() else { return };
-        (o.add_empty_track, o.add_key, o.open_property_menu, o.delete_track, o.add_key_track, o.delete_selected_key)
+        (o.add_empty_track, o.add_key, o.open_property_menu, o.delete_track, o.add_key_track, o.delete_selected_key, o.copy_keys, o.paste_keys)
     };
-    if !add_empty && !add_key && open_menu.is_none() && delete.is_none() && add_key_track.is_none() && !delete_key {
+    if !add_empty && !add_key && open_menu.is_none() && delete.is_none() && add_key_track.is_none() && !delete_key && !copy && !paste {
         return;
     }
     if let Some(mut o) = world.get_resource_mut::<TimelineOps>() {
@@ -222,20 +248,18 @@ pub(super) fn apply_timeline_ops(world: &mut World) {
         o.delete_track = None;
         o.add_key_track = None;
         o.delete_selected_key = false;
+        o.copy_keys = false;
+        o.paste_keys = false;
     }
 
+    if copy {
+        super::popover::copy_selected_keys(world);
+    }
+    if paste {
+        super::popover::paste_keys(world);
+    }
     if delete_key {
-        if let Some(sel) = world.get_resource::<SelectedKey>().and_then(|s| s.0) {
-            if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
-                if let Some(mut chan) = cache.lane_times(sel.lane) {
-                    chan.remove(sel.index);
-                }
-                cache.dirty = true;
-            }
-            if let Some(mut s) = world.get_resource_mut::<SelectedKey>() {
-                s.0 = None;
-            }
-        }
+        delete_selected_keys(world);
     }
 
     if add_empty {
@@ -250,6 +274,9 @@ pub(super) fn apply_timeline_ops(world: &mut World) {
         if let Some(entity) = entity {
             insert_key_all_tracks(world, entity, scrub);
         }
+        if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
+            super::fx::key_all(&mut cache, scrub);
+        }
     }
     if let Some(track) = add_key_track {
         let entity = clip_entity(world);
@@ -263,6 +290,82 @@ pub(super) fn apply_timeline_ops(world: &mut World) {
     }
 }
 
+/// Finish an empty-state action once the clip it created has loaded (the
+/// clip is read from disk the frame after it is written, so the action cannot
+/// do this itself).
+fn apply_pending_setup(world: &mut World) {
+    let (pick, record) = match world.get_resource::<TimelineOps>() {
+        Some(o) if o.pending_property_pick.is_some() || o.pending_record_setup => (o.pending_property_pick, o.pending_record_setup),
+        _ => return,
+    };
+    if cur_clip(world).is_none() {
+        return;
+    }
+    let Some(entity) = clip_entity(world) else { return };
+    if let Some(mut o) = world.get_resource_mut::<TimelineOps>() {
+        o.pending_property_pick = None;
+        o.pending_record_setup = false;
+    }
+    if let Some(pos) = pick {
+        add_empty_property_track(world);
+        let idx = cur_clip(world).map(|c| c.property_tracks.len().saturating_sub(1)).unwrap_or(0);
+        open_property_menu_for_track(world, entity, idx, pos);
+    }
+    if record {
+        // Record only captures tracked fields, so give a fresh clip the
+        // Transform's three to capture into.
+        let fields = list_animatable_fields(world, entity);
+        let wanted = ["translation", "rotation", "scale"];
+        let picked: Vec<_> = fields
+            .into_iter()
+            .filter(|f| renzora::norm(&f.component) == renzora::norm("Transform") && wanted.contains(&f.field.as_str()))
+            .collect();
+        if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
+            if let Some(clip) = cache.clip.as_mut() {
+                for f in picked {
+                    let exists = clip.property_tracks.iter().any(|t| t.component == f.component && t.field == f.field);
+                    if !exists {
+                        clip.property_tracks.push(PropertyTrack { target: "self".into(), component: f.component, field: f.field, keys: Vec::new(), muted: false });
+                    }
+                }
+            }
+            cache.dirty = true;
+        }
+        if let Some(mut s) = world.get_resource_mut::<AnimationEditorState>() {
+            s.record_enabled = true;
+        }
+    }
+}
+
+/// Delete every selected key (the primary included). Indices are removed
+/// highest-first per lane, so earlier removals don't shift later ones.
+pub(super) fn delete_selected_keys(world: &mut World) {
+    let mut keys: Vec<SelKey> = world.get_resource::<SelectedKeys>().map(|s| s.keys.clone()).unwrap_or_default();
+    if let Some(p) = world.get_resource::<SelectedKey>().and_then(|s| s.0) {
+        if !keys.contains(&p) {
+            keys.push(p);
+        }
+    }
+    if keys.is_empty() {
+        return;
+    }
+    keys.sort_by_key(|k| std::cmp::Reverse(k.index));
+    if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
+        for k in &keys {
+            if let Some(mut chan) = cache.lane_times(k.lane) {
+                chan.remove(k.index);
+            }
+        }
+        cache.dirty = true;
+    }
+    if let Some(mut s) = world.get_resource_mut::<SelectedKey>() {
+        s.0 = None;
+    }
+    if let Some(mut s) = world.get_resource_mut::<SelectedKeys>() {
+        s.clear();
+    }
+}
+
 /// Mirror which entity the open clip animates into the shared
 /// [`renzora::ActiveTimeline`] so the inspector can show per-property keyframe
 /// buttons without linking this crate. Uses `cache.key` (not `selected_entity`)
@@ -273,8 +376,10 @@ pub(super) fn publish_active_timeline(
     clip: Res<TimelineClip>,
     mut active: ResMut<renzora::ActiveTimeline>,
 ) {
-    // A clip must be loaded for the timeline to count as "active".
-    let entity = clip.clip.as_ref().and(clip.key.as_ref()).map(|(e, _)| *e);
+    // A clip must be loaded for the timeline to count as "active". An effect
+    // shown on its own has no clip a property key could be saved into, so the
+    // inspector's keyframe buttons stay hidden for it.
+    let entity = clip.clip.as_ref().and(clip.key.as_ref()).filter(|_| !clip.is_effect_only()).map(|(e, _)| *e);
     if active.entity != entity {
         active.entity = entity;
     }
@@ -289,7 +394,7 @@ pub(super) fn apply_keyframe_requests(world: &mut World) {
         Some(mut r) if !r.is_empty() => r.drain(),
         _ => return,
     };
-    if cur_clip(world).is_none() {
+    if cur_clip(world).is_none() || world.get_resource::<TimelineClip>().is_some_and(|c| c.is_effect_only()) {
         return;
     }
     let entity = clip_entity(world);
@@ -342,6 +447,7 @@ fn add_key_for_field(world: &mut World, entity: Option<Entity>, component: &str,
             component: canon.component,
             field: canon.field,
             keys: Vec::new(),
+            muted: false,
         });
         let idx = clip.property_tracks.len() - 1;
         cache.dirty = true;
@@ -384,30 +490,86 @@ fn insert_key_all_tracks(world: &mut World, entity: Entity, time: f32) {
 /// in-row dropdown afterward).
 fn add_empty_property_track(world: &mut World) {
     let Some(mut cache) = world.get_resource_mut::<TimelineClip>() else { return };
+    // The stand-in clip of an effect shown alone is never saved; a property
+    // track on it would be lost. New Clip makes a real one to key into.
+    if cache.is_effect_only() {
+        return;
+    }
     let Some(clip) = cache.clip.as_mut() else { return };
     clip.property_tracks.push(PropertyTrack {
         target: "self".into(),
         component: String::new(),
         field: String::new(),
         keys: Vec::new(),
+        muted: false,
     });
     cache.dirty = true;
 }
 
 /// Remove the property track at `track`, clearing any selection on it.
 fn delete_property_track(world: &mut World, track: usize) {
-    if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
-        if let Some(clip) = cache.clip.as_mut() {
-            if track < clip.property_tracks.len() {
-                clip.property_tracks.remove(track);
-                cache.dirty = true;
+    delete_track(world, RowKind::Prop(track));
+}
+
+/// Remove a bone or property track from the clip buffer (the track list's
+/// right-click "Delete track", and a property row's x button). It goes through
+/// the buffer like any other edit, so the undo observer snapshots it and the
+/// autosave writes it.
+///
+/// Every selection is dropped, not only the deleted track's: selections are
+/// stored by track index, and removing a track renumbers every track after it,
+/// so a kept selection would silently point at a neighbour.
+pub(super) fn delete_track(world: &mut World, kind: RowKind) {
+    let removed = {
+        let Some(mut cache) = world.get_resource_mut::<TimelineClip>() else { return };
+        let Some(clip) = cache.clip.as_mut() else { return };
+        let removed = match kind {
+            RowKind::Bone(i) if i < clip.tracks.len() => {
+                clip.tracks.remove(i);
+                true
             }
+            RowKind::Prop(i) if i < clip.property_tracks.len() => {
+                clip.property_tracks.remove(i);
+                true
+            }
+            _ => false,
+        };
+        if removed {
+            cache.dirty = true;
         }
+        removed
+    };
+    if !removed {
+        return;
     }
     if let Some(mut sel) = world.get_resource_mut::<SelectedKey>() {
-        if matches!(sel.0, Some(SelKey { lane: Lane::Prop { .. }, .. })) {
-            sel.0 = None;
+        sel.0 = None;
+    }
+    if let Some(mut all) = world.get_resource_mut::<SelectedKeys>() {
+        all.clear();
+    }
+    if let Some(mut layout) = world.get_resource_mut::<TrackLayout>() {
+        if layout.selected.is_some_and(|s| s != RowKind::Summary) {
+            layout.selected = None;
         }
+    }
+}
+
+/// Disable (or re-enable) a track: it stays in the clip with its keys, and
+/// every sampler skips it, so the clip plays as if it were not there. A clip
+/// edit like any other, so it is undoable and autosaved.
+pub(super) fn set_track_muted(world: &mut World, kind: RowKind, muted: bool) {
+    let Some(mut cache) = world.get_resource_mut::<TimelineClip>() else { return };
+    let Some(clip) = cache.clip.as_mut() else { return };
+    let flag = match kind {
+        RowKind::Bone(i) => clip.tracks.get_mut(i).map(|t| &mut t.muted),
+        RowKind::Prop(i) => clip.property_tracks.get_mut(i).map(|p| &mut p.muted),
+        RowKind::Summary | RowKind::FxGroup | RowKind::FxEmitter(..) | RowKind::FxTrack(_) => None,
+    };
+    let Some(flag) = flag else { return };
+    if *flag != muted {
+        *flag = muted;
+        cache.dirty = true;
     }
 }
 

@@ -34,7 +34,11 @@ pub(crate) fn entity_pick_system(
     named_entities: Query<(Entity, Has<SelectionStop>), With<Name>>,
     parent_query: Query<&ChildOf>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
-    hidden_entities: Query<(), With<HideInHierarchy>>,
+    // Bundled: a system takes at most sixteen parameters.
+    (hidden_entities, pick_proxies): (
+        Query<(), With<HideInHierarchy>>,
+        Query<(Entity, &GlobalTransform, &renzora::PickProxy)>,
+    ),
     mut box_sel: ResMut<BoxSelectionState>,
 ) {
     if !mouse_button.just_pressed(MouseButton::Left) {
@@ -116,7 +120,8 @@ pub(crate) fn entity_pick_system(
     // pending pick and wait for mouse-up to decide click vs drag.
     let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
     let mut pending: Option<Entity> = None;
-    for (entity, _hit) in hits.iter() {
+    let mut pending_dist = f32::INFINITY;
+    for (entity, hit) in hits.iter() {
         if gizmo_meshes.get(*entity).is_ok() {
             continue;
         }
@@ -137,7 +142,30 @@ pub(crate) fn entity_pick_system(
                 continue;
             }
             pending = Some(target);
+            pending_dist = hit.distance;
             break;
+        }
+    }
+
+    // Entities with nothing to raycast stand in as a sphere, and the nearer of
+    // the two wins, so a particle system in front of a wall is what a click on
+    // it selects. The radius never drops below a few pixels' worth at the hit
+    // distance, so a small effect far away is still something you can hit.
+    for (entity, gt, proxy) in &pick_proxies {
+        if hidden_entities.get(entity).is_ok() {
+            continue;
+        }
+        let centre = gt.translation();
+        let to = centre - ray.origin;
+        let along = to.dot(*ray.direction);
+        if along <= 0.0 {
+            continue;
+        }
+        let radius = proxy.radius.max(along * 0.025);
+        let miss = (to - *ray.direction * along).length();
+        if miss <= radius && along < pending_dist {
+            pending = Some(entity);
+            pending_dist = along;
         }
     }
 

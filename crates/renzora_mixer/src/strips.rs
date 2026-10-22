@@ -20,11 +20,14 @@
 //! name is shown).
 //!
 //! The panel's own **shape** is the one thing a menu can't own, so it sits on a
-//! top bar: strip size (Compact / Wide) and whether channels run as vertical
-//! columns or horizontal rows ([`MixerLayout`]). Both change the look of the
-//! whole panel, and you pick them by looking at the result — a menu you have to
-//! reopen between attempts turns that into guesswork. Changing either rebuilds
-//! the strip run wholesale; see [`body_snapshot`].
+//! top bar. On the left, the page: **Mixer** (these strips), **Routing** (where
+//! each bus goes and what it sends, [`crate::routing`]) and **Metering** (long
+//! meters with peak hold and clip lights, [`crate::metering`]). On the right,
+//! for the Mixer page, strip size (**Compact** / **Large**), **Horizontal**
+//! (channels as rows rather than columns, [`MixerLayout`]) and **Add bus**.
+//! They are labelled controls, not icon keys: you pick a shape by looking at
+//! the result, and an icon you have to hover to decode makes that guesswork.
+//! Changing any of them rebuilds the body wholesale; see [`body_snapshot`].
 
 use std::hash::{Hash, Hasher};
 
@@ -39,14 +42,14 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::tracked::{
-    bind_2way, bind_bg, bind_display, bind_text, bind_text_color, bind_with, keyed_list,
+    bind_2way, bind_bg, bind_display, bind_text, keyed_list,
 };
 use renzora_ember::theme::*;
 use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{
     fader, fader_horizontal, knob_pivoted, menu_header, menu_item, menu_item_styled, menu_sep,
-    menu_submenu, mixer_button, screen_menu_flip, scroll_view, text_input, vu_meter_bound,
-    vu_meter_bound_horizontal, EmberTextInput, HoverTooltip, MenuAction,
+    menu_submenu, mixer_button, screen_menu_flip, scroll_view, segmented, text_input, vu_meter_bound,
+    vu_meter_bound_horizontal, EmberTextInput, HoverTooltip, KnobWheel, MenuAction,
 };
 
 const RED: (u8, u8, u8) = (225, 90, 80);
@@ -63,10 +66,28 @@ const RENAME_W: f32 = 150.0;
 
 // ── Panel layout ─────────────────────────────────────────────────────────────
 
+/// Which page the panel shows.
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
+pub(crate) enum MixerTab {
+    #[default]
+    Mixer,
+    Routing,
+    Metering,
+}
+
+impl MixerTab {
+    const ALL: [MixerTab; 3] = [MixerTab::Mixer, MixerTab::Routing, MixerTab::Metering];
+
+    fn index(self) -> usize {
+        Self::ALL.iter().position(|t| *t == self).unwrap_or(0)
+    }
+}
+
 /// How much room a strip gets.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 enum Density {
-    /// Roomier strips: a bigger pan knob and a caption under it.
+    /// Roomier strips ("Large"): a bigger pan knob with its caption, and a dB
+    /// scale beside the fader.
     Wide,
     /// Tighter strips, for fitting a large board in a short bottom panel.
     ///
@@ -118,8 +139,10 @@ impl MixerLayout {
     /// the strip's content box.
     fn strip_span(self) -> f32 {
         match (self.orientation, self.density) {
-            (Orientation::Vertical, Density::Compact) => 62.0,
-            (Orientation::Vertical, Density::Wide) => 80.0,
+            // Wide enough for a dB scale beside the fader and a full-width
+            // mute/solo pair (design A); the old 62/80 left neither room.
+            (Orientation::Vertical, Density::Compact) => 84.0,
+            (Orientation::Vertical, Density::Wide) => 112.0,
             (Orientation::Horizontal, Density::Compact) => 40.0,
             (Orientation::Horizontal, Density::Wide) => 52.0,
         }
@@ -127,10 +150,11 @@ impl MixerLayout {
 
     /// Diameter of the pan knob.
     fn knob(self) -> f32 {
+        // Big enough to hold its value in the middle (see `strip`).
         if self.compact() {
-            22.0
-        } else {
             32.0
+        } else {
+            40.0
         }
     }
 
@@ -197,11 +221,11 @@ fn layout_of(rx: &Rx) -> MixerLayout {
     rx.get_resource::<MixerLayout>().copied().unwrap_or_default()
 }
 
-/// A top-bar density button, carrying the density it selects.
-#[derive(Component, Clone, Copy)]
-struct DensityBtn(Density);
+fn tab_of(rx: &Rx) -> MixerTab {
+    rx.get_resource::<MixerTab>().copied().unwrap_or_default()
+}
 
-/// The top-bar orientation toggle.
+/// The top-bar Horizontal toggle.
 #[derive(Component)]
 struct OrientationBtn;
 
@@ -212,7 +236,7 @@ struct OrientationBtn;
 /// something it can read off the strip under the cursor — a `Component`, not a
 /// closure baked into the builder.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
-enum BusRef {
+pub(crate) enum BusRef {
     Master,
     Sfx,
     Music,
@@ -222,7 +246,41 @@ enum BusRef {
 }
 
 impl BusRef {
-    fn get(self, mixer: &MixerState) -> Option<&ChannelStrip> {
+    /// The bus's permanent routing key.
+    pub(crate) fn key(self, mixer: &MixerState) -> String {
+        match self {
+            BusRef::Master => "Master".to_string(),
+            BusRef::Sfx => "Sfx".to_string(),
+            BusRef::Music => "Music".to_string(),
+            BusRef::Ambient => "Ambient".to_string(),
+            BusRef::Custom(i) => mixer.custom_buses.get(i).map(|b| b.key.clone()).unwrap_or_default(),
+        }
+    }
+
+    /// The bus with routing key `key`.
+    pub(crate) fn from_key(mixer: &MixerState, key: &str) -> Option<BusRef> {
+        Some(match key {
+            "Master" => BusRef::Master,
+            "Sfx" => BusRef::Sfx,
+            "Music" => BusRef::Music,
+            "Ambient" => BusRef::Ambient,
+            _ => BusRef::Custom(mixer.bus_index(key)?),
+        })
+    }
+
+    /// A built-in's fixed label (custom buses are named by the user; see
+    /// [`bus_name`]).
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            BusRef::Master => "Master",
+            BusRef::Sfx => "SFX",
+            BusRef::Music => "Music",
+            BusRef::Ambient => "Ambient",
+            BusRef::Custom(_) => "",
+        }
+    }
+
+    pub(crate) fn get(self, mixer: &MixerState) -> Option<&ChannelStrip> {
         match self {
             BusRef::Master => Some(&mixer.master),
             BusRef::Sfx => Some(&mixer.sfx),
@@ -257,7 +315,8 @@ impl BusRef {
 #[derive(Component)]
 struct BusDelete(usize);
 
-/// The `+` tile. No form behind it — [`MixerState::add_bus`] picks the name.
+/// The top bar's Add bus button. No form behind it: [`MixerState::add_bus`]
+/// picks the name.
 #[derive(Component)]
 struct BusAdd;
 
@@ -283,18 +342,24 @@ impl Plugin for MixerStrips {
     fn build(&self, app: &mut App) {
         app.init_resource::<MixerRename>()
             .init_resource::<MixerLayout>()
+            .init_resource::<MixerTab>()
+            .init_resource::<crate::metering::MeterHold>()
             .register_panel_content("mixer", false, build)
             .systems(
                 Update,
                 (
                     bus_add,
                     bus_delete,
-                    density_click,
                     orientation_click,
                     strip_context_menu,
                     header_double_click,
                     rename_focus,
                     rename_commit,
+                    // Always on, not only while Metering is shown: a clip that
+                    // happened while you were on another page is exactly the
+                    // one worth knowing about.
+                    crate::metering::update_meter_hold,
+                    crate::metering::meter_clicks,
                 )
                     .run_if(in_state(SplashState::Editor)),
             );
@@ -323,31 +388,19 @@ fn bus_delete(
 ) {
     for (interaction, del) in &buttons {
         if *interaction == UiInteraction::Pressed && del.0 < mixer.custom_buses.len() {
-            mixer.custom_buses.remove(del.0);
-            rename.0 = None;
-        }
-    }
-}
-
-/// Pick a strip density from the top bar.
-///
-/// Both this and [`orientation_click`] cancel any rename in flight, because the
-/// change respawns every strip — including the field being typed into — and a
-/// half-typed name left pointing at a despawned entity is worse than no rename.
-fn density_click(
-    buttons: Query<(&UiInteraction, &DensityBtn), Changed<UiInteraction>>,
-    mut layout: ResMut<MixerLayout>,
-    mut rename: ResMut<MixerRename>,
-) {
-    for (interaction, btn) in &buttons {
-        if *interaction == UiInteraction::Pressed && layout.density != btn.0 {
-            layout.density = btn.0;
+            // Through `remove_bus`, so buses that fed this one go back to
+            // Master instead of keeping a key nothing answers to.
+            mixer.remove_bus(del.0);
             rename.0 = None;
         }
     }
 }
 
 /// Flip the channels between columns and rows.
+///
+/// Like a density change (see `top_bar`), it cancels any rename in flight: the
+/// change respawns every strip, including the field being typed into, and a
+/// half-typed name left pointing at a despawned entity is worse than no rename.
 fn orientation_click(
     buttons: Query<&UiInteraction, (With<OrientationBtn>, Changed<UiInteraction>)>,
     mut layout: ResMut<MixerLayout>,
@@ -368,13 +421,13 @@ fn orientation_click(
 // mixer actually changed — with a fader, a VU, a knob, two toggles, a dB readout
 // and a colour per strip, that is the difference between ~8 recomputes per strip
 // per frame and none.
-fn read<R: Default>(rx: &Rx, bus: BusRef, f: impl Fn(&ChannelStrip) -> R) -> R {
+pub(crate) fn read<R: Default>(rx: &Rx, bus: BusRef, f: impl Fn(&ChannelStrip) -> R) -> R {
     rx.get_resource::<MixerState>()
         .and_then(|m| bus.get(m).map(&f))
         .unwrap_or_default()
 }
 
-fn write(w: &mut World, bus: BusRef, f: impl Fn(&mut ChannelStrip)) {
+pub(crate) fn write(w: &mut World, bus: BusRef, f: impl Fn(&mut ChannelStrip)) {
     if let Some(mut m) = w.get_resource_mut::<MixerState>() {
         if let Some(s) = bus.get_mut(&mut m) {
             f(s);
@@ -384,12 +437,9 @@ fn write(w: &mut World, bus: BusRef, f: impl Fn(&mut ChannelStrip)) {
 
 /// A bus's display name — the built-ins' fixed labels, or the current name of
 /// the custom bus at that index.
-fn bus_name(rx: &Rx, bus: BusRef) -> String {
+pub(crate) fn bus_name(rx: &Rx, bus: BusRef) -> String {
     match bus {
-        BusRef::Master => "Master".to_string(),
-        BusRef::Sfx => "SFX".to_string(),
-        BusRef::Music => "Music".to_string(),
-        BusRef::Ambient => "Ambient".to_string(),
+        BusRef::Master | BusRef::Sfx | BusRef::Music | BusRef::Ambient => bus.label().to_string(),
         BusRef::Custom(i) => rx
             .get_resource::<MixerState>()
             .and_then(|m| m.custom_buses.get(i).map(|b| b.name.clone()))
@@ -449,19 +499,34 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// leaves the hash alone and the strip being typed into survives. A bus added,
 /// deleted or reordered does change the set, and that genuinely wants a rebuild
 /// — the strips address buses by index.
+///
+/// The page is in the hash too, and Routing adds its own shape (names and
+/// outputs, see [`crate::routing::routing_hash`]). Metering needs only the
+/// keys: its levels are bound, not built.
 fn body_snapshot(rx: &Rx) -> KeyedSnapshot {
     let layout = layout_of(rx);
-    let keys: Vec<String> = rx
-        .get_resource::<MixerState>()
-        .map(|m| m.custom_buses.iter().map(|b| b.key.clone()).collect())
-        .unwrap_or_default();
+    let tab = tab_of(rx);
+    let Some(mixer) = rx.get_resource::<MixerState>() else {
+        return KeyedSnapshot { items: Vec::new(), build: Box::new(|_, _, _| Entity::PLACEHOLDER) };
+    };
+    let keys: Vec<String> = mixer.custom_buses.iter().map(|b| b.key.clone()).collect();
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    layout.hash(&mut h);
+    tab.hash(&mut h);
     keys.hash(&mut h);
+    match tab {
+        MixerTab::Mixer => layout.hash(&mut h),
+        MixerTab::Routing => crate::routing::routing_hash(mixer, &mut h),
+        MixerTab::Metering => {}
+    }
     let customs = keys.len();
+    let board = mixer.clone();
     KeyedSnapshot {
         items: vec![(0, h.finish())],
-        build: Box::new(move |c, f, _| body(c, f, layout, customs)),
+        build: Box::new(move |c, f, _| match tab {
+            MixerTab::Mixer => body(c, f, layout, customs),
+            MixerTab::Routing => crate::routing::body(c, f, &board),
+            MixerTab::Metering => crate::metering::body(c, f, &board),
+        }),
     }
 }
 
@@ -509,7 +574,6 @@ fn body(commands: &mut Commands, fonts: &EmberFonts, layout: MixerLayout, custom
     for i in 0..customs {
         kids.push(strip(commands, fonts, false, BusRef::Custom(i), layout));
     }
-    kids.push(add_bus_button(commands, fonts, layout));
 
     // A flex spacer before the rule pins Master to the far edge however many
     // buses exist, instead of letting it drift with the count. Rows don't get
@@ -575,20 +639,14 @@ fn body(commands: &mut Commands, fonts: &EmberFonts, layout: MixerLayout, custom
 
 // ── Top bar ──────────────────────────────────────────────────────────────────
 
-/// Height of the bar. Deliberately short — it's a strip of chrome across the
-/// top, not a section of the panel, and every pixel it takes is a pixel off the
-/// faders below it.
-const BAR_H: f32 = 26.0;
-/// Side of a top-bar key.
-const KEY: f32 = 20.0;
-
-/// The panel's top bar: a strip across the top carrying strip density and
-/// channel orientation, floated to the right.
+/// Height of the bar. Short, because every pixel it takes is a pixel off the
+/// faders below it, but tall enough for labelled controls.
+const BAR_H: f32 = 32.0;
+/// The panel's top bar: the page tabs on the left; on the right, for the Mixer
+/// page, strip size, Horizontal and Add bus.
 ///
-/// The keys are icon-only. Three labelled buttons ate a third of a docked
-/// Mixer's width to say something you only change every few sessions, and they
-/// sat where your eye lands first — ahead of the channel you actually came to
-/// adjust. Icons on the right stay out of the way; the tooltips carry the words.
+/// The tabs and the size switch are ember's [`segmented`] control, two-way
+/// bound to [`MixerTab`] and [`MixerLayout`], rather than hand-built keys.
 fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
@@ -597,8 +655,8 @@ fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 height: Val::Px(BAR_H),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(3.0),
-                padding: UiRect::horizontal(Val::Px(6.0)),
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
                 border: UiRect::bottom(Val::Px(1.0)),
                 flex_shrink: 0.0,
                 ..default()
@@ -612,9 +670,32 @@ fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Everything is pushed right by one spacer rather than by a `justify_content`
-    // on the bar, so anything added on the left later (a meter, a preset name)
-    // simply goes before it.
+    // ── Page tabs ──
+    let labels = [
+        renzora::lang::t_or("mixer.tab.mixer", "Mixer"),
+        renzora::lang::t_or("mixer.tab.routing", "Routing"),
+        renzora::lang::t_or("mixer.tab.metering", "Metering"),
+    ];
+    let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let tabs = segmented(commands, &fonts.ui, &refs, 0);
+    bind_2way(
+        commands,
+        tabs,
+        |rx| tab_of(rx).index(),
+        |w, i: &usize| {
+            let tab = MixerTab::ALL.get(*i).copied().unwrap_or_default();
+            if let Some(mut t) = w.get_resource_mut::<MixerTab>() {
+                if *t != tab {
+                    *t = tab;
+                }
+            }
+            // The page change respawns the strips, rename field included.
+            if let Some(mut r) = w.get_resource_mut::<MixerRename>() {
+                r.0 = None;
+            }
+        },
+    );
+
     let spring = commands
         .spawn((
             Node {
@@ -626,211 +707,115 @@ fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    let compact = density_button(
+    // ── Mixer-page controls (hidden on the other pages, which have no strips) ──
+    let shape = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Name::new("mixer-bar-shape"),
+        ))
+        .id();
+    bind_display(commands, shape, |rx| tab_of(rx) == MixerTab::Mixer);
+
+    let sizes = [
+        renzora::lang::t_or("mixer.compact", "Compact"),
+        renzora::lang::t_or("mixer.large", "Large"),
+    ];
+    let size_refs: Vec<&str> = sizes.iter().map(String::as_str).collect();
+    let size = segmented(commands, &fonts.ui, &size_refs, 0);
+    bind_2way(
         commands,
-        fonts,
-        Density::Compact,
-        "arrows-in-line-horizontal",
-        "Compact strips",
+        size,
+        |rx| if layout_of(rx).compact() { 0 } else { 1 },
+        |w, i: &usize| {
+            let density = if *i == 0 { Density::Compact } else { Density::Wide };
+            if let Some(mut l) = w.get_resource_mut::<MixerLayout>() {
+                if l.density != density {
+                    l.density = density;
+                }
+            }
+            if let Some(mut r) = w.get_resource_mut::<MixerRename>() {
+                r.0 = None;
+            }
+        },
     );
-    let wide = density_button(
-        commands,
-        fonts,
-        Density::Wide,
-        "arrows-out-line-horizontal",
-        "Wide strips",
-    );
-    // A hairline between the density pair and the orientation key: without it,
-    // three identical squares read as one three-way choice.
+
+    let horizontal = horizontal_toggle(commands, fonts);
     let sep = commands
         .spawn((
             Node {
                 width: Val::Px(1.0),
-                height: Val::Px(14.0),
-                margin: UiRect::horizontal(Val::Px(3.0)),
+                height: Val::Px(16.0),
+                margin: UiRect::horizontal(Val::Px(2.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
             BackgroundColor(rgb(border())),
-            Name::new("mixer-bar-sep"),
         ))
         .id();
-    let orientation = orientation_button(commands, fonts);
+    let add = bar_button(commands, fonts, "plus", &renzora::lang::t_or("mixer.add_bus", "Add bus"));
+    commands.entity(add).insert(BusAdd);
+    bind_bg(commands, add, move |rx| match rx.get::<UiInteraction>(add) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
+        _ => Color::NONE,
+    });
+    commands.entity(shape).add_children(&[size, horizontal, sep, add]);
 
-    commands
-        .entity(bar)
-        .add_children(&[spring, compact, wide, sep, orientation]);
+    commands.entity(bar).add_children(&[tabs, spring, shape]);
     bar
 }
 
-/// A square icon key in the top bar. Returns the key and its glyph, so a caller
-/// that swaps the glyph (the orientation toggle) can bind it.
-///
-/// Hand-rolled rather than ember's `icon_button`, because a themed button drives
-/// its own background from `Styled` and would fight a selected-state binding.
-fn bar_key(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    icon: &str,
-    color: (u8, u8, u8),
-    tip: &str,
-) -> (Entity, Entity) {
-    let key = commands
+/// A labelled top-bar button: icon and text. The caller binds its background
+/// (one binding per node, or two would fight over it).
+fn bar_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
+    let btn = commands
         .spawn((
             Node {
-                width: Val::Px(KEY),
-                height: Val::Px(KEY),
+                height: Val::Px(24.0),
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                column_gap: Val::Px(5.0),
+                padding: UiRect::horizontal(Val::Px(9.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
             hover_pointer(),
-            HoverTooltip::new(tip),
-            Name::new("mixer-bar-key"),
+            Name::new("mixer-bar-button"),
         ))
         .id();
-    let glyph = icon_text(commands, &fonts.phosphor, icon, color, 13.0);
-    commands.entity(key).add_child(glyph);
-    (key, glyph)
+    let glyph = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
+    let text = commands
+        .spawn((Text::new(label), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
+        .id();
+    commands.entity(btn).add_children(&[glyph, text]);
+    btn
 }
 
-/// One density option: lit when it's the current one, hover-lit when it isn't.
-fn density_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    density: Density,
-    icon: &str,
-    tip: &str,
-) -> Entity {
-    let (btn, glyph) = bar_key(commands, fonts, icon, text_muted(), tip);
-    commands.entity(btn).insert(DensityBtn(density));
-
+/// The Horizontal toggle: lit in the accent while channels run as rows.
+fn horizontal_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let btn = bar_button(commands, fonts, "rows", &renzora::lang::t_or("mixer.horizontal", "Horizontal"));
+    commands.entity(btn).insert((
+        OrientationBtn,
+        HoverTooltip::new(renzora::lang::t_or("mixer.horizontal_tip", "Run channels as rows instead of columns")),
+    ));
     bind_bg(commands, btn, move |rx| {
-        if layout_of(rx).density == density {
-            rgb(accent())
-        } else {
-            match rx.get::<UiInteraction>(btn) {
-                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
-                _ => Color::NONE,
-            }
+        if layout_of(rx).horizontal() {
+            return rgb(accent()).with_alpha(0.22);
         }
-    });
-    bind_text_color(commands, glyph, move |rx| {
-        if layout_of(rx).density == density {
-            rgb(text_primary())
-        } else {
-            rgb(text_muted())
+        match rx.get::<UiInteraction>(btn) {
+            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
+            _ => Color::NONE,
         }
     });
     btn
-}
-
-/// The orientation toggle. Its glyph shows the orientation you're *in* rather
-/// than the one a click switches to: it sits beside two keys that show current
-/// state, and a lone key in the same strip meaning the opposite would be a trap.
-/// The tooltip carries the "what happens if I click" half.
-fn orientation_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (btn, glyph) = bar_key(
-        commands,
-        fonts,
-        "columns",
-        // Brighter than the density pair's muted glyphs: this key is never
-        // "selected", so without that it would read as permanently off.
-        text_primary(),
-        "Vertical channels — click for horizontal",
-    );
-    commands.entity(btn).insert(OrientationBtn);
-
-    bind_bg(commands, btn, move |rx| match rx.get::<UiInteraction>(btn) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
-        _ => Color::NONE,
-    });
-    bind_with(
-        commands,
-        glyph,
-        |rx| layout_of(rx).horizontal(),
-        |world: &mut World, e: Entity, horizontal: &bool| {
-            let name = if *horizontal { "rows" } else { "columns" };
-            if let (Some(ch), Some(mut t)) = (
-                renzora_ember::font::icon_glyph(name),
-                world.get_mut::<Text>(e),
-            ) {
-                t.0 = ch.to_string();
-            }
-        },
-    );
-    bind_with(
-        commands,
-        btn,
-        |rx| layout_of(rx).horizontal(),
-        |world: &mut World, e: Entity, horizontal: &bool| {
-            let tip = if *horizontal {
-                "Horizontal channels — click for vertical"
-            } else {
-                "Vertical channels — click for horizontal"
-            };
-            if let Some(mut t) = world.get_mut::<HoverTooltip>(e) {
-                t.0 = tip.to_string();
-            }
-        },
-    );
-    btn
-}
-
-/// The "add a bus" tile at the end of the bus run: a `+` the size of half a
-/// strip, which creates the bus on click.
-///
-/// It was a permanently-open form — a label, a text field and a button — sitting
-/// in the strip row at full strip width, then a popover carrying that same form.
-/// Both made you name a bus before you could see one. The bus is named for you
-/// now (`Bus 1`, `Bus 2`, …), so the tile does the thing instead of asking about
-/// it, and the name is a double-click on the new strip's header away.
-fn add_bus_button(commands: &mut Commands, fonts: &EmberFonts, layout: MixerLayout) -> Entity {
-    // A placeholder the same shape as a strip, so the run reads as "…and there
-    // could be another one here".
-    let horizontal = layout.horizontal();
-    let tile = commands
-        .spawn((
-            Node {
-                width: if horizontal {
-                    Val::Percent(100.0)
-                } else {
-                    Val::Px(38.0)
-                },
-                height: if horizontal {
-                    Val::Px(26.0)
-                } else {
-                    Val::Auto
-                },
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            BorderColor::all(rgb(border())),
-            UiInteraction::default(),
-            BusAdd,
-            hover_pointer(),
-            HoverTooltip::new("Add a bus"),
-            Name::new("mixer-add-bus-tile"),
-        ))
-        .id();
-    let glyph = icon_text(commands, &fonts.phosphor, "plus", text_muted(), 16.0);
-    commands.entity(tile).add_child(glyph);
-    // Light up on hover so a tile that does something on click looks like it.
-    bind_bg(commands, tile, move |rx| match rx.get::<UiInteraction>(tile) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
-        _ => Color::NONE,
-    });
-    tile
 }
 
 /// Pointer cursor on hover — the one-liner every clickable tile here wants.
@@ -903,8 +888,9 @@ fn strip(
                 },
                 ..default()
             },
-            // Master reads as a surface above the buses rather than beside them.
-            BackgroundColor(rgb(if is_master { section_bg() } else { window_bg() })),
+            // Each strip is a card a step above the panel; Master a step above
+            // that, so it reads as the surface the buses feed.
+            BackgroundColor(rgb(if is_master { card_bg() } else { header_bg() })),
             BorderColor::all(rgb(border())),
             // Geometry-based hit test for the right-click menu: a strip is mostly
             // covered by its own controls, so an `UiInteraction` on the root would
@@ -914,19 +900,8 @@ fn strip(
             Name::new("mixer-strip"),
         ))
         .id();
-    // The strip's colour reads as a tinted frame rather than a filled block: at
-    // strip width a solid colour would fight the fader and VU meter for
-    // attention.
-    bind_with(
-        commands,
-        col,
-        move |rx: &Rx| read(rx, bus, |s| s.color),
-        |world: &mut World, e: Entity, color: &[u8; 3]| {
-            if let Some(mut border) = world.get_mut::<BorderColor>(e) {
-                *border = BorderColor::all(tint(*color).with_alpha(0.55));
-            }
-        },
-    );
+    // The strip's colour is its top bar; the frame stays neutral, so a row of
+    // strips reads as a row of cards and not a row of coloured outlines.
 
     // Colour bar — the part you actually scan when picking a strip out of a run.
     // It runs the full length of the strip's leading edge either way.
@@ -1019,7 +994,15 @@ fn strip(
         })
     };
     grow_along(commands, vu, horizontal, 1.0, 16.0, false);
-    commands.entity(meters).add_children(&[vol, vu]);
+    // Columns get a dB scale beside the fader: the fader's travel is linear
+    // in amplitude, so 0 dB sits two thirds up and -24 near the bottom, which
+    // is not where anyone would guess.
+    if !horizontal {
+        let scale = db_scale(commands, fonts);
+        commands.entity(meters).add_children(&[scale, vol, vu]);
+    } else {
+        commands.entity(meters).add_children(&[vol, vu]);
+    }
 
     // The number the fader was never showing. A fader with no readout tells you
     // where the cap is, not what the gain is — and "somewhere near the top" is
@@ -1057,8 +1040,38 @@ fn strip(
             n.width = Val::Px(knob_size);
             n.height = Val::Px(knob_size);
             n.flex_shrink = 0.0;
+            n.align_items = AlignItems::Center;
+            n.justify_content = JustifyContent::Center;
         }
     });
+    // The value in the knob's middle: "C" at centre, "L20" / "R35" either
+    // side. At centre the dial has no fill at all, so without this a centred
+    // pan looked like no control.
+    let pan_value = commands
+        .spawn((
+            Text::new("C"),
+            ui_font(&fonts.mono, if layout.compact() { 8.0 } else { 9.0 }),
+            TextColor(rgb(value_text())),
+            bevy::text::TextLayout::no_wrap(),
+            renzora_ember::interaction::PASS_THROUGH,
+        ))
+        .id();
+    bind_text(commands, pan_value, move |rx| {
+        let p = read(rx, bus, |s| s.panning);
+        let n = (p * 100.0).round() as i32;
+        match n {
+            0 => "C".to_string(),
+            n if n < 0 => format!("L{}", -n),
+            n => format!("R{n}"),
+        }
+    });
+    commands.entity(pan).add_child(pan_value);
+    // Wheel over the knob pans it: 5% of the full L..R throw per notch (10 on
+    // the readout), 1% with Ctrl (2 on the readout). Dragging a 32px dial to an exact value
+    // was fiddly, and the wheel lands on centre when it crosses it. The wheel
+    // nudges the knob's `Bound`, so it reaches the bus through the `bind_2way`
+    // below just like a drag (audio backend and saved config alike).
+    commands.entity(pan).insert(KnobWheel { step: 0.05, fine_step: 0.01 });
     bind_2way(
         commands,
         pan,
@@ -1069,11 +1082,14 @@ fn strip(
         },
     );
 
+    // Full strip width in a column, so each key is a real target rather than
+    // two small squares in the middle of the strip.
     let buttons = commands
         .spawn((
             Node {
+                width: if horizontal { Val::Auto } else { Val::Percent(100.0) },
                 flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(5.0),
+                column_gap: Val::Px(4.0),
                 flex_shrink: 0.0,
                 ..default()
             },
@@ -1100,9 +1116,53 @@ fn strip(
             write(w, bus, move |s| s.soloed = nv);
         },
     );
+    if !horizontal {
+        for key in [mute, solo] {
+            commands.queue(move |w: &mut World| {
+                if let Some(mut n) = w.get_mut::<Node>(key) {
+                    n.flex_grow = 1.0;
+                    n.flex_basis = Val::Px(0.0);
+                    n.width = Val::Auto;
+                }
+            });
+        }
+    }
     commands.entity(buttons).add_children(&[mute, solo]);
 
-    let mut kids = vec![bar, header, pan];
+    // Where the bus goes, when it is anywhere but Master: "> Group". Shown on
+    // the strip itself so a bus feeding a group never passes for one feeding
+    // the output (the Routing page is where it is changed).
+    let route = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, layout.db_font()),
+            TextColor(rgb(accent())),
+            bevy::text::TextLayout::no_wrap(),
+            Node { flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
+            HoverTooltip::new(renzora::lang::t_or("mixer.routed_tip", "This bus feeds another bus. Change it on the Routing page.")),
+        ))
+        .id();
+    bind_text(commands, route, move |rx| {
+        let Some(mixer) = rx.get_resource::<MixerState>() else { return String::new() };
+        bus.get(mixer)
+            .and_then(|s| s.output.clone())
+            .and_then(|k| BusRef::from_key(mixer, &k))
+            .map(|to| format!("\u{203a} {}", bus_name(rx, to)))
+            .unwrap_or_default()
+    });
+    bind_display(commands, route, move |rx| {
+        !is_master && read(rx, bus, |s| s.output.clone()).is_some()
+    });
+
+    let mut kids = vec![bar, header, route];
+    // The bus's insert chain, when the plugin host has put one on it: one
+    // line per effect, so the strip says what is processing it. Columns only;
+    // a row has no height to spare. Nothing here edits the chain (the plugin
+    // host owns that), so with no host loaded the section simply never shows.
+    if !horizontal {
+        kids.push(inserts(commands, fonts, bus));
+    }
+    kids.push(pan);
     if layout.pan_label() {
         let pan_label = commands
             .spawn((
@@ -1121,8 +1181,116 @@ fn strip(
 /// An RGB triple from [`BUS_COLORS`] / `ChannelStrip::color` as a bevy `Color`.
 /// The theme's `rgb` takes a tuple; strip colours are stored as arrays so they
 /// compare and serialize cleanly.
-fn tint(color: [u8; 3]) -> Color {
+pub(crate) fn tint(color: [u8; 3]) -> Color {
     rgb((color[0], color[1], color[2]))
+}
+
+/// The insert list under a column's name: up to three effect names, then a
+/// "+N more". Rebuilt from `BusInsertsSummary` (keyed by bus name), which
+/// only the marketplace audio-plugin host fills.
+fn inserts(commands: &mut Commands, fonts: &EmberFonts, bus: BusRef) -> Entity {
+    let col = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() },
+            Name::new("mixer-strip-inserts"),
+        ))
+        .id();
+    let names = move |rx: &Rx| -> Vec<String> {
+        let name = bus_name(rx, bus);
+        rx.get_resource::<renzora_audio::BusInsertsSummary>()
+            .map(|s| s.slots(&name).iter().map(|f| f.display_name.clone()).collect())
+            .unwrap_or_default()
+    };
+    bind_display(commands, col, move |rx| !names(rx).is_empty());
+    let font = fonts.ui.clone();
+    keyed_list(commands, col, move |rx| {
+        let all = names(rx);
+        let shown: Vec<String> = all.iter().take(3).cloned().collect();
+        let more = all.len().saturating_sub(3);
+        let mut items: Vec<(u64, u64)> = shown
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                n.hash(&mut h);
+                (i as u64, h.finish())
+            })
+            .collect();
+        if more > 0 {
+            items.push((u64::MAX, more as u64));
+        }
+        let font = font.clone();
+        KeyedSnapshot {
+            items,
+            build: Box::new(move |c, _f, i| {
+                let label = shown.get(i).cloned().unwrap_or_else(|| format!("+{more} more"));
+                let chip = c
+                    .spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(16.0),
+                            padding: UiRect::horizontal(Val::Px(5.0)),
+                            align_items: AlignItems::Center,
+                            border_radius: BorderRadius::all(Val::Px(3.0)),
+                            overflow: Overflow::clip(),
+                            ..default()
+                        },
+                        BackgroundColor(rgb(faint_bg())),
+                    ))
+                    .id();
+                let t = c
+                    .spawn((Text::new(label), ui_font(&font, 9.0), TextColor(rgb(value_text())), bevy::text::TextLayout::no_wrap()))
+                    .id();
+                c.entity(chip).add_child(t);
+                chip
+            }),
+        }
+    });
+    col
+}
+
+/// The marks of [`db_scale`], in dB.
+const DB_MARKS: [f64; 5] = [3.0, 0.0, -6.0, -12.0, -24.0];
+
+/// A column of dB labels placed where those levels sit on the fader's travel
+/// (linear amplitude, 0 to [`VOL_MAX`]).
+fn db_scale(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = commands
+        .spawn((
+            Node {
+                width: Val::Px(16.0),
+                flex_shrink: 0.0,
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("mixer-db-scale"),
+        ))
+        .id();
+    let marks: Vec<Entity> = DB_MARKS
+        .iter()
+        .map(|db| {
+            let pos = (10f64.powf(db / 20.0) / VOL_MAX).clamp(0.0, 1.0);
+            let text = if *db > 0.0 { format!("+{db}") } else { format!("{db}") };
+            commands
+                .spawn((
+                    Text::new(text),
+                    ui_font(&fonts.mono, 8.0),
+                    TextColor(rgb(text_muted()).with_alpha(0.8)),
+                    bevy::text::TextLayout::no_wrap(),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        right: Val::Px(0.0),
+                        // Centred on the mark: the glyphs are ~8px tall.
+                        top: Val::Percent(((1.0 - pos) * 100.0) as f32),
+                        margin: UiRect::top(Val::Px(-5.0)),
+                        ..default()
+                    },
+                ))
+                .id()
+        })
+        .collect();
+    commands.entity(col).add_children(&marks);
+    col
 }
 
 /// Half a fader cap, which is how far the cap overhangs each end of the fader's
@@ -1539,9 +1707,7 @@ fn strip_context_menu(
             close_red(),
             move |w| {
                 if let Some(mut m) = w.get_resource_mut::<MixerState>() {
-                    if index < m.custom_buses.len() {
-                        m.custom_buses.remove(index);
-                    }
+                    m.remove_bus(index);
                 }
                 if let Some(mut r) = w.get_resource_mut::<MixerRename>() {
                     r.0 = None;

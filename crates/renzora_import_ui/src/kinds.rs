@@ -57,10 +57,10 @@ impl AssetKind {
 /// Image extensions the importer will copy in as textures. Broader than the
 /// asset browser's *thumbnail* set (which excludes EXR/KTX2/DDS because Bevy's
 /// loaders choke on some of them) — importing only copies bytes, so any texture
-/// container the engine can consume at runtime is fair game.
-pub const IMAGE_EXTS: &[&str] = &[
-    "png", "jpg", "jpeg", "bmp", "tga", "webp", "hdr", "exr", "ktx2", "dds",
-];
+/// container the engine can consume at runtime is fair game. That is exactly
+/// the shared `renzora::IMAGE_EXTENSIONS`, SVG included: it is copied as-is
+/// and rasterized when loaded, never baked, so it stays editable.
+pub const IMAGE_EXTS: &[&str] = renzora::IMAGE_EXTENSIONS;
 /// Audio extensions the importer will copy in.
 pub const AUDIO_EXTS: &[&str] = &["wav", "ogg", "mp3", "flac"];
 /// Scene / prefab extensions.

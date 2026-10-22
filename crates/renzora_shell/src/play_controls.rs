@@ -10,13 +10,14 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{glyph, ui_font};
 use renzora_ember::interaction::PASS_THROUGH;
-use renzora_ember::theme::{play_green, rgb};
+use renzora_ember::theme::{play_green, rgb, text_muted, text_primary};
 use renzora_ember::UiInteraction;
 
-/// The Play button in the top bar's left zone. A left margin sets it off from
-/// the session actions before it. It sits in the top bar rather than the
-/// viewport's tool strip because running the game is not a viewport action,
-/// and this bar is on screen in every workspace.
+/// The Play button, in the top bar's right zone just ahead of the Marketplace.
+/// It sits in the top bar rather than the viewport's tool strip because running
+/// the game is not a viewport action, and this bar is on screen in every
+/// workspace. It led the left zone until the scene switcher took that spot:
+/// the left end says what you are editing, the right end runs and ships it.
 pub(crate) fn build_play_group(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let play = build_play_button(commands, font);
     let group = commands
@@ -24,7 +25,7 @@ pub(crate) fn build_play_group(commands: &mut Commands, font: &bevy::text::FontS
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                margin: UiRect::left(Val::Px(8.0)),
+                margin: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
             Name::new("play-group"),
@@ -47,15 +48,21 @@ pub(crate) struct TopBarPlayLabel;
 /// Build the top-bar Play button: a phosphor glyph + a "Play" label in one
 /// clickable pill. The glyph + label live as `PASS_THROUGH` children so the
 /// hover/click lands on the parent (where `UiInteraction` lives).
+///
+/// Shaped exactly like the Marketplace pill beside it (`top_bar`'s
+/// `shell_action_button`): the same padding, rounding, glyph size, fill
+/// strength and a primary-coloured label, with only the hue telling them
+/// apart. Side by side, a square green chip with green text next to a round
+/// violet one with white text read as two unrelated controls.
 fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let btn = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
@@ -65,7 +72,7 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
             Name::new("top-bar-play"),
         ))
         .id();
-    let icon = glyph(commands, "play", play_green(), 13.0);
+    let icon = glyph(commands, "play", play_green(), 14.0);
     commands
         .entity(icon)
         .insert((TopBarPlayIcon, PASS_THROUGH));
@@ -73,7 +80,7 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
         .spawn((
             Text::new(renzora::lang::t("common.play")),
             ui_font(font, 11.0),
-            TextColor(rgb(play_green())),
+            TextColor(rgb(text_primary())),
             TopBarPlayLabel,
             PASS_THROUGH,
         ))
@@ -184,22 +191,29 @@ pub(crate) fn update_play_button(
             icon.resolved = false;
         }
     }
+    // The label stays the primary text colour, like the Marketplace pill's; the
+    // state colour is carried by the glyph and the fill. Muted only when there
+    // is no scene camera, so a Play that would do nothing reads as unavailable.
+    let label_color = if running || has_cam {
+        rgb(text_primary())
+    } else {
+        rgb(text_muted())
+    };
     for (mut text, mut tcolor) in &mut labels {
         if text.0 != label_text {
             text.0 = label_text.clone();
         }
-        if tcolor.0 != color {
-            tcolor.0 = color;
+        if tcolor.0 != label_color {
+            tcolor.0 = label_color;
         }
     }
-    // A tinted fill so the control reads as a *button*, not as green text on the
-    // toolbar. Derived from the same state colour the icon and label use, and
-    // dimmed along with them when there's no scene camera to play through.
+    // A tinted fill so the control reads as a *button*. Derived from the same
+    // state colour the icon uses, at the Marketplace pill's strengths, and
+    // dimmed along with it when there's no scene camera to play through.
     for (mut bg, interaction) in &mut fills {
         let alpha = match interaction {
-            UiInteraction::Pressed => 0.34,
-            UiInteraction::Hovered => 0.26,
-            UiInteraction::None => 0.16,
+            UiInteraction::Pressed | UiInteraction::Hovered => 0.34,
+            UiInteraction::None => 0.20,
         };
         let want = color.with_alpha(alpha);
         if bg.0 != want {

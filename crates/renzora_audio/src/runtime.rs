@@ -314,6 +314,10 @@ pub fn board(mixer: &MixerState) -> Vec<BusState> {
         pan: strip.panning as f32,
         muted: strip.muted,
         soloed: strip.soloed,
+        // Master feeds the device; an output on it means nothing.
+        output: if key == "Master" { None } else { strip.output.clone() },
+        reverb_send: strip.reverb_send,
+        delay_send: strip.delay_send,
     };
     let mut out = vec![
         entry("Master", &mixer.master),

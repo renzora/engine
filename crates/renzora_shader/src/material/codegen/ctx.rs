@@ -61,6 +61,11 @@ pub(crate) struct Ctx<'a> {
     /// `graph_displacement` helper — the signal for `build_pbr_shader` to
     /// emit the parallax march that rebinds `mat_uv`.
     pub(crate) uses_parallax: bool,
+    /// A Particle node (`input/particle_*`) is in the graph: the fragment
+    /// declares the particle vertex outputs under `RENZORA_PARTICLE_SURFACE`
+    /// and aliases them, so the same shader still builds on a mesh. Off for
+    /// every other graph, whose shader stays byte for byte what it was.
+    pub(crate) uses_particle: bool,
     /// True while emitting the body of `graph_displacement`. Texture reads
     /// switch to `textureSampleLevel` in that window: the helper is called
     /// from a variable-length loop, and the wgpu DX12 (FXC) backend refuses
@@ -143,6 +148,7 @@ impl<'a> Ctx<'a> {
             uses_array_0: false,
             uses_volume_0: false,
             uses_parallax: false,
+            uses_particle: false,
             in_displacement_fn: false,
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),

@@ -10,7 +10,7 @@ use renzora_ember::theme::{accent, rgb};
 use renzora_ember::widgets::{EmberScroll, ScrollbarBusy};
 use renzora_ember::UiInteraction;
 
-use crate::state::{AssetTile, GridArea, MarqueeRect, NativeAssets};
+use crate::state::{AssetTile, GridArea, MarqueeRect, NativeAssets, TreeArea, TreeHit, TreeToggle};
 
 /// Keep `visible_order` in sync with the grid's current folder + sort so
 /// shift-range selection knows the display order.
@@ -22,15 +22,40 @@ pub(crate) fn track_visible_order(mut state: ResMut<NativeAssets>) {
     }
 }
 
+/// A sweepable item: its path, whether it is pressed this frame, and its box.
+type Sweepable<'a> = (
+    &'a UiInteraction,
+    &'a bevy::ui::ComputedNode,
+    &'a bevy::ui::UiGlobalTransform,
+);
+
+/// Whether a node's on-screen box touches the rectangle `min..max`.
+fn touches(cn: &bevy::ui::ComputedNode, ugt: &bevy::ui::UiGlobalTransform, min: Vec2, max: Vec2) -> bool {
+    let scale = cn.inverse_scale_factor();
+    let half = cn.size() * scale * 0.5;
+    let center = ugt.translation * scale;
+    let (tmin, tmax) = (center - half, center + half);
+    tmin.x <= max.x && tmax.x >= min.x && tmin.y <= max.y && tmax.y >= min.y
+}
+
 /// Rubber-band selection: pressing in empty grid space and dragging selects
 /// every tile the rectangle touches. Ctrl/Shift keep the prior selection
 /// (sweeping adds to it). Mirrors the egui browser's marquee.
+///
+/// The tree has one too, started from its empty space (below the last row, or
+/// the indent left of a row), which sweeps folder and file rows alike. Each
+/// marquee only sweeps its own surface, so dragging a tree marquee out across
+/// the grid does not also pick up the tiles there.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn marquee_select(
     mouse: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
-    tiles: Query<(&AssetTile, &UiInteraction, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
+    tree: Query<&bevy::ui::RelativeCursorPosition, With<TreeArea>>,
+    tiles: Query<(&AssetTile, Sweepable), Without<TreeHit>>,
+    tree_rows: Query<(&TreeHit, Sweepable)>,
+    toggles: Query<&UiInteraction, With<TreeToggle>>,
     scrollbar: Res<ScrollbarBusy>,
     resizing: Res<renzora_ember::resize::ResizeBusy>,
     mut state: ResMut<NativeAssets>,
@@ -38,6 +63,7 @@ pub(crate) fn marquee_select(
     if mouse.just_released(MouseButton::Left) {
         state.marquee_start = None;
         state.marquee_current = None;
+        state.marquee_in_tree = false;
         state.pre_marquee.clear();
         return;
     }
@@ -58,14 +84,22 @@ pub(crate) fn marquee_select(
         && !resizing.active()
     {
         let over_grid = grid.iter().any(|r| r.cursor_over);
-        let on_tile = tiles.iter().any(|(_, i, _, _)| *i == UiInteraction::Pressed);
-        if over_grid && !on_tile {
+        let on_tile = tiles.iter().any(|(_, (i, _, _))| *i == UiInteraction::Pressed);
+        // A tree press on a row, or on a caret, is that row's: a click, a fold
+        // or a drag of the folder, never a sweep.
+        let over_tree = tree.iter().any(|r| r.cursor_over);
+        let on_row = tree_rows.iter().any(|(_, (i, _, _))| *i == UiInteraction::Pressed)
+            || toggles.iter().any(|i| *i == UiInteraction::Pressed);
+        let in_grid = over_grid && !on_tile;
+        let in_tree = over_tree && !on_row;
+        if in_grid || in_tree {
             let keep = keyboard.pressed(KeyCode::ControlLeft)
                 || keyboard.pressed(KeyCode::ControlRight)
                 || keyboard.pressed(KeyCode::ShiftLeft)
                 || keyboard.pressed(KeyCode::ShiftRight);
             state.marquee_start = Some(cursor);
             state.marquee_current = Some(cursor);
+            state.marquee_in_tree = in_tree && !in_grid;
             if keep {
                 state.pre_marquee = state.selection.clone();
             } else {
@@ -81,18 +115,26 @@ pub(crate) fn marquee_select(
             state.marquee_current = Some(cursor);
             let (min, max) = (start.min(cursor), start.max(cursor));
             let mut sel = state.pre_marquee.clone();
-            for (tile, _, cn, ugt) in &tiles {
-                let scale = cn.inverse_scale_factor();
-                let half = cn.size() * scale * 0.5;
-                let center = ugt.translation * scale;
-                let (tmin, tmax) = (center - half, center + half);
-                // AABB overlap test against the marquee rect.
-                if tmin.x <= max.x && tmax.x >= min.x && tmin.y <= max.y && tmax.y >= min.y {
-                    sel.insert(tile.path.clone());
+            if state.marquee_in_tree {
+                for (hit, (_, cn, ugt)) in &tree_rows {
+                    if touches(cn, ugt, min, max) {
+                        sel.insert(hit.0.clone());
+                    }
+                }
+            } else {
+                for (tile, (_, cn, ugt)) in &tiles {
+                    if touches(cn, ugt, min, max) {
+                        sel.insert(tile.path.clone());
+                    }
                 }
             }
-            state.selection = sel;
-            state.selected = state.selection.iter().next().cloned();
+            // Only write on a change: the selection drives every row's
+            // highlight binding, and an unchanged sweep held still would
+            // otherwise mark it changed every frame.
+            if state.selection != sel {
+                state.selected = sel.iter().next().cloned();
+                state.selection = sel;
+            }
         }
     }
 }
@@ -146,6 +188,7 @@ pub(crate) fn marquee_autoscroll(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     grid_area: Query<&Children, With<GridArea>>,
+    tree_area: Query<&Children, With<TreeArea>>,
     mut scrolls: Query<(&mut EmberScroll, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
 ) {
     // How close (px) to an edge triggers scrolling, and the max px/frame at the
@@ -159,9 +202,14 @@ pub(crate) fn marquee_autoscroll(
     let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
-    // The grid's `scroll_view` outer (GridArea) wraps the `EmberScroll` viewport
-    // as its first child.
-    let Ok(kids) = grid_area.single() else {
+    // Each surface's `scroll_view` outer (GridArea / TreeArea) wraps its
+    // `EmberScroll` viewport as a child; scroll the one the marquee is in.
+    let area = if state.marquee_in_tree {
+        tree_area.single()
+    } else {
+        grid_area.single()
+    };
+    let Ok(kids) = area else {
         return;
     };
     let Some(viewport) = kids.iter().find(|&e| scrolls.contains(e)) else {

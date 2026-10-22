@@ -66,6 +66,9 @@ struct CaptureJob {
     /// domain — we still render a fallback grey sphere in that case so the
     /// asset browser gets *some* thumbnail rather than the default pink icon.
     compile: Option<CompileResult>,
+    /// The parsed graph `compile` came from, kept to fill the base material
+    /// the way the scene resolver does (see `arm_one_capture`).
+    graph: Option<MaterialGraph>,
     /// A Sprite material: captured on the sample sprite by a 2D camera, with a
     /// "2D" tag in the corner, rather than on the sphere it cannot be drawn on.
     sprite: bool,
@@ -234,12 +237,14 @@ fn intake_thumbnail_requests(
         // material sphere so every `.material` gets *some* thumbnail.
         let mut cache_to_disk = true;
         let mut sprite = false;
+        let mut base_graph: Option<MaterialGraph> = None;
         let compile_opt: Option<CompileResult> = match read_material_source(&material_path) {
             Ok(content) => match serde_json::from_str::<MaterialGraph>(&content) {
                 Ok(graph) if matches!(graph.domain, MaterialDomain::Surface | MaterialDomain::Sprite) => {
                     sprite = graph.domain == MaterialDomain::Sprite;
                     let result = codegen::compile(&graph);
                     if result.errors.is_empty() {
+                        base_graph = Some(graph.clone());
                         Some(result)
                     } else {
                         for err in &result.errors {
@@ -312,6 +317,7 @@ fn intake_thumbnail_requests(
             material_path,
             thumb_path,
             compile: compile_opt,
+            graph: base_graph,
             sprite,
             cache_to_disk,
             texture_handles,
@@ -545,12 +551,23 @@ fn arm_one_capture(
 
             let uuid = Uuid::new_v4();
             let shader_handle: Handle<Shader> = Handle::Uuid(uuid, PhantomData);
+            // A path of its own per shader. Bevy's shader cache is keyed by
+            // module path, so every thumbnail sharing one path meant each new
+            // capture replaced the last one's shader mid-warmup.
             let shader = renzora::shader_source::shader(
                 compile.fragment_shader.clone(),
-                "graph_material/thumbnail.wgsl",
+                format!("graph_material/thumbnail_{uuid}.wesl"),
             );
             let _ = shaders.insert(&shader_handle, shader);
             mat.extension.shader_uuid = Some(uuid);
+            // Without this the deferred G-buffer pass (a project in deferred
+            // mode puts every 3D camera there, thumbnail cameras included)
+            // kept StandardMaterial's shader and drew the base: plain white.
+            // The scene resolver sets it the same way.
+            mat.extension.writes_gbuffer = codegen::supports_deferred(&compile.fragment_shader);
+            if let Some(graph) = &job.graph {
+                renzora_shader::material::standard_build::apply_base_approximation(&mut mat.base, graph, asset_server);
+            }
         }
 
         materials.add(mat)
@@ -560,7 +577,8 @@ fn arm_one_capture(
     // means there's never another capture's sphere to catch accidentally,
     // and placing entities close to (0,0,0) avoids the float-precision
     // problems we'd see at huge world-space offsets.
-    let sphere_mesh = meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap());
+    // UV sphere for the same straight-seam reason as the preview's.
+    let sphere_mesh = meshes.add(crate::preview::preview_sphere());
 
     let sphere = commands
         .spawn((

@@ -142,6 +142,16 @@ keeps its last result, which for an unchanged input is the correct one. The
 freeze happens in the render world, so the component itself stays on the camera
 and nothing that reads or writes it needs to know.
 
+## Planar reflections: `renzora_planar_reflection`
+
+For a flat surface where the reflection is the point (a mirror, a window, a
+polished floor, still water), a `PlanarReflection` component renders the scene
+again from the viewing camera mirrored across the surface, through an oblique
+near plane, and blends it over the surface's material. Unlike SSR and probes it
+shows off-screen content, particles and transparent objects, at the cost of one
+extra scene render per visible mirror. See
+[Planar Reflections](./planar-reflections.md).
+
 ## Order-independent transparency — `renzora_oit`
 
 `renzora_oit` wraps Bevy's `OrderIndependentTransparencySettings` and is routed onto cameras via `EffectRouting` like any other effect:

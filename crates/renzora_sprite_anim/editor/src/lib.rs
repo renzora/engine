@@ -204,6 +204,7 @@ fn create_clip_button(
         component: "SpriteSheet".to_string(),
         field: "frame".to_string(),
         keys: frame_keys,
+        muted: false,
     }];
 
     // Track 2 — `SpriteImages.index`, a one-key pin to this clip's sheet, so
@@ -218,6 +219,7 @@ fn create_clip_button(
                 value: TrackValue::Float(imgs.index as f32),
                 interp: Interp::Stepped,
             }],
+            muted: false,
         });
     }
 

@@ -1001,7 +1001,11 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
     if name.ends_with(".material_bp") || name.ends_with(".material") {
         return Some(DocTabKind::Material);
     }
-    if name.ends_with(".particle") {
+    // Both particle formats open in the Particles workspace. A `.vfx` opens in
+    // the effect editor; an old `.particle` is converted and its tab retargeted
+    // at the `.vfx` (`renzora_particles_editor::legacy`), which needs the tab
+    // to be a particle one in the first place.
+    if name.ends_with(".particle") || name.ends_with(".vfx") {
         return Some(DocTabKind::Particle);
     }
     if name.ends_with(".blueprint") || name.ends_with(".bp") {

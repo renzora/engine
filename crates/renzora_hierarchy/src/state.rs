@@ -20,6 +20,10 @@ pub struct EntityNode {
     /// Effective label color for rendering — the entity's own color, or the
     /// nearest ancestor's color if this entity hasn't been assigned one.
     pub label_color: Option<[u8; 3]>,
+    /// Whether `label_color` is this entity's own rather than inherited. The
+    /// whole subtree carries the colour as its edge line, but only the entity
+    /// it was set on tints its icon, so the children keep their type colours.
+    pub label_color_own: bool,
     pub is_visible: bool,
     pub is_locked: bool,
     pub is_default_camera: bool,
@@ -508,6 +512,7 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
             icon_color: final_color,
             children,
             label_color: effective_label_color,
+            label_color_own: entry.label_color.is_some(),
             is_visible: entry.is_visible,
             is_locked: entry.is_locked,
             is_default_camera: entry.is_default_camera,

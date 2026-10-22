@@ -1,6 +1,6 @@
 # Playing Your Game
 
-The **Play** button sits in the top bar. It runs your game without leaving the editor.
+The **Play** button sits at the right of the top bar, beside the Marketplace. It runs your game without leaving the editor.
 
 <!-- screenshot: play_controls.png - the Play button in the top bar, and the Game panel showing a running game -->
 

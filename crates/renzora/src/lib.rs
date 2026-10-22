@@ -140,6 +140,13 @@ pub mod undo;
 pub mod wind;
 pub use wind::*;
 
+// Ray and sphere casts against the scene's physics colliders, for crates that
+// must not link a physics engine (particles collide with the real level
+// through it). The physics crate installs the service; a build without one
+// simply has no `SceneQueries` resource. Not glob re-exported: `SceneRay` and
+// friends read better qualified at the call site.
+pub mod scene_query;
+
 // ── Language / localization contract ─────────────────────────────────────
 // The process-global translation table + `t()` lookup every crate calls, plus
 // the plugin-facing registration API. Lives here in the shared dylib so the
@@ -202,6 +209,10 @@ pub use script_hook::ScriptHook;
 /// that need the type are the editor and an installed plugin.
 pub mod create_menu;
 pub use create_menu::{CreateMenuItem, CreateMenuRegistry, RegisterCreateMenuItem};
+/// Plugin-contributed rows in the Assets panel's right-click menu, keyed on
+/// file extension. Here for the same reason as `create_menu`.
+pub mod asset_actions;
+pub use asset_actions::{AssetAction, AssetActionRegistry, AssetActionScope, RegisterAssetAction};
 
 pub mod backend;
 pub mod command;
@@ -244,6 +255,11 @@ pub mod runtime_warnings;
 // Here rather than in a plugin crate because the producer (the material
 // resolver) and the reader (the code editor) must agree on one definition.
 pub mod content_problems;
+
+// The Inspector's pages, the component categories every editor surface groups
+// by. Ungated: Add Component's picker lives in ember, which links this crate
+// without the `editor` feature.
+pub mod inspector_pages;
 
 // The one WGSL↔naga seam (parse/validate) for self-contained shaders.
 pub mod wgsl;

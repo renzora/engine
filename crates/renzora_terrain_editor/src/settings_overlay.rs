@@ -329,22 +329,8 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(left).add_children(&[icon, title]);
 
-    let close = commands
-        .spawn((
-            Node {
-                padding: UiRect::all(Val::Px(3.0)),
-                ..default()
-            },
-            UiInteraction::default(),
-            HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            CloseBtn,
-            Name::new("terrain-settings-close"),
-        ))
-        .id();
-    let cx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 15.0);
-    // The glyph must not swallow the click meant for its button.
-    commands.entity(cx).insert(PASS_THROUGH);
-    commands.entity(close).add_child(cx);
+    let close = renzora_ember::widgets::close_button(commands, fonts);
+    commands.entity(close).insert((CloseBtn, Name::new("terrain-settings-close")));
 
     commands.entity(row).add_children(&[left, close]);
     row

@@ -4,7 +4,7 @@ A `.rs` file in your project is a script. The editor compiles it when you save, 
 
 ## Create one
 
-In the **Assets** panel, click **Add** and pick **Rust Script**. You get `new_script.rs` in the current folder, and it opens in the code editor with a working starter in it.
+In the **Assets** panel, click **Import** and pick **Rust Script** from the list of new assets. You get `new_script.rs` in the current folder, and it opens in the code editor with a working starter in it.
 
 <!-- screenshot: assets_new_menu.png - the Assets Add menu with Rust Script highlighted -->
 

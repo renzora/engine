@@ -313,27 +313,8 @@ fn header(commands: &mut Commands, fonts: &EmberFonts, title: &str, subtitle: &s
     // Escape and a backdrop click already close this (`auth_escape`,
     // `auth_backdrop_click`), but neither is visible. A modal with no way out you
     // can see reads as one you are stuck in.
-    let close = commands
-        .spawn((
-            Node {
-                width: Val::Px(26.0),
-                height: Val::Px(26.0),
-                flex_shrink: 0.0,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(5.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            UiInteraction::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            AuthClose,
-            Name::new("auth-close"),
-        ))
-        .id();
-    let close_icon = icon_text(commands, &fonts.phosphor, "x", text_muted(), 14.0);
-    commands.entity(close_icon).insert(PASS_THROUGH);
-    commands.entity(close).add_child(close_icon);
+    let close = renzora_ember::widgets::close_button(commands, fonts);
+    commands.entity(close).insert((AuthClose, Name::new("auth-close")));
     commands.entity(row).add_children(&[ic, t, spacer, close]);
     let s = commands
         .spawn((

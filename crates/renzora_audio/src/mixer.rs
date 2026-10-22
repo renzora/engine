@@ -32,6 +32,13 @@ pub struct ChannelStrip {
     /// the mixer's keyed-list rebuilds (a rename or a reorder respawns the whole
     /// strip) and so any other panel showing a bus can match its colour.
     pub color: [u8; 3],
+    /// Routing key of the bus this one feeds; `None` feeds Master. Ignored on
+    /// Master itself, which feeds the device.
+    pub output: Option<String>,
+    /// Post-fader send to the shared reverb, 0..1.
+    pub reverb_send: f32,
+    /// Post-fader send to the shared delay, 0..1.
+    pub delay_send: f32,
 }
 
 /// Names the built-in buses own. `play_on_bus` (and its spatial twin) match
@@ -69,6 +76,9 @@ impl Default for ChannelStrip {
             input_device: None,
             output_device: None,
             color: [130, 130, 140],
+            output: None,
+            reverb_send: 0.0,
+            delay_send: 0.0,
         }
     }
 }
@@ -104,7 +114,11 @@ pub struct Bus {
 }
 
 /// Mixer resource - the single source of truth for all bus parameters
-#[derive(Resource)]
+///
+/// `Clone` so a panel can snapshot the board to build from: the mixer's
+/// Routing page builds its menus from the whole board after the world borrow
+/// that read it has ended.
+#[derive(Resource, Clone)]
 pub struct MixerState {
     pub master: ChannelStrip,
     pub sfx: ChannelStrip,
@@ -235,6 +249,61 @@ impl MixerState {
         true
     }
 
+    /// Delete the custom bus at `index`, re-pointing every bus that fed it at
+    /// Master. Left alone they would feed Master anyway (an unknown output key
+    /// does), but a stale key would come back to life if a bus with that key
+    /// were ever created again.
+    pub fn remove_bus(&mut self, index: usize) -> Option<Bus> {
+        if index >= self.custom_buses.len() {
+            return None;
+        }
+        let removed = self.custom_buses.remove(index);
+        for strip in self.strips_mut() {
+            if strip.output.as_deref() == Some(removed.key.as_str()) {
+                strip.output = None;
+            }
+        }
+        Some(removed)
+    }
+
+    /// Every strip on the board, Master first.
+    pub fn strips_mut(&mut self) -> impl Iterator<Item = &mut ChannelStrip> {
+        [&mut self.master, &mut self.sfx, &mut self.music, &mut self.ambient]
+            .into_iter()
+            .chain(self.custom_buses.iter_mut().map(|b| &mut b.strip))
+    }
+
+    /// The strip with routing key `key`, built-in or custom.
+    pub fn strip_by_key(&self, key: &str) -> Option<&ChannelStrip> {
+        match key {
+            "Master" => Some(&self.master),
+            "Sfx" => Some(&self.sfx),
+            "Music" => Some(&self.music),
+            "Ambient" => Some(&self.ambient),
+            _ => self.bus(key).map(|b| &b.strip),
+        }
+    }
+
+    /// Whether routing `key` into `target` would close a loop: true when
+    /// `target` is `key` itself or already feeds it, directly or through other
+    /// buses. The mixer offers only targets this says are safe; the backend
+    /// checks again, because a hand-edited project.toml can say anything.
+    pub fn would_loop(&self, key: &str, target: &str) -> bool {
+        let mut cur = Some(target.to_string());
+        // Bounded by the bus count, so a loop already in the data cannot hang.
+        for _ in 0..=self.custom_buses.len() + 4 {
+            let Some(k) = cur else { return false };
+            if k == key {
+                return true;
+            }
+            if k == "Master" {
+                return false;
+            }
+            cur = self.strip_by_key(&k).and_then(|s| s.output.clone());
+        }
+        true
+    }
+
     /// Rebuild the board from a project's `[audio]` section.
     ///
     /// Buses whose key names a built-in seed that built-in's strip; everything
@@ -253,6 +322,9 @@ impl MixerState {
                 muted: bus.muted,
                 soloed: bus.soloed,
                 color: bus.color.unwrap_or([130, 130, 140]),
+                output: bus.output.clone(),
+                reverb_send: bus.reverb_send,
+                delay_send: bus.delay_send,
                 ..Default::default()
             };
             match bus.key.as_str() {
@@ -286,6 +358,9 @@ impl MixerState {
             muted: s.muted,
             soloed: s.soloed,
             color: Some(s.color),
+            output: s.output.clone(),
+            reverb_send: s.reverb_send,
+            delay_send: s.delay_send,
         };
         let mut buses = vec![
             entry("Master", "Master", &self.master),
@@ -443,6 +518,35 @@ mod tests {
         let i = mixer.add_bus_keyed(Some("Music"));
         assert_eq!(mixer.custom_buses[i].key, "Music 2");
         assert!(mixer.bus_key_taken("music"));
+    }
+
+    /// The mixer offers only routing targets that cannot loop.
+    #[test]
+    fn routing_back_into_a_bus_that_feeds_you_is_a_loop() {
+        let mut mixer = MixerState::default();
+        let g = mixer.add_bus_keyed(Some("Group"));
+        mixer.sfx.output = Some("Group".into());
+        assert!(mixer.would_loop("Group", "Sfx"));
+        assert!(mixer.would_loop("Sfx", "Sfx"));
+        assert!(!mixer.would_loop("Sfx", "Music"));
+        assert!(!mixer.would_loop("Music", "Group"));
+
+        // Deleting the group points what fed it back at Master.
+        mixer.remove_bus(g);
+        assert_eq!(mixer.sfx.output, None);
+    }
+
+    /// Routing and sends are part of the mix, so they survive project.toml.
+    #[test]
+    fn routing_and_sends_survive_a_round_trip() {
+        let mut original = MixerState::default();
+        original.add_bus_keyed(Some("Group"));
+        original.sfx.output = Some("Group".into());
+        original.music.reverb_send = 0.3;
+        let mut restored = MixerState::default();
+        restored.apply_config(&original.to_config());
+        assert_eq!(restored.sfx.output.as_deref(), Some("Group"));
+        assert_eq!(restored.music.reverb_send, 0.3);
     }
 
     /// A project.toml with no `[audio]` section must behave exactly as it did

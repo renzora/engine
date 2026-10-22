@@ -96,16 +96,19 @@ render_3d = [
     "renzora/render_3d",
     "renzora_ember?/render_3d",
     "renzora_ember_dylib?/render_3d",
+    "renzora_particles?/render_3d",
+    "renzora_planar_reflection/render_3d",
 ]
 # The node-graph material system. Its own capability: ~1 MiB that a game using
 # only StandardMaterial never touches. Auto-detected from `.material` assets.
-shader_graph = ["dep:renzora_shader", "renzora_engine/shader_graph", "render_3d"]
+# Particles wear project materials through it too, so it carries their half.
+shader_graph = ["dep:renzora_shader", "renzora_engine/shader_graph", "render_3d", "renzora_particles?/material_graph"]
 # The 2D sprite scene systems (image binding, size persistence, sprite-sheet
 # frame cropping). Off = a 3D-only export with no sprite game-code. Bevy's `2d`
 # meta-feature is NOT strippable yet — the window-blit present path
 # (viewport_stretch.rs in THIS crate) draws with a bevy `Sprite` in every
 # export — so this only gates renzora_engine's sprite systems for now.
-render_2d = ["renzora_engine/render_2d"]
+render_2d = ["renzora_engine/render_2d", "renzora_particles?/render_2d"]
 # Bevy's LUT-based tone curves. Paired with the root `bevy/tonemapping_luts`
 # feature by the exporter; `renzora_tonemapping` swaps in `AcesFitted` when this
 # is off, because Bevy renders magenta rather than falling back.
@@ -191,7 +194,9 @@ networking = ["dep:renzora_network", "renzora_engine/networking", "dep:toml"]
 gizmos = ["renzora_light2d?/gizmos"]
 forward_decal = ["dep:renzora_forward_decal"]
 navmesh = ["dep:renzora_navmesh"]
-particles = ["dep:renzora_hanabi"]
+# The particle system, `renzora_particles`, which also plays effects made for
+# the retired bevy_hanabi integration (see its `legacy` module).
+particles = ["dep:renzora_particles"]
 # 2D tilemap runtime (chunked quad-mesh renderer). Content is 2D, so a pure-3D
 # game strips it; a 2D game keeps it. Editor always builds it.
 tilemap = ["dep:renzora_tilemap"]
@@ -331,7 +336,16 @@ renzora_animation = { path = "../renzora_animation", optional = true }
 # markup module (+ its `renzora_game_ui`/`bevy_hui` deps); the `game_ui` feature
 # below forwards `renzora_ember/game_ui`. Normal builds keep it via `default`.
 renzora_ember = { path = "../renzora_ember", default-features = false, optional = true }
-renzora_hanabi = { path = "../renzora_hanabi", optional = true }
+# Moved out of the generated block and made strippable under `particles`.
+# `default-features = false` so `render_3d` / `render_2d` above decide which of
+# its renderers a lean export compiles; a 2D export has no bevy_pbr to build
+# the 3D one against.
+renzora_particles = { path = "../renzora_particles", optional = true, default-features = false }
+# Moved out of the generated block so a 2D export can build it without its
+# renderer: `default-features = false`, with `render_3d` above forwarding the
+# feature. Deliberately NOT optional: the component is registered in every
+# build, so a scene carrying a mirror still loads in an export that draws none.
+renzora_planar_reflection = { path = "../renzora_planar_reflection", default-features = false }
 # Optional under `networking`. It was non-optional because the binary's
 # `--server`/`--host` path reached it through `renzora_runtime::renzora_network`
 # and there was nowhere to put the `#[cfg]`; `src/server.rs` is that somewhere
@@ -395,6 +409,7 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # it. If you hit that, delete the offending line below.
 renzora_net = { path = "../renzora_net" }
 renzora_rust_script = { path = "../renzora_rust_script" }
+renzora_svg = { path = "../renzora_svg" }
 # ── end generated ──
 
 # Loading the editor image beside the executable — see `src/editor_image.rs`.

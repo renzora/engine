@@ -68,8 +68,14 @@ fn flatten(
             entity: node.entity,
             name: node.name.clone(),
             icon: node.icon,
-            icon_color: c32(node.icon_color),
+            // The entity a colour was set on wears it on its icon; rows that
+            // only inherit it keep their type colour (see `label_color_own`).
+            icon_color: match node.label_color {
+                Some(c) if node.label_color_own => super::row::soft_label(c),
+                _ => c32(node.icon_color),
+            },
             label_color: node.label_color,
+            label_color_own: node.label_color_own,
             is_visible: node.is_visible,
             is_locked: node.is_locked,
             is_default_camera: node.is_default_camera,
@@ -166,13 +172,10 @@ pub(crate) fn update_flatten_cache(
         let mut lineage = Vec::new();
         flatten(nodes, exp_ref, renaming, &mut parent_lines, &mut lineage, &mut rows);
     }
-    // Fold the row's parity into its content hash so a row that changes odd/even
-    // (e.g. when a sibling above is added/removed) repaints with the right stripe.
-    flat.items = rows
-        .iter()
-        .enumerate()
-        .map(|(i, r)| (r.key(), r.content_hash().wrapping_mul(31).wrapping_add((i & 1) as u64)))
-        .collect();
+    // A row's hash is its own content only. Rows used to fold in their odd/even
+    // parity for the stripe, so adding or removing one entity rebuilt every row
+    // below it; with flat rows, only rows whose content changed rebuild.
+    flat.items = rows.iter().map(|r| (r.key(), r.content_hash())).collect();
     flat.order = rows.iter().map(|r| r.entity).collect();
     flat.rows = Arc::new(rows);
     flat.version = flat.version.wrapping_add(1);
@@ -205,8 +208,7 @@ pub(crate) fn hierarchy_snapshot(world: &Rx) -> KeyedSnapshot {
     let rows = flat.rows.clone();
     KeyedSnapshot {
         items,
-        // `i` is the full row index — keeps the zebra stripe stable across scroll.
-        build: Box::new(move |commands, fonts, i| build_row(commands, fonts, &rows[i], i)),
+        build: Box::new(move |commands, fonts, i| build_row(commands, fonts, &rows[i])),
     }
 }
 

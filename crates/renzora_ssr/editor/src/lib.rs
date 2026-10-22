@@ -15,7 +15,7 @@ fn ssr_entry() -> InspectorEntry {
         type_id: "ssr",
         display_name: "SSR",
         icon: "swap",
-        category: "rendering",
+        category: "post_process",
         has_fn: |world, entity| world.get::<SsrSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(SsrSettings::default());

@@ -1,0 +1,16 @@
+[package]
+name = "renzora_planar_reflection_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_planar_reflection: the Planar Reflection inspector entry (also offered by Add Component) and the Add Entity > Mirror preset. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_planar_reflection = { path = ".." }
+# The viewport gizmo: the overlay gizmo group and the selection it follows.
+renzora_gizmo = { path = "../../renzora_gizmo" }
+renzora_editor_framework = { path = "../../renzora_editor_framework" }
+
+[lints]
+workspace = true

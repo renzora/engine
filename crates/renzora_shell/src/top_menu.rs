@@ -657,8 +657,20 @@ fn panel_submenu(
     label: &str,
     kids: Vec<Entity>,
 ) -> Entity {
+    panel_submenu_tinted(commands, fonts, icon, label, text_muted(), kids)
+}
+
+/// [`panel_submenu`] with its icon in one of the [`hue`] colours.
+fn panel_submenu_tinted(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    icon_color: (u8, u8, u8),
+    kids: Vec<Entity>,
+) -> Entity {
     let (row, content, panel) =
-        renzora_ember::widgets::menu_submenu_parts(commands, fonts, icon, label, text_muted());
+        renzora_ember::widgets::menu_submenu_parts(commands, fonts, icon, label, icon_color);
     commands.entity(panel).entry::<Node>().and_modify(|mut n| {
         n.min_width = Val::Px(230.0);
         n.padding = UiRect::all(Val::Px(6.0));
@@ -721,13 +733,42 @@ fn recent_projects_submenu(
             .collect()
     };
 
-    panel_submenu(
+    panel_submenu_tinted(
         commands,
         fonts,
         "clock-counter-clockwise",
         &renzora::lang::t("splash.recent"),
+        hue::OPEN,
         kids,
     )
+}
+
+/// The icon colours the menus code their rows with. Only the icon takes the
+/// colour; labels stay the primary text colour, so a menu reads as a list with
+/// a few landmarks rather than a rainbow.
+///
+/// Each hue is one the editor already uses for the same idea, so a colour
+/// means the same thing wherever it appears: blue and amber are the Import
+/// overlay's Files and Folder tiles, purple is the Marketplace button, and
+/// amber is also the unsaved dot, which makes "save" and "unsaved" one colour.
+/// Utility rows (Edit, View, Help, Settings, the account) stay grey, which is
+/// what lets the coloured ones stand out.
+mod hue {
+    pub(super) const CREATE: (u8, u8, u8) = (74, 222, 128);
+    pub(super) const OPEN: (u8, u8, u8) = (96, 165, 250);
+    pub(super) const SAVE: (u8, u8, u8) = (240, 180, 80);
+    pub(super) const FOLDER: (u8, u8, u8) = (240, 180, 80);
+    pub(super) const MARKET: (u8, u8, u8) = (167, 130, 245);
+    pub(super) const EXPORT: (u8, u8, u8) = (45, 212, 191);
+}
+
+/// A menu row whose icon is in `hue` (see [`hue`]) and whose label is the
+/// normal text colour.
+fn tinted<F>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str, hue: (u8, u8, u8), on_click: F) -> Entity
+where
+    F: Fn(&mut World) + Send + Sync + 'static,
+{
+    renzora_ember::widgets::menu_item_styled(commands, fonts, icon, label, hue, text_primary(), on_click)
 }
 
 fn build_menu_items(
@@ -780,25 +821,27 @@ fn build_menu_items(
             // opens a two-row menu instead of a picker. See
             // `renzora::core::ImportPick`.
             let import_kids = vec![
-                menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| {
+                tinted(commands, fonts, "file", &renzora::lang::t("assets.import_files"), hue::OPEN, |w| {
                     w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
                 }),
-                menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| {
+                tinted(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), hue::FOLDER, |w| {
                     w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
                 }),
             ];
-            rows.push(panel_submenu(
+            rows.push(panel_submenu_tinted(
                 commands,
                 fonts,
                 "download-simple",
                 &renzora::lang::t("assets.import"),
+                hue::OPEN,
                 import_kids,
             ));
-            let export = menu_item(
+            let export = tinted(
                 commands,
                 fonts,
                 "package",
                 &renzora::lang::t("menu.file.export_project"),
+                hue::EXPORT,
                 |w| {
                     w.insert_resource(renzora::core::ExportRequested);
                 },
@@ -824,7 +867,7 @@ fn build_menu_items(
             // a session rather than start a task.
             rows.push(menu_sep(commands));
             if ctx.account.is_some() {
-                let library = menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| MenuCommand::MyLibrary.run(w));
+                let library = tinted(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), hue::MARKET, |w| MenuCommand::MyLibrary.run(w));
                 rows.push(spacious(commands, library));
                 let out = menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| MenuCommand::SignOut.run(w));
                 rows.push(spacious(commands, out));
@@ -840,25 +883,25 @@ fn build_menu_items(
             // doing it: it closes every open document, and doing that on one
             // click with unsaved edits in them is the loss the window's × has
             // always prompted about.
-            menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| MenuCommand::NewProject.run(w)),
-            menu_item(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), |w| MenuCommand::OpenProject.run(w)),
+            tinted(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), hue::CREATE, |w| MenuCommand::NewProject.run(w)),
+            tinted(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), hue::OPEN, |w| MenuCommand::OpenProject.run(w)),
             recent_projects_submenu(commands, fonts, ctx.recents),
             menu_sep(commands),
-            menu_item(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), |w| MenuCommand::NewScene.run(w)),
-            menu_item(commands, fonts, "file", &renzora::lang::t("menu.file.open_scene"), |w| MenuCommand::OpenScene.run(w)),
+            tinted(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), hue::CREATE, |w| MenuCommand::NewScene.run(w)),
+            tinted(commands, fonts, "file", &renzora::lang::t("menu.file.open_scene"), hue::OPEN, |w| MenuCommand::OpenScene.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "floppy-disk", &renzora::lang::t("common.save"), |w| MenuCommand::Save.run(w)),
-            menu_item(commands, fonts, "floppy-disk-back", &renzora::lang::t_or("menu.file.save_as", "Save As…"), |w| MenuCommand::SaveAs.run(w)),
+            tinted(commands, fonts, "floppy-disk", &renzora::lang::t("common.save"), hue::SAVE, |w| MenuCommand::Save.run(w)),
+            tinted(commands, fonts, "floppy-disk-back", &renzora::lang::t_or("menu.file.save_as", "Save As…"), hue::SAVE, |w| MenuCommand::SaveAs.run(w)),
             menu_sep(commands),
             // Same request the asset panel's Import button fires; renzora_import_ui
             // picks it up and opens the matching picker, then the import overlay.
             // No ImportTargetDir here, so assets land in the importer's default
             // folder. Two rows because no OS dialog picks files and folders at
             // once — see `renzora::core::ImportPick`.
-            menu_item(commands, fonts, "file", &renzora::lang::t("assets.import_files"), |w| MenuCommand::ImportFiles.run(w)),
-            menu_item(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), |w| MenuCommand::ImportFolder.run(w)),
+            tinted(commands, fonts, "file", &renzora::lang::t("assets.import_files"), hue::OPEN, |w| MenuCommand::ImportFiles.run(w)),
+            tinted(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), hue::FOLDER, |w| MenuCommand::ImportFolder.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| MenuCommand::InstallPlugin.run(w)),
+            tinted(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), hue::MARKET, |w| MenuCommand::InstallPlugin.run(w)),
         ],
         TopMenuKind::Edit => vec![
             menu_item(commands, fonts, "arrow-u-up-left", &renzora::lang::t("common.undo"), |w| MenuCommand::Undo.run(w)),
@@ -889,7 +932,8 @@ fn build_menu_items(
             // Names the pending version when there is one, so "am I out of
             // date?" is answered by the menu rather than by opening a dialog to
             // find out.
-            menu_item(
+            // Green only while an update is waiting, so it catches the eye then.
+            tinted(
                 commands,
                 fonts,
                 "download-simple",
@@ -897,6 +941,7 @@ fn build_menu_items(
                     Some(tag) => format!("{} {tag}", renzora::lang::t("menu.help.update_to")),
                     None => renzora::lang::t("menu.help.check_updates"),
                 },
+                if ctx.update_tag.is_some() { hue::CREATE } else { text_muted() },
                 |w| MenuCommand::CheckUpdates.run(w),
             ),
             menu_item(commands, fonts, "info", &renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine"), |w| MenuCommand::About.run(w)),

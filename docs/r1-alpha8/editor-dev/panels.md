@@ -4,7 +4,7 @@ Add panels to the Renzora editor with three small `App` extension methods — no
 
 ## The model: native bevy_ui, not a panel trait
 
-The editor shell is **bevy_ui-native** (`renzora_shell::ShellPlugin`). The reusable dock model — `DockTree`, splits, tabs, drag-docking, drop zones — lives in `renzora_ember::dock`; the shell supplies the per-workspace layouts and chrome (menu bar, ribbon, document-tab strip, status bar). A panel is therefore just a tree of ordinary `bevy_ui` entities (`Node`, `Text`, `BackgroundColor`, …) built into a dock leaf, plus a little metadata so the dock and the Add-Panel picker know about it.
+The editor shell is **bevy_ui-native** (`renzora_shell::ShellPlugin`). The reusable dock model (`DockTree`, splits, tabs, drag-docking, drop zones) lives in `renzora_ember::dock`; the shell supplies the per-workspace layouts and chrome (menu bar, ribbon, scene switcher, status bar). A panel is therefore just a tree of ordinary `bevy_ui` entities (`Node`, `Text`, `BackgroundColor`, …) built into a dock leaf, plus a little metadata so the dock and the Add-Panel picker know about it.
 
 Panels are contributed by **editor-scope plugins**. The editor itself is the removable `renzora_editor` cdylib bundle that loads beside the engine binary; an editor plugin registers itself with `renzora::add!(MyPlugin, Editor)` and is replayed into the app when the bundle is installed. (See *Plugins & ABI* for how scopes and the bundle work.)
 

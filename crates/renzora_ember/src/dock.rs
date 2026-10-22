@@ -123,6 +123,7 @@ impl Plugin for DockPlugin {
                     interact::track_focused_panel,
                     reconcile::tab_strip_wheel,
                     reconcile::apply_dock_style,
+                    reconcile::pad_dock_edges,
                     windows::float_window_controls,
                     interact::tab_grip_hover,
                     interact::tab_context_menu,
@@ -303,4 +304,103 @@ pub fn humanize(id: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod workspace_switch_tests {
+    use super::*;
+    use crate::font::EmberFonts;
+    use crate::panel::RegisterPanelContent;
+
+    fn fonts() -> EmberFonts {
+        EmberFonts {
+            ui: Default::default(),
+            phosphor: Handle::default(),
+            mono: Default::default(),
+            default_ui: Default::default(),
+            default_mono: Default::default(),
+        }
+    }
+
+    fn app(tree: DockTree) -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.insert_resource(fonts())
+            .insert_resource(Dock { tree })
+            .insert_resource(DockDirty(true))
+            .init_resource::<FixedDock>()
+            .init_resource::<DockWindows>()
+            .init_resource::<BottomStripMarkers>();
+        for id in ["a", "b", "c"] {
+            app.register_panel_content(id, false, move |commands, _| {
+                commands.spawn((Node::default(), Name::new(format!("built:{id}")))).id()
+            });
+        }
+        // panel-systems-ungated: a test harness driving the dock itself, not a panel's systems
+        app.add_systems(Update, (reconcile::rebuild_dock, sync_panes).chain());
+        app.world_mut().spawn((Node::default(), DockArea));
+        app
+    }
+
+    /// Ids of the panes reachable from the dock area, with their leaf's id.
+    fn mounted(app: &mut App) -> Vec<String> {
+        let world = app.world_mut();
+        let area = world.query_filtered::<Entity, With<DockArea>>().single(world).unwrap();
+        let mut out = Vec::new();
+        let mut stack = vec![area];
+        while let Some(e) = stack.pop() {
+            if let Some(p) = world.get::<TabPane>(e) {
+                out.push(p.id.clone());
+            }
+            if let Some(kids) = world.get::<Children>(e) {
+                stack.extend(kids.iter());
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn switching_the_tree_builds_the_new_panels() {
+        let mut app = app(DockTree::leaf("a"));
+        for _ in 0..4 {
+            app.update();
+        }
+        assert_eq!(mounted(&mut app), vec!["a"]);
+
+        // A workspace switch: a whole new tree, one panel shared, one new.
+        app.world_mut().resource_mut::<Dock>().tree = DockTree::tabs(&["b"]);
+        app.world_mut().resource_mut::<DockDirty>().0 = true;
+        for _ in 0..4 {
+            app.update();
+        }
+        assert_eq!(mounted(&mut app), vec!["b"]);
+    }
+
+    /// Once a pane is showing, further rebuilds (the shell re-arms the dock
+    /// for a frame or two after a switch) must carry it over, not tear it down
+    /// and build it again: that is a visible flicker. Records what is mounted
+    /// on every frame and fails on any frame where a mounted pane went away.
+    #[test]
+    fn rebuilds_after_a_switch_do_not_flicker_the_panes() {
+        let mut app = app(DockTree::leaf("a"));
+        for _ in 0..4 {
+            app.update();
+        }
+        app.world_mut().resource_mut::<Dock>().tree = DockTree::tabs(&["b"]);
+        app.world_mut().resource_mut::<DockDirty>().0 = true;
+        let mut frames = Vec::new();
+        for frame in 0..8 {
+            if frame == 2 || frame == 4 {
+                app.world_mut().resource_mut::<DockDirty>().0 = true;
+            }
+            app.update();
+            frames.push(mounted(&mut app));
+        }
+        let first_shown = frames.iter().position(|f| f == &vec!["b".to_string()]).expect("b never mounted");
+        assert!(
+            frames[first_shown..].iter().all(|f| f == &vec!["b".to_string()]),
+            "pane flickered after it first showed: {frames:?}"
+        );
+    }
 }

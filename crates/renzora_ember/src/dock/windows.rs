@@ -10,9 +10,9 @@
 
 use bevy::prelude::*;
 
-use crate::font::{icon_text, ui_font, EmberFonts};
+use crate::font::{ui_font, EmberFonts};
 use crate::interaction::BLOCK;
-use crate::theme::{border, divider, header_bg, rgb, text_muted, text_primary};
+use crate::theme::{border, divider, header_bg, rgb, text_primary};
 use crate::UiInteraction;
 
 use crate::dock::components::{DockLeaf, GlobalCursor, RootDropOverlay, TabBarOf};
@@ -319,10 +319,10 @@ pub(crate) fn spawn_dock_windows(
                 ..default()
             },))
             .id();
-        let close = icon_text(&mut commands, &fonts.phosphor, "x", text_muted(), 12.0);
+        // The shared dialog close button, so a floating window's X matches
+        // every overlay's.
+        let close = crate::widgets::close_button(&mut commands, &fonts);
         commands.entity(close).insert((
-            UiInteraction::default(),
-            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             // Block so the press closes instead of starting a window drag.
             BLOCK,
             FloatWindowClose(window),

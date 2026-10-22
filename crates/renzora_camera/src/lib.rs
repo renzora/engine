@@ -193,6 +193,11 @@ impl Default for CameraSettings {
 #[derive(Resource, Default)]
 struct CameraDragState {
     dragging: bool,
+    /// Where the pointer was when the drag began. The hidden cursor still
+    /// travels while the camera turns (it is only confined, since winit
+    /// cannot lock it on Windows), so it is warped back here on release
+    /// rather than reappearing wherever the look-drag left it.
+    anchor: Option<Vec2>,
 }
 
 /// Smoothed WASD velocity for the editor camera. Each frame the controller
@@ -957,7 +962,7 @@ fn camera_controller(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
     mut camera_query: Query<&mut Transform, With<EditorCamera>>,
-    mut window_query: Query<&mut CursorOptions, With<PrimaryWindow>>,
+    mut window_query: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
 ) {
     // Don't touch cursor or process input during play mode
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
@@ -1098,10 +1103,14 @@ fn camera_controller(
     // Only start the drag if the click originated inside the viewport.
     if (right_just_pressed || middle_just_pressed) && viewport_hovered {
         drag.dragging = true;
+        drag.anchor = window_query.single().ok().and_then(|(w, _)| w.cursor_position());
         mouse_motion.clear();
     }
-    if right_just_released || middle_just_released {
+    if (right_just_released || middle_just_released) && drag.dragging {
         drag.dragging = false;
+        if let (Some(at), Ok((mut window, _))) = (drag.anchor.take(), window_query.single_mut()) {
+            window.set_cursor_position(Some(at));
+        }
     }
 
     // Enforce the hidden/confined cursor every frame *while* dragging, not just
@@ -1111,7 +1120,7 @@ fn camera_controller(
     // (the crosshair stayed on screen during a right-drag orbit). `Confined` is
     // the Windows-supported mode the markup cursor code already uses; combined
     // with `visible = false` it hides the pointer for the look-drag.
-    if let Ok(mut cursor) = window_query.single_mut() {
+    if let Ok((_, mut cursor)) = window_query.single_mut() {
         if drag.dragging {
             if cursor.visible {
                 cursor.visible = false;

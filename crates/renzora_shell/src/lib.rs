@@ -1,6 +1,6 @@
 //! `renzora_shell` — the bevy_ui-native editor shell.
 //!
-//! The editor's chrome (menu bar, ribbon, document tabs, status bar) plus the
+//! The editor's chrome (menu bar, ribbon, scene switcher, status bar) plus the
 //! wiring that drives the reusable [`renzora_ember`] dock. The dock itself —
 //! splits, tabs, drag-docking — lives in `renzora_ember::dock`; the shell just
 //! supplies the layout, the dock area, and editor-specific behavior.
@@ -12,7 +12,8 @@
 //!
 //! - [`top_bar`] / [`top_menu`] — the top bar and its hamburger menu
 //! - [`ribbon`] — the workspace switcher in the middle of that bar
-//! - [`doc_tabs`] — the document strip (and its compact dropdown form)
+//! - [`scene_switcher`] / [`documents`]: the open documents, listed and named in
+//!   the top bar, and what moving between them does
 //! - [`bottom_dock`] / [`panel_sets`] — the global bottom panel
 //! - [`status_bar`] — the bottom bar and its theme/language dropups
 //! - [`window_chrome`] / [`save_prompts`] — borderless-window controls and the
@@ -39,13 +40,15 @@ mod native_menu;
 mod about;
 mod bottom_dock;
 mod contributors;
-mod doc_tabs;
+mod documents;
 mod panel_sets;
 mod panels;
 mod play_controls;
 mod plugin_install;
 mod ribbon;
 mod save_prompts;
+mod scene_switcher;
+mod title_bar_colour;
 mod status_bar;
 mod theme_bridge;
 mod top_bar;
@@ -63,10 +66,9 @@ use bottom_dock::{
     BottomDockBtn, BottomDockCloseBtn, BottomDockDragHide, BottomDockGrip, BottomDockModeBtn,
     BottomDockResize, CollapsedBottomBar, DockAreaWrap, BOTTOM_DOCK_GRIP_H, BOTTOM_DOCK_Z,
 };
-use doc_tabs::{
-    build_doc_tabs, doc_add_click, doc_focus_rename, doc_rename_commit, doc_tab_click,
-    doc_tab_close, doc_tab_drag, doc_tab_menu_row_click, doc_tabs_follow_asset_path,
-    sync_active_doc_to_workspace, sync_workspace_to_active_doc, DocTabDrag, DocTabMru, DocTabRename,
+use documents::{
+    doc_tabs_follow_asset_path, sync_active_doc_to_workspace, sync_workspace_to_active_doc,
+    DocTabMru,
 };
 use panel_sets::{
     bottom_set_drag, bottom_set_focus_rename, bottom_set_menu_click, bottom_set_rename_commit,
@@ -244,8 +246,6 @@ impl Plugin for ShellPlugin {
         app.init_resource::<RibbonRename>();
         app.init_resource::<BottomSetRename>();
         app.init_resource::<BottomSetDrag>();
-        app.init_resource::<DocTabDrag>();
-        app.init_resource::<DocTabRename>();
         app.init_resource::<DocTabMru>();
         app.init_resource::<GlobalSceneHasCamera>();
         app.add_systems(Update, track_global_scene_cameras);
@@ -270,21 +270,15 @@ impl Plugin for ShellPlugin {
                 ribbon_focus_rename,
                 ribbon_rename_commit,
                 content_dispatch,
-                (play_btn_click, update_play_button),
+                (play_btn_click, update_play_button, scene_switcher::scene_switcher_open, scene_switcher::switcher_interact),
                 plugin_install::install_buttons,
                 top_menu::reset_defaults_buttons,
                 palette_btn_click,
                 // `bump_theme_revision` first: an edit to a theme shader this
                 // frame should re-apply this frame, not next.
                 (bump_theme_revision, theme_bridge, sync_theme_menu_open).chain(),
-                apply_chrome_style,
-                doc_add_click,
-                (doc_tab_click, doc_tab_menu_row_click),
+                (apply_chrome_style, title_bar_colour::sync_title_bar_colour),
                 (
-                    doc_tab_drag,
-                    doc_focus_rename,
-                    doc_rename_commit,
-                    doc_tab_close,
                     process_tab_close_request,
                     close_tab_prompt_buttons,
                     pending_close_after_save,
@@ -578,12 +572,9 @@ fn spawn_shell(
         ))
         .id();
 
-    // Top bar, then the document tabs, then the dock. The tabs are back in this
-    // column after a spell inside the viewport panel (see [`build_doc_tabs`]):
-    // as shell chrome they are on screen in every workspace, including the
-    // viewport-less asset layouts an open material routes the editor into.
+    // Top bar, then the dock. The open documents are listed in the top bar's
+    // scene switcher rather than a strip of their own (see [`documents`]).
     let top_bar = build_top_bar(commands, font, fonts);
-    let doc_tabs = build_doc_tabs(commands);
 
     // Wrapper holding the workspace dock and the global bottom panel overlaid
     // on it. The bottom panel CANNOT be a child of the `DockArea`: ember's
@@ -853,7 +844,7 @@ fn spawn_shell(
 
     commands
         .entity(root)
-        .add_children(&[top_bar, doc_tabs, dock_wrap, collapsed_bottom, statusbar]);
+        .add_children(&[top_bar, dock_wrap, collapsed_bottom, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     // The OS frame brings its own edges.

@@ -291,6 +291,14 @@ Node types are identified by a `category/name` string. Categories appear in the 
 | `input/vertex_color` | Vertex Color | Per-vertex color attribute |
 | `input/camera_position` | Camera Position | World-space camera position |
 | `input/object_position` | Object Position | Object pivot world position |
+| `input/particle_color` | Particle Color | A particle's colour (white off particles) |
+| `input/particle_age` | Particle Age | A particle's age over its lifetime, 0 to 1 (0 off particles) |
+| `input/particle_random` | Particle Random | A 0 to 1 random fixed per particle (0 off particles) |
+| `input/particle_velocity` | Particle Velocity | A particle's velocity, speed and direction (zero off particles) |
+
+The Particle nodes read what a [particle wearing the
+material](../rendering/particle-system.md#project-materials) knows about
+itself; on anything else they are the constants shown.
 
 ### Parameter
 

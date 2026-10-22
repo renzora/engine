@@ -17,7 +17,6 @@ use renzora_ember::UiInteraction;
 
 use renzora_ui::window_chrome::WindowAction;
 
-use crate::doc_tabs::build_doc_tab_menu_group;
 use crate::play_controls::build_play_group;
 use crate::ribbon::{ribbon_snapshot, WorkspaceAddBtn, WorkspaceDropZone, RIBBON_W};
 use crate::status_bar::ChromeBar;
@@ -89,9 +88,8 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // hamburger, Settings, undo / redo / save, and Play. All of them used to be
     // somewhere in the viewport's tool strip or its menus, which meant they were
     // missing from any workspace without a viewport — and none of them is a
-    // viewport action. This bar is on screen in every workspace. The document
-    // tabs used to fill the rest of this zone; they now sit at the top of the
-    // viewport panel (see `build_doc_tabs`).
+    // viewport action. This bar is on screen in every workspace. The open
+    // documents are listed by the scene switcher at the end of this zone.
     // The Renzora mark leads the bar, ahead of the menu: the spot every desktop
     // application puts its identity, and a click on it opens About. Under the
     // OS frame the mark is the window icon in the system title bar instead
@@ -108,17 +106,19 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::toolbar::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
-    let play = build_play_group(commands, font);
-    // The document tabs, for anyone who'd rather not spend a row of the window
-    // on them — hidden unless Settings has them set to Dropdown, in which case
-    // the strip under this bar is the one that's hidden instead.
-    let docs = build_doc_tab_menu_group(commands, fonts, font);
+    // The document you are in, where Play used to be. Play moved to the right
+    // zone beside the Marketplace: the left end now says what you are
+    // editing, and the right end holds the things that run or ship it.
+    let scene = crate::scene_switcher::build_scene_switcher(commands, fonts, font);
+    commands.entity(scene).entry::<Node>().and_modify(|mut n| {
+        n.margin = UiRect::left(Val::Px(8.0));
+    });
     // macOS puts the window buttons at the LEADING edge, so on that platform
     // they come before the mark (see `lead` above); everywhere else they stay in
     // the trailing zone where Windows and most Linux desktops put them. One bar,
     // two conventions, chosen by the platform rather than by a setting: nobody
     // wants Mac buttons on Windows.
-    lead.extend([hamburger, session, settings, play, docs]);
+    lead.extend([hamburger, session, settings, scene]);
     commands.entity(left).add_children(&lead);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
@@ -172,9 +172,8 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     commands.entity(add).add_child(add_label);
     commands.entity(center).add_children(&[magnifier, ribbon_strip, add]);
 
-    // The right zone is window controls only now: Play moved to the toolbar
-    // strip's trailing edge (see `build_play_group`) and the gear moved into
-    // the hamburger menu as its own top-level Settings row.
+    // The right zone: Play, the plugin buttons (the Marketplace first), the
+    // update chip and the window controls.
     let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0, true);
 
     // Window controls: a fixed-size button with the glyph as a *child* so
@@ -325,8 +324,9 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // labelled, tinted chip beside the update chip: the two of them are the
     // bar's "things that are waiting for you" corner.
     let actions = build_shell_actions(commands);
+    let play = build_play_group(commands, font);
 
-    commands.entity(right).add_children(&[actions, update_chip, window]);
+    commands.entity(right).add_children(&[play, actions, update_chip, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar

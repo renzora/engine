@@ -16,7 +16,11 @@ On the right of each row are an **eye** to hide the object and a **lock** to sto
 
 ## Adding objects
 
-Click **+ Add Entity** for a searchable list.
+An empty scene shows a starter screen in place of the tree: a grid of **starters** (Empty Scene, 2D Scene, New Environment, UI Canvas and any a plugin adds), each of which fills the scene with a working arrangement, and below them **Common entities**: Cube, Sphere, Plane, Light, Camera and Empty, each one click. Both are undoable like any other add. When the tree is filtered (the UI workspace shows only canvases) the starters narrow to what the filter would show and the common entities are hidden.
+
+Click **+ Add Entity** for a searchable grid of everything you can create, three to a row with each item's icon beside its name, grouped by category.
+
+The category list on the left is a table of contents: clicking a category scrolls the grid to its section (opening it if you had folded it) and leaves the other sections where they are, and the list marks whichever section is at the top as you scroll. **All** opens every section and goes back to the top. Each section starts with a header showing the category, how many items it holds and a rule across the grid; click the header to slide that section shut or open again. Add Component and Add Panel work the same way.
 
 ![The Add Entity overlay: search or browse categories such as Lighting and Camera.](/assets/previews/add_entity.png)
 
@@ -42,7 +46,7 @@ Added the wrong thing? `Ctrl+Z`.
 | Double-click | Rename it in the tree |
 | `↑` / `↓` | Move to the previous or next visible row |
 | `→` / `←` | Open or close the selected branch, then step into or out of it |
-| Drag from empty space | Rubber-band select |
+| Drag from empty space | Rubber-band select (a plain click there keeps the selection) |
 | `Esc` | Deselect everything |
 
 The arrow keys work once you have clicked into the Hierarchy, and they walk what you can actually see. A collapsed group is stepped past, not through.
@@ -62,6 +66,8 @@ Drag a row to move it. Where you drop decides what happens:
 Children move with their parent. You cannot drop an object into one of its own children, and the whole move is one undo step.
 
 Right-click a row for **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **Attach**, label colours and **Delete**.
+
+A label colour shows as a thin line down the left edge of the entity's row and of every row under it, and tints the entity's own icon. The names keep their normal colour.
 
 ## Attaching assets
 
@@ -118,7 +124,7 @@ A countdown appears in the status bar in the last few seconds. When it fires it 
 
 ## Which scene loads first
 
-**Settings > Project > Boot Scene** picks the scene a *game* starts on. It is independent of whatever you are editing. Every save targets the scene tab you have focused, and nothing writes to the boot scene unless that is the tab you are on.
+**Settings > Project > Boot Scene** picks the scene a *game* starts on; so does **Set as Boot Scene** in the top bar's scene switcher, for the scene you are in. It is independent of whatever you are editing. Every save targets the scene you are in (the one the scene switcher names), and nothing writes to the boot scene unless that is the scene you are on.
 
 ### Global scenes
 

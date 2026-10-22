@@ -24,7 +24,7 @@ engine/
 │   ├── renzora_<feature>/  # one crate per feature (physics, scripting, ember, …)
 │   │   └── editor/         # optional editor-only half (= renzora_<feature>_editor)
 │   ├── renzora_<effect>/   # one crate per post-process effect (bloom, crt, …)
-│   ├── bevy_hanabi/  bevy_hui/  bevy_firefly/  bevy_silk/  vleue_navigator/
+│   ├── bevy_hui/  bevy_firefly/  bevy_silk/  vleue_navigator/
 │   ├── bevy_gaussian_splatting/  bevy_args/  bevy_interleave*/  polyanya/  bvh2d/
 │   └── bevy_oxr/           # vendored — its OWN nested workspace (not globbed in)
 ├── docker/                 # Dockerfile + build/add/remove/upx shell scripts
@@ -59,7 +59,6 @@ members = [
     "crates/bevy_interleave",
     "crates/bevy_interleave_interface",
     "crates/bevy_interleave_macros",
-    "crates/bevy_hanabi",
     "crates/bevy_hui",
     "crates/bevy_silk",
     "crates/vleue_navigator",
@@ -151,7 +150,7 @@ Two directories hold nearly all of it, and the split is the plugin table above:
 
 | Directory | Contents |
 |-----------|----------|
-| `crates/` | **114** `renzora_*` crates plus the vendored Bevy forks (`bevy_hanabi`, `bevy_hui`, `bevy_firefly`, `bevy_silk`, `bevy_oxr`, `bevy_gaussian_splatting` with its `bevy_args` and `bevy_interleave*` dependencies, and `vleue_navigator` with `polyanya` and `bvh2d`). Most were ported to Bevy 0.20 here, ahead of upstream releases. Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
+| `crates/` | **114** `renzora_*` crates plus the vendored Bevy forks (`bevy_hui`, `bevy_firefly`, `bevy_silk`, `bevy_oxr`, `bevy_gaussian_splatting` with its `bevy_args` and `bevy_interleave*` dependencies, and `vleue_navigator` with `polyanya` and `bvh2d`). Most were ported to Bevy 0.20 here, ahead of upstream releases. Broadly: the contract crate and plugin machinery, the engine runtime, the editor framework and its panels, the render passes and lighting, gameplay simulation, and asset/scene/import. |
 | `plugins/` | Installed plugins, most of them post-process effects. Empty in a fresh checkout: plugins are distributed through the marketplace and built where they land. |
 
 Those counts move every release; treat them as a sense of scale, not an

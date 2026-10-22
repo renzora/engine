@@ -25,7 +25,6 @@ use renzora_camera::OrbitCameraState;
 use renzora_editor_framework::camera::editor_camera_world_pose;
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::theme::{rgb, section_bg, text_muted};
 use renzora_ember::widgets::{bind_text_input, icon_button, icon_label_button, text_input};
 use renzora_ember::UiInteraction;
@@ -146,9 +145,6 @@ fn rebuild_camera_presets(world: &mut World) {
             }
             for (i, name) in names.iter().enumerate() {
                 let row = build_preset_row(&mut commands, &fonts, entity, i, name);
-                commands
-                    .entity(row)
-                    .insert(BackgroundColor(inspector_stripe(i)));
                 commands.entity(root).add_child(row);
             }
             let capture = build_capture_button(&mut commands, &fonts, entity);

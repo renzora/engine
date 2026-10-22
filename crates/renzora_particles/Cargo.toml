@@ -1,0 +1,53 @@
+[package]
+name = "renzora_particles"
+version = "0.1.0"
+edition = "2021"
+description = "Renzora's own particle system: node-graph effects (.vfx) compiled to a backend-neutral IR, simulated on the CPU and drawn as one dynamic mesh per emitter, in 2D and 3D."
+
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list. The editor-only half (Add
+# Entity preset, inspector) is the nested `renzora_particles_editor` crate in
+# `editor/`, linked only by the editor bundle.
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = ["render_3d", "render_2d", "material_graph"]
+# The two renderers, gated separately because a lean export strips `bevy_pbr`
+# for a 2D game and `bevy_sprite_render` for a 3D one, and an always-on module
+# would fail that build. The asset format, compiler and simulation do not touch
+# either and are always compiled, so a scene that references a `.vfx` of the
+# stripped dimension still loads; it simply draws nothing and says so once.
+render_3d = []
+render_2d = []
+# Project `.material` files on particles (`render::surface`). Needs the
+# engine's node-graph material system, `renzora_shader`, whose types the
+# particle material extends; an export that strips that system (the runtime's
+# `shader_graph` capability) strips this with it, and particles that name a
+# material draw with the particle shader instead.
+material_graph = ["dep:renzora_shader", "render_3d"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_shader = { path = "../renzora_shader", optional = true }
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
+
+[dev-dependencies]
+# tests/shaders.rs compiles the particle WESL against Bevy's own shader
+# libraries with the material validator's compiler (editor-gated), the same
+# way renzora_solari checks its fork.
+renzora_shader = { path = "../renzora_shader", features = ["editor"] }
+renzora_test_harness = { path = "../renzora_test_harness" }
+# gpu/tests.rs validates every generated compute shader and measures the
+# WGSL structs' layout against the Rust sizes, with the naga the contract
+# crate already links (`renzora::wgsl`).
+naga = { version = "30", features = ["wgsl-in"] }
+# tests/legacy.rs loads an old scene line through the real scene parser, which
+# is what resolves the retired `renzora_hanabi::data::HanabiEffect` path to the
+# migration component by its short name.
+renzora_bsn = { path = "../renzora_bsn" }
+
+[lints]
+workspace = true

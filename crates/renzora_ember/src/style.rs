@@ -438,8 +438,19 @@ impl BarStyle {
             pad_y: 0.0,
         }
     }
+    /// A step lighter than the window colour, toward the text colour.
+    ///
+    /// At the window colour itself the bar was the darkest thing on screen, a
+    /// near-black slab over the lighter panels. Lifted slightly it sits between
+    /// the two and reads as chrome rather than a hole. On Windows 11 the system
+    /// title bar keeps the unlifted window colour (see the shell's
+    /// `title_bar_colour`), so frame and bar differ by just this step. Mixed
+    /// between two theme colours, so a light theme gets a bar a step darker
+    /// instead.
     fn top_bar() -> Self {
-        Self::new(window_bg(), 34.0, Rgba::NONE, 0.0, 8.0)
+        let (w, t) = (window_bg(), crate::theme::text_primary());
+        let lift = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * 0.035).round() as u8;
+        Self::new((lift(w.0, t.0), lift(w.1, t.1), lift(w.2, t.2)), 34.0, Rgba::NONE, 0.0, 8.0)
     }
     fn doc_tabs() -> Self {
         Self::new(header_bg(), 30.0, Rgba::rgb(divider()), 1.0, 8.0)
@@ -479,8 +490,10 @@ impl Default for TimelineStyle {
             tick_major: c(text_muted()),
             tick_minor: c(placeholder()),
             clip_text: c(text_primary()),
-            header_width: 180.0,
-            ruler_height: 22.0,
+            // 260 fits a nested bone name ("mixamorig:RightShoulder") beside
+            // its T/R/S chips without ellipsis; 180 cut most of them.
+            header_width: 260.0,
+            ruler_height: 28.0,
         }
     }
 }

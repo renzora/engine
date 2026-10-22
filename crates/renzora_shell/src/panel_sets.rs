@@ -601,8 +601,8 @@ pub(crate) fn bottom_set_menu_click(
 
 /// Press-latch reorder for the panel-set rows, plus the plain click that picks
 /// a set: drag a row past a small threshold to move it in [`BottomPanelSets`],
-/// or release without moving to switch to it. The vertical twin of
-/// [`crate::doc_tab_drag`].
+/// or release without moving to switch to it. The vertical twin of the
+/// workspace ribbon's reorder (`ribbon_interact`).
 ///
 /// Both halves of the gesture live here for the reason that split is usually
 /// made: only the code that watched the press *and* the motion knows which of

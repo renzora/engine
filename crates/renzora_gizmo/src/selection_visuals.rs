@@ -82,7 +82,7 @@ pub fn draw_selection_bounding_box(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmos: Gizmos<OverlayGizmoGroup>,
-    mesh_aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
+    mesh_aabbs: Query<(Option<&Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children_query: Query<&Children>,
     hidden: Query<(), With<HideInHierarchy>>,
     world: &World,
@@ -142,7 +142,7 @@ pub fn draw_selection_bounding_box(
 /// Recursively expand min/max with world-space corners of every mesh in the hierarchy.
 fn collect_world_aabb(
     entity: Entity,
-    mesh_aabbs: &Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
+    mesh_aabbs: &Query<(Option<&Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children_query: &Query<&Children>,
     min: &mut Vec3,
     max: &mut Vec3,

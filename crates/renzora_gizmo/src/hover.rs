@@ -29,7 +29,7 @@ pub(crate) fn gizmo_hover_detect(
     viewport: Option<Res<ViewportState>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     transform_q: Query<&GlobalTransform, Without<EditorCamera>>,
-    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), crate::BoundsMeshes>,
     children_q: Query<&Children>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     mouse_button: Res<ButtonInput<MouseButton>>,

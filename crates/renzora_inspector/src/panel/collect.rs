@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 
+use renzora::inspector_pages::InspectorPage;
 use renzora_editor_framework::{
     EditorSettings, FieldType, FieldValue, InspectorRegistry, NativeInspectorRegistry,
 };
@@ -19,7 +20,16 @@ use super::spec::{
 };
 use super::{policy_open, InspectorSectionsOpen, InspectorState, Mutate, Pred, SetEnabled};
 
-pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<SectionSpec> {
+/// The sections for `entity`, limited to `page` when one is given (the
+/// filter passes `None`: a search looks across every page).
+///
+/// Off-page entries are skipped before any field is read, so a page with two
+/// cards costs two cards' worth of `get_fn` calls, not the whole entity's.
+pub(crate) fn collect_sections(
+    world: &Rx,
+    entity: Option<Entity>,
+    page: Option<InspectorPage>,
+) -> Vec<SectionSpec> {
     let Some(entity) = entity else {
         return Vec::new();
     };
@@ -63,6 +73,9 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
     let mut out = Vec::new();
     for entry in reg.iter() {
         if !(entry.has_fn)(world.untracked(), entity) {
+            continue;
+        }
+        if page.is_some_and(|p| p != InspectorPage::for_entry(entry.category, entry.type_id)) {
             continue;
         }
         // Component-name filter (case-insensitive substring on the display name).
@@ -217,7 +230,11 @@ pub(crate) fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<Sectio
         });
     }
 
-    append_reflected_sections(world, entity, reg, &mut out);
+    // Generated sections name no category, so they belong to the entity's own
+    // page.
+    if page.is_none_or(|p| p == InspectorPage::Object) {
+        append_reflected_sections(world, entity, reg, &mut out);
+    }
 
     // Pin the most-edited components to the top in a fixed order — Name,
     // Transform, then Scripts, then Material — so they're always right where you

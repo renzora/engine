@@ -72,7 +72,7 @@ log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] 
 # feature; this package has no features, so without it wgpu fell back to WebGL 2
 # (the first browser run reported `backend: Gl`, ANGLE over D3D11). That is not a
 # minor downgrade for an editor: WebGL 2 has no compute shaders and no storage
-# buffers, so atmosphere, SSAO, OIT, GPU clustering, Hanabi particles and
+# buffers, so atmosphere, SSAO, OIT, GPU clustering, GPU particles and
 # gaussian splatting all refused to initialise.
 #
 # `debug` names systems and parameters in ECS error messages. The web build is

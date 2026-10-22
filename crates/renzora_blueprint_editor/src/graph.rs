@@ -40,7 +40,7 @@ impl Plugin for BlueprintGraphPanel {
         // graph is the active panel).
         app.add_systems(
             Update,
-            (apply_click, add_node_open, bp_context_menu_open, layout_click)
+            (apply_click, add_node_open, bp_context_menu_open, layout_click, comment_click)
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora_ember::dock::panel_active("blueprint_graph")),
         );
@@ -159,7 +159,7 @@ fn with_active_graph<R>(w: &Rx, f: impl FnOnce(&BlueprintGraph) -> R) -> Option<
 /// The blueprint graph's toolbar (Add Node / Auto Layout / Apply), mounted in
 /// the shared strip while the blueprint graph is the active panel. Wired by the
 /// same marker-component systems regardless of where the buttons live.
-fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, viewport: Entity) -> Entity {
     // Content-sized — the strip host supplies background + centering.
     let bar = commands
         .spawn((
@@ -169,9 +169,27 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let add = tool_button(commands, fonts, "plus", "Add Node", accent(), AddNodeBtn);
     let layout = tool_button(commands, fonts, "tree-structure", "Auto Layout", text_primary(), LayoutBtn);
+    // Bound to its own viewport, so with the panel open twice it groups the
+    // selection in the graph the button sits above.
+    let comment = tool_button(commands, fonts, "chat-text", "Comment", text_primary(), CommentBtn(viewport));
     let apply = tool_button(commands, fonts, "lightning", "Apply", text_primary(), ApplyBtn);
-    commands.entity(bar).add_children(&[add, layout, apply]);
+    commands.entity(bar).add_children(&[add, comment, layout, apply]);
     bar
+}
+
+/// Toolbar Comment → a comment around the selection, or an empty one in the
+/// middle of the view; see [`NodeGraphView::request_comment`].
+#[derive(Component)]
+struct CommentBtn(Entity);
+
+fn comment_click(q: Query<(&UiInteraction, &CommentBtn), Changed<UiInteraction>>, mut views: Query<&mut NodeGraphView>) {
+    for (i, btn) in &q {
+        if *i == UiInteraction::Pressed {
+            if let Ok(mut v) = views.get_mut(btn.0) {
+                v.request_comment(None);
+            }
+        }
+    }
 }
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -186,10 +204,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // strip below the top bar, which meant a row of controls for *this* graph
     // rendered the same distance from it as from every other panel, and had to
     // keep answering "am I the visible tab?" to know whether to show at all.
-    let toolbar = build_toolbar(commands, fonts);
-
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(BpGraph);
+    let toolbar = build_toolbar(commands, fonts, handle.viewport);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
 
     // Comment / group boxes mount behind the nodes (their own canvas layer).
@@ -614,11 +631,13 @@ fn add_node_open(
 /// Right-click / Spacebar on empty canvas → the shared widget records
 /// `context_menu`; open the searchable palette at the cursor and spawn the
 /// chosen node at the clicked canvas point.
-fn bp_context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut views: Query<&mut NodeGraphView, With<BpGraph>>) {
+fn bp_context_menu_open(fonts: Option<Res<EmberFonts>>, mut commands: Commands, mut views: Query<(Entity, &mut NodeGraphView), With<BpGraph>>) {
     let Some(fonts) = fonts else { return };
-    for mut v in &mut views {
+    for (view, mut v) in &mut views {
         if let Some((screen, canvas)) = v.context_menu.take() {
-            search_menu(&mut commands, &fonts, screen.x, screen.y, bp_node_entries([canvas.x, canvas.y]));
+            let mut entries = vec![renzora_ember::widgets::comment_search_entry(view, canvas)];
+            entries.extend(bp_node_entries([canvas.x, canvas.y]));
+            search_menu(&mut commands, &fonts, screen.x, screen.y, entries);
         }
         // Cable dragged onto empty canvas → same palette, but each pick auto-wires
         // the new node back to the dragged pin.

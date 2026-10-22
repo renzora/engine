@@ -65,17 +65,23 @@ pub(crate) fn divider_cursor(
 
 /// Two width breakpoints, both measured on the panel root:
 /// - below `TREE_ONLY_WIDTH`, collapse to a tree-only file browser (no room for
-///   a usable grid beside the tree — mirrors the egui browser's behaviour);
-/// - below `COMPACT_WIDTH`, keep the grid but drop the toolbar's action labels.
-///   The full row (Add + Import + New Folder + Sort + view + search + zoom) needs
-///   roughly this much before it starts wrapping; under it, icon-only buttons
-///   buy back ~150px and keep everything reachable on one line.
+///   a usable grid beside the tree, so the tree lists files itself). This was
+///   310px, which left a ~365px panel showing the tree beside one squeezed card
+///   column: worse than either layout. The threshold is now sized so the grid
+///   always fits two cards beside a default-width tree: 240 (tree) + 4
+///   (splitter) + 20 (grid padding) + 2 x 96 (`TILE_W` at zoom 1) + 10 (column
+///   gap) + ~10 (scrollbar) = 476, rounded up to 480. It is a constant rather
+///   than derived from the live `tree_width` on purpose: dragging the splitter
+///   wider would otherwise flip the panel to tree-only mid-drag and take the
+///   splitter away from under the cursor.
+/// - below `COMPACT_WIDTH`, keep the grid but drop the New Folder and Sort
+///   labels, which buys the breadcrumb back ~120px before it has to fold.
 pub(crate) fn responsive_layout(
     root: Query<&bevy::ui::ComputedNode, With<AssetRoot>>,
     mut state: ResMut<NativeAssets>,
 ) {
-    const TREE_ONLY_WIDTH: f32 = 310.0;
-    const COMPACT_WIDTH: f32 = 820.0;
+    const TREE_ONLY_WIDTH: f32 = 480.0;
+    const COMPACT_WIDTH: f32 = 760.0;
     let Ok(cn) = root.single() else {
         return;
     };
@@ -91,32 +97,6 @@ pub(crate) fn responsive_layout(
     if state.compact != compact {
         state.compact = compact;
     }
-}
-
-/// The band behind the action toolbar — a step lighter than the plain panel
-/// header.
-pub(crate) fn header_surface() -> Color {
-    renzora_ember::theme::mix(
-        renzora_ember::theme::header_bg(),
-        renzora_ember::theme::section_bg(),
-        0.25,
-    )
-}
-
-/// The band behind the breadcrumb row — a further step lighter again, so the
-/// path reads as its own strip rather than as more toolbar.
-///
-/// Shade alone wasn't enough: at one step off the header the two rows looked
-/// like a single flat block, which is why the row also carries hairline rules
-/// top and bottom. Both bands are mixed *toward* `section_bg` rather than
-/// lightened by a fixed amount, so they land between two colours the theme
-/// author picked and can't invert on a light palette.
-pub(crate) fn crumb_surface() -> Color {
-    renzora_ember::theme::mix(
-        renzora_ember::theme::header_bg(),
-        renzora_ember::theme::section_bg(),
-        0.7,
-    )
 }
 
 /// True once the panel is too tight for the toolbar's full action labels.
@@ -137,13 +117,15 @@ pub(crate) fn toolbar_action(
     icon_label_button_collapsing(commands, fonts, icon, label, is_compact)
 }
 
-/// Toggle grid/list view.
+/// Switch to the grid or the list view, whichever key was pressed.
 pub(crate) fn view_toggle_click(
-    q: Query<&UiInteraction, (With<ViewToggleBtn>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &ViewToggleBtn), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
 ) {
-    if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        state.list_view = !state.list_view;
+    for (interaction, btn) in &q {
+        if *interaction == UiInteraction::Pressed && state.list_view != btn.list {
+            state.list_view = btn.list;
+        }
     }
 }
 

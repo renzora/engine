@@ -77,7 +77,7 @@ app.register_inspector(InspectorEntry {
     type_id: "my_glow",
     display_name: "Glow",
     icon: "sun",
-    category: "Rendering",
+    category: "rendering",
     has_fn: |world, e| world.get::<Glow>(e).is_some(),
     add_fn: Some(|world, e| { world.entity_mut(e).insert(Glow::default()); }),
     remove_fn: Some(|world, e| { world.entity_mut(e).remove::<Glow>(); }),
@@ -97,6 +97,27 @@ app.register_inspector(InspectorEntry {
 ```
 
 `add_fn: None` keeps the component out of the **Add Component** overlay; `remove_fn: None` hides the section's toggle and trash controls. `is_enabled_fn` + `set_enabled_fn` together give the section a toggle switch.
+
+`category` is the **Inspector page** the card appears on, and the group it is listed under in Add Component. Use one of these ids (they are `renzora::inspector_pages::InspectorPage::ALL`, in the order the Inspector's page strip shows them):
+
+| `category` | Page | For |
+|---|---|---|
+| `"object"` | Object | Transform, and anything describing the entity itself |
+| `"rendering"` | Rendering | Meshes, materials, decals, LODs, text, splats, sprites |
+| `"lighting"` | Lighting | Lights, light probes, ray-traced GI |
+| `"camera"` | Camera | The camera and its image effects: bloom, tonemapping, anti-aliasing, depth of field, motion blur |
+| `"environment"` | Environment | Sky, atmosphere, clouds, fog, water, wind, terrain |
+| `"post_process"` | Post Process | SSAO, SSR, shader post effects |
+| `"physics"` | Physics | Bodies, colliders, joints, ragdolls |
+| `"animation"` | Animation | Animators and clips |
+| `"scripting"` | Scripting | Scripts, blueprints, gameplay components |
+| `"audio"` | Audio | Players and listeners |
+| `"navigation"` | Navigation | Navmesh volumes, obstacles, agents |
+| `"networking"` | Networking | Replication |
+| `"ui"` | UI | Game UI nodes (offered only inside a UI canvas) |
+| `"particles"` | Particles | Particle effects |
+
+Older names still land somewhere sensible, so a plugin built before the pages existed keeps working: `"transform"`, `"general"` and `"component"` go to Object, `"effects"` to Particles, `"gameplay"` to Scripting, and a `"rendering"` entry whose `type_id` names a sky, fog, cloud or water component goes to Environment (SSAO and SSR to Post Process). Anything unrecognised goes to Object. Camera-page components are offered in Add Component only on a camera.
 
 The field types available: `Float { speed, min, max }`, `Int { min, max }`, `Vec3 { speed }`, `Bool`, `Color`, `ColorRgba`, `String`, `ReadOnly`, `Asset { extensions }`, `AssetCreatable { extensions, create_fn }`, `Enum { options }`, `DynamicEnum { options }`, and `Button { icon }`.
 

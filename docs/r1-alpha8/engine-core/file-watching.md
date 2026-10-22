@@ -274,8 +274,9 @@ make it look for that path inside the project.
 
 `keyed_list` runs its snapshot **every frame**. A snapshot that touches the disk
 is therefore a per-frame filesystem read for as long as the panel is open, and it
-will not show up in any search for a timer or a throttle. The Scenes panel did
-exactly this: `read_dir` of `<project>/scenes`, every frame, on the main thread.
+will not show up in any search for a timer or a throttle. The Scenes panel (since
+replaced by the top bar's scene switcher, which reads the folder only when its
+menu opens) once did exactly this: `read_dir` of `<project>/scenes`, every frame, on the main thread.
 
 When a snapshot is more than cheap field reads, use `keyed_list_tokened` and let
 the token answer "could this have changed?" from a counter the watcher moves:

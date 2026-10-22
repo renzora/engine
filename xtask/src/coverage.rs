@@ -71,7 +71,6 @@ const VENDORED: &[&str] = &[
     "bevy_firefly",
     "bevy_gauge",
     "bevy_gaussian_splatting",
-    "bevy_hanabi",
     "bevy_hui",
     "bevy_mod_outline",
     "bevy_silk",

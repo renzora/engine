@@ -139,7 +139,7 @@ Each job runs this inside the image (reproduce with `renzora test` / `renzora ch
 ```bash
 # Test job — first-party crates only; the vendored Bevy-ecosystem crates are excluded
 cargo test --workspace \
-  --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
+  --exclude bevy_gauge --exclude bevy_mod_outline \
   --exclude bevy_silk --exclude vleue_navigator \
   --exclude bevy_args --exclude bevy_interleave \
   --exclude bevy_interleave_interface --exclude bevy_interleave_macros \
@@ -147,7 +147,7 @@ cargo test --workspace \
 
 # Clippy job — warnings are denied
 cargo clippy --workspace --no-deps \
-  --exclude bevy_gauge --exclude bevy_hanabi --exclude bevy_mod_outline \
+  --exclude bevy_gauge --exclude bevy_mod_outline \
   --exclude bevy_silk --exclude vleue_navigator \
   --exclude bevy_args --exclude bevy_interleave \
   --exclude bevy_interleave_interface --exclude bevy_interleave_macros \

@@ -245,9 +245,9 @@ Three rules worth knowing when you touch this machinery:
 let (row, items) = overflow_strip(
     commands,
     OverflowBudget::Fill { measure: bar, reserve: 66.0 },
-    "doc-tab",
+    "my-tab",
 );
-keyed_list(commands, items, doc_tab_snapshot);
+keyed_list(commands, items, my_tab_snapshot);
 // …and on each item, so it can be reached once it folds:
 commands.entity(tab).insert(
     OverflowEntry::new("file", name, move |w| activate(w, id))
@@ -256,15 +256,15 @@ commands.entity(tab).insert(
 commands.entity(tab).insert(OverflowKeep);      // active item: never folds
 ```
 
-Two budgets. `OverflowBudget::Fill { measure, reserve }` takes whatever `measure` was laid out to, less `reserve` for the buttons sharing that container — use it wherever the strip has a container that fills its slot, so nothing folds while there's still room. `OverflowBudget::Fixed(px)` is a constant cap, for a strip with no container of its own to measure (the centered workspace ribbon). Either way the item container hugs its content, so a trailing button (the document tabs' `+`) stays glued to the last item instead of stranding itself at the far edge. Where the layout *around* a strip must not move, fix the width of the strip's container rather than the strip.
+Two budgets. `OverflowBudget::Fill { measure, reserve }` takes whatever `measure` was laid out to, less `reserve` for the buttons sharing that container. Use it wherever the strip has a container that fills its slot, so nothing folds while there's still room. `OverflowBudget::Fixed(px)` is a constant cap, for a strip with no container of its own to measure (the centered workspace ribbon). Either way the item container hugs its content, so a trailing button (an add `+`) stays glued to the last item instead of stranding itself at the far edge. Where the layout *around* a strip must not move, fix the width of the strip's container rather than the strip.
 
 The fold is computed from each item's **last width measured while visible**, cached on the item, not from live layout — a hidden node measures zero, so folding an item would shrink the measured content, unfold it, and oscillate every frame. Widths are remembered, so the decision doesn't depend on what's currently folded and settles in one pass.
 
 A **new** item has no remembered width, and the obvious answer — leave it in the flow for a frame so it can be measured — is one frame of an item visibly sitting in a strip it doesn't fit in before folding away. So an item is instead spawned `position: absolute` and `Visibility::Hidden`: taffy still measures it, invisibly and without pushing its neighbours, and `overflow_fit` puts it back the instant it has a width. The strip also caches widths **by `OverflowEntry::label`**, which survives the rebuild a `keyed_list` performs when a row's content changes — the row is a new entity, so its own cached width is gone, and without the label cache every tab activation would re-measure (and so blink) every row the rebuild touched. With it, a rebuilt row is decided in the same frame it was built. `overflow_fit` is ordered after `run_keyed_lists` for exactly that reason.
 
-`OverflowEntry::on_drag` makes the item's row in the caret menu draggable: press and move past a small threshold and the menu closes and the handler runs (the host takes over the drag), press and release without moving and the normal `action` runs. Setting it changes *when* the click fires — an ordinary menu row acts on press, which can't work when the press is also how a drag starts. The document tabs use it so a folded tab can be dragged back out into the strip.
+`OverflowEntry::on_drag` makes the item's row in the caret menu draggable: press and move past a small threshold and the menu closes and the handler runs (the host takes over the drag), press and release without moving and the normal `action` runs. Setting it changes *when* the click fires: an ordinary menu row acts on press, which can't work when the press is also how a drag starts. Use it for a reorderable strip, so a folded item can be dragged back out into it.
 
-`OverflowEntry::icon_color` paints that row's glyph a given colour instead of the menu's muted default — for a strip where the icon's colour carries meaning the label doesn't. The document tabs pass each document's type colour, so a tab that folds into the caret menu keeps the same glyph in the same colour it had in the strip. It is only honoured on a draggable row; a plain row is drawn by `menu_item`, which owns its own colours.
+`OverflowEntry::icon_color` paints that row's glyph a given colour instead of the menu's muted default, for a strip where the icon's colour carries meaning the label doesn't. Pass an item's type colour, for example, and an item that folds into the caret menu keeps the same glyph in the same colour it had in the strip. It is only honoured on a draggable row; a plain row is drawn by `menu_item`, which owns its own colours.
 
 ### Wrapping, rearrangeable toolbars (`arrange_row`)
 

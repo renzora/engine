@@ -20,6 +20,7 @@ pub fn create_translation_track(bone_name: &str, keyframes: Vec<(f32, [f32; 3])>
         translations: keyframes,
         rotations: Vec::new(),
         scales: Vec::new(),
+        muted: false,
     }
 }
 
@@ -30,5 +31,6 @@ pub fn create_rotation_track(bone_name: &str, keyframes: Vec<(f32, [f32; 4])>) -
         translations: Vec::new(),
         rotations: keyframes,
         scales: Vec::new(),
+        muted: false,
     }
 }

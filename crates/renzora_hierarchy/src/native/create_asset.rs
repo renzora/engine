@@ -47,7 +47,6 @@ pub(crate) enum CreateKind {
     RustScript,
     Blueprint,
     Material,
-    Particle,
     Template,
     Scene,
 }
@@ -55,11 +54,13 @@ pub(crate) enum CreateKind {
 impl CreateKind {
     /// No `Script`: Lua is contributed by its plugin now, through
     /// `register_create_menu_item`, and reaches this menu via the registry.
-    const ALL: [CreateKind; 6] = [
+    /// No particle effect for the same reason: `renzora_particles_editor`
+    /// registers its `.vfx` entry, and the built-in one here wrote a Hanabi
+    /// `.particle`, a format that is now only read.
+    const ALL: [CreateKind; 5] = [
         CreateKind::RustScript,
         CreateKind::Blueprint,
         CreateKind::Material,
-        CreateKind::Particle,
         CreateKind::Template,
         CreateKind::Scene,
     ];
@@ -69,7 +70,6 @@ impl CreateKind {
             CreateKind::RustScript => renzora::lang::t_or("assets.new.rust", "Rust Script"),
             CreateKind::Blueprint => renzora::lang::t("assets.new.blueprint"),
             CreateKind::Material => renzora::lang::t("assets.new.material"),
-            CreateKind::Particle => renzora::lang::t("assets.new.particle"),
             CreateKind::Template => renzora::lang::t("assets.new.template"),
             CreateKind::Scene => renzora::lang::t("assets.new.bsn"),
         }
@@ -94,7 +94,6 @@ impl CreateKind {
             CreateKind::RustScript => "new_script",
             CreateKind::Blueprint => "NewBlueprint",
             CreateKind::Material => "NewMaterial",
-            CreateKind::Particle => "NewParticle",
             CreateKind::Template => "NewTemplate",
             CreateKind::Scene => "NewScene",
         }
@@ -105,7 +104,6 @@ impl CreateKind {
             CreateKind::RustScript => "rs",
             CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "material",
-            CreateKind::Particle => "particle",
             CreateKind::Template => "html",
             CreateKind::Scene => "bsn",
         }
@@ -128,7 +126,6 @@ impl CreateKind {
             // the blueprint crate so both create paths write the same graph.
             CreateKind::Blueprint => renzora_blueprint::starter_blueprint_json(),
             CreateKind::Material => "{}".to_string(),
-            CreateKind::Particle => "(name: \"New Particle\")".to_string(),
             CreateKind::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
             CreateKind::Scene => "// renzora interim bsn v1\n".to_string(),
@@ -143,7 +140,6 @@ impl CreateKind {
             CreateKind::RustScript => "scripts",
             CreateKind::Blueprint => "blueprints",
             CreateKind::Material => "materials",
-            CreateKind::Particle => "particles",
             CreateKind::Template => "ui",
             CreateKind::Scene => "scenes",
         }
@@ -155,7 +151,6 @@ impl CreateKind {
             CreateKind::RustScript => "gear-six",
             CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "palette",
-            CreateKind::Particle => "sparkle",
             CreateKind::Scene => "film-slate",
         }
     }
@@ -166,7 +161,6 @@ impl CreateKind {
             CreateKind::RustScript => (222, 130, 80),
             CreateKind::Blueprint => (100, 180, 255),
             CreateKind::Material => (0, 200, 130),
-            CreateKind::Particle => (230, 160, 90),
             CreateKind::Template => (230, 120, 90),
             CreateKind::Scene => (115, 191, 242),
         }

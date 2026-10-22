@@ -49,6 +49,12 @@ pub struct BoneTrack {
     pub translations: Vec<(f32, [f32; 3])>,
     pub rotations: Vec<(f32, [f32; 4])>,
     pub scales: Vec<(f32, [f32; 3])>,
+    /// Disabled in the timeline: the clip plays as if this track were absent,
+    /// but its keys are kept so it can be switched back on. Skipped when false,
+    /// so every `.anim` written before the flag existed (or with it off) is
+    /// byte-identical.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool,
 }
 
 // ----------------------------------------------------------------------------
@@ -160,6 +166,10 @@ pub struct PropertyTrack {
     pub field: String,
     #[serde(default)]
     pub keys: Vec<PropertyKey>,
+    /// Disabled in the timeline: never sampled, keys kept. See
+    /// [`BoneTrack::muted`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool,
 }
 
 /// One keyframe: a value at a time, plus how to interpolate toward the next key.
@@ -315,7 +325,17 @@ mod property_anim_tests {
     use super::*;
 
     fn ftrack(keys: Vec<PropertyKey>) -> PropertyTrack {
-        PropertyTrack { target: String::new(), component: "x".into(), field: "y".into(), keys }
+        PropertyTrack { target: String::new(), component: "x".into(), field: "y".into(), keys, muted: false }
+    }
+
+    #[test]
+    fn muted_flag_is_omitted_when_off_and_round_trips_when_on() {
+        let mut track = ftrack(vec![]);
+        let off = ron::ser::to_string(&track).unwrap();
+        assert!(!off.contains("muted"), "an unmuted track must serialize as before: {off}");
+        track.muted = true;
+        let back: PropertyTrack = ron::from_str(&ron::ser::to_string(&track).unwrap()).unwrap();
+        assert!(back.muted);
     }
 
     #[test]
