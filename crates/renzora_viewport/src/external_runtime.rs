@@ -168,6 +168,8 @@ pub fn spawn_runtime(
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child = command.spawn()?;
+    #[cfg(target_os = "windows")]
+    job::tie_to_editor(&child);
     if let Some(stdout) = child.stdout.take() {
         forward_to_console(stdout);
     }
@@ -175,6 +177,123 @@ pub fn spawn_runtime(
         forward_to_console(stderr);
     }
     Ok(child)
+}
+
+/// Ending the game when the editor ends, however it ends.
+///
+/// [`kill_on_app_exit`] covers a normal quit, and only that. An editor that
+/// crashed, was killed from Task Manager, or lost its window some other way
+/// never reached it, and a game left behind holds the executable open, which
+/// fails the next build at the staging step with "being used by another
+/// process" and nothing on screen to close.
+///
+/// A job object closes that gap in the OS rather than in our code: every game
+/// goes into one job, set to kill its processes when the job's last handle
+/// closes, and the only handle is this process's. Windows closes it when the
+/// editor ends, for any reason, and takes the game with it.
+#[cfg(target_os = "windows")]
+mod job {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::OnceLock;
+
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct BasicLimits {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct IoCounters {
+        counts: [u64; 6],
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct ExtendedLimits {
+        basic: BasicLimits,
+        io: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateJobObjectW(attributes: *const core::ffi::c_void, name: *const u16) -> isize;
+        fn SetInformationJobObject(
+            job: isize,
+            class: i32,
+            info: *const core::ffi::c_void,
+            len: u32,
+        ) -> i32;
+        fn AssignProcessToJobObject(job: isize, process: isize) -> i32;
+    }
+
+    /// The one job every game joins, created on first use and never closed:
+    /// closing it is what would end the games, and that is the process exit's
+    /// job.
+    fn editor_job() -> Option<isize> {
+        static JOB: OnceLock<Option<isize>> = OnceLock::new();
+        *JOB.get_or_init(|| {
+            // SAFETY: null attributes and name are documented as valid, and the
+            // limits struct is a correctly laid out JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+            // that outlives the call.
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job == 0 {
+                    return None;
+                }
+                let mut limits = ExtendedLimits::default();
+                limits.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                let ok = SetInformationJobObject(
+                    job,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    (&limits as *const ExtendedLimits).cast(),
+                    std::mem::size_of::<ExtendedLimits>() as u32,
+                );
+                (ok != 0).then_some(job)
+            }
+        })
+    }
+
+    /// Put `child` in the editor's job. Best effort: a game that could not be
+    /// added still runs, and a normal quit still ends it.
+    pub(super) fn tie_to_editor(child: &std::process::Child) {
+        let Some(job) = editor_job() else {
+            bevy::log::warn!("[play] could not create a job object; a crashed editor may leave the game running");
+            return;
+        };
+        // SAFETY: the handle is the live child's own, borrowed for the call.
+        let ok = unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as isize) };
+        if ok == 0 {
+            bevy::log::warn!("[play] could not tie the game to the editor; a crashed editor may leave it running");
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        /// The struct is passed by pointer and size, so a wrong layout is a
+        /// silent misread by the kernel rather than a compile error. 144 is
+        /// the 64-bit size; nothing ships for 32-bit Windows.
+        #[cfg(target_pointer_width = "64")]
+        #[test]
+        fn the_limits_struct_matches_the_win32_layout() {
+            assert_eq!(std::mem::size_of::<super::ExtendedLimits>(), 144);
+        }
+    }
 }
 
 /// Read `stream` line by line on its own thread, pushing each line into the

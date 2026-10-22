@@ -65,16 +65,33 @@ pub(crate) fn register(app: &mut App) {
 /// was itself inside the frame waiting on the worker: the game deadlocked on
 /// its first frame with its window still hidden, and the Game panel never got
 /// anything to show.
+///
+/// **An editor window that is gone ends the game.** Closing the editor takes
+/// its windows with it, this one's included, and the game used to carry on
+/// without one: `SetParent` failed every frame against the dead handle, so it
+/// ran on hidden, holding the executable open (which blocks the next build)
+/// with no window anyone could close. A game started for the Game panel has no
+/// other place to be, so it quits.
 #[cfg(target_os = "windows")]
 fn adopt_embed_parent(
     _main_thread: bevy::ecs::system::NonSendMarker,
     mut adoptions: Local<u32>,
     mut warned: Local<bool>,
     windows: Query<&bevy::window::RawHandleWrapper, With<bevy::window::PrimaryWindow>>,
+    mut exit: MessageWriter<AppExit>,
 ) {
     use winit::raw_window_handle::RawWindowHandle;
 
-    let (Some(parent), Ok(handle)) = (embed_parent(), windows.single()) else {
+    let Some(parent) = embed_parent() else {
+        return;
+    };
+    // SAFETY: `IsWindow` only reads; any value is a valid argument.
+    if unsafe { win32::IsWindow(parent) } == 0 {
+        info!("[embed] the editor window is gone, so the game is closing");
+        exit.write(AppExit::Success);
+        return;
+    }
+    let Ok(handle) = windows.single() else {
         return;
     };
     let RawWindowHandle::Win32(win) = handle.get_window_handle() else {
@@ -122,5 +139,6 @@ mod win32 {
         pub fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
         pub fn SetParent(child: isize, parent: isize) -> isize;
         pub fn GetParent(hwnd: isize) -> isize;
+        pub fn IsWindow(hwnd: isize) -> i32;
     }
 }

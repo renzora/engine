@@ -14,6 +14,8 @@ The game runs as **its own program**, separate from the editor. That has three c
 - **A crash in the game doesn't take the editor down.** The game's window closes, the Console shows what went wrong, and you carry on.
 - **Nothing the game does changes your scene.** The game loads the scene from the saved file, so moving something in a running game never touches what you are editing. That is also why Play saves first.
 
+The game never outlives the editor. Closing the editor ends it, and so does the editor crashing or being ended from Task Manager.
+
 Everything the game logs appears in the editor's **Console**, under **Runtime**.
 
 ## The Game panel

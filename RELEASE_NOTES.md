@@ -1,5 +1,14 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-22 16:07
+- fix(editor): toasts are shown again, above dialogs and the tutorial card
+- fix(scene): Save Scene As no longer changes the boot scene
+- fix(scene): Save Scene As restores a minimised editor and stays in front of it, so its replace prompt can no longer open hidden
+- fix(scene): a remembered scene or tab whose file is gone is dropped on open, instead of becoming the target of every save
+- fix(scene): opening a scene by a project-relative path works
+- fix(play): the game closes when the editor closes, crashes or is ended
+- fix(marketplace): the marketplace's toast stack is no longer saved into the open scene
+
 ## 2026-10-22 14:16
 - feat(assets): renaming or moving an asset updates the paths written in scripts, including scripts open in the Code Editor
 
