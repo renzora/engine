@@ -317,16 +317,21 @@ fn add_child(world: &mut World, target: Entity) {
     }
 }
 
+/// Deep-clones `target` through Bevy's `clone_and_spawn`, the same path the
+/// Ctrl+D shortcut uses (`renzora_gizmo::shortcuts::duplicate_entities`), so
+/// the menu and keyboard produce the same object. This used to spawn only a
+/// `Name` and a default `Transform`: the "copy" had no mesh, collider or
+/// gameplay components and sat at the origin.
 fn duplicate(world: &mut World, target: Entity) {
-    let parent = world.get::<ChildOf>(target).map(|c| c.parent());
+    let Ok(mut src) = world.get_entity_mut(target) else {
+        return;
+    };
+    let new_entity = src.clone_and_spawn();
     let name = world
-        .get::<Name>(target)
+        .get::<Name>(new_entity)
         .map(|n| format!("{} (Copy)", n.as_str()))
         .unwrap_or_else(|| "Entity (Copy)".to_string());
-    let new_entity = world.spawn((Name::new(name), Transform::default())).id();
-    if let Some(p) = parent {
-        world.entity_mut(new_entity).set_parent_in_place(p);
-    }
+    world.entity_mut(new_entity).insert(Name::new(name));
     if let Some(sel) = world.get_resource::<EditorSelection>() {
         sel.set(Some(new_entity));
     }
