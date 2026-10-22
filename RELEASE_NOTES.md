@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-22 12:42
+- fix(assets): renaming or moving an asset updates every object in the open scene that uses it, so saving no longer brings the old path back
+- feat(assets): a rename or move warns when a reference to the asset could not be updated
+
 ## 2026-10-22 11:45
 - fix(editor): pressing Tab in a number field keeps the typed value and moves to the next field
 
