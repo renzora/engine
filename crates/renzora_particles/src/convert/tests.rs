@@ -74,6 +74,9 @@ fn simulate(asset: &VfxAsset, seconds: f32) -> Vec<(bevy::math::Vec3, bevy::math
         .collect()
 }
 
+/// The per-emitter particle cap for the whole-library simulation below.
+const SIM_CAPACITY: u32 = 2000;
+
 #[test]
 fn every_shipped_effect_converts_compiles_and_simulates() {
     let files = shipped_particles();
@@ -97,12 +100,22 @@ fn every_shipped_effect_converts_compiles_and_simulates() {
             }
         };
         assert_eq!(reparsed, conversion.asset, "{name}: the .vfx text does not round-trip");
-        let (mut sim, errors) = EffectSim::new(&reparsed);
+        // Simulate a capped copy for one second. The library has 238 effects,
+        // some at 100000 particles, and three seconds of each at full size
+        // took minutes optimized and stalled CI's unoptimized test build for
+        // over half an hour. A blow-up (NaN, runaway force, bad light) shows
+        // in a particle's first second, and a cap of 2000 still runs every
+        // node of every graph on thousands of particles.
+        let mut capped = reparsed.clone();
+        for e in &mut capped.emitters {
+            e.capacity = e.capacity.min(SIM_CAPACITY);
+        }
+        let (mut sim, errors) = EffectSim::new(&capped);
         if let Some(e) = errors.first() {
             failures.push(format!("{name}: {:?}", e.errors));
             continue;
         }
-        sim.simulate_to(3.0, &FrameInput::default());
+        sim.simulate_to(1.0, &FrameInput::default());
         for e in &sim.emitters {
             let p = &e.particles;
             let finite = p.position.iter().all(|v| v.is_finite())
