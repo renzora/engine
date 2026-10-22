@@ -16,16 +16,23 @@ use renzora_ember::markup::writeback::write_attr_to_markup;
 
 /// Drive the app until the asset finishes loading (or we time out). Bevy's
 /// AssetServer is async; without ticking the app the load future never
-/// completes. 200 frames at the test's tiny world should be ample headroom.
+/// completes.
+///
+/// The budget is wall-clock time, not a frame count. `MinimalPlugins` frames
+/// cost microseconds, so 200 of them were over in about 0.2 s, and on a slow CI
+/// runner the file read on the IO pool had not finished by then. The short
+/// sleep hands that pool the CPU instead of spinning against it.
 fn pump_until_loaded(app: &mut App, handle: &Handle<HtmlTemplate>) {
-    for _ in 0..200 {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
         app.update();
         let templates = app.world().resource::<Assets<HtmlTemplate>>();
         if templates.get(handle).is_some() {
             return;
         }
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
-    panic!("HtmlTemplate did not load within 200 frames");
+    panic!("HtmlTemplate did not load within 10 s");
 }
 
 #[test]
