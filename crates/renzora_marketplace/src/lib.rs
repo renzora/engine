@@ -147,15 +147,13 @@ impl Plugin for MarketplacePlugin {
         app.init_resource::<thumbs::HubThumbs>()
             .init_resource::<avatars::AvatarCache>()
             .init_resource::<toasts::ToastQueue>()
-            .init_resource::<toasts::ToastUi>()
             .init_resource::<lightbox::Lightbox>();
 
         app.add_systems(
             Update,
             (
                 avatars::request_avatars,
-                toasts::drain_toasts,
-                toasts::toast_clicks,
+                toasts::forward_toasts,
                 // Open after close, so clicking a NEW image while a lightbox is
                 // up swaps images instead of the backdrop-close eating the press.
                 (lightbox::close_clicks, lightbox::open_clicks).chain(),

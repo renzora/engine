@@ -51,6 +51,7 @@ mod scene_switcher;
 mod title_bar_colour;
 mod status_bar;
 mod theme_bridge;
+mod toasts;
 mod top_bar;
 mod top_menu;
 mod window_chrome;
@@ -108,6 +109,7 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShellPlugin (bevy_ui editor shell)");
         app.add_plugins(EmberPlugin);
+        app.add_systems(Update, toasts::forward_toasts);
         // Restore the persisted per-workspace dock layout if one exists, else use
         // the built-in defaults. When restoring, append any *new* built-in
         // workspace whose name the saved file predates — so engine updates that

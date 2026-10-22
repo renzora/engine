@@ -2,9 +2,10 @@
 //!
 //! This is a pure data queue: editor systems push notifications via
 //! [`Toasts::info`]/[`success`](Toasts::success)/[`warning`](Toasts::warning)/
-//! [`error`](Toasts::error), and the native (bevy_ui) shell drains and renders
-//! them. The legacy egui rendering lived here but was removed in the native
-//! migration.
+//! [`error`](Toasts::error), and the editor shell drains them into
+//! `renzora_ember::widgets::ToastQueue`, which draws them. The legacy egui
+//! rendering lived here and was removed in the native migration; for a while
+//! nothing replaced it, and every toast was dropped unseen.
 
 use bevy::prelude::*;
 
@@ -49,7 +50,9 @@ pub struct Toast {
     pub duration: f64,
 }
 
-const DEFAULT_DURATION: f64 = 3.0;
+/// How long a toast stays up, the same as the marketplace's: three seconds was
+/// shorter than a two-line message takes to read.
+const DEFAULT_DURATION: f64 = 5.0;
 
 /// Resource that stores active toast notifications.
 #[derive(Resource, Default)]

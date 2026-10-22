@@ -285,6 +285,10 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<scroll_area::ScrollConfig>();
         app.init_resource::<folder_picker::FolderPick>();
         app.init_resource::<folder_picker::FolderPickCollapsed>();
+        app.init_resource::<toast::ToastQueue>();
+        app.init_resource::<toast::ToastStack>();
+        // On their own: the main widget tuple is at Bevy's 20-system limit.
+        app.add_systems(Update, (toast::drain_toasts, toast::toast_clicks));
         app.init_resource::<overflow_row::RowDrag>();
         // Compute the "pointer is on a scrollbar" flag before any panel's Update
         // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
