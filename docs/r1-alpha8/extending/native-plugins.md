@@ -81,7 +81,7 @@ Every plugin is a **directory** under `plugins/`, named by its id.
 
 ## Building
 
-The editor compiles a plugin the first time it sees one, and again whenever the engine moves under it. That is the only build path, and it is the same from a source checkout as from a downloaded editor: `cargo renzora` stages the engine and the SDK but deliberately does not touch `plugins/`, which belongs to the editor rather than to this repository (see the note at the top of `xtask/src/main.rs`). Drop a plugin directory in and launch.
+The editor compiles a plugin the first time it sees one, and again whenever the engine moves under it. One installed from the Marketplace is compiled during the install itself, so the restart that loads it has nothing to build. That is the only build path, and it is the same from a source checkout as from a downloaded editor. In a source checkout `cargo renzora` also runs it at the end of the build, printing progress in the same terminal, so the editor it launches has nothing left to compile. Drop a plugin directory in and launch.
 
 That build happens before the editor exists, so it gets a window of its own: the setup window, titled with the engine's name and version like the editor's own window, with a progress bar and the build log underneath it. It says which plugin is compiling and what the compiler said, and it closes into the editor on its own when the work is done. A plugin that failed to compile is skipped rather than holding the window open, and is waiting for you in **Settings ▸ Editor ▸ Plugins**. The one thing it stops for is a missing Rust toolchain, which it offers to install.
 

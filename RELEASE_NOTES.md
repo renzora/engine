@@ -1,5 +1,22 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-23 02:24
+- fix(build): `cargo renzora` prints its plugin build progress and no longer repeats every compiler warning
+- fix(editor): the themed surfaces no longer log four shader-path warnings on every start
+- fix(inspector): a component's label column is only as wide as its longest label, so the value boxes get the rest of the row
+
+## 2026-10-23 01:52
+- perf(build): `cargo renzora` compiles your installed plugins itself, so the editor no longer opens a setup window to build them on launch
+- perf(build): `cargo renzora` builds incrementally, so a small edit rebuilds in seconds instead of recompiling its whole crate
+- fix(editor): a long document name in the scene switcher ends in "…" instead of hiding its save and close buttons
+
+## 2026-10-23 01:02
+- fix(editor): closing a document from the scene switcher leaves the switcher open
+- fix(2d): Shift-dragging a selected sprite's handle resizes it instead of starting a selection box
+- perf(plugin): a Marketplace plugin is compiled during the install, so the restart goes straight into the editor
+- perf(build): `cargo renzora` no longer relinks the engine twice per run, and a build with nothing to do takes seconds
+- perf(build): switching between `cargo renzora` and a plain cargo build no longer rebuilds the TLS stack and the editor
+
 ## 2026-10-22 16:07
 - fix(editor): toasts are shown again, above dialogs and the tutorial card
 - fix(scene): Save Scene As no longer changes the boot scene

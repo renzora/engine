@@ -52,7 +52,9 @@
 //! `plugins/` is NOT staged into. It belongs to the editor: the marketplace
 //! installs there, and a plugin is built where it is installed. Nothing in this
 //! repository writes to it, which is also why nothing in this repository sweeps
-//! it.
+//! it. The one thing a build does there is ask the staged binary to compile
+//! what is stale (`build_installed_plugins`), so the editor does not have to on
+//! launch.
 //!
 //! Cross-platform builds stay Docker-only (`renzora build` / `build-all.sh`):
 //! this tool only ever produces artifacts for the machine it runs on.
@@ -318,6 +320,7 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
             // stops a stale one from ever sitting next to a fresh editor. It hardlinks,
             // so it costs neither disk nor noticeable time (see `sdk.rs`).
             sdk::build(repo, plat, &out)?;
+            build_installed_plugins(&out, plat);
             Ok(out)
         }
         Err(e) => {
@@ -340,6 +343,56 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
     }
 }
 
+/// Compile the plugins installed in `dist/<platform>/plugins/`, here in the
+/// build's terminal, by asking the staged binary to (`--build-plugins`).
+///
+/// Left to the editor, they were compiled on its first launch: a setup window
+/// that built them all, then a restart into the editor. In a source checkout
+/// that was every build, since a plugin goes stale whenever the engine moves.
+/// The staged binary does it rather than this crate because the compiler
+/// invocation lives in `renzora_native_build`, which xtask must not depend on
+/// (see `xtask/Cargo.toml`); running the binary keeps one implementation.
+///
+/// Never fails the build. A plugin that does not compile is reported and
+/// skipped, and the editor names it in Settings, exactly as it would have.
+fn build_installed_plugins(out: &Path, plat: &Platform) {
+    let has_plugins = std::fs::read_dir(out.join("plugins"))
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false);
+    if !has_plugins {
+        return;
+    }
+    let bin = out.join(format!("renzora{}", plat.exe_suffix));
+    println!("[xtask] building installed plugins");
+    // Piped and echoed rather than inherited. On Windows `renzora.exe` is a GUI
+    // subsystem program, which does not get the console's handles from an
+    // inherited stdout, so everything it printed vanished and this step looked
+    // like it did nothing. A pipe reaches it whatever its subsystem.
+    let child = Command::new(&bin)
+        .arg("--build-plugins")
+        .current_dir(out)
+        .stdout(std::process::Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[xtask] WARN: could not run {}: {e}; the editor will build plugins on launch", bin.display());
+            return;
+        }
+    };
+    if let Some(stdout) = child.stdout.take() {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+            println!("{line}");
+        }
+    }
+    match child.wait() {
+        Ok(s) if s.success() => {}
+        Ok(s) => eprintln!("[xtask] WARN: plugin build exited {s}; the editor will retry on launch"),
+        Err(e) => eprintln!("[xtask] WARN: plugin build: {e}"),
+    }
+}
+
 /// Compile the workspace exactly as the container's editor lane does
 /// (`build-all.sh`): the whole workspace on the `dist` profile, minus the
 /// mobile crates (cdylib/staticlib targets that don't belong in a desktop
@@ -355,8 +408,6 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         "renzora-android",
         "--exclude",
         "renzora-ios",
-        "--exclude",
-        "xtask",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -370,7 +421,7 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         args.push(features.join(","));
     }
     println!("[xtask] cargo {}", args.join(" "));
-    let ok = Command::new(cargo())
+    let ok = cargo_command()
         .current_dir(repo)
         .args(&args)
         .status()
@@ -395,7 +446,7 @@ fn build_updater(repo: &Path) -> bool {
         return true;
     }
     println!("[xtask] cargo build --profile dist (updater)");
-    let ok = Command::new(cargo())
+    let ok = cargo_command()
         .current_dir(&dir)
         .args(["build", "--profile", "dist"])
         .status()
@@ -1148,6 +1199,33 @@ fn preflight_host_deps() -> Result<(), ExitCode> {
 
 fn cargo() -> String {
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
+}
+
+/// A `cargo` command for building the engine, without the variables
+/// `cargo run` set for xtask itself.
+///
+/// `cargo renzora` is `cargo run` of this crate, so this process holds
+/// `CARGO_MANIFEST_DIR=<repo>/xtask` and the `CARGO_PKG_*` of xtask, and every
+/// cargo it spawns inherited them. A build script that fingerprints one of
+/// those (`ring`'s does `CARGO_MANIFEST_DIR`) then saw a different value than
+/// under a plain `cargo build` or `cargo test` from a shell, and every switch
+/// between the two rebuilt `ring`, `rustls`, `ureq` and everything above them
+/// up to the editor.
+pub(crate) fn cargo_command() -> Command {
+    let mut cmd = Command::new(cargo());
+    for (key, _) in std::env::vars_os() {
+        let Some(key) = key.to_str() else { continue };
+        if key == "CARGO_MANIFEST_DIR"
+            || key == "CARGO_MANIFEST_PATH"
+            || key == "CARGO_PRIMARY_PACKAGE"
+            || key == "CARGO_CRATE_NAME"
+            || key == "CARGO_BIN_NAME"
+            || key.starts_with("CARGO_PKG_")
+        {
+            cmd.env_remove(key);
+        }
+    }
+    cmd
 }
 
 fn file_name(p: &Path) -> String {

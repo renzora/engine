@@ -619,6 +619,13 @@ inherits = "release"
 opt-level = 2
 lto = false
 strip = "symbols"
+# Incremental, because this is the profile every `cargo renzora` builds and
+# `release` (which this inherits) turns it off. Without it a one-line edit
+# recompiled the whole crate it was in from scratch: about 44 s for
+# `renzora_marketplace` alone. With it rustc reuses the previous build's work
+# and only redoes what the edit touched. The cost is disk, in
+# `target/dist/incremental`.
+incremental = true
 
 [profile.release]
 # Size-optimised, for what actually ships. `renzora.exe` had reached 187 MB and
@@ -692,6 +699,9 @@ strip = "symbols"
 [profile.dist-lean]
 inherits = "dist"
 lto = "thin"
+# Not inherited from `dist`: an export is built once, in a throwaway copy of
+# the tree, so incremental's cache would be disk spent on nothing.
+incremental = false
 opt-level = "s"
 strip = "symbols"
 

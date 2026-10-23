@@ -1,6 +1,13 @@
 fn main() {
     println!("cargo:rerun-if-changed=icon.ico");
-    println!("cargo:rerun-if-changed={BRANDING_FILE}");
+    // Only when it exists. cargo treats a watched file that is missing as
+    // changed, so watching it unconditionally rebuilt and relinked this crate
+    // on every cargo run in the dev tree, where it never exists: twice per
+    // `cargo renzora`, because the SDK step runs cargo a second time. An
+    // export copy always has one (see `stage_branding` in `renzora_export`).
+    if std::path::Path::new(BRANDING_FILE).exists() {
+        println!("cargo:rerun-if-changed={BRANDING_FILE}");
+    }
 
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 

@@ -41,3 +41,12 @@ edition = "2021"
 publish = false
 
 [dependencies]
+
+# `cargo renzora` is `cargo run` of this crate, which builds the dev profile,
+# and an unoptimised xtask spent about 17 s of every `cargo renzora` staging a
+# tree that had not changed: it byte-scans the 120 MB editor image for the
+# shared libraries it imports, and hashes the SDK's linked images, one byte at
+# a time. With no dependencies, optimising it adds about a second to its own
+# compile, once.
+[profile.dev]
+opt-level = 3

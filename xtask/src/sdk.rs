@@ -330,6 +330,10 @@ fn deps_dir_mtime(profile_dir: &Path) -> String {
 /// `--message-format=json-render-diagnostics` rather than plain `json`: the
 /// artifact lines still arrive on stdout, but warnings and errors keep their
 /// normal human rendering on stderr instead of arriving as JSON nobody reads.
+/// That stderr is captured and shown only if this run fails: cargo replays
+/// every cached warning on each run, so passing it through printed each
+/// warning of the build that just finished a second time.
+///
 /// The two `--extern` targets a plugin build must be given, as `deps/`-relative
 /// filenames. See [`capture_extern`] for why each is the file it is.
 #[derive(Default)]
@@ -347,7 +351,9 @@ fn artifact_files(
     // Must be the profile the engine was actually built with, or this resolves a
     // different set of artifacts and the SDK describes a build nobody has.
     let profile = crate::profile();
-    let mut cmd = Command::new("cargo");
+    // The same cargo, and the same environment, as `crate::build`: anything
+    // that differs between the two can make this re-read rebuild instead.
+    let mut cmd = crate::cargo_command();
     cmd.current_dir(repo).args([
         "build",
         "--profile",
@@ -383,10 +389,11 @@ fn artifact_files(
         cmd.args(["--target", target]);
     }
     let out = cmd
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("spawn cargo: {e}"))?;
     if !out.status.success() {
+        eprint!("{}", String::from_utf8_lossy(&out.stderr));
         return Err(format!("cargo exited {}", out.status));
     }
 

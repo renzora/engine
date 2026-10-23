@@ -23,6 +23,13 @@
 //! about what a component is even with two copies of the code. It is the same
 //! arrangement every installed plugin already runs under.
 
+// `intel_tex_2`'s prebuilt ISPC objects ask to import two C runtime functions
+// that the statically linked runtime (`+crt-static`) already defines in this
+// image, and lld reports each as LNK4217. The call still resolves to the local
+// definition, so it is noise, printed by every build; `renzora_app`'s `main.rs`
+// allows it for the same link.
+#![allow(linker_messages)]
+
 // Linked for their side effect only — see the dependency comment in
 // `Cargo.toml`. Their presence is what makes `renzora` and `renzora_ember`
 // resolve to the shared images instead of being embedded here, which is what

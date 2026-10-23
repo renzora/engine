@@ -943,7 +943,9 @@ fn prepare_sprite_image_bind_groups(
         let mut current_batch = None;
         let mut batch_item_index = 0;
         let mut batch_image_size = Vec2::ZERO;
-        let mut batch_image_handle = AssetId::invalid();
+        // `None` is "no batch open", as in Bevy 0.20's own sprite batcher;
+        // the sentinel `AssetId::invalid()` this used is deprecated.
+        let mut batch_image_handle = None;
         let mut batch_normal_handle;
         let mut is_dummy;
 
@@ -961,20 +963,21 @@ fn prepare_sprite_image_bind_groups(
                 // If there is a phase item that is not a sprite, then we must start a new
                 // batch to draw the other phase item(s) and to respect draw order. This can be
                 // done by invalidating the batch_image_handle
-                batch_image_handle = AssetId::invalid();
+                batch_image_handle = None;
                 continue;
             };
 
-            if batch_image_handle != extracted_sprite.image_handle_id {
+            if batch_image_handle != Some(extracted_sprite.image_handle_id) {
                 let Some(gpu_image) = gpu_images.get(extracted_sprite.image_handle_id) else {
                     continue;
                 };
 
                 batch_image_size = gpu_image.size_2d().as_vec2();
-                batch_image_handle = extracted_sprite.image_handle_id;
+                let image_handle = extracted_sprite.image_handle_id;
+                batch_image_handle = Some(image_handle);
 
                 (batch_normal_handle, is_dummy) = match extracted_sprite.normal_handle_id {
-                    None => (batch_image_handle, true),
+                    None => (image_handle, true),
                     Some(x) => (x, false),
                 };
 
@@ -995,7 +998,7 @@ fn prepare_sprite_image_bind_groups(
 
                 image_bind_groups
                     .values
-                    .entry((batch_image_handle, batch_normal_handle, is_dummy))
+                    .entry((image_handle, batch_normal_handle, is_dummy))
                     .or_insert_with(|| {
                         render_device.create_bind_group(
                             "sprite_material_bind_group",
@@ -1012,7 +1015,7 @@ fn prepare_sprite_image_bind_groups(
                 batch_item_index = item_index;
                 current_batch = Some(batches.entry((*retained_view, item.entity())).insert(
                     SpriteBatch {
-                        image_handle_id: batch_image_handle,
+                        image_handle_id: image_handle,
                         normal_handle_id: batch_normal_handle,
                         normal_dummy: is_dummy,
                         range: index..index,

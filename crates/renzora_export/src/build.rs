@@ -607,11 +607,13 @@ fn stage_branding(
             &dest,
             &format!("product_name={name}\nfile_description={name}\n"),
         )?,
-        // A leftover from an earlier export of a differently-named project would
-        // otherwise brand this one, since the file lives in the reused copy.
-        None if dest.exists() => std::fs::remove_file(&dest)
-            .map_err(|e| format!("remove {}: {e}", dest.display()))?,
-        None => {}
+        // Written with no overrides rather than deleted. `build.rs` watches the
+        // file only when it exists (an absent watched file makes cargo rebuild
+        // the root crate on every run), so the export copy must always have
+        // one: a file that came and went would go unnoticed. Overwriting also
+        // clears a leftover from an earlier export of a differently named
+        // project, which would otherwise brand this one.
+        None => write_if_changed(&dest, "# engine branding, no overrides\n")?,
     }
     Ok(())
 }

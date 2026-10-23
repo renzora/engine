@@ -82,6 +82,22 @@ impl ThemeSurface {
             _ => None,
         }
     }
+
+    /// The path this surface's shader is registered under.
+    ///
+    /// One per surface, because WESL names a shader module after its path:
+    /// all five surfaces used to register `renzora_ember/theme_surface.wgsl`,
+    /// so each replaced the last as `package::renzora_ember::theme_surface`,
+    /// with a warning per surface on every launch.
+    fn shader_path(self) -> &'static str {
+        match self {
+            Self::TopBar => "renzora_ember/theme_surface_top_bar.wgsl",
+            Self::DocTabs => "renzora_ember/theme_surface_doc_tabs.wgsl",
+            Self::StatusBar => "renzora_ember/theme_surface_status_bar.wgsl",
+            Self::Panel => "renzora_ember/theme_surface_panel.wgsl",
+            Self::PanelHeader => "renzora_ember/theme_surface_panel_header.wgsl",
+        }
+    }
 }
 
 /// Marks a chrome/panel node as a themeable shader surface.
@@ -320,7 +336,7 @@ fn drive_surface<M: SurfaceMat>(
         None => {
             let _ = shaders.insert(
                 &M::shader_handle(),
-                renzora::shader_source::shader(BUILTIN_WGSL, "renzora_ember/theme_surface.wgsl"),
+                renzora::shader_source::shader(BUILTIN_WGSL, M::SURFACE.shader_path()),
             );
             let h = mats.add(M::make(time.elapsed_secs(), default_img.0.clone()));
             *shared = Some(h.clone());
@@ -342,7 +358,7 @@ fn drive_surface<M: SurfaceMat>(
         // `shader_source` translates it so old themes keep working.
         let _ = shaders.insert(
             &M::shader_handle(),
-            renzora::shader_source::shader(source, "renzora_ember/theme_surface.wgsl"),
+            renzora::shader_source::shader(source, M::SURFACE.shader_path()),
         );
         *applied = want_key;
     }

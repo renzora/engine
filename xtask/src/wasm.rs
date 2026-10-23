@@ -19,7 +19,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use crate::cargo;
+use crate::cargo_command;
 
 /// The two bundles, each `(cargo args, built .wasm stem, bundle name)`.
 ///
@@ -148,7 +148,7 @@ fn build_one(repo: &Path, package: &str, target_dir: &str) -> bool {
     args.push(target_dir.into());
 
     println!("[xtask] cargo {}", args.join(" "));
-    Command::new(cargo())
+    cargo_command()
         .current_dir(repo)
         .args(&args)
         .status()
@@ -379,7 +379,7 @@ fn ensure_wasm_bindgen(repo: &Path) -> bool {
     }
     println!("[xtask] cargo install wasm-bindgen-cli --version {want} --locked (a few minutes, once)");
 
-    let ok = Command::new(cargo())
+    let ok = cargo_command()
         .args(["install", "wasm-bindgen-cli", "--version", &want, "--locked"])
         .status()
         .map(|s| s.success())

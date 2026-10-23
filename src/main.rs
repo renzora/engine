@@ -1,4 +1,7 @@
 #![allow(unused_imports)]
+// LNK4217 from `intel_tex_2`'s prebuilt objects meeting the static C runtime:
+// harmless, and printed on every link. See `renzora_editor`'s crate root.
+#![allow(linker_messages)]
 // The desktop binary is always runtime-shaped: on Windows release it launches
 // windowless so shipped games don't pop a console. Editor and server sessions
 // grab a console at startup via `attach_console()`; a shipped game stays
@@ -98,6 +101,29 @@ pub fn start() {
     app.run();
 }
 
+/// `--build-plugins`: compile every stale installed plugin and exit, printing
+/// progress instead of opening the setup window.
+///
+/// The same pass the setup window drives (`prebuild::run`), so the editor that
+/// launches afterwards finds nothing left to build. A plugin that fails is
+/// reported and skipped, not fatal: one broken third-party plugin must not fail
+/// an engine build, and the editor still names it in Settings.
+#[cfg(not(target_arch = "wasm32"))]
+fn build_plugins_headless() {
+    use renzora_runtime::renzora_native_plugin::prebuild::{self, Progress};
+    let prepared = prebuild::run(&mut |p| match &p {
+        Progress::Building { .. } | Progress::Built { .. } | Progress::Failed(_) => {
+            println!("[plugins] {p}")
+        }
+        // Per-line compiler output stays out of the build log; a failure's
+        // full text arrives in its `Failed`.
+        Progress::Compiling { .. } | Progress::Unpacking { .. } => {}
+    });
+    if prepared.built == 0 {
+        println!("[plugins] nothing to build");
+    }
+}
+
 // ── Native entry point ───────────────────────────────────────────────────
 
 // One binary, three runtime-decided modes:
@@ -112,6 +138,16 @@ pub fn start() {
 // only difference between shipping the editor and shipping the game.
 #[cfg(not(all(target_arch = "wasm32", feature = "runtime")))]
 fn main() {
+    // `cargo renzora` runs this straight after staging, so a source checkout
+    // compiles its installed plugins in the build's own terminal. Without it the
+    // editor found them stale on launch, opened the setup window to compile
+    // them and then restarted, which made every engine build two waits.
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::args().any(|a| a == "--build-plugins") {
+        build_plugins_headless();
+        return;
+    }
+
     // `--host` wins if both are passed. A server/host launch is never an
     // editor session even if the bundle dll happens to sit beside the exe.
     let host_mode = std::env::args().any(|a| a == "--host");
