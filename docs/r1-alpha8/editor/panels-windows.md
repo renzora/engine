@@ -75,7 +75,7 @@ Picking a document in the switcher brings up both the document and the workspace
 |---|---|
 | Open | Double-click something in the Assets panel. Already open means it activates rather than opening twice. |
 | New scene | `Ctrl+N`, or **New Scene** in the scene switcher. |
-| Close | Hover a document in the switcher's **Open** list and click its **×**. The last scene has no ×. |
+| Close | Hover a document in the switcher's **Open** list and click its **×**. The switcher stays open, so you can close several in a row. The last scene has no ×. |
 | Rename | Rename the file in the Assets panel; the open document follows it. A new scene takes its name when you first save it. |
 
 A document with unsaved edits makes the save button in the top bar turn amber. Closing one with unsaved changes asks first, and so does closing the editor.

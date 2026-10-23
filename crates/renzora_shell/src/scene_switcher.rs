@@ -339,6 +339,12 @@ pub(crate) struct SwitcherSearch;
 #[derive(Component)]
 pub(crate) struct SceneBootBtn(PathBuf);
 
+/// An Open row's x: closes that document. Not a `MenuAction`, which closes
+/// the menu, so you can close several documents in a row and watch each one
+/// leave the list.
+#[derive(Component)]
+pub(crate) struct SwitcherCloseDoc(u64);
+
 /// A group header in the Open column (the kind it folds). Not a `MenuAction`:
 /// folding a group must not close the menu.
 #[derive(Component)]
@@ -743,10 +749,18 @@ pub(crate) fn switcher_interact(
     inputs: Query<&renzora_ember::widgets::EmberTextInput, With<SwitcherSearch>>,
     groups: Query<(&UiInteraction, &SwitcherGroup), Changed<UiInteraction>>,
     boots: Query<(&UiInteraction, &SceneBootBtn), Changed<UiInteraction>>,
+    closes: Query<(&UiInteraction, &SwitcherCloseDoc), Changed<UiInteraction>>,
     project: Option<ResMut<renzora::CurrentProject>>,
     view: Option<ResMut<SwitcherView>>,
+    mut commands: Commands,
 ) {
     let Some(mut view) = view else { return };
+    // Queued, because closing needs the whole world (an unsaved document asks
+    // first). The keyed list then drops the row on its own.
+    for (_, close) in closes.iter().filter(|(i, _)| **i == UiInteraction::Pressed) {
+        let id = close.0;
+        commands.queue(move |w: &mut World| request_close_doc(w, id));
+    }
     if let (Some(mut project), Some((_, btn))) = (project, boots.iter().find(|(i, _)| **i == UiInteraction::Pressed)) {
         let rel = project.make_asset_relative(&btn.0);
         project.config.main_scene = rel.clone();
@@ -779,9 +793,9 @@ pub(crate) fn switcher_interact(
 /// its name, an amber dot while it has unsaved changes, a check on the active
 /// one, and an **x** that closes it.
 ///
-/// The x is its own [`MenuAction`] and `BLOCK`s the press, so closing a
-/// document does not also activate it (UI nodes start as pass-through, and the
-/// row behind it is a menu action too). It is drawn only while the row is
+/// The x `BLOCK`s the press, so closing a document does not also activate it
+/// (UI nodes start as pass-through, and the row behind it is a menu action),
+/// and it is not a [`MenuAction`] itself, so the menu stays open. It is drawn only while the row is
 /// hovered: a column of x's down every row competes with the names, and the
 /// close is for the row you are already pointing at. Closing goes through
 /// [`request_close_doc`], so a document with unsaved changes still asks first.
@@ -797,6 +811,17 @@ fn open_doc_row(commands: &mut Commands, fonts: &EmberFonts, doc: &OpenDoc) -> E
         text,
         move |w| activate_doc_tab(w, id),
     );
+    // A long name ends in "…" rather than pushing the row's buttons out past
+    // the column's edge, where the clip hid them: a name with no spaces
+    // (`anim_flowing_water.material`) cannot wrap, so the active row lost its
+    // save button and every long row its x. The label is the row's second
+    // child, after the icon; the full name shows as a tooltip while shortened.
+    commands.queue(move |w: &mut World| {
+        let Some(label) = w.get::<Children>(row).and_then(|c| c.get(1).copied()) else { return };
+        let full = w.get::<Text>(label).map(|t| t.0.clone()).unwrap_or_default();
+        renzora_ember::widgets::ellipsize(&mut w.commands(), label, full, Some(row));
+        w.flush();
+    });
     let mut kids = Vec::new();
     // The active row says its saved state with its save button (below), so
     // the dot is for the others.
@@ -824,24 +849,18 @@ fn open_doc_row(commands: &mut Commands, fonts: &EmberFonts, doc: &OpenDoc) -> E
     // a tick read as "saved". Amber while there is something to save.
     if doc.active {
         let save_color = if doc.modified { warn_amber() } else { text_muted() };
-        let save = small_row_button(
-            commands,
-            "scene-switcher-save",
-            renzora::lang::t("common.save"),
-            |w: &mut World| crate::menu_command::MenuCommand::Save.run(w),
-        );
+        let save = small_row_button(commands, "scene-switcher-save", renzora::lang::t("common.save"));
+        commands
+            .entity(save)
+            .insert(MenuAction(Box::new(|w: &mut World| crate::menu_command::MenuCommand::Save.run(w))));
         let disk = icon_text(commands, &fonts.phosphor, "floppy-disk", save_color, 13.0);
         commands.entity(disk).insert(PASS_THROUGH);
         commands.entity(save).add_child(disk);
         kids.push(save);
     }
     if doc.closable {
-        let close = small_row_button(
-            commands,
-            "scene-switcher-close",
-            renzora::lang::t("scene_switcher.close"),
-            move |w: &mut World| request_close_doc(w, id),
-        );
+        let close = small_row_button(commands, "scene-switcher-close", renzora::lang::t("scene_switcher.close"));
+        commands.entity(close).insert(SwitcherCloseDoc(id));
         // `icon_text`, not the deferred `glyph`: a deferred icon writes its
         // own colour a frame after spawning, over the hidden colour this
         // binding had already set, and the binding does not run again until
@@ -869,15 +888,10 @@ fn open_doc_row(commands: &mut Commands, fonts: &EmberFonts, doc: &OpenDoc) -> E
     row
 }
 
-/// An 18px icon button inside an Open row (save, close). Its own
-/// [`MenuAction`], and it `BLOCK`s the press, so pressing it does not also
-/// activate the row behind it.
-fn small_row_button(
-    commands: &mut Commands,
-    name: &'static str,
-    tooltip: String,
-    on_click: impl Fn(&mut World) + Send + Sync + 'static,
-) -> Entity {
+/// An 18px icon button inside an Open row (save, close). It `BLOCK`s the
+/// press, so pressing it does not also activate the row behind it; the caller
+/// says what a press does.
+fn small_row_button(commands: &mut Commands, name: &'static str, tooltip: String) -> Entity {
     let btn = commands
         .spawn((
             Node {
@@ -892,7 +906,6 @@ fn small_row_button(
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
             BLOCK,
-            MenuAction(Box::new(on_click)),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(tooltip),
             Name::new(name),
