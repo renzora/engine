@@ -1084,6 +1084,10 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary) -> Result<St
         let _ = std::fs::remove_dir_all(&done.path);
         return Err(format!("Could not finish installing '{}': {e}", done.dir_name));
     }
+    // Built now, so opening a project afterwards does not stop in the setup
+    // window to compile it.
+    install::build_installed_plugin(&done.path)
+        .map_err(|e| format!("Installed \"{}\", but {e}", asset.name))?;
 
     let verb = if done.updated { "Updated" } else { "Installed" };
     // A rename is not a footnote: the plugin builds and loads under the new

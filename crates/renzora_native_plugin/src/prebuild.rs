@@ -497,6 +497,46 @@ fn build_one(
     }
 }
 
+/// Build one plugin that has just been installed, from the running editor.
+///
+/// The marketplace calls this on its install thread straight after writing the
+/// source. Without it the compile waited for the next launch, which made an
+/// install two restarts long: one into the setup window that compiled it, and
+/// a second out of that window into the editor. Built here, the next launch
+/// finds nothing stale and boots straight into the editor, and the compile
+/// happens while the editor is still usable.
+///
+/// Records the stamp, or the failure, exactly as [`build_stale`] does, so the
+/// next launch agrees with it. Returns `Ok(false)` when there was nothing to
+/// build: no SDK yet, the plugin is disabled, or it is already current. The
+/// launch-time pass still covers those.
+pub fn build_installed(plugin: &Path, on_line: &mut dyn FnMut(&str)) -> Result<bool, String> {
+    let Some(root) = exe_dir() else { return Ok(false) };
+    let Ok(sdk) = Sdk::load(crate::sdk_dir(&root)) else { return Ok(false) };
+    if !is_native_source(plugin) || renzora::load_disabled_plugins().iter().any(|d| *d == name_of(plugin)) {
+        return Ok(false);
+    }
+    let stamp = sdk.stamp();
+    let l = layout(plugin, Some(&sdk), Some(&stamp));
+    if !l.needs_build {
+        return Ok(false);
+    }
+    std::fs::create_dir_all(plugin.join("build")).map_err(|e| e.to_string())?;
+    match sdk.compile_with(plugin, &l.lib_path, on_line) {
+        Ok(built) => {
+            std::fs::write(&l.stamp_path, &built).map_err(|e| format!("writing stamp: {e}"))?;
+            let _ = std::fs::remove_file(&l.fail_path);
+            Ok(true)
+        }
+        Err(e) => {
+            // Recorded so the next launch does not retry it in the setup window
+            // and restart into the same failure. See `layout`.
+            let _ = std::fs::write(&l.fail_path, &stamp);
+            Err(e.to_string())
+        }
+    }
+}
+
 /// Relaunch this executable with the same arguments and exit.
 ///
 /// Kept as a name here — `main`'s boot sequence reads better for it — but the

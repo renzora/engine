@@ -78,6 +78,8 @@ enum Phase {
     Downloading = 1,
     /// Unpacking into the destination folder.
     Writing = 2,
+    /// Compiling a plugin against the SDK, so the restart only has to load it.
+    Building = 3,
 }
 
 impl Phase {
@@ -85,6 +87,7 @@ impl Phase {
         match v {
             1 => Phase::Downloading,
             2 => Phase::Writing,
+            3 => Phase::Building,
             _ => Phase::Resolving,
         }
     }
@@ -186,6 +189,7 @@ fn install_status_segments(world: &World) -> Vec<renzora::ShellStatusSegment> {
                     human_bytes(job.shared.bytes.load(Ordering::Relaxed))
                 ),
                 Phase::Writing => format!("Installing {} — writing files", job.name),
+                Phase::Building => format!("Installing {}: building", job.name),
             };
             renzora::ShellStatusSegment::new("download-simple", text, accent_rgb())
                 .bar(renzora::ShellStatusBar::Busy)
@@ -727,6 +731,9 @@ fn run_install(
             let _ = std::fs::remove_dir_all(&done.path);
             return Err(format!("Could not finish installing '{}': {e}", done.dir_name));
         }
+        shared.phase.store(Phase::Building as u8, Ordering::Relaxed);
+        let built = install::build_installed_plugin(&done.path)
+            .map_err(|e| format!("Installed \"{}\", but {e}", asset.name))?;
         let verb = if done.updated { "Updated" } else { "Installed" };
         // A rename is not a footnote: the plugin builds and loads under the new
         // name, so anything the user does with it later uses that name.
@@ -738,7 +745,7 @@ fn run_install(
             None => String::new(),
         };
         return Ok(format!(
-            "{verb} \"{}\" as plugin '{}'.{renamed} It is built on the next start.",
+            "{verb} \"{}\" as plugin '{}'.{renamed}{built}",
             asset.name, done.dir_name
         ));
     }
@@ -819,6 +826,7 @@ fn build_progress_step(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ),
             Phase::Downloading => format!("{} downloaded", human_bytes(done)),
             Phase::Writing => "Writing files…".to_string(),
+            Phase::Building => "Building the plugin…".to_string(),
         }
     });
 
@@ -898,10 +906,13 @@ fn drive_install_bar(
         return;
     }
     let done = active.shared.bytes.load(Ordering::Relaxed);
-    // Writing has no byte count of its own; leave the bar full rather than
-    // letting it drop back to zero at the last moment.
+    // Writing and building have no byte count of their own; leave the bar full
+    // rather than letting it drop back to zero at the last moment.
     let frac = if active.outcome.is_some()
-        || Phase::from_u8(active.shared.phase.load(Ordering::Relaxed)) == Phase::Writing
+        || matches!(
+            Phase::from_u8(active.shared.phase.load(Ordering::Relaxed)),
+            Phase::Writing | Phase::Building
+        )
     {
         1.0
     } else {

@@ -80,7 +80,7 @@ The asset downloads in the background and a notice confirms where it landed. A p
 
 ### Plugins: from the dashboard, before you open a project
 
-A plugin is the one category that does not install into a project. It extracts into the engine's own `plugins/` directory, where it is compiled and loaded at **startup** — so installing one from inside the editor always ends with "it will be there next time you start".
+A plugin is the one category that does not install into a project. It extracts into the engine's own `plugins/` directory and is compiled straight away, while you carry on working, then loaded at **startup**. So installing one from inside the editor always ends with "it loads when the editor restarts", and the restart goes straight into the editor with nothing left to build.
 
 The splash [dashboard](/docs/r1-alpha8/getting-started/dashboard) has a **Plugins** page for exactly that: search the plugin listings, install, and press **Restart now**. Free plugins install without an account; a paid one needs you signed in, which the page offers. Installing from the Marketplace panel inside the editor still works and puts the files in the same place — the dashboard just puts the restart next to the install.
 

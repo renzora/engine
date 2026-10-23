@@ -631,8 +631,26 @@ pub struct PluginInstall {
     pub renamed_from: Option<String>,
 }
 
+/// Compile a plugin [`install_plugin_source`] just wrote, and say how it went
+/// in a sentence for the install's result message.
+///
+/// Run on the install thread, so the restart that loads the plugin has nothing
+/// left to compile: before, it restarted into the setup window to build, then
+/// restarted again into the editor. A build that fails is an `Err`, with the
+/// compiler's output, because the plugin will not load; the source stays
+/// installed so a fixed version can replace it.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn build_installed_plugin(path: &Path) -> Result<&'static str, String> {
+    match renzora_native_plugin::prebuild::build_installed(path, &mut |_| {}) {
+        Ok(true) => Ok(" It loads when the editor restarts."),
+        // No SDK yet, or disabled: the launch-time pass builds it, as before.
+        Ok(false) => Ok(" It is built on the next start."),
+        Err(e) => Err(format!("it failed to compile:\n{e}")),
+    }
+}
+
 /// Install a plugin by extracting its source into `<install root>/plugins/`,
-/// ready for `prebuild` to compile on the next launch.
+/// ready for [`build_installed_plugin`] to compile.
 ///
 /// The directory name is what the plugin compiles as —
 /// `renzora_plugin_build::crate_name` reads it back off the directory, and
