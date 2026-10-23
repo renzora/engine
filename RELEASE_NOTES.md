@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-23 02:39
+- fix(test): the planar reflection shader test no longer fails at random in CI
+
 ## 2026-10-23 02:24
 - fix(build): `cargo renzora` prints its plugin build progress and no longer repeats every compiler warning
 - fix(editor): the themed surfaces no longer log four shader-path warnings on every start

@@ -13,9 +13,13 @@ use renzora_shader::material::validate::{library_count, ShaderValidator};
 const OVERLAY: &str = include_str!("../src/shaders/reflection_overlay.wesl");
 const MODULE: &str = "renzora_planar_reflection::shaders::reflection_overlay";
 
-/// The libraries the overlay imports. They stream in over several frames.
-const REQUIRED_LIBRARIES: [&str; 3] = [
+/// The libraries the overlay imports, and the ones they import in turn. They
+/// stream in over several frames, so each must be waited for by name:
+/// `mesh_bindings` was missing from this list, and `mesh_functions` imports it,
+/// so the test passed or failed on whether it happened to arrive in time.
+const REQUIRED_LIBRARIES: [&str; 4] = [
     "bevy_pbr::render::mesh_functions",
+    "bevy_pbr::render::mesh_bindings",
     "bevy_pbr::render::mesh_view_bindings",
     "bevy_core_pipeline::tonemapping",
 ];
