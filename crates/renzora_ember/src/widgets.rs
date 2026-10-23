@@ -319,6 +319,8 @@ impl Plugin for WidgetsPlugin {
         // In Update, reading the layout the last frame computed: a shortened
         // string written here is laid out in this frame's PostUpdate.
         app.add_systems(Update, ellipsis::ellipsize_text);
+        // Same timing as the ellipsis pass: it reads last frame's text layout.
+        app.add_systems(Update, crate::inspector::fit_label_columns);
         // On their own: the main widget tuple is at Bevy's 20-system limit.
         app.add_systems(Update, (search::search_footer_update, search::search_resize));
         app.add_systems(

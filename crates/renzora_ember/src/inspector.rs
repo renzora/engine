@@ -120,18 +120,22 @@ pub fn inspector_row(
             ui_font(font, 11.0),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::no_wrap(),
+            InspectorLabelText,
         ))
         .id();
+    // Starts at the fixed column; `fit_label_columns` narrows it to the
+    // longest label among this row's siblings once their text is measured.
     let label_col = commands
         .spawn((
             Node {
-                width: Val::Percent(INSPECTOR_LABEL_PCT),
-                max_width: Val::Px(INSPECTOR_LABEL_W),
+                width: Val::Px(INSPECTOR_LABEL_W),
+                max_width: Val::Percent(INSPECTOR_LABEL_PCT),
                 flex_shrink: 0.0,
                 align_items: AlignItems::Center,
                 overflow: Overflow::clip(),
                 ..default()
             },
+            InspectorLabelCol { text: lbl },
             Name::new("inspector-label"),
         ))
         .id();
@@ -152,6 +156,69 @@ pub fn inspector_row(
     commands.entity(row).add_children(&[label_col, control]);
     fill_if_growable(commands, control);
     row
+}
+
+/// An [`inspector_row`]'s label column, and the text inside it.
+#[derive(Component)]
+pub struct InspectorLabelCol {
+    text: Entity,
+}
+
+/// The text of an [`InspectorLabelCol`]. Marked so [`fit_label_columns`] wakes
+/// for a label being laid out, not for every text in the editor (a frame
+/// counter changes every frame).
+#[derive(Component)]
+pub struct InspectorLabelText;
+
+/// Gap kept between the longest label in a group and the controls.
+const LABEL_FIT_PAD: f32 = 10.0;
+
+/// Size each group of [`inspector_row`] label columns to its longest label.
+///
+/// The column used to be a flat 40% of the row, capped at
+/// [`INSPECTOR_LABEL_W`], which is what the longest labels anywhere need
+/// ("Suppress Shadows"). Transform's "Position" needs about half of that, so on
+/// a narrow panel its three axis boxes were squeezed beside a column that was
+/// mostly empty. Now a group takes only what its own longest label needs,
+/// still capped at the fixed width and at [`INSPECTOR_LABEL_PCT`] of the row.
+///
+/// A group is the rows sharing one parent, which is one component's body, so
+/// its rows still line up with each other. Runs only when a label is laid
+/// out again (new rows, a rename, a font or DPI change), and writes a column
+/// only when its width actually moves.
+pub(crate) fn fit_label_columns(
+    changed: Query<(), (With<InspectorLabelText>, Changed<bevy::text::TextLayoutInfo>)>,
+    added: Query<(), Added<InspectorLabelCol>>,
+    mut cols: Query<(&InspectorLabelCol, &ChildOf, &mut Node)>,
+    rows: Query<&ChildOf, Without<InspectorLabelCol>>,
+    layouts: Query<&bevy::text::TextLayoutInfo>,
+) {
+    if changed.is_empty() && added.is_empty() {
+        return;
+    }
+    // Widest label per group, keyed by the parent of the label's row.
+    let mut widest: std::collections::HashMap<Entity, f32> = std::collections::HashMap::new();
+    for (col, row, _) in &cols {
+        let Ok(group) = rows.get(row.parent()) else { continue };
+        let w = layouts
+            .get(col.text)
+            .map(|l| l.size.x / l.scale_factor.max(1e-3))
+            .unwrap_or(0.0);
+        let e = widest.entry(group.parent()).or_insert(0.0);
+        *e = e.max(w);
+    }
+    for (_, row, mut node) in &mut cols {
+        let Ok(group) = rows.get(row.parent()) else { continue };
+        let Some(w) = widest.get(&group.parent()) else { continue };
+        // Not measured yet: leave the fixed column rather than collapse it.
+        if *w <= 0.0 {
+            continue;
+        }
+        let want = Val::Px((w + LABEL_FIT_PAD).ceil().min(INSPECTOR_LABEL_W));
+        if node.width != want {
+            node.width = want;
+        }
+    }
 }
 
 /// [`fill_control`] for a control that is a number, text or dropdown box
