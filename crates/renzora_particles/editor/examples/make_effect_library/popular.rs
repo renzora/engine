@@ -672,6 +672,121 @@ fn teleport_beam() -> VfxAsset {
     effect("Teleport Beam", 0.0, true, vec![streaks, rings, core])
 }
 
+/// A plasma storm 1.5 m up drawn entirely by material graphs, with no texture
+/// or SVG anywhere: a churning plasma core (domain-warped noise in a polar
+/// disc), crackling pulse rings (Voronoi edges on a polar band), lightning
+/// arcs (noise-bent ribbons), orbiting glow sparks and lit crystal shards.
+/// Every layer's look comes from Particle Age, Color and Random in its
+/// material, so retinting is a colour change on the emitter.
+fn plasma_storm() -> VfxAsset {
+    const CENTER: [f32; 3] = [0.0, 1.5, 0.0];
+    let center = || Src::vec3(CENTER);
+    let material_quad = |material: &str| RenderSettings { blend: BlendMode::Additive, material: mat(material), ..Default::default() };
+
+    let mut b = B::default();
+    b.output("spawn_rate", f(4.0));
+    b.output("position", center());
+    let life = rand(&mut b, 1.0, 1.4);
+    b.output("lifetime", life);
+    let size = rand(&mut b, 1.4, 1.8);
+    b.output("size", size);
+    let tint = rand_color(&mut b, [0.8, 0.5, 1.6, 1.0], [0.4, 0.9, 1.6, 1.0]);
+    b.output("color", tint);
+    random_spin(&mut b, 0.8);
+    let mut core = emitter("plasma core", 12, Local, 1101, b.finish(), material_quad("fx_plasma_orb.material"));
+    // Per core quad, weighted by its brightness: about 30000 lm of violet.
+    core.light = ParticleLight {
+        mode: LightMode::PerEmitter,
+        color: [0.7, 0.5, 1.0],
+        intensity: 4000.0,
+        range: 10.0,
+        radius: 0.5,
+        smoothing: 0.1,
+        flicker: 0.25,
+        flicker_rate: 6.0,
+        offset: CENTER,
+        ..Default::default()
+    };
+
+    let mut b = B::default();
+    b.output("spawn_rate", f(1.6));
+    b.output("position", center());
+    b.output("lifetime", f(1.1));
+    b.output("size", f(4.0));
+    let grow = curve(&mut b, &[ease_out(0.0, 0.3), ease(1.0, 1.0)]);
+    b.output("size_over_life", grow);
+    b.output("color", col([0.4, 0.9, 1.6, 1.0]));
+    let r = rand(&mut b, 0.0, TAU);
+    b.output("rotation", r);
+    let pulses = emitter("pulse rings", 6, Local, 1102, b.finish(), material_quad("fx_ring_pulse.material"));
+
+    let mut b = B::default();
+    b.output("spawn_rate", f(14.0));
+    b.output("position", center());
+    let vel = burst_velocity(&mut b, (5.0, 8.0), [0.0, 0.0, 0.0]);
+    b.output("velocity", vel);
+    b.output("drag", f(5.0));
+    let life = rand(&mut b, 0.25, 0.4);
+    b.output("lifetime", life);
+    b.output("size", f(0.14));
+    b.output("color", col([0.6, 0.8, 2.0, 1.0]));
+    let jag = curl(&mut b, 8.0, 3.0, [0.0, 0.0, 0.0]);
+    b.output("acceleration", jag);
+    let arcs_look = RenderSettings {
+        blend: BlendMode::Additive,
+        facing: Facing::Ribbon,
+        ribbon: Ribbon { kind: RibbonKind::Trail, points: 10, min_distance: 0.04, ..Default::default() },
+        material: mat("fx_lightning_ribbon.material"),
+        ..Default::default()
+    };
+    let arcs = emitter("lightning arcs", 16, Local, 1103, b.finish(), arcs_look);
+
+    let mut b = B::default();
+    b.output("spawn_rate", f(60.0));
+    let (pos, _) = shape(&mut b, "shape/sphere", &[("radius", PinValue::Float(1.2)), ("surface", PinValue::Bool(true))]);
+    let pos = b.add(pos, center());
+    b.output("position", pos);
+    let life = rand(&mut b, 1.0, 1.6);
+    b.output("lifetime", life);
+    b.output("size", f(0.12));
+    let tint = rand_color(&mut b, [0.5, 1.0, 2.0, 1.0], [1.8, 0.5, 1.6, 1.0]);
+    b.output("color", tint);
+    let ring = b.op(
+        "force/orbit",
+        &[("center", center()), ("axis", v3(0.0, 1.0, 0.0)), ("speed", f(2.5)), ("grip", f(4.0)), ("radius", f(1.1)), ("radial_pull", f(4.0))],
+        "force",
+    );
+    b.output("acceleration", ring);
+    let sparks = emitter("glow sparks", 120, Local, 1104, b.finish(), material_quad("fx_glow_spark.material"));
+
+    let mut b = B::default();
+    b.output("spawn_rate", f(10.0));
+    let (pos, _) = shape(&mut b, "shape/sphere", &[("radius", PinValue::Float(1.7)), ("surface", PinValue::Bool(true))]);
+    let pos = b.add(pos, center());
+    b.output("position", pos);
+    let life = rand(&mut b, 3.0, 4.0);
+    b.output("lifetime", life);
+    let size = rand(&mut b, 0.06, 0.12);
+    b.output("size", size);
+    random_spin(&mut b, 3.0);
+    let ring = b.op(
+        "force/orbit",
+        &[("center", center()), ("axis", v3(0.0, 1.0, 0.0)), ("speed", f(0.9)), ("grip", f(2.0)), ("radius", f(1.6)), ("radial_pull", f(2.0))],
+        "force",
+    );
+    b.output("acceleration", ring);
+    let shard_look = RenderSettings {
+        blend: BlendMode::Opaque,
+        mesh: Some(ParticleMesh::Tetrahedron),
+        orient: MeshOrient::Tumble,
+        material: mat("fx_crystal_shard.material"),
+        ..Default::default()
+    };
+    let shards = emitter("crystal shards", 56, Local, 1105, b.finish(), shard_look);
+
+    effect("Plasma Storm", 0.0, true, vec![core, pulses, arcs, sparks, shards])
+}
+
 pub(super) fn entries() -> Vec<Entry> {
     vec![
         entry("popular", "explosion", "A ground explosion every 2.5 s: light flash, flipbook fireball, SVG shockwave ring, molten debris (material), spark ribbons, lit smoke.", explosion),
@@ -685,5 +800,6 @@ pub(super) fn entries() -> Vec<Entry> {
         entry("popular", "storybook_snow", "Big SVG snowflakes over 10 x 10 m, turning slowly, fluttering and drifting with the wind.", storybook_snow),
         entry("popular", "energy_shield", "A 1.6 m sphere of shimmering SVG hex cells (Conform To Sphere) with sparks crawling over it and a cool light.", energy_shield),
         entry("popular", "teleport_beam", "Streaks racing up a column, SVG rings climbing it, a glowing core and a cyan light.", teleport_beam),
+        entry("popular", "plasma_storm", "Drawn only by material graphs, no textures: a plasma core, crackling pulse rings, lightning ribbons, glow sparks and crystal shards, 1.5 m up.", plasma_storm),
     ]
 }

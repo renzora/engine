@@ -1,5 +1,13 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-23 03:34
+- feat(editor): floating panel windows on Windows have the native title bar and join Windows Snap like the main window
+- feat(particles): a plasma storm effect in the effect library generator
+
+## 2026-10-23 03:01
+- feat(animation): a track height slider on the timeline toolbar
+- feat(animation): a new property track appears at the top of the track list, selected and scrolled into view
+
 ## 2026-10-23 02:39
 - fix(test): the planar reflection shader test no longer fails at random in CI
 
