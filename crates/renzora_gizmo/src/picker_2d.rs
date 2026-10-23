@@ -657,9 +657,13 @@ pub fn pick_2d_system(
     let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
 
     // --- Step 1: handle hit-test on the *currently selected* entity. ---
-    // Skipped while a modifier is held: shift/ctrl clicks are selection
-    // edits, and a handle grab would swallow them.
-    if let (Some(entity), false) = (selection.get(), shift || ctrl) {
+    // Skipped while Ctrl is held: a Ctrl click toggles selection, and a handle
+    // grab would swallow it. Shift does not skip it, because Shift on a handle
+    // means something (a corner keeps its aspect, rotation snaps coarsely),
+    // and the entity whose handles these are is already selected, so a Shift
+    // add has nothing to do. Skipping on Shift sent a Shift press on an edge
+    // handle, which overhangs the sprite, to the rubber band instead.
+    if let (Some(entity), false) = (selection.get(), ctrl) {
         let tr = transforms.get(entity).ok();
         let half = sprites
             .get(entity)

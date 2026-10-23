@@ -28,7 +28,7 @@ Selecting a sprite shows a frame with eight resize handles that follow the sprit
 
 - Drag the body to move, the handles to resize. `Shift` on a corner keeps the aspect ratio.
 - Drag the rotate handle to spin. `Shift` snaps to 15 degree steps.
-- `Shift+Click` adds to the selection, `Ctrl+Click` toggles, and dragging from empty space rubber-bands.
+- `Shift+Click` adds to the selection, `Ctrl+Click` toggles, and dragging from empty space rubber-bands. On a selected sprite's handles `Shift` still grabs the handle, so a Shift drag resizes or rotates rather than selecting.
 
 Dragging any sprite in a multi-selection moves the whole group rigidly, and arrow-key nudges move all of them.
 
