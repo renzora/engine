@@ -87,6 +87,11 @@ renzora_net = { path = "../renzora_net" }
 # with it into every shipped game.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"], optional = true }
 
+# The window handle of a floating dock window, for the Win32 calls that follow
+# its native-frame title-bar drags (`dock::os_frame`).
+[target.'cfg(target_os = "windows")'.dependencies]
+raw-window-handle = "0.6"
+
 [dev-dependencies]
 tempfile = "3"
 # Same version as bevy_hui's — the template-parse test destructures

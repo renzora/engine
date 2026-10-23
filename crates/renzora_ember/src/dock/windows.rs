@@ -87,6 +87,13 @@ struct FloatDragState {
 #[derive(Resource, Default)]
 pub(crate) struct FloatDrag(Option<FloatDragState>);
 
+impl FloatDrag {
+    /// The window this drag is moving, while one is in flight.
+    pub(crate) fn window(&self) -> Option<Entity> {
+        self.0.as_ref().map(|s| s.window)
+    }
+}
+
 /// Marks a floating window's [`DockArea`] and links it back to its OS window.
 /// The primary dock area (the editor shell's) does NOT carry this — that's how
 /// dock systems tell "mutate `Dock.tree`" from "mutate this window's tree".
@@ -124,6 +131,12 @@ pub(crate) struct DockWindowCloseRequests(pub(crate) Vec<Entity>);
 
 /// Height of a floating dock window's title bar, logical px.
 pub(crate) const FLOAT_TITLEBAR_H: f32 = 26.0;
+
+/// Height a floating window's own title bar adds to its client area, logical
+/// px: none under the OS frame, whose caption sits outside it.
+pub(crate) fn float_chrome_h() -> f32 {
+    if crate::dock::os_frame::OS_FRAME { 0.0 } else { FLOAT_TITLEBAR_H }
+}
 
 /// If `area` belongs to a floating dock window whose tree just emptied, queue
 /// that window for close — [`process_dock_window_closes`] tears it down at the
@@ -166,7 +179,7 @@ pub(crate) fn tear_off_panel(
     let size = leaf_size.unwrap_or(Vec2::new(480.0, 360.0) * scale);
     let size = UVec2::new(
         (size.x.clamp(240.0 * scale, 1600.0 * scale)) as u32,
-        (size.y + FLOAT_TITLEBAR_H * scale).clamp(160.0 * scale, 1200.0 * scale) as u32,
+        (size.y + float_chrome_h() * scale).clamp(160.0 * scale, 1200.0 * scale) as u32,
     );
     area_tree_mut(source_area, dock, fixed, wins).remove_panel(id);
     flag_area_dirty(source_area, dirty, fixed, wins);
@@ -224,13 +237,17 @@ pub(crate) fn spawn_dock_windows(
         let window = commands
             .spawn((
                 Window {
-                    title: format!("Renzora — {title}"),
+                    // Shown in the OS caption and the taskbar: worded like
+                    // the main window's ("Renzora Engine ... - <project>").
+                    title: format!("Renzora - {title}"),
                     resolution: bevy::window::WindowResolution::new(req.size.x, req.size.y),
                     position: req
                         .position
                         .map(bevy::window::WindowPosition::At)
                         .unwrap_or(bevy::window::WindowPosition::Automatic),
-                    decorations: false,
+                    // The native frame where it brings Windows Snap (see
+                    // `os_frame`); our own borderless chrome elsewhere.
+                    decorations: crate::dock::os_frame::OS_FRAME,
                     resizable: true,
                     // Normal window level (NOT always-on-top): floats layer
                     // like any OS window so they can live on other monitors
@@ -285,50 +302,6 @@ pub(crate) fn spawn_dock_windows(
             ))
             .id();
 
-        let bar = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(FLOAT_TITLEBAR_H),
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(6.0),
-                    padding: UiRect::horizontal(Val::Px(8.0)),
-                    flex_shrink: 0.0,
-                    border: UiRect::bottom(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(rgb(header_bg())),
-                BorderColor::all(rgb(divider())),
-                UiInteraction::default(),
-                FloatWindowBar(window),
-                Name::new("dock-window-titlebar"),
-            ))
-            .id();
-        let bar_title = commands
-            .spawn((
-                Text::new(title),
-                ui_font(&fonts.ui, 12.0),
-                TextColor(rgb(text_primary())),
-                bevy::text::TextLayout::no_wrap(),
-            ))
-            .id();
-        let bar_fill = commands
-            .spawn((Node {
-                flex_grow: 1.0,
-                ..default()
-            },))
-            .id();
-        // The shared dialog close button, so a floating window's X matches
-        // every overlay's.
-        let close = crate::widgets::close_button(&mut commands, &fonts);
-        commands.entity(close).insert((
-            // Block so the press closes instead of starting a window drag.
-            BLOCK,
-            FloatWindowClose(window),
-        ));
-        commands.entity(bar).add_children(&[bar_title, bar_fill, close]);
-
         let area = commands
             .spawn((
                 Node {
@@ -346,8 +319,16 @@ pub(crate) fn spawn_dock_windows(
             ))
             .id();
 
-        let mut kids = vec![bar, area];
-        kids.extend(spawn_float_resize_zones(&mut commands, window));
+        // Under the OS frame the window already has a title bar with a close
+        // button, and resize borders: ours would be a second set.
+        let kids = if crate::dock::os_frame::OS_FRAME {
+            vec![area]
+        } else {
+            let bar = spawn_float_title_bar(&mut commands, &fonts, window, title);
+            let mut kids = vec![bar, area];
+            kids.extend(spawn_float_resize_zones(&mut commands, window));
+            kids
+        };
         commands.entity(root).add_children(&kids);
 
         bevy::log::info!(
@@ -373,6 +354,55 @@ pub(crate) fn spawn_dock_windows(
             });
         }
     }
+}
+
+/// The custom title bar of an undecorated floating window: its title, and the
+/// close ×. Pressing the bar starts a window drag that can re-dock.
+fn spawn_float_title_bar(commands: &mut Commands, fonts: &EmberFonts, window: Entity, title: String) -> Entity {
+    let bar = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(FLOAT_TITLEBAR_H),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                flex_shrink: 0.0,
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(divider())),
+            UiInteraction::default(),
+            FloatWindowBar(window),
+            Name::new("dock-window-titlebar"),
+        ))
+        .id();
+    let bar_title = commands
+        .spawn((
+            Text::new(title),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    let bar_fill = commands
+        .spawn((Node {
+            flex_grow: 1.0,
+            ..default()
+        },))
+        .id();
+    // The shared dialog close button, so a floating window's X matches
+    // every overlay's.
+    let close = crate::widgets::close_button(commands, fonts);
+    commands.entity(close).insert((
+        // Block so the press closes instead of starting a window drag.
+        BLOCK,
+        FloatWindowClose(window),
+    ));
+    commands.entity(bar).add_children(&[bar_title, bar_fill, close]);
+    bar
 }
 
 /// Edge + corner resize zones around a floating window's perimeter, each with

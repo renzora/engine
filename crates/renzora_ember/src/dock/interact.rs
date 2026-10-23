@@ -155,7 +155,7 @@ pub(crate) fn tab_context_menu(
                 }
                 let size = UVec2::new(
                     leaf_size.x.clamp(240.0 * scale, 1600.0 * scale) as u32,
-                    (leaf_size.y + FLOAT_TITLEBAR_H * scale).clamp(160.0 * scale, 1200.0 * scale)
+                    (leaf_size.y + super::windows::float_chrome_h() * scale).clamp(160.0 * scale, 1200.0 * scale)
                         as u32,
                 );
                 let position = gpos.map(|p| {

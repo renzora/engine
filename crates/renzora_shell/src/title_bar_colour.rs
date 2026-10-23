@@ -16,28 +16,39 @@
 //! attribute; the call simply fails and nothing changes.
 //!
 //! Re-applied whenever the theme changes, since both colours follow it.
+//!
+//! Every window gets it, not only the main one: floating panel windows wear
+//! the OS frame too (so they can join Windows Snap), and a default grey caption
+//! on each of them would be the same mismatch over again.
 
 use bevy::prelude::*;
 
-/// Apply the caption colour now and again whenever the palette's window colour
-/// changes. Compared against the last colour applied, so the frames in between
-/// cost one palette read.
+/// Apply the caption colour to each window as it appears, and to all of them
+/// again whenever the palette's window colour changes. Each window remembers
+/// the colour it was last given, so the frames in between cost one palette
+/// read per window.
 pub(crate) fn sync_title_bar_colour(
-    windows: Query<&bevy::window::RawHandleWrapper, With<bevy::window::PrimaryWindow>>,
-    mut applied: Local<Option<[u8; 3]>>,
+    windows: Query<(Entity, &bevy::window::RawHandleWrapper)>,
+    mut applied: Local<Vec<(Entity, [u8; 3])>>,
 ) {
     if !renzora::EDITOR_OS_FRAME {
         return;
     }
     let (r, g, b) = renzora_ember::theme::window_bg();
     let rgb = [r, g, b];
-    if *applied == Some(rgb) {
-        return;
-    }
-    // The window may not have its native handle on the first frames.
-    let Ok(handle) = windows.single() else { return };
-    if win32::set_caption(handle, rgb) {
-        *applied = Some(rgb);
+    // Forget closed windows, so a new one reusing the entity is coloured.
+    applied.retain(|(e, _)| windows.contains(*e));
+    // A window may not have its native handle on its first frames; it is
+    // picked up once it does.
+    for (e, handle) in &windows {
+        let done = applied.iter().any(|(w, c)| *w == e && *c == rgb);
+        if done || !win32::set_caption(handle, rgb) {
+            continue;
+        }
+        match applied.iter_mut().find(|(w, _)| *w == e) {
+            Some(entry) => entry.1 = rgb,
+            None => applied.push((e, rgb)),
+        }
     }
 }
 
@@ -64,7 +75,7 @@ mod win32 {
         // Rec. 709 luma, on the bytes: under half is a dark bar.
         let luma = 0.2126 * rgb[0] as f32 + 0.7152 * rgb[1] as f32 + 0.0722 * rgb[2] as f32;
         let dark: i32 = (luma < 128.0) as i32;
-        // SAFETY: `hwnd` is the live primary window's handle, and each value
+        // SAFETY: `hwnd` is a live editor window's handle, and each value
         // pointer is to a local of exactly the size passed with it. A stale
         // handle or an attribute this Windows lacks only makes the call fail.
         unsafe {

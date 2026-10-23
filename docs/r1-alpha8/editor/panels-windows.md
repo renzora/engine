@@ -133,7 +133,9 @@ Three ways to pull a panel out into its own window:
 
 Drop it anywhere, including another monitor. This is how you build a multi-monitor setup: the viewport maximized on one screen, the Inspector or a second Viewport on the others.
 
-Move a floating window by its title bar and resize it from any edge. To dock it back, drag it over the main window and release on a tab bar or on the dock's edge. The **×** in its title bar also returns the panel to the main dock.
+Move a floating window by its title bar and resize it from any edge. To dock it back, drag it over the main window and release on a tab bar. The **×** in its title bar also returns the panel to the main dock.
+
+On Windows a floating window has the same title bar as the main editor, so it joins Windows Snap like any other window: drag it to a screen edge or corner, hover its maximize button for the snap layouts, or use `Win` and the arrow keys. Dropping it on the main window's dock edge snaps it rather than docking it, since with the editor maximized that edge is the screen's; drop it on a tab bar to dock it. On macOS and Linux a floating window keeps its own title bar, and releasing on the dock's edge docks it there too.
 
 Your floating windows are saved with the rest of the layout and restored next launch. Workspaces switch the main window's layout only, so floating windows stay put as you flip between them.
 

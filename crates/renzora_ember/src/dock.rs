@@ -29,6 +29,7 @@ use bevy::prelude::*;
 pub mod components;
 pub mod drag;
 mod interact;
+mod os_frame;
 mod reconcile;
 mod routing;
 pub mod tree;
@@ -103,6 +104,9 @@ impl Plugin for DockPlugin {
                     windows::spawn_dock_windows,
                     // After spawn (picks up the tear-off grab the same frame).
                     windows::float_window_drag,
+                    // After the tear-off follow, so this frame's grace for a
+                    // window being torn off is set before its moves are read.
+                    os_frame::float_os_move_redock,
                     interact::apply_focus_request,
                     interact::apply_tab_switch,
                     interact::tab_hover,
