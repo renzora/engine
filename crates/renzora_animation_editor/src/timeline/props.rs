@@ -453,6 +453,7 @@ fn add_key_for_field(world: &mut World, entity: Option<Entity>, component: &str,
         cache.dirty = true;
         idx
     };
+    reveal_prop_track(world, idx);
     add_key_at(world, Some(entity), idx, time);
 }
 
@@ -487,23 +488,37 @@ fn insert_key_all_tracks(world: &mut World, entity: Entity, time: f32) {
 }
 
 /// Append a new empty property track (the user picks its property via the
-/// in-row dropdown afterward).
+/// in-row dropdown afterward). It shows at the top of the track list, and is
+/// selected and scrolled to, so the row whose property you are about to pick
+/// is the one in front of you.
 fn add_empty_property_track(world: &mut World) {
-    let Some(mut cache) = world.get_resource_mut::<TimelineClip>() else { return };
-    // The stand-in clip of an effect shown alone is never saved; a property
-    // track on it would be lost. New Clip makes a real one to key into.
-    if cache.is_effect_only() {
-        return;
+    let idx = {
+        let Some(mut cache) = world.get_resource_mut::<TimelineClip>() else { return };
+        // The stand-in clip of an effect shown alone is never saved; a property
+        // track on it would be lost. New Clip makes a real one to key into.
+        if cache.is_effect_only() {
+            return;
+        }
+        let Some(clip) = cache.clip.as_mut() else { return };
+        clip.property_tracks.push(PropertyTrack {
+            target: "self".into(),
+            component: String::new(),
+            field: String::new(),
+            keys: Vec::new(),
+            muted: false,
+        });
+        let idx = clip.property_tracks.len() - 1;
+        cache.dirty = true;
+        idx
+    };
+    reveal_prop_track(world, idx);
+}
+
+/// Select property track `idx` and scroll it into view once its row is built.
+fn reveal_prop_track(world: &mut World, idx: usize) {
+    if let Some(mut layout) = world.get_resource_mut::<TrackLayout>() {
+        layout.reveal = Some(RowKind::Prop(idx));
     }
-    let Some(clip) = cache.clip.as_mut() else { return };
-    clip.property_tracks.push(PropertyTrack {
-        target: "self".into(),
-        component: String::new(),
-        field: String::new(),
-        keys: Vec::new(),
-        muted: false,
-    });
-    cache.dirty = true;
 }
 
 /// Remove the property track at `track`, clearing any selection on it.

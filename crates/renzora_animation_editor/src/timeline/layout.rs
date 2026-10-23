@@ -68,6 +68,9 @@ pub(crate) struct TrackLayout {
     pub(crate) selected: Option<RowKind>,
     /// Vertical scroll of the rows, px.
     pub(crate) vscroll: f32,
+    /// A row to select and scroll into view once it exists: a track that was
+    /// just created, whose row is only built on the next layout pass.
+    pub(crate) reveal: Option<RowKind>,
     /// Logical size of the lane area, px.
     pub(crate) view: Vec2,
     /// Bumped whenever `rows` is rebuilt; part of every draw token.
@@ -223,6 +226,22 @@ pub(super) fn rebuild_layout(
         }
     }
 
+    // A new track: select it and bring it into view. Kept until its row exists,
+    // since the track is added a frame before the rows are rebuilt, and dropped
+    // if a filter hides it rather than waiting for the filter to clear.
+    if let Some(kind) = layout.reveal {
+        if let Some(row) = layout.row_of(kind) {
+            layout.selected = Some(kind);
+            let top = layout.row_top(row, th);
+            if top < 0.0 || top + th > layout.view.y {
+                layout.vscroll = (row as f32 * th - th).clamp(0.0, layout.max_vscroll(th));
+            }
+            layout.reveal = None;
+        } else if !layout.filter.is_empty() {
+            layout.reveal = None;
+        }
+    }
+
     let max = layout.max_vscroll(th);
     if layout.vscroll > max {
         layout.vscroll = max;
@@ -264,22 +283,29 @@ fn build_rows(
 ) -> Vec<Row> {
     let mut rows = vec![Row { kind: RowKind::Summary, depth: 0, has_children: false, collapsed: false }];
     let n = clip.tracks.len();
+    // Property tracks first, newest at the top, right under the summary. They
+    // used to follow every bone, so on a 65-bone rig a track you had just
+    // added appeared off the bottom of the list. Reversed in the view only:
+    // the clip keeps them in the order they were made, so no track index
+    // moves and no selection or saved file is renumbered.
+    let prop_row = |i| Row { kind: RowKind::Prop(i), depth: 0, has_children: false, collapsed: false };
     if !filter.is_empty() {
         // A filtered list is flat: nesting only gets in the way of finding a
         // bone by name, and a match's collapsed ancestor must not hide it.
+        for (i, p) in clip.property_tracks.iter().enumerate().rev() {
+            let label = format!("{} {}", p.component, p.field).to_lowercase();
+            if label.contains(filter) {
+                rows.push(prop_row(i));
+            }
+        }
         for (i, t) in clip.tracks.iter().enumerate() {
             if t.bone_name.to_lowercase().contains(filter) {
                 rows.push(Row { kind: RowKind::Bone(i), depth: 0, has_children: false, collapsed: false });
             }
         }
-        for (i, p) in clip.property_tracks.iter().enumerate() {
-            let label = format!("{} {}", p.component, p.field).to_lowercase();
-            if label.contains(filter) {
-                rows.push(Row { kind: RowKind::Prop(i), depth: 0, has_children: false, collapsed: false });
-            }
-        }
         return rows;
     }
+    rows.extend((0..clip.property_tracks.len()).rev().map(prop_row));
     let mut kids: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut roots: Vec<usize> = Vec::new();
     for i in 0..n {
@@ -320,9 +346,6 @@ fn build_rows(
         if !s {
             rows.push(Row { kind: RowKind::Bone(i), depth: 0, has_children: false, collapsed: false });
         }
-    }
-    for i in 0..clip.property_tracks.len() {
-        rows.push(Row { kind: RowKind::Prop(i), depth: 0, has_children: false, collapsed: false });
     }
     rows
 }

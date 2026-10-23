@@ -98,13 +98,13 @@ Everything sits on one row.
 
 - **Left:** the clip picker, showing the entity and clip (click it to switch clips, **Rename clip...** the current one, start a **New clip...**, or **Use an existing clip...** from the project; picking a clip frames it to fill the lanes), a **+** that creates a new clip straight away, and the red **Record** toggle.
 - **Centre:** the transport (first frame, previous key, play/pause, next key, last frame, loop) and the time readout: the playhead's time, the clip's length and the frame number, each in a fixed-width slot so the buttons never shift as the numbers change. First frame goes to the loop start, and pressed again there to `0`; last frame goes to the loop end, then to the clip's end.
-- **Right:** playback speed, snap, the **Keys / Curves** switch, and **⋯**.
+- **Right:** a track height slider (drag it left for short rows that fit a whole rig, right for tall ones), playback speed, snap, the **Keys / Curves** switch, and **⋯**.
 
 The **⋯** menu holds what used to crowd the bar: the clip **Length**, a name field and **Add at playhead** for event markers, zoom in, zoom out and **Frame all**, the **Row height** (**Compact**, **Normal** or **Roomy**), **Add property track**, **Key every property track**, and **Save now**.
 
 ### Tracks and keys
 
-The track list on the left has a filter box, **+ Track**, a right edge you can drag to widen it for long bone names, and an **All tracks** row (marked with a stack icon) whose lane summarises every key in the clip: a diamond at each key time on any track, and a tinted bar wherever some track keys continuously (every frame or two, as an imported clip does). Drag a summary diamond to retime every key at that moment on every track at once; it snaps like any key drag and can be undone. Diamonds closer together than a few pixels are thinned out; zoom in to reach each one. Bones nest under their parent bone; click the caret to fold a subtree. Each bone row shows **T**, **R** and **S** chips for the translation, rotation and scale channels it animates, tinted to match their keys. Lanes are flat. A scrollbar along the bottom scrolls through time and one down the right scrolls the rows; drag a thumb, or click the bar beside it to jump there. Dragging a scrollbar never moves the playhead.
+The track list on the left has a filter box, **+ Track**, a right edge you can drag to widen it for long bone names, and an **All tracks** row (marked with a stack icon) whose lane summarises every key in the clip: a diamond at each key time on any track, and a tinted bar wherever some track keys continuously (every frame or two, as an imported clip does). Drag a summary diamond to retime every key at that moment on every track at once; it snaps like any key drag and can be undone. Diamonds closer together than a few pixels are thinned out; zoom in to reach each one. Property tracks are listed first, newest at the top, so a track you have just added is selected and scrolled into view right under **All tracks**, however many bones follow. Bones nest under their parent bone; click the caret to fold a subtree. Each bone row shows **T**, **R** and **S** chips for the translation, rotation and scale channels it animates, tinted to match their keys. Lanes are flat. A scrollbar along the bottom scrolls through time and one down the right scrolls the rows; drag a thumb, or click the bar beside it to jump there. Dragging a scrollbar never moves the playhead.
 
 Right-click a bone or property row in the track list for its menu:
 
@@ -127,7 +127,7 @@ A stretch of every-frame keys, which is what an imported clip is made of, draws 
 | Scroll the tracks | Mouse wheel, or the right-hand scrollbar |
 | Pan the time axis | `Shift` + wheel, a sideways trackpad swipe, or the bottom scrollbar |
 | Zoom the time axis | `Ctrl` + wheel, about the cursor. Deep enough that one frame spans over a hundred pixels. |
-| Taller or shorter rows | `Alt` + wheel, or **Row height** in **⋯** |
+| Taller or shorter rows | The track height slider in the toolbar, `Alt` + wheel, or **Row height** in **⋯** |
 | Pan freely | Middle-drag anywhere over the lanes, or right-drag from empty lane space (a right-click that does not move still opens the menu) |
 
 The ruler has two halves. The **upper half** holds the preview loop region: a blue band between a start handle and an end handle, brighter and with a thin line along its top while looping is on. Drag either handle to resize it, or drag the band to move it, keeping its length. The **lower half** scrubs, and carries the **clip-length marker**: a small tab in the muted text colour at the clip's end, which is the one control here that changes the clip itself. On a fresh clip the region is the whole clip, so the loop end sits right above the length marker; the upper half takes the loop end and the lower half the length. While the band still spans the whole clip it has nowhere to move, so the upper half scrubs too.

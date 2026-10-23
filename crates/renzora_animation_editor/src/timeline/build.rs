@@ -296,6 +296,8 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
+    let row_height = build_row_height_slider(commands, fonts);
+
     let (snap_b, snap_ic) = icon_btn_raw(commands, fonts, "magnet-straight", text_muted(), AnimBtn::Snap);
     commands.entity(snap_b).insert(HoverTooltip::new(renzora::lang::t_or("timeline.snap_tip", "Snap keys to frames")));
     bind_text_color(commands, snap_ic, |w| {
@@ -316,14 +318,64 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let mode = super::curves::build_mode_switch(commands, fonts);
     let (overflow, _) = icon_btn(commands, fonts, "dots-three", text_primary(), OverflowBtn);
     commands.entity(overflow).insert((RelativeCursorPosition::default(), HoverTooltip::new(renzora::lang::t_or("timeline.more_tip", "More: length, events, zoom, row height, save"))));
-    for e in [speed_dd, snap_b, sep3, mode, overflow] {
+    for e in [row_height, speed_dd, snap_b, sep3, mode, overflow] {
         bind_display(commands, e, ready);
     }
 
     commands.entity(bar).add_children(&[
-        picker, new_clip, sep1, record, gap_l, pill, time, waiting, gap_r, curves_tools, speed_dd, snap_b, sep3, mode, overflow,
+        picker, new_clip, sep1, record, gap_l, pill, time, waiting, gap_r, curves_tools, row_height, speed_dd, snap_b, sep3,
+        mode, overflow,
     ]);
     bar
+}
+
+/// The toolbar's row height slider: a rows glyph and a short slider over the
+/// track height, from compact to tall.
+///
+/// On the bar rather than only in the "⋯" menu, because it is something you
+/// reach for while looking at the tracks: a rig with 65 bones wants short rows
+/// to see them all, and a few keyed properties want tall ones to click. The
+/// menu's three presets and Alt+wheel still set the same value, and the slider
+/// follows them.
+fn build_row_height_slider(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                margin: UiRect::horizontal(Val::Px(6.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Name::new("timeline-row-height"),
+        ))
+        .id();
+    let icon = icon_text(commands, &fonts.phosphor, "rows", text_muted(), 14.0);
+    commands.entity(icon).insert(PASS_THROUGH);
+    let slider = renzora_ember::widgets::slider_ranged(commands, super::ROW_DEFAULT, super::ROW_MIN, super::ROW_MAX);
+    commands.entity(slider).insert(HoverTooltip::new(renzora::lang::t_or(
+        "timeline.row_height_slider_tip",
+        "Track height (Alt+wheel over the tracks also changes it)",
+    )));
+    commands.entity(slider).entry::<Node>().and_modify(|mut n| n.width = Val::Px(80.0));
+    bind_2way(
+        commands,
+        slider,
+        |w: &Rx| state(w.untracked()).map(|s| s.track_height).unwrap_or(super::ROW_DEFAULT),
+        |w: &mut World, h: &f32| {
+            // Whole pixels, so rows land on the pixel grid and the value the
+            // presets compare against is exact.
+            let h = h.round();
+            if state(w).is_some_and(|s| (s.track_height - h).abs() < 0.5) {
+                return;
+            }
+            let Some(bridge) = w.get_resource::<AnimEditorBridge>() else { return };
+            push(bridge, AnimEditorAction::SetTrackHeight(h));
+        },
+    );
+    commands.entity(group).add_children(&[icon, slider]);
+    group
 }
 
 /// The effect the timeline shows on a stand-in clip (no animation clip), for
