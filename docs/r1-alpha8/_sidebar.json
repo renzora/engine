@@ -32,6 +32,8 @@
             { "slug": "editor/terrain", "title": "Terrain" },
             { "slug": "editor/tilemap", "title": "Tilemaps" },
             { "slug": "editor/animation", "title": "Animation" },
+            { "slug": "editor/rigging", "title": "Rigging & Posing" },
+            { "slug": "editor/facial-animation", "title": "Facial Animation" },
             { "slug": "editor/sprite-animation", "title": "Sprite Animation" },
             { "slug": "editor/particles", "title": "Particles & VFX" },
             { "slug": "editor/audio", "title": "Audio" },
@@ -146,6 +148,7 @@
             { "slug": "extending/script-backends", "title": "Script Backends (languages)" },
             { "slug": "extending/audio-backends", "title": "Audio Backends (mixers)" },
             { "slug": "extending/network-backends", "title": "Network Backends (HTTP)" },
+            { "slug": "extending/physics-backends", "title": "Physics Backends (engines)" },
             { "slug": "extending/post-processing", "title": "Post-Processing Effects" },
             { "slug": "extending/material-nodes", "title": "Custom Material Nodes" }
           ]

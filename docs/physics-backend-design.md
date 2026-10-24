@@ -1,12 +1,74 @@
 # Physics backends: design
 
-**Status: proposal, nothing built.** This is the design for making physics a
-backend behind a contract, the way audio, networking and scripting already are
-(see `docs/r1-alpha8/extending/audio-backends.md`,
-`network-backends.md`, `script-backends.md`). It lives outside `docs/r1-alpha8/`
-on purpose: that tree publishes to renzora.com, and an API that does not exist
-yet must not appear there. When the work lands, this becomes
-`docs/r1-alpha8/extending/physics-backends.md`.
+**Status (2026-10-23): phases 1 to 4 built. The contract is complete (joints,
+layers, collider rotation, CCD, contact detail and collision events, torque and
+impulses, overlaps, read-only casts); every consumer is on it (parkour, ragdoll,
+navmesh obstacles, scene saving, and the water and MCP plugins); the avian
+re-export is gone; the `rapier_physics` plugin covers both worlds. Phase 5
+(Jolt), Problems entries for unclaimed capabilities and engine-side
+interpolation are open.** This is the design for
+making physics a backend behind a contract, the way audio, networking and
+scripting already are (see `docs/r1-alpha8/extending/audio-backends.md`,
+`network-backends.md`, `script-backends.md`). The part that exists is documented
+for users in `docs/r1-alpha8/extending/physics-backends.md`; this file keeps the
+plan and the reasoning, and stays outside `docs/r1-alpha8/` so the unbuilt parts
+never publish.
+
+### Where phase 1 differs from the plan below
+
+Building it moved four decisions, and the sections below should be read with
+these in mind:
+
+- **Contacts are state, not messages.** A backend rewrites a `PhysicsContacts`
+  set per body every frame instead of emitting `CollisionStarted`/`Ended`. A
+  backend that drops or doubles one event would leave a body touching forever;
+  a set cannot drift. It also reproduced avian's existing contact semantics
+  exactly.
+- **The trait is smaller.** `name`, `caps` and `cast` only. A backend adds its own
+  systems from its plugin, gated on `physics_backend_selected`, so `build` was
+  redundant; `detach` and `transient_type_prefixes` arrive with selection
+  (phase 3) and the scene_io move (phase 2), where something calls them.
+- **Commands apply in `PostUpdate`** (`PhysicsSet::Commands`), and there is a
+  `Strip` command. Scripts run in `Update` in no fixed order against the
+  physics sets, so anything earlier dropped late commands to the next frame;
+  `Strip` is what terrain streaming needed (drop the body, keep the data).
+- **Casts are their own type** (`Cast`/`CastBatch`) rather than a grown
+  `SceneRay`. Particles keep `SceneRay` unchanged; the engine translates.
+
+The one behaviour change is a fix: `apply_force` from a script used to do
+nothing, because the force was removed in `PostUpdate` before any step ran.
+`apply_impulse` still sets the velocity, deliberately.
+
+### Where phase 2 differs from the plan below
+
+- **Casts take `&World`, and there is no snapshot.** Open question 1 is
+  answered by a third option: a backend's cast reads its state through
+  read-only access (avian through a `SystemState<SpatialQuery>` built once at
+  startup), so a caller can hold other read-only queries open across its casts.
+  Parkour became an exclusive system that takes each character's working state
+  out of the world, drives against `&World`, and puts it back. All 14 traversal
+  tests pass unchanged.
+- **The avian re-export is removed, not deprecated** (open question 2). The two
+  plugins that used it (water, MCP) were the only users and moved onto the
+  contract in the same change; MCP's colliders now save with the scene, which
+  they never did as raw avian components.
+- **Collision layers went in now** (open question 5), as `collision_layers` and
+  `collides_with` on `CollisionShapeData` and a `collides_with` mask on casts
+  and overlaps.
+- **Contacts carry detail** (`Contact`: entity, point, normal, impulse), and the
+  engine turns them into `CollisionStarted` / `CollisionEnded` entity events,
+  so events exist without a backend ever emitting one.
+- **`transient_type_prefixes` is `runtime_type_prefixes`**, and generated
+  physics data is marked `RuntimeOnlyPhysics` so a ragdoll's bones never save.
+- **The navmesh obstacle source** slices `ResolvedCollider` geometry itself
+  rather than implementing the navigator's trait for `CollisionShapeData`, so
+  mesh colliders carve their real outline.
+- **Avian was missing its joint solver.** The workspace built avian without
+  `xpbd_joints`, so joints (and ragdolls) never held. The contract tests found
+  it; the bundled backend now enables it.
+- **Removing physics data at runtime** now takes the entity out of the
+  simulation, on every backend (see `PhysicsSet::Sync` for what each removal
+  means). It never did before.
 
 ## Goal
 

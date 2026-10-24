@@ -48,8 +48,8 @@ fn stamp_mesh_colliders_on_descendants(world: &mut World, root: Entity) {
 }
 
 /// Remove `PhysicsBodyData` + `CollisionShapeData` from `root` and every
-/// descendant that currently has them. Also despawns the avian backend
-/// components via `despawn_physics_components` to keep things clean.
+/// descendant that currently has them. The physics backend drops its own
+/// bodies and colliders when those components go.
 fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
     let mut stack = vec![root];
     let mut targets: Vec<Entity> = Vec::new();
@@ -420,6 +420,21 @@ fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
         rows.push(float_row(commands, fonts, "Linear Damping", lin, 0.01, 0.0, 100.0, |b| b.linear_damping, |b, v| b.linear_damping = v));
         rows.push(float_row(commands, fonts, "Angular Damping", ang, 0.01, 0.0, 100.0, |b| b.angular_damping, |b, v| b.angular_damping = v));
 
+        // Continuous collision detection, for bodies fast enough to pass
+        // through a thin wall in one step.
+        let ccd = renzora_ember::widgets::toggle_switch(commands, false);
+        bind_2way(
+            commands,
+            ccd,
+            move |w| w.get::<PhysicsBodyData>(entity).map(|b| b.ccd).unwrap_or(false),
+            move |w, v: &bool| {
+                if let Some(mut b) = w.get_mut::<PhysicsBodyData>(entity) {
+                    b.ccd = *v;
+                }
+            },
+        );
+        rows.push(inspector_row(commands, &fonts.ui, "Continuous (CCD)", ccd));
+
         commands.entity(col).add_children(&rows);
 
         // "Lock Axes" sub-header + the two grouped X/Y/Z checkbox rows.
@@ -606,12 +621,12 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
             inspector_row(commands, &fonts.ui, label, dv)
         };
 
-        let vec3_row = |commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, label: &'static str, get: fn(&CollisionShapeData) -> Vec3, set: fn(&mut CollisionShapeData, Vec3)| {
+        let vec3_row = |commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, label: &'static str, speed: f32, get: fn(&CollisionShapeData) -> Vec3, set: fn(&mut CollisionShapeData, Vec3)| {
             const AXES: [(&str, (u8, u8, u8)); 3] = [("X", (230, 90, 90)), ("Y", (130, 200, 90)), ("Z", (90, 150, 230))];
             let group = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }).id();
             let mut kids = Vec::new();
             for (i, (ax, axc)) in AXES.iter().enumerate() {
-                let dv = drag_value(commands, &fonts.ui, ax, *axc, 0.0, 0.01);
+                let dv = drag_value(commands, &fonts.ui, ax, *axc, 0.0, speed);
                 bind_2way(
                     commands,
                     dv,
@@ -696,7 +711,7 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
         let r_shape = inspector_row(commands, &fonts.ui, "Shape", dd);
 
         // Per-shape parameters (shown/hidden by shape type).
-        let r_half_extents = vec3_row(commands, fonts, "Half Extents", |s| s.half_extents, |s, v| s.half_extents = v);
+        let r_half_extents = vec3_row(commands, fonts, "Half Extents", 0.01, |s| s.half_extents, |s, v| s.half_extents = v);
         bind_display(commands, r_half_extents, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Box)));
         let r_radius = float_row(commands, fonts, "Radius", 0.01, 0.001, f32::MAX, |s| s.radius, |s, v| s.radius = v);
         bind_display(commands, r_radius, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Sphere | CollisionShapeType::Capsule | CollisionShapeType::Cylinder)));
@@ -708,8 +723,25 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
         let r_mesh = inspector_row(commands, &fonts.ui, "", mesh_note);
         bind_display(commands, r_mesh, move |w| matches!(shape_of(w, entity), Some(CollisionShapeType::Mesh)));
 
-        // Offset / friction / restitution / sensor.
-        let r_offset = vec3_row(commands, fonts, "Offset", |s| s.offset, |s, v| s.offset = v);
+        // Offset / rotation / friction / restitution / sensor / layers.
+        let r_offset = vec3_row(commands, fonts, "Offset", 0.01, |s| s.offset, |s, v| s.offset = v);
+        // In degrees, as the Transform inspector shows rotation.
+        let r_rotation = vec3_row(
+            commands,
+            fonts,
+            "Rotation",
+            0.5,
+            |s| {
+                let (x, y, z) = s.rotation.to_euler(EulerRot::XYZ);
+                Vec3::new(x, y, z) * (180.0 / std::f32::consts::PI)
+            },
+            |s, v| {
+                let r = v * (std::f32::consts::PI / 180.0);
+                s.rotation = Quat::from_euler(EulerRot::XYZ, r.x, r.y, r.z);
+            },
+        );
+        // A mesh collider is the mesh itself, in place; it has no turn of its own.
+        bind_display(commands, r_rotation, move |w| !matches!(shape_of(w, entity), Some(CollisionShapeType::Mesh)));
         let r_friction = float_row(commands, fonts, "Friction", 0.01, 0.0, 2.0, |s| s.friction, |s, v| s.friction = v);
         let r_restitution = float_row(commands, fonts, "Restitution", 0.01, 0.0, 2.0, |s| s.restitution, |s, v| s.restitution = v);
 
@@ -726,10 +758,73 @@ fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
         );
         let r_sensor = inspector_row(commands, &fonts.ui, "Is Sensor", sensor);
 
-        let rows = [r_edit, r_apply, r_shape, r_half_extents, r_radius, r_half_height, r_mesh, r_offset, r_friction, r_restitution, r_sensor];
+        let r_layers = layer_row(commands, fonts, entity, "Layers", |s| s.collision_layers, |s, v| s.collision_layers = v);
+        let r_collides = layer_row(commands, fonts, entity, "Collides With", |s| s.collides_with, |s, v| s.collides_with = v);
+
+        let rows = [r_edit, r_apply, r_shape, r_half_extents, r_radius, r_half_height, r_mesh, r_offset, r_rotation, r_friction, r_restitution, r_sensor, r_layers, r_collides];
         commands.entity(col).add_children(&rows);
         col
     })
+}
+
+/// Layers shown as checkboxes. The data holds 32; the first eight are the ones
+/// a scene realistically names by hand, and the rest stay reachable from code
+/// without crowding the inspector. A bit set beyond these survives editing,
+/// since each box only ever flips its own bit.
+const SHOWN_LAYERS: u32 = 8;
+
+/// A row of layer checkboxes bound to one bitmask of the collision shape.
+fn layer_row(
+    commands: &mut Commands,
+    fonts: &renzora_ember::font::EmberFonts,
+    entity: Entity,
+    label: &str,
+    get: fn(&CollisionShapeData) -> u32,
+    set: fn(&mut CollisionShapeData, u32),
+) -> Entity {
+    use renzora_ember::font::ui_font;
+    use renzora_ember::inspector::inspector_row;
+    use renzora_ember::reactive::tracked::bind_2way;
+    use renzora_ember::theme::{rgb, text_muted};
+    use renzora_ember::widgets::checkbox;
+
+    let group = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            row_gap: Val::Px(2.0),
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            ..default()
+        })
+        .id();
+    let mut cells: Vec<Entity> = Vec::new();
+    for bit in 0..SHOWN_LAYERS {
+        let cb = checkbox(commands, false);
+        bind_2way(
+            commands,
+            cb,
+            move |w| w.get::<CollisionShapeData>(entity).is_some_and(|s| get(s) & (1 << bit) != 0),
+            move |w, v: &bool| {
+                if let Some(mut s) = w.get_mut::<CollisionShapeData>(entity) {
+                    let mask = get(&s);
+                    set(&mut s, if *v { mask | (1 << bit) } else { mask & !(1 << bit) });
+                }
+            },
+        );
+        let txt = commands
+            .spawn((Text::new(bit.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted()))))
+            .id();
+        let cell = commands
+            .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(2.0), ..default() })
+            .id();
+        commands.entity(cell).add_children(&[cb, txt]);
+        cells.push(cell);
+    }
+    commands.entity(group).add_children(&cells);
+    inspector_row(commands, &fonts.ui, label, group)
 }
 
 fn edit_collider_click(q: Query<&UiInteraction, (Changed<UiInteraction>, With<EditColliderBtn>)>, mut commands: Commands) {

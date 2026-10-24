@@ -1238,18 +1238,7 @@ fn tick_editor_load_progress(
             if data.model_path.is_none() || *load_failed {
                 return false;
             }
-            let scene_populated = kids
-                .map(|c| {
-                    c.iter().any(|child| {
-                        scene_roots.contains(child)
-                            && children_q
-                                .get(child)
-                                .map(|gc| !gc.is_empty())
-                                .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false);
-            !scene_populated
+            !instance_populated(*kids, &scene_roots, &children_q)
         })
         .count() as u32;
     let total_outstanding = unspawned;
@@ -1318,18 +1307,7 @@ fn tick_editor_load_progress(
             if data.model_path.is_none() || load_failed {
                 continue;
             }
-            let populated = kids
-                .map(|c| {
-                    c.iter().any(|child| {
-                        scene_roots.contains(child)
-                            && children_q
-                                .get(child)
-                                .map(|gc| !gc.is_empty())
-                                .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false);
-            if !populated {
+            if !instance_populated(kids, &scene_roots, &children_q) {
                 if let Some(p) = data.model_path.as_ref() {
                     next_processing_name = Some(short_name(p));
                     break;
@@ -1368,6 +1346,29 @@ fn tick_editor_load_progress(
             tasks.clear_completed();
         }
     }
+}
+
+/// Whether a model instance's file has been spawned into it: a world-asset
+/// root child that has filled in, or anything else under it, which is the
+/// spawned scene after the flatten pass has dissolved the wrapper into the
+/// instance.
+///
+/// The second half is what makes this the check rather than a hint. The
+/// tracker otherwise leans on `ImportedRoot`, put on by the spawn-ready
+/// observer, and an instance that ended up flattened without it (seen after
+/// undoing the delete of a model) has no world-asset root left to find either,
+/// so it counted as unspawned forever and held the loading overlay at its last
+/// percentage with the model plainly in the scene.
+fn instance_populated(
+    kids: Option<&Children>,
+    scene_roots: &Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
+    children_q: &Query<&Children>,
+) -> bool {
+    kids.is_some_and(|c| {
+        c.iter().any(|child| {
+            !scene_roots.contains(child) || children_q.get(child).is_ok_and(|gc| !gc.is_empty())
+        })
+    })
 }
 
 /// Strip the directory off an asset-relative path, leaving just the

@@ -34,6 +34,17 @@
 //! `renzora_static_plugins` aggregator for lean exports. A named type in a
 //! generated list is visible to the linker; none of that scaffolding is needed.
 //!
+//! ## Bundled plugins
+//!
+//! The same wiring links the **bundled plugins**: each `plugins/<dir>/` in the
+//! checkout is an ordinary Renzora plugin (`renzora::plugin!`, the kind a user
+//! installs) that ships compiled into the binary, so the engine has, say,
+//! physics out of the box and a checkout that wants none deletes one folder.
+//! They differ from `add!` crates in three small ways: the dependency turns on
+//! their `bundled` feature, the install line is the expression `plugin!` was
+//! given rather than `Type::default()`, and the scope defaults to `Editor`, as
+//! `plugin!`'s does. See [`scan_bundled`].
+//!
 //! ## Feature gates are deliberately NOT generated
 //!
 //! Which plugins a lean export can strip, and how they group (`postfx` covers
@@ -58,7 +69,8 @@ enum Scope {
     Editor,
 }
 
-/// One `renzora::add!` declaration, resolved to everything the generator needs.
+/// One `renzora::add!` declaration, or a bundled plugin's `renzora::plugin!`,
+/// resolved to everything the generator needs.
 struct Decl {
     /// Package name (`renzora_shader`), which is also the dependency key.
     pkg: String,
@@ -66,6 +78,12 @@ struct Decl {
     dep_path: String,
     /// Fully-qualified plugin type (`renzora_shader::material::MaterialPlugin`).
     path: String,
+    /// What the install line hands `add_plugins`: `path::default()` for an
+    /// `add!` type, the crate-qualified expression for a `plugin!` one.
+    install: String,
+    /// From `plugins/`: linked with its `bundled` feature on (see
+    /// [`scan_bundled`]).
+    bundled: bool,
     /// Crate-local features gating the module the declaration sits in, if any.
     /// A `#[cfg(feature = "game_ui")] pub mod game_ui;` means the plugin type
     /// only exists when that feature is on, so the install line needs a gate too.
@@ -202,11 +220,22 @@ fn path_deps(text: &str) -> Vec<(String, String)> {
 /// block to become feature-gated (see the module docs) has a dependency entry
 /// and one or more `dep:`/`crate/feature` items that regeneration deliberately
 /// leaves alone; on deletion those are exactly what would be left dangling.
+///
+/// `name` may also be a bundled plugin's folder under `plugins/`, which is how
+/// a checkout drops one (physics, say) for good. Its references are found by
+/// package name, which need not match the folder's.
 pub fn remove(repo: &Path, name: &str) -> Result<(), String> {
-    let dir = repo.join("crates").join(name);
+    let mut dir = repo.join("crates").join(name);
+    let mut package = name.to_string();
     if !dir.join("Cargo.toml").is_file() {
-        return Err(format!("no crate at {}", dir.display()));
+        dir = repo.join("plugins").join(name);
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.is_file() {
+            return Err(format!("no crate at crates/{name} or plugins/{name}"));
+        }
+        package = package_name(&read(&manifest)?).unwrap_or(package);
     }
+    let name = package.as_str();
 
     for host in ["renzora_runtime", "renzora_editor"] {
         let path = repo.join("crates").join(host).join("Cargo.toml");
@@ -350,12 +379,12 @@ fn item_mentions(item: &str, name: &str) -> bool {
 
 // ── Scanning ────────────────────────────────────────────────────────────────
 
-/// Find every `renzora::add!` declaration under `crates/`.
+/// Find every `renzora::add!` declaration under `crates/`, plus the bundled
+/// plugins under `plugins/` (see [`scan_bundled`]).
 ///
-/// Only `crates/` is scanned: `plugins/` holds installed plugins, which are
-/// `dlopen`'d and never linked, and the vendored `bevy_*` trees contain no
-/// declarations. A crate is any directory holding a `Cargo.toml`, which picks up
-/// the nested `crates/renzora_*/editor` subcrates for free.
+/// The vendored `bevy_*` trees contain no declarations. A crate is any directory
+/// holding a `Cargo.toml`, which picks up the nested `crates/renzora_*/editor`
+/// subcrates for free.
 fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
     let crates = repo.join("crates");
     let mut out = Vec::new();
@@ -396,6 +425,8 @@ fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
                 out.push(Decl {
                     pkg: pkg.clone(),
                     dep_path: dep_path(&crates, &dir),
+                    install: format!("{path}::default()"),
+                    bundled: false,
                     path,
                     module_features: gates_for(&mod_gates, &rel_mod),
                     scope,
@@ -405,6 +436,7 @@ fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
             }
         }
     }
+    out.extend(scan_bundled(repo)?);
 
     // Deterministic output: priority first (the only ordering `add!` can express),
     // then alphabetical so an unrelated edit never reshuffles the file.
@@ -426,6 +458,129 @@ fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
         }
     }
     Ok(out)
+}
+
+/// Find the bundled plugins: every `plugins/<dir>/` in the engine checkout.
+///
+/// A bundled plugin is an ordinary Renzora plugin, written exactly like one a
+/// user installs (`renzora::plugin!(Expr, Scope)`), that the engine ships with
+/// and compiles into its binary instead. This is how the engine has physics out
+/// of the box while physics stays removable: delete the folder and the next
+/// `cargo renzora` prunes it ([`heal`]) and links nothing in its place.
+///
+/// Three things are checked here rather than left to fail later, because each
+/// would fail somewhere far from its cause:
+///
+/// - exactly one `plugin!` line, since that is what a plugin is, and two would
+///   be two plugins sharing one crate's entry point once it is installed;
+/// - no `crate-type = ["dylib"]`: a dylib dependency is linked dynamically,
+///   which is not "in the binary" at all, and it is also the marker the loader
+///   and exporter use to recognise an *installed* plugin directory;
+/// - a `bundled` feature, which the generated dependency turns on so `plugin!`
+///   drops the loader's `#[no_mangle]` symbols. Two plugins linked into one
+///   binary would otherwise both define them and the link would fail, and only
+///   once a second plugin arrived.
+fn scan_bundled(repo: &Path) -> Result<Vec<Decl>, String> {
+    let root = repo.join("plugins");
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&root)
+        .map_err(|e| format!("read {}: {e}", root.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.join("Cargo.toml").is_file())
+        .collect();
+    dirs.sort();
+
+    let mut out = Vec::new();
+    for dir in dirs {
+        let shown = rel_display(repo, &dir);
+        let manifest = read(&dir.join("Cargo.toml"))?;
+        let pkg = package_name(&manifest).ok_or_else(|| format!("{shown}/Cargo.toml has no package name"))?;
+        if manifest
+            .lines()
+            .any(|l| l.trim_start().starts_with("crate-type") && l.contains("\"dylib\""))
+        {
+            return Err(format!(
+                "{shown} is an installed-plugin crate (`crate-type = [\"dylib\"]`). A bundled plugin \
+                 is linked into the binary, so drop the crate-type, or move the folder out of the \
+                 engine checkout to keep it installable"
+            ));
+        }
+        if !feature_table(&manifest).0.iter().any(|(name, _)| name == "bundled") {
+            return Err(format!(
+                "{shown}/Cargo.toml needs `[features] bundled = []`: the engine turns it on so \
+                 `renzora::plugin!` leaves out the loader symbols every linked-in plugin would \
+                 otherwise define"
+            ));
+        }
+        let krate = pkg.replace('-', "_");
+        let src = dir.join("src");
+        let mut found = Vec::new();
+        if src.is_dir() {
+            for file in rust_files(&src)? {
+                let text = read(&file)?;
+                for (lineno, line) in text.lines().enumerate() {
+                    if let Some(args) = plugin_declaration(line) {
+                        found.push((module_path(&src, &file), args, format!("{}:{}", rel_display(repo, &file), lineno + 1)));
+                    }
+                }
+            }
+        }
+        let [(rel_mod, args, site)] = <[_; 1]>::try_from(found).map_err(|found| {
+            format!(
+                "{shown} must declare exactly one plugin with `renzora::plugin!(..);` at the start of \
+                 a line, and has {}",
+                found.len()
+            )
+        })?;
+        let (expr, scope) = parse_plugin_args(&args).map_err(|e| format!("{site}: {e}"))?;
+        // Resolved from the module the line sits in, like `add!`, unless it is
+        // already a `crate::` path, which names the root itself.
+        let install = match expr.strip_prefix("crate::") {
+            Some(rest) => format!("{krate}::{rest}"),
+            None if rel_mod.is_empty() => format!("{krate}::{expr}"),
+            None => format!("{krate}::{rel_mod}::{expr}"),
+        };
+        out.push(Decl {
+            pkg,
+            dep_path: format!("../../plugins/{}", dir.file_name().unwrap_or_default().to_string_lossy()),
+            path: install.clone(),
+            install,
+            bundled: true,
+            module_features: Vec::new(),
+            scope,
+            priority: 0,
+            site,
+        });
+    }
+    Ok(out)
+}
+
+/// Match a top-level `renzora::plugin!(...);` line, the same way [`declaration`]
+/// matches `add!`.
+fn plugin_declaration(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("renzora::plugin!(")?;
+    Some(rest.strip_suffix(");")?.to_string())
+}
+
+/// `Expr` / `Expr, Runtime` / `Expr::new(1, 2), Editor`. The scope is whatever
+/// follows the LAST comma, and only if it is a scope name, so commas inside the
+/// expression stay part of it. No scope means `Editor`, as it does in `plugin!`.
+fn parse_plugin_args(args: &str) -> Result<(String, Scope), String> {
+    let (expr, scope) = match args.rsplit_once(',') {
+        Some((expr, "Runtime")) | Some((expr, " Runtime")) => (expr, Scope::Runtime),
+        Some((expr, "Editor")) | Some((expr, " Editor")) => (expr, Scope::Editor),
+        _ => (args, Scope::Editor),
+    };
+    let expr = expr.trim();
+    // Prefixed with the crate's path in the generated list, so it has to start
+    // with a name that path can lead to.
+    if !expr.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+        return Err(format!("`{expr}` must start with a name (a plugin type or constructor path)"));
+    }
+    Ok((expr.to_string(), scope))
 }
 
 /// Match a top-level `renzora::add!(...);` line, rejecting anything embedded in
@@ -588,10 +743,20 @@ impl Host {
         // Names present outside the generated block: already wired by hand.
         let manual = dep_names(&format!("{before}{after}"));
 
-        let mut wanted: BTreeMap<&str, &str> = BTreeMap::new();
+        let mut wanted: BTreeMap<&str, &Decl> = BTreeMap::new();
         for d in decls {
             if !manual.contains(&d.pkg) {
-                wanted.insert(&d.pkg, &d.dep_path);
+                wanted.insert(&d.pkg, d);
+            } else if d.bundled && !dep_line(text, &d.pkg).is_some_and(|l| l.contains("\"bundled\"")) {
+                // Hand-wired (to gate it on a feature, say) but without the
+                // feature that drops its loader symbols: fine alone, a link
+                // failure the day a second bundled plugin arrives.
+                return Err(format!(
+                    "{}: the `{}` dependency on bundled plugin `{}` needs `features = [\"bundled\"]`",
+                    self.dir.join("Cargo.toml").display(),
+                    d.pkg,
+                    d.site
+                ));
             }
         }
 
@@ -619,8 +784,9 @@ impl Host {
              # loading the workspace, including to run the generator that would fix\n\
              # it. If you hit that, delete the offending line below."
         );
-        for (pkg, path) in &wanted {
-            let _ = writeln!(generated, "{pkg} = {{ path = \"{path}\" }}");
+        for (pkg, d) in &wanted {
+            let features = if d.bundled { ", features = [\"bundled\"]" } else { "" };
+            let _ = writeln!(generated, "{pkg} = {{ path = \"{}\"{features} }}", d.dep_path);
         }
         let _ = writeln!(generated, "{END}");
 
@@ -665,7 +831,7 @@ impl Host {
             for gate in self.gates(d, features) {
                 let _ = writeln!(s, "    #[cfg(feature = \"{gate}\")]");
             }
-            let _ = writeln!(s, "    app.add_plugins({}::default());", d.path);
+            let _ = writeln!(s, "    app.add_plugins({});", d.install);
         }
         let _ = writeln!(s, "}}");
         s
@@ -770,6 +936,22 @@ fn dep_names(text: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// `name`'s `[dependencies]` line, if it has one.
+fn dep_line<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let mut in_deps = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && !t.starts_with("[[") {
+            in_deps = t == "[dependencies]";
+            continue;
+        }
+        if in_deps && (t.starts_with(&format!("{name} ")) || t.starts_with(&format!("{name}="))) {
+            return Some(t);
+        }
+    }
+    None
 }
 
 /// The `[features]` table, flattened to (feature, entries).
@@ -961,4 +1143,88 @@ fn read(p: &Path) -> Result<String, String> {
 
 fn normalize(s: &str) -> String {
     s.replace("\r\n", "\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A throwaway checkout holding one bundled plugin with this manifest and
+    /// `lib.rs`.
+    fn checkout(tag: &str, manifest: &str, lib: &str) -> PathBuf {
+        let repo = std::env::temp_dir().join(format!("renzora_sync_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        let src = repo.join("plugins").join("phys").join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(repo.join("plugins/phys/Cargo.toml"), manifest).unwrap();
+        std::fs::write(src.join("lib.rs"), lib).unwrap();
+        repo
+    }
+
+    const MANIFEST: &str = "[package]\nname = \"my-phys\"\n\n[features]\nbundled = []\n";
+
+    #[test]
+    fn a_bundled_plugin_installs_its_own_expression() {
+        let repo = checkout("ok", MANIFEST, "/// renzora::plugin!(Doc);\nrenzora::plugin!(Phys::new(1, 2), Runtime);\n");
+        let decls = scan_bundled(&repo).unwrap();
+        let _ = std::fs::remove_dir_all(&repo);
+        assert_eq!(decls.len(), 1, "the doc-comment example is not a declaration");
+        let d = &decls[0];
+        assert_eq!(d.pkg, "my-phys");
+        assert_eq!(d.install, "my_phys::Phys::new(1, 2)", "commas inside the expression stay in it");
+        assert_eq!(d.dep_path, "../../plugins/phys");
+        assert!(d.bundled && d.scope == Scope::Runtime);
+    }
+
+    #[test]
+    fn plugin_scope_defaults_to_editor_like_the_macro() {
+        assert!(matches!(parse_plugin_args("Thing"), Ok((e, Scope::Editor)) if e == "Thing"));
+        assert!(matches!(parse_plugin_args("crate::a::Thing, Runtime"), Ok((e, Scope::Runtime)) if e == "crate::a::Thing"));
+        assert!(parse_plugin_args("<T as X>::new()").is_err());
+    }
+
+    #[test]
+    fn an_installed_plugin_or_one_without_the_feature_is_refused() {
+        let dylib = format!("{MANIFEST}\n[lib]\ncrate-type = [\"dylib\"]\n");
+        for (tag, manifest, lib, says) in [
+            ("dylib", dylib.as_str(), "renzora::plugin!(P, Runtime);\n", "installed-plugin"),
+            ("feature", "[package]\nname = \"p\"\n", "renzora::plugin!(P, Runtime);\n", "bundled = []"),
+            ("none", MANIFEST, "pub struct P;\n", "exactly one"),
+            ("two", MANIFEST, "renzora::plugin!(P);\nrenzora::plugin!(Q);\n", "exactly one"),
+        ] {
+            let repo = checkout(tag, manifest, lib);
+            let err = scan_bundled(&repo).err();
+            let _ = std::fs::remove_dir_all(&repo);
+            assert!(err.as_deref().is_some_and(|e| e.contains(says)), "{tag}: {err:?}");
+        }
+    }
+
+    #[test]
+    fn a_hand_wired_bundled_dependency_must_turn_the_feature_on() {
+        let host = Host {
+            dir: PathBuf::from("host"),
+            scope: Scope::Runtime,
+            install_fn: "add_runtime_plugins",
+            app_path: "bevy::app::App",
+            always: None,
+        };
+        let d = Decl {
+            pkg: "phys".into(),
+            dep_path: "../../plugins/phys".into(),
+            path: "phys::P".into(),
+            install: "phys::P".into(),
+            bundled: true,
+            module_features: Vec::new(),
+            scope: Scope::Runtime,
+            priority: 0,
+            site: "plugins/phys/src/lib.rs:1".into(),
+        };
+        let bare = "[dependencies]\nphys = { path = \"../../plugins/phys\", optional = true }\n";
+        assert!(host.rewrite_manifest(bare, &[&d]).is_err());
+        let ok = "[dependencies]\nphys = { path = \"../../plugins/phys\", features = [\"bundled\"], optional = true }\n";
+        assert_eq!(host.rewrite_manifest(ok, &[&d]).unwrap(), ok, "hand-wired entries are left alone");
+
+        let generated = host.rewrite_manifest("[dependencies]\n", &[&d]).unwrap();
+        assert!(generated.contains("phys = { path = \"../../plugins/phys\", features = [\"bundled\"] }"), "{generated}");
+    }
 }

@@ -1404,6 +1404,9 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     #[cfg(feature = "physics")]
     {
         info!("[runtime] foundation: PhysicsPlugin");
+        // The physics API only. The engine that simulates it is a plugin that
+        // registers its backend: avian is bundled (linked in from
+        // `plugins/avian_physics` by the generated list), Rapier is installed.
         app.add_plugins(renzora_physics::PhysicsPlugin);
     }
 

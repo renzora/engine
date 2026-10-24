@@ -17,6 +17,7 @@ use std::path::Path;
 
 use super::deny::{DenyOptionalSubsystems, DenyUiCameraTargets};
 use super::load::{load_scene, loading_stack_contains};
+use super::physics_filter::PhysicsFilter;
 use super::save::restore_viewport_gated_visibility;
 
 /// Expand every `SceneInstance` entity in the world that has no children yet:
@@ -389,6 +390,7 @@ pub fn save_prefab_source(
         return Ok(());
     }
 
+    let physics = PhysicsFilter::new(world);
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -413,7 +415,6 @@ pub fn save_prefab_source(
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
         .deny_animation_state()
         .deny_network_components()
-        .deny_physics_components()
         .extract_entities(descendants.into_iter())
         .build();
 
@@ -423,13 +424,14 @@ pub fn save_prefab_source(
     // `expand_scene_instances`.
     let instance_entity_field = instance_entity;
     for entity in &mut scene.entities {
+        let id = entity.entity;
         entity.components.retain(|component| {
             let type_name = component.reflect_type_path();
             // Same editor-only filters as save_scene.
             if type_name.starts_with("bevy_mod_outline::") {
                 return false;
             }
-            if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+            if !physics.keep(id, type_name) {
                 return false;
             }
             // Gaussian-splat runtime components are resolved on load from the

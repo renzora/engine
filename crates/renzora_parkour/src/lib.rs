@@ -23,8 +23,9 @@
 //! `move_controller()` on the same entity is fighting it, and the last writer
 //! that frame wins — pick one.
 //!
-//! It is a 3D feature and depends on the avian 3D backend directly. A 2D
-//! export drops the whole crate rather than carrying an inert copy.
+//! It is a 3D feature. Every cast goes through `renzora::physics`, so it runs
+//! on whichever backend simulates the 3D world. A 2D export drops the whole
+//! crate rather than carrying an inert copy.
 //!
 //! # What the level has to say
 //!
@@ -50,8 +51,8 @@ pub mod read_state;
 pub mod script_extension;
 pub mod state;
 
-use avian3d::prelude::Collider;
 use bevy::prelude::*;
+use renzora::physics::ResolvedShape;
 #[cfg(feature = "editor")]
 use renzora::AppEditorExt;
 use renzora::PlayModeState;
@@ -377,11 +378,11 @@ pub struct ParkourBlocker {}
 /// The capsule the controller sweeps with, rebuilt whenever the controller's
 /// dimensions change.
 ///
-/// Deliberately *not* an avian `Collider` component: adding one of those would
-/// enrol the character in the simulation a second time. This is a private
-/// shape used only for queries, so it holds the collider by hand.
+/// Deliberately *not* a `CollisionShapeData`: that would enrol the character
+/// in the simulation a second time. This is a private shape used only for
+/// queries, so it holds the shape by hand.
 #[derive(Component)]
-pub struct ParkourSweep(pub Collider);
+pub struct ParkourSweep(pub ResolvedShape);
 
 /// Something the controller did. Observe it with
 /// `app.add_observer(|t: On<ParkourEvent>| …)` for engine-side reactions
@@ -473,9 +474,10 @@ fn init_parkour(
     // as an Inspector edit to radius/height.
     for (entity, controller) in &resized {
         let segment = (controller.height - controller.radius * 2.0).max(0.05);
-        commands
-            .entity(entity)
-            .try_insert(ParkourSweep(Collider::capsule(controller.radius, segment)));
+        commands.entity(entity).try_insert(ParkourSweep(ResolvedShape::Capsule {
+            radius: controller.radius,
+            half_height: segment * 0.5,
+        }));
     }
 }
 

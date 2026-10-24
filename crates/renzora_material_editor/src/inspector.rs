@@ -20,11 +20,11 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, text_input};
+use renzora_ember::widgets::{bind_text_input, dropdown, spin_slider, text_input, toggle_switch};
 use renzora_shader::material::graph::{
-    resolve_math_ranks, resolved_pin_type, PinDir, PinTemplate, PinType,
+    resolve_math_ranks, resolved_pin_type, AlphaMode, PinDir, PinTemplate, PinType,
 };
 use renzora_shader::material::nodes::node_def;
 
@@ -101,6 +101,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(domain_cell).add_child(domain_v);
     commands.entity(domain_row).add_children(&[domain_lbl, domain_cell]);
 
+    let (alpha_row, cutoff_row, alpha_note, sided_row) = surface_settings(commands, fonts);
+
     // ── Selected-node section ──
     let note = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(18.0)), ..default() })
@@ -113,8 +115,121 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let node_list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
     keyed_list(commands, node_list, node_snapshot);
 
-    commands.entity(root).add_children(&[mat_header, name_row, domain_row, note, node_list]);
+    commands.entity(root).add_children(&[mat_header, name_row, domain_row, alpha_row, cutoff_row, alpha_note, sided_row, note, node_list]);
     root
+}
+
+// ── Settings outside the graph ──────────────────────────────────────────────────
+
+/// The alpha modes, in the dropdown's order, with what each is for.
+const ALPHA_MODES: [(&str, &str); 4] = [
+    ("Opaque", "Solid. Alpha is ignored."),
+    ("Mask", "Cut-out: each pixel is either drawn or not, at the cutoff. For leaves, fences, hair cards, decals with hard edges."),
+    ("Blend", "See-through, fading as a whole: everything it draws, reflections included, scales with alpha. For smoke, fades, soft decals."),
+    ("Glass", "See-through with full-strength reflections: alpha only covers what is behind. For windows and lenses; give it a dark base colour."),
+];
+
+fn alpha_index(mode: AlphaMode) -> usize {
+    match mode {
+        AlphaMode::Opaque => 0,
+        AlphaMode::Mask { .. } => 1,
+        AlphaMode::Blend => 2,
+        AlphaMode::Premultiplied => 3,
+    }
+}
+
+/// Edit the open graph's settings and mark it for saving, which is what
+/// re-renders the preview and, on Apply, the scene.
+fn edit_graph(w: &mut World, f: impl FnOnce(&mut renzora_shader::material::graph::MaterialGraph)) {
+    if let Some(mut s) = w.get_resource_mut::<MaterialEditorState>() {
+        f(&mut s.graph);
+        s.is_dirty = true;
+    }
+}
+
+/// Alpha mode, its cutoff and Double Sided: the settings that live on the
+/// material rather than on a node, so had no node to edit them from and went
+/// without controls. They were only ever set by importing a model, or by
+/// editing the `.material` file by hand.
+fn surface_settings(commands: &mut Commands, fonts: &EmberFonts) -> (Entity, Entity, Entity, Entity) {
+    let alpha_row = prop_row(commands, 2);
+    let alpha_lbl = prop_label(commands, fonts, "Alpha Mode");
+    let alpha_cell = editor_cell(commands);
+    let labels: Vec<&str> = ALPHA_MODES.iter().map(|(l, _)| *l).collect();
+    let dd = dropdown(commands, fonts, &labels, 0);
+    bind_2way(
+        commands,
+        dd,
+        |w: &Rx| state(w).map(|s| alpha_index(s.graph.alpha_mode)).unwrap_or(0),
+        |w: &mut World, i: &usize| {
+            edit_graph(w, |g| {
+                // Switching back to Mask keeps the cutoff it had.
+                let cutoff = match g.alpha_mode {
+                    AlphaMode::Mask { cutoff } => cutoff,
+                    _ => 0.5,
+                };
+                g.alpha_mode = match i {
+                    1 => AlphaMode::Mask { cutoff },
+                    2 => AlphaMode::Blend,
+                    3 => AlphaMode::Premultiplied,
+                    _ => AlphaMode::Opaque,
+                };
+            })
+        },
+    );
+    commands.entity(alpha_cell).add_child(dd);
+    commands.entity(alpha_row).add_children(&[alpha_lbl, alpha_cell]);
+
+    let cutoff_row = prop_row(commands, 3);
+    let cutoff_lbl = prop_label(commands, fonts, "Cutoff");
+    let cutoff_cell = editor_cell(commands);
+    let slider = spin_slider(commands, &fonts.ui, "", 0.5, 0.0, 1.0);
+    commands.entity(slider).entry::<Node>().and_modify(|mut n| n.flex_grow = 1.0);
+    bind_2way(
+        commands,
+        slider,
+        |w: &Rx| match state(w).map(|s| s.graph.alpha_mode) {
+            Some(AlphaMode::Mask { cutoff }) => cutoff,
+            _ => 0.5,
+        },
+        |w: &mut World, v: &f32| {
+            edit_graph(w, |g| {
+                if let AlphaMode::Mask { cutoff } = &mut g.alpha_mode {
+                    *cutoff = v.clamp(0.0, 1.0);
+                }
+            })
+        },
+    );
+    commands.entity(cutoff_cell).add_child(slider);
+    commands.entity(cutoff_row).add_children(&[cutoff_lbl, cutoff_cell]);
+    bind_display(commands, cutoff_row, |w| matches!(state(w).map(|s| s.graph.alpha_mode), Some(AlphaMode::Mask { .. })));
+
+    let alpha_note = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+            Node { width: Val::Percent(100.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), ..default() },
+        ))
+        .id();
+    bind_text(commands, alpha_note, |w| {
+        state(w).map(|s| ALPHA_MODES[alpha_index(s.graph.alpha_mode)].1.to_string()).unwrap_or_default()
+    });
+
+    let sided_row = prop_row(commands, 4);
+    let sided_lbl = prop_label(commands, fonts, "Double Sided");
+    let sided_cell = editor_cell(commands);
+    let toggle = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        toggle,
+        |w: &Rx| state(w).is_some_and(|s| s.graph.double_sided),
+        |w: &mut World, on: &bool| edit_graph(w, |g| g.double_sided = *on),
+    );
+    commands.entity(sided_cell).add_child(toggle);
+    commands.entity(sided_row).add_children(&[sided_lbl, sided_cell]);
+
+    (alpha_row, cutoff_row, alpha_note, sided_row)
 }
 
 // ── Node section snapshot ───────────────────────────────────────────────────────

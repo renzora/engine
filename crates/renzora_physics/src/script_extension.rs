@@ -30,11 +30,23 @@ impl ScriptExtension for PhysicsScriptExtension {
                 .build(),
             Bind::action("apply_impulse", "apply_impulse")
                 .xyz()
-                .doc("Apply an instantaneous impulse in world space.")
+                .doc("Set the body's linear velocity, as a kick (kept for existing scripts).")
                 .build(),
             Bind::action("set_linear_velocity", "set_velocity")
                 .xyz()
                 .doc("Set the body's linear velocity directly.")
+                .build(),
+            Bind::action("apply_torque", "apply_torque")
+                .xyz()
+                .doc("Apply a continuous torque in world space.")
+                .build(),
+            Bind::action("apply_angular_impulse", "apply_angular_impulse")
+                .xyz()
+                .doc("Spin the body with an instantaneous angular impulse.")
+                .build(),
+            Bind::action("set_angular_velocity", "set_angular_velocity")
+                .xyz()
+                .doc("Set the body's angular velocity, in radians per second.")
                 .build(),
         ]
     }

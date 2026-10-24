@@ -438,6 +438,7 @@ impl Plugin for WidgetsPlugin {
                 ),
                 (
                     spin_slider::spin_drag,
+                    spin_slider::spin_apply.after(spin_slider::spin_drag),
                     tags_input::tags_commit,
                     vu_meter::vu_animate,
                     mixer::mixer_toggle,

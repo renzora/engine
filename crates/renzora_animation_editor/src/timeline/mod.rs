@@ -39,6 +39,7 @@ pub(crate) mod fx;
 pub(crate) mod layout;
 pub(crate) mod menus;
 pub(crate) mod popover;
+pub(crate) mod pose;
 pub(crate) mod preview;
 pub(crate) mod props;
 pub(crate) mod runs;
@@ -93,6 +94,32 @@ impl Plugin for TimelinePanel {
         app.init_resource::<popover::PopoverState>();
         app.init_resource::<popover::KeyClipboard>();
         app.init_resource::<fx::FxTarget>();
+        app.init_resource::<pose::PoseLayer>();
+        // The hand-made pose over the clip's: captured before the player
+        // writes the clip's pose, restored after it, before transforms
+        // propagate. See `pose`.
+        // panel-systems-ungated: posing happens in the VIEWPORT, not this panel
+        app.add_systems(
+            PostUpdate,
+            (
+                pose::capture_pose.before(bevy::app::AnimationSystems),
+                pose::apply_pose
+                    .after(bevy::app::AnimationSystems)
+                    .before(bevy::transform::TransformSystems::Propagate),
+            )
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora::not_in_play_mode),
+        );
+        // panel-systems-ungated: K and record keying work from the viewport
+        app.add_systems(
+            Update,
+            (
+                pose::viewport_key_shortcut.before(props::apply_timeline_ops),
+                pose::auto_key_pose.after(props::apply_timeline_ops),
+            )
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora::not_in_play_mode),
+        );
         // The effect editor's crate inits this too; idempotent either way.
         app.init_resource::<renzora_particles_editor::timeline::TimelineLink>();
         // Bridge to the inspector's per-property keyframe buttons. `init_resource`

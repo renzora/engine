@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -118,26 +118,28 @@ tonemapping_luts = ["renzora_tonemapping/tonemapping_luts"]
 # feature by the exporter, so the loader and the code that drives it strip
 # together. Auto-detected from `.gltf`/`.glb` files in the project.
 gltf = ["renzora_engine/gltf", "render_3d"]
-# avian physics. The shared half: the physics crate itself, plus every crate that
-# touches avian — the engine scene-save denies, water buoyancy, and the navmesh
-# collider-obstacle updater (the `?` enables those only when that subsystem is
-# also kept). Not selectable on its own; `physics_3d` / `physics_2d` turn it on,
-# so removing both from `default` strips physics entirely.
+# Physics: the physics API crate and the crates that use physics through it (the
+# navmesh's collider obstacles; the `?` enables it only when navmesh is also
+# kept). Not selectable on its own; `physics_3d` / `physics_2d` turn it on, so
+# removing both from `default` strips physics entirely. The engine that
+# simulates is not part of it: see `avian` below.
 physics = [
     "dep:renzora_physics",
     "renzora_engine/physics",
     "renzora_navmesh?/physics",
 ]
-# One feature per avian crate, so a game ships only the dimension it uses. The
-# two are separate crates with their own parry (parry3d ≈ 4.5 MiB, parry2d less),
-# and no game needs both — a 3D title carries no 2D solver and vice versa. The
-# editor keeps both, since a project can hold scenes of either kind.
-# `renzora/physics_*` is what puts avian's compiled code into `renzora_dylib`,
-# so a plugin reaching `renzora::avian3d` links none of its own. Cargo unifies
-# this with `renzora_physics`'s own dep into ONE avian compilation — which is
-# what makes the engine's `RigidBody` and a plugin's the same type.
-physics_3d = ["physics", "renzora_physics/avian3d", "renzora/physics_3d"]
-physics_2d = ["physics", "renzora_physics/avian2d", "renzora/physics_2d"]
+# The physics engine the checkout bundles, `plugins/avian_physics`: a plugin like
+# any installed one (Rapier is one too), compiled in so a fresh build simulates.
+# Its own feature rather than part of `physics` so an export can keep the physics
+# API and ship another engine instead. It turns `physics` on because simulating
+# nothing is all it could do without it; the exporter turns it off along with
+# both physics capabilities.
+avian = ["dep:avian_physics", "physics"]
+# Kept as two names because the exporter's capability list and saved export
+# settings use them. Each once chose an avian crate; with the engine in one
+# plugin, both mean the same thing.
+physics_3d = ["physics"]
+physics_2d = ["physics"]
 # Scripting backends/capabilities, forwarded to `renzora_scripting` (which every
 # lean-closure crate now deps `default-features = false`, so these are the sole
 # switches). `lua` is NOT in `default` — it rides the binary's `runtime` feature
@@ -175,11 +177,9 @@ solari = ["dep:renzora_solari"]
 cloth = ["dep:renzora_cloth"]
 gaussian_splatting = ["dep:renzora_gaussian_splatting"]
 ragdoll = ["dep:renzora_ragdoll"]
-# Traversal character controller (vault/mantle/hang/ladder/wall-run/swing). It
-# is a 3D feature and asks `renzora_physics` for the avian3d backend itself, so
-# keeping it in a 2D-only export would drag avian3d back in — a 2D game drops
-# this instead.
-parkour = ["dep:renzora_parkour"]
+# Traversal character controller (vault/mantle/hang/ladder/wall-run/swing). A
+# 3D feature, driven through the physics API, so a 2D game drops it.
+parkour = ["dep:renzora_parkour", "physics"]
 light2d = ["dep:renzora_light2d"]
 # Multiplayer: the UDP transport, replication and RPC, plus the dedicated/host
 # server startup in `src/server.rs`. Forwards `renzora_engine/networking`, which
@@ -329,6 +329,12 @@ renzora_input = { path = "../renzora_input" }
 # OpenXR/VR boot mode — desktop only, behind the `xr` feature (see [features]).
 renzora_xr = { path = "../renzora_xr", optional = true }
 renzora_physics = { path = "../renzora_physics", optional = true }
+# A bundled plugin (see `xtask/src/sync.rs`), moved out of the generated block so
+# the `avian` feature can strip it. `bundled` drops its installed-plugin entry
+# point. Deleting `plugins/avian_physics` is enough to remove it: the next
+# `cargo renzora` prunes this line and the `dep:` in `avian`, leaving that
+# feature an alias of `physics` so saved export settings naming it still build.
+avian_physics = { path = "../../plugins/avian_physics", features = ["bundled"], optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_animation = { path = "../renzora_animation", optional = true }

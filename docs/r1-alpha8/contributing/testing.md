@@ -160,7 +160,11 @@ Cross-crate tests go in a crate's `tests/` directory (`crates/<crate>/tests/*.rs
 |---|---|
 | `crates/renzora_native_plugin/tests/load_plugin.rs` | A plugin compiles against the staged SDK and loads into a real `App`. The one test that proves the whole install path, end to end. |
 | `crates/renzora_net/tests/round_trip.rs` | The whole HTTP chain end to end — `fetch` on a background thread → queue → frame pump → the backend → events → back to the parked thread — against a table-driven fake backend, so there are no sockets to flake. |
-| `crates/renzora_physics/tests/avian2d_collision.rs` | A dynamic 2D body driven by `LinearVelocity` is blocked by a static collider-only entity — the shape a tilemap's merged colliders take. A regression here is "the player walks through walls". |
+| `plugins/avian_physics/tests/avian2d_collision.rs` | A dynamic 2D body driven by `LinearVelocity` is blocked by a static collider-only entity, the shape a tilemap's merged colliders take. A regression here is "the player walks through walls". |
+| `plugins/avian_physics/tests/contract.rs` | The physics API end to end on the bundled backend: landing and collision events, forces, impulses, velocities, pausing, stripping, collide-and-slide, mesh colliders, layers, turned colliders, joints, overlaps and removing physics data. A second backend is held to the same scenarios. |
+| `plugins/avian_physics/tests/traversal.rs` | The parkour controller against real colliders: a rail is vaulted over and a platform climbed onto. It lives beside the physics engine because it needs one. |
+
+A bundled plugin (`plugins/<name>/`) is a workspace member, so its tests run the same way: `cargo test --profile dist -p avian_physics`.
 | `crates/renzora_bsn/tests/raw_roundtrip.rs` | The scene format survives a serialize → deserialize round-trip. |
 | `crates/renzora_ember/tests/parse_templates.rs` | Every shipped `.html` UI template parses through bevy_hui's parser — markup syntax errors are caught in CI without a GPU. |
 | `crates/renzora_ember/tests/inspector_writeback.rs` | The inspector → `.html` writeback round-trip patches the source file on disk and keeps the span cache coherent. |
@@ -175,6 +179,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use renzora_physics::PhysicsPlugin;
+use avian_physics::AvianPhysicsPlugin;
 
 fn physics_app() -> App {
     let mut app = App::new();
@@ -187,7 +192,8 @@ fn physics_app() -> App {
         TransformPlugin,
     ));
     app.init_asset::<Mesh>();
-    app.add_plugins(PhysicsPlugin);
+    // The physics API, and the engine that simulates it.
+    app.add_plugins((PhysicsPlugin, AvianPhysicsPlugin));
     // Manual time, or the fixed-timestep schedule never runs during app.update().
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
         1.0 / 60.0,

@@ -991,7 +991,7 @@ if let Some(format) = detect_format(path) {
 
 Scenes are saved and loaded by `renzora_engine::scene_io`. The project's default entry scene is `scenes/main.ron` (`main_scene` in `project.toml`).
 
-`save_scene` builds a Bevy `DynamicSceneBuilder` and **denies** runtime- and editor-only components before serializing to RON — meshes, materials, cameras, Avian physics state, animation runtime state, networking components, and bevy_ui camera plumbing are all stripped, so a scene file stays a clean description of authored entities rather than a snapshot of live engine state.
+`save_scene` builds a Bevy `DynamicSceneBuilder` and **denies** runtime- and editor-only components before serializing to RON: meshes, materials, cameras, the physics engine's own state, animation runtime state, networking components, and bevy_ui camera plumbing are all stripped, so a scene file stays a clean description of authored entities rather than a snapshot of live engine state.
 
 `load_scene` reads the RON (through the VFS/rpak first, then disk), deserializes **lossily** (silently skipping any type not registered in this build), prunes orphaned editor-chrome UI entities, and expands nested `SceneInstance` references into their referenced scenes.
 

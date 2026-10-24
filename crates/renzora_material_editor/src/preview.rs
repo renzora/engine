@@ -1051,6 +1051,10 @@ fn update_preview_material(
         tb.binding.hash(&mut hasher);
         tb.asset_path.hash(&mut hasher);
     }
+    // The settings outside the graph change no WGSL either, so without these
+    // a new alpha mode or Double Sided would not show until the graph did.
+    format!("{:?}", editor_state.graph.alpha_mode).hash(&mut hasher);
+    editor_state.graph.double_sided.hash(&mut hasher);
     for p in &result.parameters {
         p.name.hash(&mut hasher);
         // PinValue's bytes — float/color defaults boil down to f32
@@ -1147,6 +1151,14 @@ fn update_preview_material(
         &mut material.base,
         &editor_state.graph,
         &asset_server,
+    );
+    // The scene resolver sets these after the approximation; the preview
+    // never did, so a procedural material previewed opaque and one-sided
+    // whatever its settings said.
+    renzora_shader::material::standard_build::apply_surface_flags(
+        &mut material.base,
+        editor_state.graph.alpha_mode,
+        editor_state.graph.double_sided,
     );
 
     for tb in &result.texture_bindings {

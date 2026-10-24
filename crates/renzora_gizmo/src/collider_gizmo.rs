@@ -73,8 +73,10 @@ pub fn draw_collider_gizmos(
             }
         };
 
-        let (scale, rot, trans) = gt.to_scale_rotation_translation();
-        let center = trans + rot * (scale * shape.offset);
+        let (scale, entity_rot, trans) = gt.to_scale_rotation_translation();
+        let center = trans + entity_rot * (scale * shape.offset);
+        // The shape's own turn about its offset point. A mesh collider has none.
+        let rot = entity_rot * shape.rotation;
         let iso = Isometry3d::new(center, rot);
 
         match shape.shape_type {
@@ -106,16 +108,16 @@ pub fn draw_collider_gizmos(
             CollisionShapeType::Mesh => {
                 if let Some(aabb) = aabb {
                     let half = Vec3::from(aabb.half_extents) * scale;
-                    let aabb_center = trans + rot * (scale * Vec3::from(aabb.center));
+                    let aabb_center = trans + entity_rot * (scale * Vec3::from(aabb.center));
                     gizmos.cube(
                         Transform {
                             translation: aabb_center,
-                            rotation: rot,
+                            rotation: entity_rot,
                             scale: half * 2.0,
                         },
                         color,
                     );
-                    draw_box_diagonals(&mut gizmos, aabb_center, rot, half, color);
+                    draw_box_diagonals(&mut gizmos, aabb_center, entity_rot, half, color);
                 }
             }
         }

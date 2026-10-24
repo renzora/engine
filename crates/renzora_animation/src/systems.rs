@@ -118,7 +118,7 @@ pub fn initialize_animation_graphs(
     mut animators: Query<(Entity, &AnimatorComponent, &mut AnimatorState)>,
     children_query: Query<&Children>,
     player_query: Query<Entity, With<AnimationPlayer>>,
-    name_query: Query<&Name>,
+    name_query: Query<(&Name, Option<&renzora::BindName>)>,
 ) {
     for (entity, animator, mut state) in animators.iter_mut() {
         if state.initialized || state.clip_handles.is_empty() {
@@ -925,7 +925,7 @@ fn add_animation_targets(
     root: Entity,
     player_entity: Entity,
     children_query: &Query<&Children>,
-    name_query: &Query<&Name>,
+    name_query: &Query<(&Name, Option<&renzora::BindName>)>,
 ) {
     visit_skeleton(root, player_entity, commands, children_query, name_query);
 }
@@ -935,9 +935,9 @@ fn visit_skeleton(
     player_entity: Entity,
     commands: &mut Commands,
     children_query: &Query<&Children>,
-    name_query: &Query<&Name>,
+    name_query: &Query<(&Name, Option<&renzora::BindName>)>,
 ) {
-    if let Ok(name) = name_query.get(entity) {
+    if let Ok((name, bind)) = name_query.get(entity) {
         // Bevy 0.18 requires two components on an animated entity:
         // `AnimationTargetId` identifies which curves in the clip apply here,
         // and `AnimatedBy` points back at the AnimationPlayer that drives it.
@@ -945,8 +945,9 @@ fn visit_skeleton(
         //
         // Through `bone_target` rather than `from_name` directly, so this agrees
         // with the clip loader no matter whether `enforce_entity_ids` has
-        // renamed the bone yet. See [`crate::bone_target`].
-        let target_id = crate::bone_target(name.as_str());
+        // renamed the bone yet. See [`crate::bone_target`]. A name made
+        // unique with a suffix binds by the name it had (`renzora::BindName`).
+        let target_id = crate::bone_target(renzora::BindName::of(name, bind));
         commands
             .entity(entity)
             .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));
@@ -968,17 +969,40 @@ fn visit_skeleton(
 /// How long after initialization we keep re-walking the skeleton looking for
 /// newly-spawned bones. 120 frames @ 60 Hz = 2 seconds, which is plenty for
 /// any GLB to finish instantiating on modern hardware. After that we stop
-/// unless new bones appear (detected via count delta), so the per-frame cost
-/// drops to O(animators), not O(bones).
+/// until new named entities appear, so the per-frame cost drops to
+/// O(animators), not O(bones).
 const TARGET_WALK_FRAMES: u32 = 120;
 
 pub fn ensure_animation_targets(
     mut commands: Commands,
     mut animators: Query<(Entity, &mut AnimatorState)>,
     children_query: Query<&Children>,
-    name_query: Query<&Name>,
+    name_query: Query<(&Name, Option<&renzora::BindName>)>,
     target_query: Query<(), With<AnimationTargetId>>,
+    fresh_names: Query<Entity, (Added<Name>, Without<AnimationTargetId>)>,
+    parents: Query<&ChildOf>,
 ) {
+    // A model respawned in place (rigging it, removing its rig, reloading its
+    // file) brings a whole new skeleton under an animator that finished its
+    // warm-up long ago. Its old bones were tagged; the new ones never were, so
+    // the clip kept its keys and moved nothing until the editor restarted.
+    // A named entity arriving untagged under an animator opens that animator's
+    // window again. Under that animator only: names arrive all the time
+    // elsewhere (UI rows, a game's spawns), and each would otherwise restart
+    // every animator's walk.
+    let mut respawned: Vec<Entity> = Vec::new();
+    for fresh in &fresh_names {
+        let mut at = fresh;
+        while let Ok(up) = parents.get(at) {
+            at = up.parent();
+            if animators.contains(at) {
+                if !respawned.contains(&at) {
+                    respawned.push(at);
+                }
+                break;
+            }
+        }
+    }
     for (entity, mut state) in animators.iter_mut() {
         if !state.initialized {
             continue;
@@ -986,10 +1010,13 @@ pub fn ensure_animation_targets(
         let Some(player_entity) = state.player_entity else {
             continue;
         };
+        if respawned.contains(&entity) {
+            state.frames_since_init = 0;
+        }
 
         // Warm-up is bounded — 2 seconds of walking is more than enough for
         // any GLB to finish spawning. After that we assume the skeleton is
-        // stable; a hot-reload or re-init resets the counter.
+        // stable until something new spawns (above).
         if state.frames_since_init > TARGET_WALK_FRAMES {
             continue;
         }
@@ -997,9 +1024,9 @@ pub fn ensure_animation_targets(
 
         let mut stack = vec![entity];
         while let Some(current) = stack.pop() {
-            if let Ok(name) = name_query.get(current) {
+            if let Ok((name, bind)) = name_query.get(current) {
                 if target_query.get(current).is_err() {
-                    let target_id = crate::bone_target(name.as_str());
+                    let target_id = crate::bone_target(renzora::BindName::of(name, bind));
                     commands
                         .entity(current)
                         .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));
@@ -1009,5 +1036,46 @@ pub fn ensure_animation_targets(
                 stack.extend(children.iter());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    /// The rig-rebuild case: an animator long past its warm-up gets a fresh
+    /// skeleton, and the new bones must still be bound to its player.
+    #[test]
+    fn a_skeleton_spawned_after_warm_up_is_still_bound() {
+        let mut world = World::new();
+        let animator = world.spawn_empty().id();
+        world.entity_mut(animator).insert(AnimatorState {
+            initialized: true,
+            player_entity: Some(animator),
+            frames_since_init: TARGET_WALK_FRAMES * 10,
+            ..Default::default()
+        });
+        let bone = world.spawn((Name::new("face_jaw"), ChildOf(animator))).id();
+        world.run_system_once(ensure_animation_targets).unwrap();
+        assert_eq!(world.get::<AnimationTargetId>(bone), Some(&crate::bone_target("face_jaw")));
+        assert_eq!(world.get::<bevy::animation::AnimatedBy>(bone).map(|b| b.0), Some(animator));
+    }
+
+    /// A name spawning outside every animator (a UI row, a game's projectile)
+    /// leaves a settled animator settled.
+    #[test]
+    fn a_name_elsewhere_does_not_wake_an_animator() {
+        let mut world = World::new();
+        let animator = world.spawn_empty().id();
+        world.entity_mut(animator).insert(AnimatorState {
+            initialized: true,
+            player_entity: Some(animator),
+            frames_since_init: TARGET_WALK_FRAMES * 10,
+            ..Default::default()
+        });
+        world.spawn(Name::new("bullet"));
+        world.run_system_once(ensure_animation_targets).unwrap();
+        assert_eq!(world.get::<AnimatorState>(animator).map(|s| s.frames_since_init), Some(TARGET_WALK_FRAMES * 10));
     }
 }

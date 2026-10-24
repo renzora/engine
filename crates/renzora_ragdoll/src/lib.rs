@@ -1,9 +1,11 @@
 //! Skeletal ragdoll physics.
 //!
 //! Walks a GLTF skeleton (the `SkinnedMesh` joint list reachable from the
-//! `Ragdoll` entity) and auto-builds one Avian rigid body + collider per bone
-//! plus a `SphericalJoint` between every parent/child bone pair, mirroring
-//! the bind pose so the ragdoll doesn't pop on activation.
+//! `Ragdoll` entity) and auto-builds one rigid body + collider per bone plus a
+//! spherical `PhysicsJoint` between every parent/child bone pair, mirroring
+//! the bind pose so the ragdoll doesn't pop on activation. All of it is
+//! `renzora::physics` data, so it runs on whichever backend the project picks,
+//! provided that backend simulates joints.
 //!
 //! Bones start `Kinematic` — driven by the `AnimationPlayer` exactly as if
 //! this plugin weren't present. `enable_ragdoll(entity)` flips them to
@@ -132,7 +134,7 @@ pub struct RagdollPlugin;
 
 impl Plugin for RagdollPlugin {
     fn build(&self, app: &mut App) {
-        info!("[runtime] RagdollPlugin (avian skeletal ragdoll)");
+        info!("[runtime] RagdollPlugin (skeletal ragdoll)");
 
         app.register_type::<RagdollBone>()
             .add_systems(Update, (generate::build_ragdolls, toggle::apply_ragdoll_state))

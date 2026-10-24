@@ -214,6 +214,11 @@ const RETIRED_PANELS: &[&str] = &[
     "particle_preview",
     "particle_editor",
     "particle_graph",
+    // The Rig and Face panels a development build had beside the viewport.
+    // Their tools are the Animation workspace's side panels now, changing
+    // with the stage's mode.
+    "rig",
+    "face",
 ];
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
@@ -673,29 +678,41 @@ fn layout_scripting() -> DockTree {
     )
 }
 
-/// Animation: Hierarchy | (StudioPreview/StateMachine) | (Properties/Params)
+/// Animation: Tools | Stage | Inspector.
 ///
-/// No `timeline` region: it lives in the global bottom panel now, spanning
-/// every workspace, so a copy here would be a second independent instance
-/// directly above it.
+/// The stage is the character on its own (`renzora_animation_editor::stage`):
+/// an isolated copy you pose, paint and rig by clicking it, with its mode
+/// switch (Rig, Skin, Animate, Logic) in its own header. The panels either
+/// side change with the mode, so the workspace is three panels however much
+/// it holds, and the character keeps the middle of the screen.
+///
+/// No `timeline` region: it lives in the global bottom panel, spanning every
+/// workspace, so a copy here would be a second independent instance directly
+/// above it.
 fn layout_animation() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("hierarchy"),
-        DockTree::horizontal(
-            DockTree::vertical(
-                DockTree::leaf("studio_preview"),
-                DockTree::leaf("animator_state_machine"),
-                0.55,
-            ),
-            DockTree::vertical(
-                DockTree::leaf("animation"),
-                DockTree::leaf("animator_params"),
-                0.55,
-            ),
-            0.72,
-        ),
-        0.15,
+        DockTree::leaf("anim_tools"),
+        DockTree::horizontal(DockTree::leaf("stage"), DockTree::leaf("anim_inspector"), 0.75),
+        0.2,
     )
+}
+
+/// Bring a saved layout set up to date with defaults that changed shape.
+///
+/// A saved workspace normally wins over the default of the same name, which is
+/// what keeps your own arrangement. The exception is a saved Animation
+/// workspace without the stage: every one of those predates the workspace
+/// being built around it (the oldest had a preview you could not touch, a
+/// development build had the scene viewport with Rig and Face tabs), so it is
+/// replaced. The `Animation/…` mode workspaces a development build briefly had
+/// are removed.
+pub fn upgrade_saved_layouts(saved: &mut Vec<(String, DockTree)>) {
+    saved.retain(|(name, _)| !name.starts_with("Animation/"));
+    for (name, tree) in saved.iter_mut() {
+        if name == "Animation" && !tree.contains_panel("stage") {
+            *tree = layout_animation();
+        }
+    }
 }
 
 /// Materials: Preview over Material | MaterialGraph.
@@ -788,6 +805,33 @@ mod tests {
     /// A closed stash is the only place its panels exist, and an open strip is
     /// about to be cut out of the workspace tree — drop either and the panel is
     /// gone from the user's layout with no way to get it back.
+    /// An Animation layout from before the stage is replaced, the stray mode
+    /// workspaces go, and one that already has the stage (the user's own
+    /// arrangement of the new layout) stays.
+    #[test]
+    fn animation_layouts_from_before_the_stage_are_replaced() {
+        let old = DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(DockTree::leaf("viewport"), DockTree::tabs(&["rig", "face"]), 0.7),
+            0.2,
+        );
+        let mut saved = vec![
+            ("Animation".to_string(), old),
+            ("Animation/Logic".to_string(), DockTree::leaf("animator_state_machine")),
+            ("Scene".to_string(), DockTree::leaf("studio_preview")),
+        ];
+        upgrade_saved_layouts(&mut saved);
+        assert_eq!(saved.len(), 2, "the mode workspace is removed");
+        assert!(saved[0].1.contains_panel("stage") && saved[0].1.contains_panel("anim_tools") && saved[0].1.contains_panel("anim_inspector"));
+        assert!(!saved[0].1.contains_panel("rig"));
+        assert!(saved[1].1.contains_panel("studio_preview"), "other workspaces are untouched");
+
+        let mine = DockTree::horizontal(DockTree::leaf("stage"), DockTree::leaf("anim_tools"), 0.3);
+        let mut kept = vec![("Animation".to_string(), mine)];
+        upgrade_saved_layouts(&mut kept);
+        assert!(matches!(kept[0].1, DockTree::Split { .. }) && !kept[0].1.contains_panel("anim_inspector"), "left as arranged");
+    }
+
     #[test]
     fn migrate_keeps_panels_from_both_open_strips_and_closed_stashes() {
         let mut workspaces = vec![(

@@ -373,8 +373,28 @@ pub enum AlphaMode {
     Opaque,
     /// Discard fragments below `cutoff`. Used for foliage, masks.
     Mask { cutoff: f32 },
-    /// Standard alpha blending. Used for glass, smoke, decals.
+    /// Standard alpha blending. Used for smoke, decals, anything that fades
+    /// out as a whole: everything the surface draws, reflections included,
+    /// is scaled by its alpha.
     Blend,
+    /// Glass. Alpha says how much of what is behind is covered, but what the
+    /// surface draws itself (its reflections, above all) is added at full
+    /// strength. Clear glass under `Blend` lost its reflections with its
+    /// opacity, so a windscreen at 25% reflected a quarter of the sky; real
+    /// glass reflects the same however clear it is. Pair it with a dark base
+    /// colour: the base colour is added too, as a haze.
+    Premultiplied,
+}
+
+impl AlphaMode {
+    pub fn to_bevy(self) -> bevy::prelude::AlphaMode {
+        match self {
+            AlphaMode::Opaque => bevy::prelude::AlphaMode::Opaque,
+            AlphaMode::Mask { cutoff } => bevy::prelude::AlphaMode::Mask(cutoff),
+            AlphaMode::Blend => bevy::prelude::AlphaMode::Blend,
+            AlphaMode::Premultiplied => bevy::prelude::AlphaMode::Premultiplied,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

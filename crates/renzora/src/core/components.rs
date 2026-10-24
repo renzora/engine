@@ -264,6 +264,26 @@ impl Default for ReflectionProbeSource {
 #[derive(Component)]
 pub struct HideInHierarchy;
 
+/// The name an entity had before the editor made it unique, kept for binding
+/// animation to it.
+///
+/// Every entity name in the editor is unique, so the second copy of a rigged
+/// model gets `mixamorig_hips_1` where its clips say `mixamorig:Hips`, and
+/// a clip binds bones by name. Without this, every bone of the second copy
+/// that collided stayed in its bind pose (and on a model whose own bone names
+/// collide, some of the first copy's too). Animation binds through this when
+/// it is present and through the `Name` otherwise. Never saved: it is
+/// recomputed from the names whenever they change.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct BindName(pub String);
+
+impl BindName {
+    /// The name to bind `entity`'s animation by.
+    pub fn of<'a>(name: &'a Name, bind: Option<&'a BindName>) -> &'a str {
+        bind.map(|b| b.0.as_str()).unwrap_or(name.as_str())
+    }
+}
+
 /// Keeps this entity's mesh out of the editor's selection bounds: the orange
 /// box, the transform pivot and hover outline.
 ///

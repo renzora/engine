@@ -19,6 +19,7 @@ pub mod animation; // .anim clip format + property keyframes
 pub mod asset_bytes; // the project/VFS byte loader for non-AssetServer assets
 pub mod auth; // sign-in state mirrored for the title bar
 pub mod blockout_grid; // the generated "no material yet" grid textures
+pub mod bone_style; // how a skeleton is drawn, everywhere one is (not flattened)
 pub mod components; // shared ECS components + entity-tag markers
 pub mod editor_events; // one-way events the editor fires at other crates
 pub mod entity_id; // canonical unique snake_case entity ids (Name)

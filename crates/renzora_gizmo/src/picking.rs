@@ -29,15 +29,16 @@ pub(crate) fn entity_pick_system(
     mouse_button: Res<ButtonInput<MouseButton>>,
     settings: Res<EditorSettings>,
     window_q: Query<&Window, With<PrimaryWindow>>,
-    camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+    camera_q: Query<(&Camera, &GlobalTransform, &Projection), With<EditorCamera>>,
     mut mesh_ray_cast: MeshRayCast,
     named_entities: Query<(Entity, Has<SelectionStop>), With<Name>>,
     parent_query: Query<&ChildOf>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
     // Bundled: a system takes at most sixteen parameters.
-    (hidden_entities, pick_proxies): (
+    (hidden_entities, pick_proxies, drawn_bones): (
         Query<(), With<HideInHierarchy>>,
         Query<(Entity, &GlobalTransform, &renzora::PickProxy)>,
+        Res<crate::skeleton_gizmo::DrawnBones>,
     ),
     mut box_sel: ResMut<BoxSelectionState>,
 ) {
@@ -82,7 +83,7 @@ pub(crate) fn entity_pick_system(
     let Ok(window) = window_q.single() else {
         return;
     };
-    let Ok((camera, cam_gt)) = camera_q.single() else {
+    let Ok((camera, cam_gt, projection)) = camera_q.single() else {
         return;
     };
 
@@ -114,6 +115,38 @@ pub(crate) fn entity_pick_system(
     let Ok(ray) = camera.viewport_to_world(cam_gt, render_pos) else {
         return;
     };
+
+    // A drawn skeleton bone under the cursor wins outright: bones are drawn
+    // over the mesh, so the one you can see is the one you clicked, even
+    // though the skin is nearer along the ray. Within a few pixels of the
+    // segment, the nearest along the ray.
+    let vh = viewport.current_size.y.max(1) as f32;
+    let bone_hit = drawn_bones
+        .segments
+        .iter()
+        .filter_map(|&(bone, head, tail)| {
+            let mid = (head + tail) * 0.5;
+            let threshold = crate::ray::pick_threshold(cam_gt, mid, projection, vh) * 0.6;
+            let miss = if (tail - head).length_squared() < 1e-10 {
+                let to = head - ray.origin;
+                let along = to.dot(*ray.direction);
+                (along > 0.0).then(|| (to - *ray.direction * along).length())?
+            } else {
+                crate::ray::closest_distance_ray_segment(&ray, head, tail)?
+            };
+            (miss <= threshold).then(|| (bone, (mid - ray.origin).length()))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(bone, _)| bone);
+    if let Some(bone) = bone_hit {
+        if matches!(*mode, GizmoMode::Select | GizmoMode::Translate | GizmoMode::Rotate | GizmoMode::Scale) {
+            box_sel.active = true;
+            box_sel.start_pos = cursor;
+            box_sel.current_pos = cursor;
+            box_sel.pending_pick = Some(bone);
+        }
+        return;
+    }
 
     // Raycast and find the topmost selectable entity (if any). We do NOT
     // commit the selection yet — we arm `box_sel` with this entity as a

@@ -11,8 +11,8 @@ png = "0.17"
 renzora = { path = "../renzora", default-features = false }
 # `default-features = false`: terrain only tags chunks with the avian-free
 # collider DATA types (`PhysicsBodyData`/`CollisionShapeData`) — it never needs
-# the avian backend. `renzora_runtime`'s `physics` feature turns the backend on
-# (via `renzora_physics/avian`); a no-physics export keeps the data, drops avian.
+# a physics engine. Whichever physics plugin is installed simulates it; a
+# no-physics export keeps the data and simulates nothing.
 renzora_physics = { path = "../renzora_physics", default-features = false }
 # Grass blades are uploaded straight into an instance-stepped vertex buffer, so
 # `GrassInstance` has to be `Pod` for `RawBufferVec` to accept it.

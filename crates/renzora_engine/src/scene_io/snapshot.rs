@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 
 use super::deny::{DenyOptionalSubsystems, DenyUiCameraTargets};
 use super::load::deserialize_scene_lossy;
+use super::physics_filter::PhysicsFilter;
 
 /// Serialize the given root entities **and their descendants** to a BSN string —
 /// a faithful, all-components, with-hierarchy snapshot used to undo a delete.
@@ -47,6 +48,7 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
         return None;
     }
 
+    let physics = PhysicsFilter::new(world);
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -62,19 +64,19 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
         .deny_component::<crate::camera_script::CameraReadState>()
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_animation_state()
-        .deny_physics_components()
         .extract_entities(all.into_iter())
         .build();
 
     // Drop editor-only / non-serializable components (mirror save_prefab_source),
     // but KEEP ChildOf so the entity restores under its original parent.
     for entity in &mut scene.entities {
+        let id = entity.entity;
         entity.components.retain(|component| {
             let type_name = component.reflect_type_path();
             if type_name.starts_with("bevy_mod_outline::") {
                 return false;
             }
-            if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+            if !physics.keep(id, type_name) {
                 return false;
             }
             // Gaussian-splat runtime components are resolved on load from the

@@ -1,0 +1,57 @@
+# A BUNDLED plugin: an ordinary Renzora plugin (`renzora::plugin!`) that ships
+# with the engine and is compiled INTO its binary, so a fresh build has physics.
+# `cargo renzora` finds it under `plugins/` and links it; delete this folder (or
+# `cargo renzora remove avian_physics`) and the next build has no avian at all.
+#
+# It is a member of the engine workspace, so a plain `cargo test --profile dist
+# -p avian_physics` works here and resolves the engine's own Bevy.
+#
+# No `[workspace]` and no `crate-type = ["dylib"]`, unlike an installed plugin:
+# both would stop it being linked in. To ship it as an installable plugin
+# instead, put `crate-type = ["dylib"]` back under `[lib]` and move the folder
+# out of the engine checkout.
+
+[package]
+name = "avian_physics"
+version = "0.1.0"
+edition = "2021"
+description = "Avian as a physics backend: simulates the 3D world, the 2D world or both. The default engine, since it is installed before any other backend."
+
+[features]
+# Set by the build that links this plugin in. `plugin!` then leaves out the
+# loader's `#[no_mangle]` entry point, which only an installed (dlopen'd)
+# plugin needs and which two linked-in plugins would both define.
+bundled = []
+
+[dependencies]
+# `default-features = false`: the engine curates Bevy's feature set once, at the
+# workspace root. A bare `bevy = "0.20"` here would switch Bevy's defaults on for
+# the whole engine build, because cargo unifies features across it.
+bevy = { version = "0.20", default-features = false }
+renzora = { path = "../../crates/renzora", default-features = false }
+# The same commit the engine workspace pins (avian's open Bevy 0.20 pull
+# request, until a release supports 0.20), so cargo sees one avian package.
+#
+# `xpbd_joints` is avian's joint SOLVER. Without it a joint component is
+# accepted, kept and silently ignored: bodies move as if unjoined.
+avian3d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
+avian2d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
+
+[dev-dependencies]
+# The tests drive the backend through the engine's own physics plugin, and the
+# parkour traversal tests need real colliders to probe, which is why they live
+# here rather than in `renzora_parkour`.
+bevy = { version = "0.20", default-features = false, features = ["debug"] }
+renzora_physics = { path = "../../crates/renzora_physics" }
+renzora_parkour = { path = "../../crates/renzora_parkour" }
+
+[lints]
+workspace = true
+
+# Marketplace listing (`renzora publish`). Cargo ignores this section.
+[package.metadata.renzora]
+marketplace_id = "avian_physics"
+category = "plugins"
+tags = ["physics", "simulation", "backend"]
+price_credits = 0
+min_engine_version = "r1-alpha8"

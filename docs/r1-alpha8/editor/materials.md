@@ -151,11 +151,20 @@ Every material has a domain that decides what it is for. Pick this when you crea
 
 The domain is stored in the `.material` file, so one file type covers them all. In the Assets panel a Sprite material's thumbnail is the sample sprite wearing it, tagged **2D** in the corner, where a 3D material shows a sphere.
 
-Two more switches live on the material rather than on a node:
+Two more settings live on the material rather than on a node. They are in the **Material** panel's Material section, under Name and Domain, and the preview shows a change straight away.
 
-**Alpha mode** is `Opaque` by default, `Mask` for cut-out edges like leaves and fences, or `Blend` for glass and smoke.
+**Alpha Mode** says how the output's Alpha is used:
 
-**Double sided** renders back faces too, which thin surfaces like paper and foliage need.
+| Mode | For |
+|---|---|
+| Opaque | Solid surfaces; alpha is ignored. The default |
+| Mask | Cut-outs: each pixel is drawn or not, at the **Cutoff** (shown for this mode). Leaves, fences, hair cards, hard-edged decals |
+| Blend | See-through surfaces that fade as a whole: smoke, fades, soft decals |
+| Glass | See-through surfaces that still reflect at full strength: windows, lenses |
+
+The difference between the last two is reflections. Blend scales everything the surface draws by its alpha, reflections included, so clear glass at 25% reflects a quarter of what it should. Glass uses alpha only for how much of what is behind is covered, and adds what the surface draws, its reflections above all, at full strength, the way real glass reflects however clear it is. Give glass a dark base colour, no metal and low roughness; the base colour is added too, as a haze. In the file Glass is `"alpha_mode": "Premultiplied"`.
+
+**Double Sided** renders back faces too, which thin surfaces like paper, foliage and glass seen from inside need.
 
 ## Previewing
 

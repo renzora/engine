@@ -39,7 +39,6 @@ impl DenyUiCameraTargets for DynamicSceneBuilder<'_> {
 pub(crate) trait DenyOptionalSubsystems: Sized {
     fn deny_animation_state(self) -> Self;
     fn deny_terrain_material(self) -> Self;
-    fn deny_physics_components(self) -> Self;
     fn deny_render_3d_materials(self) -> Self;
     fn deny_network_components(self) -> Self;
 }
@@ -88,46 +87,6 @@ impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
     }
     #[cfg(not(feature = "terrain"))]
     fn deny_terrain_material(self) -> Self {
-        self
-    }
-
-    // Avian runtime components are regenerated on load from our serializable
-    // PhysicsBodyData + CollisionShapeData; persisting them causes
-    // duplicate-reflect-type errors during deserialization. Stripped with the
-    // `physics` subsystem (no avian → these types don't exist).
-    #[cfg(feature = "physics")]
-    fn deny_physics_components(self) -> Self {
-        self.deny_component::<avian3d::prelude::Collider>()
-            .deny_component::<avian3d::collision::collider::ColliderAabb>()
-            .deny_component::<avian3d::prelude::RigidBody>()
-            .deny_component::<avian3d::prelude::LinearVelocity>()
-            .deny_component::<avian3d::prelude::AngularVelocity>()
-            .deny_component::<avian3d::prelude::Mass>()
-            .deny_component::<avian3d::prelude::Friction>()
-            .deny_component::<avian3d::prelude::Restitution>()
-            .deny_component::<avian3d::prelude::GravityScale>()
-            .deny_component::<avian3d::prelude::LinearDamping>()
-            .deny_component::<avian3d::prelude::AngularDamping>()
-            .deny_component::<avian3d::prelude::LockedAxes>()
-            .deny_component::<avian3d::prelude::Sensor>()
-            // The avian2d twins — a distinct crate, so distinct types. Same
-            // reason: regenerated on load from PhysicsBodyData/CollisionShapeData.
-            .deny_component::<avian2d::prelude::Collider>()
-            .deny_component::<avian2d::collision::collider::ColliderAabb>()
-            .deny_component::<avian2d::prelude::RigidBody>()
-            .deny_component::<avian2d::prelude::LinearVelocity>()
-            .deny_component::<avian2d::prelude::AngularVelocity>()
-            .deny_component::<avian2d::prelude::Mass>()
-            .deny_component::<avian2d::prelude::Friction>()
-            .deny_component::<avian2d::prelude::Restitution>()
-            .deny_component::<avian2d::prelude::GravityScale>()
-            .deny_component::<avian2d::prelude::LinearDamping>()
-            .deny_component::<avian2d::prelude::AngularDamping>()
-            .deny_component::<avian2d::prelude::LockedAxes>()
-            .deny_component::<avian2d::prelude::Sensor>()
-    }
-    #[cfg(not(feature = "physics"))]
-    fn deny_physics_components(self) -> Self {
         self
     }
 

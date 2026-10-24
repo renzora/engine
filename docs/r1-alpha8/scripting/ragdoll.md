@@ -1,18 +1,20 @@
 # Ragdoll Physics
 
-Skeletal ragdoll physics, provided by the `renzora_ragdoll` plugin. It auto-builds an Avian rigid body per bone from your skinned mesh's skeleton, plus a joint between every parent/child bone, and lets scripts toggle the whole skeleton between animated and physically-simulated with a single call.
+Skeletal ragdoll physics, provided by the `renzora_ragdoll` plugin. It auto-builds a rigid body per bone from your skinned mesh's skeleton, plus a joint between every parent/child bone, and lets scripts toggle the whole skeleton between animated and physically-simulated with a single call.
 
-## Backend
+## Physics engine
 
-`renzora_ragdoll` is an in-workspace plugin compiled into the engine, and wraps the same **Avian 3D** backend `renzora_physics` uses. It is optional in the feature graph, so the lean exporter leaves it out of a game with no ragdolls in it.
+`renzora_ragdoll` is an in-workspace plugin compiled into the engine. Its bones and joints are ordinary [physics API](/docs/r1-alpha8/scripting/physics) data (`PhysicsBodyData`, `CollisionShapeData` and spherical `PhysicsJoint`s), so a ragdoll runs on whichever engine simulates the project's 3D world: the bundled avian, or Rapier from its plugin. It is optional in the feature graph, so the lean exporter leaves it out of a game with no ragdolls in it.
+
+The bones' generated physics data is never saved with the scene: the ragdoll builds it again on load.
 
 ## Setting up a ragdoll
 
 Add a `Ragdoll` component to the **skeleton root** — typically the same entity that has `AnimatorComponent` (an ancestor of the model's skinned mesh):
 
 1. The plugin finds the nearest `SkinnedMesh` in the entity's descendants and reads its joint list — that is the bone set, not just any named child entity. Models load asynchronously, so the plugin keeps polling for a few seconds until the skeleton has instantiated rather than giving up if it isn't there on the first frame.
-2. For every bone it inserts a `RigidBody::Kinematic` plus a capsule collider spanning the bone to its (averaged) child position — or a small sphere for leaf bones (hands, feet, head tip, …).
-3. For every parent/child bone pair it spawns a `SphericalJoint`, anchored at the child's bind-pose offset, so the skeleton doesn't pop when the ragdoll activates.
+2. For every bone it inserts a kinematic body plus a capsule collider spanning the bone to its (averaged) child position, or a small sphere for leaf bones (hands, feet, head tip, …). Each bone's mass comes from its collider's volume.
+3. For every parent/child bone pair it spawns a spherical `PhysicsJoint`, anchored at the child's bind-pose offset, so the skeleton doesn't pop when the ragdoll activates.
 
 Bones start `Kinematic`: the `AnimationPlayer` drives them exactly as if the plugin weren't present, while the colliders still participate in physics (so a ragdoll-capable character can still register hits before it ever ragdolls).
 
@@ -24,7 +26,7 @@ Bones start `Kinematic`: the `AnimationPlayer` drives them exactly as if the plu
 
 | Field | Default | Effect |
 |---|---|---|
-| `stiffness` | `0.85` | `0` (loose/floppy) to `1` (rigid). Maps to the swing/twist joint compliance Avian uses to resist bending *within* the limits below — this, not the limits alone, is what makes a joint hold its bend instead of flopping freely. |
+| `stiffness` | `0.85` | `0` (loose/floppy) to `1` (rigid). Maps to the joints' compliance, which resists bending *within* the limits below: this, not the limits alone, is what makes a joint hold its bend instead of flopping freely. On Rapier, whose joints soften by springs rather than compliance, the joints are rigid whatever this says. |
 | `swing_limit_degrees` | `60.0` | Max degrees a joint may swing off its bone's rest axis (an elbow/knee opening, a shoulder lifting). `0` locks the joint straight. |
 | `twist_limit_degrees` | `30.0` | Max degrees a joint may twist about its bone's rest axis. `0` locks out twisting entirely. |
 | `linear_damping` | `2.0` | Drag on each bone's linear velocity. The main knob against limbs whipping around too fast. |
@@ -37,8 +39,8 @@ Joint translation (the point itself, not its bend) always stays rigid regardless
 
 | Function | Effect |
 |---|---|
-| `enable_ragdoll()` | Flips every bone of the script's entity to `RigidBody::Dynamic`, detaches the bones from the `AnimationPlayer`, and pauses the animator — the avian solver + joints take over. |
-| `disable_ragdoll()` | Reconnects the bones to the `AnimationPlayer`, flips them back to `Kinematic`, and resumes the animator. |
+| `enable_ragdoll()` | Flips every bone of the script's entity to a dynamic body, detaches the bones from the `AnimationPlayer`, and pauses the animator: the physics solver and joints take over. |
+| `disable_ragdoll()` | Reconnects the bones to the `AnimationPlayer`, flips them back to kinematic, and resumes the animator. |
 
 ```lua
 -- character.lua
@@ -65,9 +67,9 @@ end
 
 - Auto-generated only — there is no manual bone-to-collider mapping UI or API yet.
 - Tuning is whole-ragdoll, not per-bone: one `stiffness`/limits/damping/gravity setting applies to every bone and joint a `Ragdoll` generates, not e.g. stiffer arms than legs.
-- One joint type (`SphericalJoint`, ball-and-socket) for every bone pair.
+- One joint type (spherical, ball-and-socket) for every bone pair.
 
 ## Related
 
-- [Physics](/docs/r1-alpha8/scripting/physics) — the underlying Avian backend, rigid bodies, colliders
+- [Physics](/docs/r1-alpha8/scripting/physics): rigid bodies, colliders and joints
 - [Building Plugins](/docs/r1-alpha8/extending/plugins) — how in-workspace plugins like this one are declared and wired in

@@ -147,6 +147,13 @@ pub use wind::*;
 // friends read better qualified at the call site.
 pub mod scene_query;
 
+// The physics contract: the components scenes save, the runtime state the
+// engine and a backend exchange, and the `PhysicsBackend` trait a physics engine
+// implements. Here because a backend plugin must name these types without
+// linking `renzora_physics`. Not glob re-exported: `PhysicsBackend` and `Caps`
+// read better qualified, and `Caps` would collide with audio's.
+pub mod physics;
+
 // ── Language / localization contract ─────────────────────────────────────
 // The process-global translation table + `t()` lookup every crate calls, plus
 // the plugin-facing registration API. Lives here in the shared dylib so the
@@ -333,34 +340,6 @@ pub use serde;
 /// serde_json declares **no** dependencies, so cargo is never invoked for it and
 /// the build stays offline and about a second long.
 pub use serde_json;
-
-/// The 3D physics backend, re-exported for the same reason as [`serde`].
-///
-/// A plugin that wants to build a rigid body has to name the SAME `RigidBody`
-/// the engine's physics steps. Reaching it through here is what guarantees that:
-/// the type resolves through `renzora_dylib`, which holds avian's compiled code,
-/// so the plugin links none of its own.
-///
-/// The alternative was an `--extern avian3d` pointed at the rlib. That compiles
-/// and the types match, but it links avian's object code into every plugin that
-/// touches it: measured at 13.3 MB against 0.54 MB for the same plugin without
-/// it. Through the shared image there is one copy for the whole process.
-///
-/// ```ignore
-/// use renzora::avian3d::prelude::*;
-///
-/// commands.spawn((RigidBody::Dynamic, Collider::capsule(0.3, 1.0)));
-/// ```
-#[cfg(feature = "physics_3d")]
-pub use avian3d;
-
-/// The 2D physics backend. See [`avian3d`] for why this is re-exported.
-///
-/// A separate crate rather than a feature of avian3d, so both simulations can
-/// coexist in one app — their `RigidBody` and `Collider` are distinct types, and
-/// entities are routed to one backend or the other.
-#[cfg(feature = "physics_2d")]
-pub use avian2d;
 
 // ── App lifecycle state ──────────────────────────────────────────────────
 //

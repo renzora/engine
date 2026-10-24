@@ -113,24 +113,8 @@ pub fn try_build_standard_material(
     }
 
     // Apply graph-level flags first; nothing below should override these.
-    let mut mat = StandardMaterial {
-        alpha_mode: match graph.alpha_mode {
-            GraphAlphaMode::Opaque => AlphaMode::Opaque,
-            GraphAlphaMode::Mask { cutoff } => AlphaMode::Mask(cutoff),
-            GraphAlphaMode::Blend => AlphaMode::Blend,
-        },
-        cull_mode: if graph.double_sided {
-            None
-        } else {
-            Some(bevy::render::render_resource::Face::Back)
-        },
-        // Not redundant with `cull_mode`: that one decides whether the back
-        // face is drawn, this one sets the flag that makes Bevy flip the
-        // normal on it. Without it a two-sided leaf shaded its back with the
-        // front's normal and lit from the wrong side.
-        double_sided: graph.double_sided,
-        ..Default::default()
-    };
+    let mut mat = StandardMaterial::default();
+    apply_surface_flags(&mut mat, graph.alpha_mode, graph.double_sided);
 
     // ── base_color (factor + texture) ───────────────────────────────────
     if let Some(PinValue::Color(c)) = output.input_values.get("base_color") {
@@ -451,6 +435,20 @@ fn param_default(graph: &MaterialGraph, output_id: NodeId, pin_name: &str) -> Op
         return None;
     }
     src.input_values.get("default").cloned()
+}
+
+/// The two settings a material has outside its graph, alpha mode and double
+/// sided, put on a `StandardMaterial`: the one function the scene resolver,
+/// the fast path and the Material Editor's preview all use, so a setting
+/// cannot show in one and not the others.
+pub fn apply_surface_flags(mat: &mut StandardMaterial, alpha_mode: GraphAlphaMode, double_sided: bool) {
+    mat.alpha_mode = alpha_mode.to_bevy();
+    mat.cull_mode = if double_sided { None } else { Some(bevy::render::render_resource::Face::Back) };
+    // Not redundant with `cull_mode`: that one decides whether the back face
+    // is drawn, this one sets `STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT`, which
+    // makes Bevy flip the normal on it. Without it a two-sided leaf shaded its
+    // back with the front's normal and lit from the wrong side.
+    mat.double_sided = double_sided;
 }
 
 /// Pull the texture asset path off a `texture/sample` or

@@ -12,11 +12,54 @@
 //! what lets the same ledge be mantled from the ground and grabbed from the
 //! air without probing twice.
 
-use avian3d::prelude::*;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use renzora::physics::{Cast, CastShape, PhysicsBackends, PhysicsDim, ResolvedShape};
 
 use crate::{ParkourBlocker, ParkourController, ParkourLadder};
+
+/// Where a [`Spatial`] query hit.
+#[derive(Clone, Copy, Debug)]
+pub struct Hit {
+    pub distance: f32,
+    pub normal: Vec3,
+    pub entity: Entity,
+}
+
+/// The controller's view of the level: casts through whichever backend
+/// simulates the 3D world, never touching the character's own body.
+///
+/// Sensors count as hits, as they did when this cast against avian directly,
+/// so a trigger volume a level relies on behaves as it always has.
+pub struct Spatial<'a> {
+    pub world: &'a World,
+    /// The character's own subtree; see [`ProbeWorld::subtree_into`].
+    pub exclude: &'a [Entity],
+}
+
+impl Spatial<'_> {
+    fn run(&self, cast: Cast) -> Option<Hit> {
+        let cast = cast.excluding(self.exclude.iter().copied()).with_sensors(true);
+        PhysicsBackends::cast_one(self.world, cast)
+            .map(|h| Hit { distance: h.distance, normal: h.normal, entity: h.entity })
+    }
+
+    /// A solid ray: one that starts inside a collider reports it at distance
+    /// zero rather than punching out and finding the geometry behind it.
+    pub fn ray(&self, origin: Vec3, dir: Dir3, max_distance: f32) -> Option<Hit> {
+        self.run(Cast::ray(PhysicsDim::D3, origin, *dir, max_distance))
+    }
+
+    /// `shape`, upright, swept from `origin`, ignoring whatever it already
+    /// overlaps there so a capsule resting on the floor can move along it.
+    pub fn sweep(&self, shape: &ResolvedShape, origin: Vec3, dir: Dir3, max_distance: f32) -> Option<Hit> {
+        let shape = CastShape::Shape(shape.clone());
+        self.run(
+            Cast::shape(PhysicsDim::D3, shape, origin, Quat::IDENTITY, *dir, max_distance)
+                .ignoring_origin_penetration(true),
+        )
+    }
+}
 
 /// A ledge found ahead of the character: somewhere with a face to climb and a
 /// top to stand on.
@@ -130,13 +173,12 @@ impl ProbeWorld<'_, '_> {
 /// `forward` is the horizontal direction being probed — the movement intent
 /// when there is one, otherwise where the character is facing.
 pub fn probe(
-    spatial: &SpatialQuery,
+    spatial: &Spatial,
     world: &ProbeWorld,
     controller: &ParkourController,
-    shape: &Collider,
+    shape: &ResolvedShape,
     foot: Vec3,
     forward: Vec3,
-    filter: &SpatialQueryFilter,
 ) -> ParkourProbe {
     let mut out = ParkourProbe {
         ground_normal: Vec3::Y,
@@ -145,10 +187,10 @@ pub fn probe(
 
     let cast = |origin: Vec3, dir: Vec3, dist: f32| -> Option<(Vec3, Vec3, Entity)> {
         let dir3 = Dir3::new(dir).ok()?;
-        // `solid = true`: a probe that starts inside a collider should report
+        // A solid ray: a probe that starts inside a collider should report
         // that immediately rather than punching out through the far side and
         // reporting the geometry behind it.
-        let hit = spatial.cast_ray(origin, dir3, dist, true, filter)?;
+        let hit = spatial.ray(origin, dir3, dist)?;
         if world.is_blocked(hit.entity) {
             return None;
         }
@@ -167,21 +209,10 @@ pub fn probe(
     // `ParkourBlocker` geometry: a blocker opts out of *traversal*, not out of
     // being a floor. Standing on one must still work.
     let max_slope = controller.max_slope.to_radians();
-    if let Some(hit) = spatial.cast_shape(
-        shape,
-        foot + Vec3::Y * (controller.height * 0.5),
-        Quat::IDENTITY,
-        Dir3::NEG_Y,
-        &ShapeCastConfig {
-            max_distance: 0.2,
-            ignore_origin_penetration: true,
-            ..Default::default()
-        },
-        filter,
-    ) {
-        if hit.normal1.angle_between(Vec3::Y) <= max_slope {
+    if let Some(hit) = spatial.sweep(shape, foot + Vec3::Y * (controller.height * 0.5), Dir3::NEG_Y, 0.2) {
+        if hit.normal.angle_between(Vec3::Y) <= max_slope {
             out.grounded = true;
-            out.ground_normal = hit.normal1;
+            out.ground_normal = hit.normal;
         }
     }
 

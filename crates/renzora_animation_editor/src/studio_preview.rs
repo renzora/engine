@@ -18,11 +18,16 @@ use crate::AnimationEditorState;
 /// alongside every other offscreen rig's — see the registry there for why.
 pub use renzora::core::viewport_types::STUDIO_PREVIEW_LAYER;
 
-/// Run condition: `true` when the Studio Preview panel is in the active dock
-/// tree. All expensive studio-preview work (camera rendering, model cloning,
-/// skeleton drawing, etc.) is gated on this so other layouts don't pay for it.
+/// The panels that show this preview: its own, and the Animation workspace's
+/// stage, which is the same picture with tools on it.
+const SHOWN_BY: [&str; 2] = ["studio_preview", crate::stage::STAGE_PANEL];
+
+/// Run condition: `true` when the Studio Preview panel or the stage is in the
+/// active dock tree. All expensive studio-preview work (camera rendering,
+/// model cloning, skeleton drawing, etc.) is gated on this so other layouts
+/// don't pay for it.
 pub fn studio_preview_panel_mounted(dock: Option<Res<renzora_ember::dock::Dock>>) -> bool {
-    dock.is_some_and(|d| d.tree.contains_panel("studio_preview"))
+    dock.is_some_and(|d| SHOWN_BY.iter().any(|p| d.tree.contains_panel(p)))
 }
 
 /// Toggles the studio-preview camera on/off with panel visibility and tears
@@ -37,16 +42,13 @@ pub fn sync_studio_preview_activation(
     mut tracker: ResMut<StudioPreviewTracker>,
     mut commands: Commands,
 ) {
-    let mounted = dock.as_ref().is_some_and(|d| d.tree.contains_panel("studio_preview"));
+    let mounted = dock.as_ref().is_some_and(|d| SHOWN_BY.iter().any(|p| d.tree.contains_panel(p)));
     // Render only while the panel is the visible tab somewhere. `mounted` is
     // also true for a background tab, which kept this camera rendering a lit,
     // shadowed scene behind whatever tab was in front of it.
-    let visible = renzora_ember::dock::panel_visible_anywhere(
-        "studio_preview",
-        dock.as_deref(),
-        fixed.as_deref(),
-        wins.as_deref(),
-    );
+    let visible = SHOWN_BY
+        .iter()
+        .any(|p| renzora_ember::dock::panel_visible_anywhere(p, dock.as_deref(), fixed.as_deref(), wins.as_deref()));
     for mut camera in camera_q.iter_mut() {
         if camera.is_active != visible {
             camera.is_active = visible;
@@ -279,72 +281,69 @@ pub fn setup_studio_preview(
         Name::new("Studio Preview Ambient"),
     ));
 
-    // ── Backdrop — large curved wall behind the model ──
-    // A half-cylinder behind the subject for a studio-like environment
-    let backdrop_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.14, 0.14, 0.16),
-        perceptual_roughness: 1.0,
-        metallic: 0.0,
-        reflectance: 0.0,
-        unlit: false,
-        ..default()
-    });
-
-    // Back wall — tall plane behind the model
-    let wall_mesh = meshes.add(Plane3d::new(Vec3::Z, Vec2::new(8.0, 5.0)));
-    commands.spawn((
-        Mesh3d(wall_mesh),
-        MeshMaterial3d(backdrop_material.clone()),
-        Transform::from_xyz(0.0, 5.0, -6.0),
-        RenderLayers::layer(STUDIO_PREVIEW_LAYER),
-        HideInHierarchy,
-        EditorLocked,
-        Name::new("Studio Preview Backdrop"),
-    ));
-
-    // Checkerboard floor
-    let checker_size = 16u32;
-    let checker_tiles = 8u32; // 8x8 checker pattern
-    let tex_dim = checker_size * checker_tiles;
-    let mut checker_data = vec![0u8; (tex_dim * tex_dim * 4) as usize];
+    // ── Floor: a fine grid that fades out into the background ──
+    //
+    // No backdrop wall: the camera's clear colour is the theme's panel colour,
+    // so the floor fading to nothing reads as a stage with no edges, the
+    // character on its own. A wall and a hard-edged checkerboard used to cut
+    // the picture in two with a horizon line, and the checker's 1 m squares
+    // were as big as the character's arm.
+    let tex_dim = 1024u32;
+    // 32 cells across the floor, every fourth line stronger.
+    let cell = tex_dim / 32;
+    let mut grid = vec![0u8; (tex_dim * tex_dim * 4) as usize];
+    let half = tex_dim as f32 / 2.0;
     for y in 0..tex_dim {
         for x in 0..tex_dim {
-            let tx = x / checker_size;
-            let ty = y / checker_size;
-            let is_light = (tx + ty).is_multiple_of(2);
-            let (r, g, b) = if is_light { (55, 55, 60) } else { (35, 35, 40) };
+            let (gx, gy) = (x % cell, y % cell);
+            let major = (x / cell).is_multiple_of(4) && gx < 2 || (y / cell).is_multiple_of(4) && gy < 2;
+            let minor = gx == 0 || gy == 0;
+            let (r, g, b) = if major {
+                (70, 70, 82)
+            } else if minor {
+                (52, 52, 62)
+            } else {
+                (34, 34, 41)
+            };
+            // Fully there under the character, gone by the floor's edge.
+            let d = ((x as f32 - half).powi(2) + (y as f32 - half).powi(2)).sqrt() / half;
+            let t = ((d - 0.25) / 0.7).clamp(0.0, 1.0);
+            let a = 1.0 - t * t * (3.0 - 2.0 * t);
             let idx = ((y * tex_dim + x) * 4) as usize;
-            checker_data[idx] = b; // BGRA
-            checker_data[idx + 1] = g;
-            checker_data[idx + 2] = r;
-            checker_data[idx + 3] = 255;
+            grid[idx] = b; // BGRA
+            grid[idx + 1] = g;
+            grid[idx + 2] = r;
+            grid[idx + 3] = (a * 255.0) as u8;
         }
     }
 
-    let mut checker_image = Image {
-        data: Some(checker_data),
+    let mut grid_image = Image {
+        data: Some(grid),
         ..default()
     };
-    checker_image.texture_descriptor.size = Extent3d {
+    grid_image.texture_descriptor.size = Extent3d {
         width: tex_dim,
         height: tex_dim,
         depth_or_array_layers: 1,
     };
-    checker_image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-    checker_image.texture_descriptor.usage =
+    grid_image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
+    grid_image.texture_descriptor.usage =
         TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST;
 
-    let checker_tex = images.add(checker_image);
+    let grid_tex = images.add(grid_image);
 
     let floor_material = materials.add(StandardMaterial {
-        base_color_texture: Some(checker_tex),
-        perceptual_roughness: 0.9,
+        base_color_texture: Some(grid_tex),
+        alpha_mode: AlphaMode::Blend,
+        perceptual_roughness: 1.0,
         metallic: 0.0,
-        reflectance: 0.1,
+        reflectance: 0.05,
         ..default()
     });
 
-    let floor_mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(5.0)));
+    // Sized for a person; `auto_fit_preview_camera` scales it to the model
+    // and puts it under the model's feet.
+    let floor_mesh = meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(8.0)));
 
     commands.spawn((
         Mesh3d(floor_mesh),
@@ -653,6 +652,7 @@ pub fn auto_fit_preview_camera(
     preview_roots: Query<Entity, With<StudioPreviewModel>>,
     children_query: Query<&Children>,
     aabb_query: Query<(&bevy::camera::primitives::Aabb, &GlobalTransform)>,
+    mut floor: Query<&mut Transform, With<StudioPreviewFloor>>,
 ) {
     if tracker.auto_fitted {
         return;
@@ -704,9 +704,15 @@ pub fn auto_fit_preview_camera(
     let radius = extents.length() * 0.5;
 
     orbit.target = center;
-    orbit.distance = (radius * 2.5).max(1.0);
+    orbit.distance = (radius * 2.5).max(0.05);
     orbit.yaw = 0.5;
     orbit.pitch = 0.2;
+    // The floor under the feet, a grid cell about a hand's width for a
+    // person: a head on a floor sized for a whole body was a speck.
+    for mut t in floor.iter_mut() {
+        t.translation = Vec3::new(center.x, min.y, center.z);
+        t.scale = Vec3::splat((radius / 1.0).max(0.02));
+    }
 
     tracker.auto_fitted = true;
     info!(
@@ -763,6 +769,7 @@ pub fn register_preview_gizmos(app: &mut bevy::app::App) {
 }
 
 /// Draw skeleton bones on the preview model using gizmos.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_preview_skeleton(
     mut gizmos: Gizmos<StudioPreviewGizmoGroup>,
     settings: Res<StudioPreviewSettings>,
@@ -771,8 +778,10 @@ pub fn draw_preview_skeleton(
     parent_q: Query<&ChildOf>,
     target_q: Query<(), With<AnimationTargetId>>,
     global_transforms: Query<&GlobalTransform>,
+    dock: Option<Res<renzora_ember::dock::Dock>>,
 ) {
-    if !settings.show_skeleton {
+    // The stage draws its own skeleton, coloured by side and pickable.
+    if !settings.show_skeleton || dock.is_some_and(|d| d.tree.contains_panel(crate::stage::STAGE_PANEL)) {
         return;
     }
 

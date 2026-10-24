@@ -1444,25 +1444,7 @@ fn assemble_graph_material(
         mat.base.specular_transmission = 0.5;
     }
 
-    mat.base.alpha_mode = match alpha_mode {
-        crate::material::graph::AlphaMode::Opaque => bevy::prelude::AlphaMode::Opaque,
-        crate::material::graph::AlphaMode::Mask { cutoff } => {
-            bevy::prelude::AlphaMode::Mask(cutoff)
-        }
-        crate::material::graph::AlphaMode::Blend => bevy::prelude::AlphaMode::Blend,
-    };
-    mat.base.cull_mode = if double_sided {
-        None
-    } else {
-        Some(bevy::render::render_resource::Face::Back)
-    };
-    // Both halves of "double sided", not just the culling half. `cull_mode`
-    // decides whether the back face is *drawn*; this flag is what sets
-    // `STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT`, which is what makes Bevy
-    // flip the normal on the faces it draws. Setting only the first left back
-    // faces shaded with the front's normal — a leaf lit from behind came out
-    // lit from the front.
-    mat.base.double_sided = double_sided;
+    super::standard_build::apply_surface_flags(&mut mat.base, alpha_mode, double_sided);
 
     for tb in texture_bindings {
         if tb.asset_path.is_empty() {

@@ -144,7 +144,9 @@ fn empty_hint(w: &Rx) -> String {
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// Also the Animation workspace's Clip tab, and its right panel in Logic
+/// mode.
+pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn((
             Node {

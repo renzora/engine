@@ -18,6 +18,14 @@ renzora_undo = { path = "../renzora_undo" }
 renzora_particles = { path = "../renzora_particles" }
 renzora_particles_editor = { path = "../renzora_particles/editor" }
 ron = "0.8"
+# The Rig and Face panels: building skeletons and skins, mirroring, IK and
+# the face's expressions.
+renzora_rig = { path = "../renzora_rig" }
+# Lip sync reads a voice recording's loudness, which needs it decoded.
+renzora_audio = { path = "../renzora_audio", features = ["decode"] }
+rfd = "0.15"
+# The pose library's files.
+serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true

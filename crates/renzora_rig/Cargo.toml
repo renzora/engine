@@ -1,0 +1,15 @@
+[package]
+name = "renzora_rig"
+version = "0.1.0"
+edition = "2021"
+description = "Rigging: building skeletons and skins into glTF binaries (face rigs, humanoid auto-rig), bone mirroring and facial expressions."
+
+# No plugin: this is the rigging toolkit the animation editor's Rig and Face
+# panels drive, kept apart from any UI so every step can be tested on plain
+# data. Only Bevy's math is used.
+[dependencies]
+bevy = { workspace = true }
+serde_json = "1"
+
+[lints]
+workspace = true

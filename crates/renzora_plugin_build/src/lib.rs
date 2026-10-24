@@ -100,6 +100,18 @@ pub struct Manifest {
     /// `--extern <name>=<sdk-relative path>` for the crates a plugin may use.
     pub r#extern: Externs,
     pub link_search: LinkSearch,
+    /// SDK-relative path of `shared.tsv`, the crates the shared images contain.
+    /// A plugin dependency built on Bevy takes these from the SDK instead of
+    /// compiling its own (see `renzora_native_build::deps`).
+    ///
+    /// Optional like [`Manifest::build_id`]: an SDK without one shares nothing,
+    /// and Bevy in a dependency's graph is refused as it always was.
+    #[serde(default)]
+    pub shared: Option<String>,
+    /// SDK-relative path of the engine's `Cargo.lock`, which a dependency build
+    /// starts from so it resolves the versions in [`Manifest::shared`].
+    #[serde(default)]
+    pub lock: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -375,6 +387,8 @@ impl Sdk {
             self.manifest.link_search.dependency.iter().map(|d| self.root.join(d)).collect();
         let native: Vec<PathBuf> =
             self.manifest.link_search.native.iter().map(|n| self.root.join(n)).collect();
+        let shared = self.manifest.shared.as_ref().map(|s| self.root.join(s));
+        let lockfile = self.manifest.lock.as_ref().map(|l| self.root.join(l));
 
         let target = native_build::Target {
             triple: &self.manifest.triple,
@@ -389,6 +403,8 @@ impl Sdk {
             extern_ember: ember.as_deref(),
             dependency: &dependency,
             native: &native,
+            shared: shared.as_deref(),
+            lockfile: lockfile.as_deref(),
             plugin_dir: &manifest,
             // The plugin's own `build/` directory, which is where the
             // third-party dependency crate is synthesized.

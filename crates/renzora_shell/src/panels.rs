@@ -45,6 +45,9 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Animation
     ("timeline", "Timeline", "film-strip", "Animation"),
     ("animation", "Animation", "play-circle", "Animation"),
+    ("stage", "Stage", "person-simple", "Animation"),
+    ("anim_tools", "Animation Tools", "wrench", "Animation"),
+    ("anim_inspector", "Animation Inspector", "sliders", "Animation"),
     ("studio_preview", "Studio Preview", "person", "Animation"),
     ("animator_state_machine", "State Machine", "graph", "Animation"),
     ("animator_params", "Parameters", "sliders-horizontal", "Animation"),

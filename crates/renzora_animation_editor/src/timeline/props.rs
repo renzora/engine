@@ -269,6 +269,8 @@ pub(super) fn apply_timeline_ops(world: &mut World) {
         delete_property_track(world, track);
     }
     if add_key {
+        // Posed and selected bones first: K is also how a pose is keyed.
+        super::pose::key_pose_bones(world);
         let entity = clip_entity(world);
         let scrub = world.get_resource::<AnimationEditorState>().map(|s| s.scrub_time).unwrap_or(0.0);
         if let Some(entity) = entity {
@@ -402,8 +404,25 @@ pub(super) fn apply_keyframe_requests(world: &mut World) {
         .get_resource::<AnimationEditorState>()
         .map(|s| s.scrub_time)
         .unwrap_or(0.0);
+    // A request for a bone's Transform keys its bone track, as K does, not a
+    // property track on it: a bone's pose belongs with the clip's other bone
+    // keys, and the inspector's keyframe button on a bone used to make a
+    // property track that drove the same bone a second way. It is also how a
+    // tool outside this crate keys a pose (the MCP `key_pose`): this queue is
+    // the seam the contract crate already gives it.
+    let mut bones: Vec<Entity> = Vec::new();
     for req in reqs {
+        let is_bone = world.get::<bevy::animation::AnimationTargetId>(req.entity).is_some();
+        if is_bone && renzora::norm(&req.component) == renzora::norm("Transform") {
+            if !bones.contains(&req.entity) {
+                bones.push(req.entity);
+            }
+            continue;
+        }
         add_key_for_field(world, entity, &req.component, &req.field, scrub);
+    }
+    if !bones.is_empty() {
+        super::pose::key_bones(world, &bones);
     }
 }
 

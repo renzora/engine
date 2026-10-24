@@ -8,10 +8,10 @@ description = "2D tilemap runtime: a chunked quad-mesh renderer driven by a refl
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
-# Data types only (`default-features = false` = no avian): the collider builder
-# tags merged tile rectangles with CollisionShapeData/Physics2d and the physics
-# backend (when compiled in) turns them into real avian2d colliders — same
-# pattern renzora_terrain uses for chunk colliders.
+# Data types only (this crate names no physics engine): the collider builder
+# tags merged tile rectangles with CollisionShapeData/Physics2d and whichever 2D
+# backend is selected turns them into real colliders, the same pattern
+# renzora_terrain uses for chunk colliders.
 renzora_physics = { path = "../renzora_physics", default-features = false }
 
 [dev-dependencies]

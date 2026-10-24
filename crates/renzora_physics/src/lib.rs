@@ -1,17 +1,28 @@
-// Without the simulation backend, the helper systems/fns below are unreferenced
-// (only the avian-free data types are used). Silence the noise for that build
-// rather than scatter per-item gates.
-#![cfg_attr(not(feature = "avian3d"), allow(dead_code, unused_variables, unused_imports))]
+//! The engine's physics API, with no physics engine in it.
+//!
+//! This crate owns everything about physics that is renzora's rather than a
+//! solver's: the components scenes save, routing each entity to the 2D or 3D
+//! world, resolving colliders, script actions, the read-back state scripts and
+//! blueprints see, world settings, collide-and-slide, and the scene queries
+//! particles use. What actually simulates is a backend behind
+//! `renzora::physics::PhysicsBackend`, registered by a native plugin
+//! (`avian_physics`, `rapier_physics`). The engine links none.
+//!
+//! Without any backend this crate still builds and runs: entities are routed
+//! and colliders resolved, and nothing moves (the console says so, see
+//! `selection::announce_running`). Crates like `renzora_terrain` keep tagging
+//! chunks with collider data either way.
 
 pub mod auto_fit;
-pub mod backend;
 pub mod data;
 pub mod properties;
 pub mod read_state;
-#[cfg(any(feature = "avian3d", feature = "avian2d"))]
+pub mod resolve;
 pub mod scene_query;
 #[cfg(feature = "scripting")]
 pub mod script_extension;
+pub mod selection;
+pub mod slide;
 
 /// When `active`, the editor enters "edit collider" mode for the selected entity:
 /// the transform gizmo is hidden and (later) collider resize/move handles take over.
@@ -29,25 +40,22 @@ pub struct ColliderEditMode {
 pub use data::*;
 pub use properties::*;
 pub use read_state::PhysicsReadState;
+pub use selection::switch_backend;
+pub use slide::{PendingKinematicSlides, PendingSlide};
 
 use bevy::prelude::*;
+use renzora::physics::{
+    PhysicsBackends, PhysicsCommand, PhysicsCommands, PhysicsDim, PhysicsSet, PhysicsSettings,
+    ResolvedCollider,
+};
 use renzora::PlayModeState;
 
 /// Run condition: true when NOT in editing mode (i.e. playing, scripts-only, or no PlayModeState resource).
-fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
+pub fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
     play_mode.is_none_or(|pm| !pm.is_editing())
 }
 
-// Without the `avian` feature this crate still compiles, exposing only the
-// avian-free serializable data types (`data` / `properties`: `PhysicsBodyData`,
-// `CollisionShapeData`, …). The whole simulation backend (`backend::avian`,
-// the `PhysicsPlugin` body, character controller, read-state systems) is
-// `#[cfg(feature = "avian3d")]`. This lets the lean export drop avian (~6.5 MiB)
-// while crates like `renzora_terrain` keep tagging chunks with collider DATA —
-// inert until a build that enables the backend. `renzora_runtime`'s `physics`
-// feature turns the backend back on.
-
-/// Physics plugin that delegates to the selected backend.
+/// The engine half of physics. Simulates nothing by itself; see the crate docs.
 ///
 /// Runs the simulation immediately. In the editor the companion
 /// `renzora_physics_editor::PhysicsEditorPlugin` adds a `Startup` system that
@@ -59,9 +67,6 @@ pub struct PhysicsPlugin;
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] PhysicsPlugin");
-        // The simulation runs immediately; the editor crate pauses it at
-        // startup when present (see `PhysicsEditorPlugin`).
-        let start_paused = false;
 
         app.register_type::<PhysicsBodyData>()
             .register_type::<PhysicsBodyType>()
@@ -71,64 +76,85 @@ impl Plugin for PhysicsPlugin {
             .register_type::<PhysicsReadState>()
             .register_type::<read_state::CollisionReadState>();
 
-        #[cfg(feature = "avian3d")]
-        app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
+        app.init_resource::<PhysicsBackends>()
+            .init_resource::<PhysicsSettings>()
+            .init_resource::<PhysicsCommands>()
+            .init_resource::<PhysicsPropertiesState>()
+            .init_resource::<PendingKinematicSlides>();
 
-        #[cfg(feature = "avian2d")]
-        app.add_plugins(backend::avian_2d::Avian2dBackendPlugin { start_paused });
+        app.configure_sets(
+            Update,
+            (
+                PhysicsSet::Prepare,
+                PhysicsSet::Sync,
+                PhysicsSet::Writeback,
+                PhysicsSet::Read,
+            )
+                .chain(),
+        );
 
         // Ray and sphere casts against the colliders, for the crates that may
-        // not link Avian themselves (particles colliding with the level). Only
-        // with a backend: without one there is nothing to hit, and the missing
-        // resource tells consumers exactly that.
-        #[cfg(any(feature = "avian3d", feature = "avian2d"))]
-        app.insert_resource(renzora::scene_query::SceneQueries::new(scene_query::AvianSceneQuery));
+        // not link a physics engine themselves (particles colliding with the
+        // level). With no backend registered every cast is a miss, which is the
+        // same answer as an empty scene.
+        app.insert_resource(renzora::scene_query::SceneQueries::new(
+            scene_query::BackendSceneQuery,
+        ));
 
-        app.add_systems(Update, (auto_init_physics, sync_physics_data));
         app.add_systems(
             Update,
             (
                 auto_fit::mark_new_collision_shapes,
                 auto_fit::auto_fit_collision_shapes,
             )
-                .chain(),
+                .chain()
+                .before(PhysicsSet::Prepare),
+        );
+        // Before routing, so a world that just changed backend is re-wired to
+        // the new one in the same frame.
+        app.add_systems(
+            Update,
+            selection::follow_project_backends.before(PhysicsSet::Prepare),
+        );
+        app.add_systems(
+            Update,
+            (
+                (handle_removed_physics_data, auto_init_physics, sync_physics_data, resolve::resolve_mesh_colliders),
+                read_state::auto_init_physics_read_state,
+                read_state::auto_init_collision_read_state,
+            )
+                .in_set(PhysicsSet::Prepare),
+        );
+        app.add_systems(
+            Update,
+            (
+                read_state::update_physics_read_state,
+                read_state::update_collision_read_state,
+                apply_property_commands,
+            )
+                .in_set(PhysicsSet::Read),
+        );
+
+        // Commands land in `PostUpdate`, after every script has run; the queue
+        // is emptied once each backend has taken what is its own. Slides also
+        // run here, so a `move_controller` call from any script this frame is
+        // in the transform before it propagates.
+        app.add_systems(
+            PostUpdate,
+            (
+                clear_physics_commands.after(PhysicsSet::Commands),
+                slide::run_kinematic_slides
+                    .run_if(not_editing)
+                    .before(bevy::transform::TransformSystems::Propagate),
+            ),
         );
 
         // Listen for editor pause/unpause events (decoupled from renzora_editor_framework)
         app.add_observer(on_pause_physics)
             .add_observer(on_unpause_physics);
 
-        #[cfg(feature = "avian3d")]
-        app.add_systems(PostUpdate, clear_avian_forces.run_if(not_editing));
-        #[cfg(feature = "avian2d")]
-        app.add_systems(PostUpdate, clear_avian_forces_2d.run_if(not_editing));
-
-        app.init_resource::<PendingKinematicSlides>();
-        #[cfg(feature = "avian3d")]
-        {
-            app.init_resource::<ResolvedSlides>();
-            app.add_systems(
-                Update,
-                (compute_kinematic_slides, apply_kinematic_slides)
-                    .chain()
-                    .run_if(not_editing),
-            );
-        }
-
         // Listen for script actions (apply_force, apply_impulse, set_velocity, kinematic_slide)
         app.add_observer(handle_physics_script_actions);
-
-        // Per-entity read-state mirror + script extension.
-        app.add_systems(Update, read_state::auto_init_physics_read_state);
-        app.add_systems(Update, read_state::auto_init_collision_read_state);
-        #[cfg(feature = "avian3d")]
-        app.add_systems(Update, read_state::update_physics_read_state);
-        #[cfg(feature = "avian3d")]
-        app.add_systems(Update, read_state::update_collision_read_state);
-        #[cfg(feature = "avian2d")]
-        app.add_systems(Update, read_state::update_physics_read_state_2d);
-        #[cfg(feature = "avian2d")]
-        app.add_systems(Update, read_state::update_collision_read_state_2d);
 
         // Register script functions owned by the physics crate.
         #[cfg(feature = "scripting")]
@@ -141,138 +167,24 @@ impl Plugin for PhysicsPlugin {
     }
 }
 
-/// One pending kinematic slide request.
-#[derive(Clone, Copy, Debug)]
-pub struct PendingSlide {
-    pub entity: Entity,
-    pub delta: Vec3,
-    pub max_slope: f32,
+fn clear_physics_commands(mut commands: ResMut<PhysicsCommands>) {
+    commands.0.clear();
 }
 
-/// Queue of slide requests produced by the `kinematic_slide` script action
-/// and drained each frame by `drain_kinematic_slides`.
-#[derive(Resource, Default)]
-pub struct PendingKinematicSlides(pub Vec<PendingSlide>);
-
-/// System: applies pending kinematic slides with full collision response.
-/// Computed slide result waiting to be applied to `Position` + `Transform`.
-/// Produced by `compute_kinematic_slides` and drained by `apply_kinematic_slides`
-/// — split into two systems so the SpatialQuery reads don't conflict with the
-/// `&mut Position` writes.
-#[cfg(feature = "avian3d")]
-#[derive(Resource, Default)]
-struct ResolvedSlides(Vec<(Entity, Vec3, bool, Vec3)>);
-
-#[cfg(feature = "avian3d")]
-fn compute_kinematic_slides(
-    mut queue: ResMut<PendingKinematicSlides>,
-    mut resolved: ResMut<ResolvedSlides>,
-    spatial_query: avian3d::prelude::SpatialQuery,
-    q: Query<(
-        &Transform,
-        &avian3d::prelude::Collider,
-        Option<&CollisionShapeData>,
-    )>,
-) {
-    if queue.0.is_empty() {
-        return;
-    }
-    for slide in std::mem::take(&mut queue.0) {
-        let Ok((transform, collider, shape_data)) = q.get(slide.entity) else {
-            continue;
-        };
-        // The avian Collider is offset from the entity transform via
-        // ColliderTransform (see `spawn_collision_shape`). `shape_cast_slide`
-        // takes the shape's world centre, so we have to add that offset
-        // ourselves — otherwise the cast (especially the downward grounding
-        // probe) happens at a phantom location `offset` units from the real
-        // collider and the character ends up floating that distance off the
-        // floor.
-        let shape_offset = shape_data.map(|s| s.offset).unwrap_or(Vec3::ZERO);
-        let shape_origin = transform.translation + shape_offset;
-        let filter = avian3d::prelude::SpatialQueryFilter::from_excluded_entities([slide.entity]);
-        let result = backend::avian_character::shape_cast_slide(
-            &spatial_query,
-            collider,
-            shape_origin,
-            transform.rotation,
-            slide.delta,
-            slide.max_slope,
-            &filter,
-        );
-        let new_pos = transform.translation + result.actual_delta;
-        resolved
-            .0
-            .push((slide.entity, new_pos, result.grounded, result.ground_normal));
-    }
-}
-
-#[cfg(feature = "avian3d")]
-fn apply_kinematic_slides(
-    mut resolved: ResMut<ResolvedSlides>,
-    mut q: Query<(&mut Transform, Option<&mut PhysicsReadState>)>,
-) {
-    if resolved.0.is_empty() {
-        return;
-    }
-    for (entity, new_pos, grounded, normal) in std::mem::take(&mut resolved.0) {
-        let Ok((mut transform, read_state)) = q.get_mut(entity) else {
-            continue;
-        };
-        transform.translation = new_pos;
-        if let Some(mut rs) = read_state {
-            rs.grounded = grounded;
-            rs.ground_normal = normal;
-        }
-    }
-}
-
-/// System to clear avian forces each frame (since we use ConstantForce for one-time pushes).
-#[cfg(feature = "avian3d")]
-fn clear_avian_forces(
-    mut commands: Commands,
-    query: Query<Entity, With<avian3d::prelude::ConstantForce>>,
-) {
-    for entity in &query {
-        commands
-            .entity(entity)
-            .remove::<avian3d::prelude::ConstantForce>();
-    }
-}
-
-/// 2D twin of [`clear_avian_forces`] — avian2d's `ConstantForce` is its own type.
-#[cfg(feature = "avian2d")]
-fn clear_avian_forces_2d(
-    mut commands: Commands,
-    query: Query<Entity, With<avian2d::prelude::ConstantForce>>,
-) {
-    for entity in &query {
-        commands
-            .entity(entity)
-            .remove::<avian2d::prelude::ConstantForce>();
-    }
-}
-
-/// Observer: handle physics commands (apply_force, apply_impulse, set_velocity,
-/// kinematic_slide) from scripts and blueprints.
+/// Observer: turn physics script and blueprint actions (apply_force,
+/// apply_impulse, set_velocity, kinematic_slide) into commands for the backend.
 fn handle_physics_script_actions(
     trigger: On<renzora::ScriptAction>,
-    // Every use of `commands` below sits behind `#[cfg(feature = "avian2d")]` or
-    // `"avian3d"`, so with neither backend compiled in the body touches it not at
-    // all and the `mut` reads as redundant. Dropping the `mut` would then break
-    // the build the moment a backend IS enabled, which is the configuration that
-    // ships, so the allow is the fix rather than the warning.
-    #[allow(unused_mut)] mut commands: Commands,
-    mut pending_slides: Option<ResMut<PendingKinematicSlides>>,
-    bodies_2d: Query<(), With<RuntimePhysics2d>>,
+    mut physics: ResMut<PhysicsCommands>,
+    mut pending_slides: ResMut<PendingKinematicSlides>,
 ) {
+    use renzora::ScriptActionValue;
     let action = trigger.event();
     let name = action.name.as_str();
 
-    // Kinematic slide goes into a pending queue drained by a system with
-    // SpatialQuery access — it can't run inside an observer.
+    // Kinematic slide goes into a pending queue drained by an exclusive
+    // system, since the cast needs the whole world.
     if name == "kinematic_slide" {
-        use renzora::ScriptActionValue;
         let get = |k: &str| -> f32 {
             match action.args.get(k) {
                 Some(ScriptActionValue::Float(v)) => *v,
@@ -280,157 +192,77 @@ fn handle_physics_script_actions(
                 _ => 0.0,
             }
         };
-        let dx = get("x");
-        let dy = get("y");
-        let dz = get("z");
         let max_slope = match action.args.get("max_slope") {
             Some(ScriptActionValue::Float(v)) => *v,
             _ => 55.0,
         };
-        if let Some(ref mut queue) = pending_slides {
-            queue.0.push(PendingSlide {
-                entity: action.entity,
-                delta: Vec3::new(dx, dy, dz),
-                max_slope,
-            });
+        pending_slides.0.push(PendingSlide {
+            entity: action.entity,
+            delta: Vec3::new(get("x"), get("y"), get("z")),
+            max_slope,
+        });
+        return;
+    }
+
+    if !matches!(
+        name,
+        "apply_force"
+            | "apply_impulse"
+            | "set_velocity"
+            | "apply_torque"
+            | "apply_angular_impulse"
+            | "set_angular_velocity"
+    ) {
+        return;
+    }
+
+    let get = |k: &str| -> f32 {
+        match action.args.get(k) {
+            Some(ScriptActionValue::Float(v)) => *v,
+            _ => 0.0,
         }
-        return;
-    }
-
-    if !matches!(name, "apply_force" | "apply_impulse" | "set_velocity") {
-        return;
-    }
-
-    use renzora::ScriptActionValue;
-    let x = match action.args.get("x") {
-        Some(ScriptActionValue::Float(v)) => *v,
-        _ => 0.0,
     };
-    let y = match action.args.get("y") {
-        Some(ScriptActionValue::Float(v)) => *v,
-        _ => 0.0,
-    };
-    let z = match action.args.get("z") {
-        Some(ScriptActionValue::Float(v)) => *v,
-        _ => 0.0,
-    };
-    let vec = Vec3::new(x, y, z);
+    let vec = Vec3::new(get("x"), get("y"), get("z"));
 
     // Default to the entity that triggered the action, or use target ID if provided
-    let target =
-        if let Some(Some(ScriptActionValue::Int(id))) = action.args.get("entity_id").map(Some) {
-            Entity::from_bits(*id as u64)
-        } else {
-            action.entity
-        };
+    let entity = if let Some(ScriptActionValue::Int(id)) = action.args.get("entity_id") {
+        Entity::from_bits(*id as u64)
+    } else {
+        action.entity
+    };
 
-    // A body initialised by the 2D backend must receive avian2d components —
-    // the 3D types would just sit inert on it (separate simulations).
-    let is_2d = bodies_2d.contains(target);
-
-    match name {
-        "apply_force" => {
-            if is_2d {
-                #[cfg(feature = "avian2d")]
-                commands
-                    .entity(target)
-                    .insert(avian2d::prelude::ConstantForce(vec.truncate()));
-            } else {
-                #[cfg(feature = "avian3d")]
-                commands
-                    .entity(target)
-                    .insert(avian3d::prelude::ConstantForce(vec));
-            }
-        }
-        "apply_impulse" => {
-            // Avian 0.6.1 doesn't have a built-in one-shot impulse component in prelude.
-            // We'll apply it by inserting LinearVelocity which avian's solver will integrate.
-            // This is a simplified impulse. For a true additive impulse we'd need a solver hook.
-            if is_2d {
-                #[cfg(feature = "avian2d")]
-                commands
-                    .entity(target)
-                    .insert(avian2d::prelude::LinearVelocity(vec.truncate()));
-            } else {
-                #[cfg(feature = "avian3d")]
-                commands
-                    .entity(target)
-                    .insert(avian3d::prelude::LinearVelocity(vec));
-            }
-        }
-        "set_velocity" => {
-            if is_2d {
-                #[cfg(feature = "avian2d")]
-                commands
-                    .entity(target)
-                    .insert(avian2d::prelude::LinearVelocity(vec.truncate()));
-            } else {
-                #[cfg(feature = "avian3d")]
-                commands
-                    .entity(target)
-                    .insert(avian3d::prelude::LinearVelocity(vec));
-            }
-        }
-        _ => {}
-    }
+    physics.push(match name {
+        "apply_force" => PhysicsCommand::AddForce { entity, force: vec },
+        "apply_torque" => PhysicsCommand::AddTorque { entity, torque: vec },
+        "apply_angular_impulse" => PhysicsCommand::AddAngularImpulse { entity, impulse: vec },
+        "set_angular_velocity" => PhysicsCommand::SetAngularVelocity { entity, velocity: vec },
+        // A velocity set, not `AddImpulse`. `apply_impulse` has always set the
+        // velocity to its argument, and existing scripts are tuned against
+        // that; code that wants momentum pushes `AddImpulse` itself.
+        "apply_impulse" => PhysicsCommand::SetLinearVelocity { entity, velocity: vec },
+        _ => PhysicsCommand::SetLinearVelocity { entity, velocity: vec },
+    });
 }
 
-// Re-export backend functions under a unified API so callers don't need cfg guards.
-
-/// Spawn physics body components on an entity.
-pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &PhysicsBodyData) {
-    #[cfg(feature = "avian3d")]
-    backend::avian::spawn_physics_body(commands, entity, body_data);
-}
-
-/// Spawn collider components on an entity.
-pub fn spawn_collision_shape(
-    commands: &mut Commands,
-    entity: Entity,
-    shape_data: &CollisionShapeData,
-) {
-    #[cfg(feature = "avian3d")]
-    backend::avian::spawn_collision_shape(commands, entity, shape_data);
-}
-
-/// Remove all physics components from an entity — both backends' component
-/// sets (removing absent components is a no-op, so it's safe to sweep both).
+/// Take `entity` out of the simulation: the backend drops its body and
+/// collider, and the entity keeps its data and `RuntimePhysics`, so it stays
+/// out until its `CollisionShapeData` changes. Terrain streams far chunks out
+/// this way.
 pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
-    #[cfg(feature = "avian3d")]
-    backend::avian::despawn_physics_components(commands, entity);
-    #[cfg(feature = "avian2d")]
-    backend::avian_2d::despawn_physics_components(commands, entity);
-    commands.entity(entity).remove::<RuntimePhysics2d>();
-}
-
-/// Spawn all physics components for an entity that has PhysicsBodyData and/or CollisionShapeData.
-pub fn spawn_entity_physics(
-    commands: &mut Commands,
-    entity: Entity,
-    body_data: Option<&PhysicsBodyData>,
-    shape_data: Option<&CollisionShapeData>,
-) {
-    let mut has_physics = false;
-
-    if let Some(body) = body_data {
-        spawn_physics_body(commands, entity, body);
-        has_physics = true;
-    }
-
-    if let Some(shape) = shape_data {
-        spawn_collision_shape(commands, entity, shape);
-        has_physics = true;
-    }
-
-    if has_physics {
-        commands.entity(entity).try_insert(RuntimePhysics);
-    }
+    commands.queue(move |world: &mut World| {
+        if let Ok(mut e) = world.get_entity_mut(entity) {
+            e.remove::<(ResolvedCollider, resolve::PendingMeshCollider)>();
+        }
+        world
+            .resource_mut::<PhysicsCommands>()
+            .push(PhysicsCommand::Strip { entity });
+    });
 }
 
 /// True if this entity belongs to the **2D** physics world: it is a sprite,
 /// carries the explicit [`Physics2d`] marker, or any ancestor is a `Node2d` /
 /// sprite (painted tiles sit under their tilemap layer, props under a 2D
-/// group node). Everything else routes to the 3D backend, which keeps every
+/// group node). Everything else routes to the 3D world, which keeps every
 /// existing 3D scene behaving exactly as before this walk existed.
 fn entity_is_2d(
     entity: Entity,
@@ -449,28 +281,9 @@ fn entity_is_2d(
     }
 }
 
-/// True if any ANCESTOR of `entity` carries `PhysicsBodyData` — i.e. this
-/// entity's collider should attach to that body rather than get a body of
-/// its own.
-fn has_body_ancestor(
-    entity: Entity,
-    bodies: &Query<(), With<PhysicsBodyData>>,
-    parents: &Query<&ChildOf>,
-) -> bool {
-    let mut e = entity;
-    while let Ok(child_of) = parents.get(e) {
-        e = child_of.parent();
-        if bodies.contains(e) {
-            return true;
-        }
-    }
-    false
-}
-
-/// Automatically initialize backend components for entities that have physics data
-/// components but haven't been wired up yet (no `RuntimePhysics` marker).
-/// Each entity is routed to the avian2d or avian3d backend once, here — the
-/// decision is remembered via the `RuntimePhysics2d` marker.
+/// Wire up entities that have physics data but no `RuntimePhysics` marker yet.
+/// Each entity is routed to the 2D or 3D world once, here; the decision is
+/// remembered via the `RuntimePhysics2d` marker.
 fn auto_init_physics(
     mut commands: Commands,
     new_bodies: Query<
@@ -479,6 +292,7 @@ fn auto_init_physics(
             Option<&PhysicsBodyData>,
             Option<&CollisionShapeData>,
             Option<&Name>,
+            Has<RuntimeOnlyPhysics>,
         ),
         (
             Without<RuntimePhysics>,
@@ -487,10 +301,23 @@ fn auto_init_physics(
     >,
     markers_2d: Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora::Node2d>)>>,
     parents: Query<&ChildOf>,
-    bodies: Query<(), With<PhysicsBodyData>>,
 ) {
-    for (entity, body, shape, name) in &new_bodies {
+    for (entity, body, shape, name, generated) in &new_bodies {
         let is_2d = entity_is_2d(entity, &markers_2d, &parents);
+        let dim = if is_2d { PhysicsDim::D2 } else { PhysicsDim::D3 };
+        if let Some(s) = shape {
+            resolve::insert_resolved(&mut commands, entity, s, dim);
+        }
+        let mut e = commands.entity(entity);
+        e.try_insert(RuntimePhysics);
+        if is_2d {
+            e.try_insert(RuntimePhysics2d);
+        }
+        // Generated bodies (every bone of a ragdoll) are announced by whatever
+        // generated them, once, rather than one console line per bone.
+        if generated {
+            continue;
+        }
         let label = name.map(|n| n.as_str()).unwrap_or("unnamed");
         info!(
             "[Physics] Initialized {} physics on '{}' {:?} (body={}, shape={})",
@@ -510,71 +337,97 @@ fn auto_init_physics(
                 shape.is_some()
             ),
         );
-        if is_2d {
-            // Without the 2D backend compiled in, a 2D entity gets no physics
-            // at all — deliberately not 3D components, which would drag sprite
-            // entities into the wrong simulation.
-            #[cfg(feature = "avian2d")]
-            {
-                if let Some(b) = body {
-                    backend::avian_2d::spawn_physics_body(&mut commands, entity, b);
-                } else if shape.is_some() && !has_body_ancestor(entity, &bodies, &parents) {
-                    // A collider with no body would land in avian2d's
-                    // "standalone" collider tree — which produces NO contacts
-                    // in the vendored 0.7-dev (see tests/avian2d_collision.rs:
-                    // raw_avian2d_standalone_wall_blocks). An explicit static
-                    // body is semantically identical for world geometry (tile
-                    // colliders, prop trunks) and uses the static tree, which
-                    // works. Skipped when a body sits on an ancestor so a
-                    // child collider still attaches to that body instead of
-                    // becoming its own.
-                    commands
-                        .entity(entity)
-                        .try_insert(avian2d::prelude::RigidBody::Static);
-                }
-                if let Some(s) = shape {
-                    backend::avian_2d::spawn_collision_shape(&mut commands, entity, s);
-                }
-                commands.entity(entity).try_insert(RuntimePhysics2d);
-            }
-        } else {
-            if let Some(b) = body {
-                spawn_physics_body(&mut commands, entity, b);
-            }
-            if let Some(s) = shape {
-                spawn_collision_shape(&mut commands, entity, s);
-            }
-        }
-        commands.entity(entity).try_insert(RuntimePhysics);
     }
 }
 
-/// Re-apply backend components when PhysicsBodyData or CollisionShapeData change at runtime.
+/// Take physics away from an entity whose data was removed while it lives.
+///
+/// A collider that loses its `CollisionShapeData` loses its resolved shape,
+/// which a backend reads as "this collider is gone". An entity left with no
+/// physics data at all loses its wiring too, which a backend reads as "all of
+/// it is gone". A body that loses only its `PhysicsBodyData` is left to the
+/// backend, which drops the body and keeps the collider (see
+/// `renzora::physics::PhysicsSet::Sync`). Without this an undone "make solid"
+/// or a component removed in the inspector left the old body simulating.
+fn handle_removed_physics_data(
+    mut commands: Commands,
+    mut removed_shapes: RemovedComponents<CollisionShapeData>,
+    mut removed_bodies: RemovedComponents<PhysicsBodyData>,
+    alive: Query<(Has<PhysicsBodyData>, Has<CollisionShapeData>), With<RuntimePhysics>>,
+) {
+    for entity in removed_shapes.read().chain(removed_bodies.read()) {
+        let Ok((has_body, has_shape)) = alive.get(entity) else { continue };
+        let mut e = commands.entity(entity);
+        if !has_shape {
+            e.try_remove::<(ResolvedCollider, resolve::PendingMeshCollider)>();
+        }
+        if !has_body && !has_shape {
+            e.try_remove::<(RuntimePhysics, RuntimePhysics2d)>();
+        }
+    }
+}
+
+/// Re-resolve a collider when its `CollisionShapeData` changes at runtime. A
+/// changed `PhysicsBodyData` needs nothing from the engine: the backend
+/// watches it directly.
 fn sync_physics_data(
     mut commands: Commands,
-    changed_bodies: Query<
-        (Entity, &PhysicsBodyData, Has<RuntimePhysics2d>),
-        (With<RuntimePhysics>, Changed<PhysicsBodyData>),
-    >,
     changed_shapes: Query<
         (Entity, &CollisionShapeData, Has<RuntimePhysics2d>),
         (With<RuntimePhysics>, Changed<CollisionShapeData>),
     >,
 ) {
-    for (entity, body_data, is_2d) in &changed_bodies {
-        if is_2d {
-            #[cfg(feature = "avian2d")]
-            backend::avian_2d::spawn_physics_body(&mut commands, entity, body_data);
-        } else {
-            spawn_physics_body(&mut commands, entity, body_data);
-        }
-    }
     for (entity, shape_data, is_2d) in &changed_shapes {
-        if is_2d {
-            #[cfg(feature = "avian2d")]
-            backend::avian_2d::spawn_collision_shape(&mut commands, entity, shape_data);
-        } else {
-            spawn_collision_shape(&mut commands, entity, shape_data);
+        let dim = if is_2d { PhysicsDim::D2 } else { PhysicsDim::D3 };
+        resolve::insert_resolved(&mut commands, entity, shape_data, dim);
+    }
+}
+
+/// Apply the Physics panel's queued edits to `PhysicsSettings`, and mirror the
+/// result back so the panel shows what is in effect.
+fn apply_property_commands(
+    mut state: ResMut<PhysicsPropertiesState>,
+    mut settings: ResMut<PhysicsSettings>,
+) {
+    if state.commands.is_empty() {
+        if state.gravity != settings.gravity || state.substeps != settings.substeps {
+            state.gravity = settings.gravity;
+            state.substeps = settings.substeps;
+        }
+        return;
+    }
+    let cmds: Vec<PhysicsPropertyCommand> = state.commands.drain(..).collect();
+    for cmd in cmds {
+        match cmd {
+            PhysicsPropertyCommand::SetGravity(g) => {
+                settings.gravity = g;
+                state.gravity = g;
+                state.gravity_preset = GravityPreset::Custom;
+            }
+            PhysicsPropertyCommand::SetGravityPreset(preset) => {
+                let g = preset.gravity_vec();
+                settings.gravity = g;
+                state.gravity = g;
+                state.gravity_preset = preset;
+            }
+            PhysicsPropertyCommand::SetTimeScale(scale) => {
+                settings.time_scale = scale;
+                state.time_scale = scale;
+            }
+            PhysicsPropertyCommand::SetSubsteps(count) => {
+                settings.substeps = count;
+                state.substeps = count;
+            }
+            PhysicsPropertyCommand::ResetAll => {
+                let defaults = PhysicsSettings::default();
+                settings.gravity = defaults.gravity;
+                settings.time_scale = defaults.time_scale;
+                settings.substeps = defaults.substeps;
+                state.gravity = defaults.gravity;
+                state.gravity_preset = GravityPreset::Earth;
+                state.time_scale = defaults.time_scale;
+                state.substeps = defaults.substeps;
+            }
         }
     }
 }
@@ -589,43 +442,17 @@ fn on_unpause_physics(_trigger: On<renzora::UnpausePhysics>, mut commands: Comma
     commands.queue(|world: &mut World| unpause(world));
 }
 
-/// Unpause the physics simulation (both the 2D and 3D worlds — each backend
-/// has its own `Time<Physics>` clock, but pause/play is one editor concept).
+/// Unpause the physics simulation (both the 2D and 3D worlds: each backend
+/// keeps its own clock, but pause/play is one editor concept).
 pub fn unpause(world: &mut World) {
     info!("[Physics] Unpausing physics simulation");
     renzora::console_log::console_info("Physics", "Physics simulation unpaused");
-    #[cfg(feature = "avian3d")]
-    {
-        use avian3d::schedule::PhysicsTime;
-        if let Some(mut time) = world.get_resource_mut::<Time<avian3d::prelude::Physics>>() {
-            time.unpause();
-        }
-    }
-    #[cfg(feature = "avian2d")]
-    {
-        use avian2d::schedule::PhysicsTime;
-        if let Some(mut time) = world.get_resource_mut::<Time<avian2d::prelude::Physics>>() {
-            time.unpause();
-        }
-    }
+    world.get_resource_or_insert_with(PhysicsSettings::default).paused = false;
 }
 
 /// Pause the physics simulation (both the 2D and 3D worlds).
 pub fn pause(world: &mut World) {
     info!("[Physics] Pausing physics simulation");
     renzora::console_log::console_info("Physics", "Physics simulation paused");
-    #[cfg(feature = "avian3d")]
-    {
-        use avian3d::schedule::PhysicsTime;
-        if let Some(mut time) = world.get_resource_mut::<Time<avian3d::prelude::Physics>>() {
-            time.pause();
-        }
-    }
-    #[cfg(feature = "avian2d")]
-    {
-        use avian2d::schedule::PhysicsTime;
-        if let Some(mut time) = world.get_resource_mut::<Time<avian2d::prelude::Physics>>() {
-            time.pause();
-        }
-    }
+    world.get_resource_or_insert_with(PhysicsSettings::default).paused = true;
 }

@@ -347,6 +347,10 @@ impl Plugin for RenzoraEditorPlugin {
     }
 }
 
+/// What [`enforce_entity_ids`] reads per entity: its name, and the name it
+/// would have had if a rename made it unique.
+type NamedEntity<'a> = (Entity, bevy::ecs::change_detection::Ref<'a, Name>, Option<&'a renzora::BindName>);
+
 /// Enforce the one-unique-`snake_case`-id-per-entity rule across the scene. Any
 /// entity `Name` that carries spaces/invalid characters is sanitized, and
 /// duplicate ids are de-duplicated (`_2`, `_3`, …). This is the safety net that
@@ -365,23 +369,38 @@ impl Plugin for RenzoraEditorPlugin {
 ///   conflict on `Name`; the re-inserted clean id is idempotent, so the next
 ///   frame's pass finds nothing to do.
 fn enforce_entity_ids(
-    names: Query<(Entity, bevy::ecs::change_detection::Ref<Name>), Without<bevy::ui::Node>>,
+    names: Query<NamedEntity, Without<bevy::ui::Node>>,
     mut commands: Commands,
 ) {
-    if !names.iter().any(|(_, n)| n.is_changed()) {
+    if !names.iter().any(|(_, n, _)| n.is_changed()) {
         return;
     }
-    let mut current: Vec<(Entity, String)> = names
+    let mut current: Vec<(Entity, String, Option<String>)> = names
         .iter()
-        .map(|(e, n)| (e, n.as_str().to_string()))
+        .map(|(e, n, bind)| (e, n.as_str().to_string(), bind.map(|b| b.0.clone())))
         .collect();
-    current.sort_by_key(|(e, _)| *e);
+    current.sort_by_key(|(e, ..)| *e);
 
     let mut taken: bevy::platform::collections::HashSet<String> = Default::default();
-    for (e, raw) in &current {
+    for (e, raw, bind) in &current {
         let clean = renzora::sanitize_id(raw);
         let unique = renzora::unique_id(&clean, |c| taken.contains(c));
         taken.insert(unique.clone());
+        // A suffix added only to make the name unique is not the entity's
+        // name as far as its animation is concerned: keep the one it would
+        // have had, so a second copy of a rigged model still binds its clips.
+        // See `renzora::BindName`.
+        //
+        // The record is made once. An entity renamed a second time (its
+        // `face_jaw_1` collides again and becomes `face_jaw_2`) already has
+        // it, and recording `face_jaw_1` over `face_jaw` bound nothing: the
+        // clip still says `face_jaw`, so the stage lost the bone and its pose
+        // stopped following the clip. Only a name that is not a suffixed
+        // form of the record (a rename by hand) replaces it.
+        let already = bind.as_deref().is_some_and(|b| is_suffixed_form(&clean, b));
+        if unique != clean && &unique != raw && !already {
+            commands.entity(*e).try_insert(renzora::BindName(clean.clone()));
+        }
         if &unique != raw {
             // `try_insert`, because deferring is what makes this reachable: the
             // rewrite is queued from a read-only pass and applied later, and a
@@ -398,6 +417,16 @@ fn enforce_entity_ids(
             commands.entity(*e).try_insert(Name::new(unique));
         }
     }
+}
+
+/// Whether `name` is `base` itself or `base` with a numeric suffix added to
+/// make it unique (`face_jaw_2` of `face_jaw`).
+fn is_suffixed_form(name: &str, base: &str) -> bool {
+    name == base
+        || name
+            .strip_prefix(base)
+            .and_then(|tail| tail.strip_prefix('_'))
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// Keep `EditorSettings.dev_mode` and the contract-level
@@ -1070,4 +1099,75 @@ pub fn handle_new_project(world: &mut World) {
 /// Keeps `renzora_editor_framework` decoupled from `renzora_splash`.
 pub fn handle_open_project(world: &mut World) {
     world.insert_resource(renzora::RequestOpenProject);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run the pass the way a frame does: registered first, so the names
+    /// spawned afterwards are changes it has not seen.
+    fn world_with_pass() -> (World, bevy::ecs::system::SystemId) {
+        let mut world = World::new();
+        let pass = world.register_system(enforce_entity_ids);
+        world.run_system(pass).unwrap();
+        // A new frame: what is spawned now is newer than the pass's last run.
+        world.increment_change_tick();
+        (world, pass)
+    }
+
+    /// Two new entities, the one the pass reaches first on the left. The
+    /// pass goes in `Entity` order, which is not spawn order.
+    fn in_order(world: &mut World) -> (Entity, Entity) {
+        let (a, b) = (world.spawn_empty().id(), world.spawn_empty().id());
+        if a < b {
+            (a, b)
+        } else {
+            (b, a)
+        }
+    }
+
+    fn name_of(world: &World, e: Entity) -> String {
+        world.get::<Name>(e).map(|n| n.as_str().to_string()).unwrap_or_default()
+    }
+
+    fn bind_of(world: &World, e: Entity) -> Option<String> {
+        world.get::<renzora::BindName>(e).map(|b| b.0.clone())
+    }
+
+    /// The first collision records the name the entity would have had.
+    #[test]
+    fn a_renamed_duplicate_remembers_its_name() {
+        let (mut world, pass) = world_with_pass();
+        let (first, second) = in_order(&mut world);
+        world.entity_mut(first).insert(Name::new("face_jaw"));
+        world.entity_mut(second).insert(Name::new("face_jaw"));
+        world.run_system(pass).unwrap();
+        assert_eq!(name_of(&world, second), "face_jaw_1");
+        assert_eq!(bind_of(&world, second).as_deref(), Some("face_jaw"));
+    }
+
+    /// A second collision renames it again and must not record the first
+    /// suffix as its name: the bone would stop matching its clip.
+    #[test]
+    fn a_second_rename_keeps_the_first_record() {
+        let (mut world, pass) = world_with_pass();
+        // The newcomer sorts before the bone, so it keeps `face_jaw_1` and
+        // the bone is the one pushed on to `_2`.
+        let (newcomer, bone) = in_order(&mut world);
+        world.spawn(Name::new("face_jaw"));
+        world.entity_mut(bone).insert((Name::new("face_jaw_1"), renzora::BindName("face_jaw".into())));
+        world.entity_mut(newcomer).insert(Name::new("face_jaw_1"));
+        world.run_system(pass).unwrap();
+        assert_eq!(name_of(&world, bone), "face_jaw_2");
+        assert_eq!(bind_of(&world, bone).as_deref(), Some("face_jaw"));
+    }
+
+    #[test]
+    fn suffixed_forms_are_recognised() {
+        assert!(is_suffixed_form("face_jaw", "face_jaw"));
+        assert!(is_suffixed_form("face_jaw_12", "face_jaw"));
+        assert!(!is_suffixed_form("face_jaw_l", "face_jaw"));
+        assert!(!is_suffixed_form("chin", "face_jaw"));
+    }
 }

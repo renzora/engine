@@ -1180,6 +1180,29 @@ impl Default for RenderingConfig {
     }
 }
 
+/// `[physics]` in `project.toml`: which registered physics backend simulates
+/// each world. A name is a `PhysicsBackend::name` (`"avian3d"`, or one a plugin
+/// registers); `None` is the default, the first backend registered for that
+/// world, which is the bundled one on any build that has it.
+///
+/// Shipped, not editor-only: play mode runs the game as its own process, and
+/// that process reads this to decide which engine to simulate with. A name
+/// whose plugin is not installed falls back to the default with a warning,
+/// rather than leaving the world with no physics.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct PhysicsProjectConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend_3d: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend_2d: Option<String>,
+}
+
+impl PhysicsProjectConfig {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// Resolved rendering mode for this run. Inserted as a resource at
 /// engine init from the project config's [`RenderingConfig::mode`]
 /// (with `Auto` resolved via [`RenderingMode::resolve`]). Plugins and
@@ -1406,6 +1429,9 @@ pub struct ProjectConfig {
     /// [`RenderingConfig`].
     #[serde(default)]
     pub rendering: RenderingConfig,
+    /// Which physics backend simulates each world. See [`PhysicsProjectConfig`].
+    #[serde(default, skip_serializing_if = "PhysicsProjectConfig::is_default")]
+    pub physics: PhysicsProjectConfig,
     /// Whether the runtime should attach a console (Windows) for `println!` /
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -1443,6 +1469,7 @@ impl Default for ProjectConfig {
             viewport: ViewportConfig::default(),
             rendering_2d: Rendering2dConfig::default(),
             rendering: RenderingConfig::default(),
+            physics: PhysicsProjectConfig::default(),
             console_logging: false,
             ui_font: None,
             network: None,
@@ -1658,6 +1685,7 @@ mod tests {
             viewport: ViewportConfig::default(),
             rendering_2d: Rendering2dConfig::default(),
             rendering: RenderingConfig::default(),
+            physics: PhysicsProjectConfig::default(),
             console_logging: false,
             network: None,
             audio: AudioConfig {
@@ -1717,6 +1745,21 @@ mod tests {
         let parsed: ProjectConfig = toml::from_str(s).expect("parse legacy");
         assert_eq!(parsed.editor_last_scene.as_deref(), Some("scenes/wip.ron"));
         assert_eq!(parsed.editor_open_tabs.len(), 1);
+    }
+
+    /// `[physics]` is written only when a project leaves the default, and a
+    /// file without it means "the default backend for each world".
+    #[test]
+    fn physics_backend_choice_round_trips() {
+        let mut config = ProjectConfig::default();
+        let s = toml::to_string(&config).unwrap();
+        assert!(!s.contains("[physics]"), "a default choice writes nothing");
+
+        config.physics.backend_3d = Some("rapier3d".into());
+        let s = toml::to_string(&config).unwrap();
+        let parsed: ProjectConfig = toml::from_str(&s).unwrap();
+        assert_eq!(parsed.physics.backend_3d.as_deref(), Some("rapier3d"));
+        assert_eq!(parsed.physics.backend_2d, None);
     }
 
     #[test]

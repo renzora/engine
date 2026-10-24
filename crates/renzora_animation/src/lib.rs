@@ -34,7 +34,7 @@ pub use clip::{AnimClip, BoneTrack};
 pub use component::{AnimClipSlot, AnimatorComponent, AnimatorState};
 pub use discovery::discover_animation_clips;
 pub use layers::{AnimationLayer, LayerBlendMode};
-pub use loader::AnimClipLoader;
+pub use loader::{to_animation_clip, AnimClipLoader};
 pub use property_playback::{PropertyClip, PropertyClipLoader};
 pub use read_state::AnimatorReadState;
 pub use state_machine::{

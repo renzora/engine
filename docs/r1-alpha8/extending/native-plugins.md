@@ -30,6 +30,57 @@ features and needs an engine checkout; see [Building Plugins](plugins.md).
 **A native plugin is not editor-only.** Declare it `Runtime` (see
 [Scope](#scope-editor-or-the-game-too)) and the export ships it with the game.
 
+## Bundled plugins
+
+A plugin can also ship *with the engine*, compiled into its binary. That is a
+**bundled plugin**: a folder under `plugins/` in the engine checkout, written
+exactly like any other plugin on this page, that `cargo renzora` links in rather
+than leaving to be installed. The engine's physics is one, `plugins/avian_physics`,
+which is how a fresh build simulates while physics stays something you can take
+out.
+
+```
+<engine checkout>/
+  crates/                       the engine
+  plugins/
+    avian_physics/              bundled: compiled into the binary
+      Cargo.toml
+      src/lib.rs                ends in renzora::plugin!(AvianPhysicsPlugin, Runtime);
+      tests/
+```
+
+It runs exactly as fast as engine code: it is compiled in the same build, with
+the same optimisations, calling the same Bevy directly. Nothing is looked up at
+run time.
+
+Three things set its manifest apart from an installed plugin's:
+
+- **No `crate-type = ["dylib"]` and no `[workspace]`.** It is a member of the
+  engine workspace and links in as an ordinary library. (A dylib under
+  `plugins/` is refused by the build, since that is what an installed plugin
+  looks like.)
+- **A `bundled` feature**, `[features] bundled = []`. The engine turns it on, and
+  `renzora::plugin!` then leaves out the entry point the plugin loader looks up.
+  Two plugins compiled into one binary would otherwise both define it.
+- **`bevy = { version = "0.20", default-features = false }`.** Cargo merges
+  features across the engine build, so a bare `bevy = "0.20"` would switch
+  Bevy's default features on for the whole engine.
+
+The build finds the one `renzora::plugin!` line and installs whatever it was
+given, in the runtime for `Runtime` and in the editor for `Editor`. Because it is
+part of the workspace, `cargo test --profile dist -p avian_physics` runs its
+tests, and they run in CI.
+
+**Removing one** is deleting its folder, or `cargo renzora remove avian_physics`,
+followed by a build. A lean export also leaves a bundled plugin out when the
+feature it hangs off is unused (avian goes when a project needs no physics).
+Taking one out of a build means rebuilding the engine, which is the trade for
+having it compiled in; a user of a downloaded engine cannot delete a file to drop
+it the way they can an installed plugin.
+
+Only one copy of a plugin should be present. Installing a marketplace plugin that
+is also bundled would add the same engine twice.
+
 Where a native plugin cannot go:
 
 - **wasm and mobile**, which have no dylibs to load at all. A
@@ -87,7 +138,7 @@ That build happens before the editor exists, so it gets a window of its own: the
 
 Closing that window ends the launch. Nothing is lost — the plugins it had not reached are simply still unbuilt, so the next launch opens it again and picks up where it left off — but it does mean × is a way out of a long build, not a way to skip it.
 
-**Do not run `cargo build` in a native plugin directory.** `plugins/` sits outside the engine workspace, so cargo would resolve it a fresh Bevy from crates.io — a different compilation with different `TypeId`s. The result builds cleanly, loads, and corrupts the World. The `bevy` and `renzora` entries in your `Cargo.toml` are there so rust-analyzer can resolve them while you author, and so Bevy's derive macros can read the manifest; the plugin itself is compiled by `rustc` against the SDK, and cargo is never pointed at those entries. (Your *other* dependencies are built by cargo — from a stripped manifest that mentions no Bevy. See [Crates from crates.io](#crates-from-cratesio).)
+**Do not run `cargo build` in an installed plugin's directory.** The editor's `plugins/` sits outside the engine workspace, so cargo would resolve it a fresh Bevy from crates.io: a different compilation with different `TypeId`s. The result builds cleanly, loads, and corrupts the World. The `bevy` and `renzora` entries in your `Cargo.toml` are there so rust-analyzer can resolve them while you author, and so Bevy's derive macros can read the manifest; the plugin itself is compiled by `rustc` against the SDK, and cargo is never pointed at those entries. (Your *other* dependencies are built by cargo, from a stripped manifest that takes every Bevy crate from the SDK. See [Crates from crates.io](#crates-from-cratesio).)
 
 ### The SDK
 
@@ -255,7 +306,9 @@ That is all.
 
 **How it can be that simple, given `cargo build` here would corrupt the World.** It would — and nothing here runs cargo on your manifest. The build reads your `[dependencies]`, strips `bevy` and every `renzora*`, and writes what is left into a **separate manifest that mentions no Bevy**. Cargo builds *that*, and the resulting rlibs are handed to your plugin's `rustc` as extra `--extern`s, alongside Bevy and the contract crate which still come from the SDK. Cargo resolves `noise`; cargo never resolves Bevy. The hazard isn't avoided by discipline, it is unreachable.
 
-**A dependency that itself depends on Bevy is refused**, with a message naming it. The graph is resolved before anything compiles, so that costs seconds rather than a half-hour build of a Bevy that must not exist. A second Bevy is not a size problem: its types have different `TypeId`s from the engine's, so the plugin would build, load, and then read the `World` through the wrong layouts. Reach the same types through `bevy::` and `renzora::`, which the SDK already gives you.
+**A dependency built on Bevy works too**, as long as it targets the engine's Bevy (a physics engine like avian, say). Every Bevy crate in its graph is taken from the SDK instead of being compiled again, so the dependency is compiled against the engine's own Bevy and shares its `World`. The SDK carries a table of the crates the engine's shared images contain (`sdk/shared.tsv`) and the engine's `Cargo.lock`, so cargo picks the same versions the engine did.
+
+What is refused, with a message naming it, is a dependency that would need a Bevy crate *different* from the engine's: another version, or a cargo feature the engine was not built with. The graph is checked before anything compiles, so that costs seconds rather than a half-hour build of a Bevy that must not exist. A second Bevy is not a size problem: its types have different `TypeId`s from the engine's, so the plugin would build, load, and then read the `World` through the wrong layouts. A dependency on the engine's own `renzora_*` crates is refused too; reach those types through `renzora::`.
 
 **A duplicate crate is usually harmless.** Depend on something the engine also links and you get a second, privately linked copy. That matters only for crates holding process-global state — which is exactly why `renzora` and `renzora_ember` are shared images and not ordinary dependencies. And if such a type tried to cross into an engine API, the two copies are different types to the compiler: a compile error, not silent corruption.
 
@@ -323,9 +376,9 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 ## Where to look for examples
 
-**No plugin ships in the repository.** The ones that used to sit in `plugins/` were scaffolding for bringing the mechanism up and were removed once it worked. Plugins are distributed through the marketplace and built where they are installed, so `plugins/` in a checkout is empty.
+**`plugins/avian_physics` is a complete, real plugin** in the repository: a physics backend for both worlds, with tests. It is [bundled](#bundled-plugins), but its code is written exactly as an installed plugin's is. Every other plugin is distributed through the marketplace and built where it is installed.
 
-That leaves the engine's own crates as the reference, and they are a good one: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it — the systems, the resources, the `&mut World` access, the contract-crate calls — is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
+Beyond that, the engine's own crates are a good reference: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it (the systems, the resources, the `&mut World` access, the contract-crate calls) is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
 
 - `crates/renzora_cloth` is a small, self-contained feature plugin.
 - The built-in panels are the model for [panel code](panels.md); `crates/renzora_ember/src/widgets/gallery.rs` is the shortest complete example of building a large ember tree from one `build` function.

@@ -159,30 +159,44 @@ macro_rules! plugin {
 /// defines each of them fifty times and the link fails. The lean exporter turns
 /// this feature on and calls `add_plugins` on the plugin type directly, which
 /// needs no symbol at all.
+///
+/// A **bundled** plugin (one in the engine checkout's `plugins/`, linked into
+/// every build by `cargo renzora`) cannot use that switch: it would also be on
+/// in the SDK an installed plugin compiles against, and every installed plugin
+/// would lose its entry point and be skipped. So the symbols are additionally
+/// gated on the *plugin's own* `bundled` feature. That `cfg` is written into
+/// the expansion on purpose, which is what makes it read the calling crate's
+/// features rather than this one's, and the `allow` keeps the check-cfg lint
+/// quiet in the installed plugins that declare no such feature.
 #[doc(hidden)]
 #[cfg(not(feature = "static_plugins"))]
 #[macro_export]
 macro_rules! __native_plugin_entry {
     ($plugin:expr, $scope:ident) => {
-        /// The one symbol the loader looks up. Unmangled so it can be found by
-        /// string; see [`plugin!`] for why hand-writing this is a trap.
-        #[unsafe(no_mangle)]
-        pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
-            ::std::boxed::Box::new($plugin)
-        }
+        #[allow(unexpected_cfgs)]
+        const _: () = {
+            /// The one symbol the loader looks up. Unmangled so it can be found
+            /// by string; see [`plugin!`] for why hand-writing this is a trap.
+            #[cfg(not(feature = "bundled"))]
+            #[unsafe(no_mangle)]
+            pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
+                ::std::boxed::Box::new($plugin)
+            }
 
-        /// Where this plugin may load, as a byte the loader reads by symbol.
-        ///
-        /// A plain `u8` rather than an enum, because this crosses a `dlopen`
-        /// boundary: a `#[repr(Rust)]` enum has no guaranteed layout, and the
-        /// loader would be reading whichever bytes the compiler happened to
-        /// choose. The absence of the symbol reads as `Editor`, so a plugin
-        /// built before this existed keeps its old behaviour rather than
-        /// silently appearing in someone's game.
-        #[unsafe(no_mangle)]
-        pub extern "C" fn renzora_native_plugin_scope() -> u8 {
-            $crate::NativePluginScope::$scope as u8
-        }
+            /// Where this plugin may load, as a byte the loader reads by symbol.
+            ///
+            /// A plain `u8` rather than an enum, because this crosses a `dlopen`
+            /// boundary: a `#[repr(Rust)]` enum has no guaranteed layout, and the
+            /// loader would be reading whichever bytes the compiler happened to
+            /// choose. The absence of the symbol reads as `Editor`, so a plugin
+            /// built before this existed keeps its old behaviour rather than
+            /// silently appearing in someone's game.
+            #[cfg(not(feature = "bundled"))]
+            #[unsafe(no_mangle)]
+            pub extern "C" fn renzora_native_plugin_scope() -> u8 {
+                $crate::NativePluginScope::$scope as u8
+            }
+        };
     };
 }
 

@@ -125,6 +125,7 @@ impl Plugin for ShellPlugin {
         let fresh = restored.is_none();
         let (mut layouts, active, floating, closed_bottoms, saved_bottom) = match restored {
             Some((mut saved, active, floating, closed, bottom)) => {
+                dock::upgrade_saved_layouts(&mut saved);
                 for (name, tree) in defaults {
                     if !saved.iter().any(|(n, _)| n == &name) {
                         saved.push((name, tree));

@@ -1,7 +1,8 @@
 //! Renzora NavMesh — navigation meshes and pathfinding built on `vleue_navigator`.
 //!
 //! Phase 1: a single `NavMeshVolume` component defines a ground-plane walkable
-//! region. Entities with `Collider + NavMeshObstacle` carve holes in the mesh.
+//! region. Entities with a collider and `NavMeshObstacle` carve holes in the
+//! mesh (see [`obstacle`]).
 //! Set `debug_draw = true` on the volume to see red wireframe triangles in the
 //! editor viewport.
 
@@ -18,6 +19,8 @@ use vleue_navigator::{
     NavMesh,
 };
 
+#[cfg(feature = "physics")]
+pub mod obstacle;
 pub mod persistence;
 #[cfg(feature = "scripting")]
 pub mod script_extension;
@@ -26,11 +29,9 @@ pub use script_extension::NavScriptExtension;
 
 #[cfg(feature = "terrain")]
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
-// avian `Collider` drives the obstacle auto-updater. Gated with `physics` so the
-// lean export drops avian for a no-physics game — navmeshes then build from the
-// volume outline (+ terrain) only.
-#[cfg(feature = "physics")]
-use avian3d::prelude::Collider;
+// Resolved colliders drive the obstacle auto-updater. Gated with `physics` so a
+// no-physics game, which has no colliders, builds navmeshes from the volume
+// outline (+ terrain) only.
 #[cfg(feature = "physics")]
 use vleue_navigator::prelude::NavmeshUpdaterPlugin;
 
@@ -85,7 +86,7 @@ impl Default for NavMeshVolume {
     }
 }
 
-/// Marker: entities with both [`Collider`] and [`NavMeshObstacle`] become
+/// Marker: entities with both a collider and [`NavMeshObstacle`] become
 /// holes in the navmesh. Useful so the ground collider itself is *not*
 /// treated as an obstacle — only explicit blockers are.
 #[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
@@ -615,10 +616,11 @@ impl Plugin for NavMeshPlugin {
             )
             .add_observer(handle_nav_script_actions);
 
-        // Auto-rebuild navmeshes from avian `Collider` obstacles — only when the
+        // Auto-rebuild navmeshes from collider obstacles, only when the
         // `physics` subsystem is built (added after VleueNavigatorPlugin above).
         #[cfg(feature = "physics")]
-        app.add_plugins(NavmeshUpdaterPlugin::<Collider, NavMeshObstacle>::default());
+        app.add_plugins(NavmeshUpdaterPlugin::<obstacle::ColliderObstacle, NavMeshObstacle>::default())
+            .add_systems(Update, obstacle::mirror_collider_obstacles);
 
         // Terrain-aware obstacle injection — only when the `terrain` subsystem is
         // built (the tuple above is unordered, so a separate add doesn't change

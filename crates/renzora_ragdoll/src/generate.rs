@@ -8,10 +8,13 @@
 //! bone.
 
 use crate::{Ragdoll, RagdollBone};
-use avian3d::prelude::*;
 use bevy::mesh::skinning::SkinnedMesh;
 use bevy::prelude::*;
+use renzora::physics::{
+    CollisionShapeData, JointKind, PhysicsBodyData, PhysicsJoint, RuntimeOnlyPhysics,
+};
 use std::collections::{HashMap, HashSet};
+use std::f32::consts::PI;
 
 /// Collider radius as a fraction of the skeleton's average bone length.
 const BONE_RADIUS_FRACTION: f32 = 0.18;
@@ -19,8 +22,12 @@ const BONE_RADIUS_FRACTION: f32 = 0.18;
 const MIN_LEAF_RADIUS: f32 = 0.03;
 /// Compliance (m/N) at `Ragdoll::stiffness == 0.0` — loose enough to feel
 /// floppy without the joint visibly falling apart. `stiffness == 1.0` maps
-/// to `0.0` (avian's default — perfectly rigid).
+/// to `0.0` (perfectly rigid).
 const MAX_JOINT_COMPLIANCE: f32 = 0.001;
+/// Bone mass per cubic metre of collider. One, as avian's default collider
+/// density was when it computed the bones' masses itself: the joint compliance
+/// above was tuned against those (very light) bones.
+const BONE_DENSITY: f32 = 1.0;
 /// How many frames to keep polling for the skinned mesh before giving up. A
 /// `Ragdoll` loaded from a scene races the async GLB instantiation that spawns
 /// the skeleton, so the mesh usually isn't present for the first few frames;
@@ -82,15 +89,21 @@ pub fn build_ragdolls(
 
         for &bone in &joints {
             let kids = children_of.get(&bone);
-            let collider = bone_collider(kids, &transforms, avg_bone_len);
+            let (shape, volume) = bone_collider(kids, &transforms, avg_bone_len);
 
             commands.entity(bone).insert((
                 RagdollBone,
-                RigidBody::Kinematic,
-                collider,
-                LinearDamping(ragdoll.linear_damping),
-                AngularDamping(ragdoll.angular_damping),
-                GravityScale(ragdoll.gravity_scale),
+                // Generated, so a scene save leaves the bone's body and collider
+                // out and the next load builds them again.
+                RuntimeOnlyPhysics,
+                PhysicsBodyData {
+                    mass: (volume * BONE_DENSITY).max(1e-4),
+                    linear_damping: ragdoll.linear_damping,
+                    angular_damping: ragdoll.angular_damping,
+                    gravity_scale: ragdoll.gravity_scale,
+                    ..PhysicsBodyData::kinematic_body()
+                },
+                shape,
             ));
         }
 
@@ -110,13 +123,17 @@ pub fn build_ragdolls(
                 // pinned together — using it as both anchors keeps the
                 // ragdoll in its animated pose the instant it activates.
                 commands.spawn(
-                    SphericalJoint::new(parent, kid)
-                        .with_local_anchor1(kid_transform.translation)
-                        .with_local_anchor2(Vec3::ZERO)
-                        .with_swing_limits(-swing, swing)
-                        .with_twist_limits(-twist, twist)
-                        .with_swing_compliance(compliance)
-                        .with_twist_compliance(compliance),
+                    PhysicsJoint::new(
+                        parent,
+                        kid,
+                        JointKind::Spherical {
+                            twist_axis: Vec3::Y,
+                            swing_limit: Some(swing),
+                            twist_limit: Some(twist),
+                        },
+                    )
+                    .with_anchors(kid_transform.translation, Vec3::ZERO)
+                    .with_compliance(compliance),
                 );
             }
         }
@@ -171,16 +188,20 @@ fn average_bone_length(
 }
 
 /// Capsule spanning this bone's origin to its (averaged) child position, or
-/// a small sphere for leaf bones (no in-skeleton children).
+/// a small sphere for leaf bones (no in-skeleton children), with its volume.
+///
+/// The capsule is the contract's upright one, laid along the bone by turning
+/// it and moving its centre to the bone's midpoint.
 fn bone_collider(
     kids: Option<&Vec<Entity>>,
     transforms: &Query<&Transform>,
     avg_bone_len: f32,
-) -> Collider {
+) -> (CollisionShapeData, f32) {
     let radius = (avg_bone_len * BONE_RADIUS_FRACTION).max(MIN_LEAF_RADIUS);
+    let sphere = |r: f32| (CollisionShapeData::sphere(r), 4.0 / 3.0 * PI * r.powi(3));
 
     let Some(kids) = kids.filter(|k| !k.is_empty()) else {
-        return Collider::sphere(radius);
+        return sphere(radius);
     };
 
     let mut sum = Vec3::ZERO;
@@ -192,12 +213,20 @@ fn bone_collider(
         }
     }
     if count == 0 {
-        return Collider::sphere(radius);
+        return sphere(radius);
     }
     let tip = sum / count as f32;
     let length = tip.length();
     if length < radius * 2.0 {
-        return Collider::sphere(radius);
+        return sphere(radius);
     }
-    Collider::capsule_endpoints(radius.min(length * 0.5), Vec3::ZERO, tip)
+    let radius = radius.min(length * 0.5);
+    let half_height = length * 0.5;
+    let shape = CollisionShapeData {
+        offset: tip * 0.5,
+        rotation: Quat::from_rotation_arc(Vec3::Y, tip / length),
+        ..CollisionShapeData::capsule(radius, half_height)
+    };
+    let volume = PI * radius * radius * length + 4.0 / 3.0 * PI * radius.powi(3);
+    (shape, volume)
 }

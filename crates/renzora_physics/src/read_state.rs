@@ -4,18 +4,21 @@
 //! physics state for each entity with [`PhysicsBodyData`]. It's populated each
 //! frame so that Lua's `get("PhysicsReadState.grounded")` and blueprint
 //! `physics/is_grounded` nodes have an up-to-date value without having to query
-//! Avian directly.
+//! the physics backend directly.
+//!
+//! Both are filled from what the backend writes ([`BodyVelocity`],
+//! [`PhysicsContacts`]), so one system each serves the 2D and 3D worlds and
+//! every backend.
 
 use bevy::prelude::*;
+use renzora::physics::{BodyVelocity, CollisionEnded, CollisionStarted, PhysicsContacts};
 use serde::{Deserialize, Serialize};
 
 use crate::data::PhysicsBodyData;
-#[cfg(any(feature = "avian3d", feature = "avian2d"))]
-use crate::data::RuntimePhysics2d;
 
 /// Snapshot of per-entity physics state, refreshed each frame.
 ///
-/// Read-only from scripts / blueprints — writes are ignored (the updater
+/// Read-only from scripts / blueprints: writes are ignored (the updater
 /// overwrites every frame). Reflect-registered so the existing `get`/`set`
 /// path dispatcher can access fields by name (e.g. `PhysicsReadState.grounded`).
 #[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
@@ -32,8 +35,9 @@ pub struct PhysicsReadState {
     pub ground_normal: Vec3,
 }
 
-/// Auto-inserts `PhysicsReadState` on any entity that has `PhysicsBodyData`
-/// but not yet a read-state component.
+/// Auto-inserts `PhysicsReadState`, and the `BodyVelocity` the backend fills
+/// it from, on any entity that has `PhysicsBodyData` but not yet a read-state
+/// component.
 pub fn auto_init_physics_read_state(
     mut commands: Commands,
     q: Query<Entity, (With<PhysicsBodyData>, Without<PhysicsReadState>)>,
@@ -41,55 +45,28 @@ pub fn auto_init_physics_read_state(
     for entity in &q {
         commands
             .entity(entity)
-            .try_insert(PhysicsReadState::default());
+            .try_insert((PhysicsReadState::default(), BodyVelocity::default()));
     }
 }
 
-/// Refreshes `PhysicsReadState` from Avian's current state. 2D-backend bodies
-/// are excluded — their avian2d twin below owns them (each backend has its own
-/// `LinearVelocity` type, and this one would zero a 2D body's reading).
-#[cfg(feature = "avian3d")]
+/// Refreshes `PhysicsReadState` from the backend's `BodyVelocity`. A 2D body's
+/// velocity has `z = 0`, so scripts read one shape either way.
 pub fn update_physics_read_state(
-    mut q: Query<
-        (
-            &mut PhysicsReadState,
-            Option<&avian3d::prelude::LinearVelocity>,
-        ),
-        Without<RuntimePhysics2d>,
-    >,
+    mut q: Query<(&mut PhysicsReadState, Option<&BodyVelocity>)>,
 ) {
-    for (mut rs, lv) in &mut q {
-        let v = lv.map(|lv| lv.0).unwrap_or(Vec3::ZERO);
+    for (mut rs, velocity) in &mut q {
+        let v = velocity.map(|v| v.linear).unwrap_or(Vec3::ZERO);
         rs.velocity = v;
         rs.speed = v.length();
-        // `grounded` + `ground_normal` are written by the `kinematic_slide`
-        // drain system each time a slide runs.
+        // `grounded` + `ground_normal` are written by the kinematic slide each
+        // time one runs.
     }
 }
 
-/// avian2d twin of [`update_physics_read_state`]: mirrors 2D velocity into the
-/// same Vec3 fields (z = 0) so scripts read one shape either way.
-#[cfg(feature = "avian2d")]
-pub fn update_physics_read_state_2d(
-    mut q: Query<
-        (
-            &mut PhysicsReadState,
-            Option<&avian2d::prelude::LinearVelocity>,
-        ),
-        With<RuntimePhysics2d>,
-    >,
-) {
-    for (mut rs, lv) in &mut q {
-        let v = lv.map(|lv| lv.0.extend(0.0)).unwrap_or(Vec3::ZERO);
-        rs.velocity = v;
-        rs.speed = v.length();
-    }
-}
-
-/// Per-entity collision snapshot, refreshed each frame from Avian's contact
-/// pairs. Reflect-registered so blueprint `event/on_collision_enter`/`_exit`
+/// Per-entity collision snapshot, refreshed each frame from the backend's
+/// contacts. Reflect-registered so blueprint `event/on_collision_enter`/`_exit`
 /// (and Lua `get("CollisionReadState.entered")`) can read it by name. This is
-/// the engine's first real collision-event source — previously the scripting
+/// the engine's first real collision-event source; previously the scripting
 /// `on_collision` hook was an unpopulated stub.
 ///
 /// Only the *first* entity entered/exited this frame is surfaced by name (the
@@ -113,7 +90,8 @@ pub struct CollisionReadState {
     prev: std::collections::HashSet<Entity>,
 }
 
-/// Auto-inserts `CollisionReadState` on any entity with `PhysicsBodyData`.
+/// Auto-inserts `CollisionReadState`, and the `PhysicsContacts` the backend
+/// fills it from, on any entity with `PhysicsBodyData`.
 pub fn auto_init_collision_read_state(
     mut commands: Commands,
     q: Query<Entity, (With<PhysicsBodyData>, Without<CollisionReadState>)>,
@@ -121,57 +99,35 @@ pub fn auto_init_collision_read_state(
     for entity in &q {
         commands
             .entity(entity)
-            .try_insert(CollisionReadState::default());
+            .try_insert((CollisionReadState::default(), PhysicsContacts::default()));
     }
 }
 
-/// Refreshes `CollisionReadState` by diffing each entity's current Avian contact
-/// set against the previous frame's. 2D-backend bodies are excluded — the 3D
-/// contact graph never contains them, so this would wipe their `prev` set every
-/// frame and the 2D twin below would report a fresh "entered" forever.
-#[cfg(feature = "avian3d")]
+/// Refreshes `CollisionReadState` by diffing each entity's current contact set
+/// against the previous frame's, and triggers [`CollisionStarted`] /
+/// [`CollisionEnded`] for every pair that changed. Done here, once, so the
+/// events mean the same thing whichever backend wrote the contacts.
 pub fn update_collision_read_state(
-    mut q: Query<(Entity, &mut CollisionReadState), Without<RuntimePhysics2d>>,
-    collisions: avian3d::prelude::Collisions,
+    mut q: Query<(Entity, &mut CollisionReadState, Option<&PhysicsContacts>)>,
     names: Query<&Name>,
+    mut commands: Commands,
 ) {
-    for (entity, mut rs) in &mut q {
-        let mut current: std::collections::HashSet<Entity> = std::collections::HashSet::new();
-        for pair in collisions.collisions_with(entity) {
-            let other = if pair.collider1 == entity {
-                pair.collider2
-            } else {
-                pair.collider1
-            };
-            current.insert(other);
+    for (entity, mut rs, contacts) in &mut q {
+        let contacts = contacts.map(|c| c.0.as_slice()).unwrap_or_default();
+        let mut current = std::collections::HashSet::with_capacity(contacts.len());
+        for contact in contacts {
+            // A pair can report more than one contact; it starts once.
+            if current.insert(contact.entity) && !rs.prev.contains(&contact.entity) {
+                commands.trigger(CollisionStarted { entity, other: contact.entity, contact: *contact });
+            }
+        }
+        for &other in rs.prev.difference(&current) {
+            commands.trigger(CollisionEnded { entity, other });
         }
         diff_collision_state(&mut rs, current, &names);
     }
 }
 
-/// avian2d twin of [`update_collision_read_state`], reading the 2D contact graph.
-#[cfg(feature = "avian2d")]
-pub fn update_collision_read_state_2d(
-    mut q: Query<(Entity, &mut CollisionReadState), With<RuntimePhysics2d>>,
-    collisions: avian2d::prelude::Collisions,
-    names: Query<&Name>,
-) {
-    for (entity, mut rs) in &mut q {
-        let mut current: std::collections::HashSet<Entity> = std::collections::HashSet::new();
-        for pair in collisions.collisions_with(entity) {
-            let other = if pair.collider1 == entity {
-                pair.collider2
-            } else {
-                pair.collider1
-            };
-            current.insert(other);
-        }
-        diff_collision_state(&mut rs, current, &names);
-    }
-}
-
-/// Shared enter/exit diff for both backends' collision updaters.
-#[cfg(any(feature = "avian3d", feature = "avian2d"))]
 fn diff_collision_state(
     rs: &mut CollisionReadState,
     current: std::collections::HashSet<Entity>,

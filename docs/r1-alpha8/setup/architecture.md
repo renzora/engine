@@ -149,7 +149,7 @@ What stays in-tree: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, 
 
 Scenes are saved as **RON** (`.ron`). Save and load both live in `renzora_engine/scene_io.rs`.
 
-- **Save** (`save_scene`) builds a `DynamicSceneBuilder` and **denies** runtime/editor-only components — meshes, materials, cameras, Avian physics state, animation runtime state, networking, and `bevy_ui` camera plumbing — then serializes the remaining authored data to RON and writes the file. A scene describes *authored content*, not transient state.
+- **Save** (`save_scene`) builds a `DynamicSceneBuilder` and **denies** runtime/editor-only components (meshes, materials, cameras, the physics engine's own state, animation runtime state, networking, and `bevy_ui` camera plumbing), then serializes the remaining authored data to RON and writes the file. A scene describes *authored content*, not transient state.
 - **Load** (`load_scene`) reads the RON (VFS/rpak first, then disk), deserializes **lossily** (skipping any type not in the registry), prunes orphaned editor-chrome UI entities, and expands nested `SceneInstance` references. The denied runtime components are rebuilt by the normal engine systems once the entities exist.
 
 The startup scene is set in `project.toml` (default `scenes/main.ron`):

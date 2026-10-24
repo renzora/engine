@@ -38,19 +38,10 @@ grid = []
 # plugin can play a sound. The backend behind it is `renzora_audio_backend` and
 # the mixer/timeline/emitters are `renzora_audio`; only the link is here.
 audio = []
-# Re-export the physics backends so a plugin can name `RigidBody` and `Collider`
-# and mean the SAME types the engine's physics steps.
+# No physics engine is re-exported here any more. Plugins used to reach avian
+# through `renzora::avian3d`, which tied every one of them to avian; they now go
+# through `renzora::physics`, which works with whichever backend is selected.
 #
-# The alternative was handing plugins `--extern avian3d` pointed at the rlib,
-# which works but links avian's object code into every plugin that touches it:
-# measured at 13.3 MB against 0.54 MB for the same plugin without it. Five
-# physics plugins is five copies on disk and five in memory. Through the shared
-# image there is one.
-#
-# Feature-gated for the same reason `grid` and `audio` are: a 2D game, a
-# headless server or a lean export that strips physics compiles none of it.
-physics_3d = ["dep:avian3d"]
-physics_2d = ["dep:avian2d"]
 # What the debug panels read: the material and script perf tables, plus the two
 # count resources their owners publish. Here so those panels can be a native
 # plugin, which reaches only `bevy`, `renzora` and `renzora_ember`.
@@ -132,6 +123,17 @@ ron = "0.8"
 # `wgsl-in` is the real one: `wgsl.rs` parses and validates self-contained
 # shaders here so no other crate re-rolls it.
 naga = { version = "30", features = ["termcolor", "wgsl-in"] }
+# NOT real dependencies either: feature pins, like `naga` above. Avian (the
+# bundled `plugins/avian_physics`, or one a user installs) needs `approx` on
+# these two Bevy math crates, and nothing else in the engine asks for it. Left to
+# avian, the bundled plugin decides how Bevy itself is compiled: deleting it
+# flips the feature off, every Bevy crate above them gets a new build hash, and
+# the next build recompiles about 1150 crates (and restamps every installed
+# plugin) for the sake of one physics plugin. An installed avian would be refused
+# outright, since the SDK's Bevy would lack the feature. Pinned here, Bevy
+# compiles the same with or without it.
+bevy_curve = { version = "0.20", default-features = false, features = ["approx"] }
+bevy_shape = { version = "0.20", default-features = false, features = ["approx"] }
 # Translates pre-0.20 (naga_oil) shader text to WESL in `shader_source`. Here
 # rather than in a plugin crate because native plugins build shaders at runtime
 # too, and they can only reach the contract crate. A leaf with no dependencies
@@ -141,23 +143,6 @@ renzora_legacy_shaders = { path = "../renzora_legacy_shaders" }
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).
 renzora_macros = { path = "../renzora_macros", optional = true }
-
-# The physics backends, re-exported for plugins. Version and features must match
-# `renzora_physics` EXACTLY: cargo unifies them into one compilation, which is
-# what makes the engine's `RigidBody` and a plugin's the same type. Two specs
-# that resolved differently would be two distinct types sharing a name, which is
-# the failure this re-export exists to prevent.
-[dependencies.avian3d]
-workspace = true
-optional = true
-default-features = false
-features = ["3d","default-collider", "parry-f32"]
-
-[dependencies.avian2d]
-workspace = true
-optional = true
-default-features = false
-features = ["2d","default-collider", "parry-f32"]
 
 [lints]
 workspace = true

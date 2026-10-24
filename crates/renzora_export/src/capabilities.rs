@@ -482,17 +482,20 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: true,
         group: None,
     },
-    // Physics is two capabilities because avian ships as two crates, each with
-    // its own parry. Turning both off strips `renzora_physics` outright — the
-    // shared `physics` feature is enabled only by these, never listed in
-    // `default` on its own.
+    // Physics is two capabilities because scenes are detected per world, and
+    // because saved export settings name both. Turning both off strips
+    // `renzora_physics` outright: the shared `physics` feature is enabled only
+    // by these, never listed in `default` on its own. The physics ENGINE is a
+    // plugin: avian is bundled (the `avian` capability below), any other ships
+    // like every installed plugin.
     Capability {
         id: "physics_3d",
         section: "simulation",
         label: "3D physics (rigid bodies & collisions)",
-        help: "The avian3d rigid-body engine and parry3d (~4.5 MiB). Also powers water \
-               buoyancy and navmesh collider-obstacles, which strip with it. Drop for a 2D \
-               game, or one with no physics simulation.",
+        help: "The physics API for 3D scenes: bodies, colliders, joints and queries. The \
+               engine that simulates them is Avian (below) or an installed physics plugin. \
+               Also powers water buoyancy and navmesh collider-obstacles, which strip with \
+               it. Drop for a 2D game, or one with no physics simulation.",
         bevy_features: &[],
         runtime_features: &["physics_3d"],
         default_on: true,
@@ -502,11 +505,27 @@ pub const CAPABILITIES: &[Capability] = &[
         id: "physics_2d",
         section: "simulation",
         label: "2D physics (rigid bodies & collisions)",
-        help: "The avian2d rigid-body engine and parry2d. A separate simulation from the 3D \
-               one — sprites, Node2d entities and tilemap colliders route here. Drop for a \
-               pure-3D game.",
+        help: "The physics API for 2D scenes, a separate world from the 3D one: sprites, \
+               Node2d entities and tilemap colliders route here. The engine that simulates \
+               them is Avian (below) or an installed physics plugin. Drop for a pure-3D game.",
         bevy_features: &[],
         runtime_features: &["physics_2d"],
+        default_on: true,
+        group: None,
+    },
+    // The bundled engine (`plugins/avian_physics`), as its own switch so a game
+    // set to another backend in Project Settings > Physics keeps the physics API
+    // and leaves avian behind. Two parents rather than a `group`, which takes
+    // one: [`enforce_dependencies`] turns it off when both physics toggles are.
+    Capability {
+        id: "avian",
+        section: "simulation",
+        label: "Avian physics engine",
+        help: "The physics engine the editor ships with, for both 3D and 2D. Drop it when \
+               the project simulates with another physics plugin (picked in Project \
+               Settings > Physics), which then ships like any installed plugin.",
+        bevy_features: &[],
+        runtime_features: &["avian"],
         default_on: true,
         group: None,
     },
@@ -1100,6 +1119,9 @@ const PHYSICS_MARKERS: &[&str] = &[
     "apply_force",
     "apply_impulse",
     "set_linear_velocity",
+    "apply_torque",
+    "apply_angular_impulse",
+    "set_angular_velocity",
     "move_controller",
     "is_colliding",
     "set_gravity_scale",
@@ -1151,6 +1173,12 @@ pub struct ProjectScan {
     /// inside those `.toml` files says what they are, and the folder name is the
     /// contract the loader itself goes by.
     dirs: std::collections::HashSet<String>,
+    /// `project.toml`'s `[physics] backend_3d` / `backend_2d`: the engine Project
+    /// Settings picked for each world, `None` for the default.
+    ///
+    /// The scenes cannot answer this, since every backend reads the same
+    /// components, and it is what decides whether the bundled avian ships.
+    physics_backends: [Option<String>; 2],
 }
 
 impl ProjectScan {
@@ -1194,6 +1222,7 @@ pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
         saw_scene: false,
         files: Vec::new(),
         dirs: Default::default(),
+        physics_backends: physics_backends(root),
     };
 
     let mut stack = vec![root.to_path_buf()];
@@ -1251,6 +1280,25 @@ pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
     scan
 }
 
+/// The `[physics]` backend names from `project.toml`, 3D first.
+///
+/// Read as a bare table rather than through `ProjectConfig`, so a project.toml
+/// this build cannot fully parse (newer, or hand-edited) still answers the one
+/// question; anything unreadable is the default backend, which is avian.
+fn physics_backends(root: &Path) -> [Option<String>; 2] {
+    let table = std::fs::read_to_string(root.join("project.toml"))
+        .ok()
+        .and_then(|text| text.parse::<toml::Table>().ok());
+    let physics = table.as_ref().and_then(|t| t.get("physics")).and_then(|p| p.as_table());
+    let name = |key: &str| {
+        physics
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    [name("backend_3d"), name("backend_2d")]
+}
+
 /// Default on/off per capability for a fresh export, from an existing scan.
 ///
 /// # What the scan is allowed to decide
@@ -1281,7 +1329,8 @@ pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
 ///   cannot draw. Both stay on.
 /// * **Physics** — the two backends share their serialized components and their
 ///   script API, so the scan can see *that* physics is used and never *which*.
-///   It follows the pipeline instead.
+///   It follows the pipeline instead. Which ENGINE simulates it is not a scene
+///   question either; that comes from `project.toml` (see `physics_backends`).
 pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
     let Some(scan) = scan.filter(|s| s.saw_scene) else {
         // Nothing to go on: reproduce the pre-scan behaviour exactly.
@@ -1331,6 +1380,16 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
                 // runtime when it picks a backend for an entity.
                 "physics_3d" => scan.saw("avian3d::") || (physics && three_d),
                 "physics_2d" => scan.saw("avian2d::") || (physics && two_d),
+                // Avian ships when a world that keeps physics simulates with it:
+                // its own name, or no name, since the default is the first
+                // backend registered and that is the bundled one.
+                "avian" => {
+                    let [b3, b2] = &scan.physics_backends;
+                    let uses = |b: &Option<String>, own: &str| b.as_deref().is_none_or(|n| n == own);
+                    let p3 = scan.saw("avian3d::") || (physics && three_d);
+                    let p2 = scan.saw("avian2d::") || (physics && two_d);
+                    (p3 && uses(b3, "avian3d")) || (p2 && uses(b2, "avian2d"))
+                }
                 "script_http" => scan.saw("http_get") || scan.saw("http_post"),
                 // A project shipping its own packs wants the runtime that loads
                 // them, whether or not its own code calls `t()`.
@@ -1481,6 +1540,13 @@ pub fn enforce_dependencies(state: &mut HashMap<String, bool>) {
         for id in RENDER_3D_DEPENDENTS {
             state.insert((*id).to_string(), false);
         }
+    }
+    // The `avian` runtime feature turns `physics` on, so left on by itself it
+    // would quietly put back the physics API both toggles just removed.
+    if !state.get("physics_3d").copied().unwrap_or(true)
+        && !state.get("physics_2d").copied().unwrap_or(true)
+    {
+        state.insert("avian".to_string(), false);
     }
     // After the cascade above, so a child of a parent this just turned off goes
     // with it (`bloom` under `postfx`, for one).
@@ -1738,6 +1804,41 @@ mod tests {
         );
         let s = p.state();
         assert!(!s["physics_2d"] && !s["physics_3d"]);
+        assert!(!s["avian"], "no physics means no physics engine either");
+    }
+
+    /// The bundled avian ships by default, and stays behind when Project
+    /// Settings picks another engine for every world that has physics.
+    #[test]
+    fn avian_follows_the_selected_backend() {
+        let scene = (
+            "scenes/level.bsn",
+            "entity 1 {\n bevy_mesh::components::Mesh3d: (),\n renzora_physics::data::PhysicsBodyData: (),\n}\n",
+        );
+        let default = TempProject::new("avian_default", &[scene]);
+        assert!(default.state()["avian"]);
+
+        let rapier = TempProject::new(
+            "avian_rapier",
+            &[scene, ("project.toml", "[physics]\nbackend_3d = \"rapier3d\"\n")],
+        );
+        let s = rapier.state();
+        assert!(s["physics_3d"], "the physics API stays for the other engine");
+        assert!(!s["avian"]);
+    }
+
+    /// Turning both physics toggles off by hand must take avian too: its runtime
+    /// feature turns `physics` on, which would put the API straight back.
+    #[test]
+    fn avian_cannot_outlive_physics() {
+        let mut state: HashMap<String, bool> =
+            [("physics_3d", false), ("physics_2d", false), ("avian", true)]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+        enforce_dependencies(&mut state);
+        assert!(!state["avian"]);
+        assert!(disabled_runtime_features(&state).contains(&"avian".to_string()));
     }
 
     /// A scene with no renderer in evidence — a pure-UI menu project — keeps

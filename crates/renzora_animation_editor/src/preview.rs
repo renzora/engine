@@ -1,5 +1,10 @@
-//! Preview system — drives AnimationPlayer seek from the editor scrubber,
-//! both on the source entity and the studio preview clone.
+//! Preview system: drives the model's AnimationPlayer from the editor's
+//! playhead.
+//!
+//! Only the real model is played. The stage's copy of it (the studio preview)
+//! takes the real model's bones each frame (`stage::clone`), so it shows the
+//! clip and everything posed over it. It used to play the clip itself, from a
+//! copy of this player's graph, and showed the clip and nothing else.
 
 use std::time::Duration;
 
@@ -7,31 +12,13 @@ use bevy::prelude::*;
 
 use renzora_animation::AnimatorState;
 
-use crate::studio_preview::StudioPreviewModel;
 use crate::AnimationEditorState;
 
-/// Resource tracking whether the preview animation has been started on the
-/// studio preview model's player. Reset when the selected entity/clip changes.
-#[derive(Resource, Default)]
-pub struct PreviewPlaybackState {
-    /// Entity whose graph was last copied to the preview.
-    pub synced_source: Option<Entity>,
-    /// Whether the animation node has been activated on the preview player.
-    pub preview_started: bool,
-    /// The clip name that was started.
-    pub started_clip: Option<String>,
-}
-
-/// Advance scrub time when previewing, clamp/wrap at clip duration,
-/// and seek both the source entity's and the preview model's AnimationPlayer.
+/// Seek the selected entity's AnimationPlayer to the playhead.
 pub fn update_animation_preview(
     editor_state: Res<AnimationEditorState>,
     animators: Query<&AnimatorState>,
     mut players: Query<(&mut AnimationPlayer, Option<&mut AnimationTransitions>)>,
-    preview_roots: Query<Entity, With<StudioPreviewModel>>,
-    children_query: Query<&Children>,
-    player_query: Query<Entity, With<AnimationPlayer>>,
-    mut playback: ResMut<PreviewPlaybackState>,
 ) {
     let Some(entity) = editor_state.selected_entity else {
         return;
@@ -60,32 +47,12 @@ pub fn update_animation_preview(
     };
 
     // The playhead (scrub_time) is advanced globally by `advance_preview_time`
-    // (lib.rs); here we only seek the players to it.
+    // (lib.rs); here we only seek the player to it.
     let scrub = editor_state.scrub_time;
 
-    // Seek the source entity's AnimationPlayer
     if let Some(player_entity) = state.player_entity {
         if let Ok((mut player, transitions)) = players.get_mut(player_entity) {
             show_only(&mut player, transitions, node_idx, scrub);
-        }
-    }
-
-    // Seek the studio preview model's AnimationPlayer
-    // Check if we need to start the clip on the preview player
-    let need_start =
-        !playback.preview_started || playback.started_clip.as_deref() != Some(&clip_name);
-
-    for root in preview_roots.iter() {
-        if let Some(preview_player_entity) =
-            find_player_in_children(root, &children_query, &player_query)
-        {
-            if let Ok((mut player, transitions)) = players.get_mut(preview_player_entity) {
-                show_only(&mut player, transitions, node_idx, scrub);
-                if need_start {
-                    playback.preview_started = true;
-                    playback.started_clip = Some(clip_name.clone());
-                }
-            }
         }
     }
 }
@@ -131,73 +98,6 @@ fn show_only(
     }
 }
 
-/// Copy the AnimationGraph from the source entity's player to the studio preview
-/// model's player, and add AnimationTarget components to the preview skeleton.
-pub fn sync_preview_animation_graph(
-    editor_state: Res<AnimationEditorState>,
-    animators: Query<&AnimatorState>,
-    preview_roots: Query<Entity, With<StudioPreviewModel>>,
-    children_query: Query<&Children>,
-    player_query: Query<Entity, With<AnimationPlayer>>,
-    graph_query: Query<&AnimationGraphHandle>,
-    name_query: Query<&Name>,
-    mut commands: Commands,
-    mut playback: ResMut<PreviewPlaybackState>,
-) {
-    let Some(entity) = editor_state.selected_entity else {
-        playback.synced_source = None;
-        playback.preview_started = false;
-        return;
-    };
-
-    // Reset if source entity changed
-    if playback.synced_source != Some(entity) {
-        playback.preview_started = false;
-        playback.started_clip = None;
-    }
-
-    let Ok(state) = animators.get(entity) else {
-        return;
-    };
-
-    if !state.initialized {
-        return;
-    }
-
-    let Some(player_entity) = state.player_entity else {
-        return;
-    };
-
-    let Ok(source_graph) = graph_query.get(player_entity) else {
-        return;
-    };
-
-    let graph_handle = source_graph.0.clone();
-
-    for root in preview_roots.iter() {
-        if let Some(preview_player) = find_player_in_children(root, &children_query, &player_query)
-        {
-            if graph_query.get(preview_player).is_err() {
-                // Copy graph
-                commands
-                    .entity(preview_player)
-                    .insert(AnimationGraphHandle(graph_handle.clone()))
-                    .try_insert(AnimationTransitions::new());
-
-                // Add AnimationTarget components to all named bones in the preview
-                add_targets_recursive(root, &children_query, &name_query, &mut commands);
-
-                playback.synced_source = Some(entity);
-                playback.preview_started = false;
-                info!(
-                    "[studio_preview] Copied AnimationGraph + targets to preview player {:?}",
-                    preview_player
-                );
-            }
-        }
-    }
-}
-
 /// Update the studio preview camera clear color to match the theme.
 pub fn sync_preview_clear_color(
     theme_manager: Option<Res<renzora_theme::ThemeManager>>,
@@ -215,46 +115,5 @@ pub fn sync_preview_clear_color(
 
     for mut camera in cameras.iter_mut() {
         camera.clear_color = ClearColorConfig::Custom(clear);
-    }
-}
-
-/// Walk children recursively to find an AnimationPlayer entity.
-fn find_player_in_children(
-    root: Entity,
-    children_query: &Query<&Children>,
-    player_query: &Query<Entity, With<AnimationPlayer>>,
-) -> Option<Entity> {
-    let mut stack = vec![root];
-    while let Some(entity) = stack.pop() {
-        if player_query.get(entity).is_ok() {
-            return Some(entity);
-        }
-        if let Ok(children) = children_query.get(entity) {
-            stack.extend(children.iter());
-        }
-    }
-    None
-}
-
-/// Add `AnimationTargetId` to all named descendants so the animation system
-/// can drive their transforms.
-fn add_targets_recursive(
-    entity: Entity,
-    children_query: &Query<&Children>,
-    name_query: &Query<&Name>,
-    commands: &mut Commands,
-) {
-    let mut stack = vec![entity];
-    while let Some(e) = stack.pop() {
-        if let Ok(name) = name_query.get(e) {
-            // The same key the runtime binds with, or the timeline preview would
-            // animate a rig that play mode leaves in its bind pose — the one
-            // place a disagreement is guaranteed to be blamed on the clip.
-            let target_id = renzora_animation::bone_target(name.as_str());
-            commands.entity(e).try_insert(target_id);
-        }
-        if let Ok(children) = children_query.get(e) {
-            stack.extend(children.iter());
-        }
     }
 }

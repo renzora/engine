@@ -89,7 +89,7 @@ Knowing the rules avoids surprises:
 
 - **Only entities with a `Name` are saved.** `save_scene` queries `With<Name>`, so anonymous entities are skipped.
 - **Resources are never saved.** The builder calls `deny_all_resources()`; scenes carry entities + components only. Use resources for transient global state, not save data.
-- **Runtime/editor-only components are stripped.** Meshes, materials, cameras, `avian3d` physics bodies, animation runtime state, `bevy_ui` camera plumbing, and networking markers are explicitly denied — they get regenerated on load from their serializable companions (e.g. `MeshInstanceData`, `PhysicsBodyData`). Anything that fails to serialize is dropped too.
+- **Runtime/editor-only components are stripped.** Meshes, materials, cameras, the physics engine's own bodies and colliders (and the generated ones on a ragdoll's bones), animation runtime state, `bevy_ui` camera plumbing, and networking markers are explicitly denied; they get regenerated on load from their serializable companions (e.g. `MeshInstanceData`, `PhysicsBodyData`). Anything that fails to serialize is dropped too.
 - **Loading is lossy.** If a scene names a type that isn't registered, `load_scene` strips just that entry, keeps loading the rest, logs a warning, and fires a `SceneLoadedWithSkippedTypes` event. A scene from the editor that references a component your runtime build never registered will load with that component missing rather than failing.
 
 ### Renaming or moving a component (scene compatibility)

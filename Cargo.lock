@@ -650,6 +650,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "avian_physics"
+version = "0.1.0"
+dependencies = [
+ "avian2d",
+ "avian3d",
+ "bevy",
+ "renzora",
+ "renzora_parkour",
+ "renzora_physics",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7335,9 +7347,9 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 name = "renzora"
 version = "0.1.0"
 dependencies = [
- "avian2d",
- "avian3d",
  "bevy",
+ "bevy_curve",
+ "bevy_shape",
  "naga",
  "renzora_legacy_shaders",
  "renzora_macros",
@@ -7382,15 +7394,19 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_animation",
+ "renzora_audio",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_inspector",
  "renzora_particles",
  "renzora_particles_editor",
+ "renzora_rig",
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
+ "rfd",
  "ron 0.8.1",
+ "serde",
 ]
 
 [[package]]
@@ -7849,8 +7865,6 @@ name = "renzora_engine"
 version = "0.1.0"
 dependencies = [
  "arboard",
- "avian2d",
- "avian3d",
  "bevy",
  "dirs 6.0.0",
  "futures-lite",
@@ -8277,7 +8291,6 @@ dependencies = [
 name = "renzora_navmesh"
 version = "0.1.0"
 dependencies = [
- "avian3d",
  "bevy",
  "polyanya",
  "renzora",
@@ -8355,7 +8368,6 @@ dependencies = [
 name = "renzora_parkour"
 version = "0.1.0"
 dependencies = [
- "avian3d",
  "bevy",
  "renzora",
  "renzora_animation",
@@ -8410,8 +8422,6 @@ dependencies = [
 name = "renzora_physics"
 version = "0.1.0"
 dependencies = [
- "avian2d",
- "avian3d",
  "bevy",
  "renzora",
  "renzora_scripting",
@@ -8519,12 +8529,19 @@ dependencies = [
 name = "renzora_ragdoll"
 version = "0.1.0"
 dependencies = [
- "avian3d",
  "bevy",
  "renzora",
  "renzora_animation",
  "renzora_macros",
  "renzora_scripting",
+]
+
+[[package]]
+name = "renzora_rig"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "serde_json",
 ]
 
 [[package]]
@@ -8554,6 +8571,7 @@ dependencies = [
 name = "renzora_runtime"
 version = "0.1.0"
 dependencies = [
+ "avian_physics",
  "bevy",
  "image",
  "libloading 0.8.9",

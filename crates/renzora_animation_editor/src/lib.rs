@@ -9,6 +9,8 @@ mod inspector_ui;
 mod panel;
 mod params;
 mod state_machine;
+mod rig;
+mod stage;
 mod studio_preview_panel;
 mod timeline;
 mod preview;
@@ -416,7 +418,6 @@ impl Plugin for AnimationEditorPlugin {
         inspector_ui::register(app);
 
         app.init_resource::<AnimationEditorState>();
-        app.init_resource::<preview::PreviewPlaybackState>();
         app.init_resource::<studio_preview::StudioPreviewImage>();
         app.init_resource::<studio_preview::StudioPreviewOrbit>();
         app.init_resource::<studio_preview::StudioPreviewTracker>();
@@ -462,13 +463,13 @@ impl Plugin for AnimationEditorPlugin {
                 .run_if(renzora::not_in_play_mode),
         );
 
-        // Heavy studio-preview work: only run when the Studio Preview panel is
-        // actually in the dock tree. Other layouts (e.g. pure Scene) shouldn't
-        // pay for an offscreen render + duplicate GLTF clone.
+        // Heavy studio-preview work: only run when the Studio Preview panel or
+        // the Animation workspace's stage (which is the same picture) is in
+        // the dock tree. Other layouts (e.g. pure Scene) shouldn't pay for an
+        // offscreen render + duplicate GLTF clone.
         app.add_systems(
             Update,
             (
-                preview::sync_preview_animation_graph,
                 preview::sync_preview_clear_color,
                 studio_preview::resize_preview,
                 studio_preview::sync_preview_model,
@@ -489,6 +490,8 @@ impl Plugin for AnimationEditorPlugin {
         app.add_plugins(params::AnimParamsPanel);
         app.add_plugins(state_machine::StateMachinePanel);
         app.add_plugins(studio_preview_panel::StudioPreviewPanel);
+        app.add_plugins(rig::RigPlugin);
+        app.add_plugins(stage::StagePlugin);
     }
 }
 

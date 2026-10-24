@@ -66,15 +66,40 @@ The Inspector drawer covers the common workflow without leaving the panel. Each 
 
 ## The Animation workspace
 
-Open it from the ribbon. Five panels follow whichever entity is selected.
+Open it from the ribbon. It is three panels with the Timeline along the bottom: the **stage** in the middle, a tools panel on the left and an inspector on the right.
 
-| Panel | What it does |
+<!-- screenshot: animation_workspace.png - the Animation workspace in Animate mode: tools on the left, a character on the stage with its skeleton and the rotate gizmo, the pose inspector on the right, the timeline below -->
+
+### The stage
+
+The stage is the character on its own: a copy of the model, lit and on a floor, away from the rest of your level. You work on it directly. Click a bone to select it, turn it with the gizmo, click the model to place rig points, paint weights on it. What you do acts on the real character, so the timeline, the Inspector and keying all see it, and the stage shows the result.
+
+The dropdown in the stage's header picks the model, and with nothing on the stage the middle of it lists them. Both offer every model in the scene and every model file in the project: picking a file that is not in the scene yet adds it at the origin (Ctrl+Z takes it back out). Selecting a model in the scene puts it on the stage too.
+
+| To | Do |
 |---|---|
-| Animation | Clip library, state machine states and transitions, parameters and layers |
-| Timeline | Transport, time ruler, scrubber, track lanes and keyframe editing |
-| State Machine | A visual view of states and transition conditions |
-| Parameters | Live parameter values fed into the state machine |
-| Studio Preview | An isolated render of the model with an orbit camera and skeleton overlay |
+| Orbit | Right drag, or Alt + left drag |
+| Pan | Middle drag, or Shift + right drag |
+| Zoom | Wheel |
+| Frame the model | `F`, or the Frame chip |
+| Look from the front, the side, or in perspective | The Front, Side and Persp buttons |
+
+The chips along the top show and hide the skeleton and the floor, and in Animate turn on Auto key (the timeline's record).
+
+### Four modes
+
+The switch at the left of the stage's header changes what the workspace is for. The panels either side change with it; the stage and the timeline stay.
+
+| Mode | Left panel | Right panel |
+|---|---|---|
+| **Rig** | Build a skeleton (Humanoid) or a face rig (Face) from points you click onto the model | The skeleton as a tree, and the selected bone |
+| **Skin** | Auto weights, the weight brush, the bone being painted | Test bends and range of motion, checks, Save |
+| **Animate** | Limbs (IK on or off) and the pose library; the Face tab's expression sliders | The selected bone's pose and the pose tools; the clip's properties; Performance (lip sync and blinks) |
+| **Logic** | The animator's parameters | The animator's properties. The state machine takes the stage, with the character kept in the corner |
+
+A model with no skeleton opens in Rig, and a head (a model with eye meshes and no skeleton) opens on the Face template. See [Rigging & Posing](/docs/r1-alpha8/editor/rigging) and [Facial Animation](/docs/r1-alpha8/editor/facial-animation).
+
+**Studio Preview**, the stage without the tools, is still available from Add Panel.
 
 Selection is forgiving. Clicking a mesh child or an individual bone resolves to the ancestor carrying the animator, so every panel follows along. Deselecting (clicking empty space, `Escape`) leaves the panels on the entity they were showing; they switch only when you pick another entity. Each entity remembers the clip you last had open on it, so selecting it again brings that clip back rather than its default.
 

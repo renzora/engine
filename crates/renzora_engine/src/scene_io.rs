@@ -23,6 +23,7 @@ mod instances;
 mod lights;
 mod load;
 mod meshes;
+mod physics_filter;
 mod prune;
 mod save;
 mod snapshot;

@@ -6,9 +6,9 @@
 //! checkbox edit behave identically.
 
 use crate::{Ragdoll, RagdollBone};
-use avian3d::prelude::RigidBody;
 use bevy::animation::AnimatedBy;
 use bevy::prelude::*;
+use renzora::physics::{PhysicsBodyData, PhysicsBodyType};
 use renzora_animation::{AnimationCommand, AnimationCommandQueue};
 
 /// Holds a bone's `AnimatedBy` link while it is ragdolling, so deactivation can
@@ -42,7 +42,7 @@ pub fn handle_ragdoll_script_actions(
 
 /// Flips every generated bone between `Kinematic` (the `AnimationPlayer`
 /// drives it, physics just rides along for collision) and `Dynamic` (the
-/// avian solver + joints drive it), detaches/reattaches each bone from its
+/// solver + joints drive it), detaches/reattaches each bone from its
 /// animation player (see [`StashedAnimatedBy`]), and pauses/resumes the
 /// animator through `renzora_animation`'s existing command queue, whenever
 /// `Ragdoll.active` changes — including the frame it's first added. That's a
@@ -52,7 +52,7 @@ pub fn handle_ragdoll_script_actions(
 pub fn apply_ragdoll_state(
     changed: Query<(Entity, &Ragdoll), Changed<Ragdoll>>,
     children: Query<&Children>,
-    bones: Query<(), With<RagdollBone>>,
+    mut bones: Query<&mut PhysicsBodyData, With<RagdollBone>>,
     animated_by: Query<&AnimatedBy>,
     stashed: Query<&StashedAnimatedBy>,
     mut commands: Commands,
@@ -63,7 +63,7 @@ pub fn apply_ragdoll_state(
             root,
             ragdoll.active,
             &children,
-            &bones,
+            &mut bones,
             &animated_by,
             &stashed,
             &mut commands,
@@ -83,14 +83,17 @@ fn set_bones_recursive(
     entity: Entity,
     active: bool,
     children: &Query<&Children>,
-    bones: &Query<(), With<RagdollBone>>,
+    bones: &mut Query<&mut PhysicsBodyData, With<RagdollBone>>,
     animated_by: &Query<&AnimatedBy>,
     stashed: &Query<&StashedAnimatedBy>,
     commands: &mut Commands,
 ) {
-    if bones.get(entity).is_ok() {
+    if let Ok(mut body) = bones.get_mut(entity) {
+        let wanted = if active { PhysicsBodyType::RigidBody } else { PhysicsBodyType::KinematicBody };
+        if body.body_type != wanted {
+            body.body_type = wanted;
+        }
         if active {
-            commands.entity(entity).insert(RigidBody::Dynamic);
             // Hand the bone to physics: stash and sever its player link so
             // `animate_targets` stops overwriting the solver every frame. The
             // `if let` makes re-activation idempotent (nothing to stash once the
@@ -102,7 +105,6 @@ fn set_bones_recursive(
                     .remove::<AnimatedBy>();
             }
         } else {
-            commands.entity(entity).insert(RigidBody::Kinematic);
             // Give the bone back to the animator — reconnect the exact player it
             // was detached from, then drop the stash.
             if let Ok(saved) = stashed.get(entity) {

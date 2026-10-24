@@ -16,15 +16,26 @@
 //! and never exactly right, which in a traversal system reads as the character
 //! clipping the ledge they were supposed to catch.
 //!
-//! Everything runs on `Transform`, not on avian's `Position`, matching what
-//! `renzora_physics`'s own `kinematic_slide` does — the character is kinematic
-//! and the solver is not asked to move it.
+//! Everything runs on `Transform`, not on a physics engine's own pose, matching
+//! what `renzora_physics`'s own `kinematic_slide` does: the character is
+//! kinematic and the solver is not asked to move it.
+//!
+//! ## Why an exclusive system
+//!
+//! Every probe and sweep is a cast through `renzora::physics`, which reads the
+//! selected backend's state out of the world. A cast takes `&World`, and an
+//! ordinary system cannot hold one beside the `&mut` it needs for the
+//! character. So the frame runs in three steps: each character's working state
+//! is taken out of the world, the whole pass runs against a read-only world,
+//! and the results go back in. Nothing between the take and the put-back reads
+//! another character's motion, which is what makes taking it safe.
 
-use avian3d::prelude::*;
+use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
-use renzora_physics::backend::avian_character::shape_cast_slide;
+use renzora::physics::ResolvedCollider;
+use renzora_physics::slide::{collide_and_slide, SweepHit};
 
-use crate::probe::{probe, ProbeWorld};
+use crate::probe::{probe, ProbeWorld, Spatial};
 use crate::read_state::ParkourReadState;
 use crate::state::{
     HangGrip, ParkourInput, ParkourMotion, ParkourState, SwingLink, Traversal, TraversalExit,
@@ -47,51 +58,168 @@ struct AnchorCandidate {
     rope: f32,
 }
 
-/// Advance every parkour character by one frame.
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-pub fn drive_parkour(
-    time: Res<Time>,
-    spatial: SpatialQuery,
-    world: ProbeWorld,
-    anchors: Query<(Entity, &GlobalTransform, &ParkourSwingAnchor)>,
-    ladder_cfg: Query<&ParkourLadder>,
+/// The read-only world one frame of driving needs.
+type DriveParams = (
+    Res<'static, Time>,
+    ProbeWorld<'static, 'static>,
+    Query<'static, 'static, (Entity, &'static GlobalTransform, &'static ParkourSwingAnchor)>,
+    Query<'static, 'static, &'static ParkourLadder>,
     // How tall a ladder is. Read from the collider rather than from a field on
     // `ParkourLadder`, so a ladder is bounded by the shape the level already
     // has and there is nothing extra to author or keep in sync.
-    collider_bounds: Query<&ColliderAabb>,
-    mut characters: Query<(
-        Entity,
-        &mut Transform,
-        &ParkourController,
-        &mut ParkourMotion,
-        &mut ParkourInput,
-        &mut ParkourReadState,
-        &ParkourSweep,
-        Option<&ChildOf>,
-    )>,
-    // Every character's parent, for the local/world conversion below. A second
-    // read-only query rather than a `&GlobalTransform` on the one above,
-    // because the entity it needs is the *parent*, which that query cannot
-    // reach.
-    parents: Query<&GlobalTransform>,
-    mut commands: Commands,
-    // Scratch for the per-character exclusion list, reused rather than
-    // reallocated every frame.
-    mut excluded: Local<Vec<Entity>>,
-    // Same, for the ladder subtree walk. A separate list because it is filled
-    // while `excluded` is still holding this character's own subtree.
-    mut span_scratch: Local<Vec<Entity>>,
+    Query<'static, 'static, (&'static ResolvedCollider, &'static GlobalTransform)>,
+    Query<
+        'static,
+        'static,
+        (Entity, &'static ParkourController, &'static ParkourSweep, Option<&'static ChildOf>),
+        (With<ParkourMotion>, With<ParkourInput>, With<ParkourReadState>, With<Transform>),
+    >,
+    // Every character's parent, for the local/world conversion. A separate
+    // query because the entity it needs is the *parent*.
+    Query<'static, 'static, &'static GlobalTransform>,
+);
+
+/// Scratch reused across frames rather than reallocated.
+#[derive(Default)]
+pub struct DriveScratch {
+    /// The per-character exclusion list.
+    excluded: Vec<Entity>,
+    /// The ladder subtree walk. Separate because it is filled while `excluded`
+    /// still holds this character's own subtree.
+    span: Vec<Entity>,
+}
+
+/// One character's working state, out of the world for the pass.
+struct Taken {
+    entity: Entity,
+    local: Transform,
+    motion: ParkourMotion,
+    input: ParkourInput,
+    read: ParkourReadState,
+    events: Vec<ParkourEventKind>,
+}
+
+/// Everything shared by every character in one pass.
+struct Frame<'a, 'w, 's> {
+    dt: f32,
+    world: &'a World,
+    probe: &'a ProbeWorld<'w, 's>,
+    anchors: &'a Query<'w, 's, (Entity, &'static GlobalTransform, &'static ParkourSwingAnchor)>,
+    ladder_cfg: &'a Query<'w, 's, &'static ParkourLadder>,
+    colliders: &'a Query<'w, 's, (&'static ResolvedCollider, &'static GlobalTransform)>,
+    parents: &'a Query<'w, 's, &'static GlobalTransform>,
+}
+
+/// Advance every parkour character by one frame.
+pub fn drive_parkour(
+    world: &mut World,
+    params: &mut SystemState<DriveParams>,
+    mut scratch: Local<DriveScratch>,
 ) {
-    // A long frame (asset load, editor hitch) must not be integrated in one
-    // step: at 200 ms a running character would move a metre and a half
-    // between sweeps, straight through a wall.
-    let dt = time.delta_secs().min(0.05);
-    if dt <= 0.0 {
-        return;
+    // Take each character's working state out of the world.
+    let ids: Vec<Entity> = match params.get(world) {
+        Ok((.., characters, _)) => characters.iter().map(|c| c.0).collect(),
+        Err(_) => return,
+    };
+    let mut taken: Vec<Taken> = Vec::with_capacity(ids.len());
+    for entity in ids {
+        let mut e = world.entity_mut(entity);
+        let (Some(local), Some(motion), Some(input), Some(read)) = (
+            e.get::<Transform>().copied(),
+            e.get_mut::<ParkourMotion>().map(|mut m| std::mem::take(&mut *m)),
+            e.get_mut::<ParkourInput>().map(|mut i| std::mem::take(&mut *i)),
+            e.get_mut::<ParkourReadState>().map(|mut r| std::mem::take(&mut *r)),
+        ) else {
+            continue;
+        };
+        taken.push(Taken { entity, local, motion, input, read, events: Vec::new() });
     }
 
-    for (entity, mut local, controller, mut motion, mut input, mut read, sweep, child_of) in
-        &mut characters
+    // Drive them against a read-only world.
+    {
+        let world: &World = world;
+        let Ok((time, probe_world, anchors, ladder_cfg, colliders, characters, parents)) = params.get(world)
+        else {
+            return;
+        };
+        // A long frame (asset load, editor hitch) must not be integrated in one
+        // step: at 200 ms a running character would move a metre and a half
+        // between sweeps, straight through a wall.
+        let dt = time.delta_secs().min(0.05);
+        let frame = Frame {
+            dt,
+            world,
+            probe: &probe_world,
+            anchors: &anchors,
+            ladder_cfg: &ladder_cfg,
+            colliders: &colliders,
+            parents: &parents,
+        };
+        let DriveScratch { excluded, span } = &mut *scratch;
+        for t in &mut taken {
+            if dt <= 0.0 {
+                break;
+            }
+            let Ok((entity, controller, sweep, child_of)) = characters.get(t.entity) else {
+                continue;
+            };
+            drive_one(
+                &frame,
+                entity,
+                controller,
+                sweep,
+                child_of,
+                &mut t.local,
+                &mut t.motion,
+                &mut t.input,
+                &mut t.read,
+                &mut t.events,
+                excluded,
+                span,
+            );
+        }
+    }
+
+    // And put them back.
+    for t in taken {
+        let Ok(mut e) = world.get_entity_mut(t.entity) else { continue };
+        if let Some(mut local) = e.get_mut::<Transform>() {
+            local.set_if_neq(t.local);
+        }
+        if let Some(mut motion) = e.get_mut::<ParkourMotion>() {
+            *motion = t.motion;
+        }
+        if let Some(mut input) = e.get_mut::<ParkourInput>() {
+            *input = t.input;
+        }
+        if let Some(mut read) = e.get_mut::<ParkourReadState>() {
+            *read = t.read;
+        }
+        for kind in t.events {
+            world.trigger(ParkourEvent { entity: t.entity, kind });
+        }
+    }
+}
+
+/// One character's frame: probe, decide, move.
+#[allow(clippy::too_many_arguments)]
+fn drive_one(
+    frame: &Frame,
+    entity: Entity,
+    controller: &ParkourController,
+    sweep: &ParkourSweep,
+    child_of: Option<&ChildOf>,
+    local: &mut Transform,
+    motion: &mut ParkourMotion,
+    input: &mut ParkourInput,
+    read: &mut ParkourReadState,
+    events_out: &mut Vec<ParkourEventKind>,
+    excluded: &mut Vec<Entity>,
+    span_scratch: &mut Vec<Entity>,
+) {
+    let dt = frame.dt;
+    let world = frame.probe;
+    let (anchors, ladder_cfg, parents) = (frame.anchors, frame.ladder_cfg, frame.parents);
     {
         // ── Local vs world ───────────────────────────────────────────────
         //
@@ -126,8 +254,8 @@ pub fn drive_parkour(
         // The character must not sweep against its own body — including any
         // collider hanging off a child, which is where an imported model
         // normally keeps it.
-        world.subtree_into(entity, &mut excluded);
-        let filter = SpatialQueryFilter::from_excluded_entities(excluded.iter().copied());
+        world.subtree_into(entity, excluded);
+        let spatial = Spatial { world: frame.world, exclude: excluded.as_slice() };
         let max_slope = controller.max_slope;
         let half = controller.height * 0.5;
         let foot = transform.translation - Vec3::Y * controller.foot_offset;
@@ -168,7 +296,7 @@ pub fn drive_parkour(
         motion.wall_cooldown = (motion.wall_cooldown - dt).max(0.0);
         motion.grab_cooldown = (motion.grab_cooldown - dt).max(0.0);
 
-        let p = probe(&spatial, &world, controller, &sweep.0, foot, forward, &filter);
+        let p = probe(&spatial, world, controller, &sweep.0, foot, forward);
         motion.last_probe = p.clone();
         motion.last_forward = forward;
         let jump_speed = (2.0 * controller.gravity.abs() * controller.jump_height).sqrt();
@@ -216,12 +344,12 @@ pub fn drive_parkour(
                 let want_traverse = controller.auto_traverse || motion.action_buffer > 0.0;
                 if let Some(ledge) = p.ledge.filter(|_| want_traverse && move_len > 0.1) {
                     if ledge.thin && ledge.height <= controller.vault_max_height {
-                        start_vault(&mut motion, controller, &transform, &ledge, forward);
+                        start_vault(motion, controller, &transform, &ledge, forward);
                         motion.action_buffer = 0.0;
                         events.push(ParkourEventKind::VaultStart);
                     } else if ledge.height <= controller.mantle_max_height && ledge.clear {
                         start_mantle(
-                            &mut motion,
+                            motion,
                             controller,
                             &transform,
                             &ledge,
@@ -238,7 +366,7 @@ pub fn drive_parkour(
                         let wants =
                             motion.action_buffer > 0.0 || (cfg.auto_attach && move_len > 0.1);
                         if wants {
-                            mount_ladder(&mut motion, ladder, &p, foot);
+                            mount_ladder(motion, ladder, &p, foot);
                             motion.action_buffer = 0.0;
                             events.push(ParkourEventKind::LadderMount);
                         }
@@ -303,7 +431,7 @@ pub fn drive_parkour(
                 // of a wall is grabbed rather than run past.
                 if controller.swing && motion.action_buffer > 0.0 && motion.grab_cooldown <= 0.0 {
                     let head = foot + Vec3::Y * (controller.height * 0.9);
-                    if let Some(a) = nearest_anchor(&anchors, &spatial, &filter, head, forward) {
+                    if let Some(a) = nearest_anchor(anchors, &spatial, head, forward) {
                         let rope = if a.rope > 0.0 {
                             a.rope
                         } else {
@@ -342,7 +470,7 @@ pub fn drive_parkour(
                             && ledge.clear
                         {
                             start_mantle(
-                                &mut motion,
+                                motion,
                                 controller,
                                 &transform,
                                 &ledge,
@@ -358,7 +486,7 @@ pub fn drive_parkour(
                     if let Some(ladder) = p.ladder {
                         let cfg = ladder_cfg.get(ladder).copied().unwrap_or_default();
                         if motion.action_buffer > 0.0 || cfg.auto_attach {
-                            mount_ladder(&mut motion, ladder, &p, foot);
+                            mount_ladder(motion, ladder, &p, foot);
                             motion.action_buffer = 0.0;
                             events.push(ParkourEventKind::LadderMount);
                         }
@@ -435,7 +563,7 @@ pub fn drive_parkour(
             ParkourState::Hanging => {
                 let Some(mut grip) = motion.hang else {
                     motion.enter(ParkourState::Airborne);
-                    continue;
+                    return;
                 };
                 motion.velocity = Vec3::ZERO;
                 face = Some(-grip.wall_normal);
@@ -449,11 +577,11 @@ pub fn drive_parkour(
                     let step = tangent * lateral.signum() * controller.hang_shimmy_speed * dt;
                     let probe_at = grip.point + step;
                     let lip_ok = spatial
-                        .cast_ray(probe_at + Vec3::Y * 0.4, Dir3::NEG_Y, 0.8, true, &filter)
+                        .ray(probe_at + Vec3::Y * 0.4, Dir3::NEG_Y, 0.8)
                         .is_some_and(|h| (probe_at.y + 0.4 - h.distance - grip.point.y).abs() < 0.25);
                     let wall_ok = Dir3::new(-grip.wall_normal).is_ok_and(|d| {
                         spatial
-                            .cast_ray(probe_at + grip.wall_normal * 0.5 - Vec3::Y * 0.3, d, 0.9, true, &filter)
+                            .ray(probe_at + grip.wall_normal * 0.5 - Vec3::Y * 0.3, d, 0.9)
                             .is_some()
                     });
                     if lip_ok && wall_ok {
@@ -484,7 +612,7 @@ pub fn drive_parkour(
                         landing: grip.point,
                     };
                     start_mantle(
-                        &mut motion,
+                        motion,
                         controller,
                         &transform,
                         &ledge,
@@ -508,7 +636,7 @@ pub fn drive_parkour(
                     motion.ladder = None;
                     motion.ladder_grip = None;
                     motion.enter(ParkourState::Airborne);
-                    continue;
+                    return;
                 };
                 let cfg = ladder_cfg.get(ladder).copied().unwrap_or_default();
                 motion.velocity = Vec3::ZERO;
@@ -534,7 +662,7 @@ pub fn drive_parkour(
                 // Bounding by the ladder removes the dependency on finding a
                 // floor at all, which is also the right answer for a ladder
                 // over a gap, a hatch, or water.
-                let span = ladder_span(ladder, &world, &collider_bounds, &mut span_scratch);
+                let span = ladder_span(ladder, world, frame.colliders, span_scratch);
                 let mut ran_out_below = false;
                 if let Some((bottom, top)) = span {
                     // Bounds are on the *foot*, which is where the AABB's
@@ -559,7 +687,7 @@ pub fn drive_parkour(
                 });
                 if let Some(ledge) = top_out {
                     start_mantle(
-                        &mut motion,
+                        motion,
                         controller,
                         &transform,
                         &ledge,
@@ -658,13 +786,13 @@ pub fn drive_parkour(
             ParkourState::Swinging => {
                 let Some(link) = motion.swing else {
                     motion.enter(ParkourState::Airborne);
-                    continue;
+                    return;
                 };
                 let Ok((_, anchor_tf, anchor_cfg)) = anchors.get(link.anchor) else {
                     // The anchor was despawned mid-swing.
                     motion.swing = None;
                     motion.enter(ParkourState::Airborne);
-                    continue;
+                    return;
                 };
                 let pivot = anchor_tf.translation();
                 let hand_off = Vec3::Y * (controller.height * 0.9);
@@ -697,18 +825,7 @@ pub fn drive_parkour(
                 // Sweep the step and let go on contact rather than clipping.
                 let step = next - hand;
                 let hit = Dir3::new(step).ok().and_then(|dir| {
-                    spatial.cast_shape(
-                        &sweep.0,
-                        transform.translation + Vec3::Y * half,
-                        Quat::IDENTITY,
-                        dir,
-                        &ShapeCastConfig {
-                            max_distance: step.length(),
-                            ignore_origin_penetration: true,
-                            ..Default::default()
-                        },
-                        &filter,
-                    )
+                    spatial.sweep(&sweep.0, transform.translation + Vec3::Y * half, dir, step.length())
                 });
                 if hit.is_some() {
                     motion.swing = None;
@@ -743,14 +860,15 @@ pub fn drive_parkour(
             None => {
                 let centre = transform.translation - Vec3::Y * controller.foot_offset
                     + Vec3::Y * half;
-                let slide = shape_cast_slide(
-                    &spatial,
-                    &sweep.0,
+                let slide = collide_and_slide(
+                    |origin, direction, max_distance| {
+                        spatial
+                            .sweep(&sweep.0, origin, direction, max_distance)
+                            .map(|h| SweepHit { distance: h.distance, normal: h.normal })
+                    },
                     centre,
-                    Quat::IDENTITY,
                     motion.velocity * dt,
                     max_slope,
-                    &filter,
                 );
                 transform.translation += slide.actual_delta;
                 grounded = slide.grounded;
@@ -786,13 +904,7 @@ pub fn drive_parkour(
                     let probe_top =
                         transform.translation - Vec3::Y * controller.foot_offset
                             + Vec3::Y * controller.step_height;
-                    if let Some(h) = spatial.cast_ray(
-                        probe_top,
-                        Dir3::NEG_Y,
-                        controller.step_height * 2.0,
-                        true,
-                        &filter,
-                    ) {
+                    if let Some(h) = spatial.ray(probe_top, Dir3::NEG_Y, controller.step_height * 2.0) {
                         if h.normal.angle_between(Vec3::Y) <= max_slope.to_radians() {
                             // Held a hair ABOVE the surface, not exactly on it.
                             // Resting precisely at the contact plane puts the
@@ -862,9 +974,9 @@ pub fn drive_parkour(
         // sticky value would fire the same footstep sound until the next event.
         read.event = events.first().map(|e| e.as_str().to_string()).unwrap_or_default();
 
-        for kind in events {
-            commands.trigger(ParkourEvent { entity, kind });
-        }
+        // Triggered once the character is back in the world, so an observer
+        // sees the state this frame settled on.
+        *events_out = events;
 
         // Back into the parent's space. Written unconditionally rather than
         // only when it changed: the controller settles a grounded character
@@ -962,24 +1074,34 @@ fn start_mantle(
 fn ladder_span(
     ladder: Entity,
     world: &ProbeWorld,
-    bounds: &Query<&ColliderAabb>,
+    colliders: &Query<(&ResolvedCollider, &GlobalTransform)>,
     scratch: &mut Vec<Entity>,
 ) -> Option<(f32, f32)> {
     world.subtree_into(ladder, scratch);
     let mut span: Option<(f32, f32)> = None;
     for entity in scratch.iter() {
-        let Ok(aabb) = bounds.get(*entity) else {
+        let Ok((collider, at)) = colliders.get(*entity) else {
             continue;
         };
-        // `ColliderAabb::INVALID` is an empty box with min/max at the
-        // infinities, and merging it would swallow the whole span.
-        if !aabb.min.y.is_finite() || !aabb.max.y.is_finite() {
-            continue;
+        // The collider's local box, corner by corner into world space, so a
+        // leaning or scaled ladder is measured by what it actually spans.
+        let (min, max) = collider.local_aabb();
+        for corner in 0..8 {
+            let local = Vec3::new(
+                if corner & 1 == 0 { min.x } else { max.x },
+                if corner & 2 == 0 { min.y } else { max.y },
+                if corner & 4 == 0 { min.z } else { max.z },
+            );
+            let y = at.transform_point(local).y;
+            // An empty mesh collider has no extent to merge.
+            if !y.is_finite() {
+                continue;
+            }
+            span = Some(match span {
+                Some((lo, hi)) => (lo.min(y), hi.max(y)),
+                None => (y, y),
+            });
         }
-        span = Some(match span {
-            Some((lo, hi)) => (lo.min(aabb.min.y), hi.max(aabb.max.y)),
-            None => (aabb.min.y, aabb.max.y),
-        });
     }
     span
 }
@@ -1010,8 +1132,7 @@ fn mount_ladder(
 /// Nearest swing anchor that is in reach, roughly ahead, and not behind a wall.
 fn nearest_anchor(
     anchors: &Query<(Entity, &GlobalTransform, &ParkourSwingAnchor)>,
-    spatial: &SpatialQuery,
-    filter: &SpatialQueryFilter,
+    spatial: &Spatial,
     head: Vec3,
     forward: Vec3,
 ) -> Option<AnchorCandidate> {
@@ -1029,10 +1150,7 @@ fn nearest_anchor(
             continue;
         }
         let Ok(dir) = Dir3::new(to) else { continue };
-        if spatial
-            .cast_ray(head, dir, (dist - 0.2).max(0.0), true, filter)
-            .is_some()
-        {
+        if spatial.ray(head, dir, (dist - 0.2).max(0.0)).is_some() {
             continue;
         }
         if best.as_ref().is_none_or(|(d, _)| dist < *d) {

@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 
+use renzora::physics::{PhysicsBackends, PhysicsDim};
 use renzora::{AspectMode, CurrentProject, RenderingMode, StretchMode, TextureFilter, WindowMode};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::*;
@@ -21,6 +22,60 @@ fn save_project(w: &mut World) {
     if let Some(cp) = w.get_resource::<CurrentProject>() {
         let _ = cp.save_config();
     }
+}
+
+/// One dropdown per world: "Default (<bundled>)" first, then every backend
+/// registered for it. Writing `[physics]` is the whole job; `renzora_physics`
+/// sees the change and moves the world on the next frame.
+fn physics_rows(world: &mut World, body: Entity) {
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+    let backends = world.get_resource::<PhysicsBackends>().cloned().unwrap_or_default();
+    let mut commands = world.commands();
+    for (row, dim, label) in [
+        (0, PhysicsDim::D3, "settings.row.physics_backend_3d"),
+        (1, PhysicsDim::D2, "settings.row.physics_backend_2d"),
+    ] {
+        let names: Vec<String> = backends.for_dim(dim).map(|b| b.name().to_string()).collect();
+        let default = match backends.default_for(dim) {
+            Some(b) => format!("{} ({})", tr("common.default"), b.name()),
+            None => tr("common.none"),
+        };
+        let mut options = vec![default];
+        options.extend(names.iter().cloned());
+        let refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
+        let choice = move |config: &renzora::PhysicsProjectConfig| match dim {
+            PhysicsDim::D3 => config.backend_3d.clone(),
+            PhysicsDim::D2 => config.backend_2d.clone(),
+        };
+        let get_names = names.clone();
+        let dd = ctl_dropdown(
+            &mut commands,
+            &fonts,
+            &refs,
+            0,
+            move |w| {
+                w.get_resource::<CurrentProject>()
+                    .and_then(|c| choice(&c.config.physics))
+                    .and_then(|name| get_names.iter().position(|n| *n == name))
+                    .map_or(0, |i| i + 1)
+            },
+            move |w, &i| {
+                let picked = i.checked_sub(1).and_then(|i| names.get(i)).cloned();
+                if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                    match dim {
+                        PhysicsDim::D3 => cp.config.physics.backend_3d = picked,
+                        PhysicsDim::D2 => cp.config.physics.backend_2d = picked,
+                    }
+                }
+                save_project(w);
+            },
+        );
+        settings_row(&mut commands, &fonts, body, row, &tr(label), dd);
+    }
+    note_row(&mut commands, &fonts, body, &tr("settings.hint.physics_backend"));
+    world.flush();
 }
 
 pub(crate) fn tab_project(
@@ -295,6 +350,14 @@ pub(crate) fn tab_project(
     settings_row(commands, fonts, body, 2, &tr("settings.row.render_scale"), dv);
 
     note_row(commands, fonts, body, &tr("settings.hint.restart_rendering"));
+
+    // Physics: which backend simulates each world.
+    let (sec, body) = section(commands, fonts, "atom", &tr("settings.section.physics"), A_BLUE);
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "project");
+    // The choices are whatever backends registered this launch, plugins
+    // included, so the rows are built with the world in hand.
+    commands.queue(move |world: &mut World| physics_rows(world, body));
 
     // Window.
     let (sec, body) = section(commands, fonts, "desktop", &tr("settings.cat.window"), A_BLUE);

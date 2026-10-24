@@ -198,6 +198,20 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
     let mut markup = world
         .query_filtered::<Entity, (With<renzora_ember::markup::provenance::MarkupSource>, With<bevy::ui::Node>)>();
     let show_markup = ui_scoped(world);
+    // A skinned model's bones. A skeleton is part of its model, not a pile of
+    // scene objects: a Mixamo character listed sixty-odd joints under itself,
+    // pushing everything else off the panel. They are drawn and picked as the
+    // skeleton gizmo, and listed as a tree in the Animation workspace. Anything
+    // parented under a bone (a sword in a hand) still shows, lifted to the
+    // model by the nearest-shown-ancestor walk below.
+    //
+    // Left out of the tree only. They are not given `HideInHierarchy`: that
+    // marks editor-internal entities, which scene clears skip, so a bone
+    // marked with it would survive a scene switch.
+    let joints: HashSet<Entity> = {
+        let mut skins = world.query::<&bevy::mesh::skinning::SkinnedMesh>();
+        skins.iter(world).flat_map(|s| s.joints.iter().copied()).collect()
+    };
     let world: &World = world;
 
     // One row per entity, as `(entity, label)`. Two sources, one body: markup
@@ -263,6 +277,9 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
 
     {
         for (entity, name) in rows.iter().map(|(e, n)| (*e, n)) {
+            if joints.contains(&entity) {
+                continue;
+            }
             // Apply component filter: skip entities unless they or an ancestor
             // have one of the required components (so children of matching
             // entities still appear in the hierarchy).

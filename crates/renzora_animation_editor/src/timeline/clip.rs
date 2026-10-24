@@ -326,7 +326,7 @@ pub(super) fn cache_clip(
 
 /// Set the clip duration (toolbar Length field), syncing the editor's cached
 /// duration so the ruler/playhead range + loop point update immediately.
-pub(super) fn set_clip_duration(world: &mut World, dur: f32) {
+pub(crate) fn set_clip_duration(world: &mut World, dur: f32) {
     let dur = dur.clamp(0.2, 600.0);
     if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
         let changed = match cache.clip.as_mut() {

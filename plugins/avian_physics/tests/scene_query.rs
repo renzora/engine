@@ -2,7 +2,6 @@
 //! colliders: a ray and a sphere sweep stop on a static box with the face's
 //! normal, a sensor is passed straight through, and a 2D ray asks the 2D world.
 //! This is what the particle system's Collide Scene node stands on.
-#![cfg(any(feature = "avian3d", feature = "avian2d"))]
 
 use std::time::Duration;
 
@@ -10,6 +9,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use renzora::scene_query::{SceneQueries, SceneQueryBatch, SceneRay};
 use renzora_physics::{CollisionShapeData, CollisionShapeType, PhysicsPlugin};
+use avian_physics::AvianPhysicsPlugin;
 
 /// The app shape `avian2d_collision.rs` uses: manual fixed time so the physics
 /// schedule (and with it the collider trees) runs on `app.update()`.
@@ -22,7 +22,7 @@ fn physics_app() -> App {
         TransformPlugin,
     ));
     app.init_asset::<Mesh>();
-    app.add_plugins(PhysicsPlugin);
+    app.add_plugins((PhysicsPlugin, AvianPhysicsPlugin));
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(1.0 / 60.0)));
     app.finish();
     app.cleanup();
@@ -53,7 +53,6 @@ fn down(from: Vec3, radius: f32, planar: bool) -> SceneRay {
     SceneRay { origin: from, direction: Vec3::NEG_Y, max_distance: 10.0, radius, planar }
 }
 
-#[cfg(feature = "avian3d")]
 #[test]
 fn a_ray_and_a_sphere_stop_on_a_box_and_a_sensor_is_not_solid() {
     let mut app = physics_app();
@@ -77,7 +76,6 @@ fn a_ray_and_a_sphere_stop_on_a_box_and_a_sensor_is_not_solid() {
     assert!(batch.hits[2].is_none(), "nothing out there");
 }
 
-#[cfg(feature = "avian2d")]
 #[test]
 fn a_planar_ray_asks_the_2d_world() {
     let mut app = physics_app();

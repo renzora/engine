@@ -30,21 +30,13 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false, o
 # AnimationPlayer — so a parkour crossfade and a `crossfade_animation()` call
 # from a script go through one path and can't fight each other.
 renzora_animation = { path = "../renzora_animation", default-features = false }
-# For `shape_cast_slide`, the collide-and-slide primitive the `move_controller`
-# script action already uses. Parkour is a 3D-only feature, so it asks for the
-# 3D backend explicitly rather than inheriting whichever one the game picked —
-# a 2D export drops the whole `parkour` feature instead.
-renzora_physics = { path = "../renzora_physics", default-features = false, features = ["avian3d"] }
-
-[dependencies.avian3d]
-workspace = true
-default-features = false
-features = ["3d","default-collider", "parry-f32"]
-
-# Tests only: system/param names in ECS validation errors, so a failing
-# headless test says WHICH resource is missing.
-[dev-dependencies]
-bevy = { workspace = true, features = ["debug"] }
+# For `collide_and_slide`, the primitive the `move_controller` script action
+# also uses. Every cast goes through `renzora::physics`, so no physics engine is
+# named here: whichever physics plugin is installed answers them.
+#
+# The traversal tests need a real 3D world, so they live with a physics engine,
+# beside the avian_physics plugin, rather than here.
+renzora_physics = { path = "../renzora_physics", default-features = false }
 
 [lints]
 workspace = true

@@ -1,5 +1,85 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-24 10:37
+- fix(animation): a face rig's blink closes the eyes fully, measured from each head's own eye opening
+
+## 2026-10-24 10:24
+- fix(animation): a model whose bone names collide with another rigged model in the scene keeps playing its clips, on the stage and in the scene
+
+## 2026-10-24 10:03
+- fix(animation): a model's clips play again straight after rigging it, removing its rig or reloading its file, without restarting the editor
+
+## 2026-10-24 09:53
+- feat(animation): the Face Rig panel shows a head's meshes as one row per kind, with the names on hover, instead of a line per mesh
+
+## 2026-10-24 09:49
+- fix(animation): rig points can be placed on any model on the stage, not only on ones that happen to sit clear of the editor's hidden preview objects
+
+## 2026-10-24 09:36
+- fix(animation): a face rig's jaw opens the mouth instead of stretching the inside of the lips
+
+## 2026-10-24 09:19
+- fix(animation): a face rig splits the jaw's skin where the lips meet, wherever on the lips their points were placed
+
+## 2026-10-24 09:02
+- fix(editor): spin sliders (the Face panel expressions, the Pose tab's Turn X/Y/Z, the Material panel's Cutoff) now change the value they show
+- fix(animation): posing a model on the stage reaches the real bones again after rigging it
+
+## 2026-10-24 08:18
+- fix(build): the plugin SDK now lists the crates inside the shared images, so an installed plugin can use a Bevy-based crate
+- fix(build): `cargo renzora` says when it is staging the plugin SDK instead of sitting silent after the build
+
+## 2026-10-24 08:09
+- feat(export): an Avian physics engine toggle, off by default for a project that simulates with another physics plugin
+
+## 2026-10-24 05:29
+- feat(plugins): bundled plugins, ordinary plugins in the checkout's `plugins/` folder that `cargo renzora` compiles into the binary and that delete with their folder
+- refactor(physics): avian is now the bundled `avian_physics` plugin rather than an engine crate
+- feat(plugins): an installed plugin can depend on a Bevy-based crate such as a physics engine, built against the engine's own Bevy
+- feat(build): `cargo renzora remove` also removes a bundled plugin
+- feat(physics): the Console warns when no physics engine is installed
+
+## 2026-10-23 12:38
+- feat(materials): a Premultiplied alpha mode for glass, which keeps its reflections at full strength however clear it is
+- feat(materials): the Material panel sets a material's alpha mode, mask cutoff and Double Sided
+- fix(materials): the material preview shows a procedural material's alpha mode and Double Sided
+- fix(editor): undoing the delete of a model no longer leaves the loading overlay stuck on Processing models
+- feat(animation): the stage's model picker lists the scene's models and the project's model files, adding a file to the scene when it is picked
+- feat(editor): the skeleton gizmo in the viewport draws bones as lines and rings coloured by side, the same as the Animation workspace's stage
+- fix(editor): a rigged model's bones no longer fill the Hierarchy; anything attached to a bone still shows under the model
+
+## 2026-10-23 11:38
+- feat(physics): joints (fixed, ball, hinge, slider and distance) through the physics API, on any physics engine
+- feat(physics): collision layers on colliders, with Layers and Collides With checkboxes in the inspector
+- feat(physics): a collider can be turned relative to its entity, with a Rotation row in the inspector
+- feat(physics): continuous collision detection for fast bodies, as a toggle on the Physics Body
+- feat(physics): collision start and end events carry the contact point, normal and impulse
+- feat(scripting): `apply_torque`, `apply_angular_impulse` and `set_angular_velocity`
+- feat(physics): overlap queries, and ray and shape casts usable from any exclusive system
+- feat(physics): ragdolls, parkour and navmesh obstacles run on whichever physics engine the project picks
+- feat(physics): the log says which physics engine runs the 3D and 2D worlds once a project loads
+- fix(physics): ragdoll and other joints hold together; avian was built without its joint solver
+- fix(physics): removing a body or collider component at runtime takes it out of the simulation
+- fix(physics): a collider offset on a 3D body is kept instead of being reset by avian
+- refactor(plugins): the `renzora::avian3d` and `renzora::avian2d` re-exports are gone; plugins use `renzora::physics`
+
+## 2026-10-23 10:25
+- feat(animation): the Animation workspace is an isolated stage with Rig, Skin, Animate and Logic modes, and tool panels either side that change with the mode
+- feat(animation): click a bone on the stage, turn or move it with the gizmo, and press K to key it into the clip
+- feat(animation): pose tools: reset to rest, mirror and flip poses, copy and paste poses, two-bone IK for arms and legs, and a pose library saved in the project
+- feat(animation): generate a Mixamo-compatible skeleton for a model that has none from seven points clicked on the stage, keeping the original file
+- feat(animation): Skin mode: auto weights, a weight brush with heat-map view and mirroring, test bends and range of motion, saved into the model file
+- feat(animation): build a face rig on a head from four points, pose it with expression sliders, and generate lip sync from a recording and blinks
+- fix(animation): a bone track with a single key holds that pose instead of doing nothing
+- fix(animation): a second copy of a rigged model plays its clips on every bone
+
+## 2026-10-23 05:12
+- feat(physics): Project Settings > Physics picks the physics engine for the 3D and 2D worlds, and switches the open scene straight away
+
+## 2026-10-23 04:45
+- feat(physics): a plugin can register its own physics engine as a backend, with avian as the bundled one
+- fix(physics): `apply_force` from a script now pushes the body instead of doing nothing
+
 ## 2026-10-23 03:34
 - feat(editor): floating panel windows on Windows have the native title bar and join Windows Snap like the main window
 - feat(particles): a plasma storm effect in the effect library generator

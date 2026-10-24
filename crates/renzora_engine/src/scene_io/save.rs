@@ -16,6 +16,7 @@ use renzora_bsn::DynamicSceneBuilder;
 use std::path::Path;
 
 use super::deny::{DenyOptionalSubsystems, DenyUiCameraTargets};
+use super::physics_filter::PhysicsFilter;
 
 /// Whether any ancestor of `e` carries [`HideInHierarchy`]. The bevy_ui editor
 /// chrome lives under such a root (renzora_shell tags its `ShellRoot`; gizmos and
@@ -166,6 +167,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         return Ok(());
     }
 
+    let physics = PhysicsFilter::new(world);
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -187,10 +189,6 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_animation_state()
         // Networking: replication bookkeeping is runtime-only.
         .deny_network_components()
-        // Avian runtime components are regenerated on load from our
-        // serializable PhysicsBodyData + CollisionShapeData. Persisting them
-        // causes duplicate-reflect-type errors during deserialization.
-        .deny_physics_components()
         .extract_entities(entities.into_iter())
         // Plugin-owned globals. Opt-in per call site, because `deny_all_resources`
         // above cannot express this — it filters by `TypeId`, which a
@@ -203,6 +201,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     {
         let registry = type_registry.read();
         for entity in &mut scene.entities {
+            let id = entity.entity;
             entity.components.retain(|component| {
                 // Filter editor-only types by name (not available as deps in runtime)
                 let type_name = component.reflect_type_path();
@@ -212,10 +211,9 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
                 if type_name.starts_with("bevy_mod_outline::") {
                     return false;
                 }
-                // Never serialize avian runtime components — they're regenerated
-                // on load from PhysicsBodyData + CollisionShapeData. Persisting
-                // them causes duplicate-reflect-type errors on deserialize.
-                if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+                // A physics backend's own components, and generated physics
+                // data: see `physics_filter`.
+                if !physics.keep(id, type_name) {
                     return false;
                 }
                 // Gaussian-splat runtime components (CloudSettings, selection
@@ -330,6 +328,7 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         return Ok("(entities: {}, resources: {})".to_string());
     }
 
+    let physics = PhysicsFilter::new(world);
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -350,10 +349,6 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         // Animation runtime state — ephemeral, must rebuild on load.
         .deny_animation_state()
         .deny_network_components()
-        // Avian runtime components are regenerated on load from our
-        // serializable PhysicsBodyData + CollisionShapeData. Persisting them
-        // causes duplicate-reflect-type errors during deserialization.
-        .deny_physics_components()
         .extract_entities(entities.into_iter())
         // Plugin-owned globals. Opt-in per call site, because `deny_all_resources`
         // above cannot express this — it filters by `TypeId`, which a
@@ -366,16 +361,14 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
     {
         let registry = type_registry.read();
         for entity in &mut scene.entities {
+            let id = entity.entity;
             entity.components.retain(|component| {
                 let type_name = component.reflect_type_path();
                 if type_name.starts_with("bevy_mod_outline::") {
                     return false;
                 }
-                // Avian runtime components (e.g. ColliderMarker) are
-                // regenerated on load from PhysicsBodyData + CollisionShapeData.
-                // Persisting them causes duplicate-reflect-type errors on
-                // deserialize — same filter as `save_scene`.
-                if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+                // Same physics filter as `save_scene`.
+                if !physics.keep(id, type_name) {
                     return false;
                 }
                 // Gaussian-splat runtime components (CloudSettings, selection

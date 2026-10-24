@@ -172,6 +172,7 @@ impl Plugin for GizmoPlugin {
             .init_resource::<GizmoState>()
             .init_resource::<BoxSelectionState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
+            .init_resource::<skeleton_gizmo::DrawnBones>()
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora::core::ModalTransformHud>()
             // `Last`, so a borrower reading `drag_started` / `drag_ended` in

@@ -48,10 +48,13 @@ members = [
 # avian_derive) went with it — they were members only so avian's path deps
 # resolved to them, and a path copy sitting alongside the registry copy the
 # published avian pulls would be two distinct types sharing a name.
-# There is no `exclude` for plugins any more, because there is no `plugins/`.
-# This repository builds the engine; plugins are distributed through the
-# marketplace and built where they are installed. What stays here is the
-# in-workspace plugin crates, which are rlibs linked straight into the binaries.
+# `plugins/` holds the BUNDLED plugins: ordinary Renzora plugins the engine ships
+# compiled into its binary (avian, so a fresh build has physics). They are not
+# listed here: a path dependency inside the workspace directory is a member
+# automatically, so `renzora_runtime`'s dependency on one is what makes it a
+# member, and deleting its folder leaves no glob behind that matches nothing.
+# Installed plugins are distributed through the marketplace and built where they
+# are installed, never here.
 # (The old egui-based `disabled/renzora_vr_editor` was deleted — the VR editor
 # is being rebuilt from scratch on the ember/bevy_ui shell. Park any future
 # not-yet-compiling crates under `disabled/`, outside the `crates/*` glob.)
@@ -300,9 +303,11 @@ bevy_light = { version = "0.20", default-features = false }
 bevy_picking = { version = "0.20", default-features = false }
 # Avian has no Bevy 0.20 release yet. This is the branch of its open 0.20 pull
 # request (avianphysics/avian#1070), pinned so a push to it cannot change the
-# build. Every crate takes avian from here so the graph holds one copy: two
-# would be two distinct `RigidBody` types sharing a name. Move back to a
-# crates.io version once one supports 0.20.
+# build. The engine itself no longer links avian (it is the `avian_physics`
+# native plugin); only the vendored `bevy_silk`'s optional collision feature
+# names it. Keeping the pin here also keeps avian's versions in Cargo.lock, which
+# the SDK ships so a plugin depending on avian resolves the same graph. Move back
+# to a crates.io version once one supports 0.20, here and in the plugin.
 avian3d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
 avian2d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
 log = "0.4"

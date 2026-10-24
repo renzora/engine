@@ -32,7 +32,11 @@ fn parkour_app() -> App {
         TransformPlugin,
     ));
     app.init_asset::<Mesh>();
-    app.add_plugins((PhysicsPlugin, ParkourPlugin));
+    app.add_plugins((
+        PhysicsPlugin,
+        avian_physics::AvianPhysicsPlugin,
+        ParkourPlugin,
+    ));
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
         1.0 / 60.0,
     )));

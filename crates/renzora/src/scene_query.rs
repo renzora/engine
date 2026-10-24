@@ -3,15 +3,15 @@
 //!
 //! The particle system wants its sparks to bounce off the real level, not just
 //! off planes and boxes typed into a graph. The level's shape lives in the
-//! physics engine's collider tree, and linking Avian into the particle crate
-//! would drag a physics engine into every build that draws a spark, give a 2D
+//! physics engine's collider tree, and linking a physics engine into the
+//! particle crate would drag one into every build that draws a spark, give a 2D
 //! game a 3D solver it never asked for, and couple two crates that otherwise
 //! know nothing of each other. So the question ("where does this segment first
 //! hit something solid?") is asked through this contract, and whichever crate
 //! owns the colliders answers it: `renzora_physics` installs a
-//! [`SceneQueries`] resource backed by Avian's spatial query when it is in the
-//! build. A build without physics has no resource, and a consumer treats that
-//! as an empty scene.
+//! [`SceneQueries`] resource that asks the selected physics backend when it is
+//! in the build. A build without physics has no resource, and a consumer treats
+//! that as an empty scene.
 //!
 //! ## Batched, and asked with the world in hand
 //!

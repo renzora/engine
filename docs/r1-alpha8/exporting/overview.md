@@ -373,9 +373,17 @@ as "not used":
   a freshly created project doesn't export as an empty shell.
 - **A project with no renderer in evidence** (a pure-UI menu, say) keeps *both*
   pipelines. A game a few MB larger beats a game that can't draw.
-- **Which physics backend** — avian2d and avian3d share their components and
+- **Which physics world**: the 2D and 3D worlds share their components and
   their script API, so the scene genuinely doesn't record the answer. Physics
   follows the pipeline, which is what the engine does at runtime anyway.
+
+**Which physics engine** is not a scene question, so the scan reads it from
+Project Settings > Physics instead. The bundled Avian engine is its own toggle,
+**Avian physics engine**, ticked while any world with physics simulates with
+Avian (the default). A project that picked another engine for every world
+(Rapier, say) exports without Avian, and that engine's plugin ships with the game
+like any installed plugin; tick it in the Plugins list. Turning both physics
+toggles off turns Avian off with them.
 
 Everything is still a toggle. If the scan gets a call wrong for your project —
 you spawn a terrain from a script that names nothing, say — untick or tick it and
