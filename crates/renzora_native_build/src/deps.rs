@@ -54,18 +54,6 @@
 //! are different types to the compiler, so it fails at compile time with a type
 //! mismatch. Loud, not silent — the opposite of the `TypeId` corruption above.
 //!
-//! # Dependencies that are built on Bevy
-//!
-//! Stripping Bevy from the manifest is not enough when a dependency is itself a
-//! Bevy crate (avian, an ecosystem crate): cargo would resolve Bevy for it
-//! regardless. With an SDK that carries `shared.tsv` (see [`Share`]), such a
-//! graph is built anyway, under a `RUSTC_WRAPPER` (`shim.rs`) that takes every
-//! crate the engine's shared images already contain from the SDK instead of
-//! compiling it. The dependency then compiles against the engine's own Bevy and
-//! `glam`, and its code reaches them through the shared images exactly as the
-//! plugin's own code does. Only crates the table names are allowed through; a
-//! Bevy crate at another version is still refused.
-//!
 //! # Opt-in by construction
 //!
 //! A plugin that declares nothing beyond `bevy`/`renzora` never reaches cargo at
@@ -77,7 +65,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::{json, shim};
+use crate::json;
 
 /// The extra crates a plugin's own `rustc` invocation should be given.
 #[derive(Debug, Default)]
@@ -88,29 +76,8 @@ pub struct Deps {
     /// Everything transitive is found through [`Deps::search`] instead, the same
     /// way the SDK's own metadata files are.
     pub externs: Vec<(String, PathBuf)>,
-    /// The `-L dependency=` paths holding everything cargo produced. Two when
-    /// the build had an explicit `--target`: cargo then keeps what it built for
-    /// the compiler (proc macros) apart from what it built for the plugin, and
-    /// the plugin's compile reads both.
-    pub search: Vec<PathBuf>,
-}
-
-/// What the SDK offers a dependency build beyond its `-L` paths: the crates its
-/// shared images contain, and the lockfile they were resolved with.
-pub struct Share<'a> {
-    /// `shared.tsv`. See `shim.rs` for the format.
-    pub table: &'a Path,
-    /// The engine's `Cargo.lock`, so a dependency resolves the versions the
-    /// shared images were built from rather than whatever is newest today. A
-    /// newer patch release of a shared crate would not be in the table, and the
-    /// dependency would compile its own copy of it.
-    pub lockfile: Option<&'a Path>,
-    /// The SDK's `-L dependency=` directories.
-    pub search: &'a [PathBuf],
-    /// The SDK's `-L native=` directories, for linking the wrapper itself.
-    pub native: &'a [PathBuf],
-    /// The target triple, passed to cargo as `--target`.
-    pub triple: &'a str,
+    /// The `-L dependency=` path holding every rlib cargo produced.
+    pub search: Option<PathBuf>,
 }
 
 /// Crates the SDK already provides, which are stripped from the synthesized
@@ -170,16 +137,6 @@ pub fn has_third_party(plugin_dir: &Path) -> bool {
 /// by a `rustc` of exactly that version, and metadata from any other is refused.
 /// See [`Pinned`] and the module docs.
 pub fn build(plugin_dir: &Path, build_dir: &Path, toolchain: &str) -> Result<Deps, String> {
-    build_with(plugin_dir, build_dir, toolchain, None)
-}
-
-/// [`build`], with the SDK's [`Share`] when it has one.
-pub fn build_with(
-    plugin_dir: &Path,
-    build_dir: &Path,
-    toolchain: &str,
-    share: Option<&Share>,
-) -> Result<Deps, String> {
     let manifest = plugin_dir.join("Cargo.toml");
     let Ok(text) = std::fs::read_to_string(&manifest) else {
         return Ok(Deps::default());
@@ -199,31 +156,8 @@ pub fn build_with(
     pinned.invalidate_stale_cache(&dir);
     write_manifest(&dir, &wanted)?;
 
-    // An SDK without a table (one staged before it existed) shares nothing, and
-    // the build is exactly what it was before: Bevy anywhere in the graph is
-    // refused.
-    let table = share
-        .and_then(|s| {
-            let root = s.table.parent()?;
-            Some(shim::parse_table(&std::fs::read_to_string(s.table).ok()?, root))
-        })
-        .unwrap_or_default();
-    let share = share.filter(|_| !table.is_empty());
-    if let Some(lock) = share.and_then(|s| s.lockfile) {
-        // Copied on every build, not only the first: `deps/` is deleted after a
-        // successful one, and a lockfile left from a failed one may predate the
-        // engine the SDK now describes.
-        if lock.is_file() {
-            std::fs::copy(lock, dir.join("Cargo.lock")).map_err(|e| e.to_string())?;
-        }
-    }
-
-    reject_engine_crates(&dir, &pinned, &table, share.map(|s| s.triple))?;
-    let wrap = match share {
-        Some(s) => Some(Wrapper::prepare(&dir, &pinned, s)?),
-        None => None,
-    };
-    let artifacts = compile(&dir, &pinned, share, wrap.as_ref())?;
+    reject_engine_crates(&dir, &pinned)?;
+    let artifacts = compile(&dir, &pinned)?;
 
     // Match cargo's artifacts back to the DIRECT dependency names. Cargo reports
     // a crate name, which is the dependency name with hyphens turned into
@@ -231,85 +165,12 @@ pub fn build_with(
     // normalised before comparing.
     let direct: Vec<String> = wanted.iter().map(|(n, _)| n.replace('-', "_")).collect();
     let mut externs = Vec::new();
-    for (name, lib) in artifacts {
-        if !direct.contains(&name) {
-            continue;
-        }
-        // A direct dependency the SDK supplied was never written; its recorded
-        // copy is the one to hand the plugin.
-        let lib = match (lib, wrap.as_ref()) {
-            (Some(lib), _) => Some(lib),
-            (None, Some(w)) => shim::read_record(&w.map, &shim::crate_key(&name)),
-            (None, None) => None,
-        };
-        if let Some(lib) = lib {
-            externs.push((name, lib));
+    for (name, rlib) in artifacts {
+        if direct.contains(&name) {
+            externs.push((name, rlib));
         }
     }
-    let target = dir.join("target");
-    let search = match share {
-        Some(s) => vec![target.join(s.triple).join("release").join("deps"), target.join("release").join("deps")],
-        None => vec![target.join("release").join("deps")],
-    };
-    Ok(Deps { externs, search })
-}
-
-/// The compiled `shim.rs` and the directory it records substitutions in.
-struct Wrapper {
-    exe: PathBuf,
-    map: PathBuf,
-}
-
-impl Wrapper {
-    /// Compile the wrapper into `dir/shim/`, with the pinned compiler.
-    ///
-    /// From source on the machine that runs it, like everything else here, which
-    /// keeps the SDK free of executables and this crate free of dependencies.
-    /// It is one file of `std` and takes about a second.
-    fn prepare(dir: &Path, pinned: &Pinned, share: &Share) -> Result<Self, String> {
-        let shim_dir = dir.join("shim");
-        let map = dir.join("shim-map");
-        // A record from an earlier build names a unit hash cargo may reuse for a
-        // different SDK; starting empty means every record was written by this one.
-        let _ = std::fs::remove_dir_all(&map);
-        std::fs::create_dir_all(&shim_dir).map_err(|e| e.to_string())?;
-        std::fs::create_dir_all(&map).map_err(|e| e.to_string())?;
-        std::fs::write(shim_dir.join("shim.rs"), include_str!("shim.rs")).map_err(|e| e.to_string())?;
-        std::fs::write(
-            shim_dir.join("main.rs"),
-            "#[path = \"shim.rs\"]\nmod shim;\n\nfn main() {\n    shim::run()\n}\n",
-        )
-        .map_err(|e| e.to_string())?;
-        let exe = shim_dir.join(if cfg!(windows) { "renzora_rustc_shim.exe" } else { "renzora_rustc_shim" });
-
-        let rustc = pinned.rustc.clone().unwrap_or_else(|| crate::tool("rustc"));
-        let mut cmd = Command::new(rustc);
-        crate::hide_console(&mut cmd);
-        cmd.args(["--edition", "2021", "-O", "-A", "warnings", "--crate-type", "bin"])
-            .args(["--crate-name", "renzora_rustc_shim"])
-            .arg(shim_dir.join("main.rs"))
-            .arg("-o")
-            .arg(&exe);
-        // The same link setup as a plugin on this target (see `rustc::args`), so
-        // the wrapper needs nothing the SDK does not already carry. Without the
-        // SDK's import libraries the toolchain's default linker is left to find
-        // its own.
-        if share.triple.contains("windows-msvc") && !share.native.is_empty() {
-            cmd.args(["-C", "linker=rust-lld", "-C", "target-feature=+crt-static"]);
-        }
-        for n in share.native {
-            cmd.arg("-L").arg(format!("native={}", n.display()));
-        }
-        let out = cmd.stderr(Stdio::piped()).output().map_err(|e| format!("could not run rustc: {e}"))?;
-        if !out.status.success() {
-            return Err(format!(
-                "compiling the dependency build's compiler wrapper failed ({})\n{}",
-                out.status,
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        Ok(Self { exe, map })
-    }
+    Ok(Deps { externs, search: Some(dir.join("target").join("release").join("deps")) })
 }
 
 /// A cargo pinned to one Rust toolchain, and the `rustc` it must drive.
@@ -652,31 +513,14 @@ fn write_manifest(dir: &Path, deps: &[(String, String)]) -> Result<(), String> {
 /// `cargo metadata` resolves the graph without compiling any of it — measured at
 /// ~12 s against a Bevy-pulling manifest — so the refusal costs seconds rather
 /// than the half-hour a Bevy build would have taken before failing.
-///
-/// With a shared table the question becomes the real one: would this be a
-/// SECOND copy of a crate the engine has? A Bevy crate the SDK shares at the
-/// same version is the engine's own copy (the wrapper substitutes it). One the
-/// engine does not have at all (`bevy_heavy`, an ecosystem crate) is compiled
-/// against the engine's Bevy and is nobody's duplicate, and neither is one that
-/// only runs inside the compiler (`bevy_macro_utils`). What is refused is a
-/// crate the engine shares at a different version: a plugin asking for Bevy
-/// 0.19 under a 0.20 engine. `renzora_*` stays strict, because those come
-/// through the SDK's `--extern`s and nowhere else.
-fn reject_engine_crates(
-    dir: &Path,
-    pinned: &Pinned,
-    table: &[shim::SharedCrate],
-    triple: Option<&str>,
-) -> Result<(), String> {
-    let mut cmd = pinned.command();
-    cmd.current_dir(dir).args(["metadata", "--format-version", "1", "--quiet"]);
-    // Only this platform's graph. Unfiltered, the resolve includes every
-    // target's dependencies (`bevy_android` on Windows), which the build never
-    // compiles and which would be judged as if it did.
-    if let Some(triple) = triple {
-        cmd.args(["--filter-platform", triple]);
-    }
-    let out = cmd.stderr(Stdio::piped()).output().map_err(|e| format!("could not run cargo: {e}"))?;
+fn reject_engine_crates(dir: &Path, pinned: &Pinned) -> Result<(), String> {
+    let out = pinned
+        .command()
+        .current_dir(dir)
+        .args(["metadata", "--format-version", "1", "--quiet"])
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("could not run cargo: {e}"))?;
     if !out.status.success() {
         return Err(format!(
             "`cargo metadata` failed ({})\n{}",
@@ -686,24 +530,9 @@ fn reject_engine_crates(
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut found: Vec<String> = Vec::new();
-    for (name, version) in json::all_strings(&text, "id").iter().filter_map(|id| package_of(id)) {
-        if !is_engine_crate(&name) {
-            continue;
-        }
-        if table.iter().any(|c| c.package == name && c.version == version) {
-            continue;
-        }
-        let shared = table.iter().find(|c| c.package == name).map(|c| c.version.as_str());
-        let contract = name == "renzora" || name.starts_with("renzora_");
-        if !table.is_empty() && shared.is_none() && !contract {
-            continue;
-        }
-        let entry = match shared {
-            Some(engine) => format!("{name} {version} (the engine shares {engine})"),
-            None => format!("{name} {version}"),
-        };
-        if !found.contains(&entry) {
-            found.push(entry);
+    for name in json::all_strings(&text, "name") {
+        if is_engine_crate(&name) && !found.contains(&name) {
+            found.push(name);
         }
     }
     if !found.is_empty() {
@@ -714,36 +543,12 @@ fn reject_engine_crates(
              SDK as shared images. A second compilation of them would have \
              different `TypeId`s, so the plugin would build, load, and then read \
              the engine's `World` through the wrong layouts.\n\
-             A dependency built on Bevy is fine when it asks for the versions the \
-             engine itself was built with, because those are taken from the SDK. \
-             Fix it by picking a version of the dependency made for this engine's \
-             Bevy, by dropping it, or by reaching the same types through `bevy::` \
-             and `renzora::`.",
+             Fix it by dropping that dependency, or by reaching the same types \
+             through `bevy::` and `renzora::`, which the SDK provides.",
             found.join(", ")
         ));
     }
     Ok(())
-}
-
-/// `(name, version)` from a cargo package id.
-///
-/// Cargo writes two forms. The current one is a URL with a fragment:
-/// `registry+https://…/crates.io-index#glam@0.33.12`, or `#0.1.0` alone when the
-/// name is the URL's last path segment (a path or git package in a directory of
-/// its own name). The older one is `glam 0.33.12 (registry+https://…)`.
-pub fn package_of(id: &str) -> Option<(String, String)> {
-    if let Some((url, fragment)) = id.split_once('#') {
-        if let Some((name, version)) = fragment.split_once('@') {
-            return Some((name.to_string(), version.to_string()));
-        }
-        let path = url.split('?').next().unwrap_or(url).trim_end_matches('/');
-        let name = path.rsplit('/').next()?.trim_end_matches(".git");
-        return Some((name.to_string(), fragment.to_string()));
-    }
-    let mut parts = id.split_whitespace();
-    let name = parts.next()?;
-    let version = parts.next()?;
-    parts.next()?.starts_with('(').then(|| (name.to_string(), version.to_string()))
 }
 
 /// Build the deps crate and return `(crate name, rlib)` for everything produced.
@@ -758,18 +563,7 @@ pub fn package_of(id: &str) -> Option<(String, String)> {
 /// reason: `target/release/deps/` accumulates several `-C metadata` variants of
 /// one crate, and picking by name produces a set that looks right and then fails
 /// to compile.
-///
-/// With a [`Share`], cargo runs under the wrapper and with an explicit
-/// `--target`. The flag is what lets the wrapper substitute safely: cargo then
-/// builds the units it needs for the compiler itself (proc macros, build
-/// scripts, and their dependencies) without it, and those have to be real
-/// compiled code, never the SDK's metadata.
-fn compile(
-    dir: &Path,
-    pinned: &Pinned,
-    share: Option<&Share>,
-    wrap: Option<&Wrapper>,
-) -> Result<Vec<(String, Option<PathBuf>)>, String> {
+fn compile(dir: &Path, pinned: &Pinned) -> Result<Vec<(String, PathBuf)>, String> {
     // `stderr` is PIPED, not inherited: an inherited stderr is what forces a
     // console to exist for the child, which is the window `hide_console` is
     // suppressing. Cargo's progress lines go into the pipe and are dropped; its
@@ -788,28 +582,15 @@ fn compile(
     // rlibs sit somewhere else, and rustc resolves one dependency from each. The
     // message names a crate the plugin never mentioned and says nothing about a
     // target directory.
-    let mut cmd = pinned.command();
-    cmd.current_dir(dir)
+    let out = pinned
+        .command()
+        .current_dir(dir)
         .args(["build", "--release", "--message-format=json-render-diagnostics"])
         .arg("--target-dir")
-        .arg(dir.join("target"));
-    if let (Some(share), Some(wrap)) = (share, wrap) {
-        cmd.args(["--target", share.triple])
-            // Cargo sets these for every unit it compiles. Inherited from
-            // whatever started the editor (`cargo renzora` sets them), they would
-            // also reach the wrapper for cargo's own compiler queries, and name
-            // a package that is not being built.
-            .env_remove("CARGO_PKG_NAME")
-            .env_remove("CARGO_PKG_VERSION")
-            .env("RUSTC_WRAPPER", &wrap.exe)
-            .env(shim::ENV_TABLE, share.table)
-            .env(shim::ENV_MAP, &wrap.map)
-            .env(
-                shim::ENV_SEARCH,
-                std::env::join_paths(share.search).map_err(|e| format!("SDK path: {e}"))?,
-            );
-    }
-    let out = cmd.stderr(Stdio::piped()).output().map_err(|e| format!("could not run cargo: {e}"))?;
+        .arg(dir.join("target"))
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("could not run cargo: {e}"))?;
     if !out.status.success() {
         // Carry cargo's own diagnostics: stderr is piped now (see above), so
         // this is the only place they can reach the author.
@@ -831,13 +612,8 @@ fn compile(
         let Some(name) = json::string(line, "name") else {
             continue;
         };
-        let files = json::string_array(line, "filenames");
-        if let Some(rlib) = files.iter().find(|f| f.ends_with(".rlib")) {
-            found.push((name, Some(PathBuf::from(rlib))));
-        } else if files.is_empty() {
-            // A unit the wrapper took from the SDK: cargo lists only the files
-            // that exist, and it wrote none.
-            found.push((name, None));
+        if let Some(rlib) = json::string_array(line, "filenames").into_iter().find(|f| f.ends_with(".rlib")) {
+            found.push((name, PathBuf::from(rlib)));
         }
     }
     Ok(found)

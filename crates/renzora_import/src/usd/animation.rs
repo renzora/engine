@@ -24,6 +24,7 @@ pub fn to_anim_clip(anim: &UsdAnimation) -> AnimClip {
             rotations: jt.rotations.clone(),
             scales: jt.scales.clone(),
             muted: false,
+            curves: Default::default(),
         });
     }
 
@@ -31,7 +32,6 @@ pub fn to_anim_clip(anim: &UsdAnimation) -> AnimClip {
         name: anim.name.clone(),
         duration: anim.duration,
         tracks,
-        property_tracks: Vec::new(),
-        markers: Vec::new(),
+        ..Default::default()
     }
 }

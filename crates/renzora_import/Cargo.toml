@@ -87,3 +87,8 @@ meshopt = "0.3"
 
 [lints]
 workspace = true
+
+# Tests read back the `.anim` and `.skel` files extraction writes. The same
+# version `renzora` already compiles, so it adds nothing to the build.
+[dev-dependencies]
+ron = "0.8"

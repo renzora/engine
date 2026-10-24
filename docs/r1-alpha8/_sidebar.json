@@ -32,6 +32,7 @@
             { "slug": "editor/terrain", "title": "Terrain" },
             { "slug": "editor/tilemap", "title": "Tilemaps" },
             { "slug": "editor/animation", "title": "Animation" },
+            { "slug": "editor/animator", "title": "Animator: Blending, Layers & Root Motion" },
             { "slug": "editor/rigging", "title": "Rigging & Posing" },
             { "slug": "editor/facial-animation", "title": "Facial Animation" },
             { "slug": "editor/sprite-animation", "title": "Sprite Animation" },
@@ -51,6 +52,7 @@
             { "slug": "scripting/physics", "title": "Physics" },
             { "slug": "scripting/parkour", "title": "Parkour & Traversal" },
             { "slug": "scripting/ragdoll", "title": "Ragdoll Physics" },
+            { "slug": "scripting/ik-constraints", "title": "IK, Constraints & Spring Bones" },
             { "slug": "scripting/particles", "title": "Particle Effects" },
             { "slug": "scripting/game-ui", "title": "Game UI" }
           ]

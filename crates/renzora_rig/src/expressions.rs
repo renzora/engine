@@ -1,4 +1,10 @@
-//! Facial expressions as bone offsets: what each Face panel slider does.
+//! Facial expressions as bone offsets: the face rig's built-in sliders.
+//!
+//! In the editor these are the face preset of the Controls tab
+//! ([`crate::controls::face_preset`] writes them out as ordinary, editable
+//! controls); generated blinks and lip sync still key from this table
+//! directly, since they need to know which slider is the jaw and which the
+//! lids whatever the user has renamed.
 //!
 //! Each expression moves some face bones away from their rest pose, by an
 //! amount proportional to the slider: a rotation (degrees about the bone's own
@@ -140,11 +146,21 @@ pub fn mix(values: &[(&str, f32)], face_scale: f32) -> Vec<(&'static str, Quat, 
     mix_tuned(values, face_scale, &|_| None)
 }
 
-/// [`mix`] for a particular head: `blink` gives, for a lid bone, the degrees
-/// that head's lid turns to close, measured when it was rigged
-/// (`face::EyeOpening`). A blink then closes exactly that far; a lid with no
-/// measurement keeps the stock angle.
-pub fn mix_tuned(values: &[(&str, f32)], face_scale: f32, blink: &dyn Fn(&str) -> Option<f32>) -> Vec<(&'static str, Quat, Vec3)> {
+/// How one head's lid closes, measured when it was rigged
+/// (`face::EyeOpening`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LidTuning {
+    /// Degrees the lid turns to close.
+    pub degrees: f32,
+    /// How far forward it moves as it closes, in face-scale units, to clear
+    /// an eyeball that bulges past the lids.
+    pub push: f32,
+}
+
+/// [`mix`] for a particular head: `blink` gives a lid bone's [`LidTuning`].
+/// A blink then closes exactly that far; a lid with no measurement keeps the
+/// stock angle.
+pub fn mix_tuned(values: &[(&str, f32)], face_scale: f32, blink: &dyn Fn(&str) -> Option<LidTuning>) -> Vec<(&'static str, Quat, Vec3)> {
     let mut out: Vec<(&'static str, Quat, Vec3)> = Vec::new();
     for (id, value) in values {
         let Some(e) = find(id) else { continue };
@@ -156,17 +172,20 @@ pub fn mix_tuned(values: &[(&str, f32)], face_scale: f32, blink: &dyn Fn(&str) -
         for o in e.offsets {
             // The stock angle's sign says which way the lid goes (down for
             // an upper lid, up for a lower one); the head says how far.
-            let x = match (blinking, blink(o.bone)) {
-                (true, Some(deg)) => deg.abs() * o.rotate[0].signum(),
-                _ => o.rotate[0],
+            let tuning = blink(o.bone).filter(|_| blinking);
+            let x = match tuning {
+                Some(t) => t.degrees.abs() * o.rotate[0].signum(),
+                None => o.rotate[0],
             };
+            // Forward is +Z in the face rig's frame.
+            let push = Vec3::Z * tuning.map_or(0.0, |t| t.push);
             let r = Quat::from_euler(
                 EulerRot::XYZ,
                 (x * v).to_radians(),
                 (o.rotate[1] * v).to_radians(),
                 (o.rotate[2] * v).to_radians(),
             );
-            let t = Vec3::from_array(o.translate) * v * face_scale;
+            let t = (Vec3::from_array(o.translate) + push) * v * face_scale;
             match out.iter_mut().find(|(b, ..)| *b == o.bone) {
                 Some((_, q, tr)) => {
                     *q = (*q * r).normalize();
@@ -257,8 +276,8 @@ mod tests {
     #[test]
     fn a_measured_blink_turns_the_lids_that_far() {
         let tuned = |b: &str| match b {
-            names::LID_UPPER_L => Some(50.0),
-            names::LID_LOWER_L => Some(12.0),
+            names::LID_UPPER_L => Some(LidTuning { degrees: 50.0, push: 0.1 }),
+            names::LID_LOWER_L => Some(LidTuning { degrees: 12.0, push: 0.0 }),
             _ => None,
         };
         let pose = mix_tuned(&[("blink_l", 1.0)], 1.0, &tuned);
@@ -268,6 +287,10 @@ mod tests {
         };
         assert!((angle(names::LID_UPPER_L) - 50.0).abs() < 1e-3);
         assert!((angle(names::LID_LOWER_L) + 12.0).abs() < 1e-3);
+        // The pushed lid comes forward as it closes, scaled by the face.
+        let half = mix_tuned(&[("blink_l", 0.5)], 2.0, &tuned);
+        let upper = half.iter().find(|(b, ..)| *b == names::LID_UPPER_L).expect("lid moves").2;
+        assert!((upper.z - 0.1).abs() < 1e-5, "{upper:?}");
         // Without a measurement, the stock angle.
         let stock = mix(&[("blink_l", 1.0)], 1.0);
         let upper = stock.iter().find(|(b, ..)| *b == names::LID_UPPER_L).expect("lid moves").1;

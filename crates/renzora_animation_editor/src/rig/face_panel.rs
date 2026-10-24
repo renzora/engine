@@ -6,15 +6,14 @@
 //!   four points to place (a mouth corner, both lips' middles, the chin).
 //!   Build Face Rig adds jaw, lip, corner, eye, eyelid and brow bones and
 //!   weights the head to them (`renzora_rig::face`), keeping the original.
-//! - [`expression_sliders`] (Animate, Face tab): the expressions
-//!   (`renzora_rig::expressions`); drag them to pose the face, then Key Face
-//!   (or K) keys the face bones at the playhead. Moving the playhead drops an
-//!   unkeyed face pose, like any other pose, and puts the sliders back to
-//!   zero. A head that arrived with blend shapes gets a slider for each.
+//! - Animating it is the Controls tab (`super::controls_panel`): the face's
+//!   expressions are a preset of ordinary controls there, the blinks tuned
+//!   from [`face_rig`]'s lid measurements. [`blend_shapes`] is that tab's
+//!   raw blend shape list, for a head that arrived with them, keyed into the
+//!   clip's blend shape tracks (`timeline::morph`).
 //! - [`performance`] (Animate, Performance tab): lip sync, keying the jaw and
 //!   lips from a voice recording's loudness, and generated blinks.
 
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
@@ -24,21 +23,12 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{button, section, spin_slider};
-use renzora_rig::expressions::{self, EXPRESSIONS};
+use renzora_rig::expressions;
 use renzora_rig::face::{self, names, MeshRole};
 
 use super::markers::{MarkerSet, Markers};
 use super::rig_panel::{marker_snapshot, markers_in_model};
-use super::{descendants, find_bone, model_file, on_click, rest_pose, set_pose, subject, tell};
-
-/// The sliders' values, by expression id.
-#[derive(Resource, Default)]
-pub(crate) struct FaceSliders {
-    values: HashMap<&'static str, f32>,
-    /// The playhead the sliders' pose was made at; moving it zeroes them, as
-    /// it drops the pose they made.
-    at: Option<u32>,
-}
+use super::{descendants, find_bone, model_file, on_click, rest_pose, subject, tell};
 
 /// How lip sync and blinks are generated: the Performance tab's settings.
 #[derive(Resource)]
@@ -62,8 +52,7 @@ impl Default for Performance {
 }
 
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<FaceSliders>().init_resource::<Performance>();
-    app.add_systems(Update, zero_sliders_on_scrub.run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+    app.init_resource::<Performance>();
 }
 
 const FACE_BONES: &[&str] = &[
@@ -71,7 +60,17 @@ const FACE_BONES: &[&str] = &[
     names::LID_UPPER_L, names::LID_UPPER_R, names::LID_LOWER_L, names::LID_LOWER_R, names::BROW_L, names::BROW_R,
 ];
 
-fn rigged(world: &World) -> bool {
+/// The points this head needs: the face's four, or five when it has no eye
+/// meshes and so needs an eye clicked too.
+fn face_set(world: &World) -> MarkerSet {
+    let Some(root) = subject(world) else { return MarkerSet::Face };
+    let has_eyes = descendants(world, root).into_iter().any(|e| {
+        world.get::<Mesh3d>(e).is_some() && world.get::<Name>(e).is_some_and(|n| face::mesh_role(n.as_str(), "") == MeshRole::Eye)
+    });
+    if has_eyes { MarkerSet::Face } else { MarkerSet::FacePaintedEyes }
+}
+
+pub(crate) fn rigged(world: &World) -> bool {
     subject(world).is_some_and(|r| find_bone(world, r, names::JAW).is_some())
 }
 
@@ -114,87 +113,70 @@ fn column(commands: &mut Commands) -> Entity {
 /// building.
 pub(crate) fn face_setup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = column(commands);
-    let done = note(commands, fonts, "This head has a face rig. Its bones are listed on the right; animate it from Animate's Face tab.");
+    let done = note(commands, fonts, "This head has a face rig. Its bones are listed on the right; animate it from Animate's Controls tab, starting from its face preset.");
     bind_display(commands, done, |w| rigged(w.untracked()));
     let setup = column(commands);
     bind_display(commands, setup, |w| subject(w.untracked()).is_some() && !rigged(w.untracked()));
     let hint = note(
         commands,
         fonts,
-        "Adds jaw, lip, mouth corner, eye, eyelid and brow bones. Place four points on the face, then build; the original file is kept.",
+        "Adds jaw, lip, mouth corner, eye, eyelid and brow bones. Place the points on the face, then build; the original file is kept.",
     );
+    let painted = note(
+        commands,
+        fonts,
+        "No eye meshes: the eyes are part of the skin. Place a point on one eye so the rig knows where they are; with nothing under the lids to cover, blinks and eye turns have no effect.",
+    );
+    bind_display(commands, painted, |w| face_set(w.untracked()) == MarkerSet::FacePaintedEyes);
     let roles_head = note(commands, fonts, "Meshes");
     let roles = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }).id();
     keyed_list(commands, roles, roles_snapshot);
     let points_head = note(commands, fonts, "Points");
     let points = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
-    keyed_list(commands, points, |w| marker_snapshot(w, MarkerSet::Face));
+    keyed_list(commands, points, |w| marker_snapshot(w, face_set(w.untracked())));
     let r = row(commands);
     let place = action(commands, fonts, "Place Points", |w| {
+        let set = face_set(w);
         if let Some(mut m) = w.get_resource_mut::<Markers>() {
-            let next = m.points(MarkerSet::Face).iter().position(Option::is_none).unwrap_or(0);
-            m.start(MarkerSet::Face, next);
+            // Sized to the set first, so the eye row counts as unplaced.
+            m.start(set, 0);
+            let next = m.points(set).iter().position(Option::is_none).unwrap_or(0);
+            m.start(set, next);
         }
     });
     let clear = action(commands, fonts, "Clear Points", |w| {
+        let set = face_set(w);
         if let Some(mut m) = w.get_resource_mut::<Markers>() {
-            m.clear(MarkerSet::Face);
+            m.clear(set);
         }
     });
     commands.entity(r).add_children(&[place, clear]);
     let build_btn = renzora_ember::widgets::accent_button(commands, fonts, accent(), "Build Face Rig");
     commands.entity(build_btn).entry::<Node>().and_modify(|mut n| n.width = Val::Percent(100.0));
     on_click(commands, build_btn, build_face_rig);
-    commands.entity(setup).add_children(&[hint, roles_head, roles, points_head, points, r, build_btn]);
+    commands.entity(setup).add_children(&[hint, painted, roles_head, roles, points_head, points, r, build_btn]);
     let unrig = super::rig_panel::unrig_row(commands, fonts);
     commands.entity(col).add_children(&[done, setup, unrig]);
     col
 }
 
-/// The expression sliders, with Key Face and Reset Face.
-pub(crate) fn expression_sliders(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let col = column(commands);
-    let none = note(commands, fonts, "No face rig on this model. Build one in Rig, with the Face template.");
-    bind_display(commands, none, |w| !rigged(w.untracked()));
-    let expr_body = column(commands);
-    bind_display(commands, expr_body, |w| rigged(w.untracked()));
-    let expr_hint = note(commands, fonts, "Drag to pose the face, then Key Face (or K) to key it at the playhead.");
-    let mut kids = vec![expr_hint];
-    for e in EXPRESSIONS {
-        let (min, max) = if e.signed { (-1.0, 1.0) } else { (0.0, 1.0) };
-        let s = spin_slider(commands, &fonts.ui, e.label, 0.0, min, max);
-        commands.entity(s).entry::<Node>().and_modify(|mut n| n.width = Val::Percent(100.0));
-        let id = e.id;
-        bind_2way(
-            commands,
-            s,
-            move |w: &Rx| w.get_resource::<FaceSliders>().and_then(|f| f.values.get(id).copied()).unwrap_or(0.0),
-            move |w: &mut World, v: &f32| {
-                w.resource_mut::<FaceSliders>().values.insert(id, *v);
-                apply_sliders(w);
-            },
-        );
-        kids.push(s);
-    }
-    let r2 = row(commands);
-    let key = action(commands, fonts, "Key Face", key_face);
-    let reset = action(commands, fonts, "Reset Face", |w| {
-        w.resource_mut::<FaceSliders>().values.clear();
-        apply_sliders(w);
-    });
-    commands.entity(r2).add_children(&[key, reset]);
-    kids.push(r2);
-    commands.entity(expr_body).add_children(&kids);
-
-    // Blend shapes, for a head that came with them.
+/// The model's blend shapes, a slider each, for a model that came with them.
+/// Part of the Controls tab: what is set here is captured by Save as Control.
+pub(crate) fn blend_shapes(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (morphs, morph_body) = section(commands, fonts, "drop-half", "Blend Shapes", accent());
     bind_display(commands, morphs, |w| !morph_targets(w.untracked()).is_empty());
+    let morph_hint = note(
+        commands,
+        fonts,
+        "Drag to shape the model, then Key Blend Shapes (or K) to key the ones you moved at the playhead, or Save as Control above to make a slider of them.",
+    );
     let morph_list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
     keyed_list(commands, morph_list, morph_snapshot);
-    commands.entity(morph_body).add_child(morph_list);
-
-    commands.entity(col).add_children(&[none, expr_body, morphs]);
-    col
+    let morph_row = row(commands);
+    let key_shapes = action(commands, fonts, "Key Blend Shapes", key_blend_shapes);
+    commands.entity(morph_row).add_child(key_shapes);
+    commands.entity(morph_body).add_children(&[morph_hint, morph_list, morph_row]);
+    morphs
 }
 
 /// A slider bound to one of [`Performance`]'s numbers.
@@ -358,15 +340,16 @@ fn build_face_rig(world: &mut World) {
         tell(world, false, "This head already has a face rig");
         return;
     }
-    let Some(p) = markers_in_model(world, MarkerSet::Face) else {
-        tell(world, false, "Place all four points first");
+    let set = face_set(world);
+    let Some(p) = markers_in_model(world, set) else {
+        tell(world, false, "Place all the points first");
         return;
     };
     let Some((abs, rel)) = model_file(world, root) else {
         tell(world, false, "This entity has no model file to rig");
         return;
     };
-    let markers = face::FaceMarkers { mouth_corner: p[0], upper_lip: p[1], lower_lip: p[2], chin: p[3] };
+    let markers = face::FaceMarkers { mouth_corner: p[0], upper_lip: p[1], lower_lip: p[2], chin: p[3], eye: p.get(4).copied() };
     match renzora_rig::rig_file(&abs, |glb| face::build(glb, &markers)) {
         Ok((applied, _)) => {
             tell(
@@ -375,7 +358,7 @@ fn build_face_rig(world: &mut World) {
                 format!("Rigged the face of {rel}: {} bones over {} meshes. The original is kept beside it.", applied.bones, applied.meshes),
             );
             if let Some(mut m) = world.get_resource_mut::<Markers>() {
-                m.clear(MarkerSet::Face);
+                m.clear(set);
             }
             super::respawn::request(world, &rel);
         }
@@ -386,23 +369,29 @@ fn build_face_rig(world: &mut World) {
 // ── Expressions ──────────────────────────────────────────────────────────────
 
 /// The face bones, by name, with their rest pose and the face's scale.
-struct FaceRig {
+/// Generated blinks and lip sync key these bones directly; the Controls tab
+/// reads the lid measurements and the scale for its tuned blink controls.
+pub(crate) struct FaceRig {
     bones: Vec<(&'static str, Entity, Transform)>,
-    scale: f32,
-    /// Degrees each lid turns to close, by bone name, from the joints' glTF
-    /// extras (`face::BLINK_EXTRA`). Empty for a head rigged before the lids
-    /// were measured, whose blinks keep the stock angles.
-    blink: Vec<(&'static str, f32)>,
+    pub(crate) scale: f32,
+    /// How each lid closes, by bone name, from the joints' glTF extras
+    /// (`face::BLINK_EXTRA`, `face::BLINK_PUSH_EXTRA`). Empty for a head
+    /// rigged before the lids were measured, whose blinks keep the stock
+    /// angles.
+    pub(crate) blink: Vec<(&'static str, expressions::LidTuning)>,
 }
 
-/// A lid joint's closing angle, as the rig wrote it into the model.
-fn blink_degrees(world: &World, bone: Entity) -> Option<f32> {
+/// A lid joint's closing angle and push, as the rig wrote them into the
+/// model. A head rigged before the push was measured reads as no push.
+fn blink_tuning(world: &World, bone: Entity) -> Option<expressions::LidTuning> {
     let extras = world.get::<bevy::gltf::GltfExtras>(bone)?;
     let value: renzora::serde_json::Value = renzora::serde_json::from_str(&extras.value).ok()?;
-    value.get(face::BLINK_EXTRA)?.as_f64().map(|d| d as f32)
+    let degrees = value.get(face::BLINK_EXTRA)?.as_f64()? as f32;
+    let push = value.get(face::BLINK_PUSH_EXTRA).and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+    Some(expressions::LidTuning { degrees, push })
 }
 
-fn face_rig(world: &World) -> Option<FaceRig> {
+pub(crate) fn face_rig(world: &World) -> Option<FaceRig> {
     let root = subject(world)?;
     let rest = rest_pose(world, root);
     let mut bones = Vec::new();
@@ -411,8 +400,8 @@ fn face_rig(world: &World) -> Option<FaceRig> {
         if let Some(e) = find_bone(world, root, name) {
             let r = rest.get(&e).copied().or_else(|| world.get::<Transform>(e).copied())?;
             bones.push((*name, e, r));
-            if let Some(deg) = blink_degrees(world, e) {
-                blink.push((*name, deg));
+            if let Some(tuning) = blink_tuning(world, e) {
+                blink.push((*name, tuning));
             }
         }
     }
@@ -439,33 +428,6 @@ fn face_pose(rig: &FaceRig, values: &[(&str, f32)]) -> Vec<(Entity, Transform)> 
             (*e, pose)
         })
         .collect()
-}
-
-fn apply_sliders(world: &mut World) {
-    let Some(rig) = face_rig(world) else { return };
-    let values: Vec<(&str, f32)> = world.resource::<FaceSliders>().values.iter().map(|(k, v)| (*k, *v)).collect();
-    let pose = face_pose(&rig, &values);
-    set_pose(world, &pose);
-    let at = world.get_resource::<crate::AnimationEditorState>().map(|s| (s.scrub_time * 1000.0).round() as u32);
-    world.resource_mut::<FaceSliders>().at = at;
-}
-
-/// Moving the playhead drops the unkeyed face pose; the sliders follow.
-fn zero_sliders_on_scrub(state: Option<Res<crate::AnimationEditorState>>, mut sliders: ResMut<FaceSliders>) {
-    let Some(state) = state else { return };
-    let now = (state.scrub_time * 1000.0).round() as u32;
-    if sliders.at.is_some_and(|at| at != now) || (state.is_previewing && !sliders.values.is_empty()) {
-        sliders.values.clear();
-        sliders.at = None;
-    }
-}
-
-fn key_face(world: &mut World) {
-    let Some(rig) = face_rig(world) else { return };
-    let bones: Vec<Entity> = rig.bones.iter().filter(|(n, ..)| *n != names::HEAD).map(|(_, e, _)| *e).collect();
-    if !crate::timeline::pose::key_bones(world, &bones) {
-        tell(world, false, "No clip open to key into: create or pick one in the timeline");
-    }
 }
 
 /// The open clip's length, if a clip is open.
@@ -573,7 +535,7 @@ fn generate_lip_sync(world: &mut World) {
 
 /// `(entity carrying the weights, target index, name)` for every morph target
 /// under the model.
-fn morph_targets(world: &World) -> Vec<(Entity, usize, String)> {
+pub(crate) fn morph_targets(world: &World) -> Vec<(Entity, usize, String)> {
     let Some(root) = subject(world) else { return Vec::new() };
     let meshes = world.get_resource::<Assets<Mesh>>();
     let mut out = Vec::new();
@@ -613,15 +575,33 @@ fn morph_snapshot(w: &Rx) -> KeyedSnapshot {
                 c,
                 s,
                 move |w: &Rx| w.get::<bevy::mesh::morph::MorphWeights>(e).and_then(|m| m.weights().get(i).copied()).unwrap_or(0.0),
-                move |w: &mut World, v: &f32| {
-                    if let Some(mut m) = w.get_mut::<bevy::mesh::morph::MorphWeights>(e) {
-                        if let Some(x) = m.weights_mut().get_mut(i) {
-                            *x = *v;
-                        }
-                    }
-                },
+                // Held over the clip until the playhead moves, and keyed by
+                // Key Blend Shapes, Key Controls or K (see `timeline::morph`).
+                move |w: &mut World, v: &f32| crate::timeline::morph::set_morph(w, e, i, *v),
             );
             s
         }),
+    }
+}
+
+/// Key the blend shapes at the playhead: the ones moved by hand, or, when
+/// none were, every shape at its current weight (keying the face as it is).
+fn key_blend_shapes(world: &mut World) {
+    let posed = world.get_resource::<crate::timeline::morph::MorphLayer>().is_some_and(|l| !l.posed.is_empty());
+    let keyed = if posed {
+        crate::timeline::morph::key_posed_morphs(world)
+    } else {
+        let Some(time) = world.get_resource::<crate::AnimationEditorState>().map(|s| s.scrub_time) else { return };
+        let keys: Vec<(Entity, usize, f32, f32)> = morph_targets(world)
+            .into_iter()
+            .filter_map(|(e, i, _)| {
+                let w = world.get::<bevy::mesh::morph::MorphWeights>(e)?.weights().get(i).copied()?;
+                Some((e, i, time, w))
+            })
+            .collect();
+        crate::timeline::morph::key_morphs(world, &keys)
+    };
+    if !keyed {
+        tell(world, false, "No clip open to key into: create or pick one in the timeline");
     }
 }

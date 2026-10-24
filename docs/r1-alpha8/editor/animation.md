@@ -20,6 +20,10 @@ Clips are extracted when you import a model. The importer pulls embedded animati
 
 For characters that ship without embedded animations, which is the common Mixamo pattern of one mesh plus separate animation files, the runtime drives the side-loaded clips against the skeleton beneath the model.
 
+**Blend shapes** come in too. A glTF/GLB clip's morph target weights become blend shape tracks in the `.anim`, one per shape, named from the mesh's `targetNames` (a glTF step channel holds each key, a cubic one keeps its tangents). An FBX's blend shapes are written into the converted model as morph targets on its mesh, and their animated weights become blend shape tracks the same way. A shape a clip never moves off zero gets no track. Only the full-weight shape of each FBX channel is kept (in-between shapes are not), and an FBX scene split into moving parts (see below) keeps no blend shapes. USD blend shapes are not imported yet. See [Facial Animation: Blend shapes](/docs/r1-alpha8/editor/facial-animation#blend-shapes) for keying them by hand.
+
+**A rest skeleton** is written beside the clips of every skinned model: `animations/<model>.skel`, the skeleton's bind pose, naming the clips extracted with it. It is what [retargeting](/docs/r1-alpha8/editor/animator#retargeting) needs to play those clips on a rig that rests differently. When a model's clips are discovered (dropping it into the scene, or **Scan for clips**), a clip claimed by **another** model's `.skel` in the same `animations/` folder gets that file as its slot's **Source Skeleton**, so an animation-only download placed beside a character is retargeted onto it. The model's own clips bind by name as before, since they were keyed on that very rig.
+
 ### Animated scenes: doors, machines and fly-through cameras
 
 An FBX can be animated on its **objects** rather than a skeleton: doors that swing, pistons that slide, a camera that flies down a corridor. These import as well.
@@ -56,9 +60,11 @@ Attach **Animator** to a model and it holds everything about how that model anim
 | Default Clip | The slot to auto-play on spawn |
 | Blend Duration | Default crossfade time, in seconds |
 | State Machine | An optional `.animsm` file |
-| Layers | Optional animation layers, with the base layer first |
+| Layers | Optional animation layers, stacked above the base motion in order |
+| Root Motion | Move the entity by the root bone's movement ([Root motion](/docs/r1-alpha8/editor/animator#root-motion)) |
+| Bone Map | Source to target bone names, for retargeting ([Retargeting](/docs/r1-alpha8/editor/animator#retargeting)) |
 
-Each clip slot has a **name**, a **path**, a **looping** toggle, a **speed**, and optional **blend in** and **blend out** times.
+Each clip slot has a **name**, a **path**, a **looping** toggle, a **speed**, optional **blend in** and **blend out** times, and an optional **source skeleton** (a `.skel` file that retargets the clip from the rig it was made on).
 
 The Inspector drawer covers the common workflow without leaving the panel. Each slot is a small card: a play button, the name (click to rename), a **Speed** field (1 is the clip's own speed, from 0.05 to 5), a loop toggle that lights while the clip loops, and remove, with the clip's file under them. Drop `.anim` files on the area under the list to add them as new slots; a multi-selection from the Assets panel adds every clip in it.
 
@@ -84,9 +90,15 @@ The dropdown in the stage's header picks the model, and with nothing on the stag
 | Frame the model | `F`, or the Frame chip |
 | Look from the front, the side, or in perspective | The Front, Side and Persp buttons |
 
-The chips along the top show and hide the skeleton and the floor, and in Animate turn on Auto key (the timeline's record).
+The chips along the top show and hide the skeleton and the floor, and in Animate turn on Auto key (the timeline's record) and Onion skinning.
 
-### Four modes
+#### Onion skinning
+
+The **Onion** chip (Animate only) draws faint ghosts of the character a few frames either side of the playhead: orange for the frames behind it, blue for the frames ahead, each one fainter the further it is. They show the arc and spacing of a motion without scrubbing back and forth. The caret beside the chip sets how many ghosts each side (1, 2, 3 or 5), which sides (before and after, before only, after only) and how far apart (every 1, 2, 3, 5 or 10 frames, at 30 fps). The defaults are two each side, three frames apart.
+
+The ghosts are posed from the open clip as it is being edited, so dragging a key or a curve handle moves them at once. A bone the clip does not key holds the character's current pose, an unkeyed hand pose included. Ghosts past either end of the clip are not drawn, and they hide while the preview plays. They live on the stage only and are never saved.
+
+### Five modes
 
 The switch at the left of the stage's header changes what the workspace is for. The panels either side change with it; the stage and the timeline stay.
 
@@ -94,7 +106,8 @@ The switch at the left of the stage's header changes what the workspace is for. 
 |---|---|---|
 | **Rig** | Build a skeleton (Humanoid) or a face rig (Face) from points you click onto the model | The skeleton as a tree, and the selected bone |
 | **Skin** | Auto weights, the weight brush, the bone being painted | Test bends and range of motion, checks, Save |
-| **Animate** | Limbs (IK on or off) and the pose library; the Face tab's expression sliders | The selected bone's pose and the pose tools; the clip's properties; Performance (lip sync and blinks) |
+| **Shapes** | The model's blend shapes with preview sliders, New Shape, the sculpt brush ([Sculpting blend shapes](/docs/r1-alpha8/editor/rigging#sculpting-blend-shapes)) | The shape being sculpted (rename, clear, delete), Save |
+| **Animate** | Pose: limbs (IK on or off) and the pose library; Controls: the model's own [controls](/docs/r1-alpha8/editor/rigging#controls) and blend shapes | The selected bone's pose and the pose tools; the clip's properties; Performance (lip sync and blinks) |
 | **Logic** | The animator's parameters | The animator's properties. The state machine takes the stage, with the character kept in the corner |
 
 A model with no skeleton opens in Rig, and a head (a model with eye meshes and no skeleton) opens on the Face template. See [Rigging & Posing](/docs/r1-alpha8/editor/rigging) and [Facial Animation](/docs/r1-alpha8/editor/facial-animation).
@@ -129,9 +142,9 @@ The **⋯** menu holds what used to crowd the bar: the clip **Length**, a name f
 
 ### Tracks and keys
 
-The track list on the left has a filter box, **+ Track**, a right edge you can drag to widen it for long bone names, and an **All tracks** row (marked with a stack icon) whose lane summarises every key in the clip: a diamond at each key time on any track, and a tinted bar wherever some track keys continuously (every frame or two, as an imported clip does). Drag a summary diamond to retime every key at that moment on every track at once; it snaps like any key drag and can be undone. Diamonds closer together than a few pixels are thinned out; zoom in to reach each one. Property tracks are listed first, newest at the top, so a track you have just added is selected and scrolled into view right under **All tracks**, however many bones follow. Bones nest under their parent bone; click the caret to fold a subtree. Each bone row shows **T**, **R** and **S** chips for the translation, rotation and scale channels it animates, tinted to match their keys. Lanes are flat. A scrollbar along the bottom scrolls through time and one down the right scrolls the rows; drag a thumb, or click the bar beside it to jump there. Dragging a scrollbar never moves the playhead.
+The track list on the left has a filter box, **+ Track**, a right edge you can drag to widen it for long bone names, and an **All tracks** row (marked with a stack icon) whose lane summarises every key in the clip: a diamond at each key time on any track, and a tinted bar wherever some track keys continuously (every frame or two, as an imported clip does). Drag a summary diamond to retime every key at that moment on every track at once; it snaps like any key drag and can be undone. Diamonds closer together than a few pixels are thinned out; zoom in to reach each one. Property tracks are listed first, newest at the top, so a track you have just added is selected and scrolled into view right under **All tracks**, however many bones follow. Blend shape tracks come next, one row per shape (see [Facial Animation: Blend shapes](/docs/r1-alpha8/editor/facial-animation#blend-shapes)). Bones nest under their parent bone; click the caret to fold a subtree. Each bone row shows **T**, **R** and **S** chips for the translation, rotation and scale channels it animates, tinted to match their keys. Lanes are flat. A scrollbar along the bottom scrolls through time and one down the right scrolls the rows; drag a thumb, or click the bar beside it to jump there. Dragging a scrollbar never moves the playhead.
 
-Right-click a bone or property row in the track list for its menu:
+Right-click a bone, property or blend shape row in the track list for its menu:
 
 - **Delete track** removes the track and its keys from the clip.
 - **Disable track** keeps the track and its keys but leaves it out of playback, in the editor preview and in play mode, so you can see how the clip plays without it. A disabled row and its lane are dimmed and the row shows an eye-slash; **Enable track** in the same menu turns it back on. The flag is saved in the `.anim` file as `muted: true`.
@@ -139,6 +152,8 @@ Right-click a bone or property row in the track list for its menu:
 Both are ordinary clip edits, so they can be undone.
 
 A stretch of every-frame keys, which is what an imported clip is made of, draws as one bar with a diamond at each end. Zoom in until the keys are far enough apart and the inner keys become diamonds you can pick. Lone keys always draw as diamonds. Selected keys are amber with a ring.
+
+A key's shape says how it moves on to the next key: a **diamond** is linear, a **square** holds (Constant or Stepped), and a **circle** is smooth (an eased property key, or a bone key with tangents). So a blocked-out pass in Constant reads apart from its splined version at a glance. Right-click a key to change it; see [Bone key interpolation](#bone-key-interpolation).
 
 | Action | How |
 |---|---|
@@ -177,11 +192,46 @@ An entity with a Particle System and no animation clip still gets the Timeline: 
 
 ### The key popover
 
-Clicking a key opens a small card beside it with the key's **Time** and its values (bone rotations as degrees), six easing buttons (Linear, Smooth, Ease in, Ease out, Step, Bounce), and **Copy** and **Delete**. Easing applies to property keys; bone keys always blend linearly. An easing button applies to every selected key. Every edit made here can be undone. `Escape` closes it.
+Clicking a key opens a small card beside it with the key's **Time** and its values (bone rotations as degrees), and **Copy** and **Delete**. A property key's card has six easing buttons (Linear, Smooth, Ease in, Ease out, Step, Bounce); a bone key's has its six [key modes](#bone-key-interpolation) (Auto, Linear, Constant, Flat, Free, Broken), each drawn as the shape it gives. A button applies to every selected key. Every edit made here can be undone. `Escape` closes it.
 
 ### Curves
 
-**Curves** swaps the lanes for a value graph of the selected track: a labelled value grid aligned with the ruler, the sampled curve, and its keys. For a bone, the toolbar picks which channel to plot (Position, Rotation or Scale); for a property track it offers **Smooth**, **Linear** and **Step** for the selected keys. **Frame all** fits the clip. Hovering reads out the time and value under the cursor, and keys can be dragged here too.
+**Curves** swaps the lanes for an editable graph of the selected track: a value grid on round steps, the curves exactly as they play, the playhead, and the keys. For a bone, the toolbar picks which channel group to plot (Position, Rotation or Scale) and shows its **Key** modes for the selected keys; for a property track it offers **Smooth**, **Linear** and **Step**. The **X Y Z** chips (or **R G B A** for a colour) show and hide each channel's curve. A rotation is drawn as its Euler angles in degrees, unwrapped from key to key so a turn through 180 degrees reads as one line; edits made on those curves are turned back into the rotation keys. Hovering reads out the time and value under the cursor.
+
+| Action | How |
+|---|---|
+| Select a key | Click it (the playhead jumps to it). `Shift` + click adds or removes it. Selecting picks one channel's curve; a key selected in the dopesheet selects all its curves. |
+| Box-select | Drag on empty graph. `Shift` adds to the selection. |
+| Move keys | Drag a selected key: up and down changes the value of every selected curve, sideways retimes (snap-aware). |
+| Shape a curve | A selected smooth key shows a tangent handle each side. Drag one to set its slope; the key becomes **Free**, with both sides kept in line. `Alt` + drag breaks it (**Broken**), so each side moves on its own. |
+| Set interpolation | Right-click a key, the **Key** buttons in the toolbar, or the key card |
+| Pan | Middle-drag, or right-drag from empty graph |
+| Zoom the values | Mouse wheel, about the cursor. `Ctrl` + wheel zooms time, `Shift` + wheel pans it. |
+| Frame the selection | `F`, **Frame selected**, or right-click empty graph |
+| Frame everything | **Frame all** |
+
+The view holds still while you drag, and frames itself afresh when you pick another track or channel group. Everything done here is undoable like any other timeline edit, and plays at once: the clip in the scene is rebuilt as you drag.
+
+### Bone key interpolation
+
+Each bone key has a mode, saying how it moves on to the next key and where its tangents come from:
+
+| Mode | Shape | What it does |
+|---|---|---|
+| **Auto** | circle | Smooth, with tangents worked out from the neighbouring keys and clamped so the curve never overshoots them: level at a peak or a valley, and at the clip's first and last key. The default for every key you make. |
+| **Linear** | diamond | A straight line to the next key (the shortest turn for a rotation) |
+| **Constant** | square | Hold the value until the next key: for blocking out poses |
+| **Flat** | circle | Smooth, with level tangents: eases out of and into the key |
+| **Free** | circle | Smooth, with one hand-set tangent for both sides (drag a handle in Curves) |
+| **Broken** | circle | Two hand-set tangents, one each side: a sharp change of direction |
+
+Keys made in the editor (K, Auto key, the Pose tab, the Inspector's keyframe button, a pasted pose) start as **Auto**, so keyed poses ease into one another instead of moving at a constant, mechanical speed. Keying over an existing key keeps its mode. Copy and paste carry the mode with the key. Switching a key to Free or Broken starts from the tangents it had, so the curve does not move until you drag a handle.
+
+Right-click a bone key in the dopesheet or Curves to pick its mode; with several keys selected and the clicked key among them, the choice applies to all of them (a property key in the selection takes the nearest easing: Linear, Stepped or Smooth).
+
+Smooth segments are cubic curves through the keys: per component for a position or scale, and on the rotation's quaternion, kept on one hemisphere and renormalised, for a rotation. Playback evaluates exactly the curve the editor draws.
+
+Bone keys from imported files and from clips written before key modes existed are **Linear** and play exactly as they did. The modes are stored in the `.anim` beside the keys, in a `curves` field that is left out of the file when no key has one.
 
 ### No clip yet
 
@@ -207,6 +257,7 @@ While the cursor is over the Timeline:
 | `Delete` / `Backspace` | Delete the selected keys |
 | `Ctrl` + `C` / `Ctrl` + `V` | Copy the selected keys / paste them at the playhead |
 | `Escape` | Close the popover, then clear the selection |
+| `F` | In Curves: frame the selected keys (all of them with none selected) |
 
 ## Animating a property
 
@@ -232,7 +283,7 @@ While a clip is open on the selected entity, every animatable Inspector field gr
 
 ### Interpolation
 
-Right-click a key and pick its curve.
+Right-click a key and pick its curve. (This is a property key's easing; bone keys have [key modes](#bone-key-interpolation) instead.)
 
 | Curve | What it does |
 |---|---|
@@ -266,7 +317,7 @@ Markers are named points on the timeline that fire a script callback when playba
 
 Type a name in the toolbar's marker field, then click the flag button to drop one at the playhead. Markers draw as labelled flags. Right-click one to delete it.
 
-At runtime, crossing a marker delivers the `AnimationEvent` hook to every script on the entity:
+At runtime, crossing a marker delivers the `AnimationEvent` hook to every script on the entity. Markers fire for every playing clip, skeletal or property-only, once per crossing, loops included (see [Event markers](/docs/r1-alpha8/editor/animator#event-markers)):
 
 ```rust
 fn hooks(ctx: &mut ScriptCtx, hook: &ScriptHook) {
@@ -286,15 +337,17 @@ A state machine picks which clip plays based on parameters you set from a script
 
 <!-- screenshot: animator_state_machine.png - the State Machine panel showing states and transitions -->
 
-States are clips. Transitions connect them and carry conditions on float, bool and trigger parameters. The **Parameters** panel shows the live values, and editing one there previews the transition immediately.
+A state plays a clip or a blend tree. Transitions connect states and carry conditions on float, bool and trigger parameters. The entry state plays as soon as the game starts. The **Parameters** panel shows the live values, and editing one there previews the transition immediately.
 
 <!-- screenshot: animator_params.png - the Parameters panel with live float and bool values -->
 
 ## Blend trees and layers
 
-A **blend tree** mixes several clips by a parameter, which is how a walk blends into a run as speed rises.
+A **blend tree** mixes several clips by a parameter, which is how a walk blends into a run as speed rises. Pick **1D blend** or **2D blend** as a state's motion in the State Machine panel.
 
-**Layers** play clips on top of the base layer, masked to part of the skeleton, which is how a character waves while still walking. The base layer is layer 0.
+**Layers** play clips on top of the base motion, masked to part of the skeleton, which is how a character waves while still walking. A layer either overrides the pose below it or adds to it.
+
+Both are covered in full, with root motion and retargeting, in [Animator: Blending, Layers and Root Motion](/docs/r1-alpha8/editor/animator).
 
 ## Driving animation from a script
 
@@ -318,7 +371,7 @@ fn update(ctx: &mut ScriptCtx) {
 }
 ```
 
-The commands are `Play`, `Stop`, `Pause`, `Resume`, `SetSpeed`, `Seek`, `Crossfade`, `SetParam`, `SetBoolParam` and `Trigger`.
+The commands are `Play`, `Stop`, `Pause`, `Resume`, `SetSpeed`, `Seek`, `Crossfade`, `SetParam`, `SetBoolParam`, `Trigger`, `SetLayerWeight`, `PlayOnLayer` and `StopLayer`.
 
 ### Reading the animator back
 
@@ -326,13 +379,14 @@ The commands are `Play`, `Stop`, `Pause`, `Resume`, `SetSpeed`, `Seek`, `Crossfa
 
 | Field | What it holds |
 |---|---|
-| `current_clip` | The playing clip slot |
+| `current_clip` | The playing clip slot (for a blend tree, its most heavily weighted clip) |
 | `current_state` | The state machine's current state |
 | `state_time` | Seconds spent in that state |
 | `time` | Current playback time |
 | `playing` | Whether anything is actually playing |
 | `clip_lengths` | Each clip's duration, once loaded |
 | `params` / `bool_params` | Live state machine parameters |
+| `root_motion_delta` / `root_motion_yaw` | Last frame's root motion, when root motion is on |
 
 ```rust
 if let Some(state) = ctx.get::<renzora_animation::AnimatorReadState>() {

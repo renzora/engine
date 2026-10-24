@@ -11,7 +11,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
 
-use renzora::{Interp, PropertyKey, TrackValue};
+use renzora::{Interp, KeyCurve, KeyMode, PropertyKey, TrackValue};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg};
@@ -27,7 +27,7 @@ use super::props::{delete_selected_keys, set_key_interp, upsert_key};
 use renzora_particles::asset::PinValue;
 
 use super::snapshots::{channel_color, title_case};
-use super::{PARTICLE, PROPERTY, SELECTED};
+use super::{MORPH, PARTICLE, PROPERTY, SELECTED};
 
 /// The open key card, if any, and a pending request to open one.
 #[derive(Resource, Default)]
@@ -67,6 +67,8 @@ fn key_fields(clip: &renzora_animation::AnimClip, k: SelKey) -> Vec<(&'static st
             Some(_) => vec![("", PROPERTY)],
             None => Vec::new(),
         },
+        // One weight; the unnamed field reads "Value".
+        Lane::Morph { .. } => vec![("", MORPH)],
         Lane::Fx { .. } => Vec::new(),
     }
 }
@@ -142,6 +144,7 @@ pub(super) fn key_component(clip: &renzora_animation::AnimClip, k: SelKey, i: us
             TrackValue::Color(c) => Some(c[i.min(3)]),
             TrackValue::Bool(b) => Some(if b { 1.0 } else { 0.0 }),
         },
+        Lane::Morph { track } => clip.morph_tracks.get(track)?.keys.get(k.index).map(|k| k.1),
         Lane::Fx { .. } => None,
     }
 }
@@ -160,7 +163,11 @@ fn set_key_component(clip: &mut renzora_animation::AnimClip, k: SelKey, i: usize
                     if let Some(key) = t.rotations.get_mut(k.index) {
                         let mut e = euler_deg(key.1);
                         e[i.min(2)] = v;
-                        key.1 = quat_from_deg(e);
+                        // Kept in the key's sign: a hand-set tangent is
+                        // stored against it (see `renzora::KeyCurve`).
+                        let q = quat_from_deg(e);
+                        let dot: f32 = q.iter().zip(&key.1).map(|(a, b)| a * b).sum();
+                        key.1 = if dot < 0.0 { q.map(|c| -c) } else { q };
                     }
                 }
                 _ => {
@@ -182,6 +189,11 @@ fn set_key_component(clip: &mut renzora_animation::AnimClip, k: SelKey, i: usize
                 }
                 TrackValue::Color(c) => c[i.min(3)] = v,
                 TrackValue::Bool(b) => *b = v >= 0.5,
+            }
+        }
+        Lane::Morph { track } => {
+            if let Some(key) = clip.morph_tracks.get_mut(track).and_then(|m| m.keys.get_mut(k.index)) {
+                key.1 = v;
             }
         }
         Lane::Fx { .. } => {}
@@ -359,8 +371,14 @@ pub(super) fn open_requested_popover(world: &mut World) {
             }
             kids.extend([ease_lbl, row]);
         } else if !is_prop && !is_fx {
-            let note = commands.spawn((Text::new(renzora::lang::t_or("timeline.bone_linear", "Bone keys blend linearly into the next key.")), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
-            kids.push(note);
+            // A bone key's mode: how it moves on to the next key.
+            let mode_lbl = commands.spawn((Text::new(renzora::lang::t_or("timeline.key_into_next", "Into the next key")), ui_font(&fonts.ui, 11.0), TextColor(rgb((154, 154, 166))))).id();
+            let row = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(2.0), ..default() }).id();
+            for (mode, _, tip) in super::keymode::mode_choices() {
+                let b = mode_button(&mut commands, &fonts, mode, tip);
+                commands.entity(row).add_child(b);
+            }
+            kids.extend([mode_lbl, row]);
         }
 
         // Copy / Delete.
@@ -389,6 +407,10 @@ fn key_title(clip: &renzora_animation::AnimClip, k: SelKey) -> String {
         Lane::Prop { track } => {
             let field = clip.property_tracks.get(track).map(|p| title_case(&p.field)).unwrap_or_default();
             format!("{field} {key}")
+        }
+        Lane::Morph { track } => {
+            let shape = clip.morph_tracks.get(track).map(|m| m.label()).unwrap_or_default();
+            format!("{shape} · {} {key}", renzora::lang::t_or("timeline.blend_shape", "Blend shape"))
         }
         Lane::Fx { .. } => key,
     }
@@ -445,6 +467,64 @@ fn ease_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, interp:
 
 #[derive(Component)]
 pub(super) struct EaseBtn(pub(super) Interp);
+
+/// A bone key mode in the key card: a drawing of the shape it gives over its
+/// name, the key's own highlighted. Applies to every selected key.
+fn mode_button(commands: &mut Commands, fonts: &EmberFonts, mode: KeyMode, tip: &str) -> Entity {
+    let b = commands
+        .spawn((
+            Node { width: Val::Px(54.0), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(2.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(7.0)), ..default() },
+            BackgroundColor(Color::NONE),
+            UiInteraction::default(),
+            renzora_ember::widgets::HoverTooltip::new(super::keymode::mode_label_tr(mode, tip)),
+            super::curves::KeyModeBtn(mode),
+        ))
+        .id();
+    bind_bg(commands, b, move |w| {
+        let world = w.untracked();
+        let current = target(world).and_then(|k| cur_clip(world).and_then(|c| super::keymode::key_mode(c, k)));
+        if current == Some(mode) {
+            rgb(accent()).with_alpha(0.22)
+        } else {
+            match world.get::<UiInteraction>(b) {
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
+                _ => Color::NONE,
+            }
+        }
+    });
+    let icon = mode_icon(commands, mode, (154, 154, 166));
+    let t = commands.spawn((Text::new(super::keymode::mode_label_tr(mode, mode.label())), ui_font(&fonts.ui, 10.0), TextColor(rgb((196, 196, 206))), bevy::text::TextLayout::no_wrap(), PASS_THROUGH)).id();
+    commands.entity(b).add_children(&[icon, t]);
+    b
+}
+
+/// A 34x20 drawing of the shape a bone key mode gives a rise between two
+/// keys, sampled from the same spline playback uses so the picture is honest.
+fn mode_icon(commands: &mut Commands, mode: KeyMode, color: (u8, u8, u8)) -> Entity {
+    let (w, h) = (34.0f32, 20.0f32);
+    let root = commands.spawn((Node { width: Val::Px(w), height: Val::Px(h), position_type: PositionType::Relative, ..default() }, PASS_THROUGH)).id();
+    // Three rising keys, so Auto (which keeps moving through the middle key)
+    // and Flat (which stops at it) read apart.
+    let tan = |mode: KeyMode, i: f32, o: f32| KeyCurve { mode, in_tan: [i, 0.0, 0.0, 0.0], out_tan: [o, 0.0, 0.0, 0.0] };
+    let curves = match mode {
+        // A steep exit from the first key, the same slope on both sides.
+        KeyMode::Free => [tan(KeyMode::Free, 4.0, 4.0), KeyCurve::AUTO, KeyCurve::AUTO],
+        // A corner at the middle key: arriving steep, leaving downhill.
+        KeyMode::Broken => [KeyCurve::AUTO, tan(KeyMode::Broken, 3.0, -1.0), KeyCurve::AUTO],
+        m => [KeyCurve::new(m); 3],
+    };
+    let keys = [(0.0, Vec4::ZERO), (0.5, Vec4::X * 0.55), (1.0, Vec4::X)];
+    let spline = renzora::ChannelSpline::new(&keys, &curves, false);
+    // Fine enough that a hold's riser draws as a near-vertical step.
+    let n = 24;
+    let pt = |i: usize| {
+        let f = i as f32 / n as f32;
+        Vec2::new(2.0 + f * (w - 4.0), h - 2.0 - spline.sample(f).x.clamp(-0.3, 1.3) * (h - 4.0))
+    };
+    let segs: Vec<Entity> = (0..n).map(|i| segment(commands, pt(i), pt(i + 1), 1.6, rgb(color))).collect();
+    commands.entity(root).add_children(&segs);
+    root
+}
 
 /// A 34x20 drawing of an easing curve, as short rotated segments.
 pub(super) fn ease_icon(commands: &mut Commands, interp: Interp, color: (u8, u8, u8)) -> Entity {
@@ -536,7 +616,7 @@ pub(super) fn apply_interp_to_selection(world: &mut World, interp: Interp) {
                     super::fx::set_key_interp(&mut cache, track, k.index, fx_interp);
                 }
             }
-            Lane::Bone { .. } => {}
+            Lane::Bone { .. } | Lane::Morph { .. } => {}
         }
     }
 }
@@ -547,12 +627,17 @@ pub(super) fn apply_interp_to_selection(world: &mut World, interp: Interp) {
 enum LaneId {
     Bone(String, u8),
     Prop(String, String),
+    /// A blend shape: its mesh node and target index.
+    Morph(String, usize),
 }
 
+/// A copied key: a bone or blend shape key's value with its curve (so a
+/// pasted key eases as the copied one did), or a whole property key.
 #[derive(Clone)]
 enum Payload {
-    V3([f32; 3]),
-    Q([f32; 4]),
+    V3([f32; 3], KeyCurve),
+    Q([f32; 4], KeyCurve),
+    W(f32, KeyCurve),
     P(PropertyKey),
 }
 
@@ -576,14 +661,18 @@ pub(super) fn copy_selected_keys(world: &mut World) {
         let item = match k.lane {
             Lane::Bone { track, channel } => clip.tracks.get(track).and_then(|t| {
                 let id = LaneId::Bone(t.bone_name.clone(), channel);
+                let c = t.key_curve(channel, k.index);
                 match channel {
-                    0 => t.translations.get(k.index).map(|(tm, v)| (id, *tm, Payload::V3(*v))),
-                    1 => t.rotations.get(k.index).map(|(tm, v)| (id, *tm, Payload::Q(*v))),
-                    _ => t.scales.get(k.index).map(|(tm, v)| (id, *tm, Payload::V3(*v))),
+                    0 => t.translations.get(k.index).map(|(tm, v)| (id, *tm, Payload::V3(*v, c))),
+                    1 => t.rotations.get(k.index).map(|(tm, v)| (id, *tm, Payload::Q(*v, c))),
+                    _ => t.scales.get(k.index).map(|(tm, v)| (id, *tm, Payload::V3(*v, c))),
                 }
             }),
             Lane::Prop { track } => clip.property_tracks.get(track).and_then(|p| {
                 p.keys.get(k.index).map(|key| (LaneId::Prop(p.component.clone(), p.field.clone()), key.time, Payload::P(key.clone())))
+            }),
+            Lane::Morph { track } => clip.morph_tracks.get(track).and_then(|m| {
+                m.keys.get(k.index).map(|(t, w)| (LaneId::Morph(m.target.clone(), m.index), *t, Payload::W(*w, m.key_curve(k.index))))
             }),
             // The clipboard pastes into clips by track name; an effect's
             // keys have no such name to paste back under.
@@ -615,12 +704,14 @@ pub(super) fn paste_keys(world: &mut World) {
         match (lane, payload) {
             (LaneId::Bone(name, ch), p) => {
                 let Some(track) = clip.tracks.iter_mut().find(|tr| tr.bone_name == name) else { continue };
-                match (ch, p) {
-                    (1, Payload::Q(v)) => upsert_pair(&mut track.rotations, t, v),
-                    (0, Payload::V3(v)) => upsert_pair(&mut track.translations, t, v),
-                    (_, Payload::V3(v)) => upsert_pair(&mut track.scales, t, v),
+                let (value, curve) = match (ch, p) {
+                    (1, Payload::Q(v, c)) => (Vec4::from_array(v), c),
+                    (0 | 2, Payload::V3(v, c)) => (Vec3::from_array(v).extend(0.0), c),
                     _ => continue,
-                }
+                };
+                let i = track.upsert_key(ch, t, value, curve, 1e-4);
+                // Pasted over an existing key, the copied curve wins too.
+                track.set_key_curve(ch, i, curve);
                 any = true;
             }
             (LaneId::Prop(component, field), Payload::P(key)) => {
@@ -631,6 +722,13 @@ pub(super) fn paste_keys(world: &mut World) {
                 }
                 any = true;
             }
+            (LaneId::Morph(node, index), Payload::W(w, curve)) => {
+                let node = renzora::sanitize_id(&node);
+                let Some(m) = clip.morph_tracks.iter_mut().find(|m| m.index == index && renzora::sanitize_id(&m.target) == node) else { continue };
+                let i = m.upsert_key(t, w, curve, 1e-4);
+                m.set_key_curve(i, curve);
+                any = true;
+            }
             _ => {}
         }
         if t > clip.duration {
@@ -639,14 +737,5 @@ pub(super) fn paste_keys(world: &mut World) {
     }
     if any {
         cache.dirty = true;
-    }
-}
-
-fn upsert_pair<V: Copy>(keys: &mut Vec<(f32, V)>, t: f32, v: V) {
-    if let Some(k) = keys.iter_mut().find(|k| (k.0 - t).abs() < 1e-4) {
-        k.1 = v;
-    } else {
-        keys.push((t, v));
-        keys.sort_by(|a, b| a.0.total_cmp(&b.0));
     }
 }

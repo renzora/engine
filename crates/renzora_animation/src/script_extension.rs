@@ -31,6 +31,15 @@ impl ScriptExtension for AnimationScriptExtension {
                 .arg("name", ParamKind::Str)
                 .doc("Fire a one-shot trigger parameter.")
                 .build(),
+            Bind::action("play_layer_animation", "play_layer_animation")
+                .arg("layer_name", ParamKind::Str)
+                .arg("name", ParamKind::Str)
+                .doc("Play a clip on an animation layer, crossfading from the layer's last clip.")
+                .build(),
+            Bind::action("stop_layer_animation", "stop_layer_animation")
+                .arg("layer_name", ParamKind::Str)
+                .doc("Fade an animation layer's clip out.")
+                .build(),
             Bind::read("get_animation_length", "AnimatorReadState", "clip_lengths.{0}")
                 .arg("name", ParamKind::Str)
                 .doc("Length of a clip in seconds, or 0 if it is not loaded.")

@@ -226,9 +226,8 @@ fn create_clip_button(
     let clip = AnimClip {
         name: name.clone(),
         duration,
-        tracks: Vec::new(),
         property_tracks,
-        markers: Vec::new(),
+        ..Default::default()
     };
 
     commands.queue(move |world: &mut World| {

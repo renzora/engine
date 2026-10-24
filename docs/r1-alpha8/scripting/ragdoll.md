@@ -35,12 +35,40 @@ Bones start `Kinematic`: the `AnimationPlayer` drives them exactly as if the plu
 
 Joint translation (the point itself, not its bend) always stays rigid regardless of `stiffness` — limbs shouldn't visibly pull apart at the socket.
 
+## Partial and blended ragdolls
+
+Three more fields control *how much* of the character ragdolls. Unlike the tuning fields above, they are read live, so a script can change them at any time.
+
+| Field | Default | Effect |
+|---|---|---|
+| `bone` (Partial Bone) | empty | Name of the bone whose subtree ragdolls: an arm hit by a shot is its upper-arm bone. Empty ragdolls the whole skeleton. The rest of the skeleton keeps animating, and the ragdolled part hangs off it by its joint. A name that matches no bone ragdolls nothing (with a warning) rather than everything. |
+| `blend` (Physics Blend) | `1.0` | How much of the pose the physics owns while active. `1` is a full ragdoll; lower mixes the simulated bones with the still-playing animation (a stagger, a flinch, a character bracing against a hit). |
+| `get_up_time` | `0.5` | Seconds to blend back to the animation when the ragdoll switches off, from wherever the body fell to. `0` snaps. |
+
+A full ragdoll (`blend` of `1`, no `bone`) behaves as before: the bones are detached from the `AnimationPlayer` and the animator is paused. A partial or blended one keeps the animation playing, because the blend and the bones that are not ragdolling both need it.
+
+> The get-up blend eases the bones back into the animation where the character *is*: it does not move the character to where its body fell. To have a character stand up at the spot it collapsed, move its root there (and play a get-up clip) as you disable the ragdoll.
+
 ## Scripting
 
 | Function | Effect |
 |---|---|
-| `enable_ragdoll()` | Flips every bone of the script's entity to a dynamic body, detaches the bones from the `AnimationPlayer`, and pauses the animator: the physics solver and joints take over. |
-| `disable_ragdoll()` | Reconnects the bones to the `AnimationPlayer`, flips them back to kinematic, and resumes the animator. |
+| `enable_ragdoll()` | Flips every bone of the script's entity to a dynamic body, detaches the bones from the `AnimationPlayer`, and pauses the animator: the physics solver and joints take over. Always the whole skeleton at full blend, whatever `bone`/`blend` held before. |
+| `disable_ragdoll()` | Reconnects the bones to the `AnimationPlayer`, flips them back to kinematic, resumes the animator, and blends back to the animation over `get_up_time`. |
+| `enable_partial_ragdoll(bone, blend)` | Ragdoll only `bone`'s subtree (`""` for all of it), mixed with the animation by `blend` (0..1). |
+| `set_ragdoll_blend(blend)` | Change how much of the pose the physics owns while ragdolling. |
+| `set_ragdoll_get_up_time(seconds)` | Change how long the blend back to the animation takes. |
+
+```lua
+-- hit reaction: the shot arm goes limp for a moment, the rest keeps running
+function on_hit(bone)
+    enable_partial_ragdoll("LeftArm", 0.8)
+end
+
+function on_recover()
+    disable_ragdoll()
+end
+```
 
 ```lua
 -- character.lua
@@ -53,7 +81,7 @@ function on_respawn()
 end
 ```
 
-> `enable_ragdoll`/`disable_ragdoll` target the **script's own entity** — call them from a script attached to the same entity the `Ragdoll` component is on. Activation is a simple on/off switch for v1: there is no blended "active ragdoll" (motors driving joints toward an animated pose) yet.
+> The ragdoll functions target the **script's own entity**: call them from a script attached to the same entity the `Ragdoll` component is on. `blend` mixes two finished poses; there is no powered "active ragdoll" (joint motors driving the bodies toward the animated pose) yet.
 
 Read the current state from the `Ragdoll` component's `active` field via the reflect path dispatcher, same as any other component:
 
@@ -72,4 +100,5 @@ end
 ## Related
 
 - [Physics](/docs/r1-alpha8/scripting/physics): rigid bodies, colliders and joints
+- [IK, Constraints & Spring Bones](/docs/r1-alpha8/scripting/ik-constraints): procedural animation on top of clips
 - [Building Plugins](/docs/r1-alpha8/extending/plugins) — how in-workspace plugins like this one are declared and wired in

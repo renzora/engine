@@ -1,12 +1,16 @@
-//! Blend Trees — hierarchical animation blending.
+//! Blend Trees: hierarchical animation blending.
 //!
-//! Blend trees compose multiple clips into a single blended output.
-//! They are referenced from state machine states via `StateMotion::BlendTree`.
+//! Blend trees compose multiple clips into a single blended output. A state
+//! machine state plays one through `StateMotion::Blend`, stored inline in the
+//! state so a `.animsm` file is self-contained. The weights are resolved every
+//! frame from the state machine's parameters by
+//! [`crate::graph_builder::resolve_tree`], and the runtime applies them to the
+//! clip nodes of the animator's graph.
 
 use serde::{Deserialize, Serialize};
 
-/// A blend tree node — recursive structure for composing animations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A blend tree node: recursive structure for composing animations.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BlendTree {
     /// Play a single clip by slot name.
     Clip(String),
@@ -17,7 +21,22 @@ pub enum BlendTree {
         /// Name of the float parameter (0.0 = fully A, 1.0 = fully B).
         param: String,
     },
-    /// 2D blend space — multiple entries placed in a 2D parameter space.
+    /// 1D blend: clips placed along one parameter at increasing thresholds
+    /// (idle at 0, walk at 1.5, run at 4 for a `speed` parameter). The two
+    /// entries either side of the parameter share the weight; past either end
+    /// the end entry plays alone.
+    ///
+    /// The threshold is in the parameter's own units rather than `0..1`, so
+    /// gameplay can feed raw velocity straight in, which is what a `Lerp`
+    /// chain cannot do without a remap per segment.
+    Blend1D {
+        /// Float parameter that picks the position along the line.
+        param: String,
+        /// Entries in any order; they are sorted by threshold when resolved.
+        #[serde(default)]
+        entries: Vec<Blend1DEntry>,
+    },
+    /// 2D blend space: multiple entries placed in a 2D parameter space.
     BlendSpace2D {
         entries: Vec<BlendSpaceEntry>,
         /// Float parameter for X axis.
@@ -25,17 +44,30 @@ pub enum BlendTree {
         /// Float parameter for Y axis.
         param_y: String,
     },
-    /// Additive blend — overlay on top of a base animation.
+    /// Additive blend: overlay on top of a base animation.
+    ///
+    /// The overlay plays as a difference from its own first frame, added onto
+    /// whatever the base resolves to, so a breathing or recoil clip layers
+    /// onto any locomotion without replacing it.
     Additive {
         base: Box<BlendTree>,
         overlay: Box<BlendTree>,
-        /// Float parameter controlling overlay weight (0.0–1.0).
+        /// Float parameter controlling overlay weight (0.0 to 1.0).
         param: String,
     },
 }
 
+/// An entry on a [`BlendTree::Blend1D`] line.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Blend1DEntry {
+    /// Clip slot name.
+    pub clip: String,
+    /// Parameter value at which this clip plays alone.
+    pub threshold: f32,
+}
+
 /// An entry in a 2D blend space.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlendSpaceEntry {
     /// Clip slot name.
     pub clip: String,
@@ -53,6 +85,11 @@ impl BlendTree {
                 a.collect_clips(out);
                 b.collect_clips(out);
             }
+            BlendTree::Blend1D { entries, .. } => {
+                for entry in entries {
+                    out.push(entry.clip.clone());
+                }
+            }
             BlendTree::BlendSpace2D { entries, .. } => {
                 for entry in entries {
                     out.push(entry.clip.clone());
@@ -61,6 +98,45 @@ impl BlendTree {
             BlendTree::Additive { base, overlay, .. } => {
                 base.collect_clips(out);
                 overlay.collect_clips(out);
+            }
+        }
+    }
+
+    /// Clips this tree plays *additively* (anywhere under an `Additive`
+    /// overlay). The graph builder gives each a difference clip and an additive
+    /// node, which it would otherwise not build.
+    pub fn collect_additive_clips(&self, out: &mut Vec<String>) {
+        match self {
+            BlendTree::Clip(_) | BlendTree::Blend1D { .. } | BlendTree::BlendSpace2D { .. } => {}
+            BlendTree::Lerp { a, b, .. } => {
+                a.collect_additive_clips(out);
+                b.collect_additive_clips(out);
+            }
+            BlendTree::Additive { base, overlay, .. } => {
+                base.collect_additive_clips(out);
+                overlay.collect_clips(out);
+            }
+        }
+    }
+
+    /// Every float parameter the tree reads, for the editor to list.
+    pub fn collect_params(&self, out: &mut Vec<String>) {
+        match self {
+            BlendTree::Clip(_) => {}
+            BlendTree::Lerp { a, b, param } => {
+                out.push(param.clone());
+                a.collect_params(out);
+                b.collect_params(out);
+            }
+            BlendTree::Blend1D { param, .. } => out.push(param.clone()),
+            BlendTree::BlendSpace2D { param_x, param_y, .. } => {
+                out.push(param_x.clone());
+                out.push(param_y.clone());
+            }
+            BlendTree::Additive { base, overlay, param } => {
+                out.push(param.clone());
+                base.collect_params(out);
+                overlay.collect_params(out);
             }
         }
     }
@@ -177,5 +253,43 @@ mod tests {
         let mut out = vec!["existing".to_string()];
         BlendTree::Clip("added".into()).collect_clips(&mut out);
         assert_eq!(out, vec!["existing", "added"]);
+    }
+
+    #[test]
+    fn a_1d_blend_collects_every_entry() {
+        let tree = BlendTree::Blend1D {
+            param: "speed".into(),
+            entries: vec![
+                Blend1DEntry { clip: "idle".into(), threshold: 0.0 },
+                Blend1DEntry { clip: "run".into(), threshold: 4.0 },
+            ],
+        };
+        assert_eq!(clips_of(&tree), vec!["idle", "run"]);
+    }
+
+    /// Only clips under an overlay are additive: the base of an `Additive`
+    /// blends normally, and needs no difference clip.
+    #[test]
+    fn only_overlay_clips_are_additive() {
+        let tree = BlendTree::Additive {
+            base: Box::new(BlendTree::Lerp { a: clip("walk"), b: clip("run"), param: "s".into() }),
+            overlay: clip("breathe"),
+            param: "b".into(),
+        };
+        let mut out = Vec::new();
+        tree.collect_additive_clips(&mut out);
+        assert_eq!(out, vec!["breathe"]);
+    }
+
+    /// The `.animsm` format stores trees inline, so they must survive RON.
+    #[test]
+    fn a_tree_round_trips_through_ron() {
+        let tree = BlendTree::Blend1D {
+            param: "speed".into(),
+            entries: vec![Blend1DEntry { clip: "walk".into(), threshold: 1.5 }],
+        };
+        let text = ron::ser::to_string(&tree).unwrap();
+        let back: BlendTree = ron::from_str(&text).unwrap();
+        assert_eq!(back, tree);
     }
 }

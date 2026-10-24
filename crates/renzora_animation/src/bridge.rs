@@ -121,6 +121,19 @@ pub fn handle_animation_script_actions(
                 weight: get_f32("weight", 1.0),
             });
         }
+        "play_layer_animation" => {
+            anim_queue.commands.push(AnimationCommand::PlayOnLayer {
+                entity: get_entity(),
+                layer_name: get_str("layer_name"),
+                name: get_str("name"),
+            });
+        }
+        "stop_layer_animation" => {
+            anim_queue.commands.push(AnimationCommand::StopLayer {
+                entity: get_entity(),
+                layer_name: get_str("layer_name"),
+            });
+        }
         "tween_position" => {
             let entity = get_entity();
             let target = get_vec3("target");

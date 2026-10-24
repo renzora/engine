@@ -15,7 +15,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
 
-use renzora::PropertyTrack;
+use renzora::{Interp, KeyMode, PropertyTrack};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
@@ -28,8 +28,8 @@ use super::edit::loop_strip_h;
 use super::layout::{RowKind, TrackLayout};
 use super::runs::{KeyRuns, Run};
 use super::{
-    AddKeyTrackBtn, CollapseBtn, DeletePropTrack, PropTrackCombo, TrackRowBtn, MARKER, PARTICLE,
-    PROPERTY, ROTATION, SCALE, SELECTED, TRANSLATION,
+    AddKeyTrackBtn, CollapseBtn, DeletePropTrack, PropTrackCombo, TrackRowBtn, MARKER, MORPH,
+    PARTICLE, PROPERTY, ROTATION, SCALE, SELECTED, TRANSLATION,
 };
 
 /// Inner keys of a run are drawn once they land at least this far apart.
@@ -77,6 +77,7 @@ pub(super) fn lane_key_times(clip: &renzora_animation::AnimClip, lane: Lane) -> 
             })
             .unwrap_or_default(),
         Lane::Prop { track } => clip.property_tracks.get(track).map(|p| p.keys.iter().map(|k| k.time).collect()).unwrap_or_default(),
+        Lane::Morph { track } => clip.morph_tracks.get(track).map(|m| m.keys.iter().map(|k| k.0).collect()).unwrap_or_default(),
         // Not the clip's: `TimelineClip::key_times` reads the effect's.
         Lane::Fx { .. } => Vec::new(),
     }
@@ -148,6 +149,9 @@ pub(super) fn header_token(w: &Rx) -> u64 {
         for p in &clip.property_tracks {
             (&p.component, &p.field, &p.target, p.muted).hash(&mut h);
         }
+        for m in &clip.morph_tracks {
+            (&m.target, m.index, &m.name, m.muted).hash(&mut h);
+        }
     }
     if let Some(fx) = world.get_resource::<TimelineClip>().and_then(|c| c.fx.as_ref()) {
         super::fx::structure_hash(fx, &mut h);
@@ -164,6 +168,8 @@ enum HeaderRow {
     Summary { count: usize },
     Bone { track: usize, name: String, depth: u8, caret: Option<bool>, chans: [bool; 3], muted: bool },
     Prop { track: usize, label: Option<String>, muted: bool },
+    /// A blend shape: its name, and the mesh node it belongs to (the tooltip).
+    Morph { label: String, node: String, muted: bool },
     /// "Particles · Campfire", with the effect's track count.
     FxGroup { title: String, count: usize },
     /// An emitter's on/off row. `muted` when it is switched off with no keys
@@ -179,7 +185,7 @@ pub(super) fn header_snapshot(world: &Rx) -> KeyedSnapshot {
     let fx = w.get_resource::<TimelineClip>().and_then(|c| c.fx.as_ref());
     let th = state(w).map(|s| s.track_height).unwrap_or(super::ROW_DEFAULT);
     let (first, last) = layout.visible_range(th);
-    let total = clip.tracks.len() + clip.property_tracks.len() + fx.map(|f| f.doc.tracks.len()).unwrap_or(0);
+    let total = clip.tracks.len() + clip.property_tracks.len() + clip.morph_tracks.len() + fx.map(|f| f.doc.tracks.len()).unwrap_or(0);
     let rows: Vec<(RowKind, bool, HeaderRow)> = layout.rows[first..last]
         .iter()
         .map(|r| {
@@ -199,6 +205,10 @@ pub(super) fn header_snapshot(world: &Rx) -> KeyedSnapshot {
                 RowKind::Prop(i) => {
                     let pt = &clip.property_tracks[i];
                     HeaderRow::Prop { track: i, label: (!pt.component.is_empty()).then(|| property_label(pt)), muted: pt.muted }
+                }
+                RowKind::Morph(i) => {
+                    let m = &clip.morph_tracks[i];
+                    HeaderRow::Morph { label: m.label(), node: m.target.clone(), muted: m.muted }
                 }
                 RowKind::FxGroup => HeaderRow::FxGroup {
                     title: fx.map(|f| f.title()).unwrap_or_default(),
@@ -232,6 +242,7 @@ pub(super) fn header_snapshot(world: &Rx) -> KeyedSnapshot {
                 HeaderRow::Summary { count } => (0u8, count).hash(&mut h),
                 HeaderRow::Bone { name, depth, caret, chans, muted, .. } => (1u8, name, depth, caret, chans, muted).hash(&mut h),
                 HeaderRow::Prop { label, muted, .. } => (2u8, label, muted).hash(&mut h),
+                HeaderRow::Morph { label, node, muted } => (6u8, label, node, muted).hash(&mut h),
                 HeaderRow::FxGroup { title, count } => (3u8, title, count).hash(&mut h),
                 HeaderRow::FxEmitter { name, depth, muted } => (4u8, name, depth, muted).hash(&mut h),
                 HeaderRow::FxTrack { label, depth, editable, .. } => (5u8, label, depth, editable).hash(&mut h),
@@ -352,6 +363,25 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, kind: RowKind, select
             }
             kids.extend([addk, del]);
         }
+        // Like a bone row: a glyph, the shape's name, and the mesh it lives on
+        // on hover. Keyed from the Face panel's sliders (or K over a pose),
+        // so the row carries no buttons of its own.
+        HeaderRow::Morph { label, node, muted } => {
+            kids.push(caret_slot(commands, None, None));
+            let ic = icon_text(commands, &fonts.phosphor, "smiley", MORPH, 11.0);
+            commands.entity(ic).insert(PASS_THROUGH);
+            let lbl = commands
+                .spawn((Text::new(label.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(if selected { text_primary() } else { (196, 196, 206) })), PASS_THROUGH))
+                .id();
+            renzora_ember::widgets::ellipsize(commands, lbl, label.clone(), Some(root));
+            commands.entity(lbl).entry::<Node>().or_default().and_modify(|mut n| n.flex_grow = 1.0);
+            commands.entity(root).insert(renzora_ember::widgets::HoverTooltip::new(format!("{label} on {node}")));
+            kids.extend([ic, lbl]);
+            if *muted {
+                dim_text(commands, &[ic, lbl], MUTED_ALPHA);
+                kids.push(muted_badge(commands, fonts));
+            }
+        }
         // The Particles group reads as the clip's own rows do: the head like
         // "All tracks", each row a name with a sparkle where a bone has its
         // bone, so the effect's tracks sit in the list as tracks.
@@ -469,12 +499,27 @@ pub(super) fn lanes_token(w: &Rx) -> u64 {
     world.get_resource::<SelectedKey>().and_then(|s| s.0).hash(&mut h);
     if let Some(c) = cur_clip(world) {
         c.duration.to_bits().hash(&mut h);
-        // Muting changes no key, so the runs above do not see it.
+        // Muting changes no key, so the runs above do not see it; nor does a
+        // key's interpolation, which its shape shows.
         for t in &c.tracks {
             t.muted.hash(&mut h);
+            for ch in 0..3u8 {
+                for k in t.curves.channel(ch) {
+                    k.mode.hash(&mut h);
+                }
+            }
         }
         for p in &c.property_tracks {
             p.muted.hash(&mut h);
+            for k in &p.keys {
+                prop_key_shape(k.interp).hash(&mut h);
+            }
+        }
+        for m in &c.morph_tracks {
+            m.muted.hash(&mut h);
+            for k in &m.curves {
+                k.mode.hash(&mut h);
+            }
         }
     }
     h.finish()
@@ -488,8 +533,8 @@ enum LaneElem {
     PastEnd(f32),
     /// A run bar: (row, channel, t0, t1, colour, amber).
     Bar(usize, Option<u8>, f32, f32, (u8, u8, u8), bool),
-    /// A key diamond: (row, channel, t, colour, selected).
-    Key(usize, Option<u8>, f32, (u8, u8, u8), bool),
+    /// A key: (row, channel, t, colour, selected, shape).
+    Key(usize, Option<u8>, f32, (u8, u8, u8), bool, KeyShape),
 }
 
 pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
@@ -552,13 +597,13 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
                 for idx in std::iter::once(r.i0).chain((r.i1 != r.i0).then_some(r.i1)) {
                     if idx >= lo && idx <= hi {
                         let sd = is_sel(SelKey { lane, index: idx });
-                        elems.push(LaneElem::Key(row, ch, times[idx], if sd { SELECTED } else { color }, sd));
+                        elems.push(LaneElem::Key(row, ch, times[idx], if sd { SELECTED } else { color }, sd, lane_key_shape(clip, lane, idx)));
                     }
                 }
             } else {
                 for (idx, &t) in times.iter().enumerate().take(hi + 1).skip(lo) {
                     let sd = is_sel(SelKey { lane, index: idx });
-                    elems.push(LaneElem::Key(row, ch, t, if sd { SELECTED } else { color }, sd));
+                    elems.push(LaneElem::Key(row, ch, t, if sd { SELECTED } else { color }, sd, lane_key_shape(clip, lane, idx)));
                 }
             }
         }
@@ -586,7 +631,7 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
                     if t > t_max || elems.len() > MAX_ELEMS {
                         break;
                     }
-                    elems.push(LaneElem::Key(row, None, t, accent(), false));
+                    elems.push(LaneElem::Key(row, None, t, accent(), false, KeyShape::Diamond));
                 }
             }
             RowKind::Bone(ti) => {
@@ -602,6 +647,12 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
                 let l = Lane::Prop { track: pi };
                 let times = lane_key_times(clip, l);
                 lane(&mut elems, row, None, l, pr, &times, PROPERTY);
+            }
+            RowKind::Morph(mi) => {
+                let Some(mr) = runs.morph.get(mi) else { continue };
+                let l = Lane::Morph { track: mi };
+                let times = lane_key_times(clip, l);
+                lane(&mut elems, row, None, l, mr, &times, MORPH);
             }
             RowKind::FxGroup => {}
             RowKind::FxEmitter(e, track) => {
@@ -633,6 +684,7 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
     let row_muted = |row: usize| match layout.rows[row].kind {
         RowKind::Bone(ti) => clip.tracks.get(ti).is_some_and(|t| t.muted),
         RowKind::Prop(pi) => clip.property_tracks.get(pi).is_some_and(|p| p.muted),
+        RowKind::Morph(mi) => clip.morph_tracks.get(mi).is_some_and(|m| m.muted),
         RowKind::Summary | RowKind::FxGroup | RowKind::FxEmitter(..) | RowKind::FxTrack(_) => false,
     };
     let dim: Vec<bool> = elems
@@ -664,7 +716,7 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
                 LaneElem::RowWash(row) => (0u8, row).hash(&mut h),
                 LaneElem::PastEnd(x) => (1u8, x.to_bits()).hash(&mut h),
                 LaneElem::Bar(row, ch, a, b, c, am) => (2u8, row, ch, a.to_bits(), b.to_bits(), c, am).hash(&mut h),
-                LaneElem::Key(row, ch, t, c, sd) => (3u8, row, ch, t.to_bits(), c, sd).hash(&mut h),
+                LaneElem::Key(row, ch, t, c, sd, shape) => (3u8, row, ch, t.to_bits(), c, sd, shape).hash(&mut h),
             }
             (zoom.to_bits(), scroll.to_bits(), th.to_bits(), layout_vs.to_bits(), dim[i]).hash(&mut h);
             (k.finish(), h.finish())
@@ -694,19 +746,67 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
                 ))
                 .id()
             }
-            LaneElem::Key(_, ch, t, color, sd) => {
+            LaneElem::Key(_, ch, t, color, sd, shape) => {
                 let base = if ch.is_some() { (th * 0.34).clamp(5.0, 9.0) } else { (th * 0.38).clamp(6.0, 10.0) };
                 let alpha = if dim[i] { MUTED_ALPHA } else { 1.0 };
-                spawn_diamond(c, x_of(t, zoom, scroll), ys[i].0, base, color, alpha, sd)
+                spawn_key(c, x_of(t, zoom, scroll), ys[i].0, base, color, alpha, sd, shape, false)
             }
         }),
     }
 }
 
-/// A 45°-rotated key diamond; a selected one gets a dark gap and an amber ring.
-fn spawn_diamond(commands: &mut Commands, x: f32, y: f32, kf: f32, color: (u8, u8, u8), alpha: f32, selected: bool) -> Entity {
+/// How a key is drawn, which says how it leaves for the next key: a diamond
+/// is linear, a square holds, a circle is smooth (an eased property key, or a
+/// bone key with tangents). The convention other animation editors use, so
+/// a stepped blocking pass and its splined version read apart at a glance.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+pub(super) enum KeyShape {
+    #[default]
+    Diamond,
+    Square,
+    Circle,
+}
+
+pub(super) fn bone_key_shape(mode: KeyMode) -> KeyShape {
+    match mode {
+        KeyMode::Linear => KeyShape::Diamond,
+        KeyMode::Constant => KeyShape::Square,
+        KeyMode::Auto | KeyMode::Flat | KeyMode::Free | KeyMode::Broken => KeyShape::Circle,
+    }
+}
+
+pub(super) fn prop_key_shape(interp: Interp) -> KeyShape {
+    match interp {
+        Interp::Linear => KeyShape::Diamond,
+        Interp::Stepped => KeyShape::Square,
+        Interp::Eased(_) => KeyShape::Circle,
+    }
+}
+
+/// The shape a lane's key `idx` is drawn with.
+fn lane_key_shape(clip: &renzora_animation::AnimClip, lane: Lane, idx: usize) -> KeyShape {
+    match lane {
+        Lane::Bone { track, channel } => clip.tracks.get(track).map(|t| bone_key_shape(t.key_curve(channel, idx).mode)).unwrap_or_default(),
+        Lane::Prop { track } => clip.property_tracks.get(track).and_then(|p| p.keys.get(idx)).map(|k| prop_key_shape(k.interp)).unwrap_or_default(),
+        Lane::Morph { track } => clip.morph_tracks.get(track).map(|m| bone_key_shape(m.key_curve(idx).mode)).unwrap_or_default(),
+        Lane::Fx { .. } => KeyShape::Diamond,
+    }
+}
+
+/// A key marker; a selected one gets a dark gap and an amber ring. `outline`
+/// rings an unselected key in the panel colour, so it stands off a curve
+/// drawn through it.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn spawn_key(commands: &mut Commands, x: f32, y: f32, kf: f32, color: (u8, u8, u8), alpha: f32, selected: bool, shape: KeyShape, outline: bool) -> Entity {
     let kf = if selected { kf + 2.0 } else { kf };
+    // A square or circle of the same width reads heavier than the diamond
+    // (whose corners are what you see), so they are drawn a little smaller.
+    let kf = if shape == KeyShape::Diamond { kf } else { (kf * 0.86).round() };
     let half = kf * 0.5;
+    let radius = match shape {
+        KeyShape::Circle => half,
+        _ => 1.5,
+    };
     let mut e = commands.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -714,15 +814,19 @@ fn spawn_diamond(commands: &mut Commands, x: f32, y: f32, kf: f32, color: (u8, u
             top: Val::Px(y - half),
             width: Val::Px(kf),
             height: Val::Px(kf),
-            border_radius: BorderRadius::all(Val::Px(1.5)),
+            border_radius: BorderRadius::all(Val::Px(radius)),
             ..default()
         },
         BackgroundColor(rgb(color).with_alpha(alpha)),
-        UiTransform::from_rotation(Rot2::degrees(45.0)),
         PASS_THROUGH,
     ));
+    if shape == KeyShape::Diamond {
+        e.insert(UiTransform::from_rotation(Rot2::degrees(45.0)));
+    }
     if selected {
         e.insert(BoxShadow::new(rgb(SELECTED), Val::Px(0.0), Val::Px(0.0), Val::Px(2.5), Val::Px(0.0)));
+    } else if outline {
+        e.insert(BoxShadow::new(rgb(panel_bg()), Val::Px(0.0), Val::Px(0.0), Val::Px(1.5), Val::Px(0.0)));
     }
     e.id()
 }

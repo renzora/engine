@@ -8,8 +8,7 @@ pub fn create_empty_clip(name: &str, duration: f32) -> AnimClip {
         name: name.to_string(),
         duration,
         tracks: Vec::new(),
-        property_tracks: Vec::new(),
-        markers: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -21,6 +20,7 @@ pub fn create_translation_track(bone_name: &str, keyframes: Vec<(f32, [f32; 3])>
         rotations: Vec::new(),
         scales: Vec::new(),
         muted: false,
+        curves: Default::default(),
     }
 }
 
@@ -32,5 +32,6 @@ pub fn create_rotation_track(bone_name: &str, keyframes: Vec<(f32, [f32; 4])>) -
         rotations: keyframes,
         scales: Vec::new(),
         muted: false,
+        curves: Default::default(),
     }
 }

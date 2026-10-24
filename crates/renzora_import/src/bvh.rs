@@ -294,6 +294,7 @@ fn bvh_to_clip(bvh: &BvhFile) -> AnimClip {
             rotations,
             scales: Vec::new(),
             muted: false,
+            curves: Default::default(),
         });
     }
 
@@ -301,8 +302,7 @@ fn bvh_to_clip(bvh: &BvhFile) -> AnimClip {
         name: "bvh_clip".to_string(),
         duration,
         tracks,
-        property_tracks: Vec::new(),
-        markers: Vec::new(),
+        ..Default::default()
     }
 }
 

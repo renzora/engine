@@ -31,6 +31,16 @@ pub struct AnimatorReadState {
     pub params: HashMap<String, f32>,
     /// Current bool parameters on the state machine.
     pub bool_params: HashMap<String, bool>,
+    /// Root motion of the last frame, in the entity's parent space: what was
+    /// added to its translation (or, in `Extract` mode, what gameplay should
+    /// add itself).
+    #[serde(default)]
+    #[reflect(default)]
+    pub root_motion_delta: Vec3,
+    /// Root turn of the last frame about the up axis, in radians.
+    #[serde(default)]
+    #[reflect(default)]
+    pub root_motion_yaw: f32,
 }
 
 /// Auto-inserts [`AnimatorReadState`] whenever an entity has an
@@ -64,5 +74,7 @@ pub fn update_animator_read_state(
         }
         rs.params = state.params.floats.clone();
         rs.bool_params = state.params.bools.clone();
+        rs.root_motion_delta = state.root_motion_delta;
+        rs.root_motion_yaw = state.root_motion_yaw;
     }
 }

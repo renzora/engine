@@ -21,7 +21,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_with, keyed_list_tokened};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{ellipsize, scroll_view, slider_ranged, text_input, EmberTextInput, HoverTooltip};
+use renzora_ember::widgets::{checkbox, ellipsize, scroll_view, slider_ranged, text_input, EmberTextInput, HoverTooltip};
 use renzora_ember::UiInteraction;
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
 
@@ -183,7 +183,25 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
     let large = icon_text(commands, &fonts.phosphor, "square", text_muted(), 15.0);
-    commands.entity(bar).add_children(&[search, spacer, hint, small, size, large]);
+    // Bendable: shapes added while it is ticked arrive as models with a
+    // chain of bones, ready to bend in the Animation workspace.
+    let bend = commands
+        .spawn((Node { flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() }, HoverTooltip::new("Add shapes with a chain of bones along their length, so they can bend")))
+        .id();
+    let bend_box = checkbox(commands, false);
+    bind_2way(
+        commands,
+        bend_box,
+        |rx| rx.get_resource::<ShapeDragState>().is_some_and(|s| s.bendable),
+        |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<ShapeDragState>() {
+                s.bendable = *v;
+            }
+        },
+    );
+    let bend_label = commands.spawn((Text::new(renzora::lang::t_or("shapes.bendable", "Bendable")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    commands.entity(bend).add_children(&[bend_box, bend_label]);
+    commands.entity(bar).add_children(&[search, bend, spacer, hint, small, size, large]);
 
     // ── Body: sidebar + grid ──
     let body = commands
@@ -580,6 +598,15 @@ fn shape_drag_or_click(
                     UndoContext::Scene,
                     Box::new(SpawnShapeCmd { entity: Entity::PLACEHOLDER, shape_id, name, position: Vec3::ZERO, color }),
                 );
+                // Bendable: the spawn selects the new shape, which is how it
+                // is found; the animation editor does the rest.
+                let bendable = world.get_resource::<ShapeDragState>().is_some_and(|s| s.bendable);
+                let spawned = world.get_resource::<renzora_editor_framework::EditorSelection>().and_then(|s| s.get());
+                if let (true, Some(entity)) = (bendable, spawned) {
+                    if let Some(mut asks) = world.get_resource_mut::<Messages<renzora::core::MakeBendable>>() {
+                        asks.write(renzora::core::MakeBendable { entity, segments: 4 });
+                    }
+                }
             });
         }
         press.0 = None;

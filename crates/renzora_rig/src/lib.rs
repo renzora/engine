@@ -8,22 +8,35 @@
 //! - [`skin`]: bones plus a weighting rule into joints, a skin and per-vertex
 //!   weights.
 //! - [`face`]: a face rig (jaw, lips, corners, eyes, lids, brows) from five
-//!   points; [`expressions`]: what its sliders do, and natural blinks.
+//!   points; [`expressions`]: its built-in sliders, and natural blinks.
+//! - [`controls`]: sliders a user makes for any rig, saved beside the model,
+//!   and how their values mix into a pose.
 //! - [`humanoid`]: a Mixamo-compatible body skeleton from seven points.
 //! - [`mirror`]: left and right; [`ik`]: two-bone reaching.
 //! - [`weights`]: weights for a skeleton that is already there, generated
 //!   and painted.
+//! - [`morphs`]: blend shapes (glTF morph targets) read from and written into
+//!   a model; [`sculpt`]: the brushes that sculpt them.
 
+pub mod chain;
+pub mod controls;
+pub mod edit;
+pub mod export;
 pub mod expressions;
 pub mod face;
+pub mod fingers;
 pub mod glb;
 pub mod humanoid;
 pub mod ik;
 pub mod mirror;
+pub mod morphs;
+pub mod quadruped;
+pub mod sculpt;
 pub mod skin;
 pub mod weights;
 
 pub use glb::{Glb, GlbError};
+pub use morphs::write_shapes;
 
 /// Rig a model file in place, keeping the original beside it as
 /// `<stem>.unrigged.glb` the first time.

@@ -55,12 +55,6 @@ pub struct Target<'a> {
     pub dependency: &'a [PathBuf],
     /// `-L native=` — native import libraries from build scripts.
     pub native: &'a [PathBuf],
-    /// The SDK's `shared.tsv`: the crates its shared images contain, which a
-    /// third-party dependency built on Bevy takes from the SDK instead of
-    /// compiling (see `deps.rs`). `None` for an SDK staged before it existed.
-    pub shared: Option<&'a Path>,
-    /// The engine's `Cargo.lock`, staged beside the table.
-    pub lockfile: Option<&'a Path>,
     /// The plugin's source directory, holding `Cargo.toml` and `src/`.
     pub plugin_dir: &'a Path,
     /// Where the plugin's own artefacts go; the third-party dependency build
@@ -153,20 +147,13 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
     }
 
     // Third-party crates the plugin declared, compiled by cargo from a manifest
-    // that mentions no Bevy, with any Bevy crate they need taken from the SDK.
-    // Empty (and cargo never runs) unless the plugin asked for something.
-    let share = t.shared.map(|table| deps::Share {
-        table,
-        lockfile: t.lockfile,
-        search: t.dependency,
-        native: t.native,
-        triple: t.triple,
-    });
-    let extra = deps::build_with(t.plugin_dir, t.build_dir, t.toolchain, share.as_ref())?;
+    // that mentions no Bevy. Empty — and cargo never runs — unless the plugin
+    // asked for something.
+    let extra = deps::build(t.plugin_dir, t.build_dir, t.toolchain)?;
     for (name, rlib) in &extra.externs {
         push!("--extern", format!("{name}={}", rlib.display()));
     }
-    for search in &extra.search {
+    if let Some(search) = &extra.search {
         push!("-L", format!("dependency={}", search.display()));
     }
 

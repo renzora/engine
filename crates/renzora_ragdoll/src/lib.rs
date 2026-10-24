@@ -16,10 +16,18 @@
 //! otherwise stay pinned in place. The animator is paused too, for tidiness.
 //! `disable_ragdoll(entity)` reverses both (reconnect + resume).
 //!
+//! That is the *full* ragdoll. `Ragdoll.bone` narrows it to one bone's subtree
+//! (an arm hit by a shot hangs off a body that keeps animating), and
+//! `Ragdoll.blend` below `1` mixes the simulated bones with the still-playing
+//! clip instead of handing them over. Switching off eases back to the
+//! animation over `get_up_time`. Both need the animation link kept, so they go
+//! through a pose split described in `blend`.
+//!
 //! Ragdoll is a *simulation* feature: it only does anything while physics is
 //! running, i.e. in **Play mode**. Toggling `Ragdoll.active` in the editor (where
 //! the simulation is paused) just freezes the pose.
 
+mod blend;
 mod generate;
 #[cfg(feature = "scripting")]
 mod script_extension;
@@ -48,7 +56,7 @@ use renzora::AppEditorExt;
 // `renzora_macros` (always present, feature-independent) rather than the
 // gated `renzora::Inspectable` re-export keeps the macro *name* resolvable
 // even when the attribute itself is compiled out.
-#[derive(Component, Reflect, Clone, Copy)]
+#[derive(Component, Reflect, Clone)]
 #[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
 // `Default` (the manual impl below) must be in the reflect attribute, not just
 // derived, so `ReflectDefault` is registered. Without it, loading a scene saved
@@ -106,6 +114,39 @@ pub struct Ragdoll {
         field(name = "Gravity Scale", speed = 0.01, min = 0.0, max = 3.0)
     )]
     pub gravity_scale: f32,
+    /// How much of the pose the physics owns while active: `1` is a full
+    /// ragdoll, lower blends the simulated bones with the still-playing
+    /// animation (a stagger, a character bracing against a hit). Unlike the
+    /// tuning fields above this is read every frame, so a script can ramp it.
+    #[reflect(default = "default_blend")]
+    #[cfg_attr(
+        feature = "editor",
+        field(name = "Physics Blend", speed = 0.01, min = 0.0, max = 1.0)
+    )]
+    pub blend: f32,
+    /// Name of the bone whose subtree ragdolls (an arm hit by a shot: its
+    /// upper-arm bone). Empty ragdolls the whole skeleton. The rest of the
+    /// skeleton keeps animating, and the ragdolled part hangs off it by its
+    /// joint.
+    #[reflect(default)]
+    #[cfg_attr(feature = "editor", field(name = "Partial Bone"))]
+    pub bone: String,
+    /// Seconds to blend back to the animation when the ragdoll switches off,
+    /// so a character gets up instead of snapping into its idle. `0` snaps.
+    #[reflect(default = "default_get_up_time")]
+    #[cfg_attr(
+        feature = "editor",
+        field(name = "Get Up Time", speed = 0.01, min = 0.0, max = 10.0)
+    )]
+    pub get_up_time: f32,
+}
+
+fn default_blend() -> f32 {
+    1.0
+}
+
+fn default_get_up_time() -> f32 {
+    0.5
 }
 
 impl Default for Ragdoll {
@@ -118,6 +159,9 @@ impl Default for Ragdoll {
             linear_damping: 2.0,
             angular_damping: 4.0,
             gravity_scale: 0.6,
+            blend: default_blend(),
+            bone: String::new(),
+            get_up_time: default_get_up_time(),
         }
     }
 }
@@ -137,7 +181,26 @@ impl Plugin for RagdollPlugin {
         info!("[runtime] RagdollPlugin (skeletal ragdoll)");
 
         app.register_type::<RagdollBone>()
-            .add_systems(Update, (generate::build_ragdolls, toggle::apply_ragdoll_state))
+            .add_systems(
+                Update,
+                (
+                    generate::build_ragdolls,
+                    (toggle::apply_ragdoll_state, blend::update_blend_weights).chain(),
+                ),
+            )
+            // The blended and partial paths (see `blend`): physics' own pose
+            // back before the step, recorded after it, mixed with the clip
+            // after the animation player.
+            .add_systems(First, blend::restore_physics_pose)
+            .add_systems(
+                PostUpdate,
+                (
+                    blend::capture_physics_pose.before(bevy::app::AnimationSystems),
+                    blend::blend_ragdoll_pose
+                        .after(bevy::app::AnimationSystems)
+                        .before(bevy::transform::TransformSystems::Propagate),
+                ),
+            )
             .add_observer(toggle::handle_ragdoll_script_actions);
 
         #[cfg(feature = "editor")]

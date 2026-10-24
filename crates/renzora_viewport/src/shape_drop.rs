@@ -435,4 +435,12 @@ pub fn handle_shape_spawn(world: &mut World) {
             color: default_color,
         }),
     );
+    // Bendable: the spawn selects the new shape, which is how it is found.
+    let bendable = world.get_resource::<ShapeDragState>().is_some_and(|s| s.bendable);
+    let spawned = world.get_resource::<renzora_editor_framework::EditorSelection>().and_then(|s| s.get());
+    if let (true, Some(entity)) = (bendable, spawned) {
+        if let Some(mut asks) = world.get_resource_mut::<Messages<renzora::core::MakeBendable>>() {
+            asks.write(renzora::core::MakeBendable { entity, segments: 4 });
+        }
+    }
 }

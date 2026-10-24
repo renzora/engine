@@ -369,7 +369,11 @@ type NamedEntity<'a> = (Entity, bevy::ecs::change_detection::Ref<'a, Name>, Opti
 ///   conflict on `Name`; the re-inserted clean id is idempotent, so the next
 ///   frame's pass finds nothing to do.
 fn enforce_entity_ids(
-    names: Query<NamedEntity, Without<bevy::ui::Node>>,
+    // Hidden helpers are left out: they are not saved or looked up by name,
+    // and taking part made them take names from the scene. The Animation
+    // workspace's copy of a rigged model was spawned first, so it kept
+    // `mixamorig_neck` and the scene's own bones became `mixamorig_neck_1`.
+    names: Query<NamedEntity, (Without<bevy::ui::Node>, Without<renzora::core::HideInHierarchy>)>,
     mut commands: Commands,
 ) {
     if !names.iter().any(|(_, n, _)| n.is_changed()) {
@@ -1145,6 +1149,19 @@ mod tests {
         world.run_system(pass).unwrap();
         assert_eq!(name_of(&world, second), "face_jaw_1");
         assert_eq!(bind_of(&world, second).as_deref(), Some("face_jaw"));
+    }
+
+    /// A hidden helper of the same name (the Animation workspace's copy of a
+    /// model, spawned first) does not cost the scene's entity its name.
+    #[test]
+    fn a_hidden_namesake_takes_no_name() {
+        let (mut world, pass) = world_with_pass();
+        let (copy, real) = in_order(&mut world);
+        world.entity_mut(copy).insert((Name::new("mixamorig_neck"), HideInHierarchy));
+        world.entity_mut(real).insert(Name::new("mixamorig_neck"));
+        world.run_system(pass).unwrap();
+        assert_eq!(name_of(&world, real), "mixamorig_neck");
+        assert_eq!(name_of(&world, copy), "mixamorig_neck");
     }
 
     /// A second collision renames it again and must not record the first

@@ -52,6 +52,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_forward_decal::DecalPlugin::default());
     #[cfg(feature = "gaussian_splatting")]
     app.add_plugins(renzora_gaussian_splatting::GaussianSplatPlugin::default());
+    app.add_plugins(renzora_ik::IkPlugin::default());
     #[cfg(feature = "light2d")]
     app.add_plugins(renzora_light2d::Light2dPlugin::default());
     app.add_plugins(renzora_lighting::LightingPlugin::default());

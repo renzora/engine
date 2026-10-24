@@ -7,6 +7,7 @@
 //! dropped into the scene and by the animation editor's "Scan for clips"
 //! action.
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::component::{AnimClipSlot, AnimatorComponent};
@@ -28,12 +29,11 @@ pub fn discover_animation_clips(
     }
 
     let mut clips = Vec::new();
-    let mut entries: Vec<_> = std::fs::read_dir(&anim_dir_abs)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "anim"))
-        .collect();
+    let all: Vec<_> = std::fs::read_dir(&anim_dir_abs).ok()?.filter_map(|e| e.ok()).collect();
+    let mut entries: Vec<_> = all.iter().filter(|e| e.path().extension().is_some_and(|ext| ext == "anim")).collect();
     entries.sort_by_key(|e| e.file_name());
+    let model_stem = Path::new(asset_path).file_stem().and_then(|s| s.to_str());
+    let skeletons = clip_skeletons(&all, model_dir, model_stem);
 
     for entry in entries {
         let file_path = entry.path();
@@ -50,6 +50,7 @@ pub fn discover_animation_clips(
             .to_string_lossy()
             .replace('\\', "/");
 
+        let source_skeleton = entry.file_name().to_str().and_then(|n| skeletons.get(n)).cloned();
         clips.push(AnimClipSlot {
             name: stem,
             path: anim_asset_path,
@@ -57,6 +58,7 @@ pub fn discover_animation_clips(
             speed: 1.0,
             blend_in: None,
             blend_out: None,
+            source_skeleton,
         });
     }
 
@@ -76,5 +78,69 @@ pub fn discover_animation_clips(
         blend_duration: 0.2,
         state_machine: None,
         layers: Vec::new(),
+        ..Default::default()
     })
+}
+
+/// Which `.skel` in the folder claims each clip: `clip file name ->
+/// asset-relative .skel path`, from each skeleton's [`renzora::SkeletonRestPose::clips`].
+///
+/// The importer writes one `.skel` per model it extracted clips from, naming
+/// those clips, so a clip from an animation-only download carries its own
+/// rig's rest pose to whichever character it is played on. A clip nobody
+/// claims (hand-made in the timeline, or imported before skeletons were
+/// written) gets none and binds by name as it always did. A skeleton that
+/// does not parse is skipped rather than failing discovery.
+///
+/// The model's own skeleton (`<model>.skel`) is left out: its clips were keyed
+/// on this very rig, where retargeting is the identity, and a retargeted slot
+/// plays a derived copy of its clip, which the timeline's live edits (written
+/// into the loaded clip) would then never reach.
+fn clip_skeletons(entries: &[std::fs::DirEntry], model_dir: &Path, model_stem: Option<&str>) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let mut skels: Vec<_> = entries
+        .iter()
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "skel"))
+        .filter(|e| model_stem.is_none_or(|m| e.path().file_stem().and_then(|s| s.to_str()) != Some(m)))
+        .collect();
+    skels.sort_by_key(|e| e.file_name());
+    for skel in skels {
+        let Ok(text) = std::fs::read_to_string(skel.path()) else { continue };
+        let Ok(pose) = ron::from_str::<renzora::SkeletonRestPose>(&text) else { continue };
+        let asset = model_dir.join("animations").join(skel.file_name()).to_string_lossy().replace('\\', "/");
+        for clip in pose.clips {
+            out.entry(clip).or_insert_with(|| asset.clone());
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A clip claimed by another model's `.skel` gets it as its source
+    /// skeleton; the model's own clips, and clips nobody claims, bind by
+    /// name, as before.
+    #[test]
+    fn slots_point_at_the_skeleton_that_claims_them() {
+        let root = std::env::temp_dir().join(format!("renzora_discovery_{}", std::process::id()));
+        let anims = root.join("models").join("animations");
+        std::fs::create_dir_all(&anims).unwrap();
+        let clip = crate::extract::create_empty_clip("walk", 1.0);
+        for name in ["Walk.anim", "Mine.anim", "Handmade.anim"] {
+            renzora::write_anim_file(&clip, &anims.join(name)).unwrap();
+        }
+        let theirs = renzora::SkeletonRestPose { bones: vec![], clips: vec!["Walk.anim".into()] };
+        renzora::write_skeleton_file(&theirs, &anims.join("Walking.skel")).unwrap();
+        let own = renzora::SkeletonRestPose { bones: vec![], clips: vec!["Mine.anim".into()] };
+        renzora::write_skeleton_file(&own, &anims.join("Hero.skel")).unwrap();
+
+        let animator = discover_animation_clips("models/Hero.glb", &root).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        let slot = |n: &str| animator.clips.iter().find(|c| c.name == n).unwrap().source_skeleton.clone();
+        assert_eq!(slot("Walk").as_deref(), Some("models/animations/Walking.skel"));
+        assert_eq!(slot("Mine"), None);
+        assert_eq!(slot("Handmade"), None);
+    }
 }

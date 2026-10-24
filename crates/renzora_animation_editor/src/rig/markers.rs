@@ -17,15 +17,48 @@ use bevy::prelude::*;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum MarkerSet {
     Face,
+    /// A face whose eyes are part of the skin (a scan): the face's points and
+    /// one more on an eye, since there are no eye meshes to find them by.
+    /// Shares the face's storage, so the first four carry over.
+    FacePaintedEyes,
     Body,
+    /// A chain's two ends. Optional: with none placed the chain runs along
+    /// the mesh's longest axis.
+    Chain,
+    /// A four-legged animal, clicked from the side.
+    Quadruped,
 }
 
 impl MarkerSet {
     pub(crate) fn labels(self) -> &'static [&'static str] {
         match self {
             MarkerSet::Face => &["Mouth corner (either side)", "Upper lip, middle", "Lower lip, middle", "Chin"],
+            MarkerSet::FacePaintedEyes => &["Mouth corner (either side)", "Upper lip, middle", "Lower lip, middle", "Chin", "Eye, middle (either side)"],
             MarkerSet::Body => &["Chin", "Shoulder (either side)", "Elbow", "Wrist", "Groin", "Knee", "Ankle"],
+            MarkerSet::Chain => &["Root end", "Tip"],
+            MarkerSet::Quadruped => &[
+                "Nose",
+                "Skull base",
+                "Withers (top of shoulders)",
+                "Front shoulder (either side)",
+                "Front elbow",
+                "Front wrist",
+                "Front toes",
+                "Pelvis (top of hips)",
+                "Hip joint",
+                "Hind knee",
+                "Hock",
+                "Hind toes",
+                "Tail tip (or the spine's end)",
+            ],
         }
+    }
+
+    /// Whether a click places the point inside the model (between where the
+    /// ray goes in and comes out) rather than on its surface. A joint
+    /// belongs in the middle of a limb; a face point marks the lip itself.
+    pub(crate) fn inside(self) -> bool {
+        matches!(self, MarkerSet::Body | MarkerSet::Chain | MarkerSet::Quadruped)
     }
 
     /// Whether point `i` is one side of a pair, the other side mirrored from
@@ -33,7 +66,10 @@ impl MarkerSet {
     pub(crate) fn mirrored(self, i: usize) -> bool {
         match self {
             MarkerSet::Face => i == 0,
+            MarkerSet::FacePaintedEyes => matches!(i, 0 | 4),
             MarkerSet::Body => matches!(i, 1 | 2 | 3 | 5 | 6),
+            MarkerSet::Chain => false,
+            MarkerSet::Quadruped => matches!(i, 3..=6 | 8..=11),
         }
     }
 
@@ -50,6 +86,8 @@ impl MarkerSet {
 pub(crate) struct Markers {
     pub(crate) face: Vec<Option<Vec3>>,
     pub(crate) body: Vec<Option<Vec3>>,
+    pub(crate) chain: Vec<Option<Vec3>>,
+    pub(crate) quadruped: Vec<Option<Vec3>>,
     pub(crate) placing: Option<(MarkerSet, usize)>,
     /// The model the markers were placed on; they are cleared when the
     /// panels move to another one.
@@ -59,18 +97,32 @@ pub(crate) struct Markers {
 impl Markers {
     pub(crate) fn points(&self, set: MarkerSet) -> &[Option<Vec3>] {
         match set {
-            MarkerSet::Face => &self.face,
+            MarkerSet::Face | MarkerSet::FacePaintedEyes => &self.face,
             MarkerSet::Body => &self.body,
+            MarkerSet::Chain => &self.chain,
+            MarkerSet::Quadruped => &self.quadruped,
         }
     }
 
     fn points_mut(&mut self, set: MarkerSet) -> &mut Vec<Option<Vec3>> {
         let v = match set {
-            MarkerSet::Face => &mut self.face,
+            MarkerSet::Face | MarkerSet::FacePaintedEyes => &mut self.face,
             MarkerSet::Body => &mut self.body,
+            MarkerSet::Chain => &mut self.chain,
+            MarkerSet::Quadruped => &mut self.quadruped,
         };
         v.resize(set.labels().len(), None);
         v
+    }
+
+    /// The face set being placed, told apart by how many points it holds;
+    /// for the stage, which draws the points but does not read the meshes.
+    pub(crate) fn face_set(&self) -> MarkerSet {
+        if self.face.len() == MarkerSet::FacePaintedEyes.labels().len() {
+            MarkerSet::FacePaintedEyes
+        } else {
+            MarkerSet::Face
+        }
     }
 
     pub(crate) fn complete(&self, set: MarkerSet) -> Option<Vec<Vec3>> {

@@ -118,6 +118,7 @@ fn compact_groups(
                     out.weights
                         .push(weights.get(source).copied().unwrap_or([0.0; 4]));
                 }
+                out.source.push(source as u32);
             }
             indices.push(remap[source]);
         }
@@ -147,6 +148,120 @@ struct Vertices {
     texcoords: Vec<f32>,
     joints: Vec<[u16; 4]>,
     weights: Vec<[f32; 4]>,
+    /// The source vertex each output vertex was copied from, so per-vertex
+    /// data that rides beside the attributes (blend shape offsets) can be
+    /// compacted the same way.
+    source: Vec<u32>,
+}
+
+/// Blend shapes (morph targets) for the merged mesh a builder writes.
+///
+/// Each target is a position offset per **source** vertex (three floats each,
+/// parallel to the `positions` handed to the builder), zero for vertices the
+/// shape does not move. Dense rather than sparse because the builders split
+/// and reorder vertices per material group, and a dense array follows that
+/// reordering with one lookup per vertex.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MorphSet {
+    pub names: Vec<String>,
+    pub deltas: Vec<Vec<f32>>,
+}
+
+impl MorphSet {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.deltas.is_empty()
+    }
+}
+
+/// Name of the node a converted mesh with blend shapes is written under: the
+/// skinned builder's mesh node, and the grouped builder's root when it has
+/// targets. Morph tracks bind to a node by name, so the importer that writes
+/// the shapes and the one that writes their animation have to agree on it.
+pub(crate) const MORPH_NODE: &str = "Mesh";
+
+/// Write `morphs` as morph targets on every primitive in `primitives`
+/// (parallel to `groups`), appending their offsets to `bin`. Returns the
+/// mesh's default weights and its `targetNames` extra, which Bevy reads for
+/// the names the Face panel shows.
+///
+/// glTF requires every primitive of a mesh to carry the same targets, so a
+/// primitive the shapes never touch still gets an accessor (of zeros) for
+/// each one.
+fn attach_morph_targets(
+    root: &mut gltf_json::Root,
+    bin: &mut Vec<u8>,
+    groups: &[CompactGroup],
+    source: &[u32],
+    morphs: &MorphSet,
+    primitives: &mut [gltf_json::mesh::Primitive],
+) -> (Vec<f32>, Option<Box<serde_json::value::RawValue>>) {
+    use gltf_json::*;
+    let mut targets: Vec<Vec<mesh::MorphTarget>> = vec![Vec::new(); primitives.len()];
+    for deltas in &morphs.deltas {
+        while !bin.len().is_multiple_of(4) {
+            bin.push(0);
+        }
+        let offset = bin.len();
+        let compacted: Vec<[f32; 3]> = source
+            .iter()
+            .map(|&s| {
+                let s = s as usize * 3;
+                [0, 1, 2].map(|c| deltas.get(s + c).copied().unwrap_or(0.0))
+            })
+            .collect();
+        for v in &compacted {
+            for c in v {
+                bin.extend_from_slice(&c.to_le_bytes());
+            }
+        }
+        let view = root.buffer_views.len() as u32;
+        root.buffer_views.push(buffer::View {
+            buffer: Index::new(0),
+            byte_length: validation::USize64((compacted.len() * 12) as u64),
+            byte_offset: Some(validation::USize64(offset as u64)),
+            byte_stride: None,
+            name: None,
+            target: Some(validation::Checked::Valid(buffer::Target::ArrayBuffer)),
+            extensions: None,
+            extras: Default::default(),
+        });
+        for (slot, group) in targets.iter_mut().zip(groups) {
+            let range = &compacted[group.vertex_start..group.vertex_start + group.vertex_count];
+            // The spec requires bounds on a target's POSITION accessor too.
+            let mut min = [0.0f32; 3];
+            let mut max = [0.0f32; 3];
+            for v in range {
+                for c in 0..3 {
+                    min[c] = min[c].min(v[c]);
+                    max[c] = max[c].max(v[c]);
+                }
+            }
+            let accessor = root.accessors.len() as u32;
+            root.accessors.push(Accessor {
+                buffer_view: Some(Index::new(view)),
+                byte_offset: Some(validation::USize64((group.vertex_start * 12) as u64)),
+                count: validation::USize64(group.vertex_count as u64),
+                component_type: validation::Checked::Valid(accessor::GenericComponentType(accessor::ComponentType::F32)),
+                type_: validation::Checked::Valid(accessor::Type::Vec3),
+                min: Some(serde_json::json!(min)),
+                max: Some(serde_json::json!(max)),
+                name: None,
+                normalized: false,
+                sparse: None,
+                extensions: None,
+                extras: Default::default(),
+            });
+            slot.push(mesh::MorphTarget { positions: Some(Index::new(accessor)), normals: None, tangents: None });
+        }
+    }
+    for (primitive, t) in primitives.iter_mut().zip(targets) {
+        primitive.targets = Some(t);
+    }
+    if let Some(buffer) = root.buffers.first_mut() {
+        buffer.byte_length = validation::USize64(bin.len() as u64);
+    }
+    let extras = serde_json::value::RawValue::from_string(serde_json::json!({ "targetNames": morphs.names }).to_string()).ok();
+    (vec![0.0; morphs.deltas.len()], extras)
 }
 
 /// Lay every group's triangles out back-to-back in one buffer, returning the
@@ -365,8 +480,22 @@ pub(crate) fn build_glb_grouped(
     groups: &[MaterialGroup],
     materials: &MaterialBundle,
 ) -> Result<Vec<u8>, ImportError> {
+    build_glb_grouped_morphs(positions, normals, texcoords, groups, materials, &MorphSet::default())
+}
+
+/// [`build_glb_grouped`] with blend shapes. A mesh with targets gets its root
+/// node named [`MORPH_NODE`], so the morph tracks extracted beside it have a
+/// name to bind to; one without stays unnamed, exactly as before.
+pub(crate) fn build_glb_grouped_morphs(
+    positions: &[f32],
+    normals: &[f32],
+    texcoords: &[f32],
+    groups: &[MaterialGroup],
+    materials: &MaterialBundle,
+    morphs: &MorphSet,
+) -> Result<Vec<u8>, ImportError> {
     let root_node = SceneNode {
-        name: None,
+        name: (!morphs.is_empty()).then(|| MORPH_NODE.to_string()),
         parent: None,
         translation: [0.0; 3],
         rotation: [0.0, 0.0, 0.0, 1.0],
@@ -374,7 +503,7 @@ pub(crate) fn build_glb_grouped(
         part: Some(0),
         extras: None,
     };
-    build_glb_hierarchy(
+    build_glb_hierarchy_morphs(
         positions,
         normals,
         texcoords,
@@ -382,6 +511,7 @@ pub(crate) fn build_glb_grouped(
         &vec![0; groups.len()],
         &[root_node],
         materials,
+        morphs,
     )
 }
 
@@ -423,6 +553,23 @@ pub(crate) fn build_glb_hierarchy(
     group_part: &[usize],
     nodes: &[SceneNode],
     materials: &MaterialBundle,
+) -> Result<Vec<u8>, ImportError> {
+    build_glb_hierarchy_morphs(positions, normals, texcoords, groups, group_part, nodes, materials, &MorphSet::default())
+}
+
+/// [`build_glb_hierarchy`] with blend shapes, written onto the mesh of a
+/// single-part tree. A tree of several moving parts drops them: its parts are
+/// separate meshes, and the shapes would have to be split between them.
+#[allow(clippy::too_many_arguments)]
+fn build_glb_hierarchy_morphs(
+    positions: &[f32],
+    normals: &[f32],
+    texcoords: &[f32],
+    groups: &[MaterialGroup],
+    group_part: &[usize],
+    nodes: &[SceneNode],
+    materials: &MaterialBundle,
+    morphs: &MorphSet,
 ) -> Result<Vec<u8>, ImportError> {
     let (vertices, groups) = compact_groups(positions, normals, texcoords, &[], &[], groups);
 
@@ -505,7 +652,7 @@ pub(crate) fn build_glb_hierarchy(
 
     emit_material_bundle(&mut root, materials);
 
-    let primitives = finish_group_primitives(primitives, &groups, materials.materials.len());
+    let mut primitives = finish_group_primitives(primitives, &groups, materials.materials.len());
     if primitives.is_empty() {
         return Err(ImportError::ConversionError(
             "no triangles to write".to_string(),
@@ -515,6 +662,8 @@ pub(crate) fn build_glb_hierarchy(
     // Gather each part's primitives into its own mesh. A part whose groups
     // were all empty gets no mesh, and the node drawing it draws nothing.
     let part_count = group_part.iter().map(|p| p + 1).max().unwrap_or(0);
+    let morph_mesh = (!morphs.is_empty() && part_count == 1)
+        .then(|| attach_morph_targets(&mut root, &mut bin, &groups, &vertices.source, morphs, &mut primitives));
     let mut part_primitives: Vec<Vec<mesh::Primitive>> =
         (0..part_count).map(|_| Vec::new()).collect();
     for (primitive, group) in primitives.into_iter().zip(&groups) {
@@ -528,12 +677,16 @@ pub(crate) fn build_glb_hierarchy(
             continue;
         }
         part_mesh[part] = Some(root.meshes.len() as u32);
+        let (weights, extras) = match &morph_mesh {
+            Some((w, e)) => (Some(w.clone()), e.clone()),
+            None => (None, Default::default()),
+        };
         root.meshes.push(Mesh {
             primitives,
             name: None,
-            weights: None,
+            weights,
             extensions: None,
-            extras: Default::default(),
+            extras,
         });
     }
 
@@ -690,6 +843,7 @@ pub(crate) fn build_skinned_glb(
     weights: &[[f32; 4]],
     joints: &[SkinJoint],
     materials: &MaterialBundle,
+    morphs: &MorphSet,
 ) -> Result<Vec<u8>, ImportError> {
     let source_vertex_count = positions.len() / 3;
     if joint_indices.len() != source_vertex_count || weights.len() != source_vertex_count {
@@ -845,19 +999,25 @@ pub(crate) fn build_skinned_glb(
     // becomes a primitive wearing its own material.
     emit_material_bundle(&mut root, materials);
 
-    let primitives = finish_group_primitives(primitives, &groups, materials.materials.len());
+    let mut primitives = finish_group_primitives(primitives, &groups, materials.materials.len());
     if primitives.is_empty() {
         return Err(ImportError::ConversionError(
             "no triangles to write".to_string(),
         ));
     }
 
+    let (weights, extras) = if morphs.is_empty() {
+        (None, Default::default())
+    } else {
+        let (w, e) = attach_morph_targets(&mut root, &mut bin, &groups, &vertices.source, morphs, &mut primitives);
+        (Some(w), e)
+    };
     root.meshes.push(Mesh {
         primitives,
         name: None,
-        weights: None,
+        weights,
         extensions: None,
-        extras: Default::default(),
+        extras,
     });
 
     // Emit joint nodes. Node 0 is the mesh; joint nodes start at index 1.
@@ -867,7 +1027,7 @@ pub(crate) fn build_skinned_glb(
     // First: push placeholder for the mesh node (fill after joints).
     root.nodes.push(Node {
         mesh: None,
-        name: Some("Mesh".to_string()),
+        name: Some(MORPH_NODE.to_string()),
         camera: None,
         children: None,
         skin: None,
@@ -1653,5 +1813,52 @@ mod tests {
         assert_eq!(bytes.len(), 8);
         assert_eq!(&bytes[0..4], &[1, 0, 0, 0]);
         assert_eq!(&bytes[4..8], &[0x04, 0x03, 0x02, 0x01]);
+    }
+
+    /// Blend shapes land on every primitive, follow each group's vertex
+    /// compaction, and carry their names where Bevy reads them.
+    #[test]
+    fn blend_shapes_become_morph_targets_on_every_primitive() {
+        // Two triangles in two materials; vertex 4 is the only one moved.
+        let positions = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0];
+        let normals = [0.0, 0.0, 1.0].repeat(5);
+        let texcoords = [0.0; 10];
+        let groups = [
+            MaterialGroup { material: None, indices: vec![0, 1, 2] },
+            MaterialGroup { material: None, indices: vec![1, 3, 4] },
+        ];
+        let mut delta = vec![0.0f32; 15];
+        delta[4 * 3 + 2] = 0.5;
+        let morphs = MorphSet { names: vec!["bulge".into()], deltas: vec![delta] };
+        let glb = build_glb_grouped_morphs(&positions, &normals, &texcoords, &groups, &MaterialBundle::default(), &morphs).unwrap();
+
+        let doc = gltf::Gltf::from_slice(&glb).unwrap();
+        let blob = doc.blob.clone().unwrap();
+        let node = doc.nodes().next().unwrap();
+        assert_eq!(node.name(), Some(MORPH_NODE));
+        let mesh = node.mesh().unwrap();
+        assert_eq!(mesh.weights(), Some(&[0.0f32][..]));
+        assert!(mesh.extras().as_ref().unwrap().get().contains("bulge"));
+        let primitives: Vec<_> = mesh.primitives().collect();
+        assert_eq!(primitives.len(), 2);
+        let mut moved = Vec::new();
+        for p in &primitives {
+            assert_eq!(p.morph_targets().len(), 1);
+            let reader = p.reader(|_| Some(blob.as_slice()));
+            let base: Vec<[f32; 3]> = reader.read_positions().unwrap().collect();
+            let (offsets, _, _) = reader.read_morph_targets().next().unwrap();
+            let offsets: Vec<[f32; 3]> = offsets.unwrap().collect();
+            assert_eq!(base.len(), offsets.len());
+            for (b, o) in base.iter().zip(&offsets) {
+                if o[2] != 0.0 {
+                    moved.push((*b, *o));
+                }
+            }
+        }
+        // Only the source's vertex 4, wherever compaction put it.
+        assert_eq!(moved, vec![([2.0, 1.0, 0.0], [0.0, 0.0, 0.5])]);
+        // Without shapes the node stays unnamed, as every import was before.
+        let plain = build_glb_grouped(&positions, &normals, &texcoords, &groups, &MaterialBundle::default()).unwrap();
+        assert_eq!(gltf::Gltf::from_slice(&plain).unwrap().nodes().next().unwrap().name(), None);
     }
 }

@@ -216,6 +216,10 @@ fn pointer(world: &mut World) {
     if mode == StageMode::Skin && !ctrl {
         return;
     }
+    // Shapes sculpts with the left button, Ctrl included (it inverts).
+    if mode == StageMode::Shapes {
+        return;
+    }
     if let (Some(f), Some(grip)) = (f, hover) {
         start_drag(world, f, grip, cursor, ray);
         return;
@@ -386,8 +390,18 @@ fn place_marker(
     // no click on the stage could place a point on it.
     let settings = MeshRayCastSettings::default()
         .with_visibility(bevy::picking::mesh_picking::ray_cast::RayCastVisibility::Any)
-        .with_filter(&on_copy);
-    let Some(point) = ray_cast.cast_ray(ray, &settings).first().map(|(_, h)| h.point) else { return };
+        .with_filter(&on_copy)
+        .never_early_exit();
+    let hits: Vec<Vec3> = ray_cast.cast_ray(ray, &settings).iter().map(|(_, h)| h.point).collect();
+    let Some(first) = hits.first().copied() else { return };
+    // A joint goes in the middle of the part under the cursor: halfway to
+    // where the ray comes out again. Clicked on the surface, the elbow of a
+    // body seen from the front sat in front of the arm, and a dog's spine
+    // seen from the side sat on its flank instead of along its middle.
+    let point = match hits.get(1) {
+        Some(out) if set.inside() => (first + *out) * 0.5,
+        _ => first,
+    };
     markers.set(set, index, point);
 }
 
@@ -403,6 +417,7 @@ fn draw(
     transforms: Query<&GlobalTransform>,
     cams: Query<&GlobalTransform, With<StudioPreviewCamera>>,
     skin: Option<Res<super::skin::SkinEdit>>,
+    draft: Res<super::bone_edit::SkeletonDraft>,
 ) {
     let Ok(cam) = cams.single() else { return };
     let cam_pos = cam.translation();
@@ -411,7 +426,9 @@ fn draw(
 
     // The same skeleton the scene viewport draws (`renzora_gizmo`'s skeleton
     // gizmo): a line per bone with a ring around it, in the shared palette.
-    if ui.show_skeleton && ui.mode != StageMode::Logic {
+    // While a skeleton is being edited the draft is drawn instead
+    // (`bone_edit`): the old bones under it would only confuse.
+    if ui.show_skeleton && ui.mode != StageMode::Logic && !(draft.active() && ui.mode == StageMode::Rig) {
         let has_child: std::collections::HashSet<Entity> = rig.parent.values().copied().collect();
         let colour = |e: Entity| {
             let name = rig.names.get(&e).map(String::as_str).unwrap_or("");
@@ -479,7 +496,12 @@ fn draw(
     // Rig points, the mirrored partner of the one-sided ones, and the
     // skeleton they will build once all are placed.
     if ui.mode == StageMode::Rig {
-        let set = if ui.template == 1 { MarkerSet::Face } else { MarkerSet::Body };
+        let set = match ui.template {
+            1 => markers.face_set(),
+            2 => MarkerSet::Chain,
+            3 => MarkerSet::Quadruped,
+            _ => MarkerSet::Body,
+        };
         for (i, p) in markers.points(set).iter().enumerate() {
             let Some(p) = p else { continue };
             let r = (cam_pos.distance(*p) * 0.008).max(1e-5);

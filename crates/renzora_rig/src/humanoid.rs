@@ -14,15 +14,19 @@
 //! come from the markers, and where there is no marker (spine, neck, toes),
 //! from the template scaled to the body.
 //!
-//! Weights are envelopes: each vertex is weighted to the bones whose segments
-//! are nearest, falling off steeply with distance, kept to its own side of the
-//! body away from the middle so an arm resting against the hip does not pull
-//! skin from the leg.
+//! Weights are measured across the skin (`weights::surface_raw`): each vertex
+//! goes to the bones nearest it along the surface, falling off steeply, so an
+//! arm resting against the ribs or a finger beside the next does not pull
+//! skin it only touches through the air. They are also kept to the vertex's
+//! own side of the body, away from the middle, so an arm resting against the
+//! hip does not pull skin from the leg.
 
 use bevy::math::{Quat, Vec3};
 
+use crate::fingers;
 use crate::glb::{Glb, GlbError};
-use crate::skin::{self, Applied, Bone, Vertex};
+use crate::skin::{self, Applied, Bone};
+use crate::weights;
 
 /// The points the user places, in the model's space. One side is enough: the
 /// other is mirrored across the body's centre (the groin's left-right
@@ -68,9 +72,23 @@ pub const TEMPLATE: &[(&str, [f32; 4], [f32; 3])] = &[
     ("RightToe_End", [-0.001362, 0.700801, 0.713266, -0.011278], [-0.0936, 0.0311, 0.2133]),
 ];
 
+/// A finger bone's finger and joint number: `("LeftHandIndex", 2)` for
+/// `LeftHandIndex2`.
+fn finger_joint(name: &str) -> Option<(&str, u32)> {
+    if !name.contains("Hand") {
+        return None;
+    }
+    let digit = name.chars().last()?.to_digit(10)?;
+    Some((&name[..name.len() - 1], digit))
+}
+
 /// Each template bone's parent, by name.
 fn parent_of(name: &str) -> Option<&'static str> {
     let side = |n: &str| if n.starts_with("Left") { "Left" } else { "Right" };
+    if let Some((finger, joint)) = finger_joint(name) {
+        let parent = if joint == 1 { format!("{}Hand", side(name)) } else { format!("{finger}{}", joint - 1) };
+        return all_templates().map(|t| t.0).find(|t| *t == parent);
+    }
     Some(match name {
         "Hips" => return None,
         "Spine" => "Hips",
@@ -101,6 +119,9 @@ fn parent_of(name: &str) -> Option<&'static str> {
 /// The child a bone points at, which sets its direction. `None` for a leaf.
 /// The hips point up the spine, not down a leg: that is Mixamo's hips.
 fn child_of(name: &str) -> Option<String> {
+    if let Some((finger, joint)) = finger_joint(name) {
+        return (joint < 4).then(|| format!("{finger}{}", joint + 1));
+    }
     let (side, part) = match name.strip_prefix("Left") {
         Some(rest) => ("Left", rest),
         None => match name.strip_prefix("Right") {
@@ -118,6 +139,9 @@ fn child_of(name: &str) -> Option<String> {
         "Shoulder" => "Arm",
         "Arm" => "ForeArm",
         "ForeArm" => "Hand",
+        // When the fingers were found: the hand then lies along the hand
+        // rather than carrying on the forearm's line.
+        "Hand" => "HandMiddle1",
         "UpLeg" => "Leg",
         "Leg" => "Foot",
         "Foot" => "ToeBase",
@@ -127,8 +151,13 @@ fn child_of(name: &str) -> Option<String> {
     Some(format!("{side}{child}"))
 }
 
+/// The body's template bones, then the fingers'.
+fn all_templates() -> impl Iterator<Item = &'static (&'static str, [f32; 4], [f32; 3])> {
+    TEMPLATE.iter().chain(fingers::TEMPLATE)
+}
+
 fn template(name: &str) -> Option<(Quat, Vec3)> {
-    TEMPLATE.iter().find(|t| t.0 == name).map(|t| (Quat::from_array(t.1).normalize(), Vec3::from_array(t.2)))
+    all_templates().find(|t| t.0 == name).map(|t| (Quat::from_array(t.1).normalize(), Vec3::from_array(t.2)))
 }
 
 /// The prefix every bone name gets, matching Mixamo's own.
@@ -196,10 +225,16 @@ fn positions(m: &BodyMarkers) -> Vec<(&'static str, Vec3)> {
 
 /// The skeleton, placed, in template order (index 0 is the hips).
 pub fn bones(m: &BodyMarkers) -> Vec<Bone> {
-    let pos = positions(m);
+    bones_with(m, &[])
+}
+
+/// [`bones`] plus finger bones at `fingers` (from [`fingers::detect`]).
+fn bones_with(m: &BodyMarkers, fingers: &[(&'static str, Vec3)]) -> Vec<Bone> {
+    let mut pos = positions(m);
+    pos.extend_from_slice(fingers);
     let at = |n: &str| pos.iter().find(|(p, _)| *p == n).map(|(_, v)| *v);
     let mut bones: Vec<Bone> = Vec::new();
-    for (name, _, _) in TEMPLATE {
+    for (name, _, _) in all_templates() {
         let Some((t_rot, t_pos)) = template(name) else { continue };
         let Some(head) = at(name) else { continue };
         // Turn the template orientation by the swing from its bone direction
@@ -225,22 +260,31 @@ pub fn bones(m: &BodyMarkers) -> Vec<Bone> {
 }
 
 /// Envelope weights for one vertex: inverse distance to each bone's segment,
-/// steeply, kept to its own side of the body.
-fn weigh(bones: &[Bone], tails: &[Vec3], centre_x: f32, scale: f32, v: &Vertex) -> Vec<(usize, f32)> {
-    let p = v.position;
-    let mut out = Vec::with_capacity(bones.len());
-    for (i, b) in bones.iter().enumerate() {
-        let d = distance_to_segment(p, b.head, tails[i]) / scale.max(1e-6);
-        let mut w = 1.0 / (d * d + 1e-4).powi(3);
-        // Off to one side of the middle, the other side's limbs do not reach.
-        let sided = b.name.contains("Left") || b.name.contains("Right");
-        let vert_side = p.x - centre_x;
-        if sided && vert_side.abs() > 0.03 * scale && vert_side.signum() != (b.head.x - centre_x).signum() {
-            w *= 1e-4;
+/// steeply. For a mesh whose triangles could not be read; every other mesh
+/// is weighted across its surface (`weights::surface_raw`).
+fn envelope(bones: &[Bone], tails: &[Vec3], scale: f32, p: Vec3) -> Vec<(usize, f32)> {
+    bones
+        .iter()
+        .enumerate()
+        .map(|(i, b)| {
+            let d = distance_to_segment(p, b.head, tails[i]) / scale.max(1e-6);
+            (i, 1.0 / (d * d + 1e-4).powi(3))
+        })
+        .collect()
+}
+
+/// Keep a vertex's weights to its own side of the body: off to one side of
+/// the middle, the other side's limbs do not reach.
+fn sided(bones: &[Bone], centre_x: f32, scale: f32, p: Vec3, mut raw: Vec<(usize, f32)>) -> Vec<(usize, f32)> {
+    let vert_side = p.x - centre_x;
+    for (i, w) in raw.iter_mut() {
+        let b = &bones[*i];
+        let one_side = b.name.contains("Left") || b.name.contains("Right");
+        if one_side && vert_side.abs() > 0.03 * scale && vert_side.signum() != (b.head.x - centre_x).signum() {
+            *w *= 1e-4;
         }
-        out.push((i, w));
     }
-    out
+    raw
 }
 
 /// Where each bone's segment ends: at the child it points at, or a little past
@@ -264,13 +308,43 @@ fn distance_to_segment(p: Vec3, a: Vec3, b: Vec3) -> f32 {
     (p - (a + ab * t)).length()
 }
 
+/// One vertex's unnormalised `(bone, weight)` pairs.
+type RawWeights = Vec<(usize, f32)>;
+
 /// Rig the body in `glb` from `markers` (model space).
 pub fn build(glb: &mut Glb, markers: &BodyMarkers) -> Result<Applied, GlbError> {
-    let bones = bones(markers);
-    let height = (markers.chin.y - markers.ankle.y).abs().max(1e-3);
     let centre_x = markers.groin.x;
+    let tris = fingers::triangles(glb)?;
+    let pos = positions(markers);
+    let at = |n: &str| pos.iter().find(|(p, _)| *p == n).map(|(_, v)| *v);
+    let mut found = Vec::new();
+    for side in ["Left", "Right"] {
+        if let (Some(elbow), Some(wrist)) = (at(&format!("{side}ForeArm")), at(&format!("{side}Hand"))) {
+            found.extend(fingers::detect(&tris, side, elbow, wrist, centre_x));
+        }
+    }
+    let bones = bones_with(markers, &found);
+    let height = (markers.chin.y - markers.ankle.y).abs().max(1e-3);
     let tails = tails(&bones, height);
-    skin::apply(glb, &bones, 0, |v| Some(weigh(&bones, &tails, centre_x, height, v)))
+    let segments: Vec<weights::Segment> =
+        bones.iter().zip(&tails).enumerate().map(|(i, (b, t))| weights::Segment { joint: i as u16, a: b.head, b: *t }).collect();
+    // Worked out once per primitive, then read per vertex.
+    let mut across: std::collections::HashMap<(usize, usize), Vec<RawWeights>> = std::collections::HashMap::new();
+    skin::apply(glb, &bones, 0, |v| {
+        let raw = match v.surface.filter(|s| !s.triangles.is_empty()) {
+            Some(s) => across
+                .entry((s.mesh, s.prim))
+                .or_insert_with(|| {
+                    let indices: Vec<u32> = s.triangles.iter().flatten().copied().collect();
+                    weights::surface_raw(&s.positions, &indices, &segments, 6.0)
+                })
+                .get(v.index)
+                .cloned()
+                .unwrap_or_default(),
+            None => envelope(&bones, &tails, height, v.position),
+        };
+        Some(sided(&bones, centre_x, height, v.position, raw))
+    })
 }
 
 #[cfg(test)]
@@ -292,9 +366,31 @@ mod tests {
 
     #[test]
     fn every_template_bone_but_the_hips_has_a_parent() {
-        for (name, ..) in TEMPLATE {
+        for (name, ..) in all_templates() {
             assert_eq!(parent_of(name).is_none(), *name == "Hips", "{name}");
         }
+        assert_eq!(parent_of("LeftHandIndex1"), Some("LeftHand"));
+        assert_eq!(parent_of("RightHandThumb3"), Some("RightHandThumb2"));
+    }
+
+    /// Fingers hang off the hand in a chain, and a finger that bends is
+    /// oriented down its own length, not the template's.
+    #[test]
+    fn found_fingers_join_the_skeleton() {
+        let t = |n: &str| template(n).expect("template bone").1;
+        let mut fingers: Vec<(&'static str, Vec3)> = Vec::new();
+        for (name, _, p) in fingers::TEMPLATE.iter().filter(|f| f.0.starts_with("LeftHandIndex")) {
+            fingers.push((name, Vec3::from_array(*p)));
+        }
+        // Curl the index's tip down.
+        fingers[3].1 = t("LeftHandIndex3") + Vec3::new(0.0, -0.03, 0.0);
+        let bones = bones_with(&t_pose(), &fingers);
+        let index = |n: usize| bones.iter().position(|b| b.name == format!("{PREFIX}LeftHandIndex{n}")).expect("index bone");
+        let hand = bones.iter().position(|b| b.name == format!("{PREFIX}LeftHand")).unwrap();
+        assert_eq!(bones[index(1)].parent, Some(hand));
+        assert_eq!(bones[index(3)].parent, Some(index(2)));
+        let down = bones[index(3)].rotation * Vec3::Y;
+        assert!(down.y < -0.9, "the curled joint points down, not along +X: {down:?}");
     }
 
     /// Rigging a body standing exactly in the template pose reproduces the

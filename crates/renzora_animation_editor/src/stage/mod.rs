@@ -1,4 +1,4 @@
-//! The Animation workspace: one isolated stage, four modes, one timeline.
+//! The Animation workspace: one isolated stage, five modes, one timeline.
 //!
 //! The **stage** (panel `stage`) is the character on its own: a copy of the
 //! subject model drawn by the studio preview's camera on its own render layer,
@@ -8,12 +8,14 @@
 //! a bone turned on the stage is the scene's bone (that is what the clip keys
 //! and what the pose layer holds), and the copy follows it every frame.
 //!
-//! The stage header switches between four modes, and the panels either side
+//! The stage header switches between five modes, and the panels either side
 //! (`anim_tools`, `anim_inspector`) change with it:
 //!
 //! - **Rig**: give a model a skeleton (humanoid) or a face rig, from points
 //!   clicked onto it; read the skeleton.
 //! - **Skin**: generate weights, paint them, bend joints to test them.
+//! - **Shapes**: sculpt blend shapes (morph targets) on any model, and save
+//!   them into its file ([`shapes`]).
 //! - **Animate**: pose with the gizmo or the face sliders, key, keep a pose
 //!   library, lip sync and blink.
 //! - **Logic**: the state machine and its parameters, with the stage kept in
@@ -32,11 +34,16 @@
 
 use bevy::prelude::*;
 
+pub(crate) mod bone_edit;
 pub(crate) mod clone;
 pub(crate) mod models;
+pub(crate) mod onion;
 pub(crate) mod panels;
 pub(crate) mod poses;
+pub(crate) mod shapes;
+pub(crate) mod shapes_panel;
 pub(crate) mod skin;
+pub(crate) mod skin_select;
 pub(crate) mod tools;
 pub(crate) mod view;
 
@@ -45,18 +52,20 @@ pub(crate) mod view;
 pub(crate) enum StageMode {
     Rig,
     Skin,
+    Shapes,
     #[default]
     Animate,
     Logic,
 }
 
 impl StageMode {
-    pub(crate) const ALL: [StageMode; 4] = [StageMode::Rig, StageMode::Skin, StageMode::Animate, StageMode::Logic];
+    pub(crate) const ALL: [StageMode; 5] = [StageMode::Rig, StageMode::Skin, StageMode::Shapes, StageMode::Animate, StageMode::Logic];
 
     pub(crate) fn label(self) -> &'static str {
         match self {
             StageMode::Rig => "Rig",
             StageMode::Skin => "Skin",
+            StageMode::Shapes => "Shapes",
             StageMode::Animate => "Animate",
             StageMode::Logic => "Logic",
         }
@@ -82,7 +91,7 @@ pub(crate) struct StageUi {
     /// Gizmo axes along the bone's own, or the world's.
     pub(crate) local: bool,
     pub(crate) show_skeleton: bool,
-    /// Rig mode's template: 0 humanoid body, 1 face.
+    /// Rig mode's template: 0 humanoid body, 1 face, 2 chain.
     pub(crate) template: usize,
     /// Animate mode's left tab: 0 controls, 1 face.
     pub(crate) animate_left: usize,
@@ -129,7 +138,11 @@ impl Plugin for StagePlugin {
         view::register(app);
         tools::register(app);
         skin::register(app);
+        shapes::register(app);
         poses::register(app);
         panels::register(app);
+        onion::register(app);
+        bone_edit::register(app);
+        skin_select::register(app);
     }
 }

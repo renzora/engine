@@ -170,7 +170,9 @@ fn pose_clone(world: &mut World) {
                     Some((copy, *world.get::<Transform>(*real)?))
                 })
                 .collect(),
-            StageMode::Rig => rig.rest.iter().map(|(e, t)| (*e, *t)).collect(),
+            // Shapes sculpts the mesh as it is at rest, which is what a blend
+            // shape is stored against.
+            StageMode::Rig | StageMode::Shapes => rig.rest.iter().map(|(e, t)| (*e, *t)).collect(),
             StageMode::Skin => super::skin::test_pose(world, rig),
         }
     };

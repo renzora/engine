@@ -327,6 +327,7 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
                 rotations: Vec::new(),
                 scales: Vec::new(),
                 muted: false,
+                curves: Default::default(),
             };
 
             // Translations
@@ -394,8 +395,7 @@ pub fn extract(nodes: &[FbxNode], output_dir: &Path) -> Result<AnimExtractResult
             name: clip_name.clone(),
             duration,
             tracks,
-            property_tracks: Vec::new(),
-            markers: Vec::new(),
+            ..Default::default()
         };
         crate::anim_decimate::decimate_clip(&mut clip);
 

@@ -26,7 +26,7 @@ use renzora_ember::UiInteraction;
 use crate::{AnimEditorAction, AnimEditorBridge, AnimationEditorState};
 
 use super::clip::{clip_entity, Lane, SelKey, SelectedKey, SelectedKeys, TimelineClip};
-use super::curves::{pick_curve_key, TimelineMode};
+use super::curves::TimelineMode;
 use super::layout::{RowKind, TrackLayout};
 use super::popover::PopoverState;
 use super::props::{add_key_at, interp_label_tr, interp_menu_choices, set_key_interp, set_key_to_live, TimelineOps};
@@ -212,6 +212,7 @@ pub(super) fn lane_runs(runs: &KeyRuns, lane: Lane) -> &[Run] {
     match lane {
         Lane::Bone { track, channel } => runs.bone.get(track).map(|c| c[channel as usize].as_slice()).unwrap_or(&[]),
         Lane::Prop { track } => runs.prop.get(track).map(|v| v.as_slice()).unwrap_or(&[]),
+        Lane::Morph { track } => runs.morph.get(track).map(|v| v.as_slice()).unwrap_or(&[]),
         Lane::Fx { track } => runs.fx.get(track).map(|v| v.as_slice()).unwrap_or(&[]),
     }
 }
@@ -223,6 +224,7 @@ pub(super) fn row_lanes(kind: RowKind) -> Vec<(Lane, Option<u8>)> {
         RowKind::Summary | RowKind::FxGroup | RowKind::FxEmitter(_, None) => Vec::new(),
         RowKind::Bone(track) => (0..3u8).map(|ch| (Lane::Bone { track, channel: ch }, Some(ch))).collect(),
         RowKind::Prop(track) => vec![(Lane::Prop { track }, None)],
+        RowKind::Morph(track) => vec![(Lane::Morph { track }, None)],
         RowKind::FxEmitter(_, Some(track)) | RowKind::FxTrack(track) => vec![(Lane::Fx { track }, None)],
     }
 }
@@ -297,6 +299,7 @@ fn keys_at_time(cache: &TimelineClip, time: f32) -> Vec<SelKey> {
     let lanes = (0..clip.tracks.len())
         .flat_map(|track| (0..3u8).map(move |channel| Lane::Bone { track, channel }))
         .chain((0..clip.property_tracks.len()).map(|track| Lane::Prop { track }))
+        .chain((0..clip.morph_tracks.len()).map(|track| Lane::Morph { track }))
         .chain((0..fx_tracks).map(|track| Lane::Fx { track }));
     for lane in lanes {
         for (index, t) in cache.key_times(lane).into_iter().enumerate() {
@@ -467,11 +470,17 @@ pub(super) fn timeline_pan(
     mut layout: ResMut<TrackLayout>,
     cache: Res<TimelineClip>,
     bridge: Option<Res<AnimEditorBridge>>,
+    mode: Res<TimelineMode>,
 ) {
     let (Some(state), Some(bridge)) = (state, bridge) else { return };
     let (zoom, scroll, th) = (state.timeline_zoom.max(1.0), state.timeline_scroll, state.track_height.max(1.0));
     if buttons.just_pressed(MouseButton::Right) {
         drag.pan_dragged = false;
+    }
+    // The Curves view pans time and value (`graph::graph_pan`), not rows.
+    if mode.curves {
+        drag.pan = None;
+        return;
     }
 
     if let Some(pan) = drag.pan.as_mut() {
@@ -625,30 +634,11 @@ pub(super) fn key_drag(
     let (zoom, scroll, th) = (state.timeline_zoom.max(1.0), state.timeline_scroll, state.track_height.max(1.0));
     let cursor_win = windows.iter().find_map(|w| w.cursor_position());
 
-    // The Curves view: a click on a curve key selects it and opens its card;
-    // anywhere else moves the playhead. No drags or boxes there.
+    // The Curves view has its own pointer (`graph::graph_input`, next in the
+    // chain): its keys sit at values, not on rows.
     if mode.curves {
-        if !buttons.just_pressed(MouseButton::Left) {
-            return;
-        }
-        let Some(p) = lane_cursor(&lane) else { return };
-        let Some(clip) = cache.clip.as_ref() else { return };
-        match pick_curve_key(clip, &layout, &mode, zoom, scroll, p) {
-            Some((k, t)) => {
-                selected.0 = Some(k);
-                all.set(vec![k]);
-                popover.request = cursor_win;
-                if let Some(bridge) = &bridge {
-                    push(bridge, AnimEditorAction::SetScrubTime(t));
-                }
-            }
-            None => {
-                let t = ((p.x - LANE_INSET) / zoom + scroll).clamp(0.0, clip.duration);
-                if let Some(bridge) = &bridge {
-                    push(bridge, AnimEditorAction::SetScrubTime(t));
-                }
-            }
-        }
+        drag.active = None;
+        drag.press = None;
         return;
     }
 
@@ -1071,6 +1061,7 @@ pub(super) fn track_context_menu(
     let muted = match kind {
         RowKind::Bone(i) => clip.tracks.get(i).map(|t| t.muted),
         RowKind::Prop(i) => clip.property_tracks.get(i).map(|p| p.muted),
+        RowKind::Morph(i) => clip.morph_tracks.get(i).map(|m| m.muted),
         RowKind::Summary | RowKind::FxGroup | RowKind::FxEmitter(..) | RowKind::FxTrack(_) => None,
     };
     let Some(muted) = muted else { return };
@@ -1096,6 +1087,7 @@ pub(super) fn track_context_menu(
 
 /// Right-click a key → its menu (delete, set to pose, interpolation); on a
 /// marker flag → delete it; on empty property lane → add a key there.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn key_context_menu(
     buttons: Res<ButtonInput<MouseButton>>,
     lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
@@ -1106,11 +1098,14 @@ pub(super) fn key_context_menu(
     layout: Res<TrackLayout>,
     cache: Res<TimelineClip>,
     drag: Res<KeyDragState>,
+    mode: Res<TimelineMode>,
+    selection: (Res<SelectedKey>, Res<SelectedKeys>),
     mut commands: Commands,
 ) {
     // On release, not press: a right press on empty space may become a pan
     // (`timeline_pan`), and only once it is let go is it known to be a click.
-    if !buttons.just_released(MouseButton::Right) || drag.pan_dragged {
+    // The Curves view has its own menu (`graph::graph_context_menu`).
+    if !buttons.just_released(MouseButton::Right) || drag.pan_dragged || mode.curves {
         return;
     }
     let (Some(fonts), Some(state)) = (fonts, state) else { return };
@@ -1168,6 +1163,19 @@ pub(super) fn key_context_menu(
             }
         });
         let mut kids = vec![del];
+        if let Lane::Bone { .. } | Lane::Morph { .. } = lane_ref {
+            // How the key moves on: the whole selection when the key is in
+            // it, else just this key. A blend shape key eases with the same
+            // modes as a bone key.
+            let (primary, all) = (&selection.0, &selection.1);
+            let mut sel = all.keys.clone();
+            if let Some(p) = primary.0.filter(|p| !sel.contains(p)) {
+                sel.push(p);
+            }
+            let targets = if sel.contains(&pick.key) { sel } else { vec![pick.key] };
+            let current = super::keymode::key_mode(clip, pick.key);
+            kids.extend(super::keymode::mode_menu_items(&mut commands, &fonts, targets, current));
+        }
         if let Lane::Prop { track } = lane_ref {
             let set_item = menu_item(&mut commands, &fonts, "crosshair", &renzora::lang::t("timeline.set_to_current_pose"), move |w| {
                 let entity = clip_entity(w);
@@ -1424,6 +1432,7 @@ pub(super) fn timeline_wheel(
     mut layout: ResMut<TrackLayout>,
     cache: Res<TimelineClip>,
     bridge: Option<Res<AnimEditorBridge>>,
+    mode: Res<TimelineMode>,
 ) {
     let dur = cache.clip.as_ref().map(|c| c.duration).unwrap_or(2.0);
     let (mut dx, mut dy) = (0.0, 0.0);
@@ -1465,6 +1474,9 @@ pub(super) fn timeline_wheel(
     } else if shift {
         let step = 60.0 / zoom;
         push(&bridge, AnimEditorAction::SetTimelineScroll(clamp_hscroll(&state, &layout, dur, state.timeline_scroll - dy * step)));
+    } else if mode.curves {
+        // The Curves view has no rows to scroll: there the plain wheel zooms
+        // the value axis (`graph::graph_wheel`).
     } else {
         let th = state.track_height.max(1.0);
         let v = (layout.vscroll - dy * th * 2.0).clamp(0.0, layout.max_vscroll(th));

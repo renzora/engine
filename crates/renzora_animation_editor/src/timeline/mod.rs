@@ -21,8 +21,11 @@
 //! | [`scrollbars`] | The time and row scrollbars |
 //! | [`menus`] | The clip picker, overflow and empty-state actions |
 //! | [`popover`] | Click a key: its time, value, easing, copy and delete |
-//! | [`curves`] | The Curves view of the selected track |
+//! | [`curves`] | The Curves view of the selected track: geometry, drawing, toolbar |
+//! | [`graph`] | The Curves view's pointer: keys, tangent handles, pan, zoom, frame |
+//! | [`keymode`] | Bone key interpolation (Auto, Linear, Constant, ...) and its menus |
 //! | [`props`] | Property tracks: the deferred world ops behind them |
+//! | [`pose`] / [`morph`] | Bones and blend shapes posed by hand, and keying them |
 //! | [`fx`] | The Particles group: an effect's keyed parameters, and its clock |
 //! | [`preview`] | Scrub preview, live-edit and record capture |
 
@@ -36,8 +39,11 @@ pub(crate) mod clip;
 pub(crate) mod curves;
 pub(crate) mod edit;
 pub(crate) mod fx;
+pub(crate) mod graph;
+pub(crate) mod keymode;
 pub(crate) mod layout;
 pub(crate) mod menus;
+pub(crate) mod morph;
 pub(crate) mod popover;
 pub(crate) mod pose;
 pub(crate) mod preview;
@@ -63,6 +69,8 @@ pub(super) const ROTATION: (u8, u8, u8) = (110, 231, 160);
 pub(super) const SCALE: (u8, u8, u8) = (96, 165, 250);
 /// Color for property-animation lanes (distinct from bone T/R/S channels).
 pub(super) const PROPERTY: (u8, u8, u8) = (230, 190, 90);
+/// Color for blend shape (morph target) lanes.
+pub(super) const MORPH: (u8, u8, u8) = (244, 140, 186);
 /// Color for event-marker flags.
 pub(super) const MARKER: (u8, u8, u8) = (200, 140, 220);
 /// Color for the Particles group: the orange of the viewport's particle
@@ -91,6 +99,9 @@ impl Plugin for TimelinePanel {
         app.init_resource::<layout::TrackLayout>();
         app.init_resource::<runs::KeyRuns>();
         app.init_resource::<curves::TimelineMode>();
+        app.init_resource::<curves::CurveView>();
+        app.init_resource::<curves::CurveSel>();
+        app.init_resource::<graph::GraphDrag>();
         app.init_resource::<popover::PopoverState>();
         app.init_resource::<popover::KeyClipboard>();
         app.init_resource::<fx::FxTarget>();
@@ -107,6 +118,17 @@ impl Plugin for TimelinePanel {
                     .after(bevy::app::AnimationSystems)
                     .before(bevy::transform::TransformSystems::Propagate),
             )
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora::not_in_play_mode),
+        );
+        // Hand-set blend shape weights, put back over the clip's the same way.
+        // panel-systems-ungated: the Face panel sets them, the viewport shows them
+        app.init_resource::<morph::MorphLayer>();
+        app.add_systems(
+            PostUpdate,
+            morph::apply_morph_pose
+                .after(bevy::app::AnimationSystems)
+                .before(bevy::transform::TransformSystems::Propagate)
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora::not_in_play_mode),
         );
@@ -161,18 +183,20 @@ impl Plugin for TimelinePanel {
                     menus::overflow_open,
                     menus::empty_card_click,
                     edit::track_row_click,
-                    curves::mode_click,
+                    (curves::mode_click, graph::graph_buttons, graph::graph_sync).chain(),
                     curves::interp_click,
                     // The scrollbars claim their press before anything else;
                     // key_drag runs before ruler_drag because a press on the
                     // playhead needle in the lanes hands its scrub to
                     // ruler_drag, which carries it on the same frame.
                     scrollbars::scrollbar_drag,
-                    edit::key_drag,
+                    // The Curves view's own drag right after the dopesheet's,
+                    // which stands aside while it shows.
+                    (edit::key_drag, graph::graph_input).chain(),
                     edit::ruler_drag,
                     // Before key_context_menu (next block): it decides whether a
                     // right release was a pan or a click.
-                    edit::timeline_pan,
+                    (edit::timeline_pan, graph::graph_pan).chain(),
                     edit::anim_sync,
                     edit::sync_header_offset,
                     edit::sync_box_rect,
@@ -181,7 +205,7 @@ impl Plugin for TimelinePanel {
                     .chain(),
                 (
                     edit::update_anim_play_icon,
-                    edit::key_context_menu,
+                    (edit::key_context_menu, graph::graph_context_menu).chain(),
                     edit::track_context_menu,
                     edit::timeline_cursor,
                     clip::save_clip_click,
@@ -189,7 +213,7 @@ impl Plugin for TimelinePanel {
                     edit::new_clip_click,
                     menus::rename_clip_click,
                     clip::auto_save_clip,
-                    edit::timeline_wheel,
+                    (edit::timeline_wheel, graph::graph_wheel_read, graph::graph_wheel).chain(),
                     menus::row_height_click,
                     edit::timeline_shortcuts,
                     edit::timeline_delete_guard,

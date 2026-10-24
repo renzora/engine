@@ -33,12 +33,36 @@ pub struct AnimState {
 }
 
 /// What drives playback in a state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StateMotion {
     /// Play a single clip by slot name.
     Clip(String),
-    /// Use a blend tree (inline or by name reference).
+    /// A named blend tree reference, from before trees had anywhere to be
+    /// stored. Nothing ever wrote a tree under the name, so a file holding one
+    /// plays the slot of that name, which is what such a state was pointing at.
     BlendTree(String),
+    /// A blend tree stored inline in the state, driven by the machine's
+    /// parameters every frame.
+    ///
+    /// Inline rather than in a table on the machine so that adding trees took
+    /// no new field on [`AnimationStateMachine`] or [`AnimState`], which every
+    /// existing `.animsm` file (and every tool that builds one) would then have
+    /// had to spell.
+    Blend(crate::blend_tree::BlendTree),
+}
+
+impl StateMotion {
+    /// Every clip this motion can play.
+    pub fn clips(&self) -> Vec<String> {
+        match self {
+            StateMotion::Clip(name) | StateMotion::BlendTree(name) => vec![name.clone()],
+            StateMotion::Blend(tree) => {
+                let mut out = Vec::new();
+                tree.collect_clips(&mut out);
+                out
+            }
+        }
+    }
 }
 
 /// A transition between two states.
@@ -141,5 +165,53 @@ impl AnimationStateMachine {
         self.transitions
             .iter()
             .find(|t| t.from == current_state && t.condition.evaluate(params, state_time))
+    }
+
+    /// Clips any state's blend tree plays additively. The graph builder needs
+    /// them up front: an additive node and a difference clip exist only for
+    /// the clips something asks to add.
+    pub fn additive_clips(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for state in &self.states {
+            if let StateMotion::Blend(tree) = &state.motion {
+                tree.collect_additive_clips(&mut out);
+            }
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blend_tree::{Blend1DEntry, BlendTree};
+
+    /// A `.animsm` written before inline trees existed must still load, and
+    /// one with a tree must round-trip.
+    #[test]
+    fn old_and_new_state_machines_load() {
+        let old = r#"(states:[(name:"idle",motion:Clip("idle"),speed:1.0,looping:true)],transitions:[],default_state:"idle")"#;
+        let sm: AnimationStateMachine = ron::from_str(old).unwrap();
+        assert_eq!(sm.states[0].motion, StateMotion::Clip("idle".into()));
+
+        let mut with_tree = sm.clone();
+        with_tree.states.push(AnimState {
+            name: "move".into(),
+            motion: StateMotion::Blend(BlendTree::Blend1D {
+                param: "speed".into(),
+                entries: vec![
+                    Blend1DEntry { clip: "walk".into(), threshold: 1.0 },
+                    Blend1DEntry { clip: "run".into(), threshold: 4.0 },
+                ],
+            }),
+            speed: 1.0,
+            looping: true,
+        });
+        let text = ron::ser::to_string(&with_tree).unwrap();
+        let back: AnimationStateMachine = ron::from_str(&text).unwrap();
+        assert_eq!(back.states[1].motion, with_tree.states[1].motion);
+        assert_eq!(back.states[1].motion.clips(), vec!["walk", "run"]);
     }
 }

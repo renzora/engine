@@ -8052,6 +8052,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_ik"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_macros",
+ "renzora_scripting",
+]
+
+[[package]]
 name = "renzora_import"
 version = "0.1.0"
 dependencies = [
@@ -8068,6 +8078,7 @@ dependencies = [
  "rayon",
  "renzora",
  "renzora_rmip",
+ "ron 0.8.1",
  "serde_json",
  "stl_io",
  "thiserror 2.0.18",
@@ -8541,6 +8552,8 @@ name = "renzora_rig"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "ron 0.8.1",
+ "serde",
  "serde_json",
 ]
 
@@ -8593,6 +8606,7 @@ dependencies = [
  "renzora_environment_map",
  "renzora_forward_decal",
  "renzora_gaussian_splatting",
+ "renzora_ik",
  "renzora_input",
  "renzora_lang",
  "renzora_light2d",

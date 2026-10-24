@@ -32,6 +32,8 @@ pub(crate) enum RowKind {
     Bone(usize),
     /// A property track.
     Prop(usize),
+    /// A blend shape's weight track (one morph target).
+    Morph(usize),
     /// The Particles group's head: "Particles · Campfire".
     FxGroup,
     /// An effect emitter, drawn as its on/off bar. The second field is its
@@ -202,6 +204,9 @@ pub(super) fn rebuild_layout(
     for t in &clip.tracks {
         t.bone_name.hash(&mut h);
     }
+    for m in &clip.morph_tracks {
+        (&m.target, m.index, &m.name).hash(&mut h);
+    }
     let mut collapsed: Vec<&String> = layout.collapsed.iter().collect();
     collapsed.sort();
     collapsed.hash(&mut h);
@@ -289,6 +294,10 @@ fn build_rows(
     // the clip keeps them in the order they were made, so no track index
     // moves and no selection or saved file is renumbered.
     let prop_row = |i| Row { kind: RowKind::Prop(i), depth: 0, has_children: false, collapsed: false };
+    // Blend shapes next, one row per target in the order they were made: a
+    // face is a handful of shapes beside dozens of bones, and the shapes are
+    // what a facial pass works in.
+    let morph_row = |i| Row { kind: RowKind::Morph(i), depth: 0, has_children: false, collapsed: false };
     if !filter.is_empty() {
         // A filtered list is flat: nesting only gets in the way of finding a
         // bone by name, and a match's collapsed ancestor must not hide it.
@@ -296,6 +305,11 @@ fn build_rows(
             let label = format!("{} {}", p.component, p.field).to_lowercase();
             if label.contains(filter) {
                 rows.push(prop_row(i));
+            }
+        }
+        for (i, m) in clip.morph_tracks.iter().enumerate() {
+            if format!("{} {}", m.label(), m.target).to_lowercase().contains(filter) {
+                rows.push(morph_row(i));
             }
         }
         for (i, t) in clip.tracks.iter().enumerate() {
@@ -306,6 +320,7 @@ fn build_rows(
         return rows;
     }
     rows.extend((0..clip.property_tracks.len()).rev().map(prop_row));
+    rows.extend((0..clip.morph_tracks.len()).map(morph_row));
     let mut kids: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut roots: Vec<usize> = Vec::new();
     for i in 0..n {

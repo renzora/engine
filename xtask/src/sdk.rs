@@ -212,13 +212,8 @@ pub fn build_from(
     // `Compiling …` progress with machine output. On an already-built tree this
     // re-run resolves in a second or two and reprints the artifact list, which is
     // the only thing wanted here.
-    //
-    // Announced, because nothing else prints until staging is done, and that
-    // can take minutes on a cold disk: the build had looked finished and hung.
-    println!("[xtask] sdk: staging the plugin SDK");
     let mut externs = Externs::default();
-    let mut units = Vec::new();
-    let artifacts = artifact_files(repo, from, &mut externs, &mut units).map_err(|e| {
+    let artifacts = artifact_files(repo, from, &mut externs).map_err(|e| {
         eprintln!("[xtask] sdk build failed: {e}");
         ExitCode::FAILURE
     })?;
@@ -256,15 +251,7 @@ pub fn build_from(
     if out.join("manifest.json").is_file() && cache_read(&out).is_some_and(|c| c.stamp == stamp) {
         println!("[xtask] sdk: unchanged, staging skipped");
     } else {
-        // The host's build directory too when cross compiling: proc macros are
-        // built for the host and their fingerprints live there.
-        let mut profile_dirs = vec![profile_dir.clone()];
-        let host_dir = From { target_dir: from.target_dir.clone(), target: None }.profile_dir(repo);
-        if host_dir != profile_dir {
-            profile_dirs.push(host_dir);
-        }
-        let shared = Shared { repo, profile_dirs: &profile_dirs, units: &units };
-        stage(&profile_dir, plat, &out, &artifacts, &triple, &externs, &shared).map_err(|e| {
+        stage(&profile_dir, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
             eprintln!("[xtask] sdk staging failed: {e}");
             ExitCode::FAILURE
         })?;
@@ -360,7 +347,6 @@ fn artifact_files(
     repo: &Path,
     from: &From,
     externs: &mut Externs,
-    units: &mut Vec<crate::shared::Unit>,
 ) -> Result<Vec<(PathBuf, bool)>, String> {
     // Must be the profile the engine was actually built with, or this resolves a
     // different set of artifacts and the SDK describes a build nobody has.
@@ -434,32 +420,11 @@ fn artifact_files(
             // either a proc-macro rustc *runs*, or a dylib it links; `.lib` is
             // the MSVC import library for the latter (Unix links the
             // `.so`/`.dylib` directly and has no analogue).
-            let staged = if f.ends_with(".rlib") {
+            if f.ends_with(".rlib") {
                 let p = Path::new(&f);
-                let staged = if extern_target { p.to_path_buf() } else { metadata_only(p) };
-                files.insert((staged.clone(), proc_macro));
-                Some((staged, "deps"))
+                files.insert((if extern_target { p.to_path_buf() } else { metadata_only(p) }, proc_macro));
             } else if f.ends_with(".lib") || is_shared_lib(&f) {
-                files.insert((PathBuf::from(&f), proc_macro));
-                (proc_macro && is_shared_lib(&f)).then(|| (PathBuf::from(&f), "host-deps"))
-            } else {
-                None
-            };
-            // What `shared.rs` needs to list a crate: who it is and where it
-            // was staged. Proc macros and metadata only; a linkable dylib is
-            // one of the images themselves.
-            if let (Some((path, dir)), Some(package_id), Some(crate_name)) =
-                (staged, json_string(line, "package_id"), json_string(line, "name"))
-            {
-                if let Some(file) = path.file_name().and_then(|n| n.to_str()) {
-                    units.push(crate::shared::Unit {
-                        crate_name,
-                        package_id,
-                        features: json_string_array(line, "features"),
-                        proc_macro,
-                        staged: format!("{dir}/{file}"),
-                    });
-                }
+                files.insert((PathBuf::from(f), proc_macro));
             }
         }
     }
@@ -623,13 +588,6 @@ pub(crate) fn json_string_array(text: &str, field: &str) -> Vec<String> {
     out
 }
 
-/// What [`crate::shared::write`] needs, gathered while the artifacts are read.
-struct Shared<'a> {
-    repo: &'a Path,
-    profile_dirs: &'a [PathBuf],
-    units: &'a [crate::shared::Unit],
-}
-
 /// Copy the collected artifacts, plus the native import-library directories, and
 /// write the manifest that ties them to the engine build they belong to.
 fn stage(
@@ -639,7 +597,6 @@ fn stage(
     artifacts: &[(PathBuf, bool)],
     triple: &str,
     externs: &Externs,
-    shared: &Shared,
 ) -> std::io::Result<()> {
     let deps = out.join("deps");
     let host_deps = out.join("host-deps");
@@ -679,30 +636,15 @@ fn stage(
     let mut native_dirs = stage_native(profile_dir, &native)?;
     native_dirs.extend(stage_msvc(&native, triple)?);
 
-    // Not fatal: without the table a plugin dependency built on Bevy is refused,
-    // which is how every SDK behaved before it existed. Removed on failure so a
-    // stale one from an earlier build cannot describe this one.
-    let shared_count =
-        match crate::shared::write(out, shared.repo, shared.profile_dirs, plat.ext, shared.units) {
-            Ok(n) => Some(n),
-            Err(e) => {
-                eprintln!("[xtask] WARN: sdk shared-crate table not written: {e}");
-                let _ = std::fs::remove_file(out.join("shared.tsv"));
-                None
-            }
-        };
-
     let build_id = build_id(out, externs);
     let counts = Counts { metadata: n_meta, proc_macro: n_proc, import_lib: n_imp };
-    let manifest =
-        manifest_json(plat, triple, &native_dirs, externs, &build_id, &counts, shared_count.is_some());
+    let manifest = manifest_json(plat, triple, &native_dirs, externs, &build_id, &counts);
     std::fs::write(out.join("manifest.json"), manifest)?;
 
     println!(
         "[xtask] sdk: {n_meta} metadata, {n_proc} proc-macro, {n_imp} import lib, \
-         {} native dir(s), {} shared crate(s)",
-        native_dirs.len(),
-        shared_count.unwrap_or(0)
+         {} native dir(s)",
+        native_dirs.len()
     );
     Ok(())
 }
@@ -968,9 +910,7 @@ fn manifest_json(
     externs: &Externs,
     build_id: &str,
     counts: &Counts,
-    shared: bool,
 ) -> String {
-    let shared = if shared { "  \"shared\": \"shared.tsv\",\n  \"lock\": \"Cargo.lock\",\n" } else { "" };
     let natives = native_dirs
         .iter()
         .map(|d| format!("\"native/{d}\""))
@@ -986,7 +926,7 @@ fn manifest_json(
          \"extern\": {{\n    \"bevy\": \"deps/{bevy}\",\n    \"renzora\": \"deps/{renzora}\",\n    \
          \"renzora_ember\": \"deps/{ember}\"\n  }},\n  \
          \"link_search\": {{\n    \"dependency\": [\"deps\", \"host-deps\"],\n    \
-         \"native\": [{natives}]\n  }},\n{shared}  \
+         \"native\": [{natives}]\n  }},\n  \
          \"counts\": {{ \"metadata\": {}, \"proc_macro\": {}, \"import_lib\": {} }}\n}}\n",
         plat.ext, counts.metadata, counts.proc_macro, counts.import_lib
     )

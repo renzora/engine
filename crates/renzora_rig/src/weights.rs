@@ -58,6 +58,121 @@ pub fn envelope(positions: &[Vec3], bones: &[Segment], sharpness: f32) -> Vec<In
         .collect()
 }
 
+/// Weights by distance across the skin instead of through the air.
+///
+/// [`envelope`] measures straight lines, so a bone reaches any skin that is
+/// near it in space: an arm resting against the ribs pulls the ribs with it,
+/// a thumb pulls the side of the index finger. Here each bone starts from the
+/// vertices it is (nearly) the nearest bone to, and its distance spreads out
+/// over the mesh's surface from there. Skin that is close through the air but
+/// far round the surface (the chest seen from the upper arm) is then far, and
+/// the arm leaves it alone, while skin across a joint (the elbow) is close to
+/// both bones either way and still blends.
+///
+/// Vertices at the same place are welded first: a UV seam splits a vertex in
+/// two, and without the weld the surface would be cut along every seam. A
+/// piece of the mesh no bone starts on (a separate eyeball, a button) is
+/// reached only by straight-line distance, as [`envelope`] would.
+pub fn surface(positions: &[Vec3], indices: &[u32], bones: &[Segment], sharpness: f32) -> Vec<Influences> {
+    let fallback = bones.first().map(|b| b.joint as usize).unwrap_or(0);
+    surface_raw(positions, indices, bones, sharpness).into_iter().map(|raw| top_four(merge(raw), fallback)).collect()
+}
+
+/// [`surface`] before it is cut to four influences: every `(joint, weight)`
+/// for every vertex, unnormalised, for a rule that adjusts them first.
+pub fn surface_raw(positions: &[Vec3], indices: &[u32], bones: &[Segment], sharpness: f32) -> Vec<Vec<(usize, f32)>> {
+    use std::cmp::Reverse;
+    use std::collections::{BinaryHeap, HashMap};
+
+    let n = positions.len();
+    if n == 0 || bones.is_empty() {
+        return vec![Vec::new(); n];
+    }
+    // Weld by position, to a millionth of the model's size.
+    let (lo, hi) = positions.iter().fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(a, b), p| (a.min(*p), b.max(*p)));
+    let size = (hi - lo).length().max(1e-6);
+    let q = size * 1e-6;
+    let mut node_of = Vec::with_capacity(n);
+    let mut nodes: Vec<Vec3> = Vec::new();
+    let mut seen: HashMap<(i64, i64, i64), usize> = HashMap::new();
+    for p in positions {
+        let key = ((p.x / q).round() as i64, (p.y / q).round() as i64, (p.z / q).round() as i64);
+        let id = *seen.entry(key).or_insert_with(|| {
+            nodes.push(*p);
+            nodes.len() - 1
+        });
+        node_of.push(id);
+    }
+    let m = nodes.len();
+    let mut adj: Vec<Vec<(u32, f32)>> = vec![Vec::new(); m];
+    for tri in indices.chunks_exact(3) {
+        for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+            let (Some(&x), Some(&y)) = (node_of.get(a as usize), node_of.get(b as usize)) else { continue };
+            if x == y || adj[x].iter().any(|(k, _)| *k as usize == y) {
+                continue;
+            }
+            let d = nodes[x].distance(nodes[y]);
+            adj[x].push((y as u32, d));
+            adj[y].push((x as u32, d));
+        }
+    }
+    // Straight-line distance from every node to every bone.
+    let air: Vec<Vec<f32>> = nodes.iter().map(|p| bones.iter().map(|s| distance_to_segment(*p, s)).collect()).collect();
+    let nearest: Vec<f32> = air.iter().map(|d| d.iter().copied().fold(f32::MAX, f32::min)).collect();
+
+    // Distance across the surface from each bone's own skin. Positive floats
+    // order the same as their bits, which is what the heap compares.
+    let mut across = vec![vec![f32::INFINITY; bones.len()]; m];
+    // A bone's weight a quarter of the model away is nothing next to the
+    // bones there, so no search goes further: with sixty-odd bones over a
+    // whole body, searching everywhere for each was seconds.
+    let reach = 0.25 * size;
+    for (b, _) in bones.iter().enumerate() {
+        let mut dist = vec![f32::INFINITY; m];
+        let mut heap = BinaryHeap::new();
+        for v in 0..m {
+            // Near-nearest, so a vertex at a joint starts both bones.
+            if air[v][b] <= nearest[v] * 1.1 + 1e-6 * size {
+                dist[v] = air[v][b];
+                heap.push(Reverse((air[v][b].to_bits(), v as u32)));
+            }
+        }
+        while let Some(Reverse((bits, v))) = heap.pop() {
+            let d = f32::from_bits(bits);
+            if d > dist[v as usize] || d > reach {
+                continue;
+            }
+            for &(u, w) in &adj[v as usize] {
+                let nd = d + w;
+                if nd < dist[u as usize] {
+                    dist[u as usize] = nd;
+                    heap.push(Reverse((nd.to_bits(), u)));
+                }
+            }
+        }
+        for v in 0..m {
+            across[v][b] = dist[v];
+        }
+    }
+    let eps = 1e-4 * size;
+    let per_node: Vec<Vec<(usize, f32)>> = (0..m)
+        .map(|v| {
+            bones
+                .iter()
+                .enumerate()
+                .map(|(b, s)| {
+                    // Not reached within the search's reach: no weight. Every
+                    // vertex starts its own nearest bone, so none is left with
+                    // nothing.
+                    let d = across[v][b];
+                    (s.joint as usize, if d.is_finite() { 1.0 / ((d / size) + eps / size).powf(sharpness) } else { 0.0 })
+                })
+                .collect()
+        })
+        .collect();
+    node_of.iter().map(|&id| per_node[id].clone()).collect()
+}
+
 /// Sum the weights of a joint that appears more than once (a bone with
 /// several children has a segment to each).
 fn merge(raw: Vec<(usize, f32)>) -> Vec<(usize, f32)> {
@@ -222,6 +337,42 @@ mod tests {
 
     fn sum(inf: &Influences) -> f32 {
         inf.iter().map(|(_, w)| w).sum()
+    }
+
+    /// Two fingers side by side, joined only at the bottom: the inner edge of
+    /// the left one is nearer the right bone through the air than it looks,
+    /// but far from it across the skin.
+    #[test]
+    fn surface_weights_do_not_jump_the_gap_between_fingers() {
+        let xs = [-0.04, 0.04, 0.06, 0.14];
+        let rows = 11;
+        let mut positions = Vec::new();
+        for r in 0..rows {
+            for x in xs {
+                positions.push(Vec3::new(x, r as f32 * 0.1, 0.0));
+            }
+        }
+        let at = |r: usize, c: usize| (r * 4 + c) as u32;
+        let mut indices = Vec::new();
+        for r in 0..rows - 1 {
+            // Each finger; the gap between them only bridged in the first row.
+            for c in [0, 2] {
+                indices.extend([at(r, c), at(r, c + 1), at(r + 1, c), at(r, c + 1), at(r + 1, c + 1), at(r + 1, c)]);
+            }
+            if r == 0 {
+                indices.extend([at(0, 1), at(0, 2), at(1, 1), at(0, 2), at(1, 2), at(1, 1)]);
+            }
+        }
+        let bones = [
+            Segment { joint: 0, a: Vec3::new(0.0, 0.1, 0.0), b: Vec3::new(0.0, 1.0, 0.0) },
+            Segment { joint: 1, a: Vec3::new(0.1, 0.1, 0.0), b: Vec3::new(0.1, 1.0, 0.0) },
+        ];
+        let inner_edge = at(9, 1) as usize;
+        let through_air = envelope(&positions, &bones, 6.0);
+        let across_skin = surface(&positions, &indices, &bones, 6.0);
+        assert!(weight_of(&through_air[inner_edge], 1) > 0.05, "the envelope bleeds: {:?}", through_air[inner_edge]);
+        assert!(weight_of(&across_skin[inner_edge], 1) < 0.001, "across the skin it does not: {:?}", across_skin[inner_edge]);
+        assert!((sum(&across_skin[inner_edge]) - 1.0).abs() < 1e-4);
     }
 
     #[test]

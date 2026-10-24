@@ -9,11 +9,11 @@
 
 use std::path::Path;
 
-use renzora::{write_anim_file, AnimClip, BoneTrack};
+use renzora::{write_anim_file, AnimClip, BoneTrack, MorphTrack};
 
 use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ConvertedGlb, ImportError};
-use crate::glb_build::{build_glb_grouped, build_glb_hierarchy, build_skinned_glb, SceneNode};
+use crate::glb_build::{build_glb_grouped_morphs, build_glb_hierarchy, build_skinned_glb, SceneNode, MORPH_NODE};
 use crate::settings::ImportSettings;
 
 // ─── Public API ────────────────────────────────────────────────────────────
@@ -115,6 +115,14 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         }
     }
 
+    // Blend shapes become morph targets on the merged mesh, numbered in the
+    // order `morph_channel_order` walks them, which is how `extract_animations`
+    // finds the target each channel's weight curve drives. Per target, the
+    // vertex ranges it moves: `(first merged vertex, xyz offset per vertex)`.
+    let morphs_on = morphs_enabled(has_skin, moving.is_some());
+    let mut morph_names: Vec<String> = Vec::new();
+    let mut morph_ranges: Vec<Vec<(usize, Vec<f32>)>> = Vec::new();
+
     for mesh in scene_ref.meshes.iter() {
         let vertex_count = mesh.num_vertices;
         if vertex_count == 0 {
@@ -154,6 +162,15 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         if corners.is_empty() {
             continue;
         }
+        let channels = mesh_blend_channels(mesh);
+        if !morphs_on && !channels.is_empty() {
+            warnings.push(format!(
+                "mesh '{}': {} blend shapes dropped, a scene of moving parts keeps no blend shapes",
+                mesh.element.name.as_ref(),
+                channels.len()
+            ));
+        }
+        let channels = if morphs_on { channels } else { Vec::new() };
 
         // Skin: look at the first skin deformer on this mesh (Mixamo output has
         // exactly one). Collapse its per-vertex top-4 influences into our
@@ -229,6 +246,10 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(corner_count);
         let mut joints: Vec<[u16; 4]> = Vec::with_capacity(corner_count);
         let mut weights: Vec<[f32; 4]> = Vec::with_capacity(corner_count);
+        // The FBX vertex behind each corner, for blend shapes, whose offsets
+        // are per vertex. Only kept (and only part of the deduplication key)
+        // when the mesh has shapes, so a mesh without stays exactly as it was.
+        let mut vids: Vec<u32> = Vec::new();
 
         for &corner in &corners {
             let corner = corner as usize;
@@ -253,6 +274,9 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             let v = mesh.vertex_indices[corner] as usize;
             joints.push(mesh_joints.get(v).copied().unwrap_or([0; 4]));
             weights.push(mesh_weights.get(v).copied().unwrap_or([0.0; 4]));
+            if !channels.is_empty() {
+                vids.push(v as u32);
+            }
         }
 
         let mut tri_indices: Vec<u32> = vec![0; corner_count];
@@ -265,6 +289,12 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             if is_skinned {
                 streams.push(ufbx::VertexStream::new(&mut joints));
                 streams.push(ufbx::VertexStream::new(&mut weights));
+            }
+            // Two vertices that agree on every attribute but are different
+            // FBX vertices can be moved apart by a blend shape (a closed
+            // mouth's lips), so the vertex is part of the key.
+            if !channels.is_empty() {
+                streams.push(ufbx::VertexStream::new(&mut vids));
             }
             ufbx::generate_indices(&mut streams, &mut tri_indices, Default::default()).map_err(
                 |e| {
@@ -281,6 +311,15 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         uvs.truncate(unique);
         joints.truncate(unique);
         weights.truncate(unique);
+        vids.truncate(unique);
+
+        // Each shape's offset for each output vertex, in geometry space.
+        let shape_deltas: Vec<Vec<[f32; 3]>> = channels.iter().map(|c| blend_offsets(c, vertex_count, &vids)).collect();
+        let first_target = morph_names.len();
+        for c in &channels {
+            morph_names.push(blend_channel_name(c));
+            morph_ranges.push(Vec::new());
+        }
 
         // Flatten back into the component streams the GLB builder takes.
         let positions: Vec<f32> = positions.into_iter().flatten().collect();
@@ -341,6 +380,23 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         for (placement, part) in placements {
             let base_vertex = (all_positions.len() / 3) as u32;
 
+            // An offset is a direction: the placement's rotation and scale
+            // apply to it, its translation does not.
+            for (k, deltas) in shape_deltas.iter().enumerate() {
+                let moved: Vec<f32> = match &placement {
+                    Some(m) => deltas
+                        .iter()
+                        .flat_map(|d| {
+                            let v = ufbx::Vec3 { x: d[0] as ufbx::Real, y: d[1] as ufbx::Real, z: d[2] as ufbx::Real };
+                            let t = ufbx::transform_direction(m, v);
+                            [t.x as f32, t.y as f32, t.z as f32]
+                        })
+                        .collect(),
+                    None => deltas.iter().flatten().copied().collect(),
+                };
+                morph_ranges[first_target + k].push((base_vertex as usize, moved));
+            }
+
             match placement {
                 Some(m) => bake_placement(
                     &m,
@@ -378,6 +434,26 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
         return Err(ImportError::ParseError(
             "no geometry found in FBX file".into(),
         ));
+    }
+
+    let morphs = {
+        let total = all_positions.len();
+        let deltas = morph_ranges
+            .into_iter()
+            .map(|ranges| {
+                let mut dense = vec![0.0f32; total];
+                for (start, offsets) in ranges {
+                    let at = start * 3;
+                    let end = (at + offsets.len()).min(total);
+                    dense[at..end].copy_from_slice(&offsets[..end - at]);
+                }
+                dense
+            })
+            .collect();
+        crate::glb_build::MorphSet { names: morph_names, deltas }
+    };
+    if !morphs.is_empty() {
+        log::info!("[import] {}: {} blend shapes written as morph targets", file_name, morphs.names.len());
     }
 
     // Build the GLB's materials and image references. Nothing is written or
@@ -463,6 +539,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             &all_weights,
             &joint_structs,
             &material_bundle,
+            &morphs,
         )?
     } else if let Some(m) = &moving {
         build_glb_hierarchy(
@@ -475,12 +552,13 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             &material_bundle,
         )?
     } else {
-        build_glb_grouped(
+        build_glb_grouped_morphs(
             &all_positions,
             &all_normals,
             &all_texcoords,
             &groups,
             &material_bundle,
+            &morphs,
         )?
     };
 
@@ -602,6 +680,8 @@ pub fn extract_animations(
     // skeleton's unit space so the two agree.
     let unit_fixup = animation_unit_fixup(scene_ref);
     let moving = moving_parts(scene_ref, settings);
+    let has_skin = settings.extract_skeleton && !collect_joints(scene_ref).is_empty();
+    let morph_channels = morph_channel_order(scene_ref, morphs_enabled(has_skin, moving.is_some()));
     if (unit_fixup - 1.0).abs() > 1e-3 {
         log::info!(
             "[import] {}: scaling animation translations by {:.4} to match skeleton units",
@@ -674,7 +754,23 @@ pub fn extract_animations(
             }
         }
 
-        if tracks.is_empty() {
+        // Blend shape weights, under the node and target numbers `convert`
+        // wrote the shapes with. A shape that stays at zero gets no track, as
+        // in a glTF import.
+        let mut morph_tracks: Vec<MorphTrack> = Vec::new();
+        for (index, channel) in morph_channels.iter().enumerate() {
+            let mut track = MorphTrack::new(MORPH_NODE, index, blend_channel_name(channel));
+            for i in 0..n_samples {
+                let t = stack_ref.time_begin + dt * i as f64;
+                let w = ufbx::evaluate_blend_weight(anim_ref, channel, t);
+                track.keys.push(((t - stack_ref.time_begin) as f32, w as f32));
+            }
+            if track.keys.iter().any(|(_, w)| *w != 0.0) {
+                morph_tracks.push(track);
+            }
+        }
+
+        if tracks.is_empty() && morph_tracks.is_empty() {
             result
                 .warnings
                 .push(format!("{}: animation stack animates nothing", clip_name));
@@ -685,8 +781,8 @@ pub fn extract_animations(
             name: clip_name.clone(),
             duration: duration_f as f32,
             tracks,
-            property_tracks: Vec::new(),
-            markers: Vec::new(),
+            morph_tracks,
+            ..Default::default()
         };
         let dropped = crate::anim_decimate::decimate_clip(&mut clip);
         if dropped > 0 {
@@ -748,6 +844,7 @@ fn sample_node_track(
         rotations: Vec::with_capacity(n_samples),
         scales: Vec::with_capacity(n_samples),
         muted: false,
+        curves: Default::default(),
     };
     for i in 0..n_samples {
         let t = time_begin + dt * i as f64;
@@ -1098,6 +1195,79 @@ fn collect_joints(scene: &ufbx::Scene) -> Vec<JointOut> {
     }
 
     joints
+}
+
+// ─── Blend shapes ──────────────────────────────────────────────────────────
+
+/// Whether `convert` writes blend shapes at all: on a skinned mesh, or on the
+/// merged mesh of a scene without moving parts. A scene of moving parts is
+/// split into several meshes, which the shapes would have to be divided
+/// between, so it keeps none.
+fn morphs_enabled(has_skin: bool, has_moving_parts: bool) -> bool {
+    has_skin || !has_moving_parts
+}
+
+/// A mesh's blend shape channels that have a shape to write, in deformer then
+/// channel order.
+fn mesh_blend_channels(mesh: &ufbx::Mesh) -> Vec<&ufbx::BlendChannel> {
+    let mut out = Vec::new();
+    for deformer in mesh.blend_deformers.iter() {
+        for channel in deformer.channels.iter() {
+            if blend_shape_of(channel).is_some() {
+                out.push(&**channel);
+            }
+        }
+    }
+    out
+}
+
+/// The shape a channel reaches at full weight. In-between shapes (a channel
+/// with several keyframed shapes) are not carried: glTF morph targets are
+/// linear, so only the full-weight one is written.
+fn blend_shape_of(channel: &ufbx::BlendChannel) -> Option<&ufbx::BlendShape> {
+    channel
+        .target_shape
+        .as_deref()
+        .or_else(|| channel.keyframes.iter().last().map(|k| &*k.shape))
+}
+
+/// Every channel `convert` writes as a morph target, in target order: the
+/// same walk over the same meshes, skipping the meshes it skips (no vertices,
+/// no triangles), so index `i` here is target `i` in the GLB.
+fn morph_channel_order(scene: &ufbx::Scene, enabled: bool) -> Vec<&ufbx::BlendChannel> {
+    if !enabled {
+        return Vec::new();
+    }
+    scene
+        .meshes
+        .iter()
+        .filter(|m| m.num_vertices > 0 && m.num_triangles > 0)
+        .flat_map(|m| mesh_blend_channels(m))
+        .collect()
+}
+
+/// A channel's name without the deformer prefix exporters put on it
+/// (`blendShape1.jawOpen` is `jawOpen`), which is what an animator calls it.
+fn blend_channel_name(channel: &ufbx::BlendChannel) -> String {
+    let full = channel.element.name.as_ref();
+    match full.rsplit_once('.') {
+        Some((_, short)) if !short.is_empty() => short.to_string(),
+        _ => full.to_string(),
+    }
+}
+
+/// A channel's full-weight offset for each output vertex, `vids` giving the
+/// FBX vertex behind each one.
+fn blend_offsets(channel: &ufbx::BlendChannel, vertex_count: usize, vids: &[u32]) -> Vec<[f32; 3]> {
+    let mut per_vertex = vec![[0.0f32; 3]; vertex_count];
+    if let Some(shape) = blend_shape_of(channel) {
+        for (v, d) in shape.offset_vertices.iter().zip(shape.position_offsets.iter()) {
+            if let Some(slot) = per_vertex.get_mut(*v as usize) {
+                *slot = [d.x as f32, d.y as f32, d.z as f32];
+            }
+        }
+    }
+    vids.iter().map(|v| per_vertex.get(*v as usize).copied().unwrap_or([0.0; 3])).collect()
 }
 
 /// Append one instance's worth of geometry, with the node placement baked into

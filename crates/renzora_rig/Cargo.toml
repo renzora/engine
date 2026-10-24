@@ -10,6 +10,10 @@ description = "Rigging: building skeletons and skins into glTF binaries (face ri
 [dependencies]
 bevy = { workspace = true }
 serde_json = "1"
+# A model's controls file (`controls`), RON like the editor's other
+# per-asset files.
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
 
 [lints]
 workspace = true

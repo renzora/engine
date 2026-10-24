@@ -27,8 +27,19 @@ pub fn decimate_clip(clip: &mut AnimClip) -> usize {
         removed += decimate_channel(&mut track.rotations, ROTATION_TOLERANCE);
         removed += decimate_channel(&mut track.scales, SCALE_TOLERANCE);
     }
+    // Only linear blend shape tracks: a held or tangented key (a glTF step or
+    // cubic channel) shapes the curve by its mode, which this straight-line
+    // test cannot see.
+    for track in clip.morph_tracks.iter_mut().filter(|t| t.curves.is_empty()) {
+        let mut keys: Vec<(f32, [f32; 1])> = track.keys.iter().map(|(t, w)| (*t, [*w])).collect();
+        removed += decimate_channel(&mut keys, MORPH_TOLERANCE);
+        track.keys = keys.into_iter().map(|(t, [w])| (t, w)).collect();
+    }
     removed
 }
+
+/// Blend shape weight tolerance, on the 0..1 weight scale.
+const MORPH_TOLERANCE: f32 = 0.001;
 
 /// RDP over `(time, value)` keys with component-wise linear interpolation.
 /// Works for both `[f32; 3]` and `[f32; 4]` values; quaternion keys sampled

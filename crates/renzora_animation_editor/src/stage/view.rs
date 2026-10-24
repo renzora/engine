@@ -1,6 +1,6 @@
 //! The stage panel (`stage`), its camera, and where the cursor is on it.
 //!
-//! The header carries the mode tabs (Rig, Skin, Animate, Logic), the model
+//! The header carries the mode tabs (Rig, Skin, Shapes, Animate, Logic), the model
 //! on the stage and the camera presets. Over the picture float a toolbar
 //! (skeleton, floor, auto key, frame), in Animate the gizmo's tool strip down
 //! the right, and a line along the bottom saying what a click does now. With
@@ -302,7 +302,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
 
     let modes = tray(commands, false, rgb(faint_bg()));
-    for (m, icon) in StageMode::ALL.into_iter().zip(["bone", "paint-brush", "person-simple-run", "graph"]) {
+    for (m, icon) in StageMode::ALL.into_iter().zip(["bone", "paint-brush", "drop-half", "person-simple-run", "graph"]) {
         let p = pill(commands, fonts, icon, m.label(), 28.0, move |w| mode_is(w, m), move |w| w.resource_mut::<StageUi>().mode = m);
         commands.entity(modes).add_child(p);
     }
@@ -441,7 +441,8 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, autokey, |w| mode_is(w, StageMode::Animate));
     let gap = divider(commands, false);
     let frame = pill(commands, fonts, "frame-corners", "", 26.0, |_| false, |w| w.resource_mut::<StudioPreviewTracker>().auto_fitted = false);
-    commands.entity(bar).add_children(&[skeleton, floor, autokey, gap, frame]);
+    let onion = super::onion::toolbar_toggle(commands, fonts);
+    commands.entity(bar).add_children(&[skeleton, floor, autokey, onion, gap, frame]);
     bind_display(commands, bar, |w| !mode_is(w, StageMode::Logic) && has_model(w));
     bar
 }
@@ -564,6 +565,7 @@ fn hint_text(w: &Rx) -> String {
         StageMode::Rig => "Click a bone to read it in the panel on the right.".to_string(),
         StageMode::Skin if !rigged => "Weights need a skeleton. Build one in Rig first.".to_string(),
         StageMode::Skin => "Paint with the left button. Ctrl+click a bone to paint it.".to_string(),
+        StageMode::Shapes => "Sculpt the shape with the left button. Ctrl inverts, Shift smooths, [ and ] size the brush.".to_string(),
         StageMode::Animate if !rigged => "No skeleton to pose. Build one in Rig first.".to_string(),
         StageMode::Animate => "Click a bone. E turns it, W moves it, K keys the pose.".to_string(),
         StageMode::Logic => String::new(),

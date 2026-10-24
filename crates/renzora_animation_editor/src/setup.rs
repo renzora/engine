@@ -587,9 +587,7 @@ pub fn create_clip_on_entity(world: &mut World, entity: Entity, clip_name: &str)
         let clip = AnimClip {
             name: clip_name.to_string(),
             duration: 2.0,
-            tracks: Vec::new(),
-            property_tracks: Vec::new(),
-            markers: Vec::new(),
+            ..Default::default()
         };
         if let Err(e) = renzora::core::write_anim_file(&clip, &abs_path) {
             set_feedback(world, entity, format!("Write failed: {e}"), true);

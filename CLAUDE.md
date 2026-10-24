@@ -321,13 +321,14 @@ editor's `plugins/` is outside the workspace, so cargo resolves it a fresh Bevy
 from crates.io; the result builds, loads, and corrupts the World. (The
 checkout's own `plugins/` holds bundled plugins, which are workspace members.)
 
-A native plugin may depend on a Bevy-based crate (avian, say). The SDK ships
-`shared.tsv` (written by `xtask/src/shared.rs` from cargo fingerprints: every
-crate inside the shared images) plus the engine's `Cargo.lock`, and the deps
-build runs a `RUSTC_WRAPPER` shim (`crates/renzora_native_build/src/shim.rs`)
-that skips compiling any crate the images already contain and points its
-dependents at the SDK copy. A Bevy crate at another version or needing a feature
-the engine lacks is refused by name.
+A native plugin's third-party dependencies are ordinary crates it compiles
+for itself (`rapier3d`, `sysinfo`, `mlua`). It must not depend on a crate built
+on Bevy (avian, bevy_rapier): that crate would bring a second Bevy and corrupt
+the World. A `RUSTC_WRAPPER` shim that substituted the engine's own copies of
+such crates was tried and removed on 2026-10-24: no plugin needed it, it broke
+six that use plain crates, and the `shared.tsv` it read made every SDK staging
+walk all of cargo's fingerprints, minutes per build. Bevy-based functionality
+belongs in a bundled plugin (`plugins/`) or in the engine.
 
 Rust **scripts** (`crates/renzora_rust_script`) are the same mechanism with a
 per-entity convention on top — same driver, same SDK, same loading. See §7.

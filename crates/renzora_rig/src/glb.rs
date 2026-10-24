@@ -286,8 +286,55 @@ impl Glb {
         Ok(out)
     }
 
+    /// Append float data as a new accessor of `kind` (`"SCALAR"`, `"VEC3"`,
+    /// ...), with `min`/`max` when given (an animation's time input needs
+    /// them); returns the accessor's index.
+    pub fn add_floats(&mut self, data: &[f32], kind: &str, bounds: Option<(Vec<f32>, Vec<f32>)>) -> usize {
+        let width = match kind {
+            "VEC2" => 2,
+            "VEC3" => 3,
+            "VEC4" => 4,
+            "MAT4" => 16,
+            _ => 1,
+        };
+        let bytes: Vec<u8> = data.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let view = self.push_view(&bytes, None);
+        let mut acc = json!({ "bufferView": view, "componentType": FLOAT, "count": data.len() / width, "type": kind });
+        if let Some((min, max)) = bounds {
+            acc["min"] = json!(min);
+            acc["max"] = json!(max);
+        }
+        self.push_accessor(acc)
+    }
+
+    /// A `MAT4` float accessor's matrices (a skin's inverse bind matrices).
+    pub fn mat4s(&self, accessor: usize) -> Result<Vec<Mat4>, GlbError> {
+        let acc = self.array("accessors").get(accessor).ok_or_else(|| GlbError::Unsupported("missing accessor".into()))?;
+        if acc.get("componentType").and_then(Value::as_u64) != Some(FLOAT) || acc.get("type").and_then(Value::as_str) != Some("MAT4") {
+            return Err(GlbError::Unsupported("matrices are not plain floats".into()));
+        }
+        let count = acc.get("count").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let Some(view_i) = acc.get("bufferView").and_then(Value::as_u64) else {
+            return Ok(vec![Mat4::IDENTITY; count]);
+        };
+        let view = self.array("bufferViews").get(view_i as usize).ok_or_else(|| GlbError::Unsupported("missing buffer view".into()))?;
+        let base = view.get("byteOffset").and_then(Value::as_u64).unwrap_or(0) as usize
+            + acc.get("byteOffset").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let mut out = Vec::with_capacity(count);
+        for i in 0..count {
+            let at = base + i * 64;
+            let bytes = self.bin.get(at..at + 64).ok_or_else(|| GlbError::Unsupported("matrices run past the end of the binary".into()))?;
+            let mut cols = [0.0f32; 16];
+            for (k, c) in cols.iter_mut().enumerate() {
+                *c = f32::from_le_bytes(bytes[k * 4..k * 4 + 4].try_into().expect("4 bytes"));
+            }
+            out.push(Mat4::from_cols_array(&cols));
+        }
+        Ok(out)
+    }
+
     /// Append bytes to the binary chunk as a new buffer view; returns its index.
-    fn push_view(&mut self, data: &[u8], target: Option<u64>) -> usize {
+    pub(crate) fn push_view(&mut self, data: &[u8], target: Option<u64>) -> usize {
         while !self.bin.len().is_multiple_of(4) {
             self.bin.push(0);
         }
@@ -305,7 +352,7 @@ impl Glb {
         views.len() - 1
     }
 
-    fn push_accessor(&mut self, accessor: Value) -> usize {
+    pub(crate) fn push_accessor(&mut self, accessor: Value) -> usize {
         let accs = self.array_mut("accessors");
         accs.push(accessor);
         accs.len() - 1
@@ -388,6 +435,57 @@ impl Glb {
 
     pub fn set_node_skin(&mut self, node: usize, skin: usize) {
         self.json["nodes"][node]["skin"] = json!(skin);
+    }
+}
+
+/// Plain geometry to write as a new model: what [`Glb::from_geometry`] takes.
+pub struct Geometry<'a> {
+    pub name: &'a str,
+    pub positions: &'a [Vec3],
+    /// Empty, or one per position.
+    pub normals: &'a [Vec3],
+    /// Empty, or one per position.
+    pub uvs: &'a [[f32; 2]],
+    /// A triangle list.
+    pub indices: &'a [u32],
+    /// Linear RGBA.
+    pub base_color: [f32; 4],
+}
+
+impl Glb {
+    /// A new model holding one mesh, for geometry that has no file of its
+    /// own (a library shape, an edited mesh), so it can be rigged like any
+    /// imported model.
+    pub fn from_geometry(g: &Geometry) -> Result<Glb, GlbError> {
+        let n = g.positions.len();
+        if n == 0 || g.indices.is_empty() || !g.indices.len().is_multiple_of(3) {
+            return Err(GlbError::Unsupported("the mesh has no triangles to write".into()));
+        }
+        if g.indices.iter().any(|&i| i as usize >= n) {
+            return Err(GlbError::Unsupported("the mesh's indices run past its vertices".into()));
+        }
+        let mut glb = Glb { json: json!({ "asset": { "version": "2.0", "generator": "Renzora" }, "scene": 0, "scenes": [{ "nodes": [] }] }), bin: Vec::new() };
+        const ARRAY_BUFFER: u64 = 34962;
+        const ELEMENT_ARRAY_BUFFER: u64 = 34963;
+        let floats = |vs: &mut dyn Iterator<Item = f32>| vs.flat_map(f32::to_le_bytes).collect::<Vec<u8>>();
+        let (min, max) = g.positions.iter().fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+        let pv = glb.push_view(&floats(&mut g.positions.iter().flat_map(|p| p.to_array())), Some(ARRAY_BUFFER));
+        let pa = glb.push_accessor(json!({ "bufferView": pv, "componentType": FLOAT, "count": n, "type": "VEC3", "min": min.to_array(), "max": max.to_array() }));
+        let mut attributes = json!({ "POSITION": pa });
+        if g.normals.len() == n {
+            let v = glb.push_view(&floats(&mut g.normals.iter().flat_map(|p| p.normalize_or_zero().to_array())), Some(ARRAY_BUFFER));
+            attributes["NORMAL"] = json!(glb.push_accessor(json!({ "bufferView": v, "componentType": FLOAT, "count": n, "type": "VEC3" })));
+        }
+        if g.uvs.len() == n {
+            let v = glb.push_view(&floats(&mut g.uvs.iter().flatten().copied()), Some(ARRAY_BUFFER));
+            attributes["TEXCOORD_0"] = json!(glb.push_accessor(json!({ "bufferView": v, "componentType": FLOAT, "count": n, "type": "VEC2" })));
+        }
+        let iv = glb.push_view(&g.indices.iter().flat_map(|i| i.to_le_bytes()).collect::<Vec<u8>>(), Some(ELEMENT_ARRAY_BUFFER));
+        let ia = glb.push_accessor(json!({ "bufferView": iv, "componentType": UNSIGNED_INT, "count": g.indices.len(), "type": "SCALAR" }));
+        glb.json["materials"] = json!([{ "name": g.name, "pbrMetallicRoughness": { "baseColorFactor": g.base_color, "metallicFactor": 0.0, "roughnessFactor": 0.6 } }]);
+        glb.json["meshes"] = json!([{ "name": g.name, "primitives": [{ "attributes": attributes, "indices": ia, "material": 0 }] }]);
+        glb.add_node(json!({ "name": g.name, "mesh": 0 }), None);
+        Ok(glb)
     }
 }
 

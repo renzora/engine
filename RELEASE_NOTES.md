@@ -1,5 +1,57 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-24 16:02
+- feat(animation): Skin mode's Select tool picks a whole part or a box of vertices and binds it rigidly to a bone, sets its weight, or auto-weights it alone
+- fix(plugin): plugins build again (system monitor, terminal, Lua, debugger, Rapier physics, 3D text), and staging the plugin SDK no longer takes minutes
+- fix(animation): a face rig sends each tooth, gum and tongue with the jaw or the head as a whole, for mouths built as one mesh or several
+- feat(animation): Save as Control makes a slider from any pose of bones and blend shapes, for any rig, saved beside the model as a .controls file
+- feat(animation): the Animate Controls tab lists, edits and keys a model's controls, with the face expressions as a preset
+- feat(animation): a Shapes stage mode sculpts blend shapes on any model with Draw, Smooth, Grab, Inflate, Flatten and Pinch brushes, mirrored across X
+- feat(animation): sculpted, renamed and deleted blend shapes save into the model's .glb as morph targets and key like imported ones
+
+## 2026-10-24 14:10
+- fix(animation): a face rig's closed lids cover an eyeball that bulges past them instead of passing behind it
+- fix(animation): a blink no longer tears the skin sideways past the corners of the eye
+- fix(animation): opening a rigged mouth moves each tooth whole instead of stretching it between the jaw and the head
+- feat(animation): a Chain rig template bends anything along its length: tails, ropes, tentacles, capsules
+- feat(animation): library shapes can be made bendable, from the Chain template or the Shape Library's Bendable option, and curve smoothly along their length
+- feat(animation): a Quadruped rig template builds a four-legged skeleton from thirteen points
+- feat(animation): the skeleton editor adds, deletes, moves, renames and reparents bones, on a generated, imported or empty skeleton
+- feat(animation): automatic skin weights are measured across the skin, so a bone no longer pulls skin it only touches through the air
+- fix(animation): rig points land in the middle of the limb under the cursor instead of on its surface
+- fix(editor): a model's bones keep their own names while the Animation workspace shows it
+- feat(animation): Export with Clips writes a rigged model and its clips to one .glb for other tools
+- feat(animation): bone keys have interpolation modes (Auto, Linear, Constant, Flat, Free, Broken) and newly keyed poses ease in and out by default
+- feat(animation): the timeline's Curves view is an editable graph editor with key and tangent-handle dragging, channel toggles, pan, zoom and framing
+- feat(animation): the dopesheet shows key interpolation by shape and sets a bone key's mode from its right-click menu or key card
+- feat(animation): onion skinning on the Animation stage shows ghost poses before and after the playhead
+- fix(animation): dragging, editing or undoing bone keys in the timeline now plays straight away instead of after autosave
+- feat(animation): two-bone IK, look-at/aim and rotation limit components that adjust animated skeletons at runtime
+- feat(animation): foot IK that plants feet on uneven ground through the physics query API, lowers the hips and tilts feet onto slopes
+- feat(animation): copy rotation/position constraints with per-axis masks
+- feat(animation): spring bones with sphere colliders for hair, tails and ears, independent of frame rate
+- feat(animation): script functions to set IK and look-at targets and weights, and to blend or reset spring bones
+- feat(physics): partial ragdolls on one bone's subtree, physics/animation blend weight, and a smooth get-up blend back to animation
+- fix(animation): event markers now fire on every playing clip, including skeletal-only clips, layers and loops
+- fix(animation): a state machine's entry state now plays when the game starts
+- feat(animation): state machine states can play a 1D or 2D blend tree, editable in the State Machine panel
+- feat(animation): layers support bone masks and additive blending, and play their current clip with crossfades
+- feat(animation): play_layer_animation and stop_layer_animation script functions
+- feat(animation): root motion moves the entity by the root bone's movement, with optional yaw and an extract-only mode
+- feat(animation): clips can be retargeted from another rig with a .skel rest pose and a bone name map
+- feat(animation): blend shapes can be keyed in clips and play, blend and layer with the skeleton
+- feat(animation): the Face panel's blend shape sliders are keyable, with one timeline track per shape
+- feat(import): glTF blend shape animation is imported as blend shape tracks
+- feat(import): FBX blend shapes are imported as morph targets, with their animation
+- feat(import): skinned models write a rest skeleton beside their clips, and clips from another model are retargeted through it
+
+## 2026-10-24 13:00
+- feat(animation): Generate Skeleton rigs the fingers, found from the shape of each hand
+
+## 2026-10-24 12:31
+- fix(animation): a blink no longer tears the skin across the bridge of the nose
+- feat(animation): a face rig can be built on a head with painted-on eyes, such as a photo scan
+
 ## 2026-10-24 10:37
 - fix(animation): a face rig's blink closes the eyes fully, measured from each head's own eye opening
 

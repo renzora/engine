@@ -49,6 +49,8 @@ pub(crate) struct KeyRuns {
     pub(crate) bone: Vec<[Vec<Run>; 3]>,
     /// Per property track.
     pub(crate) prop: Vec<Vec<Run>>,
+    /// Per blend shape track.
+    pub(crate) morph: Vec<Vec<Run>>,
     /// Per track of the shown effect (`VfxAsset::tracks`), the Particles group.
     pub(crate) fx: Vec<Vec<Run>>,
     /// The summary row's bars: every multi-key run, merged across lanes.
@@ -94,6 +96,10 @@ fn fingerprint(cache: &TimelineClip) -> u64 {
     for (pi, pt) in clip.property_tracks.iter().enumerate() {
         pt.keys.iter().for_each(|k| mix(1_000_000 + pi as u64, k.time));
     }
+    for (mi, mt) in clip.morph_tracks.iter().enumerate() {
+        mt.keys.iter().for_each(|k| mix(2_000_000 + mi as u64, k.0));
+    }
+    clip.morph_tracks.len().hash(&mut h);
     if let Some(fx) = cache.fx.as_ref() {
         super::fx::mix_keys(fx, &mut mix);
         super::fx::structure_hash(fx, &mut h);
@@ -113,6 +119,7 @@ pub(super) fn rebuild_runs(cache: Res<TimelineClip>, mut runs: ResMut<KeyRuns>) 
     let Some(clip) = cache.clip.as_ref() else {
         runs.bone.clear();
         runs.prop.clear();
+        runs.morph.clear();
         runs.fx.clear();
         runs.summary.clear();
         runs.times.clear();
@@ -130,6 +137,7 @@ pub(super) fn rebuild_runs(cache: Res<TimelineClip>, mut runs: ResMut<KeyRuns>) 
         })
         .collect();
     runs.prop = clip.property_tracks.iter().map(|p| runs_of(p.keys.iter().map(|k| k.time))).collect();
+    runs.morph = clip.morph_tracks.iter().map(|m| runs_of(m.keys.iter().map(|k| k.0))).collect();
     let fx_tracks = cache.fx.as_ref().map(|f| f.doc.tracks.as_slice()).unwrap_or(&[]);
     runs.fx = fx_tracks.iter().map(|t| runs_of(t.keys.iter().map(|k| k.time))).collect();
 
@@ -140,6 +148,7 @@ pub(super) fn rebuild_runs(cache: Res<TimelineClip>, mut runs: ResMut<KeyRuns>) 
         .iter()
         .flat_map(|c| c.iter().flatten())
         .chain(runs.prop.iter().flatten())
+        .chain(runs.morph.iter().flatten())
         .chain(runs.fx.iter().flatten());
     for r in all {
         if r.len() > 1 {
@@ -154,6 +163,9 @@ pub(super) fn rebuild_runs(cache: Res<TimelineClip>, mut runs: ResMut<KeyRuns>) 
     }
     for p in &clip.property_tracks {
         times.extend(p.keys.iter().map(|k| k.time));
+    }
+    for m in &clip.morph_tracks {
+        times.extend(m.keys.iter().map(|k| k.0));
     }
     for t in fx_tracks {
         times.extend(t.keys.iter().map(|k| k.time));

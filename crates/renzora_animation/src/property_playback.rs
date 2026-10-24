@@ -33,6 +33,10 @@ pub struct PropertyClip {
     pub duration: f32,
     pub tracks: Vec<PropertyTrack>,
     pub markers: Vec<AnimMarker>,
+    /// The clip's raw bone keys (the rest of the `.anim`, property tracks and
+    /// markers taken out). Bevy's `AnimationClip` keeps only type-erased
+    /// curves, and retargeting and difference clips are built from keys.
+    pub skeletal: Option<std::sync::Arc<renzora::AnimClip>>,
 }
 
 #[derive(Default, TypePath)]
@@ -51,11 +55,14 @@ impl AssetLoader for PropertyClipLoader {
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        let anim: renzora::AnimClip = ron::de::from_bytes(&bytes)?;
+        let mut anim: renzora::AnimClip = ron::de::from_bytes(&bytes)?;
+        let tracks = std::mem::take(&mut anim.property_tracks);
+        let markers = std::mem::take(&mut anim.markers);
         Ok(PropertyClip {
             duration: anim.duration,
-            tracks: anim.property_tracks,
-            markers: anim.markers,
+            tracks,
+            markers,
+            skeletal: Some(std::sync::Arc::new(anim)),
         })
     }
 
@@ -242,6 +249,7 @@ pub fn apply_runtime_property_animation(world: &mut World) {
         ResMut<PropAnimDebug>,
         Res<Assets<PropertyClip>>,
         Query<(Entity, &AnimatorComponent, &mut AnimatorState)>,
+        Query<&AnimationPlayer>,
     )> = SystemState::new(world);
 
     let mut work: Vec<(Entity, Vec<PropertyTrack>, f32)> = Vec::new();
@@ -250,7 +258,7 @@ pub fn apply_runtime_property_animation(world: &mut World) {
     {
         // Bevy 0.19: `SystemState::get_mut` is now fallible. These params always
         // validate, so `.unwrap()` is safe.
-        let (time, mut dbg, clips, mut animators) = sys.get_mut(world).unwrap();
+        let (time, mut dbg, clips, mut animators, players) = sys.get_mut(world).unwrap();
         let dt = time.delta_secs();
         let now = time.elapsed_secs();
         if now - dbg.last_log > 0.5 {
@@ -307,29 +315,25 @@ pub fn apply_runtime_property_animation(world: &mut World) {
             // Runtime speed override (set by Play/SetSpeed scripts), default 1.0.
             let speed = state.prop_speed;
 
-            let prev = state.prop_time;
-            let raw = prev + dt * speed;
-            let dur = clip.duration;
+            let step = crate::markers::clock_step(state.prop_time, dt * speed, clip.duration, looping, !state.prop_started);
+            state.prop_started = true;
 
-            // Fire markers crossed in (prev, raw] (handling a single loop wrap).
-            for m in &clip.markers {
-                let crossed = if dur <= 0.0 || raw <= dur {
-                    m.time > prev && m.time <= raw
-                } else {
-                    (m.time > prev && m.time <= dur) || (m.time <= raw - dur)
-                };
-                if crossed {
-                    events.push((entity, m.name.clone()));
+            // A clip the skeletal player is playing has its markers fired from
+            // the player's own clock (`root_motion::post_animation`), which is
+            // the one the pose follows; firing them here too would fire each
+            // twice. This clock only speaks for clips nothing else plays.
+            let on_player = state.initialized
+                && state.player_entity.and_then(|p| players.get(p).ok()).is_some_and(|player| {
+                    state.layout.base.get(&clip_name).is_some_and(|node| player.is_playing_animation(*node))
+                });
+            if !on_player {
+                let times: Vec<f32> = clip.markers.iter().map(|m| m.time).collect();
+                for i in crate::markers::markers_crossed(&times, clip.duration, &step) {
+                    events.push((entity, clip.markers[i].name.clone()));
                 }
             }
 
-            let t = if dur > 0.0 && looping {
-                raw.rem_euclid(dur)
-            } else if dur > 0.0 {
-                raw.clamp(0.0, dur)
-            } else {
-                raw
-            };
+            let t = step.to;
             state.prop_time = t;
             work.push((entity, clip.tracks.clone(), t));
         }

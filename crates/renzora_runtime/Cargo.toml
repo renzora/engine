@@ -162,6 +162,7 @@ scripting = [
     "renzora_ragdoll?/scripting",
     "renzora_parkour?/scripting",
     "renzora_lang?/scripting",
+    "renzora_ik/scripting",
 ]
 # Solari ray-traced lighting: the `renzora_solari` plugin plus the runtime's
 # GPU ray-tracing probe. Paired with the root `bevy/bevy_solari` feature by the
@@ -269,6 +270,10 @@ renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }
 renzora_light2d = { path = "../renzora_light2d", optional = true }
 renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
+# IK, constraints and spring bones. Hand-written rather than generated only so
+# `scripting` above can forward to it; not optional, so the generator emits an
+# ungated install line, and there is no exporter capability to strip it yet.
+renzora_ik = { path = "../renzora_ik" }
 # Moved out of the generated block below and made strippable, per the procedure
 # in `xtask/src/sync.rs`: wind sways meshes through a `StandardMaterial`
 # extension, so it is bevy_pbr all the way down and cannot compile at all in a 2D

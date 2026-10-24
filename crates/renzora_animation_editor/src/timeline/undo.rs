@@ -35,6 +35,10 @@ fn restore_anim_clip(world: &mut World, clip: &AnimClip) {
         sh.serialized = ron::to_string(clip).ok();
         sh.clip = Some(clip.clone());
     }
+    // The shadow now matches, so the observer will not see this change:
+    // rebuild the playing clip here, or an undone curve edit would keep
+    // playing until the next save reloads it.
+    super::pose::rebuild_loaded_clip(world);
 }
 
 pub(super) fn anim_undo_observer(world: &mut World) {
@@ -66,6 +70,10 @@ pub(super) fn anim_undo_observer(world: &mut World) {
         return;
     }
     let before = prev_clip.unwrap();
+    // Blend shape tracks play through the same rebuilt clip as bones.
+    let bones_changed = before.tracks.len() != cur.tracks.len()
+        || before.tracks.iter().zip(&cur.tracks).any(|(a, b)| !same_bone_track(a, b))
+        || before.morph_tracks != cur.morph_tracks;
     let ctx = renzora_undo::active_context(world);
     renzora_undo::record(
         world,
@@ -81,4 +89,15 @@ pub(super) fn anim_undo_observer(world: &mut World) {
     let mut sh = world.resource_mut::<AnimUndoShadow>();
     sh.serialized = Some(serialized);
     sh.clip = Some(cur);
+    // Every edit to a bone or blend shape key (a drag, a value, a tangent
+    // handle, an interpolation) plays straight away, not only keying: this is the one
+    // place that sees them all. Property tracks are sampled from the buffer
+    // directly and need nothing rebuilt.
+    if bones_changed {
+        super::pose::rebuild_loaded_clip(world);
+    }
+}
+
+fn same_bone_track(a: &renzora::BoneTrack, b: &renzora::BoneTrack) -> bool {
+    a.muted == b.muted && a.bone_name == b.bone_name && a.translations == b.translations && a.rotations == b.rotations && a.scales == b.scales && a.curves == b.curves
 }

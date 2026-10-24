@@ -12,7 +12,8 @@ details and examples:
 | Keyboard, mouse and gamepad | [Input Handling](../scripting/input.md) |
 | Forces, velocities, character movement | [Physics](../scripting/physics.md) |
 | Climbing, vaulting, wall runs | [Parkour & Traversal](../scripting/parkour.md) |
-| Ragdolls | [Ragdoll Physics](../scripting/ragdoll.md) |
+| Ragdolls, partial ragdolls, get-up blends | [Ragdoll Physics](../scripting/ragdoll.md) |
+| IK targets, look-at, foot IK, spring bones | [IK, Constraints & Spring Bones](../scripting/ik-constraints.md) |
 | Particle effects | [Particle Effects](../scripting/particles.md) |
 | On-screen UI | [Game UI](../scripting/game-ui.md) |
 | Rust scripts (`&mut World`) | [Rust Scripts](../scripting/rust-scripts.md) |

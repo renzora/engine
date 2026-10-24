@@ -62,6 +62,19 @@ impl ShapeRegistry {
     }
 }
 
+/// Ask the editor to make a library shape bendable: its mesh written out as a
+/// model file and given a chain of `segments` bones along its length.
+///
+/// The shape library sends it (its Bendable option) and the animation
+/// editor, which owns rigging, carries it out; a message keeps the shape
+/// library from depending on the animation editor. Nothing happens in a game
+/// with no editor, where nobody sends it.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct MakeBendable {
+    pub entity: Entity,
+    pub segments: u32,
+}
+
 /// Base color for an entity's material — serializable companion to `MeshMaterial3d`.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]

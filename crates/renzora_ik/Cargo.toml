@@ -1,0 +1,35 @@
+[package]
+name = "renzora_ik"
+version = "0.1.0"
+edition = "2021"
+description = "Runtime procedural animation on skeletons: two-bone IK, aim/look-at, foot IK with ground alignment, rotation limits, copy constraints and spring (jiggle) bones, applied after the animation player every frame."
+
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, same model as
+# `renzora_cloth` and `renzora_ragdoll`.
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = ["editor"]
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative, so no interpreter is linked either way, but the declaration needs
+# the scripting crate, so a game exported without scripting drops it. Not in
+# `default`: `renzora_runtime` owns the switch and forwards it, so the whole
+# engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
+# Forwards to `renzora/editor` so the constraint components register into the
+# Inspector's "Add Component" list. Off in lean exports.
+editor = ["renzora/editor"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_macros = { path = "../renzora_macros" }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
+# No physics engine and no animation crate: foot IK asks the ground through
+# `renzora::physics` casts, which whichever backend is installed answers, and
+# the animated pose is simply whatever is in each bone's `Transform` once
+# Bevy's `AnimationSystems` have run.
+
+[lints]
+workspace = true

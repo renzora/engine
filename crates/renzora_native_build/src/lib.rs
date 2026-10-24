@@ -38,7 +38,6 @@ pub mod deps;
 pub mod install;
 pub mod json;
 pub mod rustc;
-pub mod shim;
 
 pub use deps::Deps;
 pub use rustc::Target;

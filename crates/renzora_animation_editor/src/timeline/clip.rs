@@ -45,18 +45,12 @@ impl TimelineClip {
         }
         let clip = self.clip.as_mut()?;
         match lane {
-            Lane::Bone { track, channel } => {
-                let track = clip.tracks.get_mut(track)?;
-                Some(match channel {
-                    0 => ChannelTimes::T(&mut track.translations),
-                    1 => ChannelTimes::R(&mut track.rotations),
-                    _ => ChannelTimes::S(&mut track.scales),
-                })
-            }
+            Lane::Bone { track, channel } => Some(ChannelTimes::B(clip.tracks.get_mut(track)?, channel)),
             Lane::Prop { track } => {
                 let track = clip.property_tracks.get_mut(track)?;
                 Some(ChannelTimes::P(&mut track.keys))
             }
+            Lane::Morph { track } => Some(ChannelTimes::M(clip.morph_tracks.get_mut(track)?)),
             Lane::Fx { .. } => None,
         }
     }
@@ -87,12 +81,14 @@ impl TimelineClip {
     }
 }
 
-/// Identifies an editable lane: a skeletal bone channel, a property track, or
-/// one of the effect's keyed parameters (an index into `VfxAsset::tracks`).
+/// Identifies an editable lane: a skeletal bone channel, a property track, a
+/// blend shape's weight (an index into `AnimClip::morph_tracks`), or one of the
+/// effect's keyed parameters (an index into `VfxAsset::tracks`).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum Lane {
     Bone { track: usize, channel: u8 },
     Prop { track: usize },
+    Morph { track: usize },
     Fx { track: usize },
 }
 
@@ -133,35 +129,32 @@ pub(crate) struct SelKey {
 
 /// Borrowed view over a single keyframe lane — lets the drag/delete systems
 /// edit times without caring about the per-channel value payload type.
+///
+/// A bone lane borrows its whole track, not just the key vector, because each
+/// bone key has a curve beside it ([`renzora::BoneKeyCurves`]) that has to
+/// move, sort and delete with it.
 pub(super) enum ChannelTimes<'a> {
-    T(&'a mut Vec<(f32, [f32; 3])>),
-    R(&'a mut Vec<(f32, [f32; 4])>),
-    S(&'a mut Vec<(f32, [f32; 3])>),
+    B(&'a mut renzora::BoneTrack, u8),
     P(&'a mut Vec<PropertyKey>),
+    /// A blend shape track, whole for the same reason as a bone's: its keys'
+    /// curves sit beside them.
+    M(&'a mut renzora::MorphTrack),
     F(&'a mut Vec<ParamKey>),
 }
 
 impl ChannelTimes<'_> {
     pub(super) fn time(&self, idx: usize) -> Option<f32> {
         match self {
-            ChannelTimes::T(v) | ChannelTimes::S(v) => v.get(idx).map(|k| k.0),
-            ChannelTimes::R(v) => v.get(idx).map(|k| k.0),
+            ChannelTimes::B(t, ch) => t.key_time(*ch, idx),
             ChannelTimes::P(v) => v.get(idx).map(|k| k.time),
+            ChannelTimes::M(t) => t.key_time(idx),
             ChannelTimes::F(v) => v.get(idx).map(|k| k.time),
         }
     }
     pub(super) fn set_time(&mut self, idx: usize, t: f32) {
         match self {
-            ChannelTimes::T(v) | ChannelTimes::S(v) => {
-                if let Some(k) = v.get_mut(idx) {
-                    k.0 = t;
-                }
-            }
-            ChannelTimes::R(v) => {
-                if let Some(k) = v.get_mut(idx) {
-                    k.0 = t;
-                }
-            }
+            ChannelTimes::B(track, ch) => track.set_key_time(*ch, idx, t),
+            ChannelTimes::M(track) => track.set_key_time(idx, t),
             ChannelTimes::P(v) => {
                 if let Some(k) = v.get_mut(idx) {
                     k.time = t;
@@ -176,16 +169,8 @@ impl ChannelTimes<'_> {
     }
     pub(super) fn remove(&mut self, idx: usize) {
         match self {
-            ChannelTimes::T(v) | ChannelTimes::S(v) => {
-                if idx < v.len() {
-                    v.remove(idx);
-                }
-            }
-            ChannelTimes::R(v) => {
-                if idx < v.len() {
-                    v.remove(idx);
-                }
-            }
+            ChannelTimes::B(track, ch) => track.remove_key(*ch, idx),
+            ChannelTimes::M(track) => track.remove_key(idx),
             ChannelTimes::P(v) => {
                 if idx < v.len() {
                     v.remove(idx);
@@ -200,10 +185,8 @@ impl ChannelTimes<'_> {
     }
     pub(super) fn sort(&mut self) {
         match self {
-            ChannelTimes::T(v) | ChannelTimes::S(v) => {
-                v.sort_by(|a, b| a.0.total_cmp(&b.0));
-            }
-            ChannelTimes::R(v) => v.sort_by(|a, b| a.0.total_cmp(&b.0)),
+            ChannelTimes::B(track, ch) => track.sort_channel(*ch),
+            ChannelTimes::M(track) => track.sort(),
             ChannelTimes::P(v) => v.sort_by(|a, b| a.time.total_cmp(&b.time)),
             ChannelTimes::F(v) => v.sort_by(|a, b| a.time.total_cmp(&b.time)),
         }
@@ -311,7 +294,7 @@ pub(super) fn cache_clip(
         // No `.anim` behind it and no path, so nothing ever saves it: it only
         // carries the effect's length for the ruler (`fx::sync_fx` keeps the
         // two in step) and gives the panel its rows.
-        cache.clip = Some(AnimClip { name: String::new(), duration: 2.0, tracks: Vec::new(), property_tracks: Vec::new(), markers: Vec::new() });
+        cache.clip = Some(renzora_animation::extract::create_empty_clip("", 2.0));
         return;
     }
     let (Some((entity, clip_name)), Some(project)) = (key, project) else { return };

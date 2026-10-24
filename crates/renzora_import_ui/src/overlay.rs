@@ -1014,6 +1014,19 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                             for w in &anim_result.warnings {
                                 all_warnings.push(w.clone());
                             }
+                            // The rest pose those clips were keyed on, so they
+                            // can be retargeted onto another rig: clip
+                            // discovery points their slots at it.
+                            if !anim_result.written_files.is_empty() {
+                                if let Err(e) = renzora_import::write_rest_skeleton(
+                                    &glb_bytes,
+                                    &anim_dir,
+                                    stem,
+                                    &anim_result.written_files,
+                                ) {
+                                    all_warnings.push(format!("rest skeleton: {}", e));
+                                }
+                            }
                         }
                         Err(e) => {
                             all_warnings.push(format!("animation extraction: {}", e));

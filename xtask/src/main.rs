@@ -65,7 +65,6 @@ use std::process::{Command, ExitCode};
 mod bundle;
 mod coverage;
 mod sdk;
-mod shared;
 mod sync;
 mod wasm;
 

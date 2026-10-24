@@ -14,7 +14,8 @@
 //!   against the skinned triangles, computed here, not the mesh at rest. Each
 //!   stroke is one undo step.
 //! - **Auto weights** weights every vertex by closeness to every bone
-//!   (`renzora_rig::weights::envelope`), optionally smoothed across the mesh.
+//!   measured across the mesh's surface (`renzora_rig::weights::surface`),
+//!   optionally smoothed across the mesh.
 //! - **Test** bends the chosen bone, or plays a range of motion through every
 //!   joint, on the copy only.
 //! - **Save** writes the weights into the model file
@@ -42,22 +43,24 @@ pub(crate) struct PaintMesh {
     mesh: Handle<Mesh>,
     /// The skin's joints (copy entities) and their names, in skin order: a
     /// weight's joint index points into these.
-    joints: Vec<Entity>,
-    joint_names: Vec<String>,
-    inverse_binds: Vec<Mat4>,
+    pub(crate) joints: Vec<Entity>,
+    pub(crate) joint_names: Vec<String>,
+    pub(crate) inverse_binds: Vec<Mat4>,
     /// At rest, in the mesh's own space.
-    positions: Vec<Vec3>,
-    indices: Vec<u32>,
-    adjacency: Option<Vec<Vec<u32>>>,
+    pub(crate) positions: Vec<Vec3>,
+    pub(crate) indices: Vec<u32>,
+    pub(crate) adjacency: Option<Vec<Vec<u32>>>,
     pub(crate) weights: Vec<Influences>,
+    /// Vertices picked with the Select tool (`skin_select`).
+    pub(crate) selected: Vec<bool>,
     /// `(mesh, primitive)` in the model file, from the asset's label.
     label: Option<(usize, usize)>,
     /// The mesh entity's world transform, the space its bind pose is in.
-    mesh_world: Mat4,
+    pub(crate) mesh_world: Mat4,
 }
 
 impl PaintMesh {
-    fn joint(&self, name: &str) -> Option<u16> {
+    pub(crate) fn joint(&self, name: &str) -> Option<u16> {
         self.joint_names.iter().position(|n| n == name).map(|i| i as u16)
     }
 }
@@ -89,6 +92,10 @@ pub(crate) struct SkinEdit {
     /// Where the brush is on the model, for drawing it.
     pub(crate) hit: Option<Vec3>,
     selection_seen: u64,
+    /// The Select tool is on instead of the brush (`skin_select`).
+    pub(crate) select_tool: bool,
+    /// The weight Set Weight gives the selection.
+    pub(crate) set_value: f32,
 }
 
 impl Default for SkinEdit {
@@ -113,6 +120,8 @@ impl Default for SkinEdit {
             health: Health::default(),
             hit: None,
             selection_seen: 0,
+            select_tool: false,
+            set_value: 1.0,
         }
     }
 }
@@ -124,6 +133,11 @@ impl SkinEdit {
 
     pub(crate) fn active(&self) -> bool {
         self.root.is_some()
+    }
+
+    /// The copy being weighted, which an undo step is for.
+    pub(crate) fn root(&self) -> Option<Entity> {
+        self.root
     }
 
     /// Recolour the heat, after the painted bone changed.
@@ -278,6 +292,7 @@ fn enter(world: &mut World, root: Entity) {
             positions,
             indices,
             adjacency: None,
+            selected: vec![false; weights.len()],
             weights,
             label,
             mesh_world,
@@ -329,7 +344,7 @@ fn restore(world: &mut World) {
 // ── Painting ─────────────────────────────────────────────────────────────────
 
 /// Each mesh's vertices as posed now, in world space: what the GPU draws.
-fn skinned_positions(world: &World, m: &PaintMesh) -> Vec<Vec3> {
+pub(crate) fn skinned_positions(world: &World, m: &PaintMesh) -> Vec<Vec3> {
     let mats: Vec<Mat4> = m
         .joints
         .iter()
@@ -356,7 +371,7 @@ fn skinned_positions(world: &World, m: &PaintMesh) -> Vec<Vec3> {
         .collect()
 }
 
-fn ray_triangle(ray: Ray3d, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
+pub(crate) fn ray_triangle(ray: Ray3d, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
     let e1 = b - a;
     let e2 = c - a;
     let p = ray.direction.cross(e2);
@@ -427,7 +442,10 @@ fn paint(world: &mut World) {
         best.map(|t| ray.origin + *ray.direction * t)
     };
     world.resource_mut::<SkinEdit>().hit = hit;
-    let painting = pressed && !ctrl && world.get_resource::<crate::rig::markers::Markers>().is_none_or(|m| m.placing.is_none());
+    let painting = pressed
+        && !ctrl
+        && !world.resource::<SkinEdit>().select_tool
+        && world.get_resource::<crate::rig::markers::Markers>().is_none_or(|m| m.placing.is_none());
     let (Some(h), true) = (hit, painting) else { return };
     let dt = world.resource::<Time>().delta_secs().min(0.05);
 
@@ -478,11 +496,11 @@ fn paint(world: &mut World) {
 }
 
 /// One stroke, or one Auto Weights: the weights before and after.
-struct WeightsCmd {
-    root: Option<Entity>,
-    before: Vec<Vec<Influences>>,
-    after: Vec<Vec<Influences>>,
-    label: &'static str,
+pub(crate) struct WeightsCmd {
+    pub(crate) root: Option<Entity>,
+    pub(crate) before: Vec<Vec<Influences>>,
+    pub(crate) after: Vec<Vec<Influences>>,
+    pub(crate) label: &'static str,
 }
 
 impl WeightsCmd {
@@ -533,7 +551,17 @@ fn refresh_meshes(world: &mut World) {
                 let joint = m.joint(&bone);
                 let j = m.weights.iter().map(|i| [i[0].0, i[1].0, i[2].0, i[3].0]).collect();
                 let w = m.weights.iter().map(|i| [i[0].1, i[1].1, i[2].1, i[3].1]).collect();
-                let c = m.weights.iter().map(|i| heat(joint.map(|j| weights::weight_of(i, j)).unwrap_or(0.0))).collect();
+                // Selected vertices show white over their heat, so a
+                // selection reads at a glance whatever it is weighted to.
+                let c = m
+                    .weights
+                    .iter()
+                    .zip(&m.selected)
+                    .map(|(i, sel)| {
+                        let h = heat(joint.map(|j| weights::weight_of(i, j)).unwrap_or(0.0));
+                        if *sel { [0.5 + h[0] * 0.5, 0.5 + h[1] * 0.5, 0.5 + h[2] * 0.5, 1.0] } else { h }
+                    })
+                    .collect();
                 (m.mesh.clone(), j, w, c)
             })
             .collect();
@@ -592,7 +620,14 @@ pub(crate) fn auto_weights(world: &mut World) {
             }
         }
         let world_positions: Vec<Vec3> = m.positions.iter().map(|p| m.mesh_world.transform_point3(*p)).collect();
-        m.weights = weights::envelope(&world_positions, &segments, 6.0);
+        // Across the skin, so a bone does not pull skin that is only near
+        // it through the air (an arm against the ribs); straight-line
+        // distance only for a mesh whose triangles could not be read.
+        m.weights = if m.indices.is_empty() {
+            weights::envelope(&world_positions, &segments, 6.0)
+        } else {
+            weights::surface(&world_positions, &m.indices, &segments, 6.0)
+        };
         if smooth {
             if m.adjacency.is_none() {
                 m.adjacency = Some(weights::adjacency(&m.indices, m.positions.len()));

@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use bevy::animation::AnimationTargetId;
 use bevy::prelude::*;
 
-use renzora::BoneTrack;
+use renzora::{BoneTrack, KeyCurve};
 use renzora_animation::AnimatorComponent;
 
 use crate::AnimationEditorState;
@@ -135,6 +135,7 @@ pub(crate) fn viewport_key_shortcut(
     stage: Option<Res<crate::stage::view::StageCursor>>,
     focus: Option<Res<renzora::InputFocusState>>,
     layer: Res<PoseLayer>,
+    morphs: Res<super::morph::MorphLayer>,
     selection: Res<renzora_editor_framework::EditorSelection>,
     bones: Query<(), With<AnimationTargetId>>,
     mut ops: ResMut<TimelineOps>,
@@ -147,7 +148,7 @@ pub(crate) fn viewport_key_shortcut(
         return;
     }
     let has_bones = !layer.posed.is_empty() || selection.get_all().into_iter().any(|e| bones.contains(e));
-    if has_bones {
+    if has_bones || !morphs.posed.is_empty() {
         ops.add_key = true;
     }
 }
@@ -161,9 +162,14 @@ pub(crate) fn auto_key_pose(world: &mut World) {
     key_bones(world, &bones);
 }
 
-/// Key every posed bone and every selected bone at the playhead. Returns
-/// whether anything was keyed.
+/// Key every posed bone and every selected bone at the playhead, and every
+/// blend shape set by hand (`morph`). Returns whether anything was keyed.
 pub(crate) fn key_pose_bones(world: &mut World) -> bool {
+    let morphs = super::morph::key_posed_morphs(world);
+    key_posed_and_selected_bones(world) || morphs
+}
+
+fn key_posed_and_selected_bones(world: &mut World) -> bool {
     let mut bones: Vec<Entity> = world
         .get_resource::<PoseLayer>()
         .map(|l| l.posed.keys().copied().collect())
@@ -226,19 +232,17 @@ pub(crate) fn key_transforms(world: &mut World, keys: &[(Entity, f32, Transform)
             let track = match clip.tracks.iter().position(|t| renzora_animation::bone_target(&t.bone_name) == *target) {
                 Some(i) => &mut clip.tracks[i],
                 None => {
-                    clip.tracks.push(BoneTrack {
-                        bone_name: name.clone(),
-                        translations: Vec::new(),
-                        rotations: Vec::new(),
-                        scales: Vec::new(),
-                        muted: false,
-                    });
+                    clip.tracks.push(BoneTrack::new(name.clone()));
                     clip.tracks.last_mut().expect("just pushed")
                 }
             };
-            upsert(&mut track.translations, time, pose.translation.to_array());
-            upsert(&mut track.rotations, time, pose.rotation.normalize().to_array());
-            upsert(&mut track.scales, time, pose.scale.to_array());
+            // A new key is Auto, so keyed poses ease into one another the way
+            // an animator expects; keying over an existing key keeps the
+            // interpolation that key was given.
+            let new = KeyCurve::AUTO;
+            track.upsert_key(0, time, pose.translation.extend(0.0), new, SAME_KEY);
+            track.upsert_key(1, time, Vec4::from(pose.rotation.normalize()), new, SAME_KEY);
+            track.upsert_key(2, time, pose.scale.extend(0.0), new, SAME_KEY);
         }
         let rebuilt = renzora_animation::to_animation_clip(clip);
         cache.dirty = true;
@@ -248,15 +252,19 @@ pub(crate) fn key_transforms(world: &mut World, keys: &[(Entity, f32, Transform)
     true
 }
 
-/// Set `value` at `time`, replacing a key already there, keeping time order.
-fn upsert<V>(keys: &mut Vec<(f32, V)>, time: f32, value: V) {
-    match keys.iter().position(|(t, _)| (t - time).abs() < SAME_KEY) {
-        Some(i) => keys[i].1 = value,
-        None => {
-            let at = keys.iter().position(|(t, _)| *t > time).unwrap_or(keys.len());
-            keys.insert(at, (time, value));
-        }
-    }
+/// Rebuild the playing clip from the edit buffer, so an edit made anywhere in
+/// the timeline (a drag, a curve handle, an interpolation change, an undo)
+/// plays on the next frame instead of after autosave and the file watcher.
+pub(crate) fn rebuild_loaded_clip(world: &mut World) {
+    let Some(rebuilt) = world
+        .get_resource::<TimelineClip>()
+        .filter(|c| !c.is_effect_only())
+        .and_then(|c| c.clip.as_ref())
+        .map(renzora_animation::to_animation_clip)
+    else {
+        return;
+    };
+    replace_loaded_clip(world, rebuilt);
 }
 
 /// Swap the clip the player is using for one built from the edit buffer. The
@@ -275,19 +283,30 @@ fn replace_loaded_clip(world: &mut World, clip: AnimationClip) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use renzora::KeyMode;
 
-    #[test]
-    fn keying_at_an_existing_time_replaces_it() {
-        let mut keys = vec![(0.0, 1.0), (0.5, 2.0)];
-        upsert(&mut keys, 0.5, 9.0);
-        assert_eq!(keys, vec![(0.0, 1.0), (0.5, 9.0)]);
+    fn track() -> BoneTrack {
+        let mut t = BoneTrack::new("arm");
+        t.translations = vec![(0.0, [1.0; 3]), (0.5, [2.0; 3])];
+        t
     }
 
     #[test]
-    fn a_new_key_lands_in_time_order() {
-        let mut keys = vec![(0.0, 1.0), (1.0, 2.0)];
-        upsert(&mut keys, 0.25, 5.0);
-        upsert(&mut keys, 2.0, 7.0);
-        assert_eq!(keys, vec![(0.0, 1.0), (0.25, 5.0), (1.0, 2.0), (2.0, 7.0)]);
+    fn keying_at_an_existing_time_replaces_it() {
+        let mut t = track();
+        t.upsert_key(0, 0.5 + SAME_KEY * 0.5, Vec4::splat(9.0), KeyCurve::AUTO, SAME_KEY);
+        assert_eq!(t.translations, vec![(0.0, [1.0; 3]), (0.5, [9.0; 3])]);
+    }
+
+    #[test]
+    fn a_new_key_lands_in_time_order_and_is_auto() {
+        let mut t = track();
+        t.upsert_key(0, 0.25, Vec4::splat(5.0), KeyCurve::AUTO, SAME_KEY);
+        t.upsert_key(0, 2.0, Vec4::splat(7.0), KeyCurve::AUTO, SAME_KEY);
+        let times: Vec<f32> = t.translations.iter().map(|k| k.0).collect();
+        assert_eq!(times, vec![0.0, 0.25, 0.5, 2.0]);
+        // The keys the track already had keep playing as they did.
+        let modes: Vec<KeyMode> = (0..4).map(|i| t.key_curve(0, i).mode).collect();
+        assert_eq!(modes, vec![KeyMode::Linear, KeyMode::Auto, KeyMode::Linear, KeyMode::Auto]);
     }
 }

@@ -7,7 +7,8 @@
 //! |---|---|---|
 //! | Rig | template (humanoid or face), its points, build | skeleton tree, bone |
 //! | Skin | auto weights, the brush, the bone to paint | test bend, checks, save |
-//! | Animate | controls (IK, pose library), face sliders | pose, clip, performance |
+//! | Shapes | the blend shapes, the sculpt brush (`shapes_panel`) | the shape, save |
+//! | Animate | pose (IK, pose library), the model's controls | pose, clip, performance |
 //! | Logic | parameters | the animator's properties |
 //!
 //! The pieces themselves mostly live with what they drive (`rig::rig_panel`,
@@ -29,7 +30,8 @@ use super::clone::StageRig;
 use super::poses::{apply_pose, delete_pose, save_pose, PoseLibrary};
 use super::skin::{self, SkinEdit};
 use super::{StageMode, StageUi};
-use crate::rig::face_panel::{expression_sliders, face_setup, performance};
+use crate::rig::controls_panel::controls_tab;
+use crate::rig::face_panel::{face_setup, performance};
 use crate::rig::on_click;
 use crate::rig::rig_panel::{bone_info, humanoid_builder, ik_list, pose_tools, short_name, skeleton_tree};
 
@@ -78,7 +80,7 @@ fn action(commands: &mut Commands, fonts: &EmberFonts, label: &str, f: impl Fn(&
 }
 
 /// One column per mode, shown while the stage is in that mode.
-fn per_mode(commands: &mut Commands, parent: Entity, columns: [Entity; 4]) {
+fn per_mode(commands: &mut Commands, parent: Entity, columns: [Entity; 5]) {
     for (m, c) in StageMode::ALL.into_iter().zip(columns) {
         bind_display(commands, c, move |w| mode_is(w, m));
     }
@@ -125,9 +127,10 @@ fn build_tools(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = pane(commands, "anim-tools");
     let rig = rig_tools(commands, fonts);
     let skin = skin_tools(commands, fonts);
+    let shapes = super::shapes_panel::tools(commands, fonts);
     let animate = animate_tools(commands, fonts);
     let logic = crate::params::build(commands, fonts);
-    per_mode(commands, root, [rig, skin, animate, logic]);
+    per_mode(commands, root, [rig, skin, shapes, animate, logic]);
     root
 }
 
@@ -135,7 +138,7 @@ fn rig_tools(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = column(commands);
     let empty = note(commands, fonts, "Put a model on the stage to rig it.");
     bind_display(commands, empty, |w| w.get_resource::<crate::AnimationEditorState>().is_none_or(|s| s.selected_entity.is_none()));
-    let template = segmented(commands, &fonts.ui, &["Humanoid", "Face"], 0);
+    let template = segmented(commands, &fonts.ui, &["Humanoid", "Face", "Chain", "Quadruped"], 0);
     commands.entity(template).entry::<Node>().and_modify(|mut n| n.width = Val::Percent(100.0));
     bind_2way(
         commands,
@@ -151,7 +154,15 @@ fn rig_tools(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let face_s = titled(commands, fonts, "smiley", "Face Rig", face);
     bind_display(commands, build, |w| w.get_resource::<StageUi>().is_some_and(|u| u.template == 0));
     bind_display(commands, face_s, |w| w.get_resource::<StageUi>().is_some_and(|u| u.template == 1));
-    commands.entity(col).add_children(&[empty, template, build, face_s]);
+    let chain = crate::rig::chain_panel::chain_builder(commands, fonts);
+    let chain_s = titled(commands, fonts, "link", "Chain", chain);
+    bind_display(commands, chain_s, |w| w.get_resource::<StageUi>().is_some_and(|u| u.template == 2));
+    let quad = crate::rig::quadruped_panel::quadruped_builder(commands, fonts);
+    let quad_s = titled(commands, fonts, "paw-print", "Quadruped", quad);
+    bind_display(commands, quad_s, |w| w.get_resource::<StageUi>().is_some_and(|u| u.template == 3));
+    let skeleton = crate::rig::skeleton_panel::skeleton_editor(commands, fonts);
+    let skeleton_s = titled(commands, fonts, "bone", "Skeleton", skeleton);
+    commands.entity(col).add_children(&[empty, template, build, face_s, chain_s, quad_s, skeleton_s]);
     col
 }
 
@@ -248,7 +259,38 @@ fn skin_tools(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(bones).add_children(&[b_hint, list]);
     let bones = titled(commands, fonts, "bone", "Paint Bone", bones);
 
-    commands.entity(body).add_children(&[weights, brush, bones]);
+    // Paint or Select: what a click on the model does.
+    let tool = skin_choice(commands, fonts, &["Paint", "Select"], |s| usize::from(s.select_tool), |s, i| s.select_tool = i == 1);
+    let selection = column(commands);
+    let s_hint = note(
+        commands,
+        fonts,
+        "Click a part to select the whole piece (a tooth, an eye, a buckle); drag to box-select through the model. Shift adds, Ctrl takes away. Then give the selection to the bone picked below.",
+    );
+    let s_count = note(commands, fonts, "");
+    renzora_ember::reactive::tracked::bind_text(commands, s_count, |w| {
+        let n = w.get_resource::<SkinEdit>().map(super::skin_select::count).unwrap_or(0);
+        if n == 0 { "Nothing selected.".to_string() } else { format!("{n} vertices selected.") }
+    });
+    let pick = row(commands);
+    let all = action(commands, fonts, "All", |w| super::skin_select::select_all(w, true));
+    let none_b = action(commands, fonts, "None", |w| super::skin_select::select_all(w, false));
+    let inv = action(commands, fonts, "Invert", super::skin_select::invert);
+    let grow = action(commands, fonts, "Grow", super::skin_select::grow);
+    commands.entity(pick).add_children(&[all, none_b, inv, grow]);
+    let rigid = renzora_ember::widgets::accent_button(commands, fonts, accent(), "Bind Rigidly to Bone");
+    commands.entity(rigid).entry::<Node>().and_modify(|mut n| n.width = Val::Percent(100.0));
+    on_click(commands, rigid, super::skin_select::bind_rigidly);
+    let value = skin_slider(commands, fonts, "Weight", 0.0, 1.0, |s| s.set_value, |s, v| s.set_value = v);
+    let ops = row(commands);
+    let set = action(commands, fonts, "Set Weight", super::skin_select::set_weight);
+    let auto_sel = action(commands, fonts, "Auto Weights", super::skin_select::auto_weights_selection);
+    commands.entity(ops).add_children(&[set, auto_sel]);
+    commands.entity(selection).add_children(&[s_hint, s_count, pick, rigid, value, ops]);
+    let selection = titled(commands, fonts, "selection", "Selection", selection);
+    bind_display(commands, selection, |w| w.get_resource::<SkinEdit>().is_some_and(|s| s.select_tool));
+    bind_display(commands, brush, |w| w.get_resource::<SkinEdit>().is_none_or(|s| !s.select_tool));
+    commands.entity(body).add_children(&[weights, tool, brush, selection, bones]);
     commands.entity(col).add_children(&[none, body]);
     col
 }
@@ -309,8 +351,11 @@ fn animate_tools(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let library = pose_library(commands, fonts);
     bind_display(commands, library, rigged);
     commands.entity(controls).add_children(&[none, ik, library]);
-    let face = expression_sliders(commands, fonts);
-    tabs(commands, fonts, &["Controls", "Face"], vec![controls, face], |u| u.animate_left, |u, i| u.animate_left = i)
+    // The model's own sliders (`rig::controls_panel`); the face expressions
+    // are a preset there, so this tab replaced the old Face tab in place and
+    // a saved `animate_left` still opens the same slot.
+    let made = controls_tab(commands, fonts);
+    tabs(commands, fonts, &["Pose", "Controls"], vec![controls, made], |u| u.animate_left, |u, i| u.animate_left = i)
 }
 
 fn pose_library(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -381,6 +426,7 @@ fn build_inspector(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         tabs(commands, fonts, &["Skeleton", "Bone"], vec![tree, bone], |u| u.rig_right, |u, i| u.rig_right = i)
     };
     let skin = skin_inspector(commands, fonts);
+    let shapes = super::shapes_panel::inspector(commands, fonts);
     let animate = {
         let pose = pose_inspector(commands, fonts);
         let clip = crate::panel::build(commands, fonts);
@@ -388,7 +434,7 @@ fn build_inspector(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         tabs(commands, fonts, &["Pose", "Clip", "Performance"], vec![pose, clip, perf], |u| u.animate_right, |u, i| u.animate_right = i)
     };
     let logic = crate::panel::build(commands, fonts);
-    per_mode(commands, root, [rig, skin, animate, logic]);
+    per_mode(commands, root, [rig, skin, shapes, animate, logic]);
     root
 }
 

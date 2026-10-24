@@ -3,8 +3,11 @@
 //!
 //! - [`rig_panel`]: the skeleton as a tree, pose tools (key, rest, mirror,
 //!   copy/paste, IK) and, for a model with no skeleton, the humanoid auto-rig.
-//! - [`face_panel`]: building a face rig from four points, then the
-//!   expression sliders, generated blinks and lip sync from a recording.
+//! - [`face_panel`]: building a face rig from four points, then generated
+//!   blinks and lip sync from a recording.
+//! - [`controls`] and [`controls_panel`]: sliders the user makes for any
+//!   rig from a pose on the stage, kept in a `.controls` file beside the
+//!   model; the face's expressions are a preset of them.
 //! - [`markers`]: the points a rig is built from, placed on the stage.
 //! - [`respawn`]: once a model file has been rigged or reweighted, reloading
 //!   it and rebuilding every instance of it so the change is in the scene.
@@ -19,11 +22,17 @@ use bevy::prelude::*;
 
 use renzora_ember::UiInteraction;
 
+pub(crate) mod chain_panel;
+pub(crate) mod controls;
+pub(crate) mod controls_panel;
+pub(crate) mod export;
 pub(crate) mod face_panel;
 pub(crate) mod lipsync;
 pub(crate) mod markers;
 pub(crate) mod respawn;
+pub(crate) mod quadruped_panel;
 pub(crate) mod rig_panel;
+pub(crate) mod skeleton_panel;
 
 pub struct RigPlugin;
 
@@ -34,6 +43,8 @@ impl Plugin for RigPlugin {
         respawn::register(app);
         rig_panel::register(app);
         face_panel::register(app);
+        controls::register(app);
+        chain_panel::register(app);
     }
 }
 

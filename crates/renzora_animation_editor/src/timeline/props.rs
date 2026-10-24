@@ -566,6 +566,10 @@ pub(super) fn delete_track(world: &mut World, kind: RowKind) {
                 clip.property_tracks.remove(i);
                 true
             }
+            RowKind::Morph(i) if i < clip.morph_tracks.len() => {
+                clip.morph_tracks.remove(i);
+                true
+            }
             _ => false,
         };
         if removed {
@@ -598,6 +602,7 @@ pub(super) fn set_track_muted(world: &mut World, kind: RowKind, muted: bool) {
     let flag = match kind {
         RowKind::Bone(i) => clip.tracks.get_mut(i).map(|t| &mut t.muted),
         RowKind::Prop(i) => clip.property_tracks.get_mut(i).map(|p| &mut p.muted),
+        RowKind::Morph(i) => clip.morph_tracks.get_mut(i).map(|m| &mut m.muted),
         RowKind::Summary | RowKind::FxGroup | RowKind::FxEmitter(..) | RowKind::FxTrack(_) => None,
     };
     let Some(flag) = flag else { return };

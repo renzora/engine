@@ -14,14 +14,19 @@ pub mod blend_tree;
 pub mod bridge;
 pub mod clip;
 pub mod component;
+pub mod controller;
 pub mod discovery;
 pub mod extract;
 pub mod follow;
 pub mod graph_builder;
+pub mod graph_init;
 pub mod layers;
 pub mod loader;
+pub mod markers;
 pub mod property_playback;
 pub mod read_state;
+pub mod retarget;
+pub mod root_motion;
 #[cfg(feature = "scripting")]
 pub mod script_extension;
 pub mod sm_loader;
@@ -29,7 +34,7 @@ pub mod state_machine;
 pub mod systems;
 pub mod tween;
 
-pub use blend_tree::BlendTree;
+pub use blend_tree::{Blend1DEntry, BlendSpaceEntry, BlendTree};
 pub use clip::{AnimClip, BoneTrack};
 pub use component::{AnimClipSlot, AnimatorComponent, AnimatorState};
 pub use discovery::discover_animation_clips;
@@ -37,6 +42,8 @@ pub use layers::{AnimationLayer, LayerBlendMode};
 pub use loader::{to_animation_clip, AnimClipLoader};
 pub use property_playback::{PropertyClip, PropertyClipLoader};
 pub use read_state::AnimatorReadState;
+pub use retarget::{capture_rest_pose, SkeletonLoader, SourceSkeleton};
+pub use root_motion::{RootMotion, RootMotionMode};
 pub use state_machine::{
     AnimCondition, AnimParams, AnimState, AnimTransition, AnimationStateMachine, StateMotion,
 };
@@ -101,10 +108,14 @@ impl Plugin for AnimationPlugin {
             .register_type::<AnimParams>()
             .register_type::<AnimationLayer>()
             .register_type::<LayerBlendMode>()
+            .register_type::<RootMotion>()
+            .register_type::<RootMotionMode>()
             .init_asset::<AnimationStateMachine>()
             .init_asset::<PropertyClip>()
+            .init_asset::<SourceSkeleton>()
             .init_asset_loader::<AnimClipLoader>()
             .init_asset_loader::<PropertyClipLoader>()
+            .init_asset_loader::<SkeletonLoader>()
             .init_asset_loader::<sm_loader::AnimSmLoader>()
             .init_resource::<AnimationCommandQueue>()
             .init_resource::<property_playback::PropAnimDebug>()
@@ -126,7 +137,7 @@ impl Plugin for AnimationPlugin {
             Update,
             (
                 systems::rehydrate_animators,
-                systems::initialize_animation_graphs,
+                graph_init::initialize_animation_graphs,
                 systems::ensure_animation_targets,
                 // Not while editing: the default clip used to start looping the
                 // moment a model was dropped. The animation editor's preview
@@ -134,11 +145,25 @@ impl Plugin for AnimationPlugin {
                 systems::auto_play_default.run_if(renzora::core::game_running),
                 systems::process_animation_commands,
                 systems::update_state_machines,
-                systems::update_layer_weights,
+                // Gameplay only for the same reason: a crossfade, a blend tree
+                // or a layer driving the player while editing fights the
+                // timeline preview for it.
+                controller::drive_animators.run_if(renzora::core::game_running),
                 systems::detect_animation_finished,
                 tween::update_procedural_tweens,
             )
                 .chain(),
+        );
+
+        // Markers and root motion read the pose Bevy just evaluated, and root
+        // motion moves the entity before transforms propagate, so the mesh
+        // and its entity agree on the same frame.
+        app.add_systems(
+            PostUpdate,
+            root_motion::post_animation
+                .after(bevy::app::AnimationSystems)
+                .before(bevy::transform::TransformSystems::Propagate)
+                .run_if(renzora::core::game_running),
         );
 
         // Property animation runs in the exported runtime / editor play mode.
@@ -189,6 +214,10 @@ fn apply_asset_path_changes_to_animators(
                 slot.path = new_path;
                 touched = true;
             }
+            if let Some(new_path) = slot.source_skeleton.as_deref().and_then(|p| ev.rewrite(p)) {
+                slot.source_skeleton = Some(new_path);
+                touched = true;
+            }
         }
         if let Some(ref sm) = animator.state_machine.clone() {
             if let Some(new_path) = ev.rewrite(sm) {
@@ -203,13 +232,11 @@ fn apply_asset_path_changes_to_animators(
         // Force re-initialization so the new paths get loaded.
         if touched {
             if let Some(mut state) = state {
-                state.initialized = false;
+                state.reset_graph();
                 state.frames_since_init = 0;
-                state.node_indices.clear();
-                state.graph_handle = None;
-                state.current_clip = None;
                 state.clip_handles.clear();
                 state.prop_clip_handles.clear();
+                state.skeleton_handles.clear();
             }
         }
     }

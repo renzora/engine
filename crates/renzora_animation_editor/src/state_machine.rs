@@ -16,6 +16,14 @@
 //! Two columns (States | Transitions), each with an Add button. The keyed lists
 //! are keyed on *structure* (state count + names, transition count + condition
 //! kind) so editing a value in place never rebuilds the row mid-edit.
+//!
+//! A state plays either a clip or a blend tree. The motion combo switches a
+//! state between **Clip**, **1D blend** and **2D blend**; a blend shows its
+//! parameter(s) and a list of entries (a clip each, at a threshold on the line
+//! or a point in the plane). The row's structure key includes the motion kind
+//! and the entry count, so adding an entry rebuilds the row but dragging a
+//! threshold does not. Trees nested by hand in the file (lerps, additive
+//! overlays) play, but are only shown here, not edited.
 
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
@@ -24,6 +32,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora_animation::{
+    blend_tree::{Blend1DEntry, BlendSpaceEntry, BlendTree},
     state_machine::{AnimCondition, AnimState, AnimTransition, AnimationStateMachine, StateMotion},
     AnimatorComponent,
 };
@@ -95,6 +104,10 @@ impl Plugin for StateMachinePanel {
                 cond_kind_combo_open,
                 trash_state_click,
                 trash_transition_click,
+                motion_kind_combo_open,
+                entry_clip_combo_open,
+                add_entry_click,
+                trash_entry_click,
             )
                 .run_if(in_state(SplashState::Editor)),
         );
@@ -123,6 +136,70 @@ struct TransFromCombo(usize);
 struct TransToCombo(usize);
 #[derive(Component)]
 struct CondKindCombo(usize);
+#[derive(Component)]
+struct MotionKindCombo(usize);
+/// (state, entry)
+#[derive(Component)]
+struct EntryClipCombo(usize, usize);
+#[derive(Component)]
+struct AddEntryBtn(usize);
+/// (state, entry)
+#[derive(Component)]
+struct TrashEntryBtn(usize, usize);
+
+// ── Motion shape ─────────────────────────────────────────────────────────────
+
+/// What a state's row has to show, which decides when the row is rebuilt.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum MotionShape {
+    Clip,
+    /// With its entry count.
+    Blend1D(usize),
+    Blend2D(usize),
+    /// A tree nested by hand: shown, not edited.
+    Other,
+}
+
+fn motion_shape(m: &StateMotion) -> MotionShape {
+    match m {
+        StateMotion::Clip(_) | StateMotion::BlendTree(_) => MotionShape::Clip,
+        StateMotion::Blend(BlendTree::Blend1D { entries, .. }) => MotionShape::Blend1D(entries.len()),
+        StateMotion::Blend(BlendTree::BlendSpace2D { entries, .. }) => MotionShape::Blend2D(entries.len()),
+        StateMotion::Blend(_) => MotionShape::Other,
+    }
+}
+
+const MOTION_KINDS: [&str; 3] = ["Clip", "1D blend", "2D blend"];
+
+fn motion_kind_label(m: &StateMotion) -> &'static str {
+    match motion_shape(m) {
+        MotionShape::Clip => "Clip",
+        MotionShape::Blend1D(_) => "1D blend",
+        MotionShape::Blend2D(_) => "2D blend",
+        MotionShape::Other => "Blend tree",
+    }
+}
+
+/// The motion a kind switches to. A blend starts from the state's clip, so
+/// switching a walk state to 1D blend keeps the walk as its first entry.
+fn motion_for_kind(kind: &str, current: &StateMotion, first_clip: &str) -> StateMotion {
+    let clip = match current {
+        StateMotion::Clip(n) | StateMotion::BlendTree(n) if !n.is_empty() => n.clone(),
+        _ => first_clip.to_string(),
+    };
+    match kind {
+        "1D blend" => StateMotion::Blend(BlendTree::Blend1D {
+            param: "speed".into(),
+            entries: vec![Blend1DEntry { clip, threshold: 0.0 }],
+        }),
+        "2D blend" => StateMotion::Blend(BlendTree::BlendSpace2D {
+            entries: vec![BlendSpaceEntry { clip, x: 0.0, y: 0.0 }],
+            param_x: "move_x".into(),
+            param_y: "move_y".into(),
+        }),
+        _ => StateMotion::Clip(clip),
+    }
+}
 
 // ── Accessors ────────────────────────────────────────────────────────────────
 
@@ -395,31 +472,33 @@ fn states_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = sm(&Rx::new(world.untracked())) else {
         return empty();
     };
-    // (name, default?) keyed on structure: index + name + is_default.
-    let rows: Vec<(String, bool)> = state
+    // (name, default?, motion shape) keyed on structure: index + name +
+    // is_default + the motion's kind and entry count.
+    let rows: Vec<(String, bool, MotionShape)> = state
         .sm
         .states
         .iter()
-        .map(|s| (s.name.clone(), state.sm.default_state == s.name))
+        .map(|s| (s.name.clone(), state.sm.default_state == s.name, motion_shape(&s.motion)))
         .collect();
     let items: Vec<(u64, u64)> = rows
         .iter()
         .enumerate()
-        .map(|(i, (name, is_def))| {
+        .map(|(i, row)| {
             let mut k = hasher();
             i.hash(&mut k);
             let mut h = hasher();
-            (name, is_def).hash(&mut h);
+            row.hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
+    let shapes: Vec<MotionShape> = rows.iter().map(|r| r.2).collect();
     KeyedSnapshot {
         items,
-        build: Box::new(state_row),
+        build: Box::new(move |c, f, i| state_row(c, f, i, shapes[i])),
     }
 }
 
-fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity {
+fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, shape: MotionShape) -> Entity {
     let block = commands
         .spawn((
             Node {
@@ -526,24 +605,39 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
         },
     );
 
-    // Clip combo (pick the motion clip).
-    let clip_combo = combo_box(commands, fonts, StateClipCombo(idx), {
+    // Motion kind: a clip, or a blend.
+    let kind_combo = combo_box(commands, fonts, MotionKindCombo(idx), {
         let i = idx;
         move |w| {
             sm(&Rx::new(w.untracked()))
                 .and_then(|s| s.sm.states.get(i))
-                .map(|st| match &st.motion {
-                    StateMotion::Clip(n) | StateMotion::BlendTree(n) => n.clone(),
-                })
+                .map(|st| motion_kind_label(&st.motion).to_string())
                 .unwrap_or_default()
         }
     });
 
-    let trash = trash_button(commands, fonts, TrashStateBtn(idx));
+    let mut r1_kids = vec![star, name_in, kind_combo];
+    if shape == MotionShape::Clip {
+        // Clip combo (pick the motion clip).
+        let clip_combo = combo_box(commands, fonts, StateClipCombo(idx), {
+            let i = idx;
+            move |w| {
+                sm(&Rx::new(w.untracked()))
+                    .and_then(|s| s.sm.states.get(i))
+                    .map(|st| match &st.motion {
+                        StateMotion::Clip(n) | StateMotion::BlendTree(n) => n.clone(),
+                        StateMotion::Blend(_) => String::new(),
+                    })
+                    .unwrap_or_default()
+            }
+        });
+        r1_kids.push(clip_combo);
+    }
 
-    commands
-        .entity(r1)
-        .add_children(&[star, name_in, clip_combo, trash]);
+    let trash = trash_button(commands, fonts, TrashStateBtn(idx));
+    r1_kids.push(trash);
+
+    commands.entity(r1).add_children(&r1_kids);
 
     // Row 2: speed drag + loop checkbox.
     let r2 = commands
@@ -596,8 +690,257 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
         .entity(r2)
         .add_children(&[speed_lbl, speed_dv, loop_cb, loop_lbl]);
 
-    commands.entity(block).add_children(&[r1, r2]);
+    let mut kids = vec![r1, r2];
+    kids.extend(blend_rows(commands, fonts, idx, shape));
+    commands.entity(block).add_children(&kids);
     block
+}
+
+// ── Blend tree rows ──────────────────────────────────────────────────────────
+
+/// The state's blend tree, if it has one.
+fn tree_of<'a>(w: &Rx<'a>, idx: usize) -> Option<&'a BlendTree> {
+    match &sm(w)?.sm.states.get(idx)?.motion {
+        StateMotion::Blend(tree) => Some(tree),
+        _ => None,
+    }
+}
+
+fn set_tree(w: &mut World, idx: usize, f: impl FnOnce(&mut BlendTree)) {
+    set_state(w, idx, |st| {
+        if let StateMotion::Blend(tree) = &mut st.motion {
+            f(tree);
+        }
+    });
+}
+
+fn row_node(commands: &mut Commands) -> Entity {
+    commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            flex_wrap: FlexWrap::Wrap,
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id()
+}
+
+/// A text input bound to one of a tree's parameter names.
+fn tree_param_input(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    idx: usize,
+    get: fn(&BlendTree) -> String,
+    set: fn(&mut BlendTree, String),
+) -> Entity {
+    let input = text_input(commands, &fonts.ui, "param", "");
+    commands.entity(input).insert(Node {
+        flex_grow: 1.0,
+        min_width: Val::Px(50.0),
+        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+        align_items: AlignItems::Center,
+        border: UiRect::all(Val::Px(1.0)),
+        border_radius: BorderRadius::all(Val::Px(4.0)),
+        ..default()
+    });
+    bind_text_input(
+        commands,
+        input,
+        move |w| tree_of(&Rx::new(w.untracked()), idx).map(get).unwrap_or_default(),
+        move |w, v| set_tree(w, idx, move |t| set(t, v.clone())),
+    );
+    input
+}
+
+/// A drag value bound to one number of one entry.
+fn entry_drag(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    idx: usize,
+    entry: usize,
+    get: fn(&BlendTree, usize) -> Option<f32>,
+    set: fn(&mut BlendTree, usize, f32),
+) -> Entity {
+    let dv = drag_value(commands, &fonts.ui, "", value_text(), 0.0, 0.05);
+    commands.entity(dv).insert(DragRange { min: -100.0, max: 100.0 });
+    bind_2way(
+        commands,
+        dv,
+        move |w| tree_of(&Rx::new(w.untracked()), idx).and_then(|t| get(t, entry)).unwrap_or(0.0),
+        move |w, v: &f32| {
+            let v = *v;
+            set_tree(w, idx, move |t| set(t, entry, v));
+        },
+    );
+    dv
+}
+
+fn entry_clip(t: &BlendTree, e: usize) -> String {
+    match t {
+        BlendTree::Blend1D { entries, .. } => entries.get(e).map(|x| x.clip.clone()),
+        BlendTree::BlendSpace2D { entries, .. } => entries.get(e).map(|x| x.clip.clone()),
+        _ => None,
+    }
+    .unwrap_or_default()
+}
+
+fn set_entry_clip(t: &mut BlendTree, e: usize, clip: String) {
+    match t {
+        BlendTree::Blend1D { entries, .. } => {
+            if let Some(x) = entries.get_mut(e) {
+                x.clip = clip;
+            }
+        }
+        BlendTree::BlendSpace2D { entries, .. } => {
+            if let Some(x) = entries.get_mut(e) {
+                x.clip = clip;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The parameter row and the entry rows of a blend state.
+fn blend_rows(commands: &mut Commands, fonts: &EmberFonts, idx: usize, shape: MotionShape) -> Vec<Entity> {
+    let (count, two_d) = match shape {
+        MotionShape::Blend1D(n) => (n, false),
+        MotionShape::Blend2D(n) => (n, true),
+        MotionShape::Other => {
+            let note = small_label(commands, fonts, "nested blend tree (edit it in the .animsm file)");
+            return vec![note];
+        }
+        MotionShape::Clip => return Vec::new(),
+    };
+
+    let params = row_node(commands);
+    let mut pk = Vec::new();
+    if two_d {
+        pk.push(small_label(commands, fonts, "x param"));
+        pk.push(tree_param_input(
+            commands,
+            fonts,
+            idx,
+            |t| match t {
+                BlendTree::BlendSpace2D { param_x, .. } => param_x.clone(),
+                _ => String::new(),
+            },
+            |t, v| {
+                if let BlendTree::BlendSpace2D { param_x, .. } = t {
+                    *param_x = v;
+                }
+            },
+        ));
+        pk.push(small_label(commands, fonts, "y param"));
+        pk.push(tree_param_input(
+            commands,
+            fonts,
+            idx,
+            |t| match t {
+                BlendTree::BlendSpace2D { param_y, .. } => param_y.clone(),
+                _ => String::new(),
+            },
+            |t, v| {
+                if let BlendTree::BlendSpace2D { param_y, .. } = t {
+                    *param_y = v;
+                }
+            },
+        ));
+    } else {
+        pk.push(small_label(commands, fonts, "param"));
+        pk.push(tree_param_input(
+            commands,
+            fonts,
+            idx,
+            |t| match t {
+                BlendTree::Blend1D { param, .. } => param.clone(),
+                _ => String::new(),
+            },
+            |t, v| {
+                if let BlendTree::Blend1D { param, .. } = t {
+                    *param = v;
+                }
+            },
+        ));
+    }
+    commands.entity(params).add_children(&pk);
+    let mut out = vec![params];
+
+    for e in 0..count {
+        let row = row_node(commands);
+        let clip = combo_box(commands, fonts, EntryClipCombo(idx, e), move |w| {
+            tree_of(&Rx::new(w.untracked()), idx).map(|t| entry_clip(t, e)).unwrap_or_default()
+        });
+        let mut kids = vec![clip];
+        if two_d {
+            kids.push(small_label(commands, fonts, "x"));
+            kids.push(entry_drag(
+                commands,
+                fonts,
+                idx,
+                e,
+                |t, e| match t {
+                    BlendTree::BlendSpace2D { entries, .. } => entries.get(e).map(|x| x.x),
+                    _ => None,
+                },
+                |t, e, v| {
+                    if let BlendTree::BlendSpace2D { entries, .. } = t {
+                        if let Some(x) = entries.get_mut(e) {
+                            x.x = v;
+                        }
+                    }
+                },
+            ));
+            kids.push(small_label(commands, fonts, "y"));
+            kids.push(entry_drag(
+                commands,
+                fonts,
+                idx,
+                e,
+                |t, e| match t {
+                    BlendTree::BlendSpace2D { entries, .. } => entries.get(e).map(|x| x.y),
+                    _ => None,
+                },
+                |t, e, v| {
+                    if let BlendTree::BlendSpace2D { entries, .. } = t {
+                        if let Some(x) = entries.get_mut(e) {
+                            x.y = v;
+                        }
+                    }
+                },
+            ));
+        } else {
+            kids.push(small_label(commands, fonts, "at"));
+            kids.push(entry_drag(
+                commands,
+                fonts,
+                idx,
+                e,
+                |t, e| match t {
+                    BlendTree::Blend1D { entries, .. } => entries.get(e).map(|x| x.threshold),
+                    _ => None,
+                },
+                |t, e, v| {
+                    if let BlendTree::Blend1D { entries, .. } = t {
+                        if let Some(x) = entries.get_mut(e) {
+                            x.threshold = v;
+                        }
+                    }
+                },
+            ));
+        }
+        let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+        kids.push(gap);
+        kids.push(trash_button(commands, fonts, TrashEntryBtn(idx, e)));
+        commands.entity(row).add_children(&kids);
+        out.push(row);
+    }
+
+    let add = add_button(commands, fonts, "Add entry", AddEntryBtn(idx), |_w| true);
+    out.push(add);
+    out
 }
 
 // ── Transitions column ───────────────────────────────────────────────────────
@@ -1540,4 +1883,177 @@ fn cond_kind_combo_open(
         })
         .collect();
     commands.entity(menu).add_children(&kids);
+}
+
+/// The selected animator's clip names, for the clip menus.
+fn animator_clips(anim_state: &AnimationEditorState, animators: &Query<&AnimatorComponent>) -> Vec<String> {
+    anim_state
+        .selected_entity
+        .and_then(|e| animators.get(e).ok())
+        .map(|a| a.clips.iter().map(|c| c.name.clone()).collect())
+        .unwrap_or_default()
+}
+
+fn motion_kind_combo_open(
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &MotionKindCombo), Changed<UiInteraction>>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    anim_state: Option<Res<AnimationEditorState>>,
+    animators: Query<&AnimatorComponent>,
+    mut commands: Commands,
+) {
+    let (Some(fonts), Some(anim_state)) = (fonts, anim_state) else {
+        return;
+    };
+    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == UiInteraction::Pressed) else {
+        return;
+    };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+        return;
+    };
+    let first_clip = animator_clips(&anim_state, &animators).into_iter().next().unwrap_or_default();
+    let idx = combo.0;
+    let tl = combo_top_left(rcp, cn, cursor);
+    let menu = screen_menu(&mut commands, tl.x, tl.y);
+    let kids: Vec<Entity> = MOTION_KINDS
+        .iter()
+        .map(|kind| {
+            let kind = *kind;
+            let first_clip = first_clip.clone();
+            menu_item(&mut commands, &fonts, "dot", kind, move |w| {
+                set_state(w, idx, |st| {
+                    // Picking the kind it already is keeps its entries.
+                    if motion_kind_label(&st.motion) != kind {
+                        st.motion = motion_for_kind(kind, &st.motion, &first_clip);
+                    }
+                });
+            })
+        })
+        .collect();
+    commands.entity(menu).add_children(&kids);
+}
+
+fn entry_clip_combo_open(
+    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &EntryClipCombo), Changed<UiInteraction>>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    anim_state: Option<Res<AnimationEditorState>>,
+    animators: Query<&AnimatorComponent>,
+    mut commands: Commands,
+) {
+    let (Some(fonts), Some(anim_state)) = (fonts, anim_state) else {
+        return;
+    };
+    let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == UiInteraction::Pressed) else {
+        return;
+    };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+        return;
+    };
+    let clips = animator_clips(&anim_state, &animators);
+    let (idx, entry) = (combo.0, combo.1);
+    let tl = combo_top_left(rcp, cn, cursor);
+    let menu = screen_menu(&mut commands, tl.x, tl.y);
+    let kids: Vec<Entity> = clips
+        .iter()
+        .map(|name| {
+            let target = name.clone();
+            menu_item(&mut commands, &fonts, "dot", name, move |w| {
+                set_tree(w, idx, |t| set_entry_clip(t, entry, target.clone()));
+            })
+        })
+        .collect();
+    commands.entity(menu).add_children(&kids);
+}
+
+/// A new entry takes a clip the blend does not use yet, one step past the
+/// last threshold (or point), so it is visible as its own entry at once.
+fn add_entry_click(
+    q: Query<(&UiInteraction, &AddEntryBtn), Changed<UiInteraction>>,
+    cmds: Option<Res<EditorCommands>>,
+    anim_state: Option<Res<AnimationEditorState>>,
+    animators: Query<&AnimatorComponent>,
+) {
+    let (Some(cmds), Some(anim_state)) = (cmds, anim_state) else {
+        return;
+    };
+    let clips = animator_clips(&anim_state, &animators);
+    for (interaction, btn) in &q {
+        if *interaction != UiInteraction::Pressed {
+            continue;
+        }
+        let idx = btn.0;
+        let clips = clips.clone();
+        cmds.push(move |world: &mut World| {
+            set_tree(world, idx, |t| {
+                let mut used = Vec::new();
+                t.collect_clips(&mut used);
+                let clip = clips
+                    .iter()
+                    .find(|c| !used.contains(c))
+                    .or(clips.first())
+                    .cloned()
+                    .unwrap_or_default();
+                match t {
+                    BlendTree::Blend1D { entries, .. } => {
+                        let next = entries.iter().map(|e| e.threshold).fold(f32::NEG_INFINITY, f32::max);
+                        let threshold = if next.is_finite() { next + 1.0 } else { 0.0 };
+                        entries.push(Blend1DEntry { clip, threshold });
+                    }
+                    BlendTree::BlendSpace2D { entries, .. } => {
+                        let n = entries.len() as f32;
+                        // The first at the origin, then around it (right,
+                        // back, left, forward), a ring further out every four.
+                        let ring = 1.0 + ((n - 1.0) / 4.0).floor().max(0.0);
+                        let angle = n * std::f32::consts::FRAC_PI_2;
+                        let (x, y) = if entries.is_empty() { (0.0, 0.0) } else { (angle.sin() * ring, angle.cos() * ring) };
+                        entries.push(BlendSpaceEntry { clip, x, y });
+                    }
+                    _ => {}
+                }
+            });
+        });
+    }
+}
+
+fn trash_entry_click(
+    q: Query<(&UiInteraction, &TrashEntryBtn), Changed<UiInteraction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != UiInteraction::Pressed {
+            continue;
+        }
+        let (idx, entry) = (btn.0, btn.1);
+        cmds.push(move |world: &mut World| {
+            set_tree(world, idx, |t| match t {
+                BlendTree::Blend1D { entries, .. } if entry < entries.len() => {
+                    entries.remove(entry);
+                }
+                BlendTree::BlendSpace2D { entries, .. } if entry < entries.len() => {
+                    entries.remove(entry);
+                }
+                _ => {}
+            });
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Switching a clip state to a blend keeps its clip as the first entry,
+    /// and switching back keeps that clip.
+    #[test]
+    fn switching_motion_kind_keeps_the_clip() {
+        let walk = StateMotion::Clip("walk".into());
+        let blend = motion_for_kind("1D blend", &walk, "idle");
+        assert_eq!(motion_shape(&blend), MotionShape::Blend1D(1));
+        assert!(matches!(&blend, StateMotion::Blend(BlendTree::Blend1D { entries, .. }) if entries[0].clip == "walk"));
+        let space = motion_for_kind("2D blend", &blend, "idle");
+        assert_eq!(motion_shape(&space), MotionShape::Blend2D(1));
+        assert_eq!(motion_for_kind("Clip", &StateMotion::Clip(String::new()), "idle"), StateMotion::Clip("idle".into()));
+    }
 }

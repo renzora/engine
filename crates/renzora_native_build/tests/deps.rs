@@ -97,7 +97,7 @@ fn a_plugin_with_no_third_party_crates_never_runs_cargo() {
     let out = deps::build(&dir, &root.join("build"), &host_toolchain())
         .expect("no deps is not an error");
     assert!(out.externs.is_empty(), "nothing to pass to rustc");
-    assert!(out.search.is_empty(), "no search path either");
+    assert!(out.search.is_none(), "no search path either");
     // The tell that cargo never ran: nothing was even written. Those path
     // dependencies point at directories that do not exist from here, so a build
     // would have failed rather than returned Ok.
@@ -170,98 +170,6 @@ fn a_dependency_that_itself_pulls_bevy_is_refused() {
         msg.contains("bevy_transform"),
         "must name the transitive offender, not just the direct dependency: {msg}"
     );
-}
-
-/// The host triple, which a real SDK records and a test has to ask for.
-fn host_triple() -> String {
-    let out = std::process::Command::new(renzora_native_build::tool("rustc"))
-        .arg("-vV")
-        .output()
-        .expect("rustc must run to compile this test");
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .find_map(|l| l.strip_prefix("host: "))
-        .map(|s| s.trim().to_string())
-        .expect("`rustc -vV` always has a host line")
-}
-
-/// An SDK root holding only a `shared.tsv` with `line` in it.
-fn sdk_with(root: &Path, line: &str) -> PathBuf {
-    let sdk = root.join("sdk");
-    std::fs::create_dir_all(&sdk).unwrap();
-    std::fs::write(sdk.join("shared.tsv"), format!("# test table\n{line}\n")).unwrap();
-    sdk
-}
-
-/// With the SDK sharing it at the same version, an engine crate is not an
-/// offender: it is never compiled, and the plugin is handed the SDK's copy.
-///
-/// The stub is named `bevy_ecs` so the guard sees exactly what a dependency on
-/// a real Bevy crate would show it. The recorded path does not have to exist,
-/// because nothing in the dependency build reads the substituted crate.
-#[test]
-fn an_engine_crate_the_sdk_shares_is_taken_from_the_sdk() {
-    let root = tmp("renzora_deps_shared");
-    let stub = stub_crate(&root, "bevy_ecs");
-    let dir = plugin(
-        &root,
-        &format!("bevy_ecs = {{ path = \"{}\" }}\n", stub.display().to_string().replace('\\', "/")),
-    );
-    let sdk = sdk_with(&root, "bevy_ecs\t0.1.0\tbevy_ecs\t0\t\tdeps/libbevy_ecs-0000.rmeta");
-    let triple = host_triple();
-    let share = deps::Share {
-        table: &sdk.join("shared.tsv"),
-        lockfile: None,
-        search: &[],
-        native: &[],
-        triple: &triple,
-    };
-
-    let out = deps::build_with(&dir, &root.join("build"), &host_toolchain(), Some(&share))
-        .expect("a crate the SDK shares is allowed");
-    let Some((_, path)) = out.externs.iter().find(|(n, _)| n == "bevy_ecs") else {
-        panic!("bevy_ecs must be handed over; got {:?}", out.externs);
-    };
-    assert_eq!(path, &sdk.join("deps/libbevy_ecs-0000.rmeta"), "the SDK's copy, not a compiled one");
-    assert!(
-        !out.search.iter().any(|d| d.join("libbevy_ecs.rlib").exists()),
-        "nothing named bevy_ecs may have been compiled"
-    );
-}
-
-/// The same crate at a version the SDK does not share would be a second copy,
-/// and is refused with both versions named.
-#[test]
-fn an_engine_crate_at_another_version_is_still_refused() {
-    let root = tmp("renzora_deps_shared_mismatch");
-    let stub = stub_crate(&root, "bevy_ecs");
-    let dir = plugin(
-        &root,
-        &format!("bevy_ecs = {{ path = \"{}\" }}\n", stub.display().to_string().replace('\\', "/")),
-    );
-    let sdk = sdk_with(&root, "bevy_ecs\t0.2.0\tbevy_ecs\t0\t\tdeps/libbevy_ecs-0000.rmeta");
-    let triple = host_triple();
-    let share = deps::Share {
-        table: &sdk.join("shared.tsv"),
-        lockfile: None,
-        search: &[],
-        native: &[],
-        triple: &triple,
-    };
-
-    let msg = deps::build_with(&dir, &root.join("build"), &host_toolchain(), Some(&share))
-        .expect_err("a different version is a second copy");
-    assert!(msg.contains("bevy_ecs 0.1.0") && msg.contains("0.2.0"), "both versions named: {msg}");
-}
-
-#[test]
-fn package_ids_of_every_form_parse() {
-    let id = "registry+https://github.com/rust-lang/crates.io-index#glam@0.33.12";
-    assert_eq!(deps::package_of(id), Some(("glam".into(), "0.33.12".into())));
-    let id = "path+file:///C:/plugins/stub/bevy_ecs#0.1.0";
-    assert_eq!(deps::package_of(id), Some(("bevy_ecs".into(), "0.1.0".into())));
-    let id = "glam 0.33.12 (registry+https://github.com/rust-lang/crates.io-index)";
-    assert_eq!(deps::package_of(id), Some(("glam".into(), "0.33.12".into())));
 }
 
 /// The sub-table form is refused rather than silently ignored.

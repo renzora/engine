@@ -48,7 +48,7 @@ mod fbx_skin;
 pub mod units;
 pub mod usd;
 
-pub use anim_extract::extract_animations_from_glb;
+pub use anim_extract::{extract_animations_from_glb, rest_pose_from_glb, write_rest_skeleton};
 pub use bvh::extract_animations_from_bvh;
 pub use compact::compact_glb;
 pub use convert::{

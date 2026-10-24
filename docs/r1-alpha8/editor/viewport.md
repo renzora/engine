@@ -205,7 +205,7 @@ The shapes dropdown at the left end of the toolbar lists every built-in shape (8
 
 It is the same list as the Shape Library panel and the Hierarchy's **Add Entity** menu.
 
-The **Shape Library** panel shows each shape as a lit 3D render, grouped into Primitives, Blocks, Architecture, Stairs and ramps, Pipes, and Props. The sidebar lists the groups with their counts (following the search) and narrows the grid to one; click a section header to fold it, and drag the slider in the toolbar to make the tiles bigger or smaller. Click a tile to add the shape at the origin, or drag it into the viewport to place it.
+The **Shape Library** panel shows each shape as a lit 3D render, grouped into Primitives, Blocks, Architecture, Stairs and ramps, Pipes, and Props. The sidebar lists the groups with their counts (following the search) and narrows the grid to one; click a section header to fold it, and drag the slider in the toolbar to make the tiles bigger or smaller. Click a tile to add the shape at the origin, or drag it into the viewport to place it. Tick **Bendable** in the toolbar and shapes are added with a chain of bones along their length, ready to bend in the Animation workspace (see [Rigging](/docs/r1-alpha8/editor/rigging#things-that-bend-chain)).
 
 | Group | Shapes |
 |---|---|
