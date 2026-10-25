@@ -233,7 +233,15 @@ impl Plugin for RustScriptPlugin {
                     // few frames a second for the first seconds of every
                     // project open. Gated on `Editor` so a project's scripts are
                     // not built while the splash is still loading it.
-                    watch::scan_on_project_open.run_if(in_state(SplashState::Editor)),
+                    //
+                    // The game the editor launches for Play has no splash state
+                    // machine at all (`SplashPlugin` is Editor-scope), so
+                    // `in_state` is false there forever and the project's
+                    // scripts were never built or loaded: a `.rs` behaviour
+                    // that worked in Simulate silently did nothing in Play.
+                    // Without a splash there is nothing to wait for, so the
+                    // scan runs as soon as the project is known.
+                    watch::scan_on_project_open.run_if(past_splash_or_no_splash),
                     watch::watch,
                     watch::finish,
                 ),
@@ -309,6 +317,17 @@ impl Plugin for RustScriptPlugin {
                     .in_set(renzora_scripting::ScriptingSet::PreScript),
             );
     }
+}
+
+/// `in_state(SplashState::Editor)`, plus every build that never runs the
+/// splash: the game, launched by Play or shipped. The editor owns `SplashState`;
+/// where the resource is absent there is no loading screen to wait behind, and
+/// the project's scripts should build (or load, when the editor already built
+/// them) the moment the project opens.
+fn past_splash_or_no_splash(state: Option<Res<State<SplashState>>>) -> bool {
+    state
+        .map(|s| *s.get() == SplashState::Editor)
+        .unwrap_or(true)
 }
 
 /// Register the `.rs` backend the first time a [`ScriptEngine`] exists.

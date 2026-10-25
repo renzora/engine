@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-25 18:45
+- fix(scripting): Rust scripts run in Play and in the shipped game, not only in Simulate
+
 ## 2026-10-24 16:02
 - feat(animation): Skin mode's Select tool picks a whole part or a box of vertices and binds it rigidly to a bone, sets its weight, or auto-weights it alone
 - fix(plugin): plugins build again (system monitor, terminal, Lua, debugger, Rapier physics, 3D text), and staging the plugin SDK no longer takes minutes
