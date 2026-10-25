@@ -301,15 +301,14 @@ bevy_math = { version = "0.20", default-features = false }
 bevy_reflect = { version = "0.20", default-features = false }
 bevy_light = { version = "0.20", default-features = false }
 bevy_picking = { version = "0.20", default-features = false }
-# Avian has no Bevy 0.20 release yet. This is the branch of its open 0.20 pull
-# request (avianphysics/avian#1070), pinned so a push to it cannot change the
-# build. The engine itself no longer links avian (it is the `avian_physics`
-# native plugin); only the vendored `bevy_silk`'s optional collision feature
-# names it. Keeping the pin here also keeps avian's versions in Cargo.lock, which
-# the SDK ships so a plugin depending on avian resolves the same graph. Move back
-# to a crates.io version once one supports 0.20, here and in the plugin.
-avian3d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
-avian2d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false }
+# Avian 0.8 is the first release built for Bevy 0.20 (published 2026-10-20);
+# it replaces the pin on avian's then-open 0.20 pull request. The engine itself
+# no longer links avian (it is the `avian_physics` native plugin); only the
+# vendored `bevy_silk`'s optional collision feature names it. Keeping the entry
+# here also keeps avian's versions in Cargo.lock, which the SDK ships so a plugin
+# depending on avian resolves the same graph. Keep this and the plugin in step.
+avian3d = { version = "0.8", default-features = false }
+avian2d = { version = "0.8", default-features = false }
 log = "0.4"
 
 [package]
