@@ -7,7 +7,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^6.3.5"
+    "vite": "^6.4.5"
   },
   "overrides": {
     "esbuild": "0.28.1"

@@ -59,8 +59,7 @@ pub(crate) struct StageInputSet;
 
 pub(super) fn register(app: &mut App) {
     app.init_resource::<StageCursor>().init_resource::<StageNav>();
-    app.register_panel_content(STAGE_PANEL, false, build);
-    app.add_systems(
+    app.register_panel_content(STAGE_PANEL, false, build).systems(
         Update,
         (update_cursor, navigate, tool_keys)
             .chain()

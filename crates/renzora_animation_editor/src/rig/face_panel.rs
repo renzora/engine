@@ -473,6 +473,13 @@ fn generate_blinks(world: &mut World) {
     }
 }
 
+/// The web editor has no native file dialog, so it says why nothing opened.
+#[cfg(target_arch = "wasm32")]
+fn choose_voice(world: &mut World) {
+    tell(world, false, "Picking a voice recording needs the desktop editor");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn choose_voice(world: &mut World) {
     let mut dialog = renzora_editor_framework::file_dialog::editor_file_dialog(world)
         .set_title("Lip sync from a voice recording")

@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-25 09:05
+- fix(web): the web editor builds again
+- security: rustls and the web template's vite are updated past their published advisories
+
 ## 2026-10-25 07:54
 - fix(editor): an edit to something the running game keeps moving, like the player, now reaches the game instead of being overwritten
 - fix(editor): visibility stays right while the game plays with no viewport on screen, and Stop no longer drops it

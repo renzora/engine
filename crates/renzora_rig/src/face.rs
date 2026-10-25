@@ -449,8 +449,8 @@ fn mouth_pieces(frame: &FaceFrame, m: &FaceMarkers, s: &Surface) -> Vec<Option<b
     // gum, touching it. Touching is being within a little of a decided
     // piece's vertex; the side touched most wins.
     let mut grid: std::collections::HashMap<(i64, i64, i64), Vec<usize>> = std::collections::HashMap::new();
-    for i in 0..n {
-        if out[i].is_some() {
+    for (i, side) in out.iter().enumerate().take(n) {
+        if side.is_some() {
             grid.entry(cell(s.positions[i])).or_default().push(i);
         }
     }

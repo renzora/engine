@@ -20,26 +20,44 @@
 //!
 //! Saving is held off while mirroring ([`renzora::LivePlaySession`]), and runs
 //! after the put-back if it was asked for.
+//!
+//! Everything but the plugin is gated off the web build. The link is a TCP
+//! socket to a child process, and a browser has neither, so the web editor
+//! carries the plugin as an empty one: the generated plugin list adds every
+//! editor plugin on every target, so the crate has to compile there.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::collections::{HashMap, HashSet};
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::{BufRead, BufReader, Write};
+#[cfg(not(target_arch = "wasm32"))]
 use std::net::{TcpListener, TcpStream};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{channel, Receiver, Sender};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use renzora::console_log::{console_info, console_success};
+#[cfg(not(target_arch = "wasm32"))]
 use renzora::{
     GameInput, GameLink, KeepLiveChangesRequested, LiveLinkEndpoint, LivePlaySession, SceneEntityId,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use renzora_engine::scene_io::{snapshot_entity_subtrees, spawn_entities_from_snapshot};
+#[cfg(not(target_arch = "wasm32"))]
 use renzora_live_link::apply::{apply, ApplySide, Quiet};
+#[cfg(not(target_arch = "wasm32"))]
 use renzora_live_link::tracker::Tracker;
+#[cfg(not(target_arch = "wasm32"))]
 use renzora_live_link::{decode_base64, LinkMessage};
 
 /// How often the user's edits are gathered. Fast enough that a dragged slider
 /// reads as live in the game, slow enough that a drag is not a value per frame.
+#[cfg(not(target_arch = "wasm32"))]
 const SCAN_INTERVAL: f32 = 1.0 / 20.0;
 
 #[derive(Default)]
@@ -68,11 +86,13 @@ impl Plugin for LiveLinkEditorPlugin {
 
 renzora::add!(LiveLinkEditorPlugin, Editor);
 
+#[cfg(not(target_arch = "wasm32"))]
 enum Incoming {
     Message(LinkMessage),
     Closed,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
 struct LinkServer {
     /// Connections that passed the token check, handed over by the listener
@@ -81,6 +101,7 @@ struct LinkServer {
     client: Option<Client>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct Client {
     writer: TcpStream,
     incoming: Mutex<Receiver<Incoming>>,
@@ -94,6 +115,7 @@ struct Client {
 
 /// What it takes to put the scene back when the game stops. See the module
 /// docs.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Default)]
 struct Session {
     /// Each scene entity's values when the game connected.
@@ -111,8 +133,10 @@ struct Session {
 }
 
 /// Record, as the game's changes are applied, what it takes to undo them.
+#[cfg(not(target_arch = "wasm32"))]
 struct Mirror<'a>(&'a mut Session);
 
+#[cfg(not(target_arch = "wasm32"))]
 impl ApplySide for Mirror<'_> {
     fn spawned(&mut self, _world: &mut World, _entity: Entity, id: u64) {
         self.0.spawned.insert(id);
@@ -137,6 +161,7 @@ impl ApplySide for Mirror<'_> {
 /// Port 0 lets the OS pick a free one, so two editors on one machine never
 /// collide. Only loopback, and only a connection whose first line carries the
 /// token, is ever handed to the main thread.
+#[cfg(not(target_arch = "wasm32"))]
 fn listen() -> Option<(LiveLinkEndpoint, Receiver<TcpStream>)> {
     let listener = match TcpListener::bind(("127.0.0.1", 0)) {
         Ok(l) => l,
@@ -168,6 +193,7 @@ fn listen() -> Option<(LiveLinkEndpoint, Receiver<TcpStream>)> {
 
 /// Whether `stream`'s first line is a hello with the right token. Bounded by a
 /// timeout so a connection that never speaks cannot hold the listener.
+#[cfg(not(target_arch = "wasm32"))]
 fn accepts(stream: &TcpStream, token: &str) -> bool {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let Ok(reader) = stream.try_clone() else { return false };
@@ -183,6 +209,7 @@ fn accepts(stream: &TcpStream, token: &str) -> bool {
 }
 
 /// Read the rest of a connection's lines on a thread, ending with `Closed`.
+#[cfg(not(target_arch = "wasm32"))]
 fn read_lines(stream: TcpStream, tx: Sender<Incoming>) {
     std::thread::Builder::new()
         .name("live-link-read".into())
@@ -201,6 +228,7 @@ fn read_lines(stream: TcpStream, tx: Sender<Incoming>) {
 }
 
 /// Take in a new game, and what the connected one sent.
+#[cfg(not(target_arch = "wasm32"))]
 fn receive(world: &mut World) {
     let connected = world
         .resource::<LinkServer>()
@@ -287,6 +315,7 @@ fn receive(world: &mut World) {
 }
 
 /// Send the user's edits, and whatever tools queued for the game.
+#[cfg(not(target_arch = "wasm32"))]
 fn send(world: &mut World) {
     let Some(mut client) = world.resource_mut::<LinkServer>().client.take() else {
         // Keep the queue from growing while there is no game to send to.
@@ -344,6 +373,7 @@ fn send(world: &mut World) {
 }
 
 /// Write `messages` as JSON lines. False when the game has gone.
+#[cfg(not(target_arch = "wasm32"))]
 fn write_all(writer: &mut TcpStream, messages: &[LinkMessage]) -> bool {
     for message in messages {
         let Ok(line) = serde_json::to_string(message) else { continue };
@@ -355,6 +385,7 @@ fn write_all(writer: &mut TcpStream, messages: &[LinkMessage]) -> bool {
 }
 
 /// The input that undoes `input` after its hold time.
+#[cfg(not(target_arch = "wasm32"))]
 fn released(input: &GameInput) -> GameInput {
     match input {
         GameInput::Key { code, .. } => GameInput::Key { code: code.clone(), pressed: false },
@@ -365,6 +396,7 @@ fn released(input: &GameInput) -> GameInput {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn record_user_edit(session: &mut Session, edit: &LinkMessage) {
     match edit {
         LinkMessage::Set { id, ty, value } => {
@@ -380,6 +412,7 @@ fn record_user_edit(session: &mut Session, edit: &LinkMessage) {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn start_session(world: &mut World, stream: TcpStream) {
     let _ = stream.set_nodelay(true);
     let Ok(reader) = stream.try_clone() else { return };
@@ -406,6 +439,7 @@ fn start_session(world: &mut World, stream: TcpStream) {
 
 /// Adopt everything the game has done so far: from now on, Stop puts things
 /// back only as far as this moment.
+#[cfg(not(target_arch = "wasm32"))]
 fn keep(client: &mut Client) {
     let session = &mut client.session;
     for (id, ty) in session.game_touched.drain() {
@@ -426,6 +460,7 @@ fn keep(client: &mut Client) {
 }
 
 /// The game is gone: put back what it changed, keep what the user changed.
+#[cfg(not(target_arch = "wasm32"))]
 fn end_session(world: &mut World) {
     let Some(client) = world.resource_mut::<LinkServer>().client.take() else {
         return;

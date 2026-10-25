@@ -121,9 +121,9 @@ impl Plugin for TimelinePanel {
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora::not_in_play_mode),
         );
+        app.init_resource::<morph::MorphLayer>();
         // Hand-set blend shape weights, put back over the clip's the same way.
         // panel-systems-ungated: the Face panel sets them, the viewport shows them
-        app.init_resource::<morph::MorphLayer>();
         app.add_systems(
             PostUpdate,
             morph::apply_morph_pose
