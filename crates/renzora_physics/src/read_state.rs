@@ -1,10 +1,9 @@
 //! Per-entity physics mirror component.
 //!
-//! [`PhysicsReadState`] holds a script-/blueprint-readable snapshot of the current
+//! [`PhysicsReadState`] holds a script-readable snapshot of the current
 //! physics state for each entity with [`PhysicsBodyData`]. It's populated each
-//! frame so that Lua's `get("PhysicsReadState.grounded")` and blueprint
-//! `physics/is_grounded` nodes have an up-to-date value without having to query
-//! the physics backend directly.
+//! frame so that Lua's `get("PhysicsReadState.grounded")` has an up-to-date
+//! value without having to query the physics backend directly.
 //!
 //! Both are filled from what the backend writes ([`BodyVelocity`],
 //! [`PhysicsContacts`]), so one system each serves the 2D and 3D worlds and
@@ -18,7 +17,7 @@ use crate::data::PhysicsBodyData;
 
 /// Snapshot of per-entity physics state, refreshed each frame.
 ///
-/// Read-only from scripts / blueprints: writes are ignored (the updater
+/// Read-only from scripts: writes are ignored (the updater
 /// overwrites every frame). Reflect-registered so the existing `get`/`set`
 /// path dispatcher can access fields by name (e.g. `PhysicsReadState.grounded`).
 #[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
@@ -36,16 +35,25 @@ pub struct PhysicsReadState {
 }
 
 /// Auto-inserts `PhysicsReadState`, and the `BodyVelocity` the backend fills
-/// it from, on any entity that has `PhysicsBodyData` but not yet a read-state
-/// component.
+/// it from, on any entity that has `PhysicsBodyData` but not yet one of them.
+///
+/// Each is checked on its own. `PhysicsReadState` is reflected and saved with
+/// the scene, and `BodyVelocity` is not, so a body loaded from a saved scene
+/// arrives with the first and without the second. Inserting them together,
+/// keyed on the first, left every such body without a `BodyVelocity`: the
+/// backend only fills one that exists, so scripts read a velocity of zero
+/// forever, and a controller that steers from it never got up to speed.
 pub fn auto_init_physics_read_state(
     mut commands: Commands,
-    q: Query<Entity, (With<PhysicsBodyData>, Without<PhysicsReadState>)>,
+    q: Query<(Entity, Has<PhysicsReadState>, Has<BodyVelocity>), With<PhysicsBodyData>>,
 ) {
-    for entity in &q {
-        commands
-            .entity(entity)
-            .try_insert((PhysicsReadState::default(), BodyVelocity::default()));
+    for (entity, has_state, has_velocity) in &q {
+        if !has_state {
+            commands.entity(entity).try_insert(PhysicsReadState::default());
+        }
+        if !has_velocity {
+            commands.entity(entity).try_insert(BodyVelocity::default());
+        }
     }
 }
 
@@ -64,13 +72,12 @@ pub fn update_physics_read_state(
 }
 
 /// Per-entity collision snapshot, refreshed each frame from the backend's
-/// contacts. Reflect-registered so blueprint `event/on_collision_enter`/`_exit`
-/// (and Lua `get("CollisionReadState.entered")`) can read it by name. This is
-/// the engine's first real collision-event source; previously the scripting
-/// `on_collision` hook was an unpopulated stub.
+/// contacts. Reflect-registered so Lua `get("CollisionReadState.entered")` can
+/// read it by name. This is the engine's first real collision-event source;
+/// previously the scripting `on_collision` hook was an unpopulated stub.
 ///
-/// Only the *first* entity entered/exited this frame is surfaced by name (the
-/// blueprint event has a single `other` output); `colliding` reflects whether
+/// Only the *first* entity entered/exited this frame is surfaced by name, so a
+/// script polling it sees one `other` per frame; `colliding` reflects whether
 /// any contact is currently active.
 #[derive(Component, Clone, Debug, Default, Reflect)]
 #[reflect(Component, Default)]

@@ -61,9 +61,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("shader_properties", "Shader", "graphics-card", "Shader"),
     ("shader_preview", "Shader Preview", "image", "Shader"),
     ("shader_compiler_log", "Compiler Log", "list-dashes", "Shader"),
-    // Blueprint
-    ("blueprint_graph", "Blueprint", "blueprint", "Blueprint"),
-    ("blueprint_properties", "Blueprint Properties", "sliders-horizontal", "Blueprint"),
     // The Marketplace panels (store, library, publish) and the wallet are NOT
     // listed here. They belong to the `marketplace` plugin, which registers its
     // own shell metadata the way any plugin does — so an install without it

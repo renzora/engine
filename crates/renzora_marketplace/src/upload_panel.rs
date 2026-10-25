@@ -62,9 +62,9 @@ const GENRES: &[&str] = &[
     "Cinematic",
     "Other",
 ];
-const SCRIPT_LANGS: &[&str] = &["Select…", "Rust", "Lua", "Rhai", "WGSL (Shader)", "Visual Blueprint", "Other"];
+const SCRIPT_LANGS: &[&str] = &["Select…", "Rust", "Lua", "Rhai", "WGSL (Shader)", "Other"];
 /// Value sent for each `SCRIPT_LANGS` entry (index 0 sends nothing).
-const SCRIPT_LANG_VALUES: &[&str] = &["", "rust", "lua", "rhai", "wgsl", "blueprint", "other"];
+const SCRIPT_LANG_VALUES: &[&str] = &["", "rust", "lua", "rhai", "wgsl", "other"];
 /// Genre slug per `GENRES` entry (index 0 sends nothing).
 const GENRE_VALUES: &[&str] = &["", "ambient", "orchestral", "electronic", "retro", "rock", "cinematic", "other"];
 /// Licence ids, matching the server's `VALID_LICENCES`.
@@ -714,7 +714,7 @@ fn build_basics_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let loopable = check_row(commands, fonts, "Loop-friendly (seamless loop)", |s| s.loopable, |s, v| s.loopable = v);
     commands.entity(music_grp).add_children(&[music_head, bpm, genre, loopable]);
 
-    let script_grp = group(commands, |w| cat_in(w, &["scripts", "plugins", "blueprints"]));
+    let script_grp = group(commands, |w| cat_in(w, &["scripts", "plugins"]));
     let lang = dropdown_field(commands, fonts, "Scripting Language", SCRIPT_LANGS, |s| s.script_lang, |s, v| s.script_lang = v);
     commands.entity(script_grp).add_child(lang);
 
@@ -1349,7 +1349,7 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
             extra.insert("loopable".into(), true.into());
         }
     }
-    if ["scripts", "plugins", "blueprints"].contains(&state.category_slug()) {
+    if ["scripts", "plugins"].contains(&state.category_slug()) {
         if let Some(l) = SCRIPT_LANG_VALUES.get(state.script_lang).filter(|l| !l.is_empty()) {
             extra.insert("script_language".into(), (*l).into());
         }

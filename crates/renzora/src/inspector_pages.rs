@@ -35,7 +35,7 @@ pub enum InspectorPage {
     PostProcess,
     Physics,
     Animation,
-    /// Scripts and blueprints.
+    /// Scripts.
     Scripting,
     Audio,
     Navigation,

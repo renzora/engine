@@ -22,7 +22,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_atmosphere_editor::AtmosphereEditorPlugin::default());
     app.add_plugins(renzora_autosave::AutoSavePlugin::default());
     app.add_plugins(renzora_bloom_effect_editor::BloomEditorPlugin::default());
-    app.add_plugins(renzora_blueprint_editor::BlueprintEditorPlugin::default());
     app.add_plugins(renzora_camera::CameraPlugin::default());
     app.add_plugins(renzora_code_editor::CodeEditorPlugin::default());
     app.add_plugins(renzora_command_palette::CommandPalettePlugin::default());
@@ -46,6 +45,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_inspector::InspectorPanelPlugin::default());
     app.add_plugins(renzora_level_presets::LevelPresetsPlugin::default());
     app.add_plugins(renzora_lighting_editor::LightingEditorPlugin::default());
+    app.add_plugins(renzora_live_link_editor::LiveLinkEditorPlugin::default());
     app.add_plugins(renzora_marketplace::MarketplacePlugin::default());
     app.add_plugins(renzora_material_editor::MaterialEditorPlugin::default());
     app.add_plugins(renzora_mixer::MixerPlugin::default());

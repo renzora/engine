@@ -133,6 +133,29 @@ fn set_velocity_moves_a_body_and_reads_back() {
     assert!((x - 2.0).abs() < 0.2, "one second at 2 m/s should be about 2 m, got {x}");
 }
 
+/// A body loaded from a saved scene comes back with its `PhysicsReadState`
+/// (it is saved) and without `BodyVelocity` (it is not). Its velocity must
+/// still read back: it used to read zero forever, because both were only ever
+/// added together when the read state was missing.
+#[test]
+fn a_body_loaded_with_its_read_state_still_reads_its_velocity() {
+    let mut app = physics_app();
+    let ball = ball(&mut app, Vec3::ZERO, 0.0);
+    app.world_mut().entity_mut(ball).insert(PhysicsReadState::default());
+    step(&mut app, 2);
+
+    action(&mut app, ball, "set_velocity", Vec3::new(2.0, 0.0, 0.0));
+    step(&mut app, 30);
+
+    let v = app.world().get::<BodyVelocity>(ball).map(|v| v.linear);
+    assert!(
+        v.is_some_and(|v| (v - Vec3::new(2.0, 0.0, 0.0)).length() < 0.05),
+        "BodyVelocity was {v:?}"
+    );
+    let read_back = read(&app, ball).velocity;
+    assert!((read_back - Vec3::new(2.0, 0.0, 0.0)).length() < 0.05, "read-back velocity was {read_back}");
+}
+
 /// A steady force pushed every frame accelerates a body at F/m. Fired from an
 /// `Update` system, which is when scripts fire it: before the backend contract
 /// this exact setup left the body at rest, because the force was removed in
@@ -264,6 +287,50 @@ fn a_mesh_collider_is_built_once_its_mesh_loads() {
 
     let y = pos(&app, ball).y;
     assert!((y - 0.5).abs() < 0.1, "the ball rests on the trimesh, y = {y}");
+}
+
+/// An imported level: the collider sits on a model root that has no mesh and no
+/// body, and the floor is a mesh further down. This is how a level saved with a
+/// Mesh collider on its root comes back, since the descendants are never saved.
+fn model_floor(app: &mut App, body: bool) {
+    let mesh = app
+        .world_mut()
+        .resource_mut::<Assets<Mesh>>()
+        .add(Mesh::from(Cuboid::new(20.0, 1.0, 20.0)));
+    let root = app
+        .world_mut()
+        .spawn((SkipAutoFit, CollisionShapeData::mesh(), Transform::default()))
+        .id();
+    if body {
+        app.world_mut().entity_mut(root).insert(PhysicsBodyData::static_body());
+    }
+    let group = app
+        .world_mut()
+        .spawn((Transform::from_xyz(0.0, -0.5, 0.0), ChildOf(root)))
+        .id();
+    app.world_mut().spawn((Mesh3d(mesh), Transform::default(), ChildOf(group)));
+}
+
+#[test]
+fn a_model_root_mesh_collider_holds_a_body_up() {
+    let mut app = physics_app();
+    model_floor(&mut app, true);
+    let ball = ball(&mut app, Vec3::new(0.0, 2.0, 0.0), 1.0);
+    step(&mut app, 120);
+
+    let y = pos(&app, ball).y;
+    assert!((y - 0.5).abs() < 0.1, "the ball rests on the model, y = {y}");
+}
+
+#[test]
+fn a_model_root_mesh_collider_without_a_body_holds_a_body_up() {
+    let mut app = physics_app();
+    model_floor(&mut app, false);
+    let ball = ball(&mut app, Vec3::new(0.0, 2.0, 0.0), 1.0);
+    step(&mut app, 120);
+
+    let y = pos(&app, ball).y;
+    assert!((y - 0.5).abs() < 0.1, "the ball rests on the model, y = {y}");
 }
 
 #[test]

@@ -351,12 +351,11 @@ pub(crate) struct SwitcherCloseDoc(u64);
 pub(crate) struct SwitcherGroup(&'static str);
 
 /// The kinds, in the order the Open column groups them.
-const KIND_ORDER: [renzora_ui::DocTabKind; 8] = [
+const KIND_ORDER: [renzora_ui::DocTabKind; 7] = [
     renzora_ui::DocTabKind::Scene,
     renzora_ui::DocTabKind::Material,
     renzora_ui::DocTabKind::Shader,
     renzora_ui::DocTabKind::Script,
-    renzora_ui::DocTabKind::Blueprint,
     renzora_ui::DocTabKind::Particle,
     renzora_ui::DocTabKind::Ui,
     renzora_ui::DocTabKind::Other,
@@ -367,7 +366,6 @@ fn kind_key(kind: renzora_ui::DocTabKind) -> &'static str {
         renzora_ui::DocTabKind::Scene => "scene",
         renzora_ui::DocTabKind::Material => "material",
         renzora_ui::DocTabKind::Particle => "particle",
-        renzora_ui::DocTabKind::Blueprint => "blueprint",
         renzora_ui::DocTabKind::Script => "script",
         renzora_ui::DocTabKind::Shader => "shader",
         renzora_ui::DocTabKind::Ui => "ui",
@@ -380,7 +378,6 @@ fn kind_title(kind: renzora_ui::DocTabKind) -> String {
         renzora_ui::DocTabKind::Scene => ("scene_switcher.group.scenes", "Scenes"),
         renzora_ui::DocTabKind::Material => ("scene_switcher.group.materials", "Materials"),
         renzora_ui::DocTabKind::Particle => ("scene_switcher.group.particles", "Particles"),
-        renzora_ui::DocTabKind::Blueprint => ("scene_switcher.group.blueprints", "Blueprints"),
         renzora_ui::DocTabKind::Script => ("scene_switcher.group.scripts", "Scripts"),
         renzora_ui::DocTabKind::Shader => ("scene_switcher.group.shaders", "Shaders"),
         renzora_ui::DocTabKind::Ui => ("scene_switcher.group.ui", "UI"),

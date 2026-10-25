@@ -16,7 +16,7 @@ use crate::state_machine::{AnimParams, AnimationStateMachine};
 /// Serializable clip slot: a named reference to a `.anim` file.
 #[derive(Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 pub struct AnimClipSlot {
-    /// Label used by scripting / blueprints ("idle", "walk", etc.).
+    /// Label used by scripting ("idle", "walk", etc.).
     pub name: String,
     /// Asset-relative path to the `.anim` file (e.g. `animations/walk.anim`).
     pub path: String,

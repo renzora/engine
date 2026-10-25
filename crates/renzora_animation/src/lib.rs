@@ -7,7 +7,7 @@
 //! - State machines, blend trees, and animation layers
 //! - Procedural tweens with easing functions
 //! - GLTF animation extraction pipeline
-//! - Runtime systems: graph building, playback, script/blueprint command processing
+//! - Runtime systems: graph building, playback, script command processing
 //! - Bridge from ScriptCommandQueue to AnimationCommandQueue
 
 pub mod blend_tree;
@@ -149,7 +149,6 @@ impl Plugin for AnimationPlugin {
                 // or a layer driving the player while editing fights the
                 // timeline preview for it.
                 controller::drive_animators.run_if(renzora::core::game_running),
-                systems::detect_animation_finished,
                 tween::update_procedural_tweens,
             )
                 .chain(),

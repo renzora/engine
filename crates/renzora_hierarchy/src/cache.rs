@@ -60,7 +60,7 @@ pub fn mark_hierarchy_dirty(
     // `AssetBadgeChanges` below — four more bare params would push this system
     // past Bevy's per-system cap.
     mut identity: IdentityChanges,
-    // Asset badges (script/blueprint/material) ride on these components, so
+    // Asset badges (script/material) ride on these components, so
     // their add/change/remove must rebuild the tree too (grouped into one param
     // to stay under Bevy's per-system param-count cap).
     mut badges: AssetBadgeChanges,

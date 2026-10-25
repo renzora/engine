@@ -73,7 +73,7 @@ pub(crate) fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
     // A wholesale scene teardown invalidates every entity id stored in the
     // Scene undo history (new/switch/load/simulate-restore all funnel through
     // here), so drop that stack — undo must not reach across a scene swap into
-    // dangling entities. Asset-context stacks (material/blueprint) are untouched;
+    // dangling entities. Asset-context stacks (material, other) are untouched;
     // the project-switch teardown clears those explicitly.
     if let Some(mut undo) = world.get_resource_mut::<renzora_undo::UndoStacks>() {
         undo.clear(&renzora_undo::UndoContext::Scene);
@@ -154,7 +154,7 @@ fn on_restore_simulate_snapshot(
 fn teardown_for_project_switch(world: &mut World) {
     let count = despawn_scene_entities(world).len();
     // Switching projects closes every document, so wipe ALL undo stacks
-    // (material/blueprint/particle contexts too) — not just Scene, which
+    // (material/particle contexts too), not just Scene, which
     // `despawn_scene_entities` already cleared.
     if let Some(mut undo) = world.get_resource_mut::<renzora_undo::UndoStacks>() {
         undo.clear_all();
@@ -230,7 +230,7 @@ fn tab_kind(world: &World, id: u64) -> Option<DocTabKind> {
 }
 
 /// React to a document-tab switch. Only **scene** tabs own a 3D scene; asset
-/// tabs (material / particle / script / shader / blueprint) edit assets *on top
+/// tabs (material / particle / script / shader) edit assets *on top
 /// of* the current scene, so switching to one must NOT despawn the scene — that
 /// would empty the viewport/hierarchy and (in the bevy_ui shell) despawn the
 /// editor chrome, which the scene-clear query also catches. The live scene
@@ -477,8 +477,22 @@ fn save_scene_system(world: &mut World) {
         return;
     }
 
+    // The scene is mirroring a running game right now; saving would write the
+    // game's state into the level. Run once the game stops and the editor has
+    // put its changes back. See `renzora::LivePlaySession`.
+    if let Some(mut live) = world.get_resource_mut::<renzora::LivePlaySession>() {
+        if !live.pending_save {
+            live.pending_save = true;
+            renzora::core::console_log::console_info(
+                "Scene",
+                "The game is running: the scene will save when you press Stop",
+            );
+        }
+        return;
+    }
+
     // Read the active tab's kind + path. CRITICAL: `DocumentTab.scene_path` is
-    // populated for EVERY tab kind, so an asset tab (material / blueprint /
+    // populated for EVERY tab kind, so an asset tab (material /
     // particle / script / shader) carries *its own file's* path here. Writing the
     // world scene to that path overwrites the asset with scene RON — exactly how
     // `.material` files got clobbered when Ctrl+S was pressed with a material tab

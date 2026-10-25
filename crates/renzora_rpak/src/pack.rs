@@ -618,7 +618,6 @@ pub const SERVER_EXTENSIONS: &[&str] = &[
     "bsn",       // scenes (current format)
     "lua",       // scripts
     "rhai",      // scripts
-    "blueprint", // visual scripting
     "toml",      // project config
     "json",      // data files
 ];
@@ -735,7 +734,6 @@ const SERVER_KEEP_PREFIXES: &[&str] = &[
     "renzora::",
     "renzora_scripting::",
     "renzora_physics::",
-    "renzora_blueprint::",
     "renzora_terrain::",
     "renzora_network::",
     "renzora_engine::",
@@ -1192,7 +1190,6 @@ const ASSET_EXTENSIONS: &[&str] = &[
     ".lua",
     ".rhai",
     // Data
-    ".blueprint",
     ".json",
     // UI markup (bevy_hui templates)
     ".html",

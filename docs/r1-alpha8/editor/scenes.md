@@ -110,6 +110,8 @@ Full detail is in [Viewport and Camera](/docs/r1-alpha8/editor/viewport).
 
 Only named objects are saved. Everything you add through **+ Add Entity** is named for you, so this rarely comes up.
 
+Saving also gives each object a **Scene Entity Id**, a number stored with it in the file. Names can repeat (a duplicated object keeps its name), so the id is what lets the running game find the object you are editing; see [The editor follows the game](/docs/r1-alpha8/editor/play-mode#the-editor-follows-the-game). A duplicate gets a new id of its own on the next save. You never need to set or change it.
+
 ### Scene thumbnails
 
 Every save also snapshots the viewport and keeps it as the scene's thumbnail, so the Assets panel shows you the level rather than a generic icon. Whatever the focused viewport was showing when you saved is the picture you get. Frame the shot, then save.

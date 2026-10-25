@@ -2,8 +2,7 @@
 //!
 //! Same shape and same reasoning as `renzora_physics::PhysicsReadState`: the
 //! drive system writes a plain reflected component each frame, so Lua's
-//! `get("ParkourReadState.can_vault")` and the blueprint reflection nodes read
-//! it through the dispatcher that already exists. No new script verbs, no
+//! `get("ParkourReadState.can_vault")` reads it through the dispatcher that already exists. No new script verbs, no
 //! per-language work, and a game can build its own HUD prompt ("press E to
 //! climb") out of the same fields the controller decides on.
 //!

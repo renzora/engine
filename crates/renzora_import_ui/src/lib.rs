@@ -244,6 +244,7 @@ fn import_orchestrate_system(world: &mut World) {
         let picked = match pick {
             renzora::core::ImportPick::Files => window::pick_and_queue_files(world),
             renzora::core::ImportPick::Folder => window::pick_and_queue_folder(world),
+            renzora::core::ImportPick::Given(paths) => window::queue_given_files(world, paths),
         };
         let has_pending = !world
             .resource::<overlay::ImportOverlayState>()

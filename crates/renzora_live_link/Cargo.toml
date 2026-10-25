@@ -1,0 +1,26 @@
+[package]
+name = "renzora_live_link"
+version = "0.1.0"
+edition = "2021"
+description = "Live link between the editor and the game Play is running: edits reach the game, the game's state shows in the editor, and tools can play it."
+
+# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# generator wires into the committed plugin list and the linker pulls straight
+# into the binary. Inert in any game not launched with `--live-link`.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+# `extract_authored`, `saveable_entities`, `assign_scene_entity_ids`: what a
+# save writes is what travels, so the two can never disagree.
+renzora_engine = { path = "../renzora_engine" }
+ron = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Screenshots, PNG only. The engine already links this version through Bevy.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[lints]
+workspace = true

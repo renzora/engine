@@ -2,7 +2,7 @@
 //! only with `scripting`) arrive here as `renzora::ScriptAction`s, the same
 //! indirection `renzora_ragdoll` and `renzora_physics` use. The observer
 //! itself lives outside the `scripting` gate because `ScriptAction` is a
-//! contract type: anything can fire one, a blueprint as much as a script.
+//! contract type: anything can fire one, an engine crate as much as a script.
 //!
 //! Every function takes a **bone name** first, looked up under the script's
 //! own entity, so a script on the character root reaches any bone of its own

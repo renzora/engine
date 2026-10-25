@@ -45,7 +45,10 @@ pub use instances::{
 pub use lights::{rehydrate_lights, rehydrate_suns};
 pub use load::{load_current_scene, load_scene, load_scene_from_string};
 pub use meshes::MeshInstanceLoadFailed;
-pub use save::{save_current_scene, save_scene, serialize_scene_to_string};
+pub use save::{
+    assign_scene_entity_ids, extract_authored, saveable_entities, save_current_scene, save_scene,
+    serialize_scene_to_string,
+};
 pub use snapshot::{snapshot_entity_subtrees, spawn_entities_from_snapshot};
 
 #[cfg(feature = "render_3d")]

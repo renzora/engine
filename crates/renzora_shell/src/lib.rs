@@ -78,7 +78,7 @@ use panel_sets::{
 };
 use panels::{apply_panel_meta, content_dispatch, seed_panel_meta};
 use play_controls::{
-    play_btn_click, track_global_scene_cameras, update_play_button, GlobalSceneHasCamera,
+    keep_btn, play_btn_click, track_global_scene_cameras, update_play_button, GlobalSceneHasCamera,
 };
 use ribbon::{
     ribbon_context_menu, ribbon_focus_rename, ribbon_interact, ribbon_rename_commit,
@@ -273,7 +273,7 @@ impl Plugin for ShellPlugin {
                 ribbon_focus_rename,
                 ribbon_rename_commit,
                 content_dispatch,
-                (play_btn_click, update_play_button, scene_switcher::scene_switcher_open, scene_switcher::switcher_interact),
+                (play_btn_click, update_play_button, keep_btn, scene_switcher::scene_switcher_open, scene_switcher::switcher_interact),
                 plugin_install::install_buttons,
                 top_menu::reset_defaults_buttons,
                 palette_btn_click,

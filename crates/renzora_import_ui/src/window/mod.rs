@@ -40,7 +40,7 @@ pub(crate) mod toast;
 pub(crate) mod tree;
 pub(crate) mod widgets;
 
-pub use interaction::{pick_and_queue_files, pick_and_queue_folder};
+pub use interaction::{pick_and_queue_files, pick_and_queue_folder, queue_given_files};
 
 pub(super) const GREEN: (u8, u8, u8) = (89, 191, 115);
 pub(super) const RED: (u8, u8, u8) = (239, 68, 68);

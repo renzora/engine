@@ -61,7 +61,6 @@ When you install an asset, Renzora puts its files in the right folder for you. A
 | Audio (music, SFX) | `audio/` |
 | Scripts | `scripts/` |
 | Scenes | `scenes/` |
-| Blueprints | `blueprints/` |
 | UI themes | `themes/` |
 
 Anything that doesn't match a known type lands in a general `assets/` folder. You don't have to memorize this — the editor sorts it out automatically.

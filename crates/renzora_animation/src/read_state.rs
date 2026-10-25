@@ -1,7 +1,7 @@
 //! Per-entity script-visible animator mirror.
 //!
 //! Populated each frame from `AnimatorState` + the loaded `AnimationClip`
-//! assets. Scripts and blueprints read this via reflection path dispatch
+//! assets. Scripts read this via reflection path dispatch
 //! (`get("AnimatorReadState.current_clip")` etc.) without depending on Bevy
 //! or Avian types.
 

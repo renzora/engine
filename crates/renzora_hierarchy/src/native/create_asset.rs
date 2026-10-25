@@ -1,5 +1,5 @@
 //! "Attach ▸ …" on the hierarchy's right-click menu: make a new project asset
-//! (script, blueprint, material, particle, UI template, scene) and — for the
+//! (script, material, particle, UI template, scene) and, for the
 //! kinds an entity can actually carry — wire it onto the entity you clicked, in
 //! the same step.
 //!
@@ -45,7 +45,6 @@ pub(crate) enum CreateKind {
     /// extension, so it attaches through the same `ScriptComponent` as Lua and
     /// the two coexist on one entity.
     RustScript,
-    Blueprint,
     Material,
     Template,
     Scene,
@@ -57,9 +56,8 @@ impl CreateKind {
     /// No particle effect for the same reason: `renzora_particles_editor`
     /// registers its `.vfx` entry, and the built-in one here wrote a Hanabi
     /// `.particle`, a format that is now only read.
-    const ALL: [CreateKind; 5] = [
+    const ALL: [CreateKind; 4] = [
         CreateKind::RustScript,
-        CreateKind::Blueprint,
         CreateKind::Material,
         CreateKind::Template,
         CreateKind::Scene,
@@ -68,7 +66,6 @@ impl CreateKind {
     fn label(self) -> String {
         match self {
             CreateKind::RustScript => renzora::lang::t_or("assets.new.rust", "Rust Script"),
-            CreateKind::Blueprint => renzora::lang::t("assets.new.blueprint"),
             CreateKind::Material => renzora::lang::t("assets.new.material"),
             CreateKind::Template => renzora::lang::t("assets.new.template"),
             CreateKind::Scene => renzora::lang::t("assets.new.bsn"),
@@ -78,7 +75,7 @@ impl CreateKind {
     /// Worth offering on a UI entity.
     ///
     /// A canvas or a widget can carry scripts and can be given a template; a
-    /// material, a particle system, a blueprint or a nested scene are things you
+    /// material, a particle system or a nested scene are things you
     /// attach to a *scene* entity, and offering them on a canvas is offering
     /// something that will not do anything.
     fn on_ui(self) -> bool {
@@ -92,7 +89,6 @@ impl CreateKind {
     fn stem(self) -> &'static str {
         match self {
             CreateKind::RustScript => "new_script",
-            CreateKind::Blueprint => "NewBlueprint",
             CreateKind::Material => "NewMaterial",
             CreateKind::Template => "NewTemplate",
             CreateKind::Scene => "NewScene",
@@ -102,7 +98,6 @@ impl CreateKind {
     fn ext(self) -> &'static str {
         match self {
             CreateKind::RustScript => "rs",
-            CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "material",
             CreateKind::Template => "html",
             CreateKind::Scene => "bsn",
@@ -121,10 +116,6 @@ impl CreateKind {
     fn content(self, boilerplate: bool) -> String {
         match self {
             CreateKind::RustScript => renzora_scripting::starter_rust(boilerplate),
-            // Not `{}`: a blueprint with no event node is a dead canvas, so new
-            // files start with On Ready + On Update already placed. Owned by
-            // the blueprint crate so both create paths write the same graph.
-            CreateKind::Blueprint => renzora_blueprint::starter_blueprint_json(),
             CreateKind::Material => "{}".to_string(),
             CreateKind::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
@@ -138,7 +129,6 @@ impl CreateKind {
     fn default_dir(self) -> &'static str {
         match self {
             CreateKind::RustScript => "scripts",
-            CreateKind::Blueprint => "blueprints",
             CreateKind::Material => "materials",
             CreateKind::Template => "ui",
             CreateKind::Scene => "scenes",
@@ -149,7 +139,6 @@ impl CreateKind {
         match self {
             CreateKind::Template => "code",
             CreateKind::RustScript => "gear-six",
-            CreateKind::Blueprint => "blueprint",
             CreateKind::Material => "palette",
             CreateKind::Scene => "film-slate",
         }
@@ -159,24 +148,18 @@ impl CreateKind {
         match self {
             // Rust's orange, so the two script kinds are one glance apart.
             CreateKind::RustScript => (222, 130, 80),
-            CreateKind::Blueprint => (100, 180, 255),
             CreateKind::Material => (0, 200, 130),
             CreateKind::Template => (230, 120, 90),
             CreateKind::Scene => (115, 191, 242),
         }
     }
 
-    /// Whether the entity can carry this asset. Scripts and blueprints both run
-    /// through `ScriptComponent`; a template goes into a canvas's
+    /// Whether the entity can carry this asset. Scripts run through
+    /// `ScriptComponent`; a template goes into a canvas's
     /// `HtmlTemplatePath` (see [`Self::attach_to`]). The rest are project files
     /// with no direct entity attachment, so their overlay omits the row.
     fn attachable(self) -> bool {
-        matches!(
-            self,
-            CreateKind::RustScript
-                | CreateKind::Blueprint
-                | CreateKind::Template
-        )
+        matches!(self, CreateKind::RustScript | CreateKind::Template)
     }
 }
 

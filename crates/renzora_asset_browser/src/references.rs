@@ -58,8 +58,6 @@ const REFERENCING_EXTENSIONS: &[&str] = &[
     "vfx",
     "html",
     "anim",
-    "blueprint",
-    "bp",
 ];
 
 /// Rewrite every file in the project that refers to the moved asset.

@@ -1,5 +1,53 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-25 07:54
+- fix(editor): an edit to something the running game keeps moving, like the player, now reaches the game instead of being overwritten
+- fix(editor): visibility stays right while the game plays with no viewport on screen, and Stop no longer drops it
+
+## 2026-10-25 07:26
+- fix(physics): a body loaded from a saved scene reports its velocity to scripts again instead of always zero
+
+## 2026-10-25 07:05
+- fix(editor): menus, dropdowns and dialogs opened over the Game panel now show above the running game
+
+## 2026-10-25 05:51
+- fix(physics): a 3D collider with no body is solid again instead of letting bodies fall through it
+
+## 2026-10-25 05:11
+- feat(editor): while the game plays, the hierarchy, inspector and viewport show it as it runs, including what it spawns and removes
+- feat(editor): Stop puts back what the game changed and keeps your edits, and Keep changes adopts the game's changes instead
+- feat(editor): saving while the game plays waits until Stop, so gameplay never lands in the scene file
+- fix(editor): a parent link is no longer sent to the running game, where it would point at the wrong entity
+- feat(mcp): game_screenshot and game_input let an agent see and play the running game
+
+## 2026-10-25 01:59
+- feat(editor): component edits made while the game is playing apply to the running game
+- feat(scene): saved entities carry a stable id, so the same entity can be found again in another process
+
+## 2026-10-25 01:51
+- fix(scripting): scripts now see this frame's physics velocities, so a script-driven character no longer falls at half speed
+- feat(physics): a Mesh collider on an imported model's root makes the whole model solid, and saves with the scene
+
+## 2026-10-24 23:29
+- fix(export): an export no longer copies the plugin SDK unless Enable modding is switched on
+
+## 2026-10-24 23:16
+- fix(scripting): Rust scripts run in Play again
+
+## 2026-10-24 22:42
+- feat(import): the import window can be opened already loaded with given files, with no file dialog
+
+## 2026-10-24 22:41
+- feat(export): the export dialog is redesigned, with presets grouped by platform, option cards, feature search, and a summary rail listing what blocks the export with a fix for each
+- fix(export): opening the export dialog on a large project no longer fails the runtime-template lookup with "the frame loop is not running"
+
+## 2026-10-24 21:41
+- refactor(editor): Blueprints visual scripting is removed: its workspace, graph editor, `.blueprint` files and export capability are gone
+
+## 2026-10-24 21:09
+- fix(animation): a stretched shape made bendable keeps its proportions and bends as a tube instead of shearing flat
+- fix(animation): moving a control puts every bone the controls own at its pose, so stale clip keys no longer show on untouched face bones
+
 ## 2026-10-24 16:02
 - feat(animation): Skin mode's Select tool picks a whole part or a box of vertices and binds it rigidly to a bone, sets its weight, or auto-weights it alone
 - fix(plugin): plugins build again (system monitor, terminal, Lua, debugger, Rapier physics, 3D text), and staging the plugin SDK no longer takes minutes

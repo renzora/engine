@@ -19,20 +19,89 @@ use renzora_ember::UiInteraction;
 /// workspace. It led the left zone until the scene switcher took that spot:
 /// the left end says what you are editing, the right end runs and ships it.
 pub(crate) fn build_play_group(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let keep = build_keep_button(commands, font);
     let play = build_play_button(commands, font);
     let group = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
                 margin: UiRect::right(Val::Px(6.0)),
                 ..default()
             },
             Name::new("play-group"),
         ))
         .id();
-    commands.entity(group).add_child(play);
+    commands.entity(group).add_children(&[keep, play]);
     group
+}
+
+/// The Keep button: adopt what the running game has changed, so Stop leaves it
+/// in the scene instead of putting it back. See `renzora_live_link_editor`.
+#[derive(Component)]
+pub(crate) struct TopBarKeepBtn;
+
+/// Shaped like the Play pill beside it, neutral where Play is coloured: it is
+/// a secondary action, and only exists while a game is connected.
+fn build_keep_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                display: Display::None,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            UiInteraction::default(),
+            TopBarKeepBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("top-bar-keep"),
+        ))
+        .id();
+    let icon = glyph(commands, "push-pin", text_primary(), 14.0);
+    commands.entity(icon).insert(PASS_THROUGH);
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t("play.keep")),
+            ui_font(font, 11.0),
+            TextColor(rgb(text_primary())),
+            PASS_THROUGH,
+        ))
+        .id();
+    commands.entity(btn).add_children(&[icon, label]);
+    btn
+}
+
+/// Keep: show while the editor mirrors a running game, and ask the live link
+/// to adopt the game's changes when clicked.
+pub(crate) fn keep_btn(
+    live: Option<Res<renzora::LivePlaySession>>,
+    mut btns: Query<(&mut Node, &mut BackgroundColor, &UiInteraction), With<TopBarKeepBtn>>,
+    mut commands: Commands,
+) {
+    for (mut node, mut fill, interaction) in &mut btns {
+        let display = if live.is_some() { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
+        let alpha = match interaction {
+            UiInteraction::Pressed => 0.28,
+            UiInteraction::Hovered => 0.18,
+            _ => 0.10,
+        };
+        let want = Color::srgba(1.0, 1.0, 1.0, alpha);
+        if fill.0 != want {
+            fill.0 = want;
+        }
+        if live.is_some() && *interaction == UiInteraction::Pressed {
+            commands.insert_resource(renzora::KeepLiveChangesRequested);
+        }
+    }
 }
 
 /// The Play / Stop button (icon + text).

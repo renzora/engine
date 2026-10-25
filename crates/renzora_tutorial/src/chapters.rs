@@ -92,7 +92,7 @@ const GETTING_STARTED_STEPS: &[Step] = &[
         kind: StepKind::SwitchLayout,
         badge: "squares-four",
         title: "Switch workspace",
-        body: "Click a workspace tab in the highlighted bar (Scene, Blueprints, Scripting…) to re-arrange the whole editor for a different kind of work.",
+        body: "Click a workspace tab in the highlighted bar (Scene, Scripting, Animation…) to re-arrange the whole editor for a different kind of work.",
         hint: Hint { icons: &["mouse-left-click", "squares-four"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {
@@ -344,7 +344,7 @@ const WORKSPACE_STEPS: &[Step] = &[
         kind: StepKind::SwitchLayout,
         badge: "squares-four",
         title: "Workspaces",
-        body: "Each tab in the highlighted bar is a whole saved layout. Scene, Blueprints, Scripting… switch between them and the panels rearrange for that kind of work.",
+        body: "Each tab in the highlighted bar is a whole saved layout. Scene, Scripting, Animation… switch between them and the panels rearrange for that kind of work.",
         hint: Hint { icons: &["mouse-left-click", "squares-four"], keys: &[], anim: HintAnim::Pulse },
     },
     Step {

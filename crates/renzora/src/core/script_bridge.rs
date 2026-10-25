@@ -49,7 +49,7 @@ pub enum PropertyValue {
 }
 
 /// Lightweight network status bridge — updated by the network crate,
-/// read by blueprint and other crates that need connection info without
+/// read by scripting and other crates that need connection info without
 /// depending on renzora_network.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct NetworkBridge {
@@ -289,7 +289,7 @@ pub struct ScriptDrawSurfaces {
     pub per_entity: std::collections::HashMap<Entity, Vec2>,
 }
 
-/// Input state resource collected each frame for scripts and blueprints.
+/// Input state resource collected each frame for scripts.
 #[derive(Resource, Default, Clone)]
 pub struct ScriptInput {
     pub keys_pressed: HashMap<KeyCode, bool>,

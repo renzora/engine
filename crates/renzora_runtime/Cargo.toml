@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -144,8 +144,8 @@ physics_2d = ["physics"]
 # lean-closure crate now deps `default-features = false`, so these are the sole
 # switches). `lua` is NOT in `default` — it rides the binary's `runtime` feature
 # so it survives `--no-default-features` (every game is at least Lua-scriptable);
-# `rhai`/`blueprint`/`script_http` are in `default` so the lean export strips
-# them unless a capability keeps them (Rhai-less desktop, no-blueprint, no-http).
+# `script_http` is in `default` so the lean export strips it unless a
+# capability keeps it (no-http).
 script_http = ["scripting", "renzora_scripting?/script_http"]
 # The scripting layer itself — the single switch for the whole engine. Every
 # crate that declares script functions keeps its `ScriptExtension` out of
@@ -214,7 +214,6 @@ terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/te
 # timeline, and every one of them is inert with nothing to render a block.
 audio = ["dep:renzora_audio", "dep:renzora_audio_backend", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
-blueprint = ["scripting", "dep:renzora_blueprint", "renzora_scripting?/blueprint"]
 # Pulls `scripting`: ember's markup runtime binds `.html` fields to script
 # values, so game UI without the scripting layer wouldn't compile. Pulls `ui` for
 # the obvious reason — markup renders through bevy_ui.
@@ -320,7 +319,7 @@ renzora_dylib = { path = "../renzora_dylib", optional = true }
 # toolbar contributions pushed into a list nothing reads — silently, in both
 # cases. See `crates/renzora_ember_dylib/src/lib.rs`.
 renzora_ember_dylib = { path = "../renzora_ember_dylib", default-features = false, optional = true }
-# `default-features = false`: the backends + blueprint + script_http are switched
+# `default-features = false`: script_http is switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # Loads the embedded + external `languages/*.toml` packs into the shared
@@ -329,7 +328,6 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false, o
 # crate and falls back to the key's English text when no pack is loaded. A game
 # shipping in one language pays for twenty otherwise.
 renzora_lang = { path = "../renzora_lang", optional = true }
-renzora_blueprint = { path = "../renzora_blueprint", optional = true }
 renzora_input = { path = "../renzora_input" }
 # OpenXR/VR boot mode — desktop only, behind the `xr` feature (see [features]).
 renzora_xr = { path = "../renzora_xr", optional = true }
@@ -418,6 +416,7 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_live_link = { path = "../renzora_live_link" }
 renzora_net = { path = "../renzora_net" }
 renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_svg = { path = "../renzora_svg" }

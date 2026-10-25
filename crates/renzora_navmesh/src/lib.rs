@@ -516,7 +516,7 @@ fn draw_agent_paths(
 // Phase 3: scripting — NavReadState mirror + ScriptAction observer
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Per-entity nav state, refreshed each frame. Scripts and blueprints read
+/// Per-entity nav state, refreshed each frame. Scripts read
 /// this via the reflect path dispatcher:
 /// - `get("NavReadState.has_path")`
 /// - `get("NavReadState.distance_to_destination")`

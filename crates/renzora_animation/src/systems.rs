@@ -183,7 +183,7 @@ pub fn auto_play_default(
 }
 
 // ============================================================================
-// Command processing: play/stop/pause/resume from scripts & blueprints
+// Command processing: play/stop/pause/resume from scripts
 // ============================================================================
 
 /// Animation command to be processed this frame.
@@ -681,87 +681,6 @@ pub fn update_state_machines(
                 state.state_time = 0.0;
             }
         }
-    }
-}
-
-// ============================================================================
-// Animation Finished Detection
-// ============================================================================
-
-/// Detect when a non-looping animation finishes and set the clip name
-/// on a reflected `BlueprintRuntimeState` component (if present).
-/// Decoupled from renzora_blueprint — uses reflection instead of direct import.
-pub fn detect_animation_finished(world: &mut World) {
-    let type_registry = world.resource::<AppTypeRegistry>().clone();
-
-    // Collect finished animations
-    let mut finished: Vec<(Entity, String)> = Vec::new();
-    {
-        let mut query = world.query::<(Entity, &AnimatorComponent, &AnimatorState)>();
-        let mut player_query = world.query::<&AnimationPlayer>();
-
-        for (entity, animator, state) in query.iter(world) {
-            if !state.initialized || state.is_paused {
-                continue;
-            }
-            let Some(ref current_clip) = state.current_clip else {
-                continue;
-            };
-            let slot = animator.get_slot(current_clip);
-            let is_looping = slot.is_none_or(|s| s.looping);
-            if is_looping {
-                continue;
-            }
-            let Some(&node_idx) = state.node_indices.get(current_clip.as_str()) else {
-                continue;
-            };
-            let Some(player_entity) = state.player_entity else {
-                continue;
-            };
-            let Ok(player) = player_query.get(world, player_entity) else {
-                continue;
-            };
-            if let Some(anim) = player.animation(node_idx) {
-                if anim.is_finished() {
-                    finished.push((entity, current_clip.clone()));
-                }
-            }
-        }
-    }
-
-    // Apply via reflection (sets BlueprintRuntimeState.anim_finished_clip if present)
-    if finished.is_empty() {
-        return;
-    }
-
-    let registry = type_registry.read();
-    let registration = registry
-        .iter()
-        .find(|r| r.type_info().type_path().ends_with("BlueprintRuntimeState"));
-    let Some(registration) = registration else {
-        return;
-    };
-    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
-        return;
-    };
-
-    for (entity, clip_name) in finished {
-        let entity_ref = world.entity(entity);
-        let Some(reflected) = reflect_component.reflect(entity_ref) else {
-            continue;
-        };
-        let Ok(mut cloned) = reflected.reflect_clone() else {
-            continue;
-        };
-        if let bevy::reflect::ReflectMut::Struct(s) = cloned.reflect_mut() {
-            if let Some(field) = s.field_mut("anim_finished_clip") {
-                if let Some(opt) = field.try_downcast_mut::<Option<String>>() {
-                    *opt = Some(clip_name);
-                }
-            }
-        }
-        let mut entity_mut = world.entity_mut(entity);
-        reflect_component.apply(&mut entity_mut, cloned.as_partial_reflect());
     }
 }
 

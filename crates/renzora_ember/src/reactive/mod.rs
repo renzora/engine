@@ -1206,7 +1206,7 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
                 // with "insertion index (is N) should be <= len (is N-1)".
                 // Whether it fires depends on the exact add/move/remove pattern
                 // of a given reconcile, so it surfaced only for specific folders
-                // (e.g. the blueprints folder's item set). `replace_children`
+                // (e.g. one asset folder's item set). `replace_children`
                 // clears the collection and re-extends it from the slice with no
                 // `place` calls, sidestepping the bug entirely.
                 if !ordered.is_empty() {

@@ -1,6 +1,7 @@
 #![allow(unused_variables, unused_assignments, dead_code)]
 
 use bevy::prelude::*;
+use renzora::physics::PhysicsSet;
 use std::path::PathBuf;
 
 use crate::command::CharacterCommandQueue;
@@ -110,6 +111,12 @@ impl Plugin for ScriptingPlugin {
                 )
                     .chain(),
             )
+            // Scripts read this frame's velocities and contacts, not last
+            // frame's. Unordered, a script that reads its body's velocity and
+            // sets it again could run before the backend wrote back the step
+            // that just ran, and every write then threw that step's gravity
+            // away: a character controller fell at about half speed.
+            .configure_sets(Update, ScriptingSet::PreScript.after(PhysicsSet::Read))
             // Pre-script systems (always run — input collection is cheap)
             .add_systems(
                 Update,
@@ -159,9 +166,9 @@ impl Plugin for ScriptingPlugin {
         // existed and nothing ever called it.
         app.add_systems(Update, evict_despawned_scripts.in_set(ScriptingSet::Cleanup));
 
-        // Bridge blueprint lifecycle/cursor ScriptActions (the interpreter only
-        // emits ScriptActions; despawn + cursor lock would otherwise be no-ops).
-        app.add_observer(handle_blueprint_lifecycle_actions);
+        // Bridge lifecycle/cursor ScriptActions (a script's generic `action()`
+        // call; despawn + cursor lock would otherwise be no-ops).
+        app.add_observer(handle_lifecycle_actions);
     }
 }
 
@@ -193,11 +200,11 @@ fn collect_script_backends(
     }
 }
 
-/// Bridge blueprint-emitted `ScriptAction`s that have no other handler:
-/// `despawn_self`, `despawn` (target by name, empty = self), and
-/// `lock_cursor`/`unlock_cursor`. Text scripts reach these via `ScriptCommand`;
-/// the blueprint interpreter can only emit `ScriptAction`s, so it routes here.
-fn handle_blueprint_lifecycle_actions(
+/// Bridge `ScriptAction`s that have no other handler: `despawn_self`,
+/// `despawn` (target by name, empty = self), and `lock_cursor`/`unlock_cursor`.
+/// Scripts usually reach these via `ScriptCommand`; one raised through the
+/// generic `action("name", ...)` call arrives as a `ScriptAction` and routes here.
+fn handle_lifecycle_actions(
     trigger: On<renzora::ScriptAction>,
     mut commands: Commands,
     names: Query<(Entity, &Name)>,
@@ -431,10 +438,9 @@ fn sync_scripts_folder(
 //
 // The component is now only ever inserted deliberately, and every path that
 // needs one creates it on demand: the inspector's Scripts entry (`add_fn` in
-// `renzora_scripting_editor`), dropping a script or blueprint file onto an
-// entity (`renzora_hierarchy::native::asset_drop`), creating a script from the
-// hierarchy's New Asset menu, saving a blueprint graph
-// (`renzora_blueprint_editor::graph_panel`), and authored game UI, which needs
+// `renzora_scripting_editor`), dropping a script file onto an entity
+// (`renzora_hierarchy::native::asset_drop`), creating a script from the
+// hierarchy's New Asset menu, and authored game UI, which needs
 // one for `<input bind="Entity.var">` to resolve against
 // (`renzora_ember::game_ui`).
 

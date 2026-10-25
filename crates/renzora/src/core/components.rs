@@ -373,6 +373,43 @@ pub struct ViewportGateHidden(pub Visibility);
 #[reflect(Component)]
 pub struct Persistent;
 
+/// A scene entity's identity across processes and across loads.
+///
+/// An `Entity` is an index into one world and means nothing in another, and a
+/// `Name` is not unique: duplicating an entity copies it. Something that must
+/// find "the same entity" in a different world needs a handle of its own, and
+/// the first such thing is the live link, which applies an edit made in the
+/// editor to the matching entity in the game that Play is running.
+///
+/// Assigned when the scene is saved (`renzora_engine::scene_io`), to every
+/// saved entity that lacks one or shares one with another, and saved with it.
+/// Play saves before it launches the game, so both processes load the same
+/// ids. Zero is never assigned; it is the value an entity has between being
+/// given the component by reflection and being given an id.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[reflect(Component, Default)]
+pub struct SceneEntityId(pub u64);
+
+impl SceneEntityId {
+    /// A fresh id, unique in practice: 64 random bits from the process's
+    /// hasher seed mixed with a counter and the clock. Not cryptographic and
+    /// not meant to be; it only has to avoid colliding within one project.
+    pub fn new_random() -> Self {
+        use std::hash::{BuildHasher, Hasher};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u64(COUNTER.fetch_add(1, Ordering::Relaxed));
+        h.write_u128(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+        );
+        Self(h.finish().max(1))
+    }
+}
+
 /// Marker component — entity is locked from editing in the hierarchy.
 #[derive(Component)]
 pub struct EditorLocked;

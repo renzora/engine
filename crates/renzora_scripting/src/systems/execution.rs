@@ -228,7 +228,7 @@ pub fn run_scripts(world: &mut World) {
         .map(|pm| !pm.is_scripts_running())
         .unwrap_or(false);
 
-    // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
+    // Note: do NOT clear the command queue here: other systems
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
 

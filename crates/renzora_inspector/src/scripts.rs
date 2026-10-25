@@ -1116,7 +1116,7 @@ fn focus_script_search(mut q: Query<&mut EmberTextInput, Added<ScriptSearch>>) {
 fn script_extensions(engine: Option<&renzora_scripting::ScriptEngine>) -> Vec<String> {
     match engine {
         Some(e) => e.script_extensions().into_iter().map(str::to_string).collect(),
-        None => ["lua", "blueprint", "bp"].iter().map(|s| s.to_string()).collect(),
+        None => ["lua", "rs"].iter().map(|s| s.to_string()).collect(),
     }
 }
 

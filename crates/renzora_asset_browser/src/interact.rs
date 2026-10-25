@@ -256,7 +256,7 @@ pub(crate) fn tile_click(
 }
 
 /// Open a non-folder asset. Editor-backed kinds (scripts, templates, materials,
-/// blueprints, particles, scenes, shaders, plain text) route to their in-editor
+/// particles, scenes, shaders, plain text) route to their in-editor
 /// editor/layout via [`crate::open_double_clicked`]; everything else (textures,
 /// audio, …) falls back to the OS default app. Deferred through `EditorCommands`
 /// because the routing needs `&mut World`.
@@ -316,7 +316,6 @@ pub(crate) fn open_action(path: &Path) -> Option<(&'static str, String)> {
     match renzora_editor_framework::doc_kind_for_path(path) {
         Some(DocTabKind::Material) => Some(("palette", renzora::lang::t("assets.open_in.material_editor"))),
         Some(DocTabKind::Particle) => Some(("sparkle", renzora::lang::t("assets.open_in.particle_editor"))),
-        Some(DocTabKind::Blueprint) => Some(("blueprint", renzora::lang::t("assets.open_in.blueprint_editor"))),
         Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
         Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
         // Without this arm a `.html` fell through to `None` and lost its

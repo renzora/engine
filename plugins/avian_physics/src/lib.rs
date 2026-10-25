@@ -46,6 +46,23 @@ impl Plugin for AvianPhysicsPlugin {
 
 renzora::plugin!(AvianPhysicsPlugin, Runtime);
 
+/// True if any ANCESTOR of `entity` carries `PhysicsBodyData`, i.e. this
+/// entity's collider should attach to that body rather than get a body of
+/// its own.
+///
+/// Both backends give a collider with no body, on itself or above it, an
+/// explicit static one: avian puts a body-less collider in its "standalone"
+/// tree, which stops nothing. In 3D that let the player fall straight through a
+/// level made solid by a Mesh collider on its imported root, which has no body
+/// because nothing in the editor asked for one.
+pub(crate) fn has_body_ancestor(
+    entity: Entity,
+    bodies: &Query<(), With<renzora::physics::PhysicsBodyData>>,
+    parents: &Query<&ChildOf>,
+) -> bool {
+    parents.iter_ancestors(entity).any(|e| bodies.contains(e))
+}
+
 /// Marker: the `ConstantForce` on this entity came from `PhysicsCommand::AddForce`
 /// and is replaced by the next frame's commands. A force anything else put there
 /// is left alone.

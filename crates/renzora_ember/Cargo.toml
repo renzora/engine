@@ -62,7 +62,7 @@ bevy_hui = { path = "../bevy_hui", optional = true }
 # `game_ui` because only the world-panel module needs it.
 uuid = { version = "1", optional = true }
 # `default-features = false`: ember uses only core scripting types — the lean
-# exporter strips the backends/blueprint/http via `renzora_runtime`'s forwarding,
+# exporter strips http via `renzora_runtime`'s forwarding,
 # which only works if no other lean-closure crate forces the defaults back on.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # Send+Sync channel for the markdown widget's image downloads (background

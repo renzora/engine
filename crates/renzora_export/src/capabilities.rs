@@ -759,22 +759,11 @@ pub const CAPABILITIES: &[Capability] = &[
         help: "The scripting layer: hooks (on_ready/on_update/…), the command queue, and the \
                script vocabularies every subsystem declares. Auto-enabled when the project \
                contains .lua files. Off strips it from the engine, ember, animation, physics, \
-               navmesh, ragdoll and localization at once. Blueprints and game UI both need it, \
-               so keeping either brings it back automatically.",
+               navmesh, ragdoll and localization at once. Game UI needs it, \
+               so keeping it brings scripting back automatically.",
         bevy_features: &[],
         runtime_features: &["scripting"],
         default_on: true,
-        group: None,
-    },
-    Capability {
-        id: "blueprint",
-        section: "systems",
-        label: "Blueprints (visual scripting)",
-        help: "The node-graph visual scripting runtime (~0.2 MiB). Auto-enabled when the \
-               project contains .blueprint/.bp graphs.",
-        bevy_features: &[],
-        runtime_features: &["blueprint"],
-        default_on: false,
         group: None,
     },
     Capability {
@@ -858,13 +847,10 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
             "dds", "jpg", "jpeg", "jpe", "webp", "basis",
             "exr", "hdr", "gif", "bmp", "tga",
         ],
-        // Visual scripting only when the project ships blueprint graphs.
-        "blueprint" => &["blueprint", "bp"],
         // The scripting layer only when the project ships scripts. Safe to decide
-        // from files alone: the two other things that need it — blueprints and
-        // ember's markup UI — enable it through Cargo (`blueprint`/`game_ui` both
-        // list `scripting`), so a project with graphs or .html UI but no .lua
-        // still gets it.
+        // from files alone: the other thing that needs it, ember's markup UI,
+        // enables it through Cargo (`game_ui` lists `scripting`), so a project
+        // with .html UI but no .lua still gets it.
         "scripting" => &["lua"],
         // The glTF loader only when the project ships models. A scene built from
         // engine primitives never touches it, and it isn't cheap: `bevy_gltf`
@@ -1132,11 +1118,11 @@ const PHYSICS_MARKERS: &[&str] = &[
 /// Scenes and prefabs first — they are what the detection is really about — plus
 /// the places a subsystem can be reached without appearing in a scene at all:
 /// scripts in either language, markup templates, and the authored assets
-/// (materials, blueprints, particle effects) that name the crate that loads them.
+/// (materials, particle effects) that name the crate that loads them.
 /// Everything else is counted by extension only, so a project full of textures
 /// and audio costs one `read_dir` per folder and no file reads.
 const SCANNED_EXTENSIONS: &[&str] = &[
-    "bsn", "ron", "lua", "rs", "html", "material", "blueprint", "bp", "particle", "anim", "animsm",
+    "bsn", "ron", "lua", "rs", "html", "material", "particle", "anim", "animsm",
 ];
 
 /// One file may not exceed this when scanned. A scene is text and stays well

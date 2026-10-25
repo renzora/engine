@@ -62,7 +62,6 @@ pub fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         // tells them apart at a glance; same family as the old sparkle.
         "vfx" => "magic-wand",
         "ply" | "gcloud" | "sog" | "ssog" => "cloud",
-        "blueprint" | "bp" => "blueprint",
         "html" => "browser",
         "toml" => "brackets-curly",
         _ => "file",
@@ -78,7 +77,6 @@ pub fn type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
     match ext.as_str() {
         "ttf" | "otf" | "woff" | "woff2" => ((140, 200, 255), "Font"),
         "material" => ((0, 200, 130), "Material"),
-        "blueprint" | "bp" => ((100, 180, 255), "Blueprint"),
         "lua" => ((120, 170, 255), "Lua Script"),
         "wgsl" | "wesl" | "glsl" | "vert" | "frag" => ((220, 120, 255), "Shader"),
         "rs" => ((230, 140, 90), "Rust Script"),

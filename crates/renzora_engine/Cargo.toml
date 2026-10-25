@@ -87,8 +87,8 @@ renzora_network = { path = "../renzora_network", optional = true }
 renzora_bsn = { path = "../renzora_bsn" }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_audio = { path = "../renzora_audio", optional = true }
-# `default-features = false`: engine uses only core scripting types; backends/
-# blueprint/http are forwarded from `renzora_runtime` (see its features). Keeping
+# `default-features = false`: engine uses only core scripting types; http is
+# forwarded from `renzora_runtime` (see its features). Keeping
 # defaults here would pin them on for every lean export.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 renzora_animation = { path = "../renzora_animation", default-features = false, optional = true }

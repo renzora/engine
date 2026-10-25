@@ -116,7 +116,7 @@ The runtime crate is statically linked / registered everywhere; the nested `edit
 
 > antialiasing, atmosphere, auto_exposure, bloom_effect, clouds, distance_fog, dof, ember, engine, environment_map, lighting, motion_blur, navmesh, night_stars, oit, physics, scripting, skybox, ssao, ssr, tonemapping, volumetric_fog, water.
 
-Some editor-only features (e.g. `renzora_hierarchy`, `renzora_inspector`, `renzora_blueprint_editor`) are standalone top-level crates rather than `/editor` subcrates — they have no runtime half at all.
+Some editor-only features (e.g. `renzora_hierarchy`, `renzora_inspector`, `renzora_asset_browser`) are standalone top-level crates rather than `/editor` subcrates: they have no runtime half at all.
 
 ## Two kinds of plugin
 

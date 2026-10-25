@@ -93,7 +93,7 @@ The **Material** panel on the left is the same values in list form, with one lab
 
 ### Comments
 
-A comment is a labelled box that groups nodes. Make one with the **Comment** toolbar button, the **Comment** entry at the top of the right-click menu, or `C` over the graph. With nodes selected it wraps them; with nothing selected it adds an empty box (at the cursor for `C` and the right-click menu, in the middle of the view for the button). Click the title to rename it, drag the box to move everything inside it, and use the corner grip to resize it. Comments are visual only and saved with the material. The blueprint and particle graphs work the same way.
+A comment is a labelled box that groups nodes. Make one with the **Comment** toolbar button, the **Comment** entry at the top of the right-click menu, or `C` over the graph. With nodes selected it wraps them; with nothing selected it adds an empty box (at the cursor for `C` and the right-click menu, in the middle of the view for the button). Click the title to rename it, drag the box to move everything inside it, and use the corner grip to resize it. Comments are visual only and saved with the material. The particle graph works the same way.
 
 ## The Surface Output node
 

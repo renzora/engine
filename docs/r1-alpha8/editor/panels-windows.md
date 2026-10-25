@@ -13,7 +13,6 @@ The tabs in the middle of the top bar are workspaces. Each one is a saved layout
 | Scene | Building and arranging your level |
 | UI | Laying out menus and HUDs |
 | Scripting | Writing code |
-| Blueprints | Node-based scripting |
 | Animation | Clips, state machines and timelines |
 | Materials | Designing surfaces with a node graph |
 | Particles | Effects |

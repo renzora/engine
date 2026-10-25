@@ -126,7 +126,7 @@ Internally the export pipeline:
 
 A dedicated-server export produces a leaner, visuals-free archive:
 
-- `pack_project_filtered(project_dir, SERVER_EXTENSIONS)` — where `SERVER_EXTENSIONS` is `ron`, `lua`, `rhai`, `blueprint`, `toml`, `json`.
+- `pack_project_filtered(project_dir, SERVER_EXTENSIONS)`, where `SERVER_EXTENSIONS` is `ron`, `bsn`, `lua`, `rhai`, `toml`, `json`.
 - `strip_for_server()` removes mesh/visual components from scene RON.
 - The result is always a standalone **`server.rpak`**. The generated launcher runs the same engine binary against it: `renzora --server --rpak server.rpak`.
 

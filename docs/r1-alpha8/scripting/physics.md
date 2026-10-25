@@ -55,7 +55,7 @@ An entity can have either or both. A `RuntimePhysics` marker is added once it is
 | **Sphere** | Sized by `radius`. Balls, projectiles. |
 | **Capsule** | `radius` + `half_height`. Characters. |
 | **Cylinder** | `radius` + `half_height`. Columns, barrels. |
-| **Mesh** | Trimesh built from the entity's `Mesh3d` once the mesh asset loads. Size fields don't apply. |
+| **Mesh** | Trimesh built from the entity's `Mesh3d` once the mesh asset loads. On an entity with no mesh of its own, such as an imported model's root, every mesh under it is merged into one trimesh, so a whole level is made solid by one component that saves with the scene. Size fields don't apply. |
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -220,7 +220,7 @@ function on_update()
 end
 ```
 
-`CollisionReadState` (`entered`, `exited`, `entered_name`, `exited_name`, `colliding`) reports the frame a contact began or ended; [Blueprints](/docs/r1-alpha8/scripting/blueprints) expose it as the `on_collision_enter` / `on_collision_exit` events.
+`CollisionReadState` (`entered`, `exited`, `entered_name`, `exited_name`, `colliding`) reports the frame a contact began or ended. A text script reads it like any other reflected component, for example `get("CollisionReadState.entered")`, and checks it each frame in `on_update`.
 
 > `grounded` and `ground_normal` are written by the kinematic slide, so they're meaningful for entities you drive with `move_controller`.
 
@@ -264,12 +264,11 @@ These appear in older docs or the internal `ScriptCommand` enum but have **no na
 - `raycast`, `raycast_down`: there is no raycast text function (cast from Rust instead, above).
 - `apply_impulse_to`, `find_entity_by_name`: no such helpers.
 - `collisions_entered`, `collisions_exited`, `active_collisions`: these counters don't exist; use the `is_colliding` global or `CollisionReadState`.
-- `on_collision`: there is **no collision lifecycle hook** for text scripts. Collision *events* (`on_collision_enter` / `on_collision_exit`) exist as [Blueprint](/docs/r1-alpha8/scripting/blueprints) nodes, and as `CollisionStarted` / `CollisionEnded` for Rust.
+- `on_collision`: there is **no collision lifecycle hook** for text scripts. Text scripts poll `CollisionReadState` (`entered` / `exited`) instead; collision *events* exist only for Rust, as `CollisionStarted` / `CollisionEnded`.
 
 ## Related
 
 - [Parkour & Traversal](/docs/r1-alpha8/scripting/parkour): a character controller that owns movement outright, adding vaults, mantles, ledge hangs, ladders, wall runs and swings on top of the same collide-and-slide primitive
 - [Ragdoll](/docs/r1-alpha8/scripting/ragdoll): skeletons built from bodies and spherical joints
 - [Scripting Overview](/docs/r1-alpha8/scripting/overview): how scripts attach and run
-- [Blueprints](/docs/r1-alpha8/scripting/blueprints): collision and physics nodes for visual scripting
 - [Physics backends](/docs/r1-alpha8/extending/physics-backends): plugging in another physics engine

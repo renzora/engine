@@ -1,5 +1,5 @@
 //! Data-driven node-graph **view** — the reusable engine behind real graph
-//! editors (material / blueprint / particle), built on the same pannable/zoomable
+//! editors (material / particle), built on the same pannable/zoomable
 //! canvas + GPU bezier cables as the [`super::node_graph`] demo, but driven by the
 //! caller's own model instead of a hardcoded scene.
 //!
@@ -1866,7 +1866,7 @@ fn ngv_comment_request(
 /// comment exactly as **C** would (around the selection, else an empty box at
 /// `canvas`, the point the menu was opened over).
 ///
-/// Shared so the material, blueprint and particle menus offer the same entry
+/// Shared so the material and particle menus offer the same entry
 /// with the same behaviour; each only has to push it into its list.
 pub fn comment_search_entry(viewport: Entity, canvas: Vec2) -> crate::widgets::SearchEntry {
     crate::widgets::SearchEntry::new(

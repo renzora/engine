@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 use renzora::console_log::*;
-use renzora::{CurrentProject, EditorCamera, HideInHierarchy, MeshInstanceData};
+use renzora::{CurrentProject, EditorCamera, HideInHierarchy, MeshInstanceData, SceneEntityId};
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicSceneBuilder;
 use std::path::Path;
@@ -52,123 +52,47 @@ pub(crate) fn restore_viewport_gated_visibility(world: &mut World) {
     }
 }
 
-/// Save specific entities to a RON file.
-pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    restore_viewport_gated_visibility(world);
+/// Give every entity in `entities` a [`SceneEntityId`] of its own.
+///
+/// An entity with no id, a zero id, or the same id as one already seen gets a
+/// fresh one. The repeat case is the common one: duplicating an entity copies
+/// its id along with everything else, and two entities answering to one id
+/// would send a live edit to whichever the other process found first.
+pub fn assign_scene_entity_ids(world: &mut World, entities: &[Entity]) {
+    let mut seen = std::collections::HashSet::new();
+    for &entity in entities {
+        let current = world.get::<SceneEntityId>(entity).map(|id| id.0).unwrap_or(0);
+        if current != 0 && seen.insert(current) {
+            continue;
+        }
+        let fresh = SceneEntityId::new_random();
+        seen.insert(fresh.0);
+        if let Ok(mut e) = world.get_entity_mut(entity) {
+            e.insert(fresh);
+        }
+    }
+}
+
+/// The authored part of `entities`: every component a save keeps, with the
+/// runtime-rebuilt ones denied and anything that cannot serialize dropped.
+///
+/// The one definition of "what a scene is made of", shared by both save paths
+/// and by the live link, which sends the editor's changes to a running game. It
+/// was two hand-kept copies in this file, which had already drifted apart: the
+/// string path never learned to drop the render-world links and shadow
+/// cascades. A third copy in the live link would have been a third way for an
+/// edit to mean something different depending on where it went.
+///
+/// `with_resources` adds the plugin-owned global resources a full scene save
+/// writes; a caller that only wants entity components passes `false`.
+pub fn extract_authored(
+    world: &mut World,
+    entities: Vec<Entity>,
+    with_resources: bool,
+) -> renzora_bsn::DynamicScene {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
-
-    let mut entities: Vec<Entity> = Vec::new();
-    let mut query = world.query_filtered::<Entity, (
-        With<Name>,
-        Without<HideInHierarchy>,
-        Without<EditorCamera>,
-        Without<bevy::input::gamepad::Gamepad>,
-        // `Persistent` entities belong to a global/autoload scene, not to this
-        // one — they were already in the world before it loaded and outlive it.
-        // Saving them would bake a copy into every scene that happened to be
-        // open, so the next load spawns two of each: two music players, two
-        // HUD roots.
-        Without<renzora::Persistent>,
-    )>();
-    for entity in query.iter(world) {
-        entities.push(entity);
-    }
-
-    // Exclude editor-chrome descendants (see `has_hidden_ancestor`): the shell
-    // tags only its root with `HideInHierarchy`, so its named child widgets would
-    // otherwise be baked into the scene and overlay the window on reload.
-    {
-        let before = entities.len();
-        entities.retain(|&entity| !has_hidden_ancestor(world, entity));
-        let excluded = before - entities.len();
-        if excluded > 0 {
-            console_info(
-                "Scene",
-                format!("Excluded {} editor-chrome entities from save", excluded),
-            );
-        }
-    }
-
-    // Exclude descendants of SceneInstance entities — those come from the
-    // referenced source scene file and live there, not here. Only the instance
-    // root (with its transform + any host overrides) is saved in the host.
-    {
-        let instance_roots: Vec<Entity> = {
-            let mut q = world.query_filtered::<Entity, With<renzora::SceneInstance>>();
-            q.iter(world).collect()
-        };
-        if !instance_roots.is_empty() {
-            let before = entities.len();
-            entities.retain(|&entity| {
-                let mut cursor = entity;
-                while let Some(child_of) = world.get::<ChildOf>(cursor) {
-                    let parent = child_of.parent();
-                    if instance_roots.contains(&parent) {
-                        return false; // descendant of a scene instance — skip
-                    }
-                    cursor = parent;
-                }
-                true
-            });
-            let excluded = before - entities.len();
-            if excluded > 0 {
-                console_info(
-                    "Scene",
-                    format!(
-                        "Excluded {} nested-scene descendant entities from save",
-                        excluded
-                    ),
-                );
-            }
-        }
-    }
-
-    // Exclude descendants of MeshInstanceData entities — those are spawned GLTF
-    // children that get regenerated by rehydration. Only the parent (which holds
-    // the model_path) should be saved.
-    {
-        let mesh_instance_entities: Vec<Entity> = {
-            let mut q = world.query_filtered::<Entity, With<MeshInstanceData>>();
-            q.iter(world).collect()
-        };
-        if !mesh_instance_entities.is_empty() {
-            let before = entities.len();
-            entities.retain(|&entity| {
-                // Walk up the parent chain; if we hit a MeshInstanceData entity
-                // and it's not *this* entity, exclude it.
-                let mut cursor = entity;
-                while let Some(child_of) = world.get::<ChildOf>(cursor) {
-                    let parent = child_of.parent();
-                    if mesh_instance_entities.contains(&parent) {
-                        return false; // descendant of a mesh instance — skip
-                    }
-                    cursor = parent;
-                }
-                true
-            });
-            let excluded = before - entities.len();
-            if excluded > 0 {
-                console_info(
-                    "Scene",
-                    format!("Excluded {} GLTF descendant entities from save", excluded),
-                );
-            }
-        }
-    }
-
-    if entities.is_empty() {
-        let content = "(entities: {}, resources: {})";
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, content)?;
-        console_info("Scene", format!("Saved empty scene to {}", path.display()));
-        info!("Saved empty scene to {}", path.display());
-        return Ok(());
-    }
-
     let physics = PhysicsFilter::new(world);
-    let mut scene = DynamicSceneBuilder::from_world(world)
+    let mut builder = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
         .deny_terrain_material()
@@ -189,67 +113,148 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_animation_state()
         // Networking: replication bookkeeping is runtime-only.
         .deny_network_components()
-        .extract_entities(entities.into_iter())
-        // Plugin-owned globals. Opt-in per call site, because `deny_all_resources`
-        // above cannot express this — it filters by `TypeId`, which a
+        .extract_entities(entities.into_iter());
+    if with_resources {
+        // Plugin-owned globals. Opt-in, because `deny_all_resources` above
+        // cannot express this — it filters by `TypeId`, which a
         // layout-registered type does not have. A full scene save wants them; a
         // subtree snapshot or a prefab does not, and neither calls this.
-        .extract_raw_resources()
-        .build();
+        builder = builder.extract_raw_resources();
+    }
+    let mut scene = builder.build();
 
     // Strip components that can't be serialized or are editor-only.
-    {
-        let registry = type_registry.read();
-        for entity in &mut scene.entities {
-            let id = entity.entity;
-            entity.components.retain(|component| {
-                // Filter editor-only types by name (not available as deps in runtime)
-                let type_name = component.reflect_type_path();
-                // Legacy: `bevy_mod_outline` was removed (selection highlight is
-                // now the bounding-box gizmo only). Kept as a cheap string check so
-                // a scene saved before that still loads without unknown-type noise.
-                if type_name.starts_with("bevy_mod_outline::") {
-                    return false;
-                }
-                // A physics backend's own components, and generated physics
-                // data: see `physics_filter`.
-                if !physics.keep(id, type_name) {
-                    return false;
-                }
-                // Gaussian-splat runtime components (CloudSettings, selection
-                // markers) are resolved on load from the serializable
-                // renzora::GaussianSplat by the renzora_gaussian_splatting
-                // plugin's sync system. Persisting them duplicates that state
-                // and makes scenes warn on hosts running without the plugin.
-                if type_name.starts_with("bevy_gaussian_splatting::") {
-                    return false;
-                }
-                // Transient render-world links + per-frame computed data that
-                // 0.19 made reflectable, so they now leak into saves. `RenderEntity`
-                // is a stale render-world id; the `Cascades*` blobs are recomputed
-                // shadow matrices each frame (they're what bloated this file to
-                // ~85 KB); `InheritedVisibility` is derived from `Visibility`
-                // (`ViewVisibility` is already denied above). All are re-added at
-                // runtime, so dropping them is lossless.
-                if matches!(
-                    type_name,
-                    "bevy_render::sync_world::RenderEntity"
-                        | "bevy_light::cascade::Cascades"
-                        | "bevy_camera::primitives::CascadesFrusta"
-                        | "bevy_camera::visibility::CascadesVisibleEntities"
-                        | "bevy_camera::visibility::InheritedVisibility"
-                ) {
-                    return false;
-                }
-                let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
-                    component.as_partial_reflect(),
-                    &registry,
-                );
-                // Try serializing to a throwaway RON value
-                ron::ser::to_string(&serializer).is_ok()
-            });
-        }
+    let registry = type_registry.read();
+    for entity in &mut scene.entities {
+        let id = entity.entity;
+        entity.components.retain(|component| {
+            let type_name = component.reflect_type_path();
+            // Legacy: `bevy_mod_outline` was removed (selection highlight is
+            // now the bounding-box gizmo only). Kept as a cheap string check so
+            // a scene saved before that still loads without unknown-type noise.
+            if type_name.starts_with("bevy_mod_outline::") {
+                return false;
+            }
+            // A physics backend's own components, and generated physics
+            // data: see `physics_filter`.
+            if !physics.keep(id, type_name) {
+                return false;
+            }
+            // Gaussian-splat runtime components (CloudSettings, selection
+            // markers) are resolved on load from the serializable
+            // renzora::GaussianSplat by the renzora_gaussian_splatting
+            // plugin's sync system. Persisting them duplicates that state
+            // and makes scenes warn on hosts running without the plugin.
+            if type_name.starts_with("bevy_gaussian_splatting::") {
+                return false;
+            }
+            // Transient render-world links + per-frame computed data that
+            // 0.19 made reflectable, so they now leak into saves. `RenderEntity`
+            // is a stale render-world id; the `Cascades*` blobs are recomputed
+            // shadow matrices each frame (they're what bloated this file to
+            // ~85 KB); `InheritedVisibility` is derived from `Visibility`
+            // (`ViewVisibility` is already denied above). All are re-added at
+            // runtime, so dropping them is lossless.
+            if matches!(
+                type_name,
+                "bevy_render::sync_world::RenderEntity"
+                    | "bevy_light::cascade::Cascades"
+                    | "bevy_camera::primitives::CascadesFrusta"
+                    | "bevy_camera::visibility::CascadesVisibleEntities"
+                    | "bevy_camera::visibility::InheritedVisibility"
+            ) {
+                return false;
+            }
+            let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
+                component.as_partial_reflect(),
+                &registry,
+            );
+            // Try serializing to a throwaway RON value
+            ron::ser::to_string(&serializer).is_ok()
+        });
     }
+    drop(registry);
+    scene
+}
+
+/// The entities a save of this world would write: named, and not editor
+/// chrome, an autoload's, or the generated insides of a model or a nested
+/// scene.
+///
+/// The one answer to "which entities are the scene", shared by [`save_scene`]
+/// and by the live link, which uses it to notice an entity that has joined the
+/// scene since the last look (a bullet the game spawned, a prop added in the
+/// editor during Play) so it can be copied to the other process.
+pub fn saveable_entities(world: &mut World) -> Vec<Entity> {
+    let mut query = world.query_filtered::<Entity, (
+        With<Name>,
+        Without<HideInHierarchy>,
+        Without<EditorCamera>,
+        Without<bevy::input::gamepad::Gamepad>,
+        // `Persistent` entities belong to a global/autoload scene, not to this
+        // one — they were already in the world before it loaded and outlive it.
+        // Saving them would bake a copy into every scene that happened to be
+        // open, so the next load spawns two of each: two music players, two
+        // HUD roots.
+        Without<renzora::Persistent>,
+    )>();
+    let mut entities: Vec<Entity> = query.iter(world).collect();
+
+    // Exclude editor-chrome descendants (see `has_hidden_ancestor`): the shell
+    // tags only its root with `HideInHierarchy`, so its named child widgets would
+    // otherwise be baked into the scene and overlay the window on reload.
+    entities.retain(|&entity| !has_hidden_ancestor(world, entity));
+
+    // Exclude descendants of SceneInstance entities — those come from the
+    // referenced source scene file and live there, not here. Only the instance
+    // root (with its transform + any host overrides) is saved in the host.
+    //
+    // And descendants of MeshInstanceData entities — those are spawned GLTF
+    // children that get regenerated by rehydration. Only the parent (which
+    // holds the model_path) should be saved.
+    let generated_roots: std::collections::HashSet<Entity> = {
+        let mut q = world.query_filtered::<Entity, Or<(
+            With<renzora::SceneInstance>,
+            With<MeshInstanceData>,
+        )>>();
+        q.iter(world).collect()
+    };
+    if !generated_roots.is_empty() {
+        entities.retain(|&entity| {
+            let mut cursor = entity;
+            while let Some(child_of) = world.get::<ChildOf>(cursor) {
+                let parent = child_of.parent();
+                if generated_roots.contains(&parent) {
+                    return false;
+                }
+                cursor = parent;
+            }
+            true
+        });
+    }
+    entities
+}
+
+/// Save specific entities to a RON file.
+pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    restore_viewport_gated_visibility(world);
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+
+    let entities = saveable_entities(world);
+
+    if entities.is_empty() {
+        let content = "(entities: {}, resources: {})";
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content)?;
+        console_info("Scene", format!("Saved empty scene to {}", path.display()));
+        info!("Saved empty scene to {}", path.display());
+        return Ok(());
+    }
+
+    assign_scene_entity_ids(world, &entities);
+    let scene = extract_authored(world, entities, true);
 
     let registry = type_registry.read();
     let serialized = BsnSerializer
@@ -328,65 +333,7 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         return Ok("(entities: {}, resources: {})".to_string());
     }
 
-    let physics = PhysicsFilter::new(world);
-    let mut scene = DynamicSceneBuilder::from_world(world)
-        .deny_all_resources()
-        .deny_render_3d_materials()
-        .deny_terrain_material()
-        .deny_component::<Camera3d>()
-        .deny_component::<Camera>()
-        // Bevy UI camera-target plumbing — see `DenyUiCameraTargets`.
-        .deny_ui_camera_targets()
-        .deny_component::<ViewVisibility>()
-        .deny_component::<Children>()
-        .deny_component::<bevy::transform::components::TransformTreeChanged>()
-        .deny_component::<bevy::camera::primitives::Aabb>()
-        // Runtime mirror of the camera's projection, rebuilt every frame.
-        .deny_component::<crate::camera_script::CameraReadState>()
-        .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
-        .deny_component::<bevy::input::gamepad::Gamepad>()
-        .deny_component::<bevy::input::gamepad::GamepadSettings>()
-        // Animation runtime state — ephemeral, must rebuild on load.
-        .deny_animation_state()
-        .deny_network_components()
-        .extract_entities(entities.into_iter())
-        // Plugin-owned globals. Opt-in per call site, because `deny_all_resources`
-        // above cannot express this — it filters by `TypeId`, which a
-        // layout-registered type does not have. A full scene save wants them; a
-        // subtree snapshot or a prefab does not, and neither calls this.
-        .extract_raw_resources()
-        .build();
-
-    // Strip components that can't be serialized or are editor-only.
-    {
-        let registry = type_registry.read();
-        for entity in &mut scene.entities {
-            let id = entity.entity;
-            entity.components.retain(|component| {
-                let type_name = component.reflect_type_path();
-                if type_name.starts_with("bevy_mod_outline::") {
-                    return false;
-                }
-                // Same physics filter as `save_scene`.
-                if !physics.keep(id, type_name) {
-                    return false;
-                }
-                // Gaussian-splat runtime components (CloudSettings, selection
-                // markers) are resolved on load from the serializable
-                // renzora::GaussianSplat by the renzora_gaussian_splatting
-                // plugin's sync system. Persisting them duplicates that state
-                // and makes scenes warn on hosts running without the plugin.
-                if type_name.starts_with("bevy_gaussian_splatting::") {
-                    return false;
-                }
-                let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
-                    component.as_partial_reflect(),
-                    &registry,
-                );
-                ron::ser::to_string(&serializer).is_ok()
-            });
-        }
-    }
+    let scene = extract_authored(world, entities, true);
 
     let registry = type_registry.read();
     let serialized = BsnSerializer
@@ -398,6 +345,12 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
 
 /// Save the current project's main scene.
 pub fn save_current_scene(world: &mut World) {
+    // See `renzora::LivePlaySession`: while the editor mirrors a running game,
+    // its world is not the level.
+    if let Some(mut live) = world.get_resource_mut::<renzora::LivePlaySession>() {
+        live.pending_save = true;
+        return;
+    }
     let Some(project) = world.get_resource::<CurrentProject>() else {
         warn!("No project open — cannot save scene");
         return;

@@ -545,7 +545,7 @@ pub(crate) fn hierarchy_vis_toggle(
     }
 }
 
-/// Asset badge click → open the entity's script / blueprint / material in its
+/// Asset badge click → open the entity's script / material in its
 /// editor. The actual path resolution + tab routing runs as a deferred command
 /// (needs `&mut World`), via [`open_entity_asset`].
 pub(crate) fn hierarchy_badge_click(
@@ -592,32 +592,22 @@ fn open_entity_asset(world: &mut World, entity: Entity, kind: BadgeKind) {
             let abs = resolve(&rel, world);
             open_asset_tab(world, &abs, DocTabKind::Material);
         }
-        BadgeKind::Script | BadgeKind::Blueprint => {
-            let want_blueprint = matches!(kind, BadgeKind::Blueprint);
-            // First entry whose blueprint-ness matches the badge and that has a
-            // backing file (a registered `script_id` has no file to open).
+        BadgeKind::Script => {
+            // First entry with a backing file (a registered `script_id` has no
+            // file to open).
             let rel = {
                 let Some(sc) = world.get::<renzora_scripting::ScriptComponent>(entity) else {
                     return;
                 };
-                sc.scripts.iter().find_map(|e| {
-                    let p = e.script_path.as_ref()?;
-                    let is_bp = p
-                        .extension()
-                        .is_some_and(|x| x.eq_ignore_ascii_case("blueprint"));
-                    (is_bp == want_blueprint).then(|| p.to_string_lossy().replace('\\', "/"))
-                })
+                sc.scripts
+                    .iter()
+                    .find_map(|e| e.script_path.as_ref().map(|p| p.to_string_lossy().replace('\\', "/")))
             };
             let Some(rel) = rel else {
                 return;
             };
             let abs = resolve(&rel, world);
-            let doc_kind = if want_blueprint {
-                DocTabKind::Blueprint
-            } else {
-                DocTabKind::Script
-            };
-            open_asset_tab(world, &abs, doc_kind);
+            open_asset_tab(world, &abs, DocTabKind::Script);
         }
     }
 }

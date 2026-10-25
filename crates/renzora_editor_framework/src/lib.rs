@@ -1043,9 +1043,6 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
     if name.ends_with(".particle") || name.ends_with(".vfx") {
         return Some(DocTabKind::Particle);
     }
-    if name.ends_with(".blueprint") || name.ends_with(".bp") {
-        return Some(DocTabKind::Blueprint);
-    }
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
@@ -1059,7 +1056,7 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
 
 /// On release of a *detached* asset drag whose cursor is over an
 /// [`EditorDropZone`], open the dropped asset in its visual editor
-/// (material / particle / blueprint). Script/shader drops are handled by the
+/// (material / particle). Script/shader drops are handled by the
 /// code editor's own drop target, so they're ignored here.
 fn editor_panel_drop(
     mouse: Res<ButtonInput<MouseButton>>,
@@ -1076,7 +1073,7 @@ fn editor_panel_drop(
         return;
     }
     let Some(kind) = doc_kind_for_path(&payload.path) else { return };
-    if !matches!(kind, DocTabKind::Material | DocTabKind::Particle | DocTabKind::Blueprint) {
+    if !matches!(kind, DocTabKind::Material | DocTabKind::Particle) {
         return;
     }
     if !zones.iter().any(|r| r.cursor_over) {

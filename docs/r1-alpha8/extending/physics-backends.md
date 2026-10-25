@@ -32,7 +32,7 @@ avian (`renzora::avian3d` is gone); a plugin that wants physics uses
 
 | | |
 |---|---|
-| **The engine** (`renzora_physics` + `renzora::physics`) | the components scenes save, routing each entity to the 2D or 3D world, building collider geometry (including reading mesh assets), script actions, the read-back state scripts and blueprints see, collision events, world settings, collide-and-slide, and the scene queries particles use |
+| **The engine** (`renzora_physics` + `renzora::physics`) | the components scenes save, routing each entity to the 2D or 3D world, building collider geometry (including reading mesh assets), script actions, the read-back state scripts see, collision events, world settings, collide-and-slide, and the scene queries particles use |
 | **The backend** | bodies, colliders, joints, the solver and its clock, contacts, and answering casts and overlaps |
 
 A backend never reads a mesh asset, never decides what a cylinder means in 2D,
@@ -125,7 +125,7 @@ a late script miss the next step.
 
 ### Commands and settings
 
-Scripts, blueprints and engine crates push `PhysicsCommand`s into the
+Scripts and engine crates push `PhysicsCommand`s into the
 `PhysicsCommands` resource. Every backend reads the queue and acts on the
 entities in its own world; the engine empties it straight after.
 

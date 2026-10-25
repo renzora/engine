@@ -49,6 +49,8 @@ A script does nothing while you are arranging the scene. It runs in the game you
 
 That last one is how you test a single script without running the whole game.
 
+**Play** runs the game as a separate process. It loads the libraries the editor already built for your scripts, so nothing compiles a second time; save a script before pressing Play and the game gets the new build.
+
 ## Recompiling
 
 Saving rebuilds the script. The compile runs off the main thread, so the editor does not freeze.

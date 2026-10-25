@@ -203,7 +203,7 @@ impl Plugin for AudioPlugin {
                 .add_systems(Update, timeline_scheduler::cache_clip_durations);
 
             // Consume audio ScriptActions (play_sound/play_music/etc.) emitted by
-            // scripts and blueprints, forwarding them to the command queue.
+            // scripts, forwarding them to the command queue.
             _app.add_observer(crate::script_actions::handle_audio_script_actions);
         }
     }

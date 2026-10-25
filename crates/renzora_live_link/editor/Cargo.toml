@@ -1,0 +1,19 @@
+[package]
+name = "renzora_live_link_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Live link, editor side: mirrors the game Play is running into the editor, sends edits to it, and puts the scene back when it stops. Installed only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false }
+# Snapshots, for putting back entities the game despawned.
+renzora_engine = { path = "../../renzora_engine" }
+renzora_live_link = { path = ".." }
+serde_json = "1"
+
+[dev-dependencies]
+ron = "0.8"
+
+[lints]
+workspace = true

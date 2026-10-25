@@ -1253,7 +1253,7 @@ pub struct EditorOpenTab {
     /// Project-relative path of the open document (e.g. `"scenes/main.bsn"`).
     pub path: String,
     /// Persisted tab-kind name (`"scene"`, `"material"`, `"particle"`,
-    /// `"blueprint"`, `"script"`, `"shader"`, `"other"`). Kept as a string so
+    /// `"script"`, `"shader"`, `"other"`). Kept as a string so
     /// a config written by a newer editor with extra kinds still parses here;
     /// unknown names degrade to a plain tab instead of failing the load.
     #[serde(default)]

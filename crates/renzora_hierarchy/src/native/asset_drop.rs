@@ -1,4 +1,4 @@
-//! Drag a script, blueprint or material from the asset browser onto a *row* in
+//! Drag a script or material from the asset browser onto a *row* in
 //! the hierarchy → attach it to that entity.
 //!
 //! The sibling [`super::scene_drop`] handles a scene dropped anywhere on the
@@ -14,8 +14,7 @@
 //!
 //! What lands where mirrors the badges the row already draws (see
 //! `components::BadgeKind`), so a drop makes its own badge appear:
-//! scripts *and* blueprints ride `ScriptComponent` (the scripting backend
-//! compiles a `.blueprint` to Lua on load), and materials are a `MaterialRef`.
+//! scripts ride `ScriptComponent`, and materials are a `MaterialRef`.
 
 use std::path::PathBuf;
 
@@ -36,7 +35,6 @@ use super::components::{HierPinClick, HierRowArea};
 use super::scene_drop::HierRoot;
 
 const SCRIPT_EXTENSIONS: &[&str] = &["lua"];
-const BLUEPRINT_EXTENSIONS: &[&str] = &["blueprint", "bp"];
 /// `.wgsl` and `.wesl` too: the resolver builds a code shader material from one.
 const MATERIAL_EXTENSIONS: &[&str] = &["material", "wgsl", "wesl"];
 
@@ -44,7 +42,6 @@ const MATERIAL_EXTENSIONS: &[&str] = &["material", "wgsl", "wesl"];
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AttachKind {
     Script,
-    Blueprint,
     Material,
 }
 
@@ -52,7 +49,6 @@ impl AttachKind {
     fn extensions(self) -> &'static [&'static str] {
         match self {
             AttachKind::Script => SCRIPT_EXTENSIONS,
-            AttachKind::Blueprint => BLUEPRINT_EXTENSIONS,
             AttachKind::Material => MATERIAL_EXTENSIONS,
         }
     }
@@ -61,7 +57,6 @@ impl AttachKind {
     fn undo_label(self) -> &'static str {
         match self {
             AttachKind::Script => "Attach Script",
-            AttachKind::Blueprint => "Attach Blueprint",
             AttachKind::Material => "Assign Material",
         }
     }
@@ -69,7 +64,6 @@ impl AttachKind {
     fn toast_key(self) -> &'static str {
         match self {
             AttachKind::Script => "hierarchy.drop.attached_script",
-            AttachKind::Blueprint => "hierarchy.drop.attached_blueprint",
             AttachKind::Material => "hierarchy.drop.applied_material",
         }
     }
@@ -101,13 +95,9 @@ impl ArmedHierAssetDrop {
 /// the kind, and a mixed multi-select then contributes only its files of that
 /// same kind rather than doing two unrelated things in one gesture.
 fn classify(payload: &AssetDragPayload) -> Option<AttachKind> {
-    [
-        AttachKind::Script,
-        AttachKind::Blueprint,
-        AttachKind::Material,
-    ]
-    .into_iter()
-    .find(|k| payload.matches_extensions(k.extensions()))
+    [AttachKind::Script, AttachKind::Material]
+        .into_iter()
+        .find(|k| payload.matches_extensions(k.extensions()))
 }
 
 fn has_extension(path: &std::path::Path, exts: &[&str]) -> bool {
@@ -285,7 +275,7 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
     };
 
     let applied = match kind {
-        AttachKind::Script | AttachKind::Blueprint => attach_scripts(world, target, kind, &rel),
+        AttachKind::Script => attach_scripts(world, target, kind, &rel),
         AttachKind::Material => match MaterialTarget::of_file(&paths[0]) {
             Some(material) => assign_material(world, target, &rel[0], material),
             None if renzora::is_effect_file(&paths[0]) => add_effect(world, target, &rel[0]),

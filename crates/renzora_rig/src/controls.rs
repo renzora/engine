@@ -300,6 +300,14 @@ pub fn mix(set: &ControlSet, values: &[(&str, f32)], tuner: &Tuner) -> Mixed {
     out
 }
 
+/// Every control's value in panel order: the touched value where `touched`
+/// has one, else the control's default. What the editor mixes, so every bone
+/// any control moves is posed (see the editor's `rig::controls::apply`), and
+/// rotations always compose in the same order.
+pub fn full_values<'a>(set: &'a ControlSet, touched: &dyn Fn(&str) -> Option<f32>) -> Vec<(&'a str, f32)> {
+    set.controls.iter().map(|c| (c.name.as_str(), touched(&c.name).unwrap_or(c.default))).collect()
+}
+
 fn bone_entry<'a>(out: &'a mut Mixed, bone: &str) -> &'a mut BoneMix {
     let i = match out.bones.iter().position(|b| b.bone == bone) {
         Some(i) => i,
@@ -449,6 +457,48 @@ mod tests {
             assert!(m.rotation.abs_diff_eq(q, 1e-5) || m.rotation.abs_diff_eq(-q, 1e-5), "{b}: {:?} vs {q:?}", m.rotation);
             assert!(m.translation.abs_diff_eq(t, 1e-6), "{b}: {:?} vs {t:?}", m.translation);
         }
+    }
+
+    /// The face preset on a head whose lids were measured (with a push), as
+    /// the editor mixes it: with every control at zero, or only the jaw
+    /// moved, both lower lids (and every other lid) sit exactly at rest, and
+    /// they are in the mix so the editor writes rest over whatever the clip
+    /// had them at.
+    #[test]
+    fn untouched_lids_stay_at_rest_under_the_face_preset() {
+        let scale = 0.065;
+        let preset = face_preset(scale);
+        let tuned = |b: &str| match b {
+            names::LID_UPPER_L | names::LID_UPPER_R => Some(LidTuning { degrees: 27.0, push: 0.139 }),
+            names::LID_LOWER_L | names::LID_LOWER_R => Some(LidTuning { degrees: 15.0, push: 0.139 }),
+            _ => None,
+        };
+        let tuner = Tuner { lid: &tuned, face_scale: scale };
+        let lids = [names::LID_UPPER_L, names::LID_UPPER_R, names::LID_LOWER_L, names::LID_LOWER_R];
+        let at_rest = |m: &Mixed, label: &str| {
+            for lid in lids {
+                let b = bone(m, lid);
+                assert!(b.rotation.abs_diff_eq(Quat::IDENTITY, 1e-6), "{label}: {lid} turned {:?}", b.rotation);
+                assert_eq!(b.translation, Vec3::ZERO, "{label}: {lid} moved");
+                assert_eq!(b.scale, Vec3::ZERO, "{label}: {lid} scaled");
+            }
+        };
+        let zero = mix(&preset, &full_values(&preset, &|_| None), &tuner);
+        at_rest(&zero, "all at zero");
+        for b in &zero.bones {
+            assert!(b.rotation.abs_diff_eq(Quat::IDENTITY, 1e-6) && b.translation == Vec3::ZERO, "{} not at rest", b.bone);
+        }
+        let jaw = full_values(&preset, &|n| (n == "Jaw Open").then_some(0.35));
+        let jaw_brows = full_values(&preset, &|n| match n {
+            "Jaw Open" => Some(0.35),
+            "Brows Up" => Some(0.6),
+            _ => None,
+        });
+        at_rest(&mix(&preset, &jaw, &tuner), "jaw only");
+        at_rest(&mix(&preset, &jaw_brows, &tuner), "jaw and brows");
+        // Smile's lower-lid lift and the blinks still move them when asked.
+        let smile = mix(&preset, &full_values(&preset, &|n| (n == "Smile").then_some(1.0)), &tuner);
+        assert!(bone(&smile, names::LID_LOWER_L).rotation.angle_between(Quat::IDENTITY) > 0.05);
     }
 
     #[test]

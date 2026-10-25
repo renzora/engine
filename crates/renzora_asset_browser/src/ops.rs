@@ -261,7 +261,7 @@ pub(crate) fn current_folder(w: &Rx) -> Option<PathBuf> {
 pub(crate) fn folder_color(name: &str) -> (u8, u8, u8) {
     match name.to_lowercase().as_str() {
         "assets" => (255, 210, 100),
-        "scenes" | "blueprints" => (100, 180, 255),
+        "scenes" => (100, 180, 255),
         "scripts" => (130, 230, 180),
         "materials" => (255, 130, 200),
         "textures" | "images" => (150, 230, 130),

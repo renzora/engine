@@ -39,7 +39,6 @@ The tabs in the middle of the top bar are workspaces. Each one is a layout tuned
 | Scene | Building and arranging your level. This is the default. |
 | UI | Laying out menus and HUDs. |
 | Scripting | Writing code. |
-| Blueprints | Node-based scripting. |
 | Animation | Clips, state machines and timelines. |
 | Materials | Designing surfaces with a node graph. |
 | Particles | Fire, smoke, sparks and other effects. |

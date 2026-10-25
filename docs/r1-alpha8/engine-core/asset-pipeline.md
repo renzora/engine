@@ -491,6 +491,16 @@ files are chosen, what happens next depends on what was chosen:
 
 Cancelling an empty picker leaves the window closed.
 
+**Opening it from code, with no picker.** A caller that already knows the files
+inserts `ImportRequested(ImportPick::Given(paths))`, optionally with
+`ImportTargetDir` for the starting destination. The overlay then opens exactly
+as it does after a pick, loaded with those files and already converting them,
+and the import is reviewed and committed through the same Import button. This
+is what the MCP server's `import_model` does for files outside the project: a
+native dialog blocks the main thread until a person answers it, and an agent
+driving the editor cannot. A folder among the paths is walked like a dropped
+one.
+
 OS dialogs can't pick files and folders in one shot. To import a whole directory,
 use **Add folder** on the Files tab or **drag a folder** onto the asset
 browser — both expand through the same detector, **preserve the source folder
@@ -1051,7 +1061,6 @@ Which extensions count as an image is one list, `renzora::IMAGE_EXTENSIONS` in t
 |---|---|
 | `.ron` | Scene (`DynamicScene` as RON) |
 | `.material` | JSON-serialized `MaterialGraph` (legacy `.material_instance` / `.material_bp` still read) |
-| `.blueprint` (alias `.bp`) | JSON-serialized `BlueprintGraph` (visual scripting) |
 | `.vfx` | RON particle effect (`renzora_particles`) |
 | `.particle` | RON effect in the retired Hanabi format; loads as a `.vfx` through `renzora_particles::legacy`, and the editor converts it to one on project open |
 | `.wgsl` / `.glsl` / `.vert` / `.frag` | Shader source |

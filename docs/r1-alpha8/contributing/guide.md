@@ -86,7 +86,7 @@ Use default `rustfmt`. Run `cargo fmt` before committing, and don't hand-format 
 
 ### Naming
 
-- **Types:** `PascalCase`: `BlueprintGraph`, `ScriptComponent`, `SolariGi`, `DockTree`.
+- **Types:** `PascalCase`: `MaterialGraph`, `ScriptComponent`, `SolariGi`, `DockTree`.
 - **Functions / variables:** `snake_case` — `spawn_entity`, `handle_input`.
 - **Constants:** `SCREAMING_SNAKE_CASE`.
 - **Modules:** `snake_case`, matching the file name.
@@ -117,10 +117,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn blueprint_graph_roundtrips() {
+    fn material_graph_roundtrips() {
         let original = sample_graph();
         let serialized = ron::to_string(&original).unwrap();
-        let restored: BlueprintGraph = ron::from_str(&serialized).unwrap();
+        let restored: MaterialGraph = ron::from_str(&serialized).unwrap();
         assert_eq!(original, restored);
     }
 }

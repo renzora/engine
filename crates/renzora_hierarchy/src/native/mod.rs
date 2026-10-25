@@ -211,7 +211,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             ),
             (
                 // Scene drops land at the scene root wherever they hit the
-                // panel; script/blueprint/material drops target the row under
+                // panel; script/material drops target the row under
                 // the cursor. Grouped so the tuple stays under bevy's arity cap.
                 scene_drop::arm_hier_scene_drop,
                 scene_drop::commit_hier_scene_drop,

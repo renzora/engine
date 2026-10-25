@@ -34,15 +34,14 @@ pub(crate) struct HierLockToggle {
 }
 
 /// Which authored asset an [`HierAssetBadge`] points at — selects the editor a
-/// click opens (code editor / blueprint graph / material graph).
+/// click opens (code editor / material graph).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BadgeKind {
     Script,
-    Blueprint,
     Material,
 }
 
-/// A clickable asset badge (script / blueprint / material) at a row's right
+/// A clickable asset badge (script / material) at a row's right
 /// edge, just left of the eye/lock toggles. Clicking it opens that asset in its
 /// editor for the badge's entity.
 #[derive(Component)]

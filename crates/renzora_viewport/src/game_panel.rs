@@ -13,9 +13,14 @@
 //! frame. Copying frames across would need shared GPU textures per platform,
 //! forwarding every input event, and an extra frame of latency.
 //!
-//! **One known limit.** A native window is drawn above everything the editor
-//! draws in that area, so a menu or popup the editor opens over the Game
-//! panel is hidden behind the running game.
+//! **Editor popups over the game.** A native window is drawn above everything
+//! the editor draws in its area, so a menu, dropdown or dialog opened over the
+//! Game panel used to be hidden behind the running game, or half drawn through
+//! it. Every floating surface the editor shows carries `OverlaySurface` or
+//! `ModalSurface`, so the rectangles of the visible ones are cut out of the
+//! game window's region and the editor shows through the holes. A modal's
+//! surface is its full-window backdrop, so the game is hidden while one is up,
+//! which matches the modal dimming everything else.
 
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
@@ -25,6 +30,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::{rgb, text_muted};
+use renzora_ember::widgets::{ModalSurface, OverlaySurface};
 
 use crate::external_runtime::{ExternalRuntime, RuntimePhase};
 
@@ -43,6 +49,10 @@ pub struct GameEmbedState {
     pub hwnd: Option<isize>,
     /// The last rect and visibility handed to Windows.
     placed: Option<(IRect, bool)>,
+    /// The editor surfaces last cut out of the game's window, in its own
+    /// client pixels, and the window size the region was built for: a region
+    /// is a fixed shape, so a resize with holes open needs a new one.
+    holes: (Vec<IRect>, IVec2),
 }
 
 impl GameEmbedState {
@@ -142,9 +152,19 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
+/// A floating editor surface's box and whether it is on screen.
+type EditorSurface = (
+    &'static ComputedNode,
+    &'static UiGlobalTransform,
+    &'static InheritedVisibility,
+    &'static Node,
+);
+type Floating = Or<(With<OverlaySurface>, With<ModalSurface>)>;
+
 /// Keep the embedded game's window over the Game panel: find it once the game
 /// has made it a child of the editor's window, then move, resize, show and
 /// hide it to match the panel.
+#[allow(clippy::too_many_arguments)]
 fn place_game_window(
     mut runtime: ResMut<ExternalRuntime>,
     mut state: ResMut<GameEmbedState>,
@@ -152,6 +172,7 @@ fn place_game_window(
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed: Option<Res<renzora_ember::dock::FixedDock>>,
     surfaces: Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility), With<GameSurface>>,
+    overlays: Query<EditorSurface, Floating>,
     windows: Query<&bevy::window::RawHandleWrapper, With<bevy::window::PrimaryWindow>>,
 ) {
     let Some(pid) = runtime.pid() else {
@@ -176,6 +197,7 @@ fn place_game_window(
                 return;
             };
             state.hwnd = Some(hwnd);
+            state.holes = Default::default();
             runtime.mark_running();
             hwnd
         }
@@ -200,11 +222,34 @@ fn place_game_window(
         }
         _ => (state.placed.map_or(IRect::default(), |(r, _)| r), false),
     };
-    if state.placed == Some((rect, shown)) {
-        return;
+    if state.placed != Some((rect, shown)) {
+        state.placed = Some((rect, shown));
+        win32::place(hwnd, rect, shown);
     }
-    state.placed = Some((rect, shown));
-    win32::place(hwnd, rect, shown);
+
+    let mut holes: Vec<IRect> = if shown {
+        overlays
+            .iter()
+            .filter(|(node, _, vis, style)| {
+                vis.get() && style.display != Display::None && node.size().min_element() > 1.0
+            })
+            .map(|(node, transform, ..)| {
+                let min = transform.translation - node.size() * 0.5;
+                IRect::from_corners(min.round().as_ivec2(), (min + node.size()).round().as_ivec2())
+                    .intersect(rect)
+            })
+            .filter(|hole| !hole.is_empty())
+            .map(|hole| IRect::from_corners(hole.min - rect.min, hole.max - rect.min))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    holes.sort_by_key(|r| (r.min.x, r.min.y, r.max.x, r.max.y));
+    let size = if holes.is_empty() { IVec2::ZERO } else { rect.size() };
+    if (&holes, size) != (&state.holes.0, state.holes.1) {
+        win32::set_holes(hwnd, size, holes.clone());
+        state.holes = (holes, size);
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -231,6 +276,47 @@ mod win32 {
         fn GetParent(hwnd: isize) -> isize;
         fn IsWindow(hwnd: isize) -> i32;
         fn SetWindowPos(hwnd: isize, after: isize, x: i32, y: i32, w: i32, h: i32, flags: u32) -> i32;
+        fn SetWindowRgn(hwnd: isize, region: isize, redraw: i32) -> i32;
+    }
+
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> isize;
+        fn CombineRgn(dest: isize, a: isize, b: isize, mode: i32) -> i32;
+        fn DeleteObject(object: isize) -> i32;
+    }
+
+    const RGN_DIFF: i32 = 4;
+
+    /// Show the game's window everywhere except `holes` (its own client
+    /// pixels, within `size`), or everywhere when there are none.
+    ///
+    /// On a thread of its own: setting a window's region waits for the
+    /// window's thread to take it, and the game's thread is in another process
+    /// that may be stuck in a long frame. `place` avoids the same wait with
+    /// `SWP_ASYNCWINDOWPOS`; there is no asynchronous form of this call.
+    pub fn set_holes(hwnd: isize, size: bevy::math::IVec2, holes: Vec<IRect>) {
+        std::thread::spawn(move || {
+            // SAFETY: a stale handle makes the calls fail, nothing more. A
+            // region handed to `SetWindowRgn` belongs to the system after a
+            // successful call, so only the per-hole regions are deleted here,
+            // and the combined one only when the call failed.
+            unsafe {
+                if holes.is_empty() {
+                    SetWindowRgn(hwnd, 0, 1);
+                    return;
+                }
+                let shape = CreateRectRgn(0, 0, size.x, size.y);
+                for hole in &holes {
+                    let cut = CreateRectRgn(hole.min.x, hole.min.y, hole.max.x, hole.max.y);
+                    CombineRgn(shape, shape, cut, RGN_DIFF);
+                    DeleteObject(cut);
+                }
+                if SetWindowRgn(hwnd, shape, 1) == 0 {
+                    DeleteObject(shape);
+                }
+            }
+        });
     }
 
     struct Search {
@@ -304,4 +390,5 @@ mod win32 {
         false
     }
     pub fn place(_hwnd: isize, _rect: IRect, _shown: bool) {}
+    pub fn set_holes(_hwnd: isize, _size: bevy::math::IVec2, _holes: Vec<IRect>) {}
 }

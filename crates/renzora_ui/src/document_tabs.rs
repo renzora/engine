@@ -24,7 +24,6 @@ pub enum DocTabKind {
     Scene,
     Material,
     Particle,
-    Blueprint,
     Script,
     Shader,
     /// A `.html` UI template, edited on the canvas rather than as text.
@@ -54,7 +53,6 @@ impl DocTabKind {
             DocTabKind::Scene => Some("Scene"),
             DocTabKind::Material => Some("Materials"),
             DocTabKind::Particle => Some("Particles"),
-            DocTabKind::Blueprint => Some("Blueprints"),
             DocTabKind::Script => Some("Scripting"),
             DocTabKind::Shader => Some("Shaders"),
             DocTabKind::Ui => Some("UI"),
@@ -69,7 +67,6 @@ impl DocTabKind {
         match self {
             DocTabKind::Material => Some("Materials-Asset"),
             DocTabKind::Script | DocTabKind::Shader => Some("Scripting-Asset"),
-            DocTabKind::Blueprint => Some("Blueprints-Asset"),
             DocTabKind::Particle => Some("Particles-Asset"),
             // `Ui` has no asset-mode layout because it is not an asset kind —
             // see the variant's note.
@@ -85,7 +82,6 @@ impl DocTabKind {
             DocTabKind::Scene => "scene",
             DocTabKind::Material => "material",
             DocTabKind::Particle => "particle",
-            DocTabKind::Blueprint => "blueprint",
             DocTabKind::Script => "script",
             DocTabKind::Shader => "shader",
             DocTabKind::Ui => "ui",
@@ -103,7 +99,6 @@ impl DocTabKind {
             "scene" | "" => DocTabKind::Scene,
             "material" => DocTabKind::Material,
             "particle" => DocTabKind::Particle,
-            "blueprint" => DocTabKind::Blueprint,
             "script" => DocTabKind::Script,
             "shader" => DocTabKind::Shader,
             "ui" => DocTabKind::Ui,
@@ -118,7 +113,6 @@ impl DocTabKind {
             DocTabKind::Scene => "film-slate",
             DocTabKind::Material => "palette",
             DocTabKind::Particle => "sparkle",
-            DocTabKind::Blueprint => "blueprint",
             DocTabKind::Script => "code",
             DocTabKind::Shader => "graphics-card",
             DocTabKind::Ui => "browser",
@@ -141,7 +135,6 @@ impl DocTabKind {
             DocTabKind::Scene => (115, 191, 242),
             DocTabKind::Material => (0, 200, 130),
             DocTabKind::Particle => (230, 160, 90),
-            DocTabKind::Blueprint => (100, 180, 255),
             DocTabKind::Script => (120, 170, 255),
             DocTabKind::Shader => (220, 120, 255),
             // The asset browser's own colour for a Template (`native.rs:2281`),
@@ -153,8 +146,8 @@ impl DocTabKind {
 }
 
 /// A single open document tab. Historically these were always scenes; they
-/// now also cover other asset types (materials, particles, blueprints,
-/// scripts, shaders) opened via double-click in the asset browser. The
+/// now also cover other asset types (materials, particles, scripts,
+/// shaders) opened via double-click in the asset browser. The
 /// `scene_path` field stores the file path regardless of kind — kept under
 /// the legacy name so existing scene-tab call sites continue to compile.
 #[derive(Debug, Clone)]
@@ -433,7 +426,6 @@ mod doc_tab_kind_tests {
         DocTabKind::Scene,
         DocTabKind::Material,
         DocTabKind::Particle,
-        DocTabKind::Blueprint,
         DocTabKind::Script,
         DocTabKind::Shader,
         DocTabKind::Other,
@@ -494,7 +486,6 @@ mod doc_tab_kind_tests {
         for kind in [
             DocTabKind::Material,
             DocTabKind::Particle,
-            DocTabKind::Blueprint,
             DocTabKind::Script,
             DocTabKind::Shader,
         ] {

@@ -18,9 +18,10 @@ use crate::templates::TemplateManager;
 use super::frame::can_export;
 use super::widgets::txt;
 use super::{
-    CancelOrBackBtn, CloseBtn, CopyLogBtn, DownloadBtn, ExportBtn, IconBrowseBtn, IconClearBtn,
-    InstallBtn, OutputBrowseBtn, PresetBtn, PresetDelBtn, PresetDupBtn, SectionToggle,
-    SourceDownloadBtn,
+    CancelOrBackBtn, CheckAction, CheckActionBtn, Choice, ChoiceCard, CloseBtn, CopyLogBtn,
+    DownloadBtn, ExportBtn, ExportDialogUi, ExportTab, FeatureFilter, FeatureFilterBtn,
+    FeaturesResetBtn, IconBrowseBtn, IconClearBtn, InstallBtn, OutputBrowseBtn, PresetBtn,
+    PresetDelBtn, PresetDupBtn, SectionToggle, SourceDownloadBtn, TabBtn,
 };
 
 pub(super) fn preset_click(q: Query<(&UiInteraction, &PresetBtn), Changed<UiInteraction>>, mut state: Option<ResMut<ExportOverlayState>>) {
@@ -289,14 +290,91 @@ pub(super) fn export_click(q: Query<&UiInteraction, (With<ExportBtn>, Changed<Ui
     }
 }
 
+fn pick_output_folder(w: &mut World) {
+    if let Some(dir) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_output")).pick_folder() {
+        w.resource_mut::<ExportOverlayState>().output_dir = dir.to_string_lossy().to_string();
+    }
+}
+
 pub(super) fn output_browse_click(q: Query<&UiInteraction, (With<OutputBrowseBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|w: &mut World| {
-            if let Some(dir) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_output")).pick_folder() {
-                w.resource_mut::<ExportOverlayState>().output_dir = dir.to_string_lossy().to_string();
-            }
-        });
+        commands.queue(pick_output_folder);
     }
+}
+
+/// Switch the settings pane's tab.
+pub(super) fn tab_click(q: Query<(&UiInteraction, &TabBtn), Changed<UiInteraction>>, mut ui: ResMut<ExportDialogUi>) {
+    for (i, t) in &q {
+        if *i == UiInteraction::Pressed {
+            ui.tab = t.0;
+        }
+    }
+}
+
+/// Pick a packaging mode or plugin-link mode from its card.
+pub(super) fn choice_click(q: Query<(&UiInteraction, &ChoiceCard), Changed<UiInteraction>>, mut state: Option<ResMut<ExportOverlayState>>) {
+    let Some(state) = state.as_mut() else { return };
+    for (i, card) in &q {
+        if *i != UiInteraction::Pressed {
+            continue;
+        }
+        match card.0 {
+            Choice::Packaging(m) => state.packaging_mode = m,
+            Choice::Link(l) => state.plugin_link_mode = l,
+        }
+    }
+}
+
+/// A filter chip in the Engine features toolbar.
+pub(super) fn feature_filter_click(q: Query<(&UiInteraction, &FeatureFilterBtn), Changed<UiInteraction>>, mut ui: ResMut<ExportDialogUi>) {
+    for (i, f) in &q {
+        if *i == UiInteraction::Pressed {
+            ui.feature_filter = f.0;
+        }
+    }
+}
+
+/// Put every feature back to what the project scan chose.
+pub(super) fn features_reset_click(q: Query<&UiInteraction, (With<FeaturesResetBtn>, Changed<UiInteraction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
+    let Some(state) = state.as_mut() else { return };
+    if q.iter().any(|i| *i == UiInteraction::Pressed) {
+        state.capabilities = state.detected_capabilities.clone();
+    }
+}
+
+/// The fix button on a pre-export check. Each arm is the same thing the
+/// matching control elsewhere in the dialog does, so a fix from the rail and a
+/// fix from the tab cannot behave differently.
+pub(super) fn check_action_click(q: Query<(&UiInteraction, &CheckActionBtn), Changed<UiInteraction>>, mut commands: Commands) {
+    let Some(action) = q.iter().find(|(i, _)| **i == UiInteraction::Pressed).map(|(_, b)| b.0) else { return };
+    commands.queue(move |w: &mut World| match action {
+        CheckAction::RetryRelease => {
+            if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                crate::overlay::retry_release_fetch(&mut s);
+            }
+        }
+        CheckAction::DownloadTemplate => start_template_download(w),
+        CheckAction::InstallTemplate => install_template_from_file(w),
+        CheckAction::DownloadSource => start_source_download(w),
+        CheckAction::ChooseFolder => pick_output_folder(w),
+        CheckAction::UseLean => {
+            if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                s.packaging_mode = crate::overlay::PackagingMode::LeanSingleBinary;
+            }
+        }
+        CheckAction::ReviewFeatures => {
+            if let Some(mut ui) = w.get_resource_mut::<ExportDialogUi>() {
+                ui.tab = ExportTab::Features;
+                ui.feature_query.clear();
+                ui.feature_filter = FeatureFilter::Changed;
+            }
+        }
+        CheckAction::ReviewPlugins => {
+            if let Some(mut ui) = w.get_resource_mut::<ExportDialogUi>() {
+                ui.tab = ExportTab::Plugins;
+            }
+        }
+    });
 }
 
 pub(super) fn icon_browse_click(q: Query<&UiInteraction, (With<IconBrowseBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
@@ -325,60 +403,66 @@ pub(super) fn source_download_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|w: &mut World| {
-            let p = w.resource::<ExportOverlayState>().platform;
-            let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
-                let mut s = w.resource_mut::<ExportOverlayState>();
-                s.download_status = Some((
-                    p,
-                    DownloadProgress::Error(renzora::lang::t("export.status.no_release")),
-                ));
-                return;
-            };
-            let task = download::spawn_source_download(p, release);
-            let mut s = w.resource_mut::<ExportOverlayState>();
-            s.download_task = Some(task);
-            s.download_status = Some((
-                p,
-                DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting")),
-            ));
-        });
+        commands.queue(start_source_download);
     }
+}
+
+fn start_source_download(w: &mut World) {
+    let p = w.resource::<ExportOverlayState>().platform;
+    let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
+        let mut s = w.resource_mut::<ExportOverlayState>();
+        s.download_status = Some((
+            p,
+            DownloadProgress::Error(renzora::lang::t("export.status.no_release")),
+        ));
+        return;
+    };
+    let task = download::spawn_source_download(p, release);
+    let mut s = w.resource_mut::<ExportOverlayState>();
+    s.download_task = Some(task);
+    s.download_status = Some((
+        p,
+        DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting")),
+    ));
+}
+
+fn start_template_download(w: &mut World) {
+    let p = w.resource::<ExportOverlayState>().platform;
+    // The release is resolved as soon as the modal opens, so a click can reuse
+    // it: no second GitHub round-trip, and nothing to resolve on the worker
+    // thread that could have resolved differently.
+    let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
+        let mut s = w.resource_mut::<ExportOverlayState>();
+        s.download_status = Some((p, DownloadProgress::Error(renzora::lang::t("export.status.no_release"))));
+        return;
+    };
+    let task = download::spawn_download(p, release);
+    let mut s = w.resource_mut::<ExportOverlayState>();
+    s.download_task = Some(task);
+    s.download_status = Some((p, DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting"))));
+}
+
+fn install_template_from_file(w: &mut World) {
+    let Some(file) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_runtime")).pick_file() else { return };
+    let p = w.resource::<ExportOverlayState>().platform;
+    // Into the per-user template store, NOT the editor's own directory.
+    // `runtime_binary_name()` for a desktop platform is `renzora[.exe]`, so the
+    // old destination would have overwritten the editor's own runtime with a
+    // foreign-platform binary, and taken Play with it.
+    let Some(dir) = crate::templates::user_template_dir(p) else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::copy(&file, dir.join(p.runtime_binary_name()));
+    w.resource_mut::<TemplateManager>().scan();
 }
 
 pub(super) fn download_click(q: Query<&UiInteraction, (With<DownloadBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|w: &mut World| {
-            let p = w.resource::<ExportOverlayState>().platform;
-            // The release is resolved as soon as the modal opens, so a click can
-            // reuse it — no second GitHub round-trip, and nothing to resolve on
-            // the worker thread that could have resolved differently.
-            let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
-                let mut s = w.resource_mut::<ExportOverlayState>();
-                s.download_status = Some((p, DownloadProgress::Error(renzora::lang::t("export.status.no_release"))));
-                return;
-            };
-            let task = download::spawn_download(p, release);
-            let mut s = w.resource_mut::<ExportOverlayState>();
-            s.download_task = Some(task);
-            s.download_status = Some((p, DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting"))));
-        });
+        commands.queue(start_template_download);
     }
 }
 
 pub(super) fn install_click(q: Query<&UiInteraction, (With<InstallBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|w: &mut World| {
-            let Some(file) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_runtime")).pick_file() else { return };
-            let p = w.resource::<ExportOverlayState>().platform;
-            // Into the per-user template store, NOT the editor's own directory.
-            // `runtime_binary_name()` for a desktop platform is `renzora[.exe]`,
-            // so the old destination would have overwritten the editor's own
-            // runtime with a foreign-platform binary — and taken Play with it.
-            let Some(dir) = crate::templates::user_template_dir(p) else { return };
-            let _ = std::fs::create_dir_all(&dir);
-            let _ = std::fs::copy(&file, dir.join(p.runtime_binary_name()));
-            w.resource_mut::<TemplateManager>().scan();
-        });
+        commands.queue(install_template_from_file);
     }
 }

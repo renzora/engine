@@ -1,7 +1,6 @@
-//! Bridge script/blueprint audio actions to the audio command queue.
+//! Bridge script audio actions to the audio command queue.
 //!
-//! Lua's `play_sound` / `play_music` / `stop_music` / `stop_all_sounds` (and the
-//! blueprint equivalents) are emitted by `renzora_scripting` as generic
+//! Lua's `play_sound` / `play_music` / `stop_music` / `stop_all_sounds` are emitted by `renzora_scripting` as generic
 //! `ScriptAction` events, on the expectation that the audio crate observes them
 //! (see the routing comment in `renzora_scripting::systems::commands`). This
 //! observer is that consumer — without it, script-driven audio is silently

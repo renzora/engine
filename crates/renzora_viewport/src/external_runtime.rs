@@ -153,6 +153,7 @@ pub fn spawn_runtime(
     binary: &Path,
     project_path: &Path,
     embed_parent: Option<isize>,
+    live_link: Option<&renzora::LiveLinkEndpoint>,
 ) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
     let mut command = Command::new(binary);
@@ -161,6 +162,15 @@ pub fn spawn_runtime(
     // sit in the Game panel; see `renzora_runtime::embed`.
     if let Some(parent) = embed_parent {
         command.arg("--embed-parent").arg(parent.to_string());
+    }
+    // Where to connect so edits made in the editor reach this game. See
+    // `renzora_live_link`.
+    if let Some(link) = live_link {
+        command
+            .arg("--live-link")
+            .arg(link.port.to_string())
+            .arg("--live-link-token")
+            .arg(&link.token);
     }
     // Piped, and therefore *must* be drained: a pipe nobody reads fills up and
     // then blocks the child on its next log line. The reader threads below are

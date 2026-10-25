@@ -67,7 +67,7 @@ impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
         info!("[network] NetworkPlugin");
 
-        // Shared status resource (read by editor panels, scripts, blueprints)
+        // Shared status resource (read by editor panels and scripts)
         app.init_resource::<NetworkStatus>();
         app.init_resource::<renzora::NetworkBridge>();
         // RPC bridge resources — outbound queue (drained to the wire) and the

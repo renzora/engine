@@ -7453,7 +7453,6 @@ dependencies = [
  "bevy",
  "image",
  "renzora",
- "renzora_blueprint",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_scripting",
@@ -7548,31 +7547,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "serde",
-]
-
-[[package]]
-name = "renzora_blueprint"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "log",
- "renzora",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "renzora_blueprint_editor"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_blueprint",
- "renzora_editor_framework",
- "renzora_ember",
- "renzora_scripting",
- "renzora_undo",
- "serde_json",
 ]
 
 [[package]]
@@ -7707,7 +7681,6 @@ dependencies = [
  "renzora_autosave",
  "renzora_bloom_effect",
  "renzora_bloom_effect_editor",
- "renzora_blueprint_editor",
  "renzora_camera",
  "renzora_code_editor",
  "renzora_command_palette",
@@ -7739,6 +7712,7 @@ dependencies = [
  "renzora_level_presets",
  "renzora_lighting",
  "renzora_lighting_editor",
+ "renzora_live_link_editor",
  "renzora_marketplace",
  "renzora_material_editor",
  "renzora_mixer",
@@ -8018,7 +7992,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_blueprint",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
@@ -8198,6 +8171,31 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_lighting",
+]
+
+[[package]]
+name = "renzora_live_link"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "image",
+ "renzora",
+ "renzora_engine",
+ "ron 0.8.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "renzora_live_link_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_engine",
+ "renzora_live_link",
+ "ron 0.8.1",
+ "serde_json",
 ]
 
 [[package]]
@@ -8595,7 +8593,6 @@ dependencies = [
  "renzora_audio",
  "renzora_audio_backend",
  "renzora_bloom_effect",
- "renzora_blueprint",
  "renzora_cloth",
  "renzora_distance_fog",
  "renzora_dof",
@@ -8611,6 +8608,7 @@ dependencies = [
  "renzora_lang",
  "renzora_light2d",
  "renzora_lighting",
+ "renzora_live_link",
  "renzora_motion_blur",
  "renzora_native_plugin",
  "renzora_navmesh",
@@ -8681,7 +8679,6 @@ dependencies = [
  "bevy",
  "log",
  "renzora",
- "renzora_blueprint",
  "renzora_net",
  "serde",
  "serde_json",
@@ -9085,7 +9082,6 @@ dependencies = [
  "raw-window-handle",
  "renzora",
  "renzora_animation",
- "renzora_blueprint",
  "renzora_console",
  "renzora_editor_framework",
  "renzora_ember",

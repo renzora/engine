@@ -1,5 +1,5 @@
 //! Node graph — a pannable/zoomable canvas of draggable nodes wired port-to-port
-//! with smooth bezier cables (material/blueprint style).
+//! with smooth bezier cables (material graph style).
 //!
 //! Drag a node by its body (not its pins) with the left mouse, pan with the
 //! middle mouse, zoom with the wheel (`UiTransform` on the canvas). Cables are

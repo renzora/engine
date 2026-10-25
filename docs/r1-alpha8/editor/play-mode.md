@@ -32,6 +32,33 @@ A few limits:
 - **Docked panels only.** If you float the Game panel out into a window of its own, the game hides until you dock the panel again.
 - **Menus over the panel.** The game's window is drawn above the editor in that area, so a menu or popup the editor opens over the Game panel appears behind the running game.
 
+## The editor follows the game
+
+A second or two after you press Play, the Console says **Game connected**. From then until you press Stop, the editor and the game stay in step.
+
+**You see the game in the editor.** The Hierarchy, the Inspector and the viewport show the game as it runs: the player's position as they walk, a crate tumbling, a bullet the game spawned appearing in the Hierarchy and disappearing when it hits. Select the player and the Inspector shows its live values.
+
+**Your edits reach the game.** Change a component in the Inspector (a light's colour, a material, a collider's size, a value on one of your own components), move something with the gizmo, add or remove a component, add or delete an object, and the running game picks it up a moment later.
+
+**Stop puts the game's changes back and keeps yours.** When the game ends, everything it did to the scene is undone: the player returns to the start, spawned objects go, removed ones come back. Everything you changed while it ran stays. If you edited something the game was also moving, your value wins.
+
+**Keep changes** appears beside Stop while a game is connected. Press it to adopt what the game has done so far, for example to let physics drop a pile of rocks into place and keep where they landed. Stop then puts back only what the game does after that.
+
+**Saving waits for Stop.** While the editor is following a game, the scene holds a moment of gameplay, so saving it then would write the player's mid-run position into your level. Saves (`Ctrl+S`, auto-save) are held and run as soon as you press Stop. The Console says so.
+
+A few limits:
+
+- **Most components, not all.** Anything the scene file stores through reflection travels. A few plugin-owned components are stored another way and are not sent yet.
+- **Parenting is set when an object appears.** Moving an object to a different parent while the game runs changes only the editor's copy.
+- **Only scene objects.** Objects the game makes without a name, and the generated insides of models, are not followed, just as they are not saved.
+
+## Testing the game with an agent
+
+An AI agent connected through the **MCP Server** plugin (from the Marketplace) can play the running game as well as edit it. Because the editor follows the game, its usual tools already see the game's live state. Two more reach the game itself:
+
+- **game_screenshot** returns a picture of the game's own window.
+- **game_input** presses keys and gamepad controls in the game, each held for as long as asked. Gamepad input arrives on a virtual gamepad the game sees as a real one, so a game that reads gamepads needs nothing special.
+
 ## Editing doesn't play anything
 
 While you are arranging the scene, nothing in it moves by itself. Physics is paused, scripts don't run, animated models hold their pose, cloth hangs still, and navigation agents stay where you put them. What you see is exactly what the scene file says.

@@ -55,7 +55,7 @@ Under the header runs a strip of **pages**. Each page holds one kind of componen
 | Post Process | SSAO, SSR and shader post effects |
 | Physics | Bodies, colliders, joints, ragdolls |
 | Animation | Animators and clips |
-| Scripting | Scripts and blueprints |
+| Scripting | Scripts |
 | Audio | Players and listeners |
 | Navigation | Navmesh volumes, obstacles and agents |
 | Networking | Replication |

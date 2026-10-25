@@ -132,7 +132,7 @@ fn seal_gesture(world: &mut World) {
 /// (and any panel recording into [`active_context`]) targets the right history.
 ///
 /// The active document tab ([`EditorContext`]) is the authoritative source: an
-/// asset tab (material, blueprint, …) edits its own file and gets its own
+/// asset tab (material, particle, …) edits its own file and gets its own
 /// per-path stack; a scene tab shares the single `Scene` stack. [`FocusedPanel`]
 /// refines this — a focused viewport is unambiguously scene editing, so it pins
 /// `Scene` even if an asset tab is technically active. Because the routing keys
@@ -147,7 +147,6 @@ fn route_undo_context(
     let from_ctx = match editor_ctx.as_deref() {
         Some(EditorContext::Asset { path, kind }) => match kind {
             DocTabKind::Material => UndoContext::MaterialGraph(path.clone()),
-            DocTabKind::Blueprint => UndoContext::Blueprint(path.clone()),
             // Particle/script/shader asset tabs still get an isolated stack so
             // their edits never mix into the scene history.
             _ => UndoContext::Other(path.clone()),

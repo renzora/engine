@@ -564,7 +564,7 @@ pub enum JointKind {
 /// One request to change a body, applied by the backend in
 /// [`PhysicsSet::Commands`].
 ///
-/// A queue, not components a backend must recognise, so scripts, blueprints and
+/// A queue, not components a backend must recognise, so scripts and
 /// engine crates push the same thing whichever engine is simulating.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PhysicsCommand {

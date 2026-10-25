@@ -20,7 +20,6 @@ pub fn install_dir_for_category(category: &str) -> &'static str {
         "fonts" | "font" => "fonts",
         "animations" | "animation" => "animations",
         "particles" | "particle" => "particles",
-        "blueprints" | "blueprint" => "blueprints",
         "ui" | "ui-kit" => "ui",
         _ => "assets",
     }

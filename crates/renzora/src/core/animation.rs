@@ -1447,7 +1447,7 @@ mod bone_curve_tests {
 }
 
 // ============================================================================
-// TransformWrite (deferred transform mutations from scripts/blueprints)
+// TransformWrite (deferred transform mutations from scripts)
 // ============================================================================
 
 /// Deferred transform write — batched and applied by the scripting command processor.

@@ -194,11 +194,16 @@ fn face_tuning(world: &World) -> (Vec<(String, renzora_rig::expressions::LidTuni
 /// Pose the model from the sliders.
 pub(crate) fn apply(world: &mut World) {
     let Some(root) = subject(world) else { return };
+    // Every control, not only the touched ones: the controls own the bones
+    // they move, so moving one slider puts every controlled bone at its
+    // controls' pose (rest, for the untouched ones). Mixing only the touched
+    // controls left the others' bones wherever the clip had them, which on a
+    // face whose clip was keyed against an earlier rig showed the stale lids
+    // under a fresh jaw, and Reset Controls could not clear them. This is
+    // what the Face tab's fixed sliders always did.
     let (set, values) = {
         let s = world.resource::<ControlsState>();
-        let mut v: Vec<(String, f32)> = s.values.iter().map(|(k, v)| (k.clone(), *v)).collect();
-        // The panel's order, so rotations compose the same way every time.
-        v.sort_by_key(|(k, _)| s.set.controls.iter().position(|c| &c.name == k).unwrap_or(usize::MAX));
+        let v: Vec<(String, f32)> = controls::full_values(&s.set, &|n| s.values.get(n).copied()).into_iter().map(|(k, v)| (k.to_string(), v)).collect();
         (s.set.clone(), v)
     };
     let (lids, face_scale) = face_tuning(world);
@@ -437,15 +442,15 @@ pub(crate) fn use_face_preset(world: &mut World) {
     tell(world, true, format!("Added the face preset: {n} controls, ready to rename, re-capture or delete"));
 }
 
-/// Key Controls (and the panel's K): key every bone and blend shape the
-/// touched controls move, at the playhead, or those of every control when
-/// none was touched (keying the model as the controls see it).
+/// Key Controls: key every bone and blend shape any control moves, at the
+/// playhead. All of them, not only the touched controls', because a slider
+/// poses every controlled bone ([`apply`]), so that is the pose on the stage
+/// and the one K keys too. Like Key Face before it.
 pub(crate) fn key_controls(world: &mut World) {
     let Some(root) = subject(world) else { return };
     let (bone_names, shape_refs) = {
         let s = world.resource::<ControlsState>();
-        let touched: Vec<&Control> = s.set.controls.iter().filter(|c| s.values.contains_key(&c.name)).collect();
-        let pick: Vec<&Control> = if touched.is_empty() { s.set.controls.iter().collect() } else { touched };
+        let pick: Vec<&Control> = s.set.controls.iter().collect();
         let mut bones: Vec<String> = Vec::new();
         let mut shapes: Vec<(String, usize, String)> = Vec::new();
         for c in pick {

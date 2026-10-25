@@ -37,7 +37,7 @@ use renzora_ember::dock::panel_active;
 use renzora_ember::panel::RegisterPanelContent;
 
 /// Route a double-clicked asset to the right editor: scripts/shaders go to
-/// the code editor, .material / .particle / .blueprint get their dedicated
+/// the code editor, .material / .particle get their dedicated
 /// layout. All recognized kinds also spawn a document tab. Unknown file
 /// types fall through to the legacy code-editor "plain text" flow.
 pub(crate) fn open_double_clicked(world: &bevy::prelude::World, path: std::path::PathBuf) {
@@ -97,9 +97,6 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::Do
     // `.vfx` too: see the same table in `renzora_editor_framework`.
     if name.ends_with(".particle") || name.ends_with(".vfx") {
         return Some(DocTabKind::Particle);
-    }
-    if name.ends_with(".blueprint") || name.ends_with(".bp") {
-        return Some(DocTabKind::Blueprint);
     }
     let ext = name.rsplit('.').next().unwrap_or("");
     Some(match ext {

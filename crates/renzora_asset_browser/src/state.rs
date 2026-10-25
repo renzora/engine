@@ -607,7 +607,6 @@ pub(crate) struct MarqueeRect;
 pub(crate) enum NewAsset {
     Folder,
     Material,
-    Blueprint,
     Rust,
     Template,
     Bsn,
@@ -624,9 +623,8 @@ impl NewAsset {
     /// No particle effect either, for the same reason: `renzora_particles_editor`
     /// registers its "Particle Effect" (`.vfx`) entry itself. The built-in row
     /// that was here wrote a Hanabi `.particle`, a format that is now only read.
-    pub(crate) const MENU: [NewAsset; 5] = [
+    pub(crate) const MENU: [NewAsset; 4] = [
         NewAsset::Material,
-        NewAsset::Blueprint,
         // Next to Lua: the two are the same choice (`renzora_rust_script`
         // claims `.rs` the way the Lua plugin claims `.lua`), and picking
         // between them is the first thing anyone scripting has to do.
@@ -639,7 +637,6 @@ impl NewAsset {
         match self {
             NewAsset::Folder => "New Folder",
             NewAsset::Material => "NewMaterial.material",
-            NewAsset::Blueprint => "NewBlueprint.blueprint",
             NewAsset::Rust => "new_script.rs",
             NewAsset::Template => "NewTemplate.html",
             NewAsset::Bsn => "NewScene.bsn",
@@ -653,10 +650,6 @@ impl NewAsset {
         match self {
             NewAsset::Folder => String::new(),
             NewAsset::Material => "{}".to_string(),
-            // Not `{}`: nothing in a blueprint runs unless it hangs off an
-            // event, so a new file starts with On Ready + On Update placed —
-            // see `renzora_blueprint::starter`.
-            NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
             NewAsset::Rust => renzora_scripting::starter_rust(boilerplate),
             NewAsset::Template => renzora_ember::markup::starter_template(boilerplate),
             // An empty scene = just the interim-BSN header the parser expects.
@@ -668,7 +661,6 @@ impl NewAsset {
         match self {
             NewAsset::Folder => renzora::lang::t("assets.new.folder"),
             NewAsset::Material => renzora::lang::t("assets.new.material"),
-            NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint"),
             NewAsset::Rust => renzora::lang::t_or("assets.new.rust", "Rust Script"),
             NewAsset::Template => renzora::lang::t("assets.new.template"),
             NewAsset::Bsn => renzora::lang::t("assets.new.bsn"),
@@ -680,7 +672,6 @@ impl NewAsset {
         match self {
             NewAsset::Folder => renzora::lang::t("assets.new.folder"),
             NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
-            NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint_sub"),
             NewAsset::Rust => renzora::lang::t_or("assets.new.rust_sub", "Rust Script"),
             NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
             NewAsset::Bsn => renzora::lang::t("assets.new.scene_sub"),
@@ -691,7 +682,6 @@ impl NewAsset {
         match self {
             NewAsset::Folder => "folder-plus",
             NewAsset::Material => "palette",
-            NewAsset::Blueprint => "blueprint",
             NewAsset::Rust | NewAsset::Template => "code",
             NewAsset::Bsn => "film-slate",
         }
@@ -703,7 +693,6 @@ impl NewAsset {
         match self {
             NewAsset::Folder => (235, 200, 120),
             NewAsset::Material => (0, 200, 130),
-            NewAsset::Blueprint => (100, 180, 255),
             // Matches `file_kind::type_info`'s `.rs` accent, so the menu card and
             // the tile the file lands as are the same colour.
             NewAsset::Rust => (230, 140, 90),

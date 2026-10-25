@@ -58,10 +58,11 @@ pub struct ExportPreset {
     pub icon_path: Option<String>,
     #[serde(default)]
     pub include_server: bool,
-    /// Ship the plugin SDK so the game can be modded. Defaults to ON, including
-    /// for a preset written before this existed — a preset saved when there was
-    /// no choice was saved under the behaviour that shipped it.
-    #[serde(default = "default_true")]
+    /// Ship the plugin SDK so the game can be modded. Off unless the preset
+    /// says otherwise, including a preset written before this existed: the SDK
+    /// is about 1.5 GB, and a game that never asked for modding should not
+    /// carry it.
+    #[serde(default)]
     pub enable_modding: bool,
     #[serde(default)]
     pub binary_name: String,
@@ -110,9 +111,6 @@ fn default_simplify_ratio() -> f32 {
 fn default_lod_levels() -> u32 {
     3
 }
-fn default_true() -> bool {
-    true
-}
 
 impl ExportPreset {
     /// A new preset for `platform`, with everything else left at its default.
@@ -129,7 +127,7 @@ impl ExportPreset {
             upx_compress: false,
             icon_path: None,
             include_server: false,
-            enable_modding: true,
+            enable_modding: false,
             binary_name: String::new(),
             output_dir: String::new(),
             mesh_simplify: false,

@@ -1989,8 +1989,6 @@ fn category_hue(category: &str) -> (u8, u8, u8) {
         (240, 165, 90) // tangerine
     } else if c.contains("script") {
         (130, 205, 165) // mint
-    } else if c.contains("blueprint") {
-        (150, 160, 250) // periwinkle
     } else if c.contains("project") {
         (230, 160, 110)
     } else if c.contains("font") {
@@ -2035,8 +2033,6 @@ fn category_icon(category: &str) -> &'static str {
         "plug"
     } else if c.contains("script") {
         "code"
-    } else if c.contains("blueprint") {
-        "tree-structure"
     } else if c.contains("project") {
         "folder-open"
     } else if c.contains("font") {

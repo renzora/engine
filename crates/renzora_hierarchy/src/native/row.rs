@@ -57,10 +57,9 @@ pub(crate) struct RowSnapshot {
     pub is_visible: bool,
     pub is_locked: bool,
     pub is_default_camera: bool,
-    /// Authored-asset badges (script / blueprint / material) drawn just left of
+    /// Authored-asset badges (script / material) drawn just left of
     /// the eye/lock toggles.
     pub has_script: bool,
-    pub has_blueprint: bool,
     pub has_material: bool,
     /// A sound this entity owns is audible right now — drawn as animated bars
     /// left of the eye. In the hash below because the indicator must appear and
@@ -100,7 +99,6 @@ impl RowSnapshot {
         self.is_locked.hash(&mut h);
         self.is_default_camera.hash(&mut h);
         self.has_script.hash(&mut h);
-        self.has_blueprint.hash(&mut h);
         self.has_material.hash(&mut h);
         self.is_emitting.hash(&mut h);
         self.label_color.hash(&mut h);
@@ -403,14 +401,12 @@ pub(crate) fn build_row(
     };
     kids.push(label_box);
 
-    // Asset badges — a hint that a script / blueprint / material rides on this
-    // entity, so you can read it off the row without opening the inspector.
-    // Clicking one jumps to that asset's editor (code / blueprint / material).
-    // An entity can carry both a script and a blueprint, so these aren't
-    // exclusive.
+    // Asset badges: a hint that a script / material rides on this entity, so
+    // you can read it off the row without opening the inspector. Clicking one
+    // jumps to that asset's editor (code / material). An entity can carry both,
+    // so these aren't exclusive.
     for (present, glyph, color, kind) in [
         (s.has_script, "code", Color::srgb_u8(120, 170, 255), BadgeKind::Script),
-        (s.has_blueprint, "blueprint", Color::srgb_u8(100, 180, 255), BadgeKind::Blueprint),
         (s.has_material, "palette", Color::srgb_u8(0, 200, 130), BadgeKind::Material),
     ] {
         if present {
@@ -578,7 +574,7 @@ pub(crate) fn build_row(
                 return over(base, rgb(accent()).with_alpha(0.35));
             }
         }
-        // Same tint for an asset drag (script / blueprint / material) hovering
+        // Same tint for an asset drag (script / material) hovering
         // this row — the thing about to be attached to it.
         if world
             .get_resource::<super::asset_drop::ArmedHierAssetDrop>()
@@ -617,7 +613,7 @@ pub(crate) fn build_row(
     row
 }
 
-/// A small clickable asset badge (script / blueprint / material) sitting just
+/// A small clickable asset badge (script / material) sitting just
 /// left of the eye/lock toggles. Clicking it opens the asset in its editor (see
 /// [`super::systems::hierarchy_badge_click`]). The glyph child is
 /// `Pickable::IGNORE` so the hit lands on the badge button, not the text.

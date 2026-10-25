@@ -75,6 +75,12 @@ pub(super) fn manage_export_modal(world: &mut World) {
             s.plugins_scanned_for = None;
             s.choices_pinned = false;
         }
+        // A search typed last time would open the Features tab showing a
+        // filtered list with no reason visible for it.
+        if let Some(mut ui) = world.get_resource_mut::<super::ExportDialogUi>() {
+            ui.feature_query.clear();
+            ui.feature_filter = super::FeatureFilter::All;
+        }
     }
     if visible {
         // Presets belong to the open project, so this both fills an empty list
@@ -88,7 +94,22 @@ pub(super) fn manage_export_modal(world: &mut World) {
             }
         }
         probe_docker(world);
-        ensure_release_fetch(world);
+        // Not on the frame the dialog opens. That frame reads the whole project
+        // (`scan_plugins` below) and builds every tab, which on a large project
+        // takes longer than the network watchdog's two seconds. The lookup runs
+        // on its own thread, but it needs the frame pump to tick while it waits,
+        // and a pump that has not ticked for two seconds is reported as "the
+        // frame loop is not running". Starting a frame later puts the slow
+        // frames behind it. The settings pane (and its file tree, one row per
+        // project file) is built a frame after the modal, so that is what to
+        // wait for.
+        let pane_built = world
+            .query::<&super::RightPane>()
+            .iter(world)
+            .any(|p| p.sig.is_some());
+        if pane_built {
+            ensure_release_fetch(world);
+        }
         poll_release_fetch(world);
         poll_export_task(world);
         follow_log_tail(world);
@@ -286,6 +307,10 @@ fn scan_plugins(world: &mut World) {
     // scan finds no project, so a stale list cannot outlive the project it came
     // from.
     s.project_files = scan.as_ref().map(|sc| sc.files.clone()).unwrap_or_default();
+    // Kept even when a preset pins the working copy: it is the reference the
+    // Features tab marks changes against, and that is still the project's own
+    // answer whoever chose the current values.
+    s.detected_capabilities = crate::capabilities::defaults_from_scan(scan.as_ref());
     if !s.choices_pinned {
         // A fresh open re-reads the project, so any selection made against the
         // previous read is stale — a file that has since been deleted would keep
@@ -300,7 +325,7 @@ fn scan_plugins(world: &mut World) {
                 s.selected_plugins.insert(id.clone());
             }
         }
-        s.capabilities = crate::capabilities::defaults_from_scan(scan.as_ref());
+        s.capabilities = s.detected_capabilities.clone();
     }
     s.available_plugins = plugins;
     s.plugins_scanned = true;

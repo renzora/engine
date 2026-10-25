@@ -16,12 +16,12 @@ use renzora_ember::font::EmberFonts;
 use renzora_ember::interaction::BLOCK;
 use renzora_ember::reactive::tracked::{bind_2way, bind_text};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{section, tree_node_with};
+use renzora_ember::widgets::tree_node_with;
 
 use crate::overlay::ExportOverlayState;
 
 use super::settings::{finish_tab, tab_panel};
-use super::widgets::{pill_button, txt};
+use super::widgets::{group, hairline, pill_button, txt};
 use super::{FilesAction, FilesBulk, FilesPanel};
 
 /// A checkbox sized for a tree row.
@@ -106,7 +106,19 @@ fn file_tree_rows(
                 }
             },
         );
-        out.push(tree_node_with(commands, fonts, &dir, depth, children, false, vec![cb], None));
+        // "n / m" beside each folder, so a folder that ships part of itself
+        // reads differently from one that ships nothing. The tick alone could
+        // not say that: it is off for both.
+        let count = txt(commands, fonts, "", 11.0, text_muted());
+        let count_keys = get_keys_for_count(files, &sub_prefix);
+        bind_text(commands, count, move |w| {
+            let Some(s) = w.get_resource::<ExportOverlayState>() else { return String::new() };
+            match &s.included_files {
+                Some(inc) => format!("{} / {}", count_keys.iter().filter(|k| inc.contains(*k)).count(), count_keys.len()),
+                None => count_keys.len().to_string(),
+            }
+        });
+        out.push(tree_node_with(commands, fonts, &dir, depth, children, false, vec![count, cb], None));
     }
     for key in leaves {
         let name = key.rsplit_once('/').map_or(key.as_str(), |(_, n)| n).to_string();
@@ -152,6 +164,10 @@ fn file_tree_rows(
     out
 }
 
+fn get_keys_for_count(files: &[String], prefix: &str) -> Vec<String> {
+    files.iter().filter(|k| k.starts_with(prefix)).cloned().collect()
+}
+
 /// The tree is built once, when the modal spawns, from the file list the project
 /// scan already collected. The ticks are reactive, so the detected set can
 /// arrive a frame later — see
@@ -160,16 +176,41 @@ fn file_tree_rows(
 pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     commands.entity(panel).insert(FilesPanel);
-    let (sec, body) =
-        section(commands, fonts, "folders", &renzora::lang::t("export.section.files"), accent());
+    let body = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .id();
 
+    // The headline: how many files ship. It was a muted line under the bulk
+    // buttons; it is the one number this tab exists to decide.
+    let card = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(14.0),
+                padding: UiRect::axes(Val::Px(12.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(card_bg())),
+            BorderColor::all(hairline()),
+        ))
+        .id();
+    let text = commands
+        .spawn(Node { flex_grow: 1.0, flex_basis: Val::Px(0.0), min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
+        .id();
+    let headline = txt(commands, fonts, "", 13.5, text_primary());
     let note = txt(commands, fonts, &renzora::lang::t("export.files.note"), 11.0, text_muted());
-    commands.entity(body).add_child(note);
+    commands.entity(text).add_children(&[headline, note]);
+    commands.entity(card).add_child(text);
+    commands.entity(body).add_child(card);
 
-    // Bulk actions. "Reset to detected" is the important one — it is the way
+    // Bulk actions. "Reset to detected" is the important one: it is the way
     // back from a mistake, and it re-runs the crawl rather than restoring a
     // snapshot, so it also picks up anything added since the dialog opened.
-    let actions = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), margin: UiRect::vertical(Val::Px(4.0)), ..default() }).id();
+    let actions = commands.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, column_gap: Val::Px(6.0), ..default() }).id();
     let all = pill_button(commands, fonts, "check-square", &renzora::lang::t("export.files.all"));
     commands.entity(all).insert(FilesBulk(FilesAction::All));
     let none = pill_button(commands, fonts, "square", &renzora::lang::t("export.files.none"));
@@ -177,21 +218,19 @@ pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_m
     let reset = pill_button(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t("export.files.reset"));
     commands.entity(reset).insert(FilesBulk(FilesAction::Detected));
     commands.entity(actions).add_children(&[all, none, reset]);
-    commands.entity(body).add_child(actions);
+    commands.entity(card).add_child(actions);
 
-    let count = txt(commands, fonts, "", 11.0, text_muted());
-    bind_text(commands, count, |w| {
+    bind_text(commands, headline, |w| {
         let Some(s) = w.get_resource::<ExportOverlayState>() else {
             return String::new();
         };
         match &s.included_files {
             None => renzora::lang::t("export.files.auto"),
-            Some(set) => renzora::lang::t("export.files.count")
+            Some(set) => renzora::lang::t("export.files.will_ship")
                 .replace("{n}", &set.len().to_string())
                 .replace("{total}", &s.project_files.len().to_string()),
         }
     });
-    commands.entity(body).add_child(count);
 
     // The tree, added straight into the section body. `finish_tab` puts ONE
     // scroll area around the whole panel, exactly as the other four tabs do —
@@ -218,6 +257,7 @@ pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_m
         queue.apply(world);
     });
 
+    let sec = group(commands, fonts, &renzora::lang::t("export.section.files"), &[body]);
     finish_tab(commands, panel, &[sec], tab_max);
     panel
 }

@@ -132,10 +132,9 @@ pub struct ExportOverlayState {
     /// Ship the plugin SDK so players can add native plugins and Rust scripts to
     /// the exported game.
     ///
-    /// On by default. A moddable game is the norm for this engine — the plugin
-    /// system is the same one the editor uses — and the cost of getting the
-    /// default wrong points one way: a game shipped without it cannot be modded
-    /// at all, while a game shipped with it is merely larger.
+    /// Off by default. The SDK is about 1.5 GB, several times the size of the
+    /// game it ships with, so it is something a developer opts into for a game
+    /// meant to be modded rather than something every export carries.
     pub enable_modding: bool,
     /// Optional override for the exported binary's filename (without extension).
     /// Empty = use the project name.
@@ -162,6 +161,11 @@ pub struct ExportOverlayState {
     /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped
     /// from the lean build. Populated with defaults after the plugin scan.
     pub capabilities: std::collections::HashMap<String, bool>,
+    /// What the project scan chose for `capabilities`, kept beside the working
+    /// copy so the Features tab can mark a row the user has changed and "Reset
+    /// to detected" can restore the scan's answer without reading the project
+    /// again.
+    pub(crate) detected_capabilities: std::collections::HashMap<String, bool>,
     /// Every file in the open project, forward-slashed and project-relative.
     ///
     /// Filled by the same walk that detects the capabilities, so the Files tab
@@ -242,7 +246,7 @@ impl Default for ExportOverlayState {
             upx_compress: false,
             icon_path: None,
             include_server: false,
-            enable_modding: true,
+            enable_modding: false,
             binary_name: String::new(),
             mesh_simplify: false,
             mesh_simplify_ratio: 0.5,
@@ -261,6 +265,7 @@ impl Default for ExportOverlayState {
             bundle_app: false,
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: std::collections::HashMap::new(),
+            detected_capabilities: std::collections::HashMap::new(),
             project_files: Vec::new(),
             included_files: None,
             collapsed_sections: std::collections::HashSet::new(),
@@ -430,6 +435,23 @@ pub(crate) fn ensure_release_fetch(world: &mut World) {
     std::thread::spawn(move || {
         let _ = tx.send(download::fetch_release_info());
     });
+}
+
+/// Forget a failed lookup so [`ensure_release_fetch`] starts another on the next
+/// frame. What the summary rail's Retry button does: a lookup that failed once
+/// (offline for a moment, GitHub rate-limited) used to stay failed until the
+/// editor restarted.
+pub(crate) fn retry_release_fetch(state: &mut ExportOverlayState) {
+    if state.release_fetch_rx.is_some() {
+        return;
+    }
+    state.release_fetch_started = false;
+    state.release_fetch_error = None;
+}
+
+/// Whether a release lookup is in flight right now.
+pub(crate) fn release_fetch_pending(state: &ExportOverlayState) -> bool {
+    state.release_fetch_rx.is_some()
 }
 
 /// Drain release manifest result if it has arrived.

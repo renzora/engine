@@ -368,6 +368,18 @@ pub fn pick_and_queue_files(world: &mut World) -> bool {
     world.resource_mut::<ImportOverlayState>().enqueue(&assets)
 }
 
+/// Queue files the caller already chose, with no OS dialog, for
+/// [`renzora::core::ImportPick::Given`]. A folder among them is walked the
+/// same way a dropped one is, and anything the importer cannot read is left
+/// out rather than queued to fail.
+pub fn queue_given_files(world: &mut World, paths: Vec<std::path::PathBuf>) -> bool {
+    let assets: Vec<_> = paths
+        .iter()
+        .flat_map(|p| crate::kinds::expand_importables(p))
+        .collect();
+    world.resource_mut::<ImportOverlayState>().enqueue(&assets)
+}
+
 /// Open the OS folder picker, expand it (mirroring the source tree), and
 /// append to the queue. A folder with nothing importable in it reports that in
 /// the overlay's message line instead of leaving the button looking dead.

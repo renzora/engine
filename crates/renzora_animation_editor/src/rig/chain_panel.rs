@@ -211,6 +211,19 @@ pub(crate) fn make_bendable(world: &mut World, entity: Entity, segments: usize) 
     // Rows to bend at: a library shape's straight stretches are single
     // spans, with nothing for a joint in the middle of one to curve.
     let (mut positions, mut normals, mut uvs) = (positions, normals, uvs);
+    // The shape's scale goes into the mesh, and the entity keeps scale one.
+    // A stretched cylinder left stretched by its transform shears as soon as
+    // a bone turns, because the rotation then happens inside a non-uniform
+    // scale: it bends as a flattened blade instead of a tube.
+    let scale = world.get::<Transform>(entity).map_or(Vec3::ONE, |t| t.scale);
+    if !scale.abs_diff_eq(Vec3::ONE, 1e-4) {
+        for p in &mut positions {
+            *p *= scale;
+        }
+        for n in &mut normals {
+            *n = (*n / scale).normalize_or_zero();
+        }
+    }
     if let Some((start, end)) = chain::axis_of(&positions) {
         let axis = (end - start).normalize_or(Vec3::Y);
         let max = start.distance(end) / (segments as f32 * 6.0);
@@ -244,7 +257,7 @@ pub(crate) fn make_bendable(world: &mut World, entity: Entity, segments: usize) 
     .map_err(|e| e.to_string())?;
     let rel = file.strip_prefix(&project).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
 
-    let mut cmd = ConvertToModel { entity, rel: rel.clone(), stash: None };
+    let mut cmd = ConvertToModel { entity, rel: rel.clone(), scale, stash: None };
     renzora_undo::UndoCommand::execute(&mut cmd, world);
     renzora_undo::record(world, renzora_undo::UndoContext::Scene, Box::new(cmd));
     Ok(rel)
@@ -274,6 +287,8 @@ struct Stash {
 struct ConvertToModel {
     entity: Entity,
     rel: String,
+    /// The shape's scale before, now baked into the model; Undo puts it back.
+    scale: Vec3,
     stash: Option<Stash>,
 }
 
@@ -293,6 +308,9 @@ impl renzora_undo::UndoCommand for ConvertToModel {
         // A bare instance, as a saved scene loads one: the engine's
         // rehydrate step spawns the model under it.
         e.insert(MeshInstanceData { model_path: Some(self.rel.clone()) });
+        if let Some(mut t) = e.get_mut::<Transform>() {
+            t.scale = Vec3::ONE;
+        }
         restage(world);
     }
     fn undo(&mut self, world: &mut World) {
@@ -304,6 +322,9 @@ impl renzora_undo::UndoCommand for ConvertToModel {
         }
         let Ok(mut e) = world.get_entity_mut(self.entity) else { return };
         e.remove::<MeshInstanceData>();
+        if let Some(mut t) = e.get_mut::<Transform>() {
+            t.scale = self.scale;
+        }
         if let Some(s) = self.stash.take() {
             if let Some(c) = s.mesh {
                 e.insert(c);

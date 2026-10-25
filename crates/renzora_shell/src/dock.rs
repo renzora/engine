@@ -219,13 +219,22 @@ const RETIRED_PANELS: &[&str] = &[
     // with the stage's mode.
     "rig",
     "face",
+    // The blueprint graph and its properties: visual scripting was removed.
+    "blueprint_graph",
+    "blueprint_properties",
 ];
+
+/// Workspace names that used to be built in and no longer are, dropped from a
+/// saved layout on load for the same reason as [`RETIRED_PANELS`]: with its
+/// panels retired, the Blueprints workspace would otherwise linger in the ribbon
+/// as a lone console.
+const RETIRED_WORKSPACES: &[&str] = &["Blueprints"];
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
 /// recognized by console being tabbed together with another strip panel —
 /// mixer/timeline/shape_library, or assets/hub_store in layouts saved before
 /// those moved out of the strip. Requiring a companion keeps this from matching
-/// a standalone console leaf (Blueprints) or the console+problems pair
+/// a standalone console leaf or the console+problems pair
 /// (Scripting) — those stay open at launch, as before.
 ///
 /// Only saved layouts reach this now. No shipped default carries a strip any
@@ -465,15 +474,26 @@ pub fn load_dock_layouts() -> Option<(
         if data.workspaces.is_empty() {
             return None;
         }
-        let mut workspaces = data
-            .workspaces
-            .into_iter()
-            .map(|w| (w.name, w.tree))
-            .collect::<Vec<_>>();
+        // A retired workspace goes too, keeping the active index on the same
+        // workspace it pointed at (or the one before, if that one is gone).
+        let mut active = data.active;
+        let mut workspaces = Vec::with_capacity(data.workspaces.len());
+        for (i, w) in data.workspaces.into_iter().enumerate() {
+            if RETIRED_WORKSPACES.contains(&w.name.as_str()) {
+                if i <= data.active {
+                    active = active.saturating_sub(1);
+                }
+                continue;
+            }
+            workspaces.push((w.name, w.tree));
+        }
+        if workspaces.is_empty() {
+            return None;
+        }
         for (_, tree) in &mut workspaces {
             tree.retire_panels(RETIRED_PANELS);
         }
-        let active = data.active.min(workspaces.len() - 1);
+        let active = active.min(workspaces.len() - 1);
         let mut bottom_dock = data.bottom_dock;
         if let Some(b) = bottom_dock.as_mut() {
             b.tree.retire_panels(RETIRED_PANELS);
@@ -559,7 +579,6 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         // rest of the ribbon is authoring one asset at a time.
         ("UI".into(), layout_ui()),
         ("Scripting".into(), layout_scripting()),
-        ("Blueprints".into(), layout_blueprints()),
         ("Animation".into(), layout_animation()),
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
@@ -609,31 +628,6 @@ fn layout_ui() -> DockTree {
             0.76,
         ),
         0.15,
-    )
-}
-
-/// Blueprints: NodeProperties | BlueprintGraph over Console.
-///
-/// Neither the hierarchy nor the inspector is here. Both are about the *scene* —
-/// which entity is selected and what components it carries — and this workspace
-/// is about a graph, whose selection is a node and whose editor is the Node
-/// Properties panel beside it. They cost the graph two columns to show what
-/// Scene already shows better.
-///
-/// `console` stays, docked under the graph rather than left to the global bottom
-/// panel: a blueprint is debugged by its print output, and watching that scroll
-/// beneath the nodes that produce it is the whole loop. It is a second, separate
-/// console instance — deliberately, so collapsing the global one doesn't take
-/// this one with it.
-fn layout_blueprints() -> DockTree {
-    DockTree::horizontal(
-        DockTree::leaf("blueprint_properties"),
-        DockTree::vertical(
-            DockTree::leaf("blueprint_graph"),
-            DockTree::leaf("console"),
-            0.75,
-        ),
-        0.18,
     )
 }
 
@@ -753,22 +747,20 @@ fn layout_particles() -> DockTree {
     )
 }
 
-/// Scene workspace: hierarchy | the viewport | the inspector. (The Scenes list
+/// Scene workspace: the viewport | hierarchy over inspector. (The Scenes list
 /// that shared the hierarchy's column is the top bar's scene switcher now.)
 ///
-/// **The tree gets the left column, not a shelf above the inspector.** For a
-/// while these two shared one right-hand column, tree stacked over inspector, on
-/// the reasoning that you pick an entity and then edit it right below. In use
-/// that mostly meant both panels were short: a scene tree is a *tall* list, and
-/// halving its height costs it more than the narrow column ever gave back, while
-/// the inspector's own content grows with the selection and wants the same
-/// height for itself. They're back to a column each, which is also the shape
-/// every other workspace here already uses — Scripting, Animation and Debug all
-/// lead with a hierarchy column on the left.
+/// **One right-hand column, tree stacked over inspector.** You pick an entity
+/// and edit it directly below, and the viewport gets the whole left side,
+/// which every pixel of a second side column used to come out of. The cost is
+/// height: the tree is a tall list and shares the column with an inspector
+/// that grows with the selection. So the tree gets the smaller share, enough
+/// for a screenful of names, and the split stays draggable. Two side columns
+/// were tried before this; in use they left the viewport the narrowest it has
+/// been.
 ///
-/// Both side columns stay narrow. Neither a list of names nor a stack of
-/// labelled fields needs width, and every pixel they give up goes to the
-/// viewport, which is the panel that can always spend it.
+/// `game` is tabbed with the viewport because Play shows the running game
+/// there, and finding it in the same place as the scene it runs is the point.
 ///
 /// **No bottom strip, and no `assets`.** Both used to live here: assets as the
 /// lower half of the left column, and console/timeline/mixer/shape_library as a
@@ -787,13 +779,13 @@ fn layout_particles() -> DockTree {
 /// click. Both are still one click away in the panel menu.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf("hierarchy"),
-        DockTree::horizontal(
-            DockTree::tabs(&["viewport", "code_editor"]),
+        DockTree::tabs(&["viewport", "code_editor", "game"]),
+        DockTree::vertical(
+            DockTree::leaf("hierarchy"),
             DockTree::leaf("inspector"),
-            0.78,
+            0.35,
         ),
-        0.15,
+        0.7,
     )
 }
 
@@ -969,8 +961,8 @@ mod tests {
 
     /// No default workspace may carry a panel the global bottom dock owns: a
     /// fresh install would open two of it, and "Reset Workspace" would then be
-    /// resetting global state. `console` is the one exception — Blueprints docks
-    /// it beside its graph deliberately.
+    /// resetting global state. `console` is the one exception: Scripting docks
+    /// it beside Problems deliberately.
     #[test]
     fn no_default_workspace_duplicates_a_global_bottom_tab() {
         for (name, tree) in workspace_layouts() {

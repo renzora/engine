@@ -2,8 +2,8 @@
 //!
 //! This crate owns everything about physics that is renzora's rather than a
 //! solver's: the components scenes save, routing each entity to the 2D or 3D
-//! world, resolving colliders, script actions, the read-back state scripts and
-//! blueprints see, world settings, collide-and-slide, and the scene queries
+//! world, resolving colliders, script actions, the read-back state scripts
+//! see, world settings, collide-and-slide, and the scene queries
 //! particles use. What actually simulates is a backend behind
 //! `renzora::physics::PhysicsBackend`, registered by a native plugin
 //! (`avian_physics`, `rapier_physics`). The engine links none.
@@ -119,7 +119,13 @@ impl Plugin for PhysicsPlugin {
         app.add_systems(
             Update,
             (
-                (handle_removed_physics_data, auto_init_physics, sync_physics_data, resolve::resolve_mesh_colliders),
+                (
+                    handle_removed_physics_data,
+                    auto_init_physics,
+                    sync_physics_data,
+                    resolve::resolve_mesh_colliders,
+                    resolve::resolve_model_colliders,
+                ),
                 read_state::auto_init_physics_read_state,
                 read_state::auto_init_collision_read_state,
             )
@@ -171,7 +177,7 @@ fn clear_physics_commands(mut commands: ResMut<PhysicsCommands>) {
     commands.0.clear();
 }
 
-/// Observer: turn physics script and blueprint actions (apply_force,
+/// Observer: turn physics script actions (apply_force,
 /// apply_impulse, set_velocity, kinematic_slide) into commands for the backend.
 fn handle_physics_script_actions(
     trigger: On<renzora::ScriptAction>,

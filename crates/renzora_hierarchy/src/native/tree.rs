@@ -80,7 +80,6 @@ fn flatten(
             is_locked: node.is_locked,
             is_default_camera: node.is_default_camera,
             has_script: node.has_script,
-            has_blueprint: node.has_blueprint,
             has_material: node.has_material,
             is_emitting: node.is_emitting,
             depth: parent_lines.len(),

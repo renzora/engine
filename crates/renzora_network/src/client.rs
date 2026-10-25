@@ -1,7 +1,7 @@
 //! Client-side networking over the from-scratch UDP transport.
 //!
 //! A connection is created on demand from `PendingNetworkConnect` (set by
-//! scripts/blueprints). [`NetworkClient`] holds the socket + the server peer;
+//! scripts). [`NetworkClient`] holds the socket + the server peer;
 //! [`client_poll`] pumps it each frame, delivering received RPCs to scripts.
 
 use std::net::{SocketAddr, UdpSocket};

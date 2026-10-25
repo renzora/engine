@@ -486,8 +486,9 @@ fn init_parkour(
 /// Same indirection every other domain crate uses: the script says
 /// `parkour_jump()`, the backend turns it into a `renzora::ScriptAction`, and
 /// this observer writes it onto the entity's [`ParkourInput`]. The drive
-/// system is the only thing that reads it, so a blueprint node firing the same
-/// action behaves identically to a Lua call.
+/// system is the only thing that reads it, so any other caller firing the same
+/// action (another language backend, an engine crate) behaves identically to a
+/// Lua call.
 fn handle_parkour_script_actions(
     trigger: On<renzora::ScriptAction>,
     mut inputs: Query<&mut ParkourInput>,

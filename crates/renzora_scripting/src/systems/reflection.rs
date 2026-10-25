@@ -3,8 +3,8 @@
 //! Exclusive system that applies generic reflection-based component field writes.
 //!
 //! The reflection read/write/enumerate helpers themselves live in the `renzora`
-//! contract crate (`renzora::reflection`) so scripting, blueprints and the
-//! animation system all share one implementation. This module re-exports the
+//! contract crate (`renzora::reflection`) so scripting and the
+//! animation system both share one implementation. This module re-exports the
 //! ones scripting callers use and hosts the script-queue-draining system.
 
 use bevy::prelude::*;

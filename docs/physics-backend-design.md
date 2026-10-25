@@ -74,7 +74,7 @@ nothing, because the force was removed in `PostUpdate` before any step ran.
 
 A plugin can supply the physics engine. Avian stays the bundled backend; a
 second one (Rapier first, Jolt as the stretch) installs beside it, and a project
-setting picks which one simulates. Every engine crate, script, blueprint and
+setting picks which one simulates. Every engine crate, script and
 native plugin talks to the contract, never to a backend, so switching changes
 nothing above it.
 
@@ -193,7 +193,7 @@ impulse (the comment in `handle_physics_script_actions` admits it). Both go away
 
 The engine collects a `PhysicsCommands` queue (`AddForce`, `AddImpulse`,
 `AddTorque`, `SetLinearVelocity`, `SetAngularVelocity`, `Teleport`, `Wake`), and
-the backend drains it at the start of each step. Script actions, blueprints and
+the backend drains it at the start of each step. Script actions and
 engine crates all push into the same queue. Every backend has a real impulse, so
 the fix comes for free.
 

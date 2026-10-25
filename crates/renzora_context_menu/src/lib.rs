@@ -177,7 +177,7 @@ fn detect_right_click_tap(
     };
     // Suppress the viewport context menu if the Viewport panel isn't the
     // currently-visible tab in its dock leaf. Otherwise a right-click in a
-    // Blueprint / Material / other panel that shares the same dock slot
+    // Material or other panel that shares the same dock slot
     // would spawn the scene's Add / EntityActions menu, because
     // ViewportState.screen_position is stale from when the Viewport tab
     // was last rendered.

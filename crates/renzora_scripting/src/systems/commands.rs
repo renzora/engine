@@ -38,7 +38,7 @@ pub fn apply_script_commands(
         *ran_once = true;
     }
 
-    // 0. Drain TransformWriteQueue from core (blueprint writes go here)
+    // 0. Drain TransformWriteQueue from core (non-script writers go here)
     if !tw_queue.writes.is_empty() {
         cmd_queue.transform_writes.append(&mut tw_queue.writes);
     }

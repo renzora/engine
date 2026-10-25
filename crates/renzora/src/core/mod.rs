@@ -23,7 +23,7 @@ pub mod bone_style; // how a skeleton is drawn, everywhere one is (not flattened
 pub mod components; // shared ECS components + entity-tag markers
 pub mod editor_events; // one-way events the editor fires at other crates
 pub mod entity_id; // canonical unique snake_case entity ids (Name)
-pub mod graph; // node-graph vocabulary (blueprint / material / particle)
+pub mod graph; // node-graph vocabulary (material / particle)
 pub mod image_formats; // which extensions load as an Image (raster + SVG)
 pub mod input_actions; // named actions + the character controller queue
 pub mod environment_suppressed; // shading modes that show no sky

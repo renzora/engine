@@ -18,7 +18,7 @@ use renzora::physics::{
     RuntimePhysics, RuntimePhysics2d,
 };
 
-use crate::CommandForce;
+use crate::{has_body_ancestor, CommandForce};
 
 /// The name this backend registers under, and the one project settings use.
 pub const NAME: &str = "avian2d";
@@ -265,24 +265,6 @@ fn remove_dropped_bodies(
             }
         }
     }
-}
-
-/// True if any ANCESTOR of `entity` carries `PhysicsBodyData`, i.e. this
-/// entity's collider should attach to that body rather than get a body of
-/// its own.
-fn has_body_ancestor(
-    entity: Entity,
-    bodies: &Query<(), With<PhysicsBodyData>>,
-    parents: &Query<&ChildOf>,
-) -> bool {
-    let mut e = entity;
-    while let Ok(child_of) = parents.get(e) {
-        e = child_of.parent();
-        if bodies.contains(e) {
-            return true;
-        }
-    }
-    false
 }
 
 fn sync_bodies(

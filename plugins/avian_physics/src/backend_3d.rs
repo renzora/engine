@@ -8,12 +8,12 @@ use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use renzora::physics::{
     physics_backend_selected, AppPhysicsBackendExt, BodyVelocity, Caps, CastBatch, CastHit,
-    CastShape, Contact, JointKind, OverlapBatch, PhysicsBackend, PhysicsBodyData, PhysicsBodyType,
+    CastShape, CollisionShapeData, Contact, JointKind, OverlapBatch, PhysicsBackend, PhysicsBodyData, PhysicsBodyType,
     PhysicsCommand, PhysicsCommands, PhysicsContacts, PhysicsDim, PhysicsJoint, PhysicsSet,
     PhysicsSettings, ResolvedCollider, ResolvedShape, RuntimePhysics, RuntimePhysics2d,
 };
 
-use crate::CommandForce;
+use crate::{has_body_ancestor, CommandForce};
 
 /// The name this backend registers under, and the one project settings use.
 pub const NAME: &str = "avian3d";
@@ -238,6 +238,8 @@ fn remove_dropped_bodies(
     mut removed_bodies: RemovedComponents<PhysicsBodyData>,
     wired: Query<(), With<RuntimePhysics>>,
     has_body: Query<(), With<PhysicsBodyData>>,
+    colliders: Query<(), (With<CollisionShapeData>, Without<RuntimePhysics2d>)>,
+    parents: Query<&ChildOf>,
 ) {
     for entity in removed_runtime.read() {
         if !wired.contains(entity) {
@@ -250,6 +252,10 @@ fn remove_dropped_bodies(
         if wired.contains(entity) && !has_body.contains(entity) {
             if let Ok(mut e) = commands.get_entity(entity) {
                 e.try_remove::<BodyParts>();
+                // A collider left behind is still solid; see `has_body_ancestor`.
+                if colliders.contains(entity) && !has_body_ancestor(entity, &has_body, &parents) {
+                    e.try_insert(RigidBody::Static);
+                }
             }
         }
     }
@@ -282,6 +288,17 @@ fn sync_bodies(
             Or<(Added<RuntimePhysics>, Changed<PhysicsBodyData>)>,
         ),
     >,
+    new_colliders: Query<
+        Entity,
+        (
+            Added<RuntimePhysics>,
+            Without<RuntimePhysics2d>,
+            With<CollisionShapeData>,
+            Without<PhysicsBodyData>,
+        ),
+    >,
+    all_bodies: Query<(), With<PhysicsBodyData>>,
+    parents: Query<&ChildOf>,
 ) {
     for (entity, body) in &bodies {
         let mut e = commands.entity(entity);
@@ -290,6 +307,13 @@ fn sync_bodies(
             e.try_insert(SweptCcd::default());
         } else {
             e.try_remove::<SweptCcd>();
+        }
+    }
+    // The same explicit static body the 2D backend gives a body-less collider;
+    // see `has_body_ancestor` for what happens without it.
+    for entity in &new_colliders {
+        if !has_body_ancestor(entity, &all_bodies, &parents) {
+            commands.entity(entity).try_insert(RigidBody::Static);
         }
     }
 }

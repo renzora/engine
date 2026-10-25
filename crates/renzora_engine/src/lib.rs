@@ -867,7 +867,7 @@ fn update_runtime_effect_routing(
     }
 }
 
-/// Process pending scene load requests from scripts/blueprints.
+/// Process pending scene load requests from scripts.
 ///
 /// Clears the current scene (despawns all named non-editor entities),
 /// then loads the requested scene.

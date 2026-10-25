@@ -32,8 +32,6 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_audio_backend::RenzoraAudioPlugin::default());
     #[cfg(feature = "bloom")]
     app.add_plugins(renzora_bloom_effect::BloomEffectPlugin::default());
-    #[cfg(feature = "blueprint")]
-    app.add_plugins(renzora_blueprint::BlueprintPlugin::default());
     #[cfg(feature = "cloth")]
     app.add_plugins(renzora_cloth::ClothPlugin::default());
     #[cfg(feature = "distance_fog")]
@@ -56,6 +54,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "light2d")]
     app.add_plugins(renzora_light2d::Light2dPlugin::default());
     app.add_plugins(renzora_lighting::LightingPlugin::default());
+    app.add_plugins(renzora_live_link::LiveLinkPlugin::default());
     #[cfg(feature = "motion_blur")]
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin::default());
     #[cfg(feature = "navmesh")]

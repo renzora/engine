@@ -1,18 +1,16 @@
-//! Node-graph vocabulary shared by the blueprint, material and particle editors.
+//! Node-graph vocabulary shared by the material and particle editors.
 //!
-//! The three graph models differ in what a node *does* and agree on everything
+//! The graph models differ in what a node *does* and agree on everything
 //! else — pins, types, connections, comment boxes — so that agreement lives
 //! here, and `renzora_ember`'s reusable `node_graph_view` can render any of them.
-
-use std::collections::HashMap;
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Node identifier in a visual scripting graph.
+/// Node identifier in a node graph.
 pub type NodeId = u64;
 
-/// Pin data types for blueprint nodes.
+/// Pin data types for graph nodes.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Reflect)]
 pub enum PinType {
     /// Execution flow (white wires) — controls order of operations.
@@ -216,55 +214,10 @@ impl PinTemplate {
     }
 }
 
-/// Static definition of a blueprint node type.
-pub struct BlueprintNodeDef {
-    pub node_type: &'static str,
-    pub display_name: &'static str,
-    pub category: &'static str,
-    pub description: &'static str,
-    pub pins: fn() -> Vec<PinTemplate>,
-    /// RGB header color for the node in the graph editor.
-    pub color: [u8; 3],
-}
-
-/// A connection between two pins in a graph.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Reflect)]
-pub struct BlueprintConnection {
-    pub from_node: NodeId,
-    pub from_pin: String,
-    pub to_node: NodeId,
-    pub to_pin: String,
-}
-
-/// A node instance in a graph.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Reflect)]
-pub struct BlueprintNode {
-    pub id: NodeId,
-    pub node_type: String,
-    pub position: [f32; 2],
-    /// Override values for input pins (user-set constants).
-    pub input_values: HashMap<String, PinValue>,
-}
-
-impl BlueprintNode {
-    pub fn new(id: NodeId, node_type: &str, position: [f32; 2]) -> Self {
-        Self {
-            id,
-            node_type: node_type.to_string(),
-            position,
-            input_values: HashMap::new(),
-        }
-    }
-
-    pub fn get_input_value(&self, pin_name: &str) -> Option<&PinValue> {
-        self.input_values.get(pin_name)
-    }
-}
-
 /// A resizable comment / group box drawn behind the nodes of a graph. Purely
 /// visual — no pins, never compiled — but dragging it moves the nodes it
-/// encloses, so it doubles as a group. Shared by every graph model (blueprint /
-/// material / particle) so the editor view can render, drag, resize and persist
+/// encloses, so it doubles as a group. Shared by every graph model (material /
+/// particle) so the editor view can render, drag, resize and persist
 /// them uniformly.
 #[derive(Clone, Debug, Serialize, Deserialize, Reflect, PartialEq)]
 #[reflect(Default)]

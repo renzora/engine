@@ -70,7 +70,7 @@ Everything below — field rules, category-specific details, size limits, catego
 The wizard shows extra fields based on your content type and category, for example:
 
 - **Sound Effects / Music** — BPM, genre, loop-friendly flag.
-- **Scripts / Plugins / Blueprints** — scripting language (Lua, Rhai, WGSL, Visual Blueprint) and dependencies.
+- **Scripts / Plugins**: scripting language (Rust, Lua, Rhai, WGSL (Shader), Other) and dependencies.
 - **3D Models / Animations** — polygon count and texture resolution.
 - **2D Art / Textures / Particles** — resolution and a "seamlessly tileable" flag.
 - **Materials & Shaders** — render pipeline (PBR, Unlit, Toon, Custom WGSL) and texture resolution.
@@ -106,7 +106,6 @@ Categories are defined server-side. The current set (with the recommended max si
 | Music | `music` | 200 MB | zip, rar, wav, ogg, mp3, flac |
 | Plugins | `plugins` | 50 MB | zip, rar, 7z |
 | Scripts | `scripts` | 50 MB | zip, rar, lua, rhai |
-| Blueprints | `blueprints` | 50 MB | zip, rar, blueprint |
 | Complete Projects | `projects` | 500 MB | zip, rar, 7z |
 | Themes | `themes` | 20 MB | zip, rar, json |
 | Fonts | `fonts` | 20 MB | zip, rar, ttf, otf, woff, woff2 |

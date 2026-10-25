@@ -21,7 +21,6 @@ renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_animation = { path = "../renzora_animation" }
 # Only `ParticleSystem`, for dropping an effect onto the viewport.
 renzora_particles = { path = "../renzora_particles" }
-renzora_blueprint = { path = "../renzora_blueprint" }
 renzora_shader = { path = "../renzora_shader" }
 renzora_terrain = { path = "../renzora_terrain" }
 renzora_engine = { path = "../renzora_engine" }

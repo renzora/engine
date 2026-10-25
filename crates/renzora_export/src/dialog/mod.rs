@@ -1,31 +1,38 @@
-//! The export dialog — a two-column modal that turns the open project into a
+//! The export dialog: a three-column modal that turns the open project into a
 //! shippable build.
 //!
 //! A preset sidebar on the left (each preset is a named configuration for one
-//! platform, saved with the project) and a five-tab settings pane on the right:
-//! Output, Packaging, Features, Plugins, Files. Once an export starts the whole
-//! form is replaced by the log view, which streams the build's output and offers
-//! Cancel.
+//! platform, saved with the project, listed under its platform family), a
+//! five-tab settings pane in the middle (Output, Packaging, Engine features,
+//! Plugins, Files), and a summary rail on the right that says what the build
+//! will be and lists everything standing in its way. Once an export starts the
+//! settings are replaced by the log view, which streams the build's output and
+//! offers Cancel.
 //!
 //! It edits [`ExportOverlayState`](crate::overlay::ExportOverlayState) and reuses
-//! the worker (`run_export` plus the pollers).
+//! the worker (`run_export` plus the pollers). What is purely about the dialog
+//! (which tab is open, the feature search) lives in [`ExportDialogUi`] instead,
+//! so the export state does not carry presentation.
 //!
 //! | Module | What it holds |
 //! |---|---|
 //! | [`lifecycle`] | Spawn/despawn, the Docker probe, the plugin and file scans |
-//! | [`frame`] | The backdrop, the header, and the Export button |
+//! | [`frame`] | The backdrop, the header, the three columns, the Export button |
 //! | [`sidebar`] | The preset list and its add / duplicate / remove actions |
-//! | [`settings`] | The right pane: platform header, the tab strip, tab sizing |
-//! | [`output`] | Output tab — name, folder, icon, window, flags |
-//! | [`packaging`] | Packaging tab — mode, runtime template, modding, compression |
-//! | [`features`] | Features tab — the lean engine-feature strip |
-//! | [`plugins`] | Plugins tab — link mode and the plugin card grid |
-//! | [`files`] | Files tab — the project's files as a ticked tree |
+//! | [`settings`] | The middle pane: platform header, the tab strip, tab sizing |
+//! | [`summary`] | The right rail: what this build is, and the pre-export checks |
+//! | [`output`] | Output tab: name, folder, icon, window, flags |
+//! | [`packaging`] | Packaging tab: mode, runtime template, modding, compression |
+//! | [`features`] | Engine features tab: the lean engine-feature strip |
+//! | [`plugins`] | Plugins tab: link mode and the plugin card grid |
+//! | [`files`] | Files tab: the project's files as a ticked tree |
 //! | [`log`] | The build log view and its progress bar |
 //! | [`interaction`] | Every click handler, and the save-before-export prompt |
 //! | [`widgets`] | Small shared builders |
 
 use bevy::prelude::*;
+
+use crate::overlay::{PackagingMode, PluginLinkMode};
 
 pub(crate) mod features;
 pub(crate) mod files;
@@ -38,6 +45,7 @@ pub(crate) mod packaging;
 pub(crate) mod plugins;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
+pub(crate) mod summary;
 pub(crate) mod widgets;
 
 pub(super) const GREEN: (u8, u8, u8) = (89, 191, 115);
@@ -52,6 +60,8 @@ pub(super) const EXPORT_BLUE: (u8, u8, u8) = (56, 121, 232);
 pub(super) const EXPORT_BLUE_HOT: (u8, u8, u8) = (78, 141, 246);
 
 pub(crate) fn register(app: &mut App) {
+    app.init_resource::<ExportDialogUi>();
+    // Two calls because one `add_systems` tuple tops out at twenty.
     app.add_systems(
         Update,
         (
@@ -74,6 +84,56 @@ pub(crate) fn register(app: &mut App) {
             interaction::section_toggle_click,
         ),
     );
+    app.add_systems(
+        Update,
+        (
+            interaction::tab_click,
+            interaction::choice_click,
+            interaction::check_action_click,
+            interaction::feature_filter_click,
+            interaction::features_reset_click,
+        ),
+    );
+}
+
+// ── Dialog-only state ────────────────────────────────────────────────────────
+
+/// The five tabs of the settings pane.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(super) enum ExportTab {
+    Output,
+    #[default]
+    Packaging,
+    Features,
+    Plugins,
+    Files,
+}
+
+/// Which feature rows the Engine features tab shows.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(super) enum FeatureFilter {
+    #[default]
+    All,
+    /// Only what is switched on.
+    On,
+    /// Only rows whose value differs from what the project scan chose. This is
+    /// the view a pre-export warning sends you to, so it has to exist as a
+    /// filter rather than as "read the whole list and spot the odd ones out".
+    Changed,
+}
+
+/// Presentation state the export itself never reads.
+///
+/// The tab used to be the ember `tabs()` widget's own business, which was fine
+/// until something other than a tab handle needed to change it: a check in the
+/// summary rail that says "a feature the project needs is off" is only useful if
+/// pressing it takes you there. Owning the tab here is what makes that a one-line
+/// state write.
+#[derive(Resource, Default)]
+pub(super) struct ExportDialogUi {
+    pub(super) tab: ExportTab,
+    pub(super) feature_query: String,
+    pub(super) feature_filter: FeatureFilter,
 }
 
 // ── Markers ──────────────────────────────────────────────────────────────────
@@ -127,12 +187,53 @@ pub(super) struct FilesBulk(pub(super) FilesAction);
 pub(super) enum FilesAction {
     All,
     None,
-    /// Re-run the automatic crawl and take its answer — the way back from a
+    /// Re-run the automatic crawl and take its answer: the way back from a
     /// mistake, and it re-reads the project so it also picks up anything added
     /// since the dialog opened.
     Detected,
 }
 
-/// Features-tab section header — click folds/unfolds that section.
+/// Features-tab section header: click folds/unfolds that section.
 #[derive(Component)]
 pub(super) struct SectionToggle(pub(super) &'static str);
+
+/// A handle in the settings pane's tab strip.
+#[derive(Component, Clone, Copy)]
+pub(super) struct TabBtn(pub(super) ExportTab);
+
+/// One of the large option cards (packaging mode, plugin linking).
+#[derive(Component, Clone, Copy)]
+pub(super) struct ChoiceCard(pub(super) Choice);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Choice {
+    Packaging(PackagingMode),
+    Link(PluginLinkMode),
+}
+
+/// The fix button on a pre-export check in the summary rail.
+#[derive(Component, Clone, Copy)]
+pub(super) struct CheckActionBtn(pub(super) CheckAction);
+
+/// What a check's fix button does. Each one is the shortest path from the
+/// problem to its cure: a download, a folder picker, a mode switch, or the tab
+/// where the decision lives.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(super) enum CheckAction {
+    RetryRelease,
+    DownloadTemplate,
+    InstallTemplate,
+    DownloadSource,
+    ChooseFolder,
+    UseLean,
+    ReviewFeatures,
+    ReviewPlugins,
+}
+
+/// A filter chip in the Engine features toolbar.
+#[derive(Component, Clone, Copy)]
+pub(super) struct FeatureFilterBtn(pub(super) FeatureFilter);
+
+/// "Reset to detected" in the Engine features toolbar.
+#[derive(Component)]
+pub(super) struct FeaturesResetBtn;

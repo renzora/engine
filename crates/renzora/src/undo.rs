@@ -7,7 +7,7 @@
 //! ## Why the core is here and the commands are not
 //!
 //! An editing tool is the most obvious thing to ship as a plugin — a mesh
-//! drawer, a shape library, a blueprint editor — and the one thing every one of
+//! drawer, a shape library, a node-graph editor; and the one thing every one of
 //! them must do is make its edits undoable. That was impossible while the whole
 //! of undo lived in `renzora_undo`, which a plugin cannot link: it depends on
 //! `renzora_editor_framework`, `renzora_ui`, `renzora_ember` and
@@ -39,7 +39,6 @@ pub enum UndoContext {
     #[default]
     Scene,
     MaterialGraph(String),
-    Blueprint(String),
     Lifecycle,
     Other(String),
 }

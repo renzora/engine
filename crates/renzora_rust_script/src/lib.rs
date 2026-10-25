@@ -16,8 +16,8 @@
 //! ```
 //!
 //! Attached exactly like a Lua script: drop it into the entity's **Scripts**
-//! component. Routing is by file extension, the same way `.lua`, `.blueprint`
-//! and `.bp` already route.
+//! component. Routing is by file extension, the same way `.lua` already
+//! routes.
 //!
 //! Everything Bevy allows is allowed: spawn hierarchies, build UI, insert
 //! components, swap materials, reach other entities by [`Entity`]. There is no
@@ -233,7 +233,17 @@ impl Plugin for RustScriptPlugin {
                     // few frames a second for the first seconds of every
                     // project open. Gated on `Editor` so a project's scripts are
                     // not built while the splash is still loading it.
-                    watch::scan_on_project_open.run_if(in_state(SplashState::Editor)),
+                    //
+                    // A game process runs it too. Play launches the game as a
+                    // child (`--no-editor --project`), which never enters
+                    // `SplashState::Editor`, so its scripts were never queued and
+                    // every `.rs` silently did nothing in Play. The child has the
+                    // same SDK beside it, and builds are keyed on source and SDK,
+                    // so the walk finds the editor's own libraries and loads them
+                    // without compiling. An exported game has no SDK and ships no
+                    // sources, so there it finds nothing to do.
+                    watch::scan_on_project_open
+                        .run_if(in_state(SplashState::Editor).or_else(not_editor_session)),
                     watch::watch,
                     watch::finish,
                 ),
@@ -302,13 +312,22 @@ impl Plugin for RustScriptPlugin {
             return;
         }
         app.init_resource::<renzora_scripting::ScriptsActive>()
-            .configure_sets(Update, renzora_scripting::ScriptingSet::PreScript)
+            .configure_sets(
+                Update,
+                renzora_scripting::ScriptingSet::PreScript.after(renzora::physics::PhysicsSet::Read),
+            )
             .add_systems(
                 Update,
                 renzora_scripting::update_scripts_active
                     .in_set(renzora_scripting::ScriptingSet::PreScript),
             );
     }
+}
+
+/// A game process rather than the editor: Play's child, or an exported game.
+/// Absent counts as a game, matching `EditorSession`'s own default.
+fn not_editor_session(session: Option<Res<renzora::EditorSession>>) -> bool {
+    !session.is_some_and(|s| s.is_editor())
 }
 
 /// Register the `.rs` backend the first time a [`ScriptEngine`] exists.

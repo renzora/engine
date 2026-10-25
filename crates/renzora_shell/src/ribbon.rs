@@ -28,7 +28,7 @@ use crate::ShellLayouts;
 /// built-in workspaces plus a few of your own.
 pub(crate) const RIBBON_W: f32 = 700.0;
 
-/// A ribbon workspace button (Scene, Blueprints, …). Carries its layout index;
+/// A ribbon workspace button (Scene, Scripting, …). Carries its layout index;
 /// the active highlight comes from the reactive rebuild (see [`ribbon_snapshot`]).
 #[derive(Component)]
 pub(crate) struct RibbonItem {

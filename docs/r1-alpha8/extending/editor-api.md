@@ -110,7 +110,7 @@ app.register_inspector(InspectorEntry {
 | `"post_process"` | Post Process | SSAO, SSR, shader post effects |
 | `"physics"` | Physics | Bodies, colliders, joints, ragdolls |
 | `"animation"` | Animation | Animators and clips |
-| `"scripting"` | Scripting | Scripts, blueprints, gameplay components |
+| `"scripting"` | Scripting | Scripts, gameplay components |
 | `"audio"` | Audio | Players and listeners |
 | `"navigation"` | Navigation | Navmesh volumes, obstacles, agents |
 | `"networking"` | Networking | Replication |

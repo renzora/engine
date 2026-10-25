@@ -70,13 +70,12 @@ impl ScriptEngine {
         self.backends.push(backend);
     }
 
-    /// Every file extension any registered backend claims, e.g. `["lua",
-    /// "blueprint", "bp", "rs"]`.
+    /// Every file extension any registered backend claims, e.g. `["lua", "rs"]`.
     ///
     /// The editor asks rather than hardcoding a list. Three places in the
     /// inspector's Scripts panel used to carry their own copy of
-    /// `["lua", "blueprint", "bp"]` — the script scanner, the drag-drop filter,
-    /// and the drop-zone highlight — so adding a language meant finding all
+    /// the extension list (the script scanner, the drag-drop filter
+    /// and the drop-zone highlight), so adding a language meant finding all
     /// three, and missing one produced a script that could be typed in but not
     /// dropped, or dropped but never listed.
     ///

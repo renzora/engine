@@ -31,6 +31,82 @@ pub struct DedicatedServer;
 #[derive(Resource, Default)]
 pub struct HostServer;
 
+/// Where the editor's live link listens, for the game Play launches.
+///
+/// Inserted by the editor half of `renzora_live_link` once its listener is
+/// bound, and read by Play when it spawns the game, which passes both values
+/// on the command line (`--live-link <port> --live-link-token <token>`). Here
+/// rather than in the live-link crate so Play can hand them over without
+/// linking it. The token is what stops anything else on the machine from
+/// connecting to a port that accepts edits to the running game.
+#[derive(Resource, Clone, Debug)]
+pub struct LiveLinkEndpoint {
+    pub port: u16,
+    pub token: String,
+}
+
+/// Present while the editor's world is mirroring a running game.
+///
+/// While it exists, the editor's scene holds the game's state (where the
+/// player has walked to, what the game spawned) as well as the user's edits,
+/// so writing it to the scene file would bake a moment of gameplay into the
+/// level. Saves are deferred instead: [`Self::pending_save`] is set, and when
+/// the game stops and the editor has put the game's changes back, the save
+/// runs then. Inserted and removed by the editor half of `renzora_live_link`.
+#[derive(Resource, Default, Debug)]
+pub struct LivePlaySession {
+    pub pending_save: bool,
+}
+
+/// Ask the live link to keep what the running game changed, rather than undo
+/// it when the game stops: the crates it knocked over stay where they fell,
+/// the props it spawned stay in the scene. Inserted by the Keep button.
+#[derive(Resource, Default)]
+pub struct KeepLiveChangesRequested;
+
+/// Something an agent, or any editor tool, wants the running game to do.
+/// Queued on [`GameLink`] and carried to the game by the live link.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GameInput {
+    /// A keyboard key by its `KeyCode` name (`"KeyW"`, `"Space"`).
+    Key { code: String, pressed: bool },
+    /// A gamepad button by its `GamepadButton` name (`"South"`,
+    /// `"RightTrigger2"`), 0 to 1. The game sees it on a virtual gamepad.
+    GamepadButton { button: String, value: f32 },
+    /// A gamepad axis by its `GamepadAxis` name (`"LeftStickX"`), -1 to 1.
+    GamepadAxis { axis: String, value: f32 },
+}
+
+/// The editor's line to the game Play is running, for tools that want more
+/// than component edits: input, screenshots. A tool pushes onto `requests`;
+/// the live link sends them, and files screenshot replies under the id the
+/// tool was given by [`Self::request_screenshot`]. Inserted by the live link's
+/// editor half, so a tool finding it absent knows there is no link at all.
+#[derive(Resource, Default, Debug)]
+pub struct GameLink {
+    /// Whether a game is connected right now.
+    pub connected: bool,
+    /// Inputs to send. An entry's second value, when set, is how many seconds
+    /// later to send its release (a key up, a button or axis back to zero).
+    pub inputs: Vec<(GameInput, Option<f32>)>,
+    /// Screenshot requests not yet sent, by id.
+    pub screenshot_requests: Vec<u64>,
+    /// Screenshot replies: a PNG, or why there is none.
+    pub screenshots: std::collections::HashMap<u64, Result<Vec<u8>, String>>,
+    next_id: u64,
+}
+
+impl GameLink {
+    /// Queue a screenshot of the game's window and return the id its reply
+    /// will be filed under in [`Self::screenshots`].
+    pub fn request_screenshot(&mut self) -> u64 {
+        self.next_id += 1;
+        self.screenshot_requests.push(self.next_id);
+        self.next_id
+    }
+}
+
 /// Whether this process is an EDITOR session (the `renzora_editor` bundle dll
 /// is present beside the exe) vs. a shipped game. Inserted by
 /// `add_engine_plugins(is_editor)` before the engine plugins build. Lets the
@@ -48,7 +124,7 @@ impl EditorSession {
     }
 }
 
-/// Resource: request a scene load from scripts/blueprints.
+/// Resource: request a scene load from scripts.
 /// The runtime system drains this each frame.
 #[derive(Resource, Default)]
 pub struct PendingSceneLoad {
@@ -116,7 +192,7 @@ pub struct ExportRequested;
 /// Windows a folder in a file dialog can only be navigated into — so the
 /// request has to say up front which of the two it wants. The editor's Import
 /// entry points ask the user with a two-row menu rather than guessing.
-#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Default, Clone, PartialEq, Eq, Debug)]
 pub enum ImportPick {
     /// The multi-select file picker, filtered to every importable extension.
     #[default]
@@ -124,6 +200,14 @@ pub enum ImportPick {
     /// The folder picker; the chosen directory is walked for importable files
     /// and its subfolder tree is mirrored into the destination.
     Folder,
+    /// Files the caller has already chosen, so no OS dialog opens at all.
+    ///
+    /// For a caller that is not a person at the keyboard (the MCP server, a
+    /// plugin): a native dialog blocks the main thread until someone answers
+    /// it, which froze the editor for an agent that had no way to. The overlay
+    /// that follows is the same one a person gets, so the import is still
+    /// reviewed and committed through the normal window.
+    Given(Vec<std::path::PathBuf>),
 }
 
 /// Marker resource requesting the import overlay to open.

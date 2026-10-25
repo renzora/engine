@@ -3,7 +3,7 @@
 //! There used to be a shared toolbar strip below the top bar, whose contents
 //! followed whichever panel was the active dock tab. It is gone: a panel's tools
 //! now live **inside that panel**, which is where the code editor always kept
-//! its own, and where the material and blueprint graphs moved theirs. A tool row
+//! its own, and where the material graph moved its. A tool row
 //! that belongs to a panel but renders somewhere else has to answer "is my panel
 //! visible?" every frame, and answers it in a bar that is the same distance from
 //! every panel — the one it acts on included.

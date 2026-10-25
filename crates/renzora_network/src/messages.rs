@@ -30,7 +30,7 @@ pub struct ChatMessage {
 
 /// Generic game event (bidirectional, extensible).
 ///
-/// Scripts and blueprints can send/receive arbitrary events
+/// Scripts can send/receive arbitrary events
 /// using a name + serialized payload.
 #[derive(Debug, Clone, Serialize, Deserialize, Event)]
 pub struct GameEvent {

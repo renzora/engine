@@ -13,7 +13,7 @@ use renzora_ember::UiInteraction;
 
 use crate::overlay::{ExportOverlayState, ExportProgress};
 
-use super::widgets::{cursor, pill_button, txt};
+use super::widgets::{cursor, mode_label, pill_button, txt};
 use super::{CancelOrBackBtn, CopyLogBtn, LogScroll, GREEN, RED};
 
 /// Rough crate count for a full lean build, used only to scale the progress bar
@@ -52,7 +52,7 @@ fn bind_width_pct(
 
 pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let view = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), flex_grow: 1.0, min_height: Val::Px(0.0), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(10.0), flex_grow: 1.0, min_height: Val::Px(0.0), padding: UiRect::all(Val::Px(20.0)), ..default() })
         .id();
 
     // Heading — reflects the current phase.
@@ -61,18 +61,26 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     bind_display(commands, sp, |w| {
         w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false)
     });
-    let heading = txt(commands, fonts, "", 14.0, text_primary());
+    let heading = txt(commands, fonts, "", 16.0, text_primary());
     bind_text(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
         Some(ExportProgress::Done(_)) => renzora::lang::t("export.status.complete"),
         Some(ExportProgress::Error(_)) => renzora::lang::t("export.status.failed"),
         _ => renzora::lang::t("export.status.exporting"),
+    });
+    // Which build this is, since the settings that said so are hidden while it
+    // runs.
+    let sub = txt(commands, fonts, "", 11.5, text_muted());
+    bind_text(commands, sub, |w| {
+        w.get_resource::<ExportOverlayState>()
+            .map(|s| format!("{} · {}", s.platform.display_name(), mode_label(s.platform, s.packaging_mode)))
+            .unwrap_or_default()
     });
     bind_text_color(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
         Some(ExportProgress::Done(_)) => rgb(GREEN),
         Some(ExportProgress::Error(_)) => rgb(RED),
         _ => rgb(text_primary()),
     });
-    commands.entity(heading_row).add_children(&[sp, heading]);
+    commands.entity(heading_row).add_children(&[sp, heading, sub]);
 
     // Progress bar.
     let track = commands.spawn((Node { width: Val::Percent(100.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb(card_bg())))).id();
@@ -94,7 +102,7 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     // is tall and the log was showing twenty lines of an eight-hundred-line
     // build with empty space beneath it; `min_height` keeps it usable when the
     // window is short.
-    let term = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(220.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
+    let term = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(220.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(10.0)), border_radius: BorderRadius::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
     let log_text = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_muted())), PASS_THROUGH)).id();
     bind_text(commands, log_text, |w| {
         w.get_resource::<ExportOverlayState>().map(|s| s.build_log.join("\n")).unwrap_or_default()

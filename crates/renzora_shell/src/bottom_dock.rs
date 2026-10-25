@@ -478,8 +478,8 @@ pub(crate) const BOTTOM_DOCK_GRIP_H: f32 = 10.0;
 /// It has to be a `GlobalZIndex` and not merely a later sibling, because
 /// `GlobalZIndex` is *global*: any node carrying one is lifted out of its
 /// parent's stacking context into the root order. The node-graph widget uses it
-/// throughout (canvas, edges, nodes — up to 10), so the Blueprint and Material
-/// graph panels were being hoisted to the root order and painting straight over
+/// throughout (canvas, edges, nodes: up to 10), so graph panels such as the
+/// Material graph were being hoisted to the root order and painting straight over
 /// the bottom panel, which had no tier at all and sat in normal flow. Sibling
 /// order cannot win against that; only a higher tier can.
 ///

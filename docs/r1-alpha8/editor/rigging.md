@@ -167,10 +167,10 @@ The control records how far each bone is from its rest pose (bones that have not
 
 ### Using them
 
-Drag the sliders to pose the model. Controls add together: rotations combine, moves and scale changes add, and blend shape weights add (held between 0 and 1). The pose behaves like any other: it [lasts until the playhead moves](#a-pose-lasts-until-the-playhead-moves), then the sliders go back to rest.
+Drag the sliders to pose the model. Controls add together: rotations combine, moves and scale changes add, and blend shape weights add (held between 0 and 1). The controls own the bones and blend shapes they move: dragging any slider poses all of them, each at its controls' values, so a bone no slider is turning goes to rest rather than keeping what the clip had it at. The pose behaves like any other: it [lasts until the playhead moves](#a-pose-lasts-until-the-playhead-moves), then the sliders go back to rest.
 
-- **Key Controls** keys every bone and blend shape the sliders you moved affect, at the playhead; with none moved, it keys everything any control affects, as it is now. `K` over the stage keys them too. Keys play at once, and `Ctrl+Z` takes them back.
-- **Reset Controls** puts everything the sliders moved back to rest.
+- **Key Controls** keys every bone and blend shape any control moves, at the playhead. `K` over the stage keys them too. Keys play at once, and `Ctrl+Z` takes them back.
+- **Reset Controls** puts everything the controls move back to rest.
 
 ### Editing one
 

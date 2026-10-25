@@ -2,7 +2,7 @@
 //! controller queue they usually drive.
 //!
 //! `renzora_input` writes [`ActionState`] each frame from the keybinding map;
-//! physics, scripting and blueprints all read it. Nobody links anybody, because
+//! physics and scripting both read it. Nobody links anybody, because
 //! an action is a string and its state is plain data.
 
 /// Queued character controller commands, processed by renzora_physics each frame.
@@ -30,7 +30,7 @@ pub struct ActionData {
 }
 
 /// Computed action states, populated by the input system and read by
-/// physics, scripting, and blueprints each frame.
+/// physics and scripting each frame.
 #[derive(bevy::prelude::Resource, Clone, Debug, Default)]
 pub struct ActionState {
     pub actions: std::collections::HashMap<String, ActionData>,

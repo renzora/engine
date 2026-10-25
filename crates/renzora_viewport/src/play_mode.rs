@@ -73,7 +73,8 @@ pub fn handle_play_mode_transitions(world: &mut World) {
         ),
     );
     let embed_parent = crate::game_panel::embed_parent(world);
-    match spawn_runtime(&binary, &project_path, embed_parent) {
+    let live_link = world.get_resource::<renzora::LiveLinkEndpoint>().cloned();
+    match spawn_runtime(&binary, &project_path, embed_parent, live_link.as_ref()) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);

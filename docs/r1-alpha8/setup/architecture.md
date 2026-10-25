@@ -196,6 +196,6 @@ The panic hook runs before Bevy's catch, so on a thread that runs systems it hol
 ## What's next
 
 - [Core Concepts](/docs/r1-alpha8/getting-started/concepts) — the ECS data model and a gentler tour of the one-binary model.
-- [Scripting Overview](/docs/r1-alpha8/scripting/overview) — Lua, Rust scripts, and blueprints on top of this architecture.
+- [Scripting Overview](/docs/r1-alpha8/scripting/overview): Lua and Rust scripts on top of this architecture.
 - [Multiplayer Overview](/docs/r1-alpha8/multiplayer/overview) — how `--server`/`--host` and replication fit in.
 - [Exporting](/docs/r1-alpha8/exporting/overview) — turning the editor binary into a shipped game.

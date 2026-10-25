@@ -7,14 +7,14 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{radio_group, section, toggle_switch};
+use renzora_ember::widgets::toggle_switch;
 
 use crate::overlay::{ExportOverlayState, PackagingMode, PluginLinkMode};
 use crate::templates::Platform;
 
 use super::settings::{finish_tab, tab_panel};
-use super::widgets::txt;
-use super::AMBER;
+use super::widgets::{card_row, choice_card, group, txt};
+use super::{Choice, AMBER};
 
 pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
@@ -25,7 +25,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
     // Offered wherever a lean build is possible, since that is the only mode
     // that compiles anything to link into.
     if host {
-        let (lsec, lbody) = section(commands, fonts, "link", &renzora::lang::t("export.section.plugin_link"), accent());
+        let lbody = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() }).id();
         if web {
             // No radio, because there is no choice to offer. A browser has no
             // `dlopen`, so a `plugins/` folder beside the bundle is never read —
@@ -46,27 +46,24 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             });
             commands.entity(lbody).add_child(warn);
         } else {
-            let files = renzora::lang::t("export.plugin_link.files");
-            let linked = renzora::lang::t("export.plugin_link.linked");
-            let labels: Vec<&str> = vec![files.as_str(), linked.as_str()];
-            let radios = radio_group(commands, &fonts.ui, &labels, 0);
-            bind_2way(
+            let files = choice_card(
                 commands,
-                radios,
-                |w| match w.resource::<ExportOverlayState>().plugin_link_mode {
-                    PluginLinkMode::ShipFiles => 0usize,
-                    PluginLinkMode::LinkIn => 1,
-                },
-                |w, v: &usize| {
-                    w.resource_mut::<ExportOverlayState>().plugin_link_mode = match *v {
-                        1 => PluginLinkMode::LinkIn,
-                        _ => PluginLinkMode::ShipFiles,
-                    };
-                },
+                fonts,
+                &renzora::lang::t("export.plugin_link.files"),
+                None,
+                &renzora::lang::t("export.plugin_link.desc.files"),
+                Choice::Link(PluginLinkMode::ShipFiles),
             );
-            commands.entity(lbody).add_child(radios);
-            let hint = txt(commands, fonts, &renzora::lang::t("export.plugin_link.hint"), 11.0, text_muted());
-            commands.entity(lbody).add_child(hint);
+            let linked = choice_card(
+                commands,
+                fonts,
+                &renzora::lang::t("export.plugin_link.linked"),
+                None,
+                &renzora::lang::t("export.plugin_link.desc.linked"),
+                Choice::Link(PluginLinkMode::LinkIn),
+            );
+            let cards = card_row(commands, &[files, linked]);
+            commands.entity(lbody).add_child(cards);
             // Linking in needs something to compile into, and only the lean mode
             // compiles. Rather than disable the radio from the other tab (where
             // the reason would be invisible), say so — and only when it applies.
@@ -79,10 +76,10 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             });
             commands.entity(lbody).add_child(warn);
         }
-        secs.push(lsec);
+        secs.push(group(commands, fonts, &renzora::lang::t("export.section.plugin_link"), &[lbody]));
     }
 
-    let (sec, body) = section(commands, fonts, "puzzle-piece", &renzora::lang::t("export.section.plugins"), accent());
+    let body = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() }).id();
 
     // What is about to be shipped, and whether it is the newest of itself.
     //
@@ -348,7 +345,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
         }
         queue.apply(world);
     });
-    secs.push(sec);
+    secs.push(group(commands, fonts, &renzora::lang::t("export.section.plugins"), &[body]));
     finish_tab(commands, panel, &secs, tab_max);
     panel
 }

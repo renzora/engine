@@ -1,6 +1,6 @@
 //! Reflection helpers for reading component fields via Bevy's reflection system.
 //!
-//! These live in renzora so both scripting and blueprint crates can use them
+//! These live in renzora so scripting and any other crate can use them
 //! without creating a dependency between each other.
 //!
 //! ## What is Bevy's and what is ours

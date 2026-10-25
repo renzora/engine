@@ -141,7 +141,7 @@ pub(crate) fn hier_context_menu(
         kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
     }
 
-    // Make a new project asset (and, for scripts/blueprints, attach it here).
+    // Make a new project asset (and, for scripts, attach it here).
     kids.push(menu_sep(&mut commands));
     kids.push(super::create_asset::create_submenu(
         &mut commands,
