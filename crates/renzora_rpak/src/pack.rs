@@ -475,6 +475,9 @@ where
                 continue;
             };
             let mut refs = extract_quoted_asset_paths(text);
+            if file_key.ends_with(".glb") || file_key.ends_with(".gltf") {
+                refs.extend(bound_material_files(&file_key, text));
+            }
             if is_svg_key(&file_key) {
                 // XML allows single-quoted attributes, and Inkscape and
                 // Illustrator both write them; the double-quote scan alone
@@ -1180,8 +1183,11 @@ const ASSET_EXTENSIONS: &[&str] = &[
     // Animations (clips + state machines, RON-based)
     ".anim",
     ".animsm",
-    // Particle effects (RON-based)
+    // Particle effects (RON-based): the old format, and the node-graph one
+    // that replaced it. `.vfx` was missing, so every effect saved in the new
+    // format was left out of exports and the game logged "Path not found".
     ".particle",
+    ".vfx",
     // Materials / shaders
     ".material",
     ".shader",
@@ -1215,6 +1221,48 @@ fn extract_toml_value(text: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// The `.material` files a model's meshes are bound to at load time, as
+/// archive keys.
+///
+/// No file names them. The material binder (`renzora_engine::material_binding`)
+/// works each one out from the model's own material names, as
+/// `<model folder>/materials/<sanitized name>.material`, so a crawl that only
+/// follows written paths never found them: an exported Bistro shipped one
+/// `.material` of its 131 and logged "Failed to read material file" for the
+/// rest. A name whose file does not exist is harmless; packing just skips it.
+fn bound_material_files(model_key: &str, gltf_json: &str) -> Vec<String> {
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(gltf_json) else {
+        return Vec::new();
+    };
+    let Some(materials) = json.get("materials").and_then(|m| m.as_array()) else {
+        return Vec::new();
+    };
+    let dir = match model_key.rsplit_once('/') {
+        Some((dir, _)) => format!("{dir}/materials"),
+        None => "materials".to_string(),
+    };
+    materials
+        .iter()
+        .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
+        .map(|name| format!("{dir}/{}.material", sanitize_material_name(name)))
+        .collect()
+}
+
+/// A material name as a file name. Must match
+/// `renzora_engine::material_binding::sanitize_material_name`, which names the
+/// files this packs (this crate cannot depend on that one).
+fn sanitize_material_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+    if safe.is_empty() {
+        "material".to_string()
+    } else {
+        safe
+    }
 }
 
 /// Scan text for quoted strings that look like asset paths.
@@ -1690,6 +1738,30 @@ mod tests {
         assert!(extract_glb_json(b"").is_none());
         assert!(extract_glb_json(b"not a glb at all").is_none());
         assert!(extract_glb_json(&[0u8; 24]).is_none());
+    }
+
+    #[test]
+    fn a_model_names_the_material_files_it_is_bound_to() {
+        let json = r#"{"materials":[{"name":"Foliage_Leaves"},{"name":"Paris Sign (A)"},{}]}"#;
+        assert_eq!(
+            bound_material_files("models/bistro/Bistro.glb", json),
+            vec![
+                "models/bistro/materials/Foliage_Leaves.material".to_string(),
+                "models/bistro/materials/Paris_Sign__A_.material".to_string(),
+            ]
+        );
+        assert_eq!(
+            bound_material_files("root.glb", r#"{"materials":[{"name":"M"}]}"#),
+            vec!["materials/M.material".to_string()]
+        );
+        assert!(bound_material_files("a.glb", r#"{"meshes":[]}"#).is_empty());
+    }
+
+    #[test]
+    fn material_names_sanitize_like_the_binder() {
+        assert_eq!(sanitize_material_name("Glass.001"), "Glass_001");
+        assert_eq!(sanitize_material_name("a-b_c"), "a-b_c");
+        assert_eq!(sanitize_material_name(""), "material");
     }
 
     /// A throwaway project directory, removed even if an assertion fails.

@@ -476,26 +476,35 @@ fn third_party_lines(text: &str) -> Result<Vec<(String, String)>, String> {
 /// looking for one and can adopt a directory it has no business being part of —
 /// and this lives under a staged `plugins/<name>/build/`, which is exactly the
 /// kind of place an unrelated manifest might sit above.
+///
+/// When the dependencies changed since the last build, the old `Cargo.lock` is
+/// deleted so cargo resolves them afresh. Kept, cargo only adds what is new to
+/// a lock and leaves everything already in it alone: a plugin that later
+/// pinned `tracy-client-sys = "=0.29.0"` got 0.29.0 added beside the 0.28.0
+/// its old lock held, and `tracy-client` went on building against 0.28.0, whose
+/// API it no longer matches. An unchanged list keeps its lock, so a rebuild
+/// resolves nothing and needs no network.
 fn write_manifest(dir: &Path, deps: &[(String, String)]) -> Result<(), String> {
     let body: String = deps.iter().map(|(_, line)| format!("{line}\n")).collect();
-    std::fs::write(
-        dir.join("Cargo.toml"),
-        format!(
-            "# GENERATED — the plugin's third-party dependencies, and nothing else.\n\
-             # `bevy`/`renzora*` are stripped on purpose: see `deps.rs`. Editing this\n\
-             # file does nothing; it is rewritten from the plugin's Cargo.toml.\n\
-             [workspace]\n\n\
-             [package]\n\
-             name = \"plugin_deps\"\n\
-             version = \"0.1.0\"\n\
-             edition = \"2021\"\n\n\
-             [lib]\n\
-             path = \"lib.rs\"\n\
-             crate-type = [\"rlib\"]\n\n\
-             [dependencies]\n{body}"
-        ),
-    )
-    .map_err(|e| e.to_string())?;
+    let manifest = format!(
+        "# GENERATED — the plugin's third-party dependencies, and nothing else.\n\
+         # `bevy`/`renzora*` are stripped on purpose: see `deps.rs`. Editing this\n\
+         # file does nothing; it is rewritten from the plugin's Cargo.toml.\n\
+         [workspace]\n\n\
+         [package]\n\
+         name = \"plugin_deps\"\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n\n\
+         [lib]\n\
+         path = \"lib.rs\"\n\
+         crate-type = [\"rlib\"]\n\n\
+         [dependencies]\n{body}"
+    );
+    let path = dir.join("Cargo.toml");
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(manifest.as_str()) {
+        let _ = std::fs::remove_file(dir.join("Cargo.lock"));
+    }
+    std::fs::write(path, manifest).map_err(|e| e.to_string())?;
     // A crate has to have a root module. Nothing ever calls into it — its only
     // job is to give cargo a reason to build the dependency graph.
     std::fs::write(dir.join("lib.rs"), "// Anchor for the dependency graph.\n")

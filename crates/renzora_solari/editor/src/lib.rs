@@ -10,8 +10,8 @@
 use bevy::prelude::*;
 use bevy::solari::realtime::SolariLighting;
 use renzora::{
-    bool_field, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, SolariGi,
-    SolariQuality,
+    bool_field, AppEditorExt, DlssMode, DlssSupport, FieldDef, FieldType, FieldValue,
+    InspectorEntry, SolariGi, SolariQuality,
 };
 
 fn solari_inspector_entry() -> InspectorEntry {
@@ -63,6 +63,52 @@ fn solari_inspector_entry() -> InspectorEntry {
             // Renzora's own denoiser, which works on every ray-tracing GPU.
             // Exposed so the raw estimate can be compared against it.
             bool_field!("Denoiser", SolariGi, denoise),
+            // DLSS Ray Reconstruction where it can run, the denoiser above
+            // where it cannot. On by default, so a project gets DLSS on an RTX
+            // machine and still renders cleanly everywhere else.
+            bool_field!("DLSS", SolariGi, dlss),
+            FieldDef {
+                name: "DLSS Mode",
+                field_type: FieldType::Enum {
+                    options: &DlssMode::LABELS,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<SolariGi>(entity)
+                        .map(|s| FieldValue::Enum(s.dlss_mode.label().to_string()))
+                },
+                set_fn: |world, entity, value| {
+                    if let FieldValue::Enum(label) = value {
+                        if let (Some(mode), Some(mut s)) =
+                            (DlssMode::from_label(&label), world.get_mut::<SolariGi>(entity))
+                        {
+                            s.dlss_mode = mode;
+                        }
+                    }
+                },
+            },
+            // Which denoiser is actually running, and why, because the toggle
+            // alone cannot say: DLSS needs a build with the SDK and an RTX GPU
+            // on the Vulkan renderer, and falls back silently without them.
+            FieldDef {
+                name: "Denoising With",
+                field_type: FieldType::ReadOnly,
+                get_fn: |world, entity| {
+                    let gi = world.get::<SolariGi>(entity)?;
+                    let support = world.get_resource::<DlssSupport>().copied().unwrap_or_default();
+                    let builtin = if gi.denoise { "Built-in denoiser" } else { "Nothing (raw)" };
+                    let text = match (gi.dlss, support.compiled, support.ray_reconstruction) {
+                        (true, true, true) => "DLSS Ray Reconstruction".to_string(),
+                        (true, false, _) => format!("{builtin}: this build has no DLSS SDK"),
+                        (true, true, false) => {
+                            format!("{builtin}: GPU or renderer has no DLSS Ray Reconstruction")
+                        }
+                        (false, ..) => builtin.to_string(),
+                    };
+                    Some(FieldValue::ReadOnly(text))
+                },
+                set_fn: |_, _, _| {},
+            },
             // Solari traces visibility instead of sampling shadow maps, and its
             // camera carries `SkipDeferredLighting`, which removes the only
             // pass that would read one. Every cascade and point-light cubemap is

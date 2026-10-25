@@ -371,7 +371,7 @@ fn plugin_summary(s: &ExportOverlayState) -> String {
     let lean = s.packaging_mode == PackagingMode::LeanSingleBinary;
     let key = if web && !lean {
         "export.summary.plugins_dropped"
-    } else if web || (lean && s.plugin_link_mode == PluginLinkMode::LinkIn) {
+    } else if web || lean {
         "export.summary.plugins_linked"
     } else {
         "export.summary.plugins_files"

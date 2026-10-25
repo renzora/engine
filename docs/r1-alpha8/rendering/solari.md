@@ -325,6 +325,10 @@ NVIDIA's DLSS Ray Reconstruction runs. It is on by default; the **Denoiser**
 toggle in the Solari Ray-Traced GI inspector turns it off to show the raw
 estimate, which is the thing to compare against when judging it.
 
+Where DLSS Ray Reconstruction can run, it replaces this denoiser: the **DLSS**
+toggle (on by default) asks for it, and the inspector's **Denoising With** line
+says which one is actually in use, and why. See [DLSS](./dlss.md).
+
 How it works, in order:
 
 1. **Split and demodulate.** The lighting passes write diffuse and specular
@@ -389,10 +393,10 @@ places, each marked `RENZORA PATCH` in the source:
   higher-contrast than the forward pipeline, most visibly with the sun near the
   horizon (little reaches street level) or directly overhead (vertical facades
   get no direct light at all).
-- **No DLSS.** Renzora does not build NVIDIA's DLSS Ray Reconstruction; the
-  [denoiser](#denoiser) does its job on every vendor's hardware. There is
-  therefore no upscaling either: Solari traces at the viewport's full
-  resolution.
+- **DLSS needs the SDK at build time.** NVIDIA's DLSS Ray Reconstruction is used
+  only in a build made where the DLSS SDK is installed, on an RTX GPU, on the
+  Vulkan renderer; everywhere else the [denoiser](#denoiser) runs and Solari
+  traces at the viewport's full resolution. See [DLSS](./dlss.md).
 - **Cutout geometry over-shadows.** `Mask` materials are traced as solid quads
   (Solari has no alpha-tested any-hit shading), so foliage cards cast fuller
   shadows than they should.

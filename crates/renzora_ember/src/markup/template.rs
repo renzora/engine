@@ -278,6 +278,11 @@ fn hot_reload_templates(
 pub fn plugin(app: &mut App) {
     app.init_resource::<TemplateHandles>()
         .init_resource::<TemplateReloadRequests>()
+        // Registered here as well as by the editor's file watcher, which is the
+        // only thing that sends it; `add_message` is idempotent. Without it a
+        // shipped game, which has no watcher, logged a validation error from
+        // `request_reload_for_external_edits` several times a second.
+        .add_message::<renzora::core::project_files::ProjectFileChanged>()
         .add_observer(on_template_path_inserted)
         .add_systems(
             Update,

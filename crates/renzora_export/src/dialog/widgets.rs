@@ -265,7 +265,10 @@ pub(super) fn choice_selected(s: &ExportOverlayState, choice: Choice) -> bool {
             current == m
         }
         Choice::Link(l) => {
-            let current = if web { PluginLinkMode::LinkIn } else { s.plugin_link_mode };
+            // A lean export always links in; see `link_plugins_in` in the
+            // overlay for why a lean binary cannot load plugin files.
+            let lean = s.packaging_mode == PackagingMode::LeanSingleBinary;
+            let current = if web || lean { PluginLinkMode::LinkIn } else { s.plugin_link_mode };
             current == l
         }
     }

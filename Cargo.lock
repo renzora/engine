@@ -8574,6 +8574,7 @@ dependencies = [
  "memmap2",
  "rayon",
  "ruzstd",
+ "serde_json",
  "toml 0.8.23",
  "zstd",
 ]

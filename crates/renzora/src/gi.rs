@@ -109,6 +109,87 @@ pub struct SolariGi {
     #[serde(default = "denoise_default")]
     #[reflect(default = "denoise_default")]
     pub denoise: bool,
+    /// Use NVIDIA DLSS Ray Reconstruction where it is available. It denoises
+    /// Solari's lighting and upscales the frame in one pass, in place of the
+    /// built-in denoiser. Where it is not available (no RTX GPU, a renderer
+    /// other than Vulkan, a build without the DLSS SDK, or the DLSS libraries
+    /// missing beside the executable) the built-in denoiser runs instead, so
+    /// leaving this on costs nothing anywhere. On in a scene saved before this
+    /// existed. See [`DlssSupport`].
+    #[serde(default = "dlss_default")]
+    #[reflect(default = "dlss_default")]
+    pub dlss: bool,
+    /// DLSS's render scale while [`dlss`](Self::dlss) is in effect.
+    #[serde(default)]
+    #[reflect(default)]
+    pub dlss_mode: DlssMode,
+}
+
+/// Default for [`SolariGi::dlss`]: on, falling back to the built-in denoiser
+/// wherever DLSS cannot run.
+fn dlss_default() -> bool {
+    true
+}
+
+/// DLSS's quality modes: how far below the output resolution the frame is
+/// rendered before DLSS reconstructs it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[reflect(Default)]
+pub enum DlssMode {
+    /// DLSS picks the mode from the output resolution.
+    #[default]
+    Auto,
+    /// Native resolution: denoised and anti-aliased, not upscaled.
+    Dlaa,
+    /// Renders at about 67% of the output resolution.
+    Quality,
+    /// Renders at about 58%.
+    Balanced,
+    /// Renders at 50%.
+    Performance,
+    /// Renders at about 33%.
+    UltraPerformance,
+}
+
+impl DlssMode {
+    /// Every mode, in the order the inspector lists them.
+    pub const ALL: [Self; 6] = [
+        Self::Auto,
+        Self::Dlaa,
+        Self::Quality,
+        Self::Balanced,
+        Self::Performance,
+        Self::UltraPerformance,
+    ];
+
+    /// The inspector dropdown labels, index for index with [`ALL`](Self::ALL).
+    pub const LABELS: [&'static str; 6] =
+        ["Auto", "DLAA", "Quality", "Balanced", "Performance", "Ultra Performance"];
+
+    /// The inspector dropdown label.
+    pub fn label(self) -> &'static str {
+        Self::LABELS[self as usize]
+    }
+
+    /// The mode with this [`label`](Self::label), if any.
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.label() == label)
+    }
+}
+
+/// What this build and this GPU can do with DLSS, written at startup by the
+/// Solari plugin and read by the inspector to say which denoiser is running.
+/// The inspector cannot see Bevy's own DLSS types: they exist only in a build
+/// compiled with the DLSS SDK.
+///
+/// Absent means the Solari plugin is not in the build at all.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct DlssSupport {
+    /// The binary was built with the DLSS SDK.
+    pub compiled: bool,
+    /// The GPU, driver and renderer support DLSS Ray Reconstruction on this
+    /// run.
+    pub ray_reconstruction: bool,
 }
 
 /// Default for [`SolariGi::denoise`]: on, so a scene saved before the denoiser
@@ -178,6 +259,8 @@ impl Default for SolariGi {
             light_proxies: light_proxies_default(),
             quality: SolariQuality::default(),
             denoise: denoise_default(),
+            dlss: dlss_default(),
+            dlss_mode: DlssMode::default(),
         }
     }
 }

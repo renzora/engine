@@ -90,8 +90,10 @@ members = [
 #   meshlet, meshlet_processor                    ENABLED below (experimental
 #                                                   virtual geometry)
 #   (bevy_solari IS enabled below — it backs the renzora_solari plugin.)
-#   dlss, force_disable_dlss                      NVIDIA proprietary SDK; never
-#                                                   built: Solari has its own denoiser
+#   dlss, force_disable_dlss                      NVIDIA proprietary SDK: not here,
+#                                                   but in the opt-in root `dlss`
+#                                                   feature, which `cargo renzora`
+#                                                   enables when the SDK is found
 #   trace_chrome, detailed_trace, track_location, dev/CI only — OFF (they tax every
 #     trace_tracy_memory, bevy_dev_tools,           frame and would skew a profile);
 #     bevy_ci_testing, bevy_debug_stepping,         all OFF — `trace_tracy` too
@@ -347,6 +349,13 @@ default = ["runtime", "xr", "dynamic_linking"]
 # the dedicated server (launch with `--server` to boot headless) and the
 # host/listen server (`--host`). No separate editor/server feature or binary.
 runtime = ["dep:renzora_runtime"]
+# NVIDIA DLSS Ray Reconstruction for Solari. Never in `default`: it builds only
+# where the DLSS SDK 310.9.1, the Vulkan SDK and clang are installed, so CI and
+# every other machine stay as they were. `cargo renzora` turns it on by itself
+# when `DLSS_SDK` points at that SDK, and stages the DLSS libraries beside the
+# binary. At run time a GPU, driver or renderer without Ray Reconstruction gets
+# Renzora's own denoiser instead (see crates/renzora_solari/src/dlss.rs).
+dlss = ["runtime", "renzora_runtime/dlss"]
 # Shared dynamic linking, for BOTH shared images: `bevy_dylib` (Bevy) and
 # `renzora_dylib` (the contract crate). ON by default (above); the lean exporter
 # turns it OFF for a static release binary. Mobile/wasm lanes never enable it

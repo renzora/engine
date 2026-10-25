@@ -63,6 +63,8 @@ use renzora::{
     EffectRouting, GpuRaytracing, SolariGi, SolariQuality, TracedStandIn, TracedStandInsWanted,
 };
 
+mod dlss;
+
 renzora::add!(SolariPlugin);
 
 #[derive(Default)]
@@ -86,6 +88,10 @@ impl Plugin for SolariPlugin {
                  Solari is inert. (Needs an RT-capable GPU on the Vulkan/DX12/Metal \
                  backend; see renzora::GpuRaytracing.)"
             );
+            app.insert_resource(renzora::DlssSupport {
+                compiled: cfg!(feature = "dlss"),
+                ray_reconstruction: false,
+            });
             return;
         }
 
@@ -103,6 +109,7 @@ impl Plugin for SolariPlugin {
         app.init_resource::<RaytracingProxies>();
         app.init_resource::<TracedTwins>();
         app.init_resource::<LightProxies>();
+        dlss::register(app);
         // Observers apply the per-camera setup the INSTANT the component is
         // inserted (by our sync, a scene load, or the play-mode scene clone),
         // with no Update-system frame lag. That lag was the cause of the Play /

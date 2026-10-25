@@ -10,6 +10,11 @@ description = "OpenXR/VR boot mode for the Renzora runtime — stereo rendering 
 # `renzora_runtime::add_xr_rendering`. Deliberately no `renzora::add!` and no
 # contract-crate dependency: nothing here crosses a plugin boundary.
 
+[features]
+# Set by the runtime's `dlss` feature: Bevy's DLSS changes the signature of the
+# render setup the OpenXR boot calls, so that crate has to be told.
+dlss = ["bevy_mod_openxr/bevy_raw_vulkan_init"]
+
 [dependencies]
 bevy = { workspace = true }
 # Contract crate: only for `renzora::VrPlayState`, the editor↔XR play handshake.

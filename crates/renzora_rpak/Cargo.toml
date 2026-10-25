@@ -22,6 +22,9 @@ rayon = "1"
 # Inflates `.svgz` during packing so the files it references are found and
 # shipped. Pure Rust (miniz_oxide), already in the lockfile via usvg and png.
 flate2 = "1"
+# Reads a GLB's material names during packing, to ship the `.material` files
+# the binder derives from them. Already in the lockfile.
+serde_json = "1"
 
 # Pure-Rust zstd DECODER for the web build (no packing there — `mod pack` is
 # desktop-only). Same version Bevy already pulls for its `zstd_rust` feature, so

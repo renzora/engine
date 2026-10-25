@@ -75,6 +75,14 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                 })
             });
             commands.entity(lbody).add_child(warn);
+            // Lean shows "linked" whatever was picked; say why here, where the
+            // choice is, rather than leave a radio that seems to ignore a click.
+            let lean = txt(commands, fonts, &renzora::lang::t("export.plugin_link.lean_forced"), 11.0, text_muted());
+            bind_display(commands, lean, |w| {
+                w.get_resource::<ExportOverlayState>()
+                    .is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary)
+            });
+            commands.entity(lbody).add_child(lean);
         }
         secs.push(group(commands, fonts, &renzora::lang::t("export.section.plugin_link"), &[lbody]));
     }

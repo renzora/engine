@@ -15,6 +15,12 @@ fb_passthrough = []
 reflect = ["dep:bevy_reflect"]
 window_support = ["dep:bevy_winit", "dep:bevy_window"]
 raw_vulkan_init = []
+# RENZORA PATCH: `bevy_render`'s own `raw_vulkan_init`, which Bevy's `dlss`
+# feature turns on. It adds an `AdditionalVulkanFeatures` argument to
+# `RenderCreation::manual`, so this crate has to know when it is on; a crate
+# cannot see another's features. Distinct from `raw_vulkan_init` above, which
+# Renzora enables in every build and which gates nothing.
+bevy_raw_vulkan_init = ["bevy_render/raw_vulkan_init"]
 
 [dev-dependencies]
 bevy = { version = "0.20" }

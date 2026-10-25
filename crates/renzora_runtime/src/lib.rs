@@ -443,12 +443,29 @@ fn launcher_app_id(is_editor: bool) -> Option<String> {
     is_editor.then(|| "renzora-engine".to_string())
 }
 
+/// The project id DLSS is initialised with: one fixed id for every game made
+/// with Renzora, which is what NVIDIA's guide asks of an engine.
+///
+/// A build with the `dlss` feature has Bevy's `DlssInitPlugin` inside
+/// `DefaultPlugins`, and that plugin panics at build if this resource is not
+/// already in the app. So every path that adds `DefaultPlugins` calls this
+/// first; without the feature it does nothing.
+fn insert_dlss_project_id(app: &mut App) {
+    #[cfg(feature = "dlss")]
+    app.insert_resource(bevy::anti_alias::dlss::DlssProjectId(
+        bevy::asset::uuid::Uuid::from_u128(0x0364273c_a645_40f3_b774_74a7377b0c10),
+    ));
+    #[cfg(not(feature = "dlss"))]
+    let _ = app;
+}
+
 pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
     // Must run before `DefaultPlugins` so we win the `IoTaskPool::get_or_init`
     // race — see the function doc for why the IO workers need a larger stack.
     init_io_task_pool_with_large_stack();
+    insert_dlss_project_id(app);
     let plugins = DefaultPlugins
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(Box::new(platform_wgpu_settings())),
@@ -937,6 +954,7 @@ fn is_transient_surface_error(description: &str) -> bool {
 pub fn add_xr_rendering(app: &mut App) {
     use bevy::window::{PresentMode, Window, WindowPlugin};
     init_io_task_pool_with_large_stack();
+    insert_dlss_project_id(app);
     let base = DefaultPlugins
         .build()
         .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
@@ -997,6 +1015,7 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     // scene fans out many concurrent GLTF loads onto the IO pool, so its
     // workers need the larger stack too. Must precede `DefaultPlugins`.
     init_io_task_pool_with_large_stack();
+    insert_dlss_project_id(app);
 
     app.add_plugins(
         DefaultPlugins

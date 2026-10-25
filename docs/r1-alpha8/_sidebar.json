@@ -167,6 +167,7 @@
             { "slug": "rendering/2d-lighting", "title": "2D Lighting" },
             { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" },
             { "slug": "rendering/solari", "title": "Solari Ray-Traced GI" },
+            { "slug": "rendering/dlss", "title": "DLSS" },
             { "slug": "rendering/planar-reflections", "title": "Planar Reflections" }
           ]
         },

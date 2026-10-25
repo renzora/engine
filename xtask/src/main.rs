@@ -64,6 +64,7 @@ use std::process::{Command, ExitCode};
 
 mod bundle;
 mod coverage;
+mod dlss;
 mod sdk;
 mod sync;
 mod wasm;
@@ -195,9 +196,17 @@ fn main() -> ExitCode {
         // `package-release.sh` found no `sdk/` and silently produced nothing.
         "sdk" => {
             let argv: Vec<String> = std::env::args().skip(2).collect();
+            // The features the staged build was made with, so this re-reads
+            // that build: given on the command line, or else the ones a plain
+            // `cargo renzora` build would have picked here.
+            let features = match flag_value(&argv, "--features") {
+                Some(list) => list.split(',').map(str::to_string).collect(),
+                None => dlss::detect().map(|_| vec!["dlss".to_string()]).unwrap_or_default(),
+            };
             let from = sdk::From {
                 target_dir: flag_value(&argv, "--target-dir"),
                 target: flag_value(&argv, "--target"),
+                features,
             };
             let out_dir = flag_value(&argv, "--out")
                 .map(PathBuf::from)
@@ -308,18 +317,29 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
         eprintln!("[xtask] plugin sync failed: {e}");
         return Err(ExitCode::FAILURE);
     }
-    if !build(repo, features) {
+    // DLSS whenever this machine can build it; see `dlss.rs`.
+    let dlss_sdk = dlss::detect();
+    let mut features = features.to_vec();
+    if dlss_sdk.is_some() {
+        features.push("dlss");
+    }
+    if !build(repo, &features) {
         eprintln!("[xtask] cargo build failed");
         return Err(ExitCode::FAILURE);
     }
     match stage(repo, plat) {
         Ok(out) => {
+            if let Some(sdk) = &dlss_sdk {
+                if let Err(e) = dlss::stage(sdk, &out) {
+                    eprintln!("[xtask] WARN: could not stage the DLSS libraries: {e}");
+                }
+            }
             // The plugin SDK, beside the binaries it was cut from. An SDK only
             // works against its own engine build — every metadata filename
             // hashes the build configuration — so regenerating it here is what
             // stops a stale one from ever sitting next to a fresh editor. It hardlinks,
             // so it costs neither disk nor noticeable time (see `sdk.rs`).
-            sdk::build(repo, plat, &out)?;
+            sdk::build(repo, plat, &out, &features)?;
             build_installed_plugins(&out, plat);
             Ok(out)
         }

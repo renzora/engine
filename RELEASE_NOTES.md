@@ -1,5 +1,20 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-25 14:34
+- fix(export): a model's `.material` files and `.vfx` particle effects are packed into exports
+- fix(export): a lean export always links plugins into the binary, since it cannot load plugin files
+- fix(game-ui): a shipped game no longer logs a validation error several times a second from the UI template reloader
+- fix(solari): Play no longer crashes at start-up with DLSS on, while the Game panel is still tiny
+
+## 2026-10-25 13:48
+- feat(export): a Solari game exported from a DLSS build ships with DLSS, compiled into lean binaries and with NVIDIA's libraries beside the executable
+- fix(plugins): a native plugin's dependencies are resolved afresh when its dependency list changes
+- fix(export): a lean export whose icon file is missing uses the engine's icon instead of failing
+
+## 2026-10-25 12:29
+- feat(solari): DLSS Ray Reconstruction with a DLSS toggle and mode dropdown, falling back to the built-in denoiser where it is unavailable
+- feat(build): `cargo renzora` builds with DLSS whenever the DLSS SDK is installed, and stages its libraries
+
 ## 2026-10-25 09:05
 - fix(web): the web editor builds again
 - security: rustls and the web template's vite are updated past their published advisories

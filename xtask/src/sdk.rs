@@ -141,6 +141,12 @@ pub struct From {
     pub target_dir: Option<String>,
     /// `--target <triple>` for a cross build. `None` = build for this host.
     pub target: Option<String>,
+    /// The `--features` the engine build was given (`dlss`, `profiling`).
+    /// Re-read without them, cargo resolves a different feature set, rebuilds
+    /// the workspace a second time, and the SDK describes that build instead:
+    /// a different `bevy_dylib` than the one staged, so no plugin compiled
+    /// against it would load.
+    pub features: Vec<String>,
 }
 
 impl From {
@@ -158,8 +164,17 @@ impl From {
     }
 }
 
-pub fn build(repo: &Path, plat: &Platform, dist_root: &Path) -> Result<PathBuf, ExitCode> {
-    build_from(repo, plat, dist_root, &From::default())
+pub fn build(
+    repo: &Path,
+    plat: &Platform,
+    dist_root: &Path,
+    features: &[&str],
+) -> Result<PathBuf, ExitCode> {
+    let from = From {
+        features: features.iter().map(|f| f.to_string()).collect(),
+        ..From::default()
+    };
+    build_from(repo, plat, dist_root, &from)
 }
 
 /// Stage the SDK for a build that may not be this host's.
@@ -387,6 +402,9 @@ fn artifact_files(
     }
     if let Some(target) = &from.target {
         cmd.args(["--target", target]);
+    }
+    if !from.features.is_empty() {
+        cmd.args(["--features", &from.features.join(",")]);
     }
     let out = cmd
         .stderr(Stdio::piped())

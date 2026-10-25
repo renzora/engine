@@ -175,6 +175,12 @@ scripting = [
 # the verdict in `renzora::GpuRaytracing`, which is what the plugin reads to
 # decide whether to build its pipelines at all.
 solari = ["dep:renzora_solari"]
+# NVIDIA DLSS Ray Reconstruction for Solari, falling back to the built-in
+# denoiser at run time wherever it is unsupported. Not in `default`: it needs
+# the DLSS SDK, the Vulkan SDK and clang to build, which `cargo renzora` checks
+# for before turning it on. Also inserts the `DlssProjectId` Bevy's DLSS plugin
+# requires before `DefaultPlugins`.
+dlss = ["solari", "renzora_solari/dlss", "bevy/dlss", "renzora_xr?/dlss"]
 cloth = ["dep:renzora_cloth"]
 gaussian_splatting = ["dep:renzora_gaussian_splatting"]
 ragdoll = ["dep:renzora_ragdoll"]

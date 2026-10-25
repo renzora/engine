@@ -926,9 +926,15 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // one. A browser has no `dlopen`, so a `plugins/` folder beside the bundle is
     // never read — "ship as files" there means shipping nothing, silently. So a
     // lean web export always links in, whatever the radio says.
-    let link_plugins_in = packaging_mode == PackagingMode::LeanSingleBinary
-        && (export_state.plugin_link_mode == PluginLinkMode::LinkIn
-            || matches!(platform, Platform::WebWasm32));
+    //
+    // The same is true of every lean export, not only the web. A lean binary is
+    // statically linked, and a plugin shipped as a file is a library built
+    // against the engine's shared images, which the binary does not have, so the
+    // loader declines it (see `renzora_native_plugin`). "Lean, plugins as files"
+    // used to export a game with the plugins sitting beside it and none of them
+    // running. So the choice only matters where it can: the copy-based modes
+    // ship files, and lean links in.
+    let link_plugins_in = packaging_mode == PackagingMode::LeanSingleBinary;
     // Bevy + runtime-subsystem features to strip from the lean build (capabilities
     // the game has off).
     let disabled_bevy_features =
@@ -936,6 +942,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let disabled_runtime_features =
         crate::capabilities::disabled_runtime_features(&export_state.capabilities);
     let lean_profile = crate::capabilities::lean_profile(&export_state.capabilities);
+    let solari_on = export_state.capabilities.get("solari").copied().unwrap_or(false);
     // UPX is post-build, so unlike the profile knobs it applies to the copy-based
     // packaging modes too — but only where the packer supports the format.
     let upx_compress = export_state.upx_compress && crate::upx::supports(platform);
@@ -976,6 +983,15 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // i.e. only for a lean one — and every arm that reads this path belongs to a
     // packaging mode that cannot be reached from there.
     let template_path = template.unwrap_or_default();
+    // DLSS Ray Reconstruction for a Solari game, when the build being exported
+    // can carry it: compiled into a lean binary, and its libraries shipped
+    // beside the executable in every mode. See `build::export_has_dlss`.
+    let dlss = crate::build::export_has_dlss(
+        platform,
+        solari_on,
+        packaging_mode == PackagingMode::LeanSingleBinary,
+        &runtime_dir,
+    );
 
     // The dedicated server reuses the game binary (run with `--server`), so
     // there's no separate server template to resolve here.
@@ -1030,6 +1046,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             lean_profile,
             upx_compress,
             included_files,
+            dlss,
             cancel,
         );
     });
@@ -1072,6 +1089,8 @@ fn export_worker(
     upx_compress: bool,
     // The Files tab's answer, when it has one. `None` = let the crawl decide.
     included_files: Option<Vec<String>>,
+    // Ship DLSS: compiled into a lean binary, libraries beside the executable.
+    dlss: bool,
     cancel: Arc<AtomicBool>,
 ) {
     // Pack assets
@@ -1400,6 +1419,7 @@ fn export_worker(
                 icon: icon_path.as_ref().map(std::path::PathBuf::from),
                 product_name: Some(project_name.clone()),
             },
+            dlss,
             &cancel,
         )?;
         Ok(LeanBuild {
@@ -1644,6 +1664,24 @@ fn export_worker(
                                 let _ = std::fs::copy(entry.path(), output_dir.join(&name));
                             }
                         }
+                    }
+                }
+            }
+
+            // NVIDIA's DLSS libraries, for a Solari game exported from a
+            // DLSS-capable build. Lean included: the binary has DLSS compiled
+            // in, but the models live in these libraries, which NVIDIA's
+            // runtime loads from beside the executable and which cannot be
+            // folded into it. Without them the game still runs, on the
+            // built-in denoiser, so a copy that fails is a warning, not an
+            // error.
+            if dlss {
+                let _ = tx.send(ExportMsg::Progress("Copying NVIDIA DLSS libraries...".into()));
+                for file in crate::build::dlss_files(platform) {
+                    if let Err(e) = std::fs::copy(runtime_dir.join(file), output_dir.join(file)) {
+                        let _ = tx.send(ExportMsg::Progress(format!(
+                            "Could not copy {file}: {e}. The game will use the built-in denoiser."
+                        )));
                     }
                 }
             }

@@ -210,6 +210,54 @@ pub fn editor_dir() -> Option<PathBuf> {
     renzora_plugin_build::install::root()
 }
 
+/// The NVIDIA DLSS files a DLSS-capable build loads from beside its
+/// executable: the two runtime libraries and the licence NVIDIA's terms
+/// require to travel with them. Written there by `cargo renzora` (see
+/// `xtask/src/dlss.rs`), which is also why their presence beside a build is
+/// the sign that it was compiled with DLSS.
+pub fn dlss_files(platform: Platform) -> &'static [&'static str] {
+    match platform {
+        Platform::WindowsX64 => &["nvngx_dlss.dll", "nvngx_dlssd.dll", "DLSS_LICENSE.txt"],
+        Platform::LinuxX64 => &[
+            "libnvidia-ngx-dlss.so.310.9.1",
+            "libnvidia-ngx-dlssd.so.310.9.1",
+            "DLSS_LICENSE.txt",
+        ],
+        _ => &[],
+    }
+}
+
+/// Whether an export gets DLSS Ray Reconstruction.
+///
+/// Only a game that uses Solari has anything for DLSS to do, so a Solari-off
+/// export never carries NVIDIA's files. Beyond that it takes a build of the
+/// engine that has DLSS, recognised by the libraries `cargo renzora` staged
+/// beside it in `runtime_dir`:
+///
+/// * A copy-based export ships that build's own executable, so the files
+///   beside it are all it needs.
+/// * A lean export compiles a new executable, which only has DLSS if it is
+///   built with the `dlss` feature. That needs the DLSS SDK at compile time
+///   (`DLSS_SDK`, as for `cargo renzora`) and a native build: the toolchain
+///   containers have no SDK in them.
+pub fn export_has_dlss(platform: Platform, solari: bool, lean: bool, runtime_dir: &Path) -> bool {
+    if !solari {
+        return false;
+    }
+    let files = dlss_files(platform);
+    if files.is_empty() || !files.iter().all(|f| runtime_dir.join(f).is_file()) {
+        return false;
+    }
+    if !lean {
+        return true;
+    }
+    // Both SDKs, or the build fails in `dlss_wgpu`'s build script rather than
+    // falling back. The DLSS SDK's version is not re-checked here: the
+    // libraries beside the editor are the ones `cargo renzora` accepted.
+    let sdk_dir = |var: &str| std::env::var_os(var).is_some_and(|d| Path::new(&d).is_dir());
+    !crate::docker::needs_container(platform) && sdk_dir("DLSS_SDK") && sdk_dir("VULKAN_SDK")
+}
+
 /// The engine source a lean build compiles: the checkout the editor runs from
 /// if there is one, otherwise a downloaded copy under `~/.renzora/src/<version>/`.
 ///
@@ -294,6 +342,9 @@ pub fn build_lean(
     // The executable's icon and version-info strings. Compile-time only — see
     // [`stage_branding`].
     branding: &LeanBranding,
+    // Compile DLSS in. Decided by the caller with [`export_has_dlss`], which
+    // also decides whether the DLSS libraries are shipped beside the result.
+    dlss: bool,
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
     // ── Docker only for another OS; the host builds natively ─────────────────
@@ -390,6 +441,10 @@ pub fn build_lean(
     // `script!` for nothing.
     if has_scripts {
         features.push_str(",static_scripts");
+    }
+    if dlss {
+        progress("DLSS Ray Reconstruction: compiling it in".into());
+        features.push_str(",dlss");
     }
 
     // Native cargo for the host; the toolchain container for anything else. The
@@ -585,12 +640,22 @@ fn stage_branding(
     branding: &LeanBranding,
     progress: &mut dyn FnMut(String),
 ) -> Result<(), String> {
-    match branding.icon.as_deref() {
-        Some(src) => {
-            progress(format!("Embedding {} in the executable…", src.display()));
-            let base = crate::icon::load_square(src)?;
-            write_bytes_if_changed(&ws.join(ICON_FILE), &crate::icon::to_ico(&base)?)?;
+    // An icon that cannot be used is a warning, as it is in the asset step that
+    // ran before this: the game gets the engine's icon and the export goes on.
+    // It used to fail the whole export here, minutes in, over an image moved
+    // out of Downloads after it was picked.
+    let icon = branding.icon.as_deref().and_then(|src| {
+        progress(format!("Embedding {} in the executable…", src.display()));
+        match crate::icon::load_square(src).and_then(|base| crate::icon::to_ico(&base)) {
+            Ok(ico) => Some(ico),
+            Err(e) => {
+                progress(format!("WARN: icon skipped, using the engine's: {e}"));
+                None
+            }
         }
+    });
+    match icon {
+        Some(ico) => write_bytes_if_changed(&ws.join(ICON_FILE), &ico)?,
         None => {
             // No project icon: mirror the engine's, which is what the copy used
             // to get for free from the root-file sync.

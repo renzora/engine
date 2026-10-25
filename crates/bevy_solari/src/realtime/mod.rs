@@ -224,9 +224,10 @@ pub struct SolariLighting {
 
     /// RENZORA PATCH: run the built-in denoiser (`denoise.wesl`) on the
     /// lighting, so the image is clean on any ray-tracing GPU without DLSS Ray
-    /// Reconstruction. It steps aside on a camera that has DLSS RR, which only
-    /// happens if this crate is built with its upstream `dlss` feature: Renzora
-    /// never enables it.
+    /// Reconstruction. It steps aside on a camera that has DLSS RR, which needs
+    /// this crate's upstream `dlss` feature: Renzora's `dlss` feature turns it
+    /// on in builds made with the DLSS SDK, and `renzora_solari` attaches DLSS
+    /// RR only where the GPU supports it, so everywhere else this runs.
     ///
     /// Needs last frame's depth and G-buffer, so it keeps the prepass double
     /// buffers on even with [`SolariLighting::restir`] off.

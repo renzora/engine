@@ -117,6 +117,11 @@ impl Plugin for OxrInitPlugin {
                                 RenderAdapterInfo::new(adapter_info),
                                 RenderAdapter::new(adapter),
                                 RenderInstance::new(wgpu_instance),
+                                // RENZORA PATCH: none of Bevy's extra Vulkan
+                                // features (DLSS among them) were negotiated
+                                // on this device, which OpenXR created.
+                                #[cfg(feature = "bevy_raw_vulkan_init")]
+                                Default::default(),
                             ),
                             synchronous_pipeline_compilation: self.synchronous_pipeline_compilation,
                             debug_flags: self.render_debug_flags,
@@ -200,6 +205,9 @@ impl Plugin for OxrInitPlugin {
                             RenderAdapterInfo::new(adapter_info),
                             RenderAdapter::new(adapter),
                             RenderInstance::new(wgpu_instance),
+                            // RENZORA PATCH: see the call above.
+                            #[cfg(feature = "bevy_raw_vulkan_init")]
+                            Default::default(),
                         ),
                         synchronous_pipeline_compilation: self.synchronous_pipeline_compilation,
                         debug_flags: self.render_debug_flags,
