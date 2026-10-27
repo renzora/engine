@@ -997,8 +997,9 @@ pub(crate) fn save(world: &mut World) {
         tell(world, false, "This entity has no model file to save the shapes into");
         return;
     };
-    if !rel.to_ascii_lowercase().ends_with(".glb") {
-        tell(world, false, format!("Blend shapes can only be saved into a .glb model, and {rel} is not one"));
+    let lower = rel.to_ascii_lowercase();
+    if !lower.ends_with(".glb") && !lower.ends_with(".rvg") {
+        tell(world, false, format!("Blend shapes can only be saved into a .rvg or .glb model, and {rel} is neither"));
         return;
     }
     let result = {

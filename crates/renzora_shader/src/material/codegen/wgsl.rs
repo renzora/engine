@@ -573,7 +573,21 @@ pub(crate) fn texture_bindings_at(ctx: &Ctx, group: &str, base: u32) -> String {
 /// `globals` is declared at the prepass view layout's binding 1 there, because
 /// `mesh_view_bindings` puts it at 11 (where the prepass layout has nothing).
 /// `view` sits at binding 0 in both layouts, so it imports the same either way.
-pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String, deferred: bool) {
+///
+/// With `virtual_geometry`, the header also carries the virtual geometry
+/// branch: under `MESHLET_MESH_MATERIAL_PASS` the `VertexOutput` comes from the
+/// visibility buffer resolve (see `renzora_virtual_geometry`) instead of a
+/// vertex stage, and the `FragmentOutput` stays whatever the pass writes.
+pub(crate) fn emit_ext_shader_header(
+    ctx: &Ctx,
+    shader: &mut String,
+    deferred: bool,
+    virtual_geometry: bool,
+) {
+    if virtual_geometry {
+        emit_vg_header(ctx, shader, deferred);
+        return;
+    }
     // The extension-hook pattern: import StandardMaterial's PbrInput builder +
     // the full lighting pipeline. This is the seam documented in the Bevy PBR
     // source (`extended_material.rs` + example usage).
@@ -611,6 +625,48 @@ pub(crate) fn emit_ext_shader_header(ctx: &Ctx, shader: &mut String, deferred: b
         shader.push_str("@if(ENVIRONMENT_MAP) import bevy_pbr::render::mesh_view_bindings::environment_map_sampler;\n");
     }
     // After every import: WESL rejects an import that follows a declaration.
+    if deferred {
+        shader.push_str("@if(PREPASS_PIPELINE) @group(0) @binding(1) var<uniform> globals: Globals;\n");
+    }
+    shader.push('\n');
+}
+
+/// The header for a shader that also runs on virtual geometry. Identical to
+/// the ordinary one except where `VertexOutput` comes from, which is why the
+/// imports are split: `FragmentOutput` still depends only on the pipeline.
+fn emit_vg_header(ctx: &Ctx, shader: &mut String, deferred: bool) {
+    const VG: &str = "MESHLET_MESH_MATERIAL_PASS";
+    shader.push_str("import bevy_pbr::render::pbr_fragment::pbr_input_from_standard_material;\n");
+    shader.push_str("import bevy_pbr::render::pbr_functions;\n");
+    shader.push_str(&format!(
+        "@if({VG}) import bevy_pbr::meshlet::visibility_buffer_resolve::{{VertexOutput, resolve_vertex_output}};\n"
+    ));
+    if deferred {
+        shader.push_str(&format!("@if(PREPASS_PIPELINE && !{VG}) import bevy_pbr::prepass::io::VertexOutput;\n"));
+        shader.push_str("@if(PREPASS_PIPELINE) import bevy_pbr::prepass::io::FragmentOutput;\n");
+        shader.push_str("@if(PREPASS_PIPELINE) import bevy_pbr::deferred::functions::deferred_output;\n");
+        shader.push_str("@if(PREPASS_PIPELINE) import bevy_render::globals::Globals;\n");
+        shader.push_str(&format!("@if(!PREPASS_PIPELINE && !{VG}) import bevy_pbr::render::forward_io::VertexOutput;\n"));
+        shader.push_str("@if(!PREPASS_PIPELINE) import bevy_pbr::render::forward_io::FragmentOutput;\n");
+        shader.push_str("@if(!PREPASS_PIPELINE) import bevy_pbr::render::mesh_view_bindings::globals;\n");
+        shader.push_str("import bevy_pbr::render::mesh_view_bindings::view;\n");
+    } else {
+        shader.push_str(&format!("@if(!{VG}) import bevy_pbr::render::forward_io::VertexOutput;\n"));
+        shader.push_str("import bevy_pbr::render::forward_io::FragmentOutput;\n");
+        shader.push_str("import bevy_pbr::render::mesh_view_bindings::{view, globals};\n");
+    }
+    shader.push_str("import bevy_pbr::render::mesh_functions;\n");
+    if ctx.uses_scene_depth || ctx.uses_scene_normal || ctx.uses_motion_vector {
+        shader.push_str("import bevy_pbr::prepass::utils as prepass_utils;\n");
+    }
+    if ctx.uses_transmission {
+        shader.push_str("import bevy_pbr::render::mesh_view_bindings::{view_transmission_texture, view_transmission_sampler};\n");
+    }
+    if ctx.uses_env_map {
+        shader.push_str("@if(ENVIRONMENT_MAP && MULTIPLE_LIGHT_PROBES_IN_ARRAY) import bevy_pbr::render::mesh_view_bindings::specular_environment_maps;\n");
+        shader.push_str("@if(ENVIRONMENT_MAP && !MULTIPLE_LIGHT_PROBES_IN_ARRAY) import bevy_pbr::render::mesh_view_bindings::specular_environment_map;\n");
+        shader.push_str("@if(ENVIRONMENT_MAP) import bevy_pbr::render::mesh_view_bindings::environment_map_sampler;\n");
+    }
     if deferred {
         shader.push_str("@if(PREPASS_PIPELINE) @group(0) @binding(1) var<uniform> globals: Globals;\n");
     }

@@ -41,6 +41,8 @@ impl FromWorld for TlasInstanceSetupPipeline {
                     storage_buffer_read_only_sized(false, None),
                     storage_buffer_read_only_sized(false, None),
                     storage_buffer_sized(false, None),
+                    // RENZORA PATCH: each slot's ray mask.
+                    storage_buffer_read_only_sized(false, None),
                 ),
             ),
         );
@@ -113,7 +115,7 @@ pub struct TlasState {
     scratch_capacity: u64,
     scratch_sized_for: u32,
     pub instance_setup_bind_group: Option<BindGroup>,
-    instance_setup_buffer_ids: Option<[BufferId; 3]>,
+    instance_setup_buffer_ids: Option<[BufferId; 4]>,
 }
 
 impl TlasState {
@@ -231,16 +233,17 @@ impl TlasState {
         pipeline_cache: &PipelineCache,
         pipeline: &TlasInstanceSetupPipeline,
     ) {
-        let (Some(transforms), Some(blas_refs), Some(instances)) = (
+        let (Some(transforms), Some(blas_refs), Some(masks), Some(instances)) = (
             instances.transforms.buffer(),
             instances.blas_refs.buffer(),
+            instances.masks.buffer(),
             self.instance_descriptors.as_ref(),
         ) else {
             self.instance_setup_bind_group = None;
             return;
         };
 
-        let ids = [transforms.id(), blas_refs.id(), instances.id()];
+        let ids = [transforms.id(), blas_refs.id(), instances.id(), masks.id()];
         if self.instance_setup_bind_group.is_some() && self.instance_setup_buffer_ids == Some(ids) {
             return;
         }
@@ -253,6 +256,7 @@ impl TlasState {
                 transforms.as_entire_binding(),
                 blas_refs.as_entire_binding(),
                 instances.as_entire_binding(),
+                masks.as_entire_binding(),
             )),
         ));
         self.instance_setup_buffer_ids = Some(ids);
@@ -500,13 +504,14 @@ fn build_tlas_through_wgpu_core(
         let capacity = tlas.get().len();
         tlas[0..capacity].iter_mut().for_each(|entry| *entry = None);
 
-        for (slot, mesh, transform) in bindings.instances.drawable() {
+        for (slot, mesh, transform, mask) in bindings.instances.drawable() {
             // A mesh can lose its acceleration structure after the instance resolved against it,
             // which leaves the slot with nothing to point at for a frame
             let Some(blas) = blas_manager.get(&mesh) else {
                 continue;
             };
-            tlas[slot as usize] = Some(TlasInstance::new(blas, transform, slot, 0xFF));
+            // RENZORA PATCH: the slot's ray mask, opaque or see-through.
+            tlas[slot as usize] = Some(TlasInstance::new(blas, transform, slot, mask));
         }
     }
 

@@ -108,7 +108,7 @@ fn publish_zoom_2d(
 }
 
 /// Thickness of the ruler bars, in window pixels.
-const RULER: f32 = 18.0;
+pub(crate) const RULER: f32 = 18.0;
 /// Target spacing between labelled ruler ticks, in window pixels. The actual
 /// step is rounded to a 1-2-5 sequence so labels land on readable values.
 const TICK_TARGET_PX: f32 = 80.0;

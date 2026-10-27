@@ -224,6 +224,11 @@ fn calculate_resolved_light_contribution(resolved_light_sample: ResolvedLightSam
     return LightContribution(radiance, resolved_light_sample.inverse_pdf, inverse_solid_angle_pdf, wi, resolved_light_sample.world_position.w == 1.0);
 }
 
+/// RENZORA PATCH: how many of this thread's `rays_traced` were visibility
+/// (shadow) rays, so the diagnostics can tell them from rays that follow a light
+/// path. See `scene::bindings::rays_traced`.
+var<private> shadow_rays_traced: u32;
+
 fn trace_visibility(ray_origin: vec3<f32>, point: vec4<f32>) -> f32 {
     var ray_direction = point.xyz;
     var ray_t_max = RAY_T_MAX;
@@ -237,6 +242,7 @@ fn trace_visibility(ray_origin: vec3<f32>, point: vec4<f32>) -> f32 {
 
     if ray_t_max < RAY_T_MIN { return 0.0; }
 
+    shadow_rays_traced += 1u;
     let ray_hit = trace_ray(ray_origin, ray_direction, RAY_T_MIN, ray_t_max, RAY_FLAG_TERMINATE_ON_FIRST_HIT);
     return f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
 }
@@ -254,6 +260,7 @@ fn trace_visibility_previous_frame(ray_origin: vec3<f32>, point: vec4<f32>) -> f
 
     if ray_t_max < RAY_T_MIN { return 0.0; }
 
+    shadow_rays_traced += 1u;
     let ray_hit = trace_ray_previous_frame(ray_origin, ray_direction, RAY_T_MIN, ray_t_max, RAY_FLAG_TERMINATE_ON_FIRST_HIT);
     return f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
 }

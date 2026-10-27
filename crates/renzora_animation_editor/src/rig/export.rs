@@ -38,7 +38,8 @@ pub(crate) fn export_model(world: &mut World) {
             Err(e) => tell(world, false, format!("Left out clip {name} ({path}): {e}")),
         }
     }
-    let result = std::fs::read(&abs).map_err(|e| e.to_string()).and_then(|bytes| {
+    // Read as a GLB whatever the model is stored as; the export is a GLB.
+    let result = renzora_rig::read_model(&abs).map_err(|e| e.to_string()).and_then(|bytes| {
         let mut glb = Glb::parse(&bytes).map_err(|e| e.to_string())?;
         let tracks = export::add_clips(&mut glb, &clips).map_err(|e| e.to_string())?;
         let stem = abs.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "model".into());

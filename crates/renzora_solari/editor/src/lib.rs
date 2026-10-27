@@ -1,5 +1,5 @@
 //! Editor-only half of `renzora_solari`: the "Add Component" inspector entry
-//! for [`SolariGi`].
+//! for [`SolariGi`], and the Ray Tracing debug panel (`panel.rs`).
 //!
 //! `renzora_solari` compiles lean (no `editor` feature). This crate holds the
 //! inspector, registered `renzora::add!(SolariEditorPlugin, Editor)` and linked
@@ -7,12 +7,22 @@
 //! is unavailable, so the component stays discoverable and serializable; the
 //! runtime plugin's systems simply don't run in that case.
 
+mod panel;
+
 use bevy::prelude::*;
 use bevy::solari::realtime::SolariLighting;
 use renzora::{
     bool_field, AppEditorExt, DlssMode, DlssSupport, FieldDef, FieldType, FieldValue,
-    InspectorEntry, SolariGi, SolariQuality,
+    InspectorEntry, SolariDenoiser, SolariGi, SolariQuality,
 };
+
+/// Whether DLSS Ray Reconstruction is what actually denoises `gi` on this run,
+/// given what this build and GPU support: the same decision `renzora_solari`'s
+/// `dlss.rs` makes.
+fn dlss_running(world: &World, gi: &SolariGi) -> bool {
+    let support = world.get_resource::<DlssSupport>().copied().unwrap_or_default();
+    gi.denoiser_choice().wants_dlss() && support.ray_reconstruction
+}
 
 fn solari_inspector_entry() -> InspectorEntry {
     InspectorEntry {
@@ -56,26 +66,81 @@ fn solari_inspector_entry() -> InspectorEntry {
                             world.get_mut::<SolariGi>(entity),
                         ) {
                             s.quality = quality;
+                            // A preset brings its own ReSTIR setting back.
+                            s.restir = None;
                         }
                     }
                 },
             },
-            // Renzora's own denoiser, which works on every ray-tracing GPU.
-            // Exposed so the raw estimate can be compared against it.
-            bool_field!("Denoiser", SolariGi, denoise),
-            // DLSS Ray Reconstruction where it can run, the denoiser above
-            // where it cannot. On by default, so a project gets DLSS on an RTX
-            // machine and still renders cleanly everywhere else.
-            bool_field!("DLSS", SolariGi, dlss),
+            // ReSTIR reuses light samples across neighbouring pixels and past
+            // frames: far less noise for a few more rays. The quality preset
+            // picks it (off on Low); this overrides the preset either way.
+            FieldDef {
+                name: "ReSTIR",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<SolariGi>(entity)
+                        .map(|s| FieldValue::Bool(s.restir_enabled()))
+                },
+                set_fn: |world, entity, value| {
+                    if let (FieldValue::Bool(on), Some(mut s)) = (value, world.get_mut::<SolariGi>(entity)) {
+                        s.restir = Some(on);
+                    }
+                },
+            },
+            // Glass, clear coats and lenses traced so they reflect the scene;
+            // off, they reflect only the sky, as before Solari traced them.
+            FieldDef {
+                name: "Glass Reflections",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<SolariGi>(entity)
+                        .map(|s| FieldValue::Bool(s.glass_reflections))
+                },
+                set_fn: |world, entity, value| {
+                    if let (FieldValue::Bool(on), Some(mut s)) = (value, world.get_mut::<SolariGi>(entity)) {
+                        s.glass_reflections = on;
+                    }
+                },
+            },
+            // One choice of what removes the noise. DLSS Ray Reconstruction is
+            // itself a denoiser, so a DLSS toggle beside a denoiser toggle read
+            // as two settings where there was one, and the denoiser toggle did
+            // nothing while DLSS ran. "Off" shows the raw estimate in any mode.
+            FieldDef {
+                name: "Denoiser",
+                field_type: FieldType::Enum {
+                    options: &SolariDenoiser::LABELS,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<SolariGi>(entity)
+                        .map(|s| FieldValue::Enum(s.denoiser_choice().label().to_string()))
+                },
+                set_fn: |world, entity, value| {
+                    if let FieldValue::Enum(label) = value {
+                        if let (Some(choice), Some(mut s)) = (
+                            SolariDenoiser::from_label(&label),
+                            world.get_mut::<SolariGi>(entity),
+                        ) {
+                            s.set_denoiser(choice);
+                        }
+                    }
+                },
+            },
+            // Only while DLSS is the denoiser actually running: anywhere else
+            // the frame renders at full size and the setting does nothing.
             FieldDef {
                 name: "DLSS Mode",
                 field_type: FieldType::Enum {
                     options: &DlssMode::LABELS,
                 },
                 get_fn: |world, entity| {
-                    world
-                        .get::<SolariGi>(entity)
-                        .map(|s| FieldValue::Enum(s.dlss_mode.label().to_string()))
+                    let gi = world.get::<SolariGi>(entity)?;
+                    dlss_running(world, gi)
+                        .then(|| FieldValue::Enum(gi.dlss_mode.label().to_string()))
                 },
                 set_fn: |world, entity, value| {
                     if let FieldValue::Enum(label) = value {
@@ -86,28 +151,6 @@ fn solari_inspector_entry() -> InspectorEntry {
                         }
                     }
                 },
-            },
-            // Which denoiser is actually running, and why, because the toggle
-            // alone cannot say: DLSS needs a build with the SDK and an RTX GPU
-            // on the Vulkan renderer, and falls back silently without them.
-            FieldDef {
-                name: "Denoising With",
-                field_type: FieldType::ReadOnly,
-                get_fn: |world, entity| {
-                    let gi = world.get::<SolariGi>(entity)?;
-                    let support = world.get_resource::<DlssSupport>().copied().unwrap_or_default();
-                    let builtin = if gi.denoise { "Built-in denoiser" } else { "Nothing (raw)" };
-                    let text = match (gi.dlss, support.compiled, support.ray_reconstruction) {
-                        (true, true, true) => "DLSS Ray Reconstruction".to_string(),
-                        (true, false, _) => format!("{builtin}: this build has no DLSS SDK"),
-                        (true, true, false) => {
-                            format!("{builtin}: GPU or renderer has no DLSS Ray Reconstruction")
-                        }
-                        (false, ..) => builtin.to_string(),
-                    };
-                    Some(FieldValue::ReadOnly(text))
-                },
-                set_fn: |_, _, _| {},
             },
             // Solari traces visibility instead of sampling shadow maps, and its
             // camera carries `SkipDeferredLighting`, which removes the only
@@ -154,8 +197,28 @@ pub struct SolariEditorPlugin;
 
 impl Plugin for SolariEditorPlugin {
     fn build(&self, app: &mut App) {
+        use renzora::RenzoraShellExt;
+        use renzora_ember::panel::RegisterPanelContent;
+
         info!("[editor] SolariEditorPlugin");
         app.register_inspector(solari_inspector_entry());
+
+        // The Ray Tracing panel (panel.rs).
+        app.init_resource::<renzora::SolariDiagnosticsRequest>()
+            .init_resource::<panel::PanelVisible>()
+            .init_resource::<panel::RayHistory>()
+            .register_shell_panel(panel::PANEL, "Ray Tracing", "lightning", "Debug");
+        app.register_panel_content(panel::PANEL, true, panel::build)
+            .systems(
+                Update,
+                (
+                    panel::mark_visible,
+                    panel::reset_reference_pressed,
+                    panel::record_ray_history,
+                ),
+            )
+            // Always: it is what turns measuring off once the panel is hidden.
+            .always(Last, panel::follow_visibility);
     }
 }
 

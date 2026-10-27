@@ -26,9 +26,11 @@
 //! and routed to cameras via [`renzora::EffectRouting`]. While enabled we attach Bevy's `SolariLighting` to each
 //! routed camera (which pulls in the required HDR + prepass components) with
 //! `Msaa::Off`, and mirror every *conforming* mesh into the ray-tracing scene
-//! via `RaytracingMesh3d`. Solari's BLAS builder rejects meshes that lack
-//! tangents/UVs or use 16-bit indices, so non-conforming meshes are skipped
-//! (and marked so we don't re-check them every frame) rather than crashing.
+//! via `RaytracingMesh3d`. Solari's BLAS builder takes exactly positions,
+//! normals, UVs and tangents with 32-bit indices, so a mesh missing any of the
+//! last four is traced through a repaired copy; only geometry that is not an
+//! indexed triangle list is skipped (and marked so we don't re-check it every
+//! frame) rather than crashing.
 //!
 //! ## What gets mirrored, and why the filter is not optional
 //!
@@ -46,7 +48,7 @@ use bevy::camera::visibility::{InheritedVisibility, RenderLayers, VisibilitySyst
 use bevy::camera::CameraMainTextureUsages;
 use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::ecs::system::SystemParam;
-use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight, PointLight, SpotLight};
+use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight, PointLight, SpotLight, VolumetricLight};
 use bevy::mesh::{Indices, MeshVertexAttributeId, PrimitiveTopology};
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::pbr::{
@@ -60,9 +62,11 @@ use bevy::solari::realtime::SolariLighting;
 use bevy::solari::scene::RaytracingMesh3d;
 use bevy::solari::SolariPlugins;
 use renzora::{
-    EffectRouting, GpuRaytracing, SolariGi, SolariQuality, TracedStandIn, TracedStandInsWanted,
+    EffectRouting, GpuRaytracing, SolariGi, SolariShadedTransparent, SolariQuality, TracedGeometry, TracedGeometryWanted,
+    TracedStandIn, TracedStandInsWanted,
 };
 
+mod diagnostics;
 mod dlss;
 
 renzora::add!(SolariPlugin);
@@ -109,7 +113,9 @@ impl Plugin for SolariPlugin {
         app.init_resource::<RaytracingProxies>();
         app.init_resource::<TracedTwins>();
         app.init_resource::<LightProxies>();
+        app.init_resource::<diagnostics::CoverageTally>();
         dlss::register(app);
+        diagnostics::register(app);
         // Observers apply the per-camera setup the INSTANT the component is
         // inserted (by our sync, a scene load, or the play-mode scene clone),
         // with no Update-system frame lag. That lag was the cause of the Play /
@@ -149,8 +155,10 @@ impl Plugin for SolariPlugin {
             PostUpdate,
             (
                 invalidate_stale_proxies,
+                retrace_changed_geometry,
                 mirror_raytracing_meshes,
                 sync_traced_twins,
+                sync_see_through_markers,
                 unmirror_out_of_scene_meshes,
                 unmirror_when_idle,
                 sync_light_proxies,
@@ -215,8 +223,8 @@ fn on_camera3d_inserted(
     }
 }
 
-/// Marker on entities whose mesh can't be ray-traced (missing tangents/UVs,
-/// non-`TriangleList`, or 16-bit indices). Keeps [`mirror_raytracing_meshes`]
+/// Marker on entities whose mesh can't be ray-traced (not an indexed
+/// `TriangleList`, or no positions). Keeps [`mirror_raytracing_meshes`]
 /// from re-inspecting the same mesh every frame. Cleared when Solari goes idle
 /// so the mesh is re-evaluated if Solari is re-enabled later.
 #[derive(Component)]
@@ -242,7 +250,11 @@ fn sync_solari_cameras(
         let gi = source_list.iter().find_map(|&s| sources.get(s).ok());
         let enabled = gi.is_some_and(|gi| gi.enabled);
         let quality = gi.map(|gi| gi.quality).unwrap_or_default();
-        let denoise = gi.is_none_or(|gi| gi.denoise);
+        let restir = gi.map(SolariGi::restir_enabled).unwrap_or(quality != SolariQuality::Low);
+        // The built-in denoiser's switch; it still stands aside on its own
+        // wherever DLSS is attached (see `dlss.rs`).
+        let denoise = gi.is_none_or(|gi| gi.denoiser_choice().wants_built_in());
+        let see_through = gi.is_none_or(|gi| gi.glass_reflections);
         let present = cameras.get(target).is_ok();
 
         if enabled && !present {
@@ -251,6 +263,8 @@ fn sync_solari_cameras(
                 // STORAGE_BINDING main-texture usage the moment this lands.
                 ec.try_insert(SolariLighting {
                     denoise,
+                    restir,
+                    see_through,
                     ..solari_lighting_for(quality)
                 });
             }
@@ -258,6 +272,8 @@ fn sync_solari_cameras(
             if let Ok(mut lighting) = cameras.get_mut(target) {
                 let wanted = SolariLighting {
                     denoise,
+                    restir,
+                    see_through,
                     ..solari_lighting_for(quality)
                 };
                 if !same_preset(&lighting, &wanted) {
@@ -333,6 +349,7 @@ fn solari_lighting_for(quality: SolariQuality) -> SolariLighting {
 fn same_preset(current: &SolariLighting, wanted: &SolariLighting) -> bool {
     current.restir == wanted.restir
         && current.denoise == wanted.denoise
+        && current.see_through == wanted.see_through
         && current.primary_di_samples == wanted.primary_di_samples
         && current.secondary_di_samples == wanted.secondary_di_samples
         && current.max_bounces == wanted.max_bounces
@@ -382,6 +399,9 @@ fn manage_solari_render_mode(
             // Ask the material crate for stand-ins for materials Solari can't
             // read; `sync_traced_twins` traces those meshes with them.
             commands.insert_resource(TracedStandInsWanted);
+            // And virtual geometry for the full detail behind its coarse
+            // meshes (see `traced_source`).
+            commands.insert_resource(TracedGeometryWanted);
         }
         // Sweep every EXISTING 3d camera on activation (the observer handles ones
         // spawned later) so none renders deferred materials without a deferred
@@ -397,6 +417,7 @@ fn manage_solari_render_mode(
         state.0 = false;
         force_material_respecialization(&mut materials);
         commands.remove_resource::<TracedStandInsWanted>();
+        commands.remove_resource::<TracedGeometryWanted>();
         for cam in &forced_cameras {
             // try_* variants: a camera may despawn between query and apply.
             commands
@@ -455,34 +476,75 @@ fn in_raytraced_scene(visibility: &InheritedVisibility, layers: Option<&RenderLa
     visibility.get() && layers.is_none_or(|l| l.intersects(&RenderLayers::default()))
 }
 
-/// Whether a material may be traced as the opaque surface Solari assumes.
+/// Whether a material may go into the ray-traced scene. Every alpha mode may.
 ///
-/// `bevy_solari` 0.19 has **no alpha handling whatsoever**: `GpuMaterial` has no
-/// alpha channel and instances are built with ray mask `0xFF`, so a blended
-/// material is a solid wall to every shadow and GI ray. Glass, water, decals and
-/// light shafts would cast hard black shadows they should barely tint. Worse,
-/// while Solari is on those materials don't render at all (the global renderer
-/// method is deferred, which can't draw them), so the viewport shows *nothing*
-/// throwing a solid shadow. Leaving them out of the BVH is much the closer
-/// approximation.
+/// Blended materials were once held back, because Solari traced every instance
+/// as solid: glass cast hard black shadows. Renzora's copy of `bevy_solari` now
+/// gives a blended material's instances their own ray mask, which shadow and
+/// bounce rays ignore, and lights them in a pass of their own (see
+/// [`is_see_through`]). An emissive one stays solid whatever its alpha mode,
+/// since it is a light: neon tubes and lamp glass must stay where rays reach.
 ///
-/// `Mask` and `AlphaToCoverage` stay in on purpose: a cutout leaf traced as a
+/// `Mask` and `AlphaToCoverage` are traced as solid: a cutout leaf traced as a
 /// full quad over-shadows, but dropping it removes tree shadows altogether,
-/// which reads worse. Doing it properly needs alpha-tested any-hit shaders,
-/// which Bevy doesn't expose.
+/// which reads worse. Doing it properly needs alpha-tested any-hit shaders.
+fn material_is_raytraceable(_material: &StandardMaterial) -> bool {
+    true
+}
+
+/// Whether Solari shades a material as see-through: a blended alpha mode and
+/// no emission. The same test `bevy_solari`'s binder makes when it gives an
+/// instance the see-through ray mask (`material_blend` in its `assets.rs`).
+fn is_see_through(material: &StandardMaterial) -> bool {
+    !is_emissive(material)
+        && matches!(
+            material.alpha_mode,
+            AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply
+        )
+}
+
+/// Keep [`SolariShadedTransparent`] on exactly the meshes Solari lights as
+/// see-through while it is active, so the raster passes leave them to it.
 ///
-/// **Emissive surfaces are always kept, whatever their alpha mode.** Solari
-/// registers an emissive mesh as an area light only if that mesh is a live TLAS
-/// instance, so excluding a blended one doesn't just stop it occluding; it
-/// deletes a light from the scene. Neon tubes and lamp glass are exactly the
-/// blended-and-emissive combination that matters, and with no point-light
-/// support (see [`warn_unsupported_lights`]) they are often the only thing
-/// lighting a street at all. Their occlusion cost is negligible by comparison.
-fn material_is_raytraceable(material: &StandardMaterial) -> bool {
-    matches!(
-        material.alpha_mode,
-        AlphaMode::Opaque | AlphaMode::Mask(_) | AlphaMode::AlphaToCoverage
-    ) || is_emissive(material)
+/// A mesh qualifies when its traced copy is in the scene with a see-through
+/// material: its own `RaytracingMesh3d`, or a traced twin carrying its
+/// [`TracedStandIn`]. Only once traced, so a mesh still waiting on its BLAS or
+/// textures stays drawn the old way rather than vanishing.
+fn sync_see_through_markers(
+    mut commands: Commands,
+    active: Query<&SolariLighting>,
+    materials: Res<Assets<StandardMaterial>>,
+    twins: Res<TracedTwins>,
+    meshes: Query<
+        (
+            Entity,
+            Has<RaytracingMesh3d>,
+            Option<&MeshMaterial3d<StandardMaterial>>,
+            Option<&TracedStandIn>,
+            Has<SolariShadedTransparent>,
+        ),
+        With<Mesh3d>,
+    >,
+) {
+    // With glass reflections off the see-through pass does not run, so the
+    // forward pass must draw these surfaces again: unmarked, they are.
+    let solari = active.iter().any(|lighting| lighting.see_through);
+    for (entity, mirrored, own, stand_in, marked) in &meshes {
+        let traced_material = match (own, stand_in) {
+            (Some(own), _) if mirrored => Some(&own.0),
+            (None, Some(stand_in)) if twins.0.contains_key(&entity) => Some(&stand_in.0),
+            _ => None,
+        };
+        let wanted = solari
+            && traced_material
+                .and_then(|m| materials.get(m))
+                .is_some_and(is_see_through);
+        if wanted && !marked {
+            commands.entity(entity).try_insert(SolariShadedTransparent::default());
+        } else if !wanted && marked {
+            commands.entity(entity).try_remove::<SolariShadedTransparent>();
+        }
+    }
 }
 
 /// Matches the test `bevy_solari`'s binder uses to decide whether a mesh becomes
@@ -554,19 +616,22 @@ fn mirror_raytracing_meshes(
     mut proxies: ResMut<RaytracingProxies>,
     materials: Res<Assets<StandardMaterial>>,
     active: Query<(), With<SolariLighting>>,
-    candidates: Query<(Entity, &Mesh3d, SceneSet), Unmirrored>,
+    candidates: Query<(Entity, &Mesh3d, Option<&TracedGeometry>, SceneSet), Unmirrored>,
 ) {
     if active.is_empty() {
         return;
     }
-    for (entity, mesh3d, (material, visibility, layers)) in &candidates {
+    for (entity, mesh3d, geometry, (material, visibility, layers)) in &candidates {
         // Anything but a definite yes is left alone WITHOUT `SolariMeshSkip`:
         // ineligible is re-checked every frame, and a still-loading material is
         // simply retried, same as a not-yet-loaded mesh below.
         if is_raytraceable_instance(&materials, material, visibility, layers) != Some(true) {
             continue;
         }
-        match traceable_mesh(&mesh3d.0, &mut meshes, &mut proxies) {
+        let Some(source) = traced_source(mesh3d, geometry) else {
+            continue;
+        };
+        match traceable_mesh(source, &mut meshes, &mut proxies) {
             // try_insert: the entity may despawn between this query and command
             // apply (scene reloads / asset streaming churn entities constantly
             // in the editor); a plain insert would panic on the dead entity.
@@ -578,6 +643,41 @@ fn mirror_raytracing_meshes(
                 commands.entity(entity).try_insert(SolariMeshSkip);
             }
         }
+    }
+}
+
+/// The geometry to trace for a mesh: its `Mesh3d`, unless that is a coarse
+/// stand-in for full detail drawn another way ([`TracedGeometry`]), when it is
+/// the full detail, or `None` until that exists.
+///
+/// Tracing the stand-in meanwhile would be worse than leaving the mesh out for
+/// a frame or two: its surface sits a little off the drawn one, and every ray
+/// leaving the drawn surface from underneath it hits it straight away, which
+/// shows as black polygon-shaped patches all over the model.
+fn traced_source<'a>(mesh3d: &'a Mesh3d, geometry: Option<&'a TracedGeometry>) -> Option<&'a Handle<Mesh>> {
+    match geometry {
+        Some(TracedGeometry(full)) => full.as_ref(),
+        None => Some(&mesh3d.0),
+    }
+}
+
+/// Trace a mesh again when what it should be traced as changes: its `Mesh3d`
+/// swapped, or its full detail arriving or going ([`TracedGeometry`]).
+///
+/// [`mirror_raytracing_meshes`] decides once per mesh, so without this a mesh
+/// mirrored before virtual geometry marked it as a stand-in went on tracing
+/// the stand-in, and one whose `Mesh3d` was replaced traced the old geometry.
+fn retrace_changed_geometry(
+    mut commands: Commands,
+    changed: Query<Entity, (Or<(Changed<Mesh3d>, Changed<TracedGeometry>)>, Decided)>,
+    mut removed: RemovedComponents<TracedGeometry>,
+    decided: Query<(), Decided>,
+) {
+    let removed = removed.read().filter(|&e| decided.contains(e));
+    for entity in changed.iter().chain(removed) {
+        commands
+            .entity(entity)
+            .try_remove::<(RaytracingMesh3d, SolariMeshSkip)>();
     }
 }
 
@@ -610,6 +710,7 @@ struct TraceGeometry<'w> {
 type TwinSource = (
     Entity,
     &'static Mesh3d,
+    Option<&'static TracedGeometry>,
     &'static TracedStandIn,
     &'static GlobalTransform,
     &'static InheritedVisibility,
@@ -638,7 +739,7 @@ type TwinSource = (
 fn sync_traced_twins(
     mut commands: Commands,
     mut twins: ResMut<TracedTwins>,
-    mut geometry: TraceGeometry,
+    mut trace: TraceGeometry,
     materials: Res<Assets<StandardMaterial>>,
     active: Query<(), With<SolariLighting>>,
     sources: Query<TwinSource, Without<MeshMaterial3d<StandardMaterial>>>,
@@ -652,7 +753,7 @@ fn sync_traced_twins(
     }
 
     let mut live: HashSet<Entity> = HashSet::new();
-    for (source, mesh3d, stand_in, transform, visibility, layers) in &sources {
+    for (source, mesh3d, geometry, stand_in, transform, visibility, layers) in &sources {
         if !in_raytraced_scene(visibility, layers) {
             continue;
         }
@@ -669,15 +770,17 @@ fn sync_traced_twins(
         if !material_is_raytraceable(material) {
             continue;
         }
-        let traced = match traceable_mesh(&mesh3d.0, &mut geometry.meshes, &mut geometry.proxies) {
-            Traceable::Ready(handle) => handle,
-            Traceable::Loading => {
+        let source_mesh = traced_source(mesh3d, geometry);
+        let traced = match source_mesh.map(|m| traceable_mesh(m, &mut trace.meshes, &mut trace.proxies)) {
+            Some(Traceable::Ready(handle)) => handle,
+            // Waiting on full detail is like waiting on an asset.
+            None | Some(Traceable::Loading) => {
                 if existing.is_some() {
                     live.insert(source);
                 }
                 continue;
             }
-            Traceable::Never => continue,
+            Some(Traceable::Never) => continue,
         };
         live.insert(source);
 
@@ -775,11 +878,13 @@ fn traceable_mesh(
             // both, plus indexed TriangleList). Most imported GLBs lack
             // tangents, and without them the ray-tracing scene is near-empty
             // and the whole view renders almost black, so generate rather
-            // than skip. If it genuinely can't (degenerate UVs), leave the
-            // mesh out.
+            // than skip. Where the UVs are degenerate, tangents come from the
+            // normals instead.
             if needs_tangents && mesh.generate_tangents().is_err() {
-                warn!("[solari] mesh excluded from ray tracing: tangent generation failed (degenerate/missing UVs)");
-                return Traceable::Never;
+                let Some(tangents) = tangents_from_normals(&mesh) else {
+                    return Traceable::Never;
+                };
+                mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
             }
             mesh.enable_raytracing = true;
         }
@@ -794,10 +899,7 @@ fn traceable_mesh(
     // `build_raytracing_proxy` returns an owned mesh, which ends the immutable
     // borrow of `meshes` that `mesh` holds, so the insert below is allowed.
     let Some(proxy) = build_raytracing_proxy(mesh) else {
-        warn!(
-            "[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be \
-             built (tangent generation failed on degenerate UVs)"
-        );
+        warn!("[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be built");
         proxies.0.insert(handle.id(), None);
         return Traceable::Never;
     };
@@ -821,7 +923,7 @@ fn invalidate_stale_proxies(
     mut commands: Commands,
     mut events: MessageReader<AssetEvent<Mesh>>,
     mut proxies: ResMut<RaytracingProxies>,
-    mirrored: Query<(Entity, &Mesh3d), Decided>,
+    mirrored: Query<(Entity, &Mesh3d, Option<&TracedGeometry>), Decided>,
 ) {
     let stale: Vec<AssetId<Mesh>> = events
         .read()
@@ -836,8 +938,8 @@ fn invalidate_stale_proxies(
     if stale.is_empty() {
         return;
     }
-    for (entity, mesh3d) in &mirrored {
-        if stale.contains(&mesh3d.0.id()) {
+    for (entity, mesh3d, geometry) in &mirrored {
+        if traced_source(mesh3d, geometry).is_some_and(|m| stale.contains(&m.id())) {
             commands
                 .entity(entity)
                 .try_remove::<(RaytracingMesh3d, SolariMeshSkip)>();
@@ -1064,23 +1166,29 @@ fn sync_shadow_map_suppression(
 /// not exist in the render world until the first extract has applied.
 /// Suppression is off by default, so the missing frame reads as "not
 /// suppressed", which is right.
+///
+/// A light with `VolumetricLight` keeps its shadow map. Volumetric fog is
+/// drawn by Bevy's own pass, not by Solari, and it reads the light's shadow map
+/// to know which parts of the fog are in shade. Without one, every part of the
+/// fog was sunlit, inside walls included, and from outside a building its
+/// interior disappeared behind a bright wash that looked like lost textures.
 fn suppress_shadow_maps(
     suppress: Option<Res<SuppressShadowMaps>>,
-    mut directional: Query<&mut ExtractedDirectionalLight>,
-    mut point: Query<&mut ExtractedPointLight>,
+    mut directional: Query<(&mut ExtractedDirectionalLight, Has<VolumetricLight>)>,
+    mut point: Query<(&mut ExtractedPointLight, Has<VolumetricLight>)>,
 ) {
     if !suppress.is_some_and(|s| s.0) {
         return;
     }
-    for mut light in &mut directional {
-        if light.shadow_maps_enabled {
+    for (mut light, volumetric) in &mut directional {
+        if light.shadow_maps_enabled && !volumetric {
             light.shadow_maps_enabled = false;
         }
     }
     // Spot lights extract as `ExtractedPointLight` with `spot_light_angles` set,
     // so this covers them too.
-    for mut light in &mut point {
-        if light.shadow_maps_enabled {
+    for (mut light, volumetric) in &mut point {
+        if light.shadow_maps_enabled && !volumetric {
             light.shadow_maps_enabled = false;
         }
     }
@@ -1451,11 +1559,11 @@ fn warn_missing_sky_light(
 /// usually shows up in exactly one of them:
 ///
 /// * **mirrored**: instances actually in the TLAS.
-/// * **skipped**: geometry Solari's BLAS builder can't take (no UVs, not an
-///   indexed triangle list, tangent generation failed). A high count means an
+/// * **skipped**: geometry Solari's BLAS builder can't take (not an indexed
+///   triangle list). A high count means an
 ///   under-populated BVH, which renders as an almost-black scene.
 /// * **excluded**: geometry deliberately held back by [`in_raytraced_scene`] /
-///   [`material_is_raytraceable`]: hidden, off layer 0, or blended. Watch this
+///   [`material_is_raytraceable`]: hidden or off layer 0. Watch this
 ///   one while the asset browser is generating thumbnails: that is the count
 ///   which used to be silently *mirrored*, putting invisible models at the world
 ///   origin as solid shadow casters.
@@ -1467,6 +1575,7 @@ fn log_solari_coverage(
     candidates: Query<SceneSet, (With<Mesh3d>, Unmirrored)>,
     proxies: Res<RaytracingProxies>,
     twins: Res<TracedTwins>,
+    mut tally: ResMut<diagnostics::CoverageTally>,
     mut last: Local<Option<(usize, usize, usize, usize, usize)>>,
 ) {
     if active.is_empty() {
@@ -1489,6 +1598,14 @@ fn log_solari_coverage(
         return;
     }
     *last = Some(now);
+    // The same tally, for the Ray Tracing panel (diagnostics.rs).
+    tally.0 = renzora::SolariCoverage {
+        mirrored: now.0,
+        stripped_copies: now.1,
+        stand_ins: now.4,
+        skipped: now.2,
+        excluded: now.3,
+    };
 
     if now.0 == 0 {
         // Worth a warning rather than a number: with no instances the scene bind
@@ -1508,7 +1625,7 @@ fn log_solari_coverage(
 
     info!(
         "[solari] ray-tracing scene: {} meshes mirrored ({} via stripped copies, {} via \
-         material stand-ins), {} skipped, {} excluded (hidden / off-layer / blended)",
+         material stand-ins), {} skipped, {} excluded (hidden / off-layer)",
         now.0, now.1, now.4, now.2, now.3
     );
 }
@@ -1525,15 +1642,18 @@ const BLAS_ATTRIBUTES: [MeshVertexAttributeId; 4] = [
 ];
 
 /// The requirements Solari's BLAS builder needs that we can't synthesize:
-/// indexed `TriangleList` geometry with positions, normals, and UVs. Tangents
-/// and 32-bit indices are handled on the fly (generated / promoted) in
-/// [`mirror_raytracing_meshes`], so they're intentionally NOT checked here.
+/// indexed `TriangleList` geometry with positions. Normals, UVs, tangents and
+/// 32-bit indices are all made up when missing (see [`build_raytracing_proxy`]),
+/// so they're intentionally NOT checked here.
+///
+/// Normals and UVs were once required too, which quietly left out exactly the
+/// meshes that matter most to the see-through pass: an untextured car's clear
+/// coat and windows commonly ship with no UVs at all, so they stayed out of the
+/// traced scene and went on reflecting only the sky.
 fn mesh_base_raytraceable(mesh: &Mesh) -> bool {
     mesh.primitive_topology() == PrimitiveTopology::TriangleList
         && mesh.indices().is_some()
         && mesh.attribute(Mesh::ATTRIBUTE_POSITION).is_some()
-        && mesh.attribute(Mesh::ATTRIBUTE_NORMAL).is_some()
-        && mesh.attribute(Mesh::ATTRIBUTE_UV_0).is_some()
 }
 
 /// Whether the mesh asset itself can be made BLAS-compatible in place, i.e. its
@@ -1584,8 +1704,14 @@ fn promote_indices_to_u32(mesh: &mut Mesh) {
 ///
 /// The copy costs one extra position/normal/uv/tangent buffer per distinct
 /// source asset, cached in [`RaytracingProxies`] so instances share it, and
-/// dropped when Solari goes idle. Returns `None` when tangents can't be derived
-/// (degenerate UVs), which is the one case we genuinely can't repair.
+/// dropped when Solari goes idle.
+///
+/// Attributes the source lacks are made up, since the BLAS builder takes only
+/// the exact set: smooth normals from the triangles, UVs of zero (an untextured
+/// surface never reads them; a textured one has its own), and tangents from the
+/// UVs, or from the normals alone where the UVs cannot give any (missing, or
+/// degenerate). Returns `None` only if the mesh data is already gone to the
+/// render world.
 fn build_raytracing_proxy(source: &Mesh) -> Option<Mesh> {
     let mut proxy = source.clone();
 
@@ -1600,11 +1726,39 @@ fn build_raytracing_proxy(source: &Mesh) -> Option<Mesh> {
     }
 
     promote_indices_to_u32(&mut proxy);
-    if proxy.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && proxy.generate_tangents().is_err() {
-        return None;
+    if proxy.attribute(Mesh::ATTRIBUTE_NORMAL).is_none() {
+        proxy.compute_smooth_normals();
+    }
+    let vertices = proxy.count_vertices();
+    let had_uvs = proxy.attribute(Mesh::ATTRIBUTE_UV_0).is_some();
+    if !had_uvs {
+        proxy.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0f32, 0.0]; vertices]);
+    }
+    if proxy.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && (!had_uvs || proxy.generate_tangents().is_err()) {
+        let tangents = tangents_from_normals(&proxy)?;
+        proxy.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
     }
     proxy.enable_raytracing = true;
     Some(proxy)
+}
+
+/// A tangent for each vertex made from its normal alone: any direction at
+/// right angles to it. Without UVs there is no "along the texture" for a
+/// tangent to point, and nothing that reads one (a normal map) can apply.
+fn tangents_from_normals(mesh: &Mesh) -> Option<Vec<[f32; 4]>> {
+    let Some(bevy::mesh::VertexAttributeValues::Float32x3(normals)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL) else {
+        return None;
+    };
+    Some(
+        normals
+            .iter()
+            .map(|&n| {
+                let n = Vec3::from(n).normalize_or(Vec3::Z);
+                let t = n.any_orthonormal_vector();
+                [t.x, t.y, t.z, 1.0]
+            })
+            .collect(),
+    )
 }
 
 /// Ray-tracing-only copies of meshes that can't be repaired in place, keyed by
@@ -1667,22 +1821,33 @@ mod tests {
     }
 
     #[test]
-    fn blended_materials_are_not_traced_as_solid() {
-        // Solari has no alpha handling, so anything it traces is opaque to every
-        // ray. Cutouts are kept (a leaf card over-shadows, but no shadow at all
-        // is worse); true transparency is not (glass must not cast a hard black
-        // shadow, especially since deferred won't even draw it).
-        let opaque = |mode| StandardMaterial {
+    fn blended_materials_are_traced_as_see_through_not_solid() {
+        // Every alpha mode goes into the ray-traced scene, but only the blended
+        // ones get the see-through mask that shadow and bounce rays ignore: glass
+        // must reflect the world without casting a hard black shadow. Cutouts
+        // stay solid (a leaf card over-shadows, but no shadow at all is worse).
+        let with = |mode| StandardMaterial {
             alpha_mode: mode,
             ..default()
         };
-        assert!(material_is_raytraceable(&opaque(AlphaMode::Opaque)));
-        assert!(material_is_raytraceable(&opaque(AlphaMode::Mask(0.5))));
-        assert!(material_is_raytraceable(&opaque(AlphaMode::AlphaToCoverage)));
-        assert!(!material_is_raytraceable(&opaque(AlphaMode::Blend)));
-        assert!(!material_is_raytraceable(&opaque(AlphaMode::Premultiplied)));
-        assert!(!material_is_raytraceable(&opaque(AlphaMode::Add)));
-        assert!(!material_is_raytraceable(&opaque(AlphaMode::Multiply)));
+        for mode in [
+            AlphaMode::Opaque,
+            AlphaMode::Mask(0.5),
+            AlphaMode::AlphaToCoverage,
+            AlphaMode::Blend,
+            AlphaMode::Premultiplied,
+            AlphaMode::Add,
+            AlphaMode::Multiply,
+        ] {
+            assert!(material_is_raytraceable(&with(mode)));
+        }
+        assert!(!is_see_through(&with(AlphaMode::Opaque)));
+        assert!(!is_see_through(&with(AlphaMode::Mask(0.5))));
+        assert!(!is_see_through(&with(AlphaMode::AlphaToCoverage)));
+        assert!(is_see_through(&with(AlphaMode::Blend)));
+        assert!(is_see_through(&with(AlphaMode::Premultiplied)));
+        assert!(is_see_through(&with(AlphaMode::Add)));
+        assert!(is_see_through(&with(AlphaMode::Multiply)));
     }
 
     #[test]
@@ -1698,6 +1863,7 @@ mod tests {
         };
         assert!(is_emissive(&neon));
         assert!(material_is_raytraceable(&neon));
+        assert!(!is_see_through(&neon));
     }
 
     /// A minimal indexed triangle with the attributes named, in insertion order
@@ -1790,6 +1956,20 @@ mod tests {
     }
 
     #[test]
+    fn a_mesh_with_no_uvs_or_normals_is_still_traced() {
+        // Untextured glass and clear coat often ship like this; left out, a
+        // car's windows went on reflecting only the sky.
+        let source = mesh_with(&["position"]);
+        assert!(mesh_base_raytraceable(&source));
+        let proxy = build_raytracing_proxy(&source).expect("proxy should build");
+        assert!(bevy_would_build_a_blas(&proxy));
+        let Some(bevy::mesh::VertexAttributeValues::Float32x4(tangents)) = proxy.attribute(Mesh::ATTRIBUTE_TANGENT) else {
+            panic!("the proxy has no tangents");
+        };
+        assert!(tangents.iter().all(|t| t.iter().all(|v| v.is_finite())));
+    }
+
+    #[test]
     fn sixteen_bit_indices_are_promoted() {
         let mut source = mesh_with(&["position", "normal", "uv0", "uv1"]);
         source.insert_indices(Indices::U16(vec![0, 1, 2]));
@@ -1873,6 +2053,41 @@ mod tests {
         assert!(!want(true, &[toggled_off]));
         assert!(!want(true, &[disabled]));
         assert!(!want(true, &[]));
+    }
+
+    #[test]
+    fn restir_follows_the_preset_until_overridden() {
+        let at = |quality, restir| SolariGi { quality, restir, ..default() };
+        assert!(!at(SolariQuality::Low, None).restir_enabled());
+        assert!(at(SolariQuality::Medium, None).restir_enabled());
+        assert!(at(SolariQuality::Low, Some(true)).restir_enabled());
+        assert!(!at(SolariQuality::Ultra, Some(false)).restir_enabled());
+        // A scene saved before the toggle existed follows its preset.
+        assert_eq!(SolariGi::default().restir, None);
+    }
+
+    #[test]
+    fn a_scene_saved_with_the_old_toggles_keeps_its_denoiser() {
+        use renzora::SolariDenoiser;
+        let saved = |denoise, dlss| SolariGi {
+            denoise,
+            dlss,
+            // A scene from before the choice existed loads it at its default.
+            denoiser: SolariDenoiser::default(),
+            ..default()
+        };
+        assert_eq!(saved(true, true).denoiser_choice(), SolariDenoiser::Auto);
+        assert_eq!(saved(true, false).denoiser_choice(), SolariDenoiser::BuiltIn);
+        assert_eq!(saved(false, true).denoiser_choice(), SolariDenoiser::Off);
+        assert_eq!(saved(false, false).denoiser_choice(), SolariDenoiser::Off);
+
+        // Choosing one afterwards wins over whatever the old toggles said.
+        let mut gi = saved(false, false);
+        gi.set_denoiser(SolariDenoiser::Auto);
+        assert_eq!(gi.denoiser_choice(), SolariDenoiser::Auto);
+        assert!(SolariDenoiser::Auto.wants_dlss() && SolariDenoiser::Auto.wants_built_in());
+        assert!(!SolariDenoiser::BuiltIn.wants_dlss());
+        assert!(!SolariDenoiser::Off.wants_built_in());
     }
 
     #[test]

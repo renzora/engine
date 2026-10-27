@@ -3,8 +3,9 @@
 use super::*;
 
 impl Theme {
-    /// Create the default dark theme
-    /// All colors here match the original hardcoded values in the editor
+    /// Create the default dark theme (slate neutrals, one blue accent). Its
+    /// colors are the `Default` impls in `lib.rs`, mirrored by ember's fallback
+    /// palette constants.
     pub fn dark() -> Self {
         Self {
             meta: ThemeMeta {
@@ -35,62 +36,64 @@ impl Theme {
                 author: "Renzora".to_string(),
                 version: "1.0".to_string(),
             },
-            // A clean, professional light theme. Surfaces layer in soft cool
-            // grays (app < panels < popups) instead of flat white, so panels,
-            // headers and cards read as distinct planes; text keeps a strong
-            // near-black contrast for readability.
+            // Slate light, the dark theme's counterpart. The previous version
+            // kept every surface between 226 and 254, so panels, headers and
+            // inputs had no edges and the whole editor read as one white sheet.
+            // Here the chrome is a clearly darker slate framing near-white
+            // panels, inputs are white with a border you can see, and text is
+            // dark enough that muted labels still pass contrast.
             semantic: SemanticColors {
-                accent: ThemeColor::new(38, 108, 200),
-                success: ThemeColor::new(48, 148, 78),
-                warning: ThemeColor::new(196, 132, 28),
-                error: ThemeColor::new(200, 58, 58),
-                selection: ThemeColor::new(208, 223, 245),
-                selection_stroke: ThemeColor::new(38, 108, 200),
+                accent: ThemeColor::new(44, 104, 230),
+                success: ThemeColor::new(26, 127, 60),
+                warning: ThemeColor::new(180, 110, 0),
+                error: ThemeColor::new(200, 50, 50),
+                selection: ThemeColor::new(212, 225, 252),
+                selection_stroke: ThemeColor::new(44, 104, 230),
             },
             surfaces: SurfaceColors {
-                window: ThemeColor::new(234, 236, 240),
-                window_stroke: ThemeColor::new(206, 209, 215),
-                panel: ThemeColor::new(244, 245, 248),
-                popup: ThemeColor::new(252, 253, 254),
-                overlay: ThemeColor::with_alpha(0, 0, 0, 90),
-                faint: ThemeColor::new(228, 230, 234),
-                // ember maps the chrome header bar to `extreme`; keep it a subtle
-                // gray (not pure white) so toolbars read as their own surface.
-                extreme: ThemeColor::new(226, 229, 234),
+                window: ThemeColor::new(221, 225, 232),
+                window_stroke: ThemeColor::new(190, 197, 209),
+                panel: ThemeColor::new(246, 247, 249),
+                popup: ThemeColor::new(255, 255, 255),
+                overlay: ThemeColor::with_alpha(16, 20, 28, 90),
+                faint: ThemeColor::new(234, 237, 241),
+                // ember maps the panel tab headers to `extreme`: between the
+                // chrome and the panel, so a header reads as part of its panel.
+                extreme: ThemeColor::new(232, 235, 240),
             },
             text: TextColors {
-                primary: ThemeColor::new(26, 28, 32),
-                secondary: ThemeColor::new(62, 66, 74),
-                muted: ThemeColor::new(108, 114, 124),
-                heading: ThemeColor::new(16, 18, 22),
-                disabled: ThemeColor::new(158, 162, 170),
-                hyperlink: ThemeColor::new(38, 108, 200),
+                primary: ThemeColor::new(22, 26, 33),
+                secondary: ThemeColor::new(52, 58, 70),
+                muted: ThemeColor::new(88, 96, 112),
+                heading: ThemeColor::new(16, 19, 25),
+                disabled: ThemeColor::new(148, 155, 168),
+                hyperlink: ThemeColor::new(44, 104, 230),
             },
             widgets: WidgetColors {
-                noninteractive_bg: ThemeColor::new(238, 240, 243),
-                noninteractive_fg: ThemeColor::new(70, 74, 82),
-                inactive_bg: ThemeColor::new(226, 229, 234),
-                inactive_fg: ThemeColor::new(52, 56, 64),
-                hovered_bg: ThemeColor::new(214, 219, 227),
-                hovered_fg: ThemeColor::new(26, 28, 32),
-                active_bg: ThemeColor::new(38, 108, 200),
+                noninteractive_bg: ThemeColor::new(238, 240, 244),
+                noninteractive_fg: ThemeColor::new(60, 66, 78),
+                inactive_bg: ThemeColor::new(255, 255, 255),
+                inactive_fg: ThemeColor::new(40, 46, 58),
+                hovered_bg: ThemeColor::new(226, 231, 240),
+                hovered_fg: ThemeColor::new(22, 26, 33),
+                active_bg: ThemeColor::new(44, 104, 230),
                 active_fg: ThemeColor::new(255, 255, 255),
-                border: ThemeColor::new(200, 204, 210),
-                border_light: ThemeColor::new(216, 219, 225),
+                border: ThemeColor::new(186, 192, 204),
+                border_light: ThemeColor::new(204, 210, 220),
             },
             panels: PanelColors {
-                tree_line: ThemeColor::new(196, 200, 207),
-                drop_line: ThemeColor::new(38, 108, 200),
-                drop_child_highlight: ThemeColor::with_alpha(38, 108, 200, 46),
+                tree_line: ThemeColor::new(196, 202, 212),
+                drop_line: ThemeColor::new(44, 104, 230),
+                drop_child_highlight: ThemeColor::with_alpha(44, 104, 230, 46),
                 row_odd_bg: ThemeColor::with_alpha(0, 0, 0, 8),
-                inspector_row_even: ThemeColor::new(244, 245, 248),
-                inspector_row_odd: ThemeColor::new(238, 240, 243),
-                category_frame_bg: ThemeColor::new(240, 242, 245),
-                item_bg: ThemeColor::new(236, 238, 242),
-                item_hover: ThemeColor::new(224, 230, 240),
-                tab_active: ThemeColor::new(252, 253, 254),
-                tab_inactive: ThemeColor::new(232, 234, 238),
-                tab_hover: ThemeColor::new(224, 227, 233),
+                inspector_row_even: ThemeColor::new(246, 247, 249),
+                inspector_row_odd: ThemeColor::new(240, 242, 246),
+                category_frame_bg: ThemeColor::new(236, 239, 244),
+                item_bg: ThemeColor::new(255, 255, 255),
+                item_hover: ThemeColor::new(226, 232, 242),
+                tab_active: ThemeColor::new(255, 255, 255),
+                tab_inactive: ThemeColor::new(232, 235, 240),
+                tab_hover: ThemeColor::new(220, 225, 233),
                 close_hover: ThemeColor::new(208, 66, 66),
             },
             categories: CategoryColors {
@@ -156,11 +159,11 @@ impl Theme {
                 grid_dot: ThemeColor::new(200, 200, 210),
                 node_bg: ThemeColor::new(255, 255, 255),
                 node_border: ThemeColor::new(200, 200, 210),
-                node_selected_border: ThemeColor::new(45, 120, 210),
-                connection: ThemeColor::new(80, 80, 90),
+                node_selected_border: ThemeColor::new(44, 104, 230),
+                connection: ThemeColor::new(80, 86, 100),
                 connection_preview: ThemeColor::new(200, 180, 60),
-                selection_rect_fill: ThemeColor::with_alpha(45, 120, 210, 30),
-                selection_rect_stroke: ThemeColor::new(45, 120, 210),
+                selection_rect_fill: ThemeColor::with_alpha(44, 104, 230, 30),
+                selection_rect_stroke: ThemeColor::new(44, 104, 230),
             },
             viewport: ViewportColors {
                 grid_line: ThemeColor::new(190, 190, 200),
@@ -186,10 +189,10 @@ impl Theme {
                 line_number: ThemeColor::new(168, 172, 180),
                 line_number_active: ThemeColor::new(60, 64, 72),
                 current_line: ThemeColor::with_alpha(0, 0, 0, 12),
-                selection: ThemeColor::with_alpha(38, 108, 200, 56),
-                cursor: ThemeColor::new(38, 108, 200),
+                selection: ThemeColor::with_alpha(44, 104, 230, 56),
+                cursor: ThemeColor::new(44, 104, 230),
                 indent_guide: ThemeColor::with_alpha(0, 0, 0, 18),
-                bracket_match: ThemeColor::with_alpha(38, 108, 200, 72),
+                bracket_match: ThemeColor::with_alpha(44, 104, 230, 72),
                 find_match: ThemeColor::with_alpha(220, 170, 40, 110),
             },
             effects: ThemeEffects::default(),

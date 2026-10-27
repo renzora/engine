@@ -12,6 +12,9 @@ toml = "0.8"
 # pure-bytes scenarios go through `BytesBackend` instead.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 memmap2 = "0.9"
+# Packing reads what a model stored as `.rvg` references (its textures and
+# materials) from the scene inside it. Packing is desktop-only.
+renzora_rvg = { path = "../renzora_rvg" }
 # C libzstd — packs AND unpacks. Not available to the web build: it compiles
 # vendored C through `cc`, and wasm32-unknown-unknown has no libc sysroot for it
 # ('stdlib.h' file not found). See `src/zstd_compat.rs`.

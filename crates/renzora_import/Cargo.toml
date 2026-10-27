@@ -82,8 +82,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # FBX — ufbx handles FBX 3.0 through 7.7, binary and ASCII, with Maya/3ds Max/
 # Blender/Mixamo quirks normalized. Vendored C source compiled via cc-rs.
 ufbx = "0.10"
-# Mesh optimization
-meshopt = "0.3"
+# Mesh optimization. The same version `renzora_rvg`'s builder uses: both
+# compile meshoptimizer's C++ with unprefixed symbols, so two versions in one
+# binary would not link.
+meshopt = "0.7"
+# Imported models are stored as `.rvg` (`model_file.rs`): the builder that
+# turns the converted GLB into one.
+renzora_rvg = { path = "../renzora_rvg", features = ["bake"] }
 
 [lints]
 workspace = true

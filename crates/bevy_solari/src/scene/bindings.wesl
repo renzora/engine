@@ -48,7 +48,12 @@ struct Material {
     perceptual_roughness: f32,
     emissive: vec3<f32>,
     metallic: f32,
-    _padding: vec3<f32>,
+    // RENZORA PATCH: the base colour's alpha, how a see-through surface
+    // blends (`BLEND_*` in realtime/transparent.wesl), and its clear coat's
+    // strength. Were padding.
+    alpha: f32,
+    blend: u32,
+    clearcoat: f32,
     reflectance: f32,
 }
 
@@ -103,8 +108,28 @@ const RAY_T_MAX = 100000.0f;
 
 const RAY_NO_CULL = 0xFFu;
 
+// RENZORA PATCH: TLAS instance masks (`RAY_MASK_*` in binder/instances.rs).
+// Every ray Solari traces sees opaque surfaces only; a see-through surface
+// (glass, a car's clear coat shell) is lit by its own pass, which looks for it
+// with `RAY_MASK_SEE_THROUGH`. Upstream traced every instance as solid, so
+// Renzora kept blended materials out of the scene entirely.
+const RAY_MASK_OPAQUE = 0x01u;
+const RAY_MASK_SEE_THROUGH = 0x02u;
+
+/// RENZORA PATCH: rays this thread has traced, for the diagnostics' ray counts
+/// (`realtime/debug_layout.wesl`, which adds it to the frame's total once per
+/// thread). A per-thread register costs nothing measurable, so it is always
+/// counted and only reported when asked.
+var<private> rays_traced: u32;
+
 fn trace_ray(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ray_t_max: f32, ray_flag: u32) -> RayIntersection {
-    let ray = RayDesc(ray_flag, RAY_NO_CULL, ray_t_min, ray_t_max, ray_origin, ray_direction);
+    return trace_ray_masked(ray_origin, ray_direction, ray_t_min, ray_t_max, ray_flag, RAY_MASK_OPAQUE);
+}
+
+/// RENZORA PATCH: `trace_ray` against the instances `mask` selects.
+fn trace_ray_masked(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ray_t_max: f32, ray_flag: u32, mask: u32) -> RayIntersection {
+    rays_traced += 1u;
+    let ray = RayDesc(ray_flag, mask, ray_t_min, ray_t_max, ray_origin, ray_direction);
     var rq: ray_query;
     rayQueryInitialize(&rq, tlas, ray);
     rayQueryProceed(&rq);
@@ -112,7 +137,8 @@ fn trace_ray(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ra
 }
 
 fn trace_ray_previous_frame(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ray_t_max: f32, ray_flag: u32) -> RayIntersection {
-    let ray = RayDesc(ray_flag, RAY_NO_CULL, ray_t_min, ray_t_max, ray_origin, ray_direction);
+    rays_traced += 1u;
+    let ray = RayDesc(ray_flag, RAY_MASK_OPAQUE, ray_t_min, ray_t_max, ray_origin, ray_direction);
     var rq: ray_query;
     rayQueryInitialize(&rq, previous_frame_tlas, ray);
     rayQueryProceed(&rq);

@@ -212,8 +212,7 @@ fn generate_initial_path(world_position: vec3<f32>, world_normal: vec3<f32>, mat
 
     var result: InitialSamplingResult;
     result.radiance = path.radiance;
-    result.radiance_specular = path.radiance_specular;
-    @if(RESTIR) {
+    result.radiance_specular = path.radiance_specular;    @if(RESTIR) {
         if path.selected_target_function > 0.0 {
             path.reservoir.unbiased_contribution_weight = path.weight_sum / path.selected_target_function;
         }

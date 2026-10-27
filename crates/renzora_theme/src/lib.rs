@@ -182,12 +182,16 @@ pub struct SemanticColors {
 impl Default for SemanticColors {
     fn default() -> Self {
         Self {
-            accent: ThemeColor::new(69, 101, 151),
+            // One saturated blue for everything that means "this one": selection,
+            // focus, primary buttons, toggles, slider fills. The selection fill is
+            // a deep shade of it so a selected row stands out and its text stays
+            // readable.
+            accent: ThemeColor::new(84, 124, 214),
             success: ThemeColor::new(89, 191, 115),
             warning: ThemeColor::new(242, 166, 64),
             error: ThemeColor::new(230, 89, 89),
-            selection: ThemeColor::new(69, 101, 151),
-            selection_stroke: ThemeColor::new(43, 109, 163),
+            selection: ThemeColor::new(36, 50, 84),
+            selection_stroke: ThemeColor::new(84, 124, 214),
         }
     }
 }
@@ -207,14 +211,18 @@ pub struct SurfaceColors {
 
 impl Default for SurfaceColors {
     fn default() -> Self {
+        // Deep ink, not grey: the chrome stays near-black, and every surface
+        // carries the same cool tint so nothing reads as neutral grey. The
+        // levels are spaced far enough apart (chrome < recessed < panel <
+        // header < popup) that each one reads as its own plane.
         Self {
-            window: ThemeColor::new(11, 11, 17),
-            window_stroke: ThemeColor::new(50, 50, 58),
-            panel: ThemeColor::new(26, 26, 31),
-            popup: ThemeColor::new(28, 28, 35),
-            overlay: ThemeColor::with_alpha(0, 0, 0, 180),
-            faint: ThemeColor::new(20, 20, 24),
-            extreme: ThemeColor::new(33, 33, 39),
+            window: ThemeColor::new(11, 12, 17),
+            window_stroke: ThemeColor::new(38, 43, 56),
+            panel: ThemeColor::new(19, 21, 28),
+            popup: ThemeColor::new(26, 29, 38),
+            overlay: ThemeColor::with_alpha(4, 5, 8, 180),
+            faint: ThemeColor::new(15, 17, 23),
+            extreme: ThemeColor::new(23, 26, 34),
         }
     }
 }
@@ -234,12 +242,12 @@ pub struct TextColors {
 impl Default for TextColors {
     fn default() -> Self {
         Self {
-            primary: ThemeColor::new(230, 230, 240),
-            secondary: ThemeColor::new(200, 200, 210),
-            muted: ThemeColor::new(140, 140, 155),
-            heading: ThemeColor::new(180, 180, 195),
-            disabled: ThemeColor::new(100, 100, 110),
-            hyperlink: ThemeColor::new(100, 180, 255),
+            primary: ThemeColor::new(230, 233, 239),
+            secondary: ThemeColor::new(200, 205, 216),
+            muted: ThemeColor::new(139, 147, 167),
+            heading: ThemeColor::new(182, 189, 204),
+            disabled: ThemeColor::new(98, 106, 124),
+            hyperlink: ThemeColor::new(122, 166, 255),
         }
     }
 }
@@ -272,16 +280,16 @@ pub struct WidgetColors {
 impl Default for WidgetColors {
     fn default() -> Self {
         Self {
-            noninteractive_bg: ThemeColor::new(36, 36, 42),
-            noninteractive_fg: ThemeColor::new(180, 180, 190),
-            inactive_bg: ThemeColor::new(46, 46, 56),
-            inactive_fg: ThemeColor::new(200, 200, 210),
-            hovered_bg: ThemeColor::new(56, 56, 68),
-            hovered_fg: ThemeColor::new(220, 220, 230),
-            active_bg: ThemeColor::new(66, 150, 250),
+            noninteractive_bg: ThemeColor::new(26, 29, 38),
+            noninteractive_fg: ThemeColor::new(182, 189, 204),
+            inactive_bg: ThemeColor::new(32, 36, 47),
+            inactive_fg: ThemeColor::new(200, 205, 216),
+            hovered_bg: ThemeColor::new(40, 45, 58),
+            hovered_fg: ThemeColor::new(230, 233, 239),
+            active_bg: ThemeColor::new(84, 124, 214),
             active_fg: ThemeColor::new(255, 255, 255),
-            border: ThemeColor::new(15, 15, 22),
-            border_light: ThemeColor::new(45, 45, 52),
+            border: ThemeColor::new(6, 7, 10),
+            border_light: ThemeColor::new(38, 43, 56),
         }
     }
 }
@@ -317,18 +325,18 @@ pub struct PanelColors {
 impl Default for PanelColors {
     fn default() -> Self {
         Self {
-            tree_line: ThemeColor::new(60, 60, 70),
-            drop_line: ThemeColor::new(80, 140, 255),
-            drop_child_highlight: ThemeColor::with_alpha(80, 140, 255, 50),
+            tree_line: ThemeColor::new(46, 52, 66),
+            drop_line: ThemeColor::new(84, 124, 214),
+            drop_child_highlight: ThemeColor::with_alpha(84, 124, 214, 50),
             row_odd_bg: ThemeColor::with_alpha(255, 255, 255, 6),
-            inspector_row_even: ThemeColor::new(32, 34, 38),
-            inspector_row_odd: ThemeColor::new(38, 40, 44),
-            category_frame_bg: ThemeColor::new(30, 32, 36),
-            item_bg: ThemeColor::new(35, 35, 45),
-            item_hover: ThemeColor::new(45, 45, 58),
-            tab_active: ThemeColor::new(45, 45, 58),
-            tab_inactive: ThemeColor::new(28, 28, 35),
-            tab_hover: ThemeColor::new(45, 47, 55),
+            inspector_row_even: ThemeColor::new(22, 25, 32),
+            inspector_row_odd: ThemeColor::new(26, 29, 37),
+            category_frame_bg: ThemeColor::new(28, 32, 41),
+            item_bg: ThemeColor::new(32, 36, 47),
+            item_hover: ThemeColor::new(40, 45, 58),
+            tab_active: ThemeColor::new(34, 38, 50),
+            tab_inactive: ThemeColor::new(19, 21, 28),
+            tab_hover: ThemeColor::new(29, 33, 43),
             close_hover: ThemeColor::new(200, 60, 60),
         }
     }
@@ -452,15 +460,15 @@ pub struct MaterialColors {
 impl Default for MaterialColors {
     fn default() -> Self {
         Self {
-            canvas_bg: ThemeColor::new(25, 25, 30),
-            grid_dot: ThemeColor::new(60, 60, 65),
-            node_bg: ThemeColor::new(40, 40, 45),
-            node_border: ThemeColor::new(60, 60, 65),
-            node_selected_border: ThemeColor::new(100, 150, 255),
-            connection: ThemeColor::new(200, 200, 200),
+            canvas_bg: ThemeColor::new(15, 17, 23),
+            grid_dot: ThemeColor::new(46, 52, 66),
+            node_bg: ThemeColor::new(26, 29, 38),
+            node_border: ThemeColor::new(38, 43, 56),
+            node_selected_border: ThemeColor::new(84, 124, 214),
+            connection: ThemeColor::new(200, 205, 216),
             connection_preview: ThemeColor::new(255, 255, 100),
-            selection_rect_fill: ThemeColor::with_alpha(100, 150, 255, 30),
-            selection_rect_stroke: ThemeColor::new(100, 150, 255),
+            selection_rect_fill: ThemeColor::with_alpha(84, 124, 214, 30),
+            selection_rect_stroke: ThemeColor::new(84, 124, 214),
         }
     }
 }

@@ -10,7 +10,7 @@ The editor is the engine. What you see while editing is how your game runs.
 
 | Area | What it is |
 |---|---|
-| Top bar | The menu button, Settings, undo, redo, save, the scene switcher, the workspace ribbon, and Play on the right. Anything that acts on the whole session. |
+| Top bar | The menu button, Settings, save, the scene switcher, the workspace ribbon, and Play and the Marketplace on the right. Anything that acts on the whole session. Undo and redo are at the foot of the viewport's tool shelf. |
 | Viewport | Your live 3D view, in the middle. Its own tools sit in a strip along its top edge. |
 | Hierarchy | The tree of everything in the current scene. |
 | Inspector | The settings of whatever you have selected. |
@@ -18,7 +18,7 @@ The editor is the engine. What you see while editing is how your game runs.
 
 The window has your operating system's own frame: move, maximize, minimize and resize it the way you would any other window. Its title names the engine version and the open project's folder, for example "Renzora Engine r1-alpha8 - C:\Games\My Game", and **Help ▸ About** has the full build details. A project opens in a centered 1600x900 window, smaller on a screen that can't fit it, rather than filling the screen; maximize it if you want the whole display.
 
-<!-- screenshot: top_bar.png - the top bar close up: menu button, settings gear, undo/redo/save, play controls, workspace ribbon, window buttons -->
+<!-- screenshot: top_bar.png - the top bar close up: menu button, settings gear, save, play controls, workspace ribbon, window buttons -->
 
 ## The menu
 

@@ -52,6 +52,30 @@ pub fn on_hue(hue: (u8, u8, u8)) -> (u8, u8, u8) {
     }
 }
 
+// ── Top-bar chips ────────────────────────────────────────────────────────────
+
+/// Corner radius of a tinted top-bar chip (Play, the Marketplace). The same
+/// radius as the bar's other controls, so the chips read as part of the chrome
+/// rather than as pills dropped onto it.
+pub const CHIP_RADIUS: f32 = 4.0;
+
+/// Fill for a tinted top-bar chip: `hue` fading left to right into the bar.
+///
+/// A flat translucent fill made each chip a solid coloured block, the loudest
+/// thing in the chrome. Fading out toward the label keeps the hue where the
+/// glyph is and lets the rest sit in the bar's own colour, in any theme, since
+/// what the fade reaches is whatever is behind it.
+pub fn chip_gradient(hue: Color, hot: bool) -> BackgroundGradient {
+    let (from, to) = if hot { (0.34, 0.12) } else { (0.22, 0.04) };
+    linear_gradient(90.0, [hue.with_alpha(from), hue.with_alpha(to)])
+}
+
+/// Hairline border for a tinted chip, so it keeps an edge where the gradient
+/// fades out.
+pub fn chip_border(hue: Color, hot: bool) -> BorderColor {
+    BorderColor::all(hue.with_alpha(if hot { 0.45 } else { 0.26 }))
+}
+
 // ── Glow & elevation ─────────────────────────────────────────────────────────
 
 /// A soft colored glow (no offset, slight spread, blurred). Insert on a node to

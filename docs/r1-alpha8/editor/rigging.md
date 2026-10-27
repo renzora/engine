@@ -18,7 +18,7 @@ The skeleton has Mixamo's bone names and orientations, so Mixamo clips, and any 
 
 The fingers are found from the shape of each hand, with no extra points: every finger gets Mixamo's four bones from knuckle to tip (`LeftHandIndex1` to `LeftHandIndex4`, and so on for the thumb, middle, ring and pinky), so a clip that curls the fingers curls them here too. Fingers modelled touching, and jointed fingers built from separate segments, are still told apart. A hand modelled as a mitten, with nothing between the fingers, gets no finger bones and moves as one piece.
 
-The model's file is rewritten with the skeleton and skin in it, and every copy of it in your scenes updates. The original is kept beside it as `<name>.unrigged.glb`, and **Remove Rig** puts it back. Rigging again always starts from that original.
+The model's file is rewritten with the skeleton and skin in it, and every copy of it in your scenes updates. The original is kept beside it as `<name>.unrigged.rvg` (`<name>.unrigged.glb` for a model stored as `.glb`), and **Remove Rig** puts it back. Rigging again always starts from that original. An `.rvg` model is rigged at full detail and stays an `.rvg`, its virtual geometry rebuilt with the skin.
 
 For a head, choose **Face** instead: see [Facial Animation](/docs/r1-alpha8/editor/facial-animation).
 
@@ -82,7 +82,7 @@ Switch to **Skin** to see and paint the weights: how much each bone moves each p
 - **Checks** counts vertices no bone moves and vertices whose weights do not add up to 1; **Normalise** fixes the second.
 - **Save Weights** writes the weights into the model file and reloads it everywhere. Leaving Skin saves anything painted; **Revert** throws it away.
 
-Weights are saved straight into the `.glb`. A model the engine had to rebuild on load (one without normals, which gets flat ones by splitting its vertices) cannot be saved this way; the Console says which mesh.
+Weights are saved straight into the model's `.rvg` (or `.glb`). A model the engine had to rebuild on load (one without normals, which gets flat ones by splitting its vertices) cannot be saved this way; the Console says which mesh.
 
 ## Sculpting blend shapes
 
@@ -109,7 +109,7 @@ The model stands at rest (its bind pose) while you sculpt, which is the shape a 
 - **Shape** (right) shows the shape being sculpted, with its **Preview weight**. **Rename** gives it the name typed in the name field, **Clear** flattens it back to nothing, **Delete** removes it. Imported shapes can be sculpted, renamed and deleted like your own.
 - **Save Shapes** writes every shape into the model file and reloads it everywhere. Leaving Shapes saves anything sculpted; **Revert** throws it away.
 
-Shapes are saved into the `.glb` as glTF morph targets: how far each vertex moves, and how its shading turns, worked out from the sculpted surface. Shapes you did not touch keep exactly the data they had. A shape lives on every mesh it moves, so "Blink" sculpted across the lids and the lashes is one shape in the list and one slider per mesh among the blend shape sliders. The first save keeps the model as it was beside it, as `<name>.unshaped.glb`. A model the engine had to rebuild on load cannot be saved this way; the Console says which mesh.
+Shapes are saved into the model's `.rvg` (or `.glb`) as glTF morph targets: how far each vertex moves, and how its shading turns, worked out from the sculpted surface. Shapes you did not touch keep exactly the data they had. A shape lives on every mesh it moves, so "Blink" sculpted across the lids and the lashes is one shape in the list and one slider per mesh among the blend shape sliders. The first save keeps the model as it was beside it, as `<name>.unshaped.rvg` (or `.unshaped.glb`). A model the engine had to rebuild on load cannot be saved this way; the Console says which mesh.
 
 Once saved, the new shapes are ordinary blend shapes: they show as sliders in Animate's **Controls** tab and key like any other (see [Blend shapes](/docs/r1-alpha8/editor/facial-animation#blend-shapes)). A clip keys a shape by its number, so deleting a shape moves the ones after it up a place, and a clip keyed on them then drives the next shape along; new shapes are always added after the existing ones, so making one never disturbs a clip.
 

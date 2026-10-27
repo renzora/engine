@@ -8,6 +8,7 @@ import package::realtime::gbuffer_utils::{gpixel_resolve, permute_pixel, pixel_d
 import package::realtime::initial_path::{generate_initial_path, InitialSamplingResult};
 import package::realtime::bindings::{depth_buffer, empty_reservoir, gbuffer, load_motion_vector, noisy_specular, previous_depth_buffer, previous_gbuffer, previous_view, reservoirs_a, reservoirs_b, Reservoir, constants, view, view_output};
 import package::realtime::denoise_input::write_noisy_signal;
+import package::realtime::debug_layout::{flush_ray_counts, SLOT_RAYS_INITIAL, SLOT_RAYS_REUSE};
 import package::scene::sampling::{balance_heuristic, calculate_resolved_light_contribution, isinf, isnan, LightSample, NULL_LIGHT_ID, power_heuristic, resolve_light_sample, ResolvedLightSample, trace_visibility, trace_visibility_previous_frame};
 import package::scene::bindings::{light_sources, LIGHT_NOT_PRESENT_THIS_FRAME, previous_frame_light_id_translations, RAY_T_MAX, RAY_T_MIN, ResolvedMaterial};
 import package::realtime::world_cache_query::{query_world_cache, WORLD_CACHE_CELL_LIFETIME};
@@ -43,6 +44,9 @@ fn initial_and_temporal(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin
         temporal.reservoir, temporal.world_position, temporal.world_normal, temporal.material, previous_camera_world_position, &rng);
 
     reservoirs_b[pixel_index] = merge_result.merged_reservoir;
+
+    // RENZORA PATCH: the diagnostics' ray counts.
+    flush_ray_counts(SLOT_RAYS_INITIAL, pixel_index);
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -85,6 +89,9 @@ fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // like any other light.
     pixel_color += surface.material.emissive;
     textureStore(view_output, global_id.xy, vec4(pixel_color, 1.0));
+
+    // RENZORA PATCH: the diagnostics' ray counts.
+    flush_ray_counts(SLOT_RAYS_REUSE, pixel_index);
 
     @if(VISUALIZE_WORLD_CACHE)
     textureStore(view_output, global_id.xy, vec4(query_world_cache(surface.world_position, surface.world_normal, view.world_position, RAY_T_MAX, WORLD_CACHE_CELL_LIFETIME, &rng) * view.exposure, 1.0));

@@ -8,11 +8,12 @@
 //! action. This bar is on screen in every workspace.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use bevy::ui::{BackgroundGradient, RelativeCursorPosition};
 
 use renzora_ember::font::{glyph, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{rgb, text_muted, text_primary, window_bg};
+use renzora_ember::widgets::{chip_border, chip_gradient, CHIP_RADIUS};
 use renzora_ember::UiInteraction;
 
 use renzora_ui::window_chrome::WindowAction;
@@ -85,7 +86,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // of buttons that will never reach half the window.
     let left = zone(commands, "top-left", JustifyContent::FlexStart, 2.0, 1.0, false);
     // Everything that acts on the *session* rather than on a panel: the
-    // hamburger, Settings, undo / redo / save, and Play. All of them used to be
+    // hamburger, Settings, save, and Play. All of them used to be
     // somewhere in the viewport's tool strip or its menus, which meant they were
     // missing from any workspace without a viewport — and none of them is a
     // viewport action. This bar is on screen in every workspace. The open
@@ -452,7 +453,8 @@ fn shell_action_button(
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(5.0),
                 padding: UiRect::axes(Val::Px(if label.is_some() { 8.0 } else { 5.0 }), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(10.0)),
+                border: UiRect::all(Val::Px(if hue.is_some() { 1.0 } else { 0.0 })),
+                border_radius: BorderRadius::all(Val::Px(CHIP_RADIUS)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
@@ -463,22 +465,27 @@ fn shell_action_button(
             Name::new(format!("top-action:{id}")),
         ))
         .id();
-    renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
-        let hot = matches!(
-            w.get::<UiInteraction>(btn),
-            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
-        );
-        match hue {
-            Some((r, g, b)) => Color::srgba(
-                r as f32 / 255.0,
-                g as f32 / 255.0,
-                b as f32 / 255.0,
-                if hot { 0.34 } else { 0.20 },
-            ),
-            None if hot => rgb(renzora_ember::theme::hover_bg()),
-            None => Color::NONE,
+    match hue {
+        // A tinted action is a chip like Play: gradient + hairline, driven by
+        // `shell_action_chip` on hover.
+        Some(h) => {
+            let c = rgb(h);
+            commands
+                .entity(btn)
+                .insert((ShellActionHue(c), chip_gradient(c, false), chip_border(c, false)));
         }
-    });
+        None => renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
+            let hot = matches!(
+                w.get::<UiInteraction>(btn),
+                Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
+            );
+            if hot {
+                rgb(renzora_ember::theme::hover_bg())
+            } else {
+                Color::NONE
+            }
+        }),
+    }
 
     let ic = renzora_ember::font::icon_text(
         commands,
@@ -504,6 +511,24 @@ fn shell_action_button(
     }
     commands.entity(btn).add_children(&kids);
     btn
+}
+
+/// The hue a tinted plugin action paints its chip with.
+#[derive(Component)]
+pub(crate) struct ShellActionHue(Color);
+
+/// Strengthen a tinted action chip's gradient and edge while hovered.
+pub(crate) fn shell_action_chip(
+    mut q: Query<
+        (&UiInteraction, &ShellActionHue, &mut BackgroundGradient, &mut BorderColor),
+        Changed<UiInteraction>,
+    >,
+) {
+    for (interaction, hue, mut bg, mut edge) in &mut q {
+        let hot = *interaction != UiInteraction::None;
+        *bg = chip_gradient(hue.0, hot);
+        *edge = chip_border(hue.0, hot);
+    }
 }
 
 /// Turn a press into a [`renzora::ShellActionInvoked`] for whoever registered

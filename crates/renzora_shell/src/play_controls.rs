@@ -7,10 +7,12 @@
 //! `renzora_viewport::play_mode`.
 
 use bevy::prelude::*;
+use bevy::ui::BackgroundGradient;
 
 use renzora_ember::font::{glyph, ui_font};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{play_green, rgb, text_muted, text_primary};
+use renzora_ember::widgets::{chip_border, chip_gradient, CHIP_RADIUS};
 use renzora_ember::UiInteraction;
 
 /// The Play button, in the top bar's right zone just ahead of the Marketplace.
@@ -53,7 +55,7 @@ fn build_keep_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(5.0),
                 padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(10.0)),
+                border_radius: BorderRadius::all(Val::Px(CHIP_RADIUS)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
@@ -118,11 +120,11 @@ pub(crate) struct TopBarPlayLabel;
 /// clickable pill. The glyph + label live as `PASS_THROUGH` children so the
 /// hover/click lands on the parent (where `UiInteraction` lives).
 ///
-/// Shaped exactly like the Marketplace pill beside it (`top_bar`'s
-/// `shell_action_button`): the same padding, rounding, glyph size, fill
-/// strength and a primary-coloured label, with only the hue telling them
-/// apart. Side by side, a square green chip with green text next to a round
-/// violet one with white text read as two unrelated controls.
+/// Shaped exactly like the Marketplace chip beside it (`top_bar`'s
+/// `shell_action_button`): the same padding, rounding, glyph size, gradient
+/// and a primary-coloured label, with only the hue telling them apart. Side by
+/// side, a square green chip with green text next to a round violet one with
+/// white text read as two unrelated controls.
 fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let btn = commands
         .spawn((
@@ -131,10 +133,13 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(5.0),
                 padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(CHIP_RADIUS)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
+            BackgroundGradient::default(),
+            BorderColor::all(Color::NONE),
             UiInteraction::default(),
             TopBarPlayBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -228,7 +233,7 @@ pub(crate) fn update_play_button(
     global_cam: Option<Res<GlobalSceneHasCamera>>,
     mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
     mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
-    mut fills: Query<(&mut BackgroundColor, &UiInteraction), With<TopBarPlayBtn>>,
+    mut fills: Query<(&mut BackgroundGradient, &mut BorderColor, &UiInteraction), With<TopBarPlayBtn>>,
 ) {
     let Some(theme) = theme else { return };
     let t = &theme.active_theme;
@@ -276,17 +281,18 @@ pub(crate) fn update_play_button(
             tcolor.0 = label_color;
         }
     }
-    // A tinted fill so the control reads as a *button*. Derived from the same
-    // state colour the icon uses, at the Marketplace pill's strengths, and
-    // dimmed along with it when there's no scene camera to play through.
-    for (mut bg, interaction) in &mut fills {
-        let alpha = match interaction {
-            UiInteraction::Pressed | UiInteraction::Hovered => 0.34,
-            UiInteraction::None => 0.20,
-        };
-        let want = color.with_alpha(alpha);
-        if bg.0 != want {
-            bg.0 = want;
+    // A tinted gradient so the control reads as a *button*. Derived from the
+    // same state colour the icon uses, like the Marketplace chip, and dimmed
+    // along with it when there's no scene camera to play through.
+    for (mut bg, mut edge, interaction) in &mut fills {
+        let hot = *interaction != UiInteraction::None;
+        let want = chip_gradient(color, hot);
+        if *bg != want {
+            *bg = want;
+        }
+        let want = chip_border(color, hot);
+        if *edge != want {
+            *edge = want;
         }
     }
 }

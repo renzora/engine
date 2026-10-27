@@ -1,0 +1,18 @@
+[package]
+name = "renzora_virtual_geometry_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor half of virtual geometry: builds and keeps current the .rvg beside every model in the project. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_virtual_geometry = { path = ".." }
+# The builder. Pulls meshoptimizer, which is why it lives in the editor half:
+# a shipped game only ever reads `.rvg` files.
+renzora_rvg = { path = "../../renzora_rvg", features = ["bake"] }
+# The confirmation before converting a project's models to `.rvg`.
+renzora_ember = { path = "../../renzora_ember" }
+
+[lints]
+workspace = true

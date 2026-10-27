@@ -1,0 +1,12 @@
+[package]
+name = "renzora_render_link"
+version = "0.1.0"
+edition = "2021"
+description = "The shared-memory link between the editor and its separate render process"
+
+# No Bevy, on purpose: this is a byte layout both processes agree on, and it has
+# to stay identical on both sides of the process boundary. Keeping it free of
+# engine types means a change to it is a change to this file and nothing else.
+# The web build gets a stub with the same API (`src/web.rs`) and no mapping.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+memmap2 = "0.9"

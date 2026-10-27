@@ -82,6 +82,23 @@ pub struct PrimaryViewportCamera;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ViewportRedrawIdle;
 
+/// More rendering than the viewport's redraw gate (`renzora_viewport::redraw`)
+/// gives on its own, which is a short burst of frames after each change.
+///
+/// Written by a renderer feature that needs it, read by the gate. Ray-traced
+/// lighting is the case it exists for: Solari's built-in denoiser averages up
+/// to 32 frames, so a gate that stops sooner freezes a picture that is still
+/// visibly grainy; and the ray tracing diagnostics measure and accumulate a
+/// reference only while frames are being rendered.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct ViewportRedrawDemand {
+    /// Render every frame while set; the text is what the gate reports as the
+    /// reason the viewport never idles.
+    pub continuous: Option<&'static str>,
+    /// Render at least this many frames after each change.
+    pub settle_frames: u32,
+}
+
 /// Marker component tagging an entity as a 2D scene node.
 ///
 /// Currently semantically equivalent to a plain `Transform` parent, but
@@ -1313,6 +1330,16 @@ pub struct MeshLod {
     #[reflect(default)]
     pub cull_distance: f32,
 }
+
+/// Keep a model as ordinary geometry: put on a model (or any entity above one)
+/// and nothing under it renders as virtual geometry, whatever `.rvg` files
+/// exist. See `renzora_virtual_geometry`.
+///
+/// Here rather than in that crate so a scene carrying it still loads in a game
+/// exported without the virtual geometry renderer.
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
+pub struct StandardGeometry;
 
 fn default_true() -> bool {
     true

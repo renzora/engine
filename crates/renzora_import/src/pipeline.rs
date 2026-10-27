@@ -15,20 +15,22 @@ use std::path::Path;
 
 use renzora::bevy::prelude::*;
 
-/// Run the import pipeline on `source`, write the result to `dest`, dump
-/// extracted textures under `<model_dir>/textures/`, and fire one
-/// `PbrMaterialExtracted` event per material so `renzora_shader::material`
-/// writes a `.material` file per entry.
+/// Run the import pipeline on `source`, write the model beside `dest` (as
+/// `<stem>.rvg`, see `model_file`), dump extracted textures under
+/// `<model_dir>/textures/`, and fire one `PbrMaterialExtracted` event per
+/// material so `renzora_shader::material` writes a `.material` file per entry.
 ///
-/// Logs and falls back to a plain file copy on failure — the GLB still loads
-/// for the user, just without per-material editable graphs.
+/// Returns the file written, which the caller loads: `dest` with the
+/// extension of what was stored. Logs and falls back to a plain file copy to
+/// `dest` on failure, so the model still loads, just without per-material
+/// editable graphs; `None` only when nothing could be written at all.
 pub fn run_import_pipeline(
     world: &mut renzora::bevy::ecs::world::World,
     source: &Path,
     dest: &Path,
     model_dir: &Path,
     project_path: &Path,
-) {
+) -> Option<std::path::PathBuf> {
     use crate::{convert_to_glb, ImportSettings};
 
     // Skip mesh optimization for the drop path — these reorder triangle
@@ -51,15 +53,18 @@ pub fn run_import_pipeline(
             if source != dest {
                 if let Err(ce) = std::fs::copy(source, dest) {
                     error!("[import] copy fallback failed: {}", ce);
+                    return None;
                 }
             }
-            return;
+            return Some(dest.to_path_buf());
         }
     };
 
-    if let Err(e) = std::fs::write(dest, &result.glb_bytes) {
-        error!("[import] write GLB to {:?}: {}", dest, e);
-        return;
+    let (bytes, extension) = crate::model_file(&result.glb_bytes);
+    let dest = dest.with_extension(extension);
+    if let Err(e) = std::fs::write(&dest, &bytes) {
+        error!("[import] write model to {:?}: {}", dest, e);
+        return None;
     }
 
     if !result.extracted_textures.is_empty() {
@@ -130,6 +135,7 @@ pub fn run_import_pipeline(
             });
         }
     }
+    Some(dest)
 }
 
 /// Put every model file under `root` through the import pipeline, in place.
@@ -138,7 +144,7 @@ pub fn run_import_pipeline(
 /// because the difference is the packaging a downloader happened to produce
 /// rather than anything about the asset.
 ///
-/// Each source becomes a sibling `.glb` with its textures in `textures/` and a
+/// Each source becomes a sibling `.rvg` with its textures in `textures/` and a
 /// `.material` per material, which is the layout the engine loads. A source that
 /// is **already** GLB still goes through: the converter is what extracts the
 /// materials, and skipping it would leave a model that renders untextured.
@@ -170,11 +176,13 @@ pub fn import_tree_in_place(world: &mut renzora::bevy::ecs::world::World, root: 
         let Some(model_dir) = source.parent().map(Path::to_path_buf) else {
             continue;
         };
-        let dest = source.with_extension("glb");
-        run_import_pipeline(world, &source, &dest, &model_dir, &project_path);
-        // The source is replaced by its GLB, not kept beside it — two files
-        // describing one model is what makes an asset browser show it twice.
-        if dest != source {
+        let Some(written) = run_import_pipeline(world, &source, &source, &model_dir, &project_path) else {
+            continue;
+        };
+        // The source is replaced by its model file, not kept beside it: two
+        // files describing one model is what makes an asset browser show it
+        // twice.
+        if written != source {
             if let Err(e) = std::fs::remove_file(&source) {
                 warn!("[import] could not remove {}: {e}", source.display());
             }

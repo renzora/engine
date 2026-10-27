@@ -1,5 +1,178 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-27 21:26
+- fix(solari): sunlit sheer curtains are no longer covered in white specks in scenes with lamps
+
+## 2026-10-27 20:35
+- fix(solari): virtual geometry models no longer show black patches or gaps in curtain folds and at grazing edges
+- fix(solari): switching virtual geometry, the denoiser or DLSS no longer drops meshes or sheer curtains out of the ray-traced image
+
+## 2026-10-27 18:37
+- fix(rendering): virtual geometry streams a model's full detail in within a frame or two instead of a level at a time
+- fix(solari): models no longer show bright and black patches for the first seconds after a scene loads
+
+## 2026-10-27 17:54
+- fix(solari): windows, curtains and other see-through surfaces in front of the sky are no longer painted over by it
+- fix(solari): sheer curtains glow with the light coming through them from behind
+
+## 2026-10-27 16:38
+- fix(solari): large scenes no longer show dark patches of missing bounce light that crawl as the camera moves
+- fix(solari): sheer curtains and frosted glass are lit by the sky and stay steady instead of flickering in and out
+- fix(solari): the Ray Tracing panel hides the built-in denoiser's figures while DLSS denoises
+
+## 2026-10-27 16:01
+- fix(rendering): the back of a double-sided virtual geometry surface is lit like its front instead of dark, and no longer turns black with Solari on
+
+## 2026-10-27 14:44
+- feat(editor): Page Down drops each selected entity onto the surface beneath it
+- fix(editor): Move to Cursor (V) and Paste land on the surface under the cursor by the model's bottom, and V can be undone
+- fix(editor): the mouse pointer stays where it was when right-dragging or middle-dragging the viewport camera
+
+## 2026-10-27 14:30
+- fix(editor): scrolling the viewport camera follows the camera speed set with `[` / `]` and the toolbar, as flying does
+
+## 2026-10-27 14:29
+- feat(editor): scrolling in slows down as the viewport camera nears a surface instead of overshooting into it
+
+## 2026-10-27 14:13
+- fix(editor): getting close to a small model in the viewport no longer slices away the side nearest the camera
+
+## 2026-10-27 14:04
+- feat(solari): a Glass Reflections toggle on the Solari component turns ray-traced glass and clear coats on or off
+
+## 2026-10-27 13:43
+- fix(solari): bounce light stops adding cells to a crowded world cache, so large enclosed scenes fill it more slowly
+
+## 2026-10-27 11:38
+- fix(solari): glass in view no longer makes the rest of the scene's lighting blotchy while the camera moves
+
+## 2026-10-27 11:20
+- fix(solari): the back faces of single-sided glass are no longer drawn with Solari on, matching how it looks with Solari off
+
+## 2026-10-27 11:07
+- fix(solari): layered glass such as a headlight's lenses draws every layer instead of only the nearest
+- feat(solari): the Ray Tracing panel shows the GPU time of the glass and see-through pass
+
+## 2026-10-27 10:48
+- fix(solari): reflections in glass and clear-coat surfaces are no longer over three times too bright
+- feat(solari): see-through surfaces with a clear coat show its sharp reflection over their own
+
+## 2026-10-27 10:10
+- fix(solari): glass and clear-coat surfaces reflect the scene around them instead of only the sky
+- fix(solari): meshes with no UVs or normals are ray traced instead of being left out
+
+## 2026-10-27 09:37
+- fix(solari): looking into a building from outside no longer shows its interior washed out behind bright volumetric fog
+
+## 2026-10-27 09:09
+- fix(solari): bright firefly specks no longer linger on glossy surfaces with the built-in denoiser
+- fix(solari): thin edges and silhouettes keep their history with the built-in denoiser instead of fizzing
+
+## 2026-10-27 08:51
+- fix(solari): glossy reflections settle smooth with the built-in denoiser while the camera is still, instead of sparkling
+
+## 2026-10-27 08:33
+- fix(solari): the built-in denoiser keeps sharp sun-shadow edges and thin shadows instead of blurring a halo around them
+- fix(solari): indirectly lit surfaces are no longer about a tenth too dark with the built-in denoiser
+- feat(solari): the built-in denoiser keeps shadow edges sharper while the camera moves
+- fix(solari): the Ray Tracing panel's path-traced reference is no longer too dark after a stall
+
+## 2026-10-27 08:12
+- feat(viewport): the Display, Gizmos, Snap and Camera dropdowns are now submenus of one options menu
+- fix(ui): clicking inside a submenu of a toolbar popup no longer closes the popup
+
+## 2026-10-27 07:56
+- feat(solari): a ReSTIR toggle on the Solari component overrides the quality preset's choice
+
+## 2026-10-27 07:29
+- fix(ui): clicking a dropdown option no longer also presses the control underneath it
+- fix(editor): an inspector row that stops applying hides instead of showing a default value
+
+## 2026-10-27 06:51
+- feat(solari): a Ray Tracing debug panel measures rays, denoiser history, grain, brightness and GPU time, and shows Solari's internals as viewport views
+- feat(solari): a path-traced reference accumulates beside the live image to measure its error against
+- fix(viewport): the editor viewport renders long enough for Solari's built-in denoiser to converge before it idles
+
+## 2026-10-27 06:20
+- feat(editor): undo and redo moved from the top bar to the foot of the viewport's tool shelf
+- feat(editor): the Play and Marketplace buttons are squarer chips with a fading tint that blends into the top bar
+
+## 2026-10-27 05:53
+- feat(solari): the default Denoiser choice is labelled DLSS, and the Denoising With readout is removed
+
+## 2026-10-27 05:42
+- feat(theme): the Dark theme uses deep blue-tinted surfaces instead of grey, with clearer separation and one blue accent
+- feat(theme): the Light theme is redone with distinct chrome, panels and inputs and darker, readable text
+- fix(editor): inspector toggle switches use the theme accent instead of a fixed green
+- fix(editor): status-bar items stay readable on the Light theme
+
+## 2026-10-27 05:36
+- feat(solari): one Denoiser choice (Auto, Built-in, Off) replaces the separate Denoiser and DLSS toggles, and Off shows the raw image in any mode
+
+## 2026-10-27 04:38
+- fix(solari): switching DLSS off now hands the image to the built-in denoiser instead of leaving it grainy
+
+## 2026-10-27 01:01
+- fix(solari): the whole view no longer turns black with Solari on, after the previous fix
+- fix(viewport): only the 8 spot lights nearest the camera cast shadows, so scenes with many spot lights stay fast
+
+## 2026-10-26 10:30
+- fix(solari): virtual geometry no longer shows black patches with Solari on when seen from a distance or a low angle
+
+## 2026-10-26 09:21
+- fix(solari): `.rvg` models no longer show black patches with Solari on, as Solari now traces their full detail
+- fix(solari): a mesh whose geometry is swapped is traced as its new geometry
+
+## 2026-10-26 08:43
+- fix(import): `.rvg` models no longer carry a second copy of their full-detail geometry, which made Bistro's 40% larger
+
+## 2026-10-26 02:21
+- feat(import): imported models are stored as one `.rvg` file holding the model and its virtual geometry, in place of a `.glb`
+- feat(assets): `.rvg` models show in the asset browser as models with thumbnails and drag into the scene like any model
+- feat(rendering): an `.rvg` model draws at full detail wherever virtual geometry is off or cannot draw it
+- feat(rigging): rigging, weight painting and blend shape sculpting work on `.rvg` models
+- feat(editor): Convert Models to RVG in the command palette turns a project's `.glb` models into `.rvg` and updates every scene that uses them
+- feat(export): exports pack `.rvg` models with the textures and materials they use
+
+## 2026-10-26 01:06
+- fix(rendering): removing a model with glass in it no longer crashes the editor
+- fix(rendering): every transparent virtual geometry mesh in view is drawn, not only one per material
+- fix(rendering): removing the Standard Geometry component turns a model back into virtual geometry
+
+## 2026-10-25 20:08
+- feat(rendering): virtual geometry streams its detail in and out of GPU memory within `[rendering] virtual_geometry_budget_mb`
+- feat(viewport): the Visualization menu's Virtual Geometry: Residency view shows where streamed detail is still coming in
+- fix(rendering): converted models no longer re-upload all virtual geometry when another model goes off screen
+
+## 2026-10-25 19:40
+- feat(rendering): virtual geometry files are compressed to about a third of their size, and rebuild themselves once on the next project open
+
+## 2026-10-25 19:29
+- feat(rendering): glass and other blended materials render as virtual geometry, sorted with the rest of the scene's transparency
+
+## 2026-10-25 18:36
+- feat(rendering): skinned characters render as virtual geometry, animated on the GPU every frame
+- fix(rendering): node-graph materials saved before virtual geometry existed now render as virtual geometry too
+- feat(rendering): the Console says why a converted model's meshes stay ordinary geometry
+- fix(rendering): models with a dot in their file name render as virtual geometry
+
+## 2026-10-25 18:19
+- feat(rendering): node-graph materials render as virtual geometry, graph and all
+- feat(plugins): a plugin's material type can opt in to virtual geometry with `add_virtual_geometry_material`
+
+## 2026-10-25 17:47
+- feat(rendering): alpha-masked materials such as leaves and grass render as virtual geometry, keeping their outline at a distance
+
+## 2026-10-25 17:15
+- feat(viewport): the Visualization menu shows virtual geometry by cluster, triangle, level of detail or instance
+
+## 2026-10-25 16:37
+- feat(rendering): virtual geometry, which draws models with opaque standard materials as GPU-culled clusters with per-cluster level of detail, mixed freely with ordinary geometry
+- feat(editor): every model in a project is converted to virtual geometry in the background, and again whenever it changes
+- feat(export): exports build any missing virtual geometry and pack it beside each model
+- feat(editor): a Standard Geometry component keeps a model as ordinary geometry
+- feat(project): `[rendering] virtual_geometry` turns virtual geometry off for a whole project
+
 ## 2026-10-25 14:34
 - fix(export): a model's `.material` files and `.vfx` particle effects are packed into exports
 - fix(export): a lean export always links plugins into the binary, since it cannot load plugin files

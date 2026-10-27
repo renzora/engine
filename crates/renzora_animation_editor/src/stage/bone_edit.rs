@@ -125,7 +125,7 @@ pub(crate) fn start(world: &mut World) {
         tell(world, false, "This entity has no model file to give a skeleton");
         return;
     };
-    let glb = match std::fs::read(&abs).map_err(|e| e.to_string()).and_then(|b| Glb::parse(&b).map_err(|e| e.to_string())) {
+    let glb = match renzora_rig::read_model(&abs).map_err(|e| e.to_string()).and_then(|b| Glb::parse(&b).map_err(|e| e.to_string())) {
         Ok(g) => g,
         Err(e) => {
             tell(world, false, format!("Could not read {rel}: {e}"));

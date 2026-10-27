@@ -531,7 +531,7 @@ fn resolve_model_path(
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase());
-        if !matches!(ext.as_deref(), Some("glb") | Some("gltf")) {
+        if !matches!(ext.as_deref(), Some("glb") | Some("gltf") | Some("rvg")) {
             continue;
         }
         let rel = model_dir

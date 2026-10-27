@@ -197,6 +197,11 @@ fn build_dropdown(
             // this menu's own ancestors — see `floating_z`.
             GlobalZIndex(DROPDOWN_Z),
             super::popup::OverlaySurface,
+            // Picking presses every node under the pointer down to the first
+            // that blocks, and ember's nodes pass through by default, so an
+            // unblocking menu let a click on an option also press whatever
+            // control sat underneath it (a "Start over" button, say).
+            crate::interaction::BLOCK,
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("dropdown-menu"),
         ))

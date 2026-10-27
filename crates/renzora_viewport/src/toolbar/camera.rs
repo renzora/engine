@@ -1,4 +1,4 @@
-//! The Camera and Snap dropdowns, and [`HeaderClick`] — the one-shot actions
+//! The Camera and Snap submenus, and [`HeaderClick`]: the one-shot actions
 //! every click row in this toolbar fires.
 
 use bevy::prelude::*;
@@ -11,19 +11,15 @@ use renzora_ember::font::EmberFonts;
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::value_text;
-use renzora_ember::widgets::{
-    drag_value, icon_popup_trigger, popup_anchor, popup_panel, DragRange, Popup,
-};
+use renzora_ember::widgets::{drag_value, DragRange, Popup};
 use renzora_ember::UiInteraction;
-use renzora_theme::ThemeManager;
 
 use super::rows::{
     click_row, drag_row, proj_row, section_label, separator_row, snap_button, toggle_row,
 };
 use super::snap::{set_snap, snap_val};
 use super::view::{ViewAngleTrigger, VIEW_ANGLE_OPTIONS};
-use super::{col, col_u8, loc_opt};
-use crate::lit_accent::{accent_glyph_on, accent_wash};
+use super::loc_opt;
 
 /// A discrete one-shot click action inside a toolbar dropdown.
 #[derive(Component, Clone, Copy)]
@@ -55,14 +51,6 @@ pub(super) enum SnapBtnKind {
     Floor,
 }
 
-/// The Camera dropdown's icon trigger.
-#[derive(Component)]
-pub(super) struct CameraTrigger;
-
-/// The Snap dropdown's icon trigger (magnet — accent when any snap is active).
-#[derive(Component)]
-pub(super) struct SnapTrigger;
-
 /// View-angle presets: (label, shortcut, yaw, pitch). Mirrors egui `ViewAngle`.
 const VIEW_ANGLES: &[(&str, &str, f32, f32)] = {
     use std::f32::consts::{FRAC_PI_2, PI};
@@ -76,8 +64,10 @@ const VIEW_ANGLES: &[(&str, &str, f32, f32)] = {
     ]
 };
 
+/// The rows of the **Camera** submenu of the viewport options menu (see
+/// [`super::options`]).
 #[allow(clippy::vec_init_then_push)]
-pub(super) fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+pub(super) fn camera_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.projection")));
     kids.push(proj_row(commands, fonts, ProjectionMode::Perspective, &renzora::lang::t("viewport.camera.perspective")));
@@ -122,15 +112,12 @@ pub(super) fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts)
         camera.distance_relative_speed
     ));
     kids.push(click_row(commands, fonts, &renzora::lang::t("inspector.component.reset"), HeaderClick::CamReset));
-
-    let panel = popup_panel(commands, &kids);
-    let trigger = icon_popup_trigger(commands, fonts, "cube", panel);
-    commands.entity(trigger).insert(CameraTrigger);
-    popup_anchor(commands, trigger, panel)
+    kids
 }
 
+/// The rows of the **Snap** submenu of the viewport options menu.
 #[allow(clippy::vec_init_then_push)]
-pub(super) fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+pub(super) fn snap_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.snap.object_snapping")));
     kids.push(snap_dist_row(
@@ -167,11 +154,7 @@ pub(super) fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -
         &renzora::lang::t("viewport.snap.scale_from_bottom"),
         snap.scale_bottom_anchor
     ));
-
-    let panel = popup_panel(commands, &kids);
-    let trigger = icon_popup_trigger(commands, fonts, "magnet", panel);
-    commands.entity(trigger).insert(SnapTrigger);
-    popup_anchor(commands, trigger, panel)
+    kids
 }
 
 /// A snap toggle button + its bound distance/offset drag value, in one row.
@@ -279,78 +262,6 @@ pub(super) fn header_click(
                     s.snap.floor_snap_enabled = !s.snap.floor_snap_enabled;
                 }
             }),
-        }
-    }
-}
-
-pub(super) fn update_camera_snap_triggers(
-    settings: Option<Res<ViewportSettings>>,
-    theme: Option<Res<ThemeManager>>,
-    mut cam: Query<
-        (&UiInteraction, &Popup, &mut BackgroundColor),
-        (With<CameraTrigger>, Without<SnapTrigger>),
-    >,
-    mut snap: Query<
-        (&UiInteraction, &Popup, &mut BackgroundColor, &Children),
-        (With<SnapTrigger>, Without<CameraTrigger>),
-    >,
-    mut glyphs: Query<&mut TextColor>,
-) {
-    let (Some(settings), Some(theme)) = (settings, theme) else {
-        return;
-    };
-    let t = &theme.active_theme;
-    let inactive = col(t.widgets.inactive_bg);
-    let hovered = col(t.widgets.hovered_bg);
-
-    for (interaction, toggle, mut bg) in &mut cam {
-        let want = if toggle.open || *interaction == UiInteraction::Hovered {
-            hovered
-        } else {
-            inactive
-        };
-        if bg.0 != want {
-            bg.0 = want;
-        }
-    }
-    let s = &settings.snap;
-    let any_snap = s.object_snap_enabled
-        || s.floor_snap_enabled
-        || s.translate_edge_snap
-        || s.scale_bottom_anchor;
-    // The magnet used to fill solid accent whenever any snap was on, which put
-    // one saturated blue block in the middle of a row of neutral dropdowns and
-    // read as "this menu is open" or "this is the selected one" rather than
-    // "snapping is on". It lights instead: the accent in the glyph over a wash
-    // of it, the same treatment the viewport's Grid toggle uses. Solid accent
-    // stays reserved for the things that mean picked-or-held.
-    let lit_glyph = accent_glyph_on(col_u8(t.semantic.accent), col_u8(t.widgets.inactive_bg));
-    let wash = accent_wash(col_u8(t.semantic.accent));
-    let muted = col(t.text.muted);
-    for (interaction, toggle, mut bg, children) in &mut snap {
-        // Hover and the open panel still outrank the lit wash, so the trigger
-        // keeps answering the cursor while snapping is on.
-        let want = if toggle.open || *interaction == UiInteraction::Hovered {
-            hovered
-        } else if any_snap {
-            wash
-        } else {
-            inactive
-        };
-        if bg.0 != want {
-            bg.0 = want;
-        }
-        // The glyph is the first child, the caret the second (see
-        // `icon_popup_trigger`); only the magnet lights, so the caret keeps
-        // reading as chrome rather than as part of the state.
-        let Some(glyph) = children.first().copied() else {
-            continue;
-        };
-        let want = if any_snap { lit_glyph } else { muted };
-        if let Ok(mut tc) = glyphs.get_mut(glyph) {
-            if tc.0 != want {
-                tc.0 = want;
-            }
         }
     }
 }

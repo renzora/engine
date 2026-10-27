@@ -30,10 +30,17 @@
 //! (terrain, whose foliage groups come from a different crate) pins its own
 //! order. The buttons, their show/hide/highlight driver and their click handler
 //! are shared with the top strip; see [`crate::tool_buttons`].
+//!
+//! **Undo and redo close the column**, under a rule. They are not registry
+//! tools (they act on the session, not the viewport's mode), but they are what
+//! you reach for between two gizmo drags, so they sit at the end of the same
+//! list. Because they always apply, the shelf no longer collapses when no tool
+//! does: in 2D it stays open with just the two of them.
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
+use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 use renzora_editor_framework::{ToolSection, ToolbarRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::{panel_bg, rgb};
@@ -51,10 +58,11 @@ const PAD: f32 = 3.0;
 /// One button wide, plus the padding either side.
 const SHELF_W: f32 = SIDE_BTN + PAD * 2.0;
 
-/// Inset from the viewport's left edge. Everything on the shelf is 3D-only, and
-/// in 3D that edge is empty — the nav cluster, the axis gizmo and the height
-/// ruler are all on the right. A shelf group that could show in **2D** would
-/// need to dodge the vertical ruler bar, which owns the first 18px there.
+/// Inset from the viewport's top-left corner. In 3D that corner is empty (the
+/// nav cluster and the axis gizmo are on the right); in **2D** the rulers own
+/// the first [`RULER`](crate::overlay_2d::RULER) px of both edges, so
+/// [`place_shelf`] moves the shelf in past them, since undo and redo keep it on
+/// screen there.
 const INSET: f32 = 8.0;
 
 /// Build the shelf for a viewport's content node. Absolutely positioned on the
@@ -72,7 +80,7 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(INSET),
-                top: Val::Px(8.0),
+                top: Val::Px(INSET),
                 width: Val::Px(SHELF_W),
                 // One column. It was two, from when the shelf carried the
                 // terrain brush palettes and seventeen of them had to fit above
@@ -84,9 +92,9 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
                 padding: UiRect::all(Val::Px(PAD)),
                 row_gap: Val::Px(GAP),
                 border_radius: BorderRadius::all(Val::Px(5.0)),
-                // Starts collapsed: `update_tool_buttons` opens it the moment a
-                // shelf entry's `visible` predicate says yes. Without this, a
-                // scene with no terrain in it would show an empty box.
+                // Starts collapsed until `populate_shelf` has filled it, so the
+                // first frames never show an empty box; `update_tool_buttons`
+                // opens it once undo/redo are in.
                 display: Display::None,
                 ..default()
             },
@@ -105,7 +113,28 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
 
 /// The shelf's button container; filled from `ToolbarRegistry` once it exists.
 #[derive(Component)]
-struct ShelfContainer;
+pub(crate) struct ShelfContainer;
+
+/// Keep the shelf clear of the 2D rulers: inset past them in 2D, back to the
+/// corner in 3D.
+pub(crate) fn place_shelf(
+    settings: Option<Res<ViewportSettings>>,
+    mut q: Query<&mut Node, With<ShelfContainer>>,
+) {
+    let Some(settings) = settings else { return };
+    let offset = if settings.viewport_view == ViewportView::Two {
+        crate::overlay_2d::RULER
+    } else {
+        0.0
+    };
+    let want = Val::Px(INSET + offset);
+    for mut n in &mut q {
+        if n.left != want {
+            n.left = want;
+            n.top = want;
+        }
+    }
+}
 
 /// Fill an empty `ShelfContainer` from the registry's [`ToolSection::Shelf`]
 /// entries, one group at a time separated by a rule. Exclusive because the
@@ -171,12 +200,25 @@ pub(crate) fn populate_shelf(world: &mut World) {
             }
             children.extend(btns.iter().copied());
         }
+        // Undo / redo at the foot. The rule above them shows only while some
+        // tool is visible (both sides of `ToolSepVis` are the tools, since
+        // undo/redo are always there); in 2D, where no tool applies, the two
+        // stand alone without a rule capping nothing.
+        let tools = group_buttons.concat();
+        let sep = shelf_separator(&mut commands, SHELF_W - PAD * 2.0);
+        commands.entity(sep).insert(ToolSepVis {
+            before: tools.clone(),
+            after: tools.clone(),
+        });
+        children.push(sep);
+        children.extend(crate::toolbar::build_history_actions(&mut commands, &fonts));
         commands.entity(container).add_children(&children);
         commands.entity(container).insert(ToolsPopulated);
         // The root *is* the container (the buttons are its children), so the
         // whole-shelf collapse and the per-panel one are the same entity.
         commands.entity(container).insert(ShelfRoot {
-            buttons: group_buttons.concat(),
+            buttons: tools,
+            keep_open: true,
         });
     }
     queue.apply(world);

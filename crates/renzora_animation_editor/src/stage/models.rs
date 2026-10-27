@@ -85,7 +85,11 @@ fn scan_project(mut models: ResMut<ProjectModels>, project: Option<Res<renzora::
             let lower = name.to_lowercase();
             // The original a rig was built from is kept beside the model;
             // it is the way back, not a second model.
-            if (lower.ends_with(".glb") || lower.ends_with(".gltf")) && !lower.ends_with(".unrigged.glb") {
+            let model = lower.ends_with(".rvg") || lower.ends_with(".glb") || lower.ends_with(".gltf");
+            let original = [".unrigged.glb", ".unrigged.rvg", ".unshaped.glb", ".unshaped.rvg"]
+                .iter()
+                .any(|s| lower.ends_with(s));
+            if model && !original {
                 if let Ok(rel) = path.strip_prefix(&project.path) {
                     files.push(rel.to_string_lossy().replace('\\', "/"));
                 }

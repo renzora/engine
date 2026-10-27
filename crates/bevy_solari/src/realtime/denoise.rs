@@ -25,10 +25,9 @@ const ATROUS_STEPS: [u32; 5] = [1, 2, 4, 8, 16];
 pub struct DenoiserPipelines {
     temporal_layout: BindGroupLayoutDescriptor,
     atrous_layout: BindGroupLayoutDescriptor,
-    atrous_feedback_layout: BindGroupLayoutDescriptor,
     composite_layout: BindGroupLayoutDescriptor,
     temporal: CachedComputePipelineId,
-    /// One per entry of [`ATROUS_STEPS`]; the first also writes the history.
+    /// One per entry of [`ATROUS_STEPS`].
     atrous: [CachedComputePipelineId; 5],
     composite: CachedComputePipelineId,
 }
@@ -81,22 +80,6 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
             ),
         ),
     );
-    let atrous_feedback_layout = BindGroupLayoutDescriptor::new(
-        "solari_denoiser_atrous_feedback_layout",
-        &BindGroupLayoutEntries::sequential(
-            ShaderStages::COMPUTE,
-            (
-                uniform_buffer::<ViewUniform>(true),
-                texture_2d(TextureSampleType::Uint),
-                read(),
-                read(),
-                write(),
-                write(),
-                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
-                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
-            ),
-        ),
-    );
     let composite_layout = BindGroupLayoutDescriptor::new(
         "solari_denoiser_composite_layout",
         &BindGroupLayoutEntries::sequential(
@@ -125,21 +108,14 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
 
     let temporal = pipeline("solari_denoiser_temporal", "temporal", &temporal_layout, vec!["DENOISE_TEMPORAL".into()]);
     let atrous = ATROUS_STEPS.map(|step| {
-        let mut defs: Vec<ShaderDefVal> = vec!["DENOISE_ATROUS".into(), ShaderDefVal::UInt("DENOISE_STEP".into(), step)];
-        let layout = if step == ATROUS_STEPS[0] {
-            defs.push("DENOISE_FEEDBACK".into());
-            &atrous_feedback_layout
-        } else {
-            &atrous_layout
-        };
-        pipeline("solari_denoiser_atrous", "atrous", layout, defs)
+        let defs: Vec<ShaderDefVal> = vec!["DENOISE_ATROUS".into(), ShaderDefVal::UInt("DENOISE_STEP".into(), step)];
+        pipeline("solari_denoiser_atrous", "atrous", &atrous_layout, defs)
     });
     let composite = pipeline("solari_denoiser_composite", "composite", &composite_layout, vec!["DENOISE_COMPOSITE".into()]);
 
     DenoiserPipelines {
         temporal_layout,
         atrous_layout,
-        atrous_feedback_layout,
         composite_layout,
         temporal,
         atrous,
@@ -239,22 +215,8 @@ pub fn prepare_denoiser_dispatch<'a>(
             )),
         )
     };
-    let atrous_feedback = render_device.create_bind_group(
-        "solari_denoiser_atrous_feedback",
-        &pipeline_cache.get_bind_group_layout(&pipelines.atrous_feedback_layout),
-        &BindGroupEntries::sequential((
-            inputs.view_uniforms.clone(),
-            &d.guide.default_view,
-            filtered.0,
-            filtered.1,
-            noisy.0,
-            noisy.1,
-            &d.history_diffuse[write].default_view,
-            &d.history_specular[write].default_view,
-        )),
-    );
     let atrous = [
-        atrous_feedback,
+        atrous_group(filtered, noisy),
         atrous_group(noisy, filtered),
         atrous_group(filtered, noisy),
         atrous_group(noisy, filtered),

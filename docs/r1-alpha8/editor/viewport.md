@@ -18,13 +18,17 @@ The viewport is your live view of the scene. This page covers moving the camera,
 
 The camera moves slowly when you are close to something and faster when you are far away, so small props and large levels both feel natural. `E` and `Q` ease off near ground level so you can settle onto the floor rather than punch through it.
 
+Scrolling in slows down as you near whatever is in the middle of the view: each notch covers at most half the distance left to it, so you can zoom right up to a surface without overshooting into it. Once you are about two centimetres away, scrolling goes through at full speed, so you can still pass through a wall.
+
+The camera draws anything more than a centimetre in front of it, so you can get right up to a small prop, or into a scene built at less than real size, without its near side being sliced away.
+
 | Key | What it does |
 |---|---|
 | `F` | Frame the selection |
 | `A` | Frame the whole scene |
 | `Home` | Reset the camera |
 | `End` | Move the focus point to wherever your cursor is pointing |
-| `[` / `]` | Slow down, speed up |
+| `[` / `]` | Slow down, speed up (flying and scrolling) |
 
 An **orientation gizmo** in the top-right corner shows which way the camera is facing. Click one of its balls to snap to that axis, or drag it to orbit.
 
@@ -39,23 +43,25 @@ Below it sits a cluster of four camera controls: **Reset View**, **Pan**, **Zoom
 | `Numpad 7` | Top, with `Ctrl` for Bottom |
 | `Numpad 5` | Switch between perspective and orthographic |
 
-The same views are in the camera menu on the toolbar.
+The same views are under **Camera** in the toolbar's options menu.
 
 <!-- screenshot: viewport_camera_menu.png - the camera dropdown showing perspective/orthographic and the six view angles -->
 
 ## The toolbar
 
-Along the top edge of the viewport, left to right: **Undo**, **Redo** and **Save**, then the tool buttons, the snap steps, the shape, display, gizmo and camera menus, **Play**, and this viewport's own view-angle and World / Local controls. **Maximize** floats against the right edge.
+Along the top edge of the viewport, left to right: the snap steps, the shape menu, the options menu, and this viewport's own view-angle and World / Local controls.
+
+The options menu (the sliders icon) holds four submenus: **Display**, **Gizmos**, **Snap** and **Camera**. Hover one to open it beside the menu. It is a 3D menu; in the 2D view an **Overlays** menu takes its place. **Maximize** floats against the right edge. **Save** and **Play** are in the editor's top bar, and **Undo** and **Redo** are at the foot of the tool shelf.
 
 <!-- screenshot: viewport_toolbar.png - the viewport toolbar with the Select, Move, Rotate and Scale tools and the snap controls -->
 
 The tool buttons are **Select**, **Move**, **Rotate** and **Scale**, plus the terrain modes when a terrain is selected and anything plugins add.
 
-The snap steps sit inline: click the icon to toggle that snap, then drag or type the number to set its step. Fractions are fine, so a quarter-unit grid is `0.25`. The magnet in the Snap menu lights up while any snap is on.
+The snap steps sit inline: click the icon to toggle that snap, then drag or type the number to set its step. Fractions are fine, so a quarter-unit grid is `0.25`. Object snap, floor snap, edge snap and scale-from-bottom are under **Snap** in the options menu.
 
 ## The tool shelf
 
-Down the left edge of the viewport is the tool shelf, a two-column palette of brushes and operations. It shows what the toolbar's modes open, and each group appears only when it applies.
+Down the left edge of the viewport is the tool shelf, a single column. The tools lead it (**Select**, **Move**, **Rotate**, **Scale**, then the terrain modes when the scene has a terrain), each group appears only when it applies, and **Undo** and **Redo** close it under a rule. Ctrl+Z and Ctrl+Y, and the Edit menu, undo and redo from any workspace.
 
 | Group | Shows when | Holds |
 |---|---|---|
@@ -64,7 +70,7 @@ Down the left edge of the viewport is the tool shelf, a two-column palette of br
 | Terrain, paint | Paint Terrain Layers is active | Paint, Erase, Smooth, Fill |
 | Foliage | Paint Foliage is active | Paint and Erase, then one button per foliage type |
 
-Plugins can add their own groups. In the 2D view the shelf collapses entirely.
+Plugins can add their own groups. In the 2D view the shelf moves inside the rulers and holds just **Undo** and **Redo**.
 
 While a terrain brush is in hand, a **brush settings bar** appears under the toolbar with that brush's size, strength and falloff, plus whatever the brush adds of its own.
 
@@ -116,7 +122,9 @@ These are presets over the same switches the Display menu holds, so change one b
 
 <!-- screenshot: viewport_display_menu.png - the Display dropdown showing Visualization, mesh, textures, lighting, shadows and overlays -->
 
-The Display menu holds mesh, textures, lighting, shadows, the grid and the overlays.
+**Display**, in the options menu, holds mesh, textures, lighting, shadows, the grid and the overlays.
+
+With **Shadows** on, only the lights nearest the viewport camera cast shadows: the brightest directional light, the 4 nearest point lights and the 8 nearest spot lights. The rest still light the scene, without shadows, and the choice follows the camera as it moves. Each shadow-casting light draws the whole scene again every frame, so a street with dozens of lamps would otherwise run at a few frames a second. With Solari on, shadows come from ray tracing and none of these limits apply.
 
 Turning **Textures** off does not unlight the scene. Surfaces keep their real lighting and shadows and swap their maps for the blockout grid, so the scene reads as untextured geometry rather than geometry in the dark.
 
@@ -173,7 +181,7 @@ The counts refresh four times a second. Clicks pass straight through to the scen
 
 ## Gizmos
 
-The **Gizmos** menu controls what the editor draws on top of your scene, as opposed to Display, which controls what the renderer produces.
+**Gizmos**, in the options menu, controls what the editor draws on top of your scene, as opposed to Display, which controls what the renderer produces.
 
 | Group | Switch | Hides |
 |---|---|---|
@@ -198,6 +206,15 @@ The same switches are in **Settings > Viewport > Gizmos**.
 Click an object to select it. `Ctrl+Click` adds or removes, `Shift+Click` extends a range, and dragging from empty space rubber-bands a selection. `Esc` clears it.
 
 `H` hides the selection and `Shift+H` isolates it, hiding everything else.
+
+## Placing the selection on surfaces
+
+| Key | What it does |
+|---|---|
+| `V` | Move the selection to the surface under the cursor, centred on it and sitting on it by its bottom. Select something in the Hierarchy, even far out of view, point at where it should go and press `V`. |
+| `Page Down` | Drop each selected entity straight down onto whatever is beneath it: the floor, a table, terrain. Something with nothing below it stays put. |
+
+Both measure a model by all of its meshes, so a car lands on its wheels rather than its origin, and both find the actual surface under the cursor or below the entity, not a flat floor at height zero. Paste (`Ctrl+V`) lands copies on the surface under the cursor the same way. Each is one undo step. `Page Down` looks straight down from the middle of each entity, so something wider than the ledge it sits on can drop past it.
 
 ## Adding shapes
 

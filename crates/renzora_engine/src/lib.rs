@@ -259,6 +259,10 @@ pub struct RuntimePlugin;
 impl Plugin for RuntimePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] RuntimePlugin");
+        // Models stored as `.rvg` load as glTF models (their scene goes
+        // through Bevy's glTF loader), in the editor and the game alike.
+        #[cfg(feature = "gltf")]
+        app.add_plugins(renzora_rvg::model::RvgModelPlugin);
         // Editor-vs-game branch. `renzora_engine` is compiled lean (no `editor`
         // cargo feature), so the editor/runtime split that used to be
         // `#[cfg]`-gated is decided at RUNTIME from `EditorSession`, inserted by
@@ -287,6 +291,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::EditedMesh>()
             .register_type::<MeshInstanceData>()
             .register_type::<renzora::MeshLod>()
+            .register_type::<renzora::StandardGeometry>()
             .register_type::<SceneCamera>()
             .register_type::<renzora::SceneInstance>()
             // Registered by the HOST (not just the gaussian-splatting plugin)

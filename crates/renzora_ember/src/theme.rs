@@ -18,20 +18,22 @@ use bevy::prelude::Color;
 
 // ── Default (dark) palette constants ─────────────────────────────────────────
 
-pub const WINDOW_BG: (u8, u8, u8) = (24, 24, 30); // chrome (top bar/doc tabs/status/dock gaps)
-pub const PANEL_BG: (u8, u8, u8) = (26, 26, 31); // leaf content (matches egui surfaces.panel)
-pub const HEADER_BG: (u8, u8, u8) = (30, 30, 36); // doc tabs + panel tab headers
-pub const FAINT_BG: (u8, u8, u8) = (20, 20, 24); // recessed surface, one step under panel
-pub const TAB_ACTIVE_BG: (u8, u8, u8) = (50, 50, 62); // active tab
-pub const TAB_HOVER_BG: (u8, u8, u8) = (42, 42, 52); // hovered (inactive) tab
-pub const CLOSE_RED: (u8, u8, u8) = (216, 84, 84); // close × on hover
-pub const DIVIDER: (u8, u8, u8) = (14, 14, 20); // split dividers (not black)
-pub const TEXT_PRIMARY: (u8, u8, u8) = (230, 230, 240);
-pub const TEXT_MUTED: (u8, u8, u8) = (148, 148, 160);
-pub const PLACEHOLDER: (u8, u8, u8) = (110, 110, 122); // dim placeholder
+// These mirror `renzora_theme`'s Dark defaults, so the frames drawn before the
+// theme bridge first runs already match the theme instead of flashing grey.
+pub const WINDOW_BG: (u8, u8, u8) = (11, 12, 17); // chrome (top bar/doc tabs/status/dock gaps)
+pub const PANEL_BG: (u8, u8, u8) = (19, 21, 28); // leaf content (surfaces.panel)
+pub const HEADER_BG: (u8, u8, u8) = (23, 26, 34); // doc tabs + panel tab headers
+pub const FAINT_BG: (u8, u8, u8) = (15, 17, 23); // recessed surface, one step under panel
+pub const TAB_ACTIVE_BG: (u8, u8, u8) = (34, 38, 50); // active tab
+pub const TAB_HOVER_BG: (u8, u8, u8) = (29, 33, 43); // hovered (inactive) tab
+pub const CLOSE_RED: (u8, u8, u8) = (230, 89, 89); // close × on hover
+pub const DIVIDER: (u8, u8, u8) = (6, 7, 10); // split dividers
+pub const TEXT_PRIMARY: (u8, u8, u8) = (230, 233, 239);
+pub const TEXT_MUTED: (u8, u8, u8) = (139, 147, 167);
+pub const PLACEHOLDER: (u8, u8, u8) = (98, 106, 124); // dim placeholder
 pub const PLAY_GREEN: (u8, u8, u8) = (89, 191, 115); // semantic.success
-pub const WARN_AMBER: (u8, u8, u8) = (224, 170, 72); // semantic.warning
-pub const ACCENT_BLUE: (u8, u8, u8) = (80, 140, 255); // accent / active underline
+pub const WARN_AMBER: (u8, u8, u8) = (242, 166, 64); // semantic.warning
+pub const ACCENT_BLUE: (u8, u8, u8) = (84, 124, 214); // accent / active underline
 pub const ON_ACCENT: (u8, u8, u8) = (245, 247, 250); // marks/knobs on an accent fill
 
 // ── Runtime palette ──────────────────────────────────────────────────────────
@@ -92,16 +94,16 @@ impl Default for Palette {
             warn_amber: WARN_AMBER,
             accent: ACCENT_BLUE,
             on_accent: ON_ACCENT,
-            border: (60, 60, 74),
-            popup_bg: (30, 30, 38),
-            row_even: (34, 34, 42),
-            row_odd: (30, 30, 37),
-            value_text: (210, 210, 220),
-            selection: (50, 54, 66),
-            section_bg: (44, 44, 54),
-            hover_bg: (40, 40, 50),
-            card_bg: (41, 41, 48),
-            tree_line: (64, 64, 76),
+            border: (38, 43, 56),
+            popup_bg: (26, 29, 38),
+            row_even: (22, 25, 32),
+            row_odd: (26, 29, 37),
+            value_text: (200, 205, 216),
+            selection: (36, 50, 84),
+            section_bg: (28, 32, 41),
+            hover_bg: (40, 45, 58),
+            card_bg: (32, 36, 47),
+            tree_line: (46, 52, 66),
         }
     }
 }

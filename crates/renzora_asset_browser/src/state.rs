@@ -376,6 +376,33 @@ pub(crate) fn is_hidden_name(name: &str) -> bool {
     name.starts_with('.') || name == "project.toml"
 }
 
+/// An `.rvg` kept beside a `.glb` (or `.gltf`) of the same name: the virtual
+/// geometry of a model imported before models were stored as `.rvg`. The GLB is
+/// the model you place, so the browser shows that alone, as it would one model.
+/// A model stored as `.rvg` has no GLB beside it and shows as itself.
+/// `sibling_exists` answers whether a file of that name is in the same folder.
+pub(crate) fn is_sidecar(name: &str, sibling_exists: impl Fn(&str) -> bool) -> bool {
+    let Some(stem) = name.strip_suffix(".rvg").or_else(|| name.strip_suffix(".RVG")) else {
+        return false;
+    };
+    sibling_exists(&format!("{stem}.glb")) || sibling_exists(&format!("{stem}.gltf"))
+}
+
+#[cfg(test)]
+mod sidecar_tests {
+    use super::is_sidecar;
+
+    #[test]
+    fn only_an_rvg_beside_its_glb_is_hidden() {
+        let folder = ["Bistro.glb", "Bistro.rvg", "Statue.rvg", "Scene.gltf", "Scene.rvg"];
+        let exists = |name: &str| folder.contains(&name);
+        assert!(is_sidecar("Bistro.rvg", exists), "the sidecar of a GLB");
+        assert!(is_sidecar("Scene.rvg", exists), "the sidecar of a glTF");
+        assert!(!is_sidecar("Statue.rvg", exists), "a model stored as .rvg");
+        assert!(!is_sidecar("Bistro.glb", exists), "the model itself");
+    }
+}
+
 pub(crate) fn file_name_of(p: &Path) -> String {
     p.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string()
 }

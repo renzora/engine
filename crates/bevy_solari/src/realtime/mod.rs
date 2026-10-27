@@ -1,7 +1,14 @@
+mod debug;
 mod denoise;
 mod extract;
 mod node;
 mod prepare;
+
+// RENZORA PATCH: the diagnostics' public surface (debug.rs).
+pub use debug::{
+    SolariDebug, SolariDebugOutput, SolariDebugStats, SolariDebugView, HISTOGRAM_BINS,
+    HISTOGRAM_MIN_LOG2, HISTOGRAM_STOPS_PER_BIN,
+};
 
 use crate::{
     scene::{prepare_raytracing_scene_resources, RaytracingSceneBindings},
@@ -11,7 +18,7 @@ use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::embedded_asset;
 use bevy_camera::Hdr;
 use bevy_core_pipeline::{
-    core_3d::main_opaque_pass_3d,
+    core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
     prepass::{
         DeferredPrepass, DeferredPrepassDoubleBuffer, DepthPrepass, DepthPrepassDoubleBuffer,
         MotionVectorPrepass,
@@ -34,7 +41,7 @@ use bevy_render::{
 };
 use bevy_shader::load_shader_library;
 use extract::extract_solari_lighting;
-use node::{init_solari_lighting_pipelines, solari_lighting};
+use node::{init_solari_lighting_pipelines, solari_lighting, solari_see_through_sky};
 use prepare::{
     prepare_solari_lighting_resources, setup_raytracing_scene_needs_previous_frame_data,
 };
@@ -65,6 +72,14 @@ impl Plugin for SolariLightingPlugin {
         load_shader_library!(app, "denoise_input.wesl");
         embedded_asset!(app, "denoise.wesl");
 
+        // RENZORA PATCH: see-through surfaces. See transparent.wesl.
+        embedded_asset!(app, "transparent.wesl");
+
+        // RENZORA PATCH: the diagnostics. See debug.wesl.
+        load_shader_library!(app, "debug_layout.wesl");
+        embedded_asset!(app, "debug.wesl");
+        app.register_type::<SolariDebug>();
+
         app.insert_resource(DefaultOpaqueRendererMethod::deferred());
     }
 
@@ -84,7 +99,14 @@ impl Plugin for SolariLightingPlugin {
 
         app.add_systems(PostUpdate, manage_prepass_double_buffers);
 
+        // RENZORA PATCH: the diagnostics' results, written in the render world
+        // and read in the main one, through the one shared slot.
+        let debug_output = SolariDebugOutput::default();
+        app.insert_resource(debug_output.clone());
+
         app.sub_app_mut(RenderApp)
+            .insert_resource(debug_output)
+            .init_resource::<debug::SolariDebugReadback>()
             .add_systems(
                 RenderStartup,
                 init_solari_lighting_pipelines.after(init_gpu_resource::<RaytracingSceneBindings>),
@@ -94,18 +116,31 @@ impl Plugin for SolariLightingPlugin {
                 Render,
                 (
                     prepare_solari_lighting_resources,
+                    // After the lighting's own prepare, which rewrites the
+                    // uniform the ray-count flag is set in.
+                    debug::prepare_solari_debug.after(prepare_solari_lighting_resources),
                     setup_raytracing_scene_needs_previous_frame_data
                         .before(prepare_raytracing_scene_resources),
                 )
                     .in_set(RenderSystems::PrepareResources),
             )
             .add_systems(
+                Render,
+                debug::read_back_solari_debug.in_set(RenderSystems::Cleanup),
+            )
+            .add_systems(
                 Core3d,
-                solari_lighting
-                    .before(main_opaque_pass_3d)
-                    .in_set(Core3dSystems::MainPass),
-            );
-    }
+                (
+                    solari_lighting
+                        .before(main_opaque_pass_3d)
+                        .in_set(Core3dSystems::MainPass),
+                    // RENZORA PATCH: see-through surfaces in front of the sky,
+                    // once the sky is drawn. See `solari_see_through_sky`.
+                    solari_see_through_sky
+                        .after(main_transparent_pass_3d)
+                        .in_set(Core3dSystems::MainPass),
+                ),
+            );    }
 }
 
 /// A component for a 3d camera entity to enable the Solari raytraced lighting system.
@@ -234,6 +269,15 @@ pub struct SolariLighting {
     ///
     /// Defaults to `true`.
     pub denoise: bool,
+
+    /// RENZORA PATCH: light see-through surfaces (glass, clear coats, lenses)
+    /// by tracing them (`transparent.wesl`), so they reflect and show the scene
+    /// around them. Off, the pass does not run, and whatever draws those
+    /// surfaces otherwise (Bevy's forward pass, which reflects only the
+    /// environment map) is left to.
+    ///
+    /// Defaults to `true`.
+    pub see_through: bool,
 }
 
 impl Default for SolariLighting {
@@ -252,6 +296,7 @@ impl Default for SolariLighting {
             world_cache_position_lod_scale: 15.0,
             reset: true, // No temporal history on the first frame
             denoise: true,
+            see_through: true,
         }
     }
 }

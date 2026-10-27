@@ -168,6 +168,7 @@
             { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" },
             { "slug": "rendering/solari", "title": "Solari Ray-Traced GI" },
             { "slug": "rendering/dlss", "title": "DLSS" },
+            { "slug": "rendering/virtual-geometry", "title": "Virtual Geometry" },
             { "slug": "rendering/planar-reflections", "title": "Planar Reflections" }
           ]
         },

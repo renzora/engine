@@ -1085,7 +1085,7 @@ enum Slot {
     Material,
 }
 
-const MODEL_EXTS: [&str; 2] = ["glb", "gltf"];
+const MODEL_EXTS: [&str; 3] = ["glb", "gltf", "rvg"];
 const MATERIAL_EXTS: [&str; 1] = ["material"];
 
 impl Slot {

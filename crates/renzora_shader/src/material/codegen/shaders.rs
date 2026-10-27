@@ -24,8 +24,31 @@ use super::wgsl::{
 /// The 3D fragment entry point, with the particle inputs when a Particle node
 /// reads them (see `wgsl::PARTICLE_FRAGMENT_PARAMS`).
 fn fragment_signature(ctx: &Ctx) -> String {
+    if supports_virtual_geometry_graph(ctx) {
+        // In a virtual geometry material pass the fragment runs over a
+        // fullscreen triangle and reads its surface from the visibility buffer,
+        // exactly as `bevy_pbr`'s own `pbr.wesl` does under the same flag. The
+        // rest of the body is unchanged: it reads `in` and `is_front`, which
+        // exist in both branches.
+        return "fn fragment(\n\
+                @if(MESHLET_MESH_MATERIAL_PASS) @builtin(position) frag_coord: vec4<f32>,\n\
+                @if(!MESHLET_MESH_MATERIAL_PASS) in: VertexOutput,\n\
+                @if(!MESHLET_MESH_MATERIAL_PASS) @builtin(front_facing) is_front: bool,\n\
+                ) -> FragmentOutput {\n    \
+                @if(MESHLET_MESH_MATERIAL_PASS) let in = resolve_vertex_output(frag_coord);\n    \
+                @if(MESHLET_MESH_MATERIAL_PASS) let is_front = true;\n"
+            .to_string();
+    }
     let particle = if ctx.uses_particle { PARTICLE_FRAGMENT_PARAMS } else { "" };
     format!("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool{particle}) -> FragmentOutput {{\n")
+}
+
+/// Whether a graph's shader also gets the virtual geometry branch. Not one
+/// that reads particle inputs: those come from the particle pipeline's own
+/// vertex stage, which a visibility buffer has no equivalent of. The domain is
+/// checked by the callers, which are the Surface and Unlit builders only.
+fn supports_virtual_geometry_graph(ctx: &Ctx) -> bool {
+    !ctx.uses_particle
 }
 
 /// Bevy's own alpha step before lighting, called the way `bevy_pbr`'s
@@ -140,7 +163,12 @@ pub(crate) fn build_pbr_shader(
 
     let deferred = writes_gbuffer(ctx, domain);
     let mut shader = String::new();
-    emit_ext_shader_header(ctx, &mut shader, deferred);
+    emit_ext_shader_header(
+        ctx,
+        &mut shader,
+        deferred,
+        domain == MaterialDomain::Surface && supports_virtual_geometry_graph(ctx),
+    );
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
     let prelude_base = shader.matches('\n').count() as u32 + 1;
@@ -422,7 +450,7 @@ pub(crate) fn build_unlit_shader(
     let alpha_connected = pin_set("alpha");
 
     let mut shader = String::new();
-    emit_ext_shader_header(ctx, &mut shader, false);
+    emit_ext_shader_header(ctx, &mut shader, false, supports_virtual_geometry_graph(ctx));
     shader.push_str(&texture_bindings_wgsl(ctx));
     shader.push_str(&noise_helpers(ctx));
     let prelude_base = shader.matches('\n').count() as u32 + 1;

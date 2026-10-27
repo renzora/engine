@@ -1,19 +1,22 @@
-//! Toggle switch — a bindable pill on/off control (grey ↔ green).
+//! Toggle switch: a bindable pill on/off control.
 //!
-//! Distinct from [`super::toggle`] (themed-accent, internal state): this one is
-//! self-colored grey/green to match the inspector's component-enable switches,
-//! and carries `Bound<bool>` so `bind_2way` drives it both ways.
+//! Distinct from [`super::toggle`] (internal state): this one carries
+//! `Bound<bool>` so `bind_2way` drives it both ways. "On" is the theme accent,
+//! not a fixed green, so a switch reads as the same "active" color as the
+//! selection and primary buttons beside it; green stays reserved for status.
 
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::interaction::PASS_THROUGH;
 use crate::reactive::Bound;
-use crate::theme::rgb;
+use crate::theme::{accent, rgb};
 use crate::UiInteraction;
 
-const OFF_BG: (u8, u8, u8) = (80, 80, 85);
-const ON_BG: (u8, u8, u8) = (89, 191, 115);
+/// Fixed rather than a palette surface: the off track must stay visible against
+/// every row, header and card it sits on, and no surface token is reliably
+/// lighter than all of them.
+const OFF_BG: (u8, u8, u8) = (58, 64, 80);
 const KNOB: (u8, u8, u8) = (245, 245, 250);
 const W: f32 = 28.0;
 const H: f32 = 14.0;
@@ -33,7 +36,7 @@ fn knob_x(on: bool) -> f32 {
     }
 }
 
-/// A pill on/off switch (grey off, green on). Click to flip; `Bound<bool>` holds
+/// A pill on/off switch (slate off, accent on). Click to flip; `Bound<bool>` holds
 /// the state so `bind_2way` can drive it.
 pub fn toggle_switch(commands: &mut Commands, on: bool) -> Entity {
     let knob = commands
@@ -62,7 +65,7 @@ pub fn toggle_switch(commands: &mut Commands, on: bool) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(if on { ON_BG } else { OFF_BG })),
+            BackgroundColor(rgb(if on { accent() } else { OFF_BG })),
             UiInteraction::default(),
             EmberSwitch { knob },
             Bound::<bool>(on),
@@ -91,7 +94,7 @@ pub(crate) fn switch_apply(
     mut nodes: Query<&mut Node>,
 ) {
     for (sw, b, mut bg) in &mut q {
-        bg.0 = rgb(if b.0 { ON_BG } else { OFF_BG });
+        bg.0 = rgb(if b.0 { accent() } else { OFF_BG });
         if let Ok(mut n) = nodes.get_mut(sw.knob) {
             n.left = Val::Px(knob_x(b.0));
         }

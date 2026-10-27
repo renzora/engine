@@ -555,8 +555,63 @@ pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
     // staging directory, so what moves into the project is already the model
     // the user asked for.
     let dropped_materials = crate::staged::apply_exclusions(&st);
-    match crate::staged::commit(&st) {
-        Ok(glb) => {
+    // Then build the model's `.rvg` from it, off the main thread: seconds for
+    // a big model. The rest of the commit waits for it in `finish_commits`.
+    let glb_path = st.glb_path.clone();
+    let task = bevy::tasks::AsyncComputeTaskPool::get()
+        .spawn(async move { crate::staged::build_model_file(&glb_path).map_err(|e| e.to_string()) });
+    world.resource_mut::<PendingCommits>().0.push(PendingCommit {
+        staged: st,
+        dropped_materials,
+        task,
+    });
+    world.resource_mut::<ImportOverlayState>().remove_staged(active);
+}
+
+/// An accepted import whose model file is still being built.
+pub(crate) struct PendingCommit {
+    staged: StagedImport,
+    dropped_materials: Vec<String>,
+    task: bevy::tasks::Task<Result<&'static str, String>>,
+}
+
+#[derive(Resource, Default)]
+pub(crate) struct PendingCommits(Vec<PendingCommit>);
+
+/// Finish each accepted import whose model file is built: move it into the
+/// project, write its materials, ask for its thumbnail.
+pub(crate) fn finish_commits(world: &mut World) {
+    let finished: Vec<(PendingCommit, Result<&'static str, String>)> = {
+        let mut pending = world.resource_mut::<PendingCommits>();
+        let mut finished = Vec::new();
+        let mut i = 0;
+        while i < pending.0.len() {
+            match bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut pending.0[i].task)) {
+                Some(result) => finished.push((pending.0.swap_remove(i), result)),
+                None => i += 1,
+            }
+        }
+        finished
+    };
+    for (pending, built) in finished {
+        commit_staged(world, pending.staged, pending.dropped_materials, built);
+    }
+}
+
+fn commit_staged(
+    world: &mut World,
+    st: StagedImport,
+    dropped_materials: Vec<String>,
+    built: Result<&'static str, String>,
+) {
+    // A model file that could not be written leaves the staged GLB as it was,
+    // which still commits and loads.
+    let extension = built.unwrap_or_else(|e| {
+        warn!("[import] {}: could not write its model file ({e}); keeping the .glb", st.file_name);
+        "glb"
+    });
+    match crate::staged::commit(&st, extension) {
+        Ok(model) => {
             // The `.material` writes were held back until the tree was in
             // place; fire them now so the observer writes them where they
             // finally live — minus any material whose last user was unchecked.
@@ -571,7 +626,7 @@ pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
             if let Some(mut registry) =
                 world.get_resource_mut::<renzora_editor_framework::ModelThumbnailRegistry>()
             {
-                registry.request(glb);
+                registry.request(model);
             }
             let mut state = world.resource_mut::<ImportOverlayState>();
             state.log_entries.push(ImportLogEntry {
@@ -590,7 +645,6 @@ pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
             });
         }
     }
-    world.resource_mut::<ImportOverlayState>().remove_staged(active);
 }
 
 /// Join `dest` with a forward-slashed relative directory from a folder import.

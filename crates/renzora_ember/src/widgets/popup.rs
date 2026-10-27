@@ -871,10 +871,23 @@ pub(crate) fn popup_position(
 pub(crate) fn popup_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
     cursor: Query<&RelativeCursorPosition>,
+    submenus: Query<Entity, With<super::submenu::SubPanel>>,
     mut triggers: Query<(&UiInteraction, &mut Popup)>,
     mut nodes: Query<&mut Node>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    // A submenu row inside a popup opens a parentless panel outside the popup's
+    // rect (see `submenu`), so a click on a switch in it reads as "outside".
+    // Closing the popup there would hide the row and take the submenu with it
+    // on the very click meant to change something in it. Same rule as
+    // `screen_menu_dismiss`.
+    let over_submenu = submenus.iter().any(|e| {
+        nodes.get(e).is_ok_and(|n| n.display != Display::None)
+            && cursor.get(e).is_ok_and(|r| r.cursor_over)
+    });
+    if over_submenu {
         return;
     }
     for (interaction, mut p) in &mut triggers {

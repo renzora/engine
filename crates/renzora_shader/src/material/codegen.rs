@@ -49,7 +49,8 @@ pub const MAX_PARAMETER_SLOTS: usize = 32;
 /// instead.
 ///
 /// 1: Surface shaders gained a deferred G-buffer branch.
-pub const CODEGEN_VERSION: u32 = 1;
+/// 2: Surface shaders gained the virtual geometry (visibility buffer) branch.
+pub const CODEGEN_VERSION: u32 = 2;
 
 /// Whether a generated Surface shader can also run as the deferred G-buffer
 /// pass. Read from the source rather than carried beside it, so it holds for a
@@ -57,6 +58,15 @@ pub const CODEGEN_VERSION: u32 = 1;
 /// the call only appears in the branch `shaders::build_pbr_shader` emits for it.
 pub fn supports_deferred(fragment_shader: &str) -> bool {
     fragment_shader.contains("deferred_output(in, pbr_input)")
+}
+
+/// Whether a generated shader can also shade virtual geometry: it was compiled
+/// with the visibility buffer branch `shaders::fragment_signature` emits. Read
+/// from the source for the same reason as [`supports_deferred`]. A shader saved
+/// by an older engine has no such branch, which is why `CODEGEN_VERSION` 2
+/// makes the resolver compile those graphs live instead.
+pub fn supports_virtual_geometry(fragment_shader: &str) -> bool {
+    fragment_shader.contains("resolve_vertex_output(frag_coord)")
 }
 
 /// Sanitize a function name into a WGSL-identifier-safe string.
@@ -524,10 +534,36 @@ mod tests {
         assert!(s.contains("mat_particle.x"), "age reads life: {s}");
         assert!(s.contains("mat_particle.y"), "random reads the seed: {s}");
         assert!(s.contains("mat_particle_velocity"), "{s}");
-        // A plain graph keeps its old signature.
+        // A particle graph has no virtual geometry branch: its inputs come
+        // from the particle pipeline's own vertex stage.
+        assert!(!supports_virtual_geometry(s), "{s}");
+        // A plain graph declares no particle inputs, and does get the virtual
+        // geometry branch, with the ordinary vertex inputs kept beside it.
         let plain = compile(&MaterialGraph::new("Plain", MaterialDomain::Surface)).fragment_shader;
         assert!(!plain.contains("particle_in"), "{plain}");
-        assert!(plain.contains("fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {"));
+        assert!(plain.contains("@if(!MESHLET_MESH_MATERIAL_PASS) in: VertexOutput,"), "{plain}");
+        assert!(supports_virtual_geometry(&plain), "{plain}");
+    }
+
+    /// The graph an imported glTF material with a normal map becomes: texture
+    /// samples, a normal-map sample and a one-minus. Such a graph is not on
+    /// the `StandardMaterial` fast path, so it reaches virtual geometry only
+    /// through codegen's branch.
+    #[test]
+    fn imported_textured_graph_supports_virtual_geometry() {
+        let mut graph = MaterialGraph::new("Imported", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let colour = graph.add_node("texture/sample", [0.0, 0.0]);
+        let mask = graph.add_node("texture/sample", [0.0, 0.0]);
+        let normal = graph.add_node("texture/sample_normal", [0.0, 0.0]);
+        let invert = graph.add_node("math/one_minus", [0.0, 0.0]);
+        graph.connect(colour, "color", out, "base_color");
+        graph.connect(mask, "r", invert, "value");
+        graph.connect(invert, "result", out, "roughness");
+        graph.connect(normal, "normal", out, "normal");
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert!(supports_virtual_geometry(&result.fragment_shader), "{}", result.fragment_shader);
     }
 
     /// A sprite is never a particle, so its Particle nodes are plain

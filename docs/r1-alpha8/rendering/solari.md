@@ -86,9 +86,10 @@ decision, which is the half no plugin can make.
     The copy is cached per source asset, shared by every instance, and freed
     when Solari goes idle.
 
-  Geometry that still can't qualify — no UVs, not an indexed triangle list, or
-  degenerate UVs that defeat tangent generation — is marked skipped so it isn't
-  re-checked every frame, rather than crashing the builder.
+  A mesh with no normals or no UVs gets them made up in that copy (smooth
+  normals, UVs of zero), and tangents come from the normals where the UVs can't
+  give any. Only geometry that is not an indexed triangle list is marked
+  skipped, so it isn't re-checked every frame, rather than crashing the builder.
 - **What counts as "eligible".** Bevy's ray-tracing scene is global and
   unfiltered: every entity carrying `RaytracingMesh3d` goes into the TLAS at full
   ray mask, with no regard for `Visibility` or `RenderLayers`. Renzora therefore
@@ -100,13 +101,96 @@ decision, which is the half no plugin can make.
   | `MeshMaterial3d<StandardMaterial>`, or a `TracedStandIn` | The only material type Solari's binder reads. A node-graph material (`GraphMaterial`) carries a `TracedStandIn` while Solari is on, holding a plain `StandardMaterial` copy of the graph's base approximation; the mesh is then traced through a separate traced-only twin entity with that stand-in, so it is not drawn twice. Reflections and bounce light see the approximation; what the camera sees directly is the graph itself, through the G-buffer. |
   | Visible (`InheritedVisibility`) | An entity hidden with the hierarchy eye, or a drag-and-drop model ghost, must not cast ray-traced shadows. Frustum culling (`ViewVisibility`) is deliberately **not** consulted — off-screen geometry has to stay in the BVH, since shadowing and bounce from outside the view is the point of ray tracing. |
   | On render layer 0 | Layer 0 is the scene; layers 1+ are gizmos and the editor's offscreen rigs (asset-browser model thumbnails, the material viewer, the animation studio preview). Those live in the same `World`, at or beside the world origin, and would otherwise become invisible solid occluders standing in the middle of your level. |
-  | Opaque alpha mode, **or emissive** | `bevy_solari` has no alpha handling at all, so a blended material is a solid wall to every ray. `Opaque`, `Mask` and `AlphaToCoverage` participate; `Blend`, `Premultiplied`, `Add` and `Multiply` are held back — *unless* the material is emissive. An emissive mesh is an area light only while it is a live instance, so excluding a blended one would delete a light rather than merely stop it occluding, and neon tubes and lamp glass are exactly that combination. |
 
-  All four are re-checked every frame, so unhiding an object or changing its
-  alpha mode puts it back into (or takes it out of) the ray-traced scene
-  immediately.
+  Every alpha mode participates. `Opaque`, `Mask` and `AlphaToCoverage` are
+  traced as solid. A blended one (`Blend`, `Premultiplied`, `Add`, `Multiply`)
+  is traced as [see-through](#glass-and-other-see-through-surfaces): shadow and
+  bounce rays pass it by, and Solari lights it itself. A blended material that
+  is **emissive** is traced as solid instead, because an emissive mesh is an
+  area light, and neon tubes and lamp glass must stay where rays reach them.
+
+  All three are re-checked every frame, so unhiding an object or changing its
+  alpha mode updates the ray-traced scene immediately.
+- **Virtual geometry.** A model stored as `.rvg` draws its detail from
+  clusters, and its `Mesh3d` is only a coarser copy. Traced, that copy would
+  sit slightly off the drawn surface and shade it with black, polygon-shaped
+  patches, so such a mesh carries `renzora::TracedGeometry` and is traced as
+  the full-detail mesh it holds, which virtual geometry builds while Solari is
+  on (Solari inserts `renzora::TracedGeometryWanted`). Until it is built, the
+  mesh is left out rather than traced coarse. A mesh whose `Mesh3d` changes is
+  traced again from the new one.
 - **Idle.** When no camera has Solari enabled, the ray-tracing mirror is dropped
   so BLAS resources are freed.
+
+## Glass and other see-through surfaces
+
+A mesh with a blended material (window glass, a car's clear-coat shell, a shop
+front) reflects the scene around it while Solari is on: the road under a car,
+the buildings beside it, a neon sign across the street. Without Solari, and
+before this, it could only reflect the sky.
+
+How it works: Solari's G-buffer holds only the nearest opaque surface, so a
+blended one cannot be lit there. Instead each blended mesh goes into the traced
+scene under its own ray mask, which every shadow and bounce ray ignores, so
+glass does not cast a solid black shadow. After the opaque image is lit and
+denoised, one more pass traces each pixel's camera ray for the see-through
+surfaces in front of the opaque one, nearest first and up to four of them
+(a headlight is a clear lens over a tinted one, each with a front and a back
+face), and lights each:
+
+- its **reflection**: a ray along the mirror direction (four spread over the
+  highlight for a surface rougher than about 0.15), which takes the light of
+  what it hits from Solari's world cache, or the sky where it leaves the scene;
+- **highlights** of the sun and other lights;
+- its own **tint**, lit by the light arriving at it. A surface with a real
+  colour of its own, such as a sheer curtain or frosted glass, gathers that
+  light with eight rays over the side facing the camera (the sky included),
+  the sun and any other directional light, and four samples of the scene's
+  other lights (lamps and emissive surfaces), and half as much again from the
+  side facing away, the light through the weave that makes a curtain in a
+  window glow. They are drawn the same way every
+  frame for each point on the surface, so the result is steady rather than
+  grainy-and-flickering; clear and metallic glass skip this and cost nothing
+  extra;
+- a **clear coat**, when the material has one: a mirror-smooth lacquer over
+  all of the above, reflecting about 4% head on and more at grazing angles,
+  and dimming what is under it by as much. A car window is usually rough, dark
+  glass under a full clear coat, and the coat is what gives it its crisp
+  reflection. The coat's own roughness is not read; it is taken as smooth.
+
+A ray meets every face, but a face the material culls when Bevy rasterizes it
+(the back of a single-sided pane) is skipped here too, so a model looks the
+same with Solari on as off. A double-sided material draws both faces in both:
+a lens modelled as a closed, double-sided slab is crossed twice, and each
+crossing tints what is behind it.
+
+Each is blended over what lies behind it the way its alpha mode says, the same as
+Bevy's forward pass would. As there, a blended material's alpha weighs its
+whole shading, its reflection included, so a glass with a low alpha reflects
+faintly. A dark tint over a darker interior is what makes a window's
+reflection read strongly.
+
+Where nothing opaque is behind them, as with a window or a curtain against the
+sky, see-through surfaces are drawn in a second pass once the sky has been
+drawn; the sky would otherwise paint over them.
+While Solari draws a mesh this way it carries `renzora::SolariShadedTransparent`,
+which takes it out of Bevy's raster passes (and virtual geometry's), so it is
+not drawn twice. A mesh still waiting for its ray-tracing copy is drawn the old
+way meanwhile.
+
+Limits:
+
+- At most **four** see-through surfaces along each pixel are drawn; a fifth
+  and beyond are not. A layer is skipped once almost nothing behind it could
+  show, so dense stacks of dark glass cost no more than they need.
+- The reflection is not denoised. A sharp one is clean; a rough one is a little
+  grainy.
+- Reflected surfaces are lit from the world cache, which is coarser than the
+  directly lit image, so a reflected shadow edge is soft. The pass only reads
+  the cache: it never adds cells or keeps them alive, so glass cannot change the
+  rest of the image's lighting. Where the cache has nothing yet, a reflected
+  surface is lit by one sample of the scene's lights, without its bounce light.
+- No refraction: what is behind the glass is seen straight through.
 
 ## Quality
 
@@ -121,12 +205,29 @@ running.
 | High (default) | On | 3 | 8 / 4 | Judging lighting. These are Bevy's own defaults. |
 | Ultra | On | 4 | 16 / 8 | Stills and close-ups. |
 
-The world cache that stores bounce light scales with the preset too.
+The world cache that stores bounce light scales with the preset too. It holds
+about a million cells, and once it is 40% full, bounce rays stop adding the
+cells they land on, which slows how fast a large enclosed scene such as a
+city street fills it. A lookup searches up to eight slots for its cell, so
+even a well-filled cache still makes the cells newly seen surfaces need;
+where it cannot, they show as dark patches crawling over them while the
+camera moves. The panel's **World cache cells** figure shows how full it is,
+and its **World cache** view shows any missing cells as black.
 
 **ReSTIR is the setting that matters most.** It reuses light samples across
-neighbouring pixels and earlier frames, and in Renzora it is the only thing
-cleaning up Solari's noise (see [Limitations](#limitations)). `Low` turns it
-off, which is why `Low` is the grainiest preset and not just the cheapest one.
+neighbouring pixels and earlier frames, so the [denoiser](#denoiser) starts
+from far less noise. `Low` turns it off, which is why `Low` is the grainiest
+preset and not just the cheapest one.
+
+The **ReSTIR** toggle below Quality overrides the preset either way: ReSTIR on
+with `Low`'s other savings, or off on `Ultra` to see what it contributes.
+Picking a Quality preset puts the toggle back to that preset's own setting.
+
+**Glass Reflections** (on by default) ray traces see-through materials, those
+with alpha mode Blend: glass, clear coats, lenses. They then reflect the scene
+around them and show what is behind them. Solari's own image holds only opaque
+surfaces, so with this off they are drawn by the ordinary forward pass, which
+reflects only the sky. Opaque surfaces reflect the scene either way.
 
 Solari's cost also scales with the number of pixels it lights, so lowering the
 camera's **Resolution** is often a bigger saving than dropping a preset.
@@ -263,21 +364,27 @@ Things worth knowing:
   Your `PointLight` / `DirectionalLight` components are never written, so a scene
   saved while Solari happens to be on doesn't silently persist shadows-off. Turn
   the toggle off if you want to keep raster shadows. Like Solari's deferred renderer method, it is global rather than
-  per-camera: while it is on, no camera renders shadow maps.
-- **Measure before tuning.** Use the debugger's render diagnostics for real GPU
-  timings rather than inferring from the frame counter; the Graphics Quality
-  tier also gates the fullscreen passes that stack on top of Solari. Solari's
-  time spans are `solari_lighting/presample_light_tiles`, `world_cache`,
-  `initial` (the new samples and paths), `spatial_and_shade` (ReSTIR's spatial
-  reuse and shading), and the denoiser's `denoise_temporal`, `denoise_atrous`
-  and `denoise_composite`.
+  per-camera: while it is on, no camera renders shadow maps. The one exception
+  is a light with a **Volumetric Light**: volumetric fog is drawn by Bevy's own
+  pass and reads that light's shadow map to know where the fog is in shade, so
+  it keeps it. Without it the fog was lit everywhere, indoors included, and from
+  outside a building the interior vanished behind a bright haze.
+- **Measure before tuning.** The [Ray Tracing panel](#ray-tracing-panel) shows
+  each Solari pass's GPU time and the rays it traces; use it, or the debugger's
+  render diagnostics, rather than inferring from the frame counter. The
+  Graphics Quality tier also gates the fullscreen passes that stack on top of
+  Solari. Solari's time spans are `solari_lighting/presample_light_tiles`,
+  `world_cache`, `initial` (the new samples and paths), `spatial_and_shade`
+  (ReSTIR's spatial reuse and shading), the denoiser's `denoise_temporal`,
+  `denoise_atrous` and `denoise_composite`, and `diagnostics` while the panel
+  measures.
 
 ## Diagnosing a dark or wrongly-shadowed scene
 
 The plugin logs ray-tracing coverage whenever the tallies change:
 
 ```
-[solari] ray-tracing scene: 1482 meshes mirrored, 6 skipped, 34 excluded (hidden / off-layer / blended)
+[solari] ray-tracing scene: 1482 meshes mirrored, 6 skipped, 34 excluded (hidden / off-layer)
 ```
 
 - **A low `mirrored` count** with a high `skipped` count means an under-populated
@@ -316,18 +423,79 @@ while forward-path geometry — blended foliage, glass, the sky — still looks
 perfectly lit. Trees and bushes standing in front of solid black buildings is the
 signature.
 
+## Ray Tracing panel
+
+**Debug > Ray Tracing** shows what Solari is doing, so its quality can be judged
+by measurement rather than by eye alone. It works on the focused viewport
+while Solari Ray-Traced GI is on.
+
+**Show** replaces the viewport's image with a view of Solari's internals:
+
+| View | What it shows |
+|---|---|
+| Raw \| Denoised | Solari's raw estimate left of a divider (drag **Divider**), the denoised result right of it. |
+| History length | Frames of history behind each pixel, blue for none to red for the denoiser's maximum of 32. Blue patches are where the image is still noisy. |
+| Rejected history | Red where the denoiser threw its history away this frame: a surface newly seen, or one that changed. |
+| Noise estimate | The denoiser's own reading of each pixel's noise, relative to its brightness, red at four times the light itself. It decides how hard each pixel is blurred. |
+| ReSTIR confidence | How many samples each pixel's ReSTIR reservoir has gathered from past frames and neighbours. Blank on Quality: Low, which has no ReSTIR. |
+| World cache | The cached light that bounce rays read. Blocky where its cells are large, which is far from the camera. |
+| Not in ray-traced scene | Magenta where what was drawn is missing from, or different in, the ray-traced scene: a mesh left out, or an alpha-tested leaf traced as a solid card. Such surfaces cast and catch light wrongly. |
+| Path-traced reference | The reference image (below). |
+| Error vs reference | How far the live image is from the reference, blue for a match to red for 50% or more. |
+
+DLSS steps aside while a view is shown, since it would otherwise take the
+visualization for the image, so the built-in denoiser runs.
+
+**Reference.** With **Accumulate** on, a conventional path tracer converges in
+the background beside the live image, one sample per pixel per frame. It is the
+same algorithm as Solari's offline path tracer, checked against it by
+`renzora_solari`'s GPU tests. It starts over when the camera moves, and
+**Start over** restarts it after a change the camera cannot see, such as a light
+being moved. **Error vs reference** compares 3x3 neighbourhoods of the two
+images, so the reference's own early noise counts for little; it falls as the
+reference converges and settles at the live image's real error.
+
+**Figures**, measured every frame while the panel is visible:
+
+- **Rays**: lighting rays per frame and per pixel, split into first paths,
+  ReSTIR's reuse and the world cache's update, each with how many were shadow
+  rays, and a rolling graph.
+- **Denoiser**: average history, the share of pixels under 4 frames and the
+  share rejected this frame, and grain before and after denoising (each pixel's
+  difference from its neighbours, relative to their brightness). A still camera
+  should reach a full 32 frames with almost nothing rejected. With DLSS
+  denoising, these describe the built-in denoiser, which is not running.
+- **ReSTIR**: average reservoir confidence.
+- **Brightness**: histograms of the exposed image before and after denoising,
+  half a stop per bar. Denoising should narrow the spread.
+- **Ray-traced scene**: the mesh tallies from the coverage log, the share of
+  pixels the traced scene does not match, and the world cache's cell count.
+- **GPU time** of each pass, including the glass and see-through pass.
+
+Measuring costs GPU time (the `diagnostics` pass), so it stops when the panel is
+hidden; a view or an accumulating reference carries on. While the panel
+measures or the reference accumulates, the viewport renders every frame rather
+than idling.
+
 ## Denoiser
 
 Solari's raw estimate is grainy: each pixel is a handful of random light paths.
 Renzora runs its own denoiser over it, so the image is clean on **any GPU that
 can ray trace** (NVIDIA RTX, AMD RX 6000 and later, Intel Arc), not only where
-NVIDIA's DLSS Ray Reconstruction runs. It is on by default; the **Denoiser**
-toggle in the Solari Ray-Traced GI inspector turns it off to show the raw
-estimate, which is the thing to compare against when judging it.
+NVIDIA's DLSS Ray Reconstruction runs.
 
-Where DLSS Ray Reconstruction can run, it replaces this denoiser: the **DLSS**
-toggle (on by default) asks for it, and the inspector's **Denoising With** line
-says which one is actually in use, and why. See [DLSS](./dlss.md).
+The Solari Ray-Traced GI inspector's **Denoiser** setting picks what removes
+the noise:
+
+- **DLSS**, the default: DLSS Ray Reconstruction where it can run, this
+  denoiser everywhere else.
+- **Built-in**: this denoiser, even where DLSS could run.
+- **Off (raw)**: nothing, in any mode. The raw estimate is the thing to compare
+  a denoiser against when judging it.
+
+With **DLSS** chosen, the **DLSS Mode** row appears only while DLSS is actually
+running; without it, this denoiser is in use. See [DLSS](./dlss.md). A scene saved with the older separate **Denoiser** and
+**DLSS** toggles loads with the matching choice.
 
 How it works, in order:
 
@@ -340,19 +508,76 @@ How it works, in order:
    motion vectors and blended with the new sample. History is thrown away where
    the surface changed (a different plane or normal, as at the edge of something
    that moved), and each pixel keeps its own history length: up to 32 frames for
-   diffuse light, down to 4 for mirror-like reflections, which would otherwise
-   smear as the camera moves. A sample far brighter than its history (a
-   "firefly") is clamped.
+   diffuse light, down to 4 for mirror-like reflections while the camera
+   moves, which would otherwise smear. A reflection keeps the full 32 frames
+   while the direction it is seen from barely changes, so a glossy floor
+   settles smooth in a still view. At a silhouette, where the camera's
+   sub-pixel jitter keeps changing which surface a pixel sees, the history is
+   looked for one pixel further before it is given up. While the camera moves, last frame's result is
+   read between pixels with a sharpening (Catmull-Rom) filter rather than a
+   bilinear one, which would soften it a little every frame. Bright samples are
+   kept, not clamped: in indirect lighting they are real light, and clamping
+   them left indirectly lit surfaces about a tenth too dark.
 3. **Edge-aware blur.** Five passes of an a-trous wavelet filter, at spacings of
    1 to 16 pixels, that stop at surface planes, normals and brightness changes.
-   How far a pixel is blurred follows how noisy it is, so a freshly revealed
-   area is blurred hard and a converged one is left alone. Mirror-like surfaces
-   are not blurred at all. The first pass's result becomes next frame's history.
+   How far a pixel is blurred follows how noisy its accumulated average still
+   is, so a freshly revealed area is blurred hard and a converged one is left
+   alone, keeping sharp sun-shadow edges and thin shadows. Mirror-like surfaces
+   are not blurred at all. A pixel far brighter than every neighbour (a
+   firefly, such as a sun glint off a glossy floor) is shown no brighter than
+   its brightest neighbour allows, while its history keeps the true value.
 4. **Composite.** The material factors are multiplied back in and emissive is
    added.
 
 It is written from the published research (SVGF and the
 edge-avoiding a-trous filter); no code comes from any vendor's denoiser SDK.
+
+Its quality is measured rather than judged by eye. `renzora_solari`'s
+`denoise_quality` test renders a sunlit room on a ray-tracing GPU with the
+denoiser, without it, and with Solari's offline path tracer run to convergence,
+and scores each image against that reference for grain, error and flicker,
+standing still and while the camera moves. On a flat ceiling at viewport size
+the denoised image is as smooth as the converged reference, about thirty times
+smoother than the raw estimate. It is opt-in like the engine's other GPU tests:
+
+```sh
+RENZORA_GPU_TESTS=1 cargo test --profile dist -p renzora_solari --test denoise_quality -- --nocapture
+```
+
+`RENZORA_GPU_TEST_OUT=<dir>` writes the images, and
+`RENZORA_SOLARI_TEST_SIZE=1280x1024` runs at a real viewport's size. Built with
+`--features dlss` (and the NGX libraries on `PATH`), it also checks that
+switching DLSS off hands the image back to this denoiser.
+
+The `denoiser_benchmark` test is what changes to the denoiser are judged by. It
+places cameras at random through the room from a fixed seed, so the denoiser is
+not tuned to one view, runs the editor's setup (TAA on) standing still and
+moving, and scores each against its own converged reference: overall error,
+error on edges and detail (found from the reference, wherever they fall on
+screen), grain on flat surfaces, flicker, and the denoiser's history figures.
+Errors compare 3x3 neighbourhoods and leave out the worst 0.1% of pixels, so
+the reference's own leftover noise does not decide the result. A camera that
+lands inside furniture is skipped. `RENZORA_BENCH_POSE=<n>` runs one camera
+(each renderer holds GPU memory until its process ends, so beside a running
+editor one per process is safest), `RENZORA_BENCH_RAW=1` scores the raw
+estimate, and `RENZORA_BENCH_DLSS=1` scores DLSS Ray Reconstruction, the
+comparison the built-in denoiser is aimed at:
+
+| Five cameras, mean | Error, still | Detail, still | Error, moving | Detail, moving | Grain | Flicker |
+|---|---|---|---|---|---|---|
+| Built-in denoiser | 0.022 | 0.059 | 0.021 | 0.075 | 0.036 | 0.0007 |
+| DLSS Ray Reconstruction | 0.026 | 0.056 | 0.018 | 0.050 | 0.045 | 0.0016 |
+
+The room's floor is glossy with a normal map and a roughness map, and its back
+wall bumpy, because that texture detail in the lighting is where denoisers
+differ most. The built-in denoiser's remaining gap is that detail while the
+camera moves: resampling the history every frame softens it, where DLSS keeps
+it.
+
+The editor's viewport renders only for a short while after each change, then
+holds its last image. While this denoiser runs it is given 48 frames rather
+than the usual 20, enough to reach its full history; stopping sooner froze a
+picture that was still visibly grainy.
 
 Known limits of this first version: lighting changes catch up over up to 32
 frames (Solari's own history resets on big sun changes), sharp reflections are
@@ -364,8 +589,14 @@ blotches.
 
 The engine builds its own copy of `bevy_solari` (`crates/bevy_solari`), patched
 over the one Bevy depends on. Besides the [denoiser](#denoiser) (`denoise.wesl`,
-`denoise.rs`, and the lighting split it reads), it differs from upstream in two
-places, each marked `RENZORA PATCH` in the source:
+`denoise.rs`, and the lighting split it reads) and the diagnostics behind the
+[Ray Tracing panel](#ray-tracing-panel) (`debug.wesl`, `debug_layout.wesl`,
+`debug.rs`, and a per-thread ray count in the traced scene's `trace_ray` and
+`trace_visibility`) and the [see-through
+pass](#glass-and-other-see-through-surfaces) (`transparent.wesl`, the
+per-instance ray masks, and each material's alpha and blend mode), it differs
+from upstream in four places, each marked
+`RENZORA PATCH` in the source:
 
 - **Roughness is floored at 0.089**, as Bevy's raster renderer floors it. Upstream
   shaded a perfectly smooth surface with the specular maths degenerate, so mirror
@@ -375,6 +606,23 @@ places, each marked `RENZORA PATCH` in the source:
   and bulbs came out roughly a thousand times dimmer with Solari on than off at a
   daylight exposure, and never reached the bloom threshold. Emissive surfaces
   still light the scene through Solari, exposed like any other light.
+- **Rays leave a surface two pixels' width off what was drawn**
+  (`gpixel_resolve` in `gbuffer_utils.wesl`). [Virtual
+  geometry](virtual-geometry.md) draws each mesh at a simplified level up to a
+  pixel away from the full detail that is traced, so a ray leaving the drawn
+  surface could start underneath the traced one and be shadowed by it: black
+  patches that grew with distance and at grazing angles. The lift is measured
+  in pixels at the surface's depth, so it is millimetres up close and stays
+  under what the eye can see at any distance. Upstream used a fixed 1 mm.
+  (Virtual geometry now draws its finest level while Solari is on, so the two
+  agree wherever that level is loaded; the lift still covers the moments one
+  is streaming in.)
+- **DLSS's guide textures follow the DLSS toggle every frame**
+  (`sync_dlss_rr_textures` in `prepare.rs`). Upstream made them only when the
+  view's other buffers were rebuilt, on a size change, and never removed them.
+  Switching DLSS off at the same size (always, under DLAA) left them in place,
+  which reads as "DLSS is denoising": the built-in denoiser stood aside, DLSS no
+  longer ran, and the raw, grainy image reached the screen.
 
 ## Limitations
 
@@ -384,8 +632,10 @@ places, each marked `RENZORA PATCH` in the source:
   it (noise, UV maths, a roughness worked out by a maths node) is missing from
   its reflections and bounce light. A hand-written custom material with no
   `StandardMaterial` behind it is not traced at all.
-- Meshes without UVs, or with non-triangle-list/non-indexed geometry, are not lit
-  by Solari.
+- Non-triangle-list or non-indexed geometry is not lit by Solari. A mesh missing
+  normals, UVs or tangents is traced through a copy with them made up (smooth
+  normals, zero UVs, tangents from the normals), which is right for an untextured
+  surface such as glass or a clear coat.
 - **No ambient light, and no native point/spot lights.** Solari lights from
   directional lights, emissive meshes and the [sky](#sky-light); point and spot
   lights work solely through [light proxies](#light-proxies), and `AmbientLight`
@@ -400,9 +650,8 @@ places, each marked `RENZORA PATCH` in the source:
 - **Cutout geometry over-shadows.** `Mask` materials are traced as solid quads
   (Solari has no alpha-tested any-hit shading), so foliage cards cast fuller
   shadows than they should.
-- **Transparent materials don't render while Solari is on.** The global renderer
-  method is deferred, which can't draw blended materials, so glass and
-  transmissive surfaces read as fully transparent until Solari is switched off.
+- **Glass has no refraction, and draws at most four layers deep.**
+  See [Glass and other see-through surfaces](#glass-and-other-see-through-surfaces).
 
 ## Note on installed plugins
 

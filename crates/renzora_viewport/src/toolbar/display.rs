@@ -1,6 +1,6 @@
 //! What is drawn, and what is drawn *over* it.
 //!
-//! Two dropdowns that look alike and mean different things, deliberately kept
+//! Two submenus that look alike and mean different things, deliberately kept
 //! apart: **Display** decides what the renderer produces (visualization mode,
 //! mesh / texture / lighting / shadow flags, the floor grid), while **Gizmos**
 //! decides what the editor draws on top of it. The 2D view gets its own
@@ -41,7 +41,9 @@ pub(super) enum DisplayOption {
     Collision(bool),
 }
 
-pub(super) fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// The rows of the **Display** submenu of the viewport options menu (see
+/// [`super::options`]).
+pub(super) fn display_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
 
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.visualization")));
@@ -78,14 +80,10 @@ pub(super) fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts
     // here; they moved to the Gizmos dropdown (`build_gizmos_dropdown`) so all
     // the "what's drawn over the scene" switches sit in one place. Display keeps
     // what the renderer produces — viz modes, render flags, and the grid.
-
-    let panel = popup_panel(commands, &kids);
-    let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
-    commands.entity(trigger).insert(DisplayTrigger);
-    popup_anchor(commands, trigger, panel)
+    kids
 }
 
-/// The **Gizmos** dropdown — one switch per editor overlay drawn *over* the
+/// The **Gizmos** submenu: one switch per editor overlay drawn *over* the
 /// scene, grouped by what it belongs to (selection / scene objects / rigging /
 /// physics).
 ///
@@ -100,7 +98,7 @@ pub(super) fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts
 /// Lives in the shared toolbar rather than a viewport's own strip because
 /// `ViewportSettings` is one global resource: a per-slot placement would
 /// promise per-viewport control that doesn't exist.
-pub(super) fn build_gizmos_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+pub(super) fn gizmos_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
 
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.selection")));
@@ -184,11 +182,7 @@ pub(super) fn build_gizmos_dropdown(commands: &mut Commands, fonts: &EmberFonts)
         DisplayOption::Collision(false),
         &renzora::lang::t("common.always"),
     ));
-
-    let panel = popup_panel(commands, &kids);
-    let trigger = icon_popup_trigger(commands, fonts, "bounding-box", panel);
-    commands.entity(trigger).insert(DisplayTrigger);
-    popup_anchor(commands, trigger, panel)
+    kids
 }
 
 /// Remembers the last non-`Off` collider-gizmo mode so the Physics →

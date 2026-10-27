@@ -58,7 +58,10 @@ use crate::model_flatten::{ImportedRoot, PendingFlatten};
 use crate::ViewportState;
 
 /// Extensions accepted as droppable 3D models.
-pub const MODEL_EXTENSIONS: &[&str] = &["glb", "gltf"];
+/// What can be dragged from the asset browser into the scene as a model. An
+/// `.rvg` (the form imported models are stored in) loads as a glTF model
+/// would, so it places through exactly the same path.
+pub const MODEL_EXTENSIONS: &[&str] = &["rvg", "glb", "gltf"];
 
 /// Resource tracking pending GLTF loads that need to be spawned once ready.
 #[derive(Resource, Default)]
@@ -576,7 +579,6 @@ fn initiate_model_load(
         let dest = model_dir.join(file_name);
 
         let project_path = project.path.clone();
-        let asset_rel = project.make_asset_relative(&dest);
 
         // Run the import pipeline so the model lands in the project with
         // textures pulled into `textures/` and a `.material` file written per
@@ -584,12 +586,15 @@ fn initiate_model_load(
         // `MaterialRef` to the matching `.material`, which the resolver swaps
         // in for the GLB's embedded `StandardMaterial`. Falls back to a plain
         // copy if conversion fails — the model still loads, just without the
-        // editable per-material graphs.
-        renzora_import::run_import_pipeline(world, &path, &dest, &model_dir, &project_path);
+        // editable per-material graphs. What it writes is usually the model's
+        // `.rvg`, not `dest` itself, so the path loaded is the one it returns.
+        let written = renzora_import::run_import_pipeline(world, &path, &dest, &model_dir, &project_path)
+            .unwrap_or(dest);
+        if written.extension().is_some_and(|e| e.eq_ignore_ascii_case("glb")) {
+            glb_compat::ensure_loadable(&written);
+        }
 
-        glb_compat::ensure_loadable(&dest);
-
-        asset_rel
+        world.resource::<CurrentProject>().make_asset_relative(&written)
     } else {
         glb_compat::ensure_loadable(&path);
         path.to_string_lossy().replace('\\', "/")

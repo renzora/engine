@@ -92,6 +92,16 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: false,
         group: None,
     },
+    Capability {
+        id: "virtual_geometry",
+        section: "render_3d",
+        label: "Virtual Geometry",
+        help: "Clustered meshes with per-cluster level of detail, culled and rasterized on the GPU. On when the project has models converted to virtual geometry (an .rvg beside the .glb). Off, those models render as ordinary geometry.",
+        bevy_features: &[],
+        runtime_features: &["virtual_geometry"],
+        default_on: false,
+        group: None,
+    },
     // NOTE (2026-07 slim pass): the `meshlets`, `feathers`, `asset_pipeline`,
     // `extra_shader_langs` and `editor_helpers` capabilities were REMOVED from this
     // list. They existed to strip Bevy features the base build no longer enables at
@@ -836,6 +846,12 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
         "ui" | "game_ui" => &["html"],
         // Sprite/skeletal animation clips and state machines.
         "animation" => &["anim", "animsm"],
+        // A model with an `.rvg` beside it renders as virtual geometry. Any
+        // model counts, not only converted ones: the export builds missing
+        // `.rvg` files after this scan runs (the dialog scans when it opens),
+        // and a game whose models were converted on the way out still needs
+        // the renderer for them.
+        "virtual_geometry" => &["rvg", "glb"],
         // An authored effect asset is a clear intention even if no scene has
         // placed one yet.
         "particles" => &["particle", "vfx"],
@@ -857,8 +873,9 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
         // plus the `gltf`/`gltf-json`/`gltf-derive` crates and their serde
         // derives. Detection is on files present anywhere under the project, so
         // a model that ships in the rpak is found whether or not it was
-        // converted on import.
-        "gltf" => &["gltf", "glb"],
+        // converted on import. An `.rvg` model's scene is glTF too, loaded
+        // through the same loader.
+        "gltf" => &["gltf", "glb", "rvg"],
         // The graph-material system only when the project authors materials with
         // it. A `.material` asset IS a shader graph, so its presence is exactly
         // the condition — meshes using plain StandardMaterial produce none.

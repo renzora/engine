@@ -179,7 +179,7 @@ fn search_tree(dir: &Path, query: &str, visited: &mut usize, out: &mut Vec<TreeR
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if is_hidden_name(&name) {
+            if is_hidden_name(&name) || crate::state::is_sidecar(&name, |sibling| dir.join(sibling).exists()) {
                 continue;
             }
             let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);

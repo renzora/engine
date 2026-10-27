@@ -1164,10 +1164,25 @@ pub struct RenderingConfig {
     /// non-`Disabled` `[viewport] stretch_mode` is active.
     #[serde(default = "default_render_scale")]
     pub render_scale: f32,
+    /// Render models as virtual geometry where they have it (an `.rvg` beside
+    /// the `.glb`), and let the editor build it for every model in the project.
+    /// On by default; off renders every model as ordinary geometry and leaves
+    /// existing `.rvg` files unused. Shipped, because the game reads it too.
+    #[serde(default = "default_true")]
+    pub virtual_geometry: bool,
+    /// GPU memory, in megabytes, virtual geometry may keep resident. Detail
+    /// past it is streamed in as the camera needs it and evicted when it does
+    /// not; the coarsest level of every model always stays.
+    #[serde(default = "default_virtual_geometry_budget_mb")]
+    pub virtual_geometry_budget_mb: u32,
 }
 
 fn default_render_scale() -> f32 {
     1.0
+}
+
+fn default_virtual_geometry_budget_mb() -> u32 {
+    512
 }
 
 impl Default for RenderingConfig {
@@ -1176,6 +1191,8 @@ impl Default for RenderingConfig {
             mode: RenderingMode::default(),
             graphics_quality: crate::core::viewport_types::GraphicsQuality::default(),
             render_scale: default_render_scale(),
+            virtual_geometry: true,
+            virtual_geometry_budget_mb: default_virtual_geometry_budget_mb(),
         }
     }
 }

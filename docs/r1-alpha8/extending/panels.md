@@ -324,6 +324,8 @@ app.register_shell_status_item(ShellStatusItem {
 
 `render` is a plain `fn(&World) -> Vec<ShellStatusSegment>` called each frame, so live metrics update without re-registering. It is one of the few places in ember that is genuinely immediate-mode, which is why it must stay cheap.
 
+A segment's color is a request, not a guarantee: the shell darkens it on a light theme (or lightens it on a dark one) until it reaches 4.5:1 contrast against the status bar, keeping its hue. Pick the color for meaning (green for good, amber for a warning) and the shell keeps it readable in every theme.
+
 `ShellReadyStatus` is the other half: writing `label = Some(text)` replaces the status bar's left-hand "Ready" for a transient message, and `None` restores it. That is how the auto-save plugin shows its countdown.
 
 #### Showing progress

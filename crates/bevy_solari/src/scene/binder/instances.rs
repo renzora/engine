@@ -27,6 +27,10 @@ use tracing::{info_span, warn};
 
 pub const MAX_MESH_SLAB_COUNT: NonZeroU32 = NonZeroU32::new(500).unwrap();
 
+/// RENZORA PATCH: TLAS instance masks. Must match `scene/bindings.wesl`.
+pub const RAY_MASK_OPAQUE: u32 = 0x01;
+pub const RAY_MASK_SEE_THROUGH: u32 = 0x02;
+
 #[derive(Clone, Copy, Default, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 pub struct GpuInstanceGeometryIds {
@@ -86,6 +90,9 @@ pub struct InstanceState {
     pub geometry_ids: AtomicSparseBufferVec<GpuInstanceGeometryIds>,
     pub material_ids: AtomicSparseBufferVec<u32>,
     pub blas_refs: AtomicSparseBufferVec<GpuBlasRef>,
+    /// RENZORA PATCH: each slot's TLAS ray mask, [`RAY_MASK_OPAQUE`] or
+    /// [`RAY_MASK_SEE_THROUGH`].
+    pub masks: AtomicSparseBufferVec<u32>,
     pub slots: IndexAllocator,
     records: EntityHashMap<Instance>,
     pub live_count: u32,
@@ -104,6 +111,7 @@ impl InstanceState {
             geometry_ids: storage_buffer("solari_geometry_ids"),
             material_ids: storage_buffer("solari_material_ids"),
             blas_refs: storage_buffer("solari_blas_refs"),
+            masks: storage_buffer("solari_instance_masks"),
             slots: IndexAllocator::new(),
             records: EntityHashMap::default(),
             live_count: 0,
@@ -118,11 +126,12 @@ impl InstanceState {
     /// Only the `wgpu-core` TLAS build path needs this, to fill in the instance descriptors that
     /// the raw path sets up on the GPU. Slots with a null acceleration structure reference are not
     /// currently drawable, and are left out.
-    pub fn drawable(&self) -> impl Iterator<Item = (u32, AssetId<Mesh>, [f32; 12])> + '_ {
+    pub fn drawable(&self) -> impl Iterator<Item = (u32, AssetId<Mesh>, [f32; 12], u8)> + '_ {
         self.records.values().filter_map(|instance| {
             let slot = instance.slot;
-            (self.blas_refs.get(slot) != GpuBlasRef::NONE)
-                .then(|| (slot, instance.mesh, self.transforms.get(slot).rows()))
+            (self.blas_refs.get(slot) != GpuBlasRef::NONE).then(|| {
+                (slot, instance.mesh, self.transforms.get(slot).rows(), self.masks.get(slot) as u8)
+            })
         })
     }
 
@@ -339,6 +348,12 @@ impl InstanceState {
             },
         );
         self.material_ids.grow_and_set(slot, material_slot);
+        // RENZORA PATCH: a see-through surface is hit only by the rays that look
+        // for one (`realtime/transparent.wesl`); every other ray passes through
+        // it, as light does through glass.
+        let see_through = inputs.assets.see_through_materials.contains(&instance.material);
+        self.masks
+            .grow_and_set(slot, if see_through { RAY_MASK_SEE_THROUGH } else { RAY_MASK_OPAQUE });
         self.set_blas_ref(slot, GpuBlasRef(blas_address));
 
         let is_emissive = inputs

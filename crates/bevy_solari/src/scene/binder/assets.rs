@@ -38,11 +38,49 @@ pub struct GpuMaterial {
     perceptual_roughness: f32,
     emissive: Vec3,
     metallic: f32,
-    _padding: Vec3,
+    /// RENZORA PATCH: the base colour's alpha, how a see-through surface
+    /// blends ([`BLEND_NONE`] for an opaque one), and its clear coat's
+    /// strength. Read by the see-through pass (`realtime/transparent.wesl`).
+    /// They fill what was padding, so the layout is unchanged.
+    alpha: f32,
+    blend: u32,
+    clearcoat: f32,
     reflectance: f32,
 }
 
 impl_atomic_pod!(GpuMaterial, GpuMaterialBlob);
+
+// RENZORA PATCH: `GpuMaterial::blend`. Must match `realtime/transparent.wesl`.
+pub const BLEND_NONE: u32 = 0;
+pub const BLEND_ALPHA: u32 = 1;
+pub const BLEND_PREMULTIPLIED: u32 = 2;
+pub const BLEND_ADD: u32 = 3;
+pub const BLEND_MULTIPLY: u32 = 4;
+/// Flags above the mode's own bits (the low eight, `BLEND_MODE_MASK` in the
+/// shader), for the faces a raster draw of the material culls: the see-through
+/// pass skips those hits as well, since a ray meets every face. A single-sided
+/// window drawn by Bevy shows only its front face; traced, its back face added
+/// a second layer of tint.
+pub const BLEND_CULL_BACK: u32 = 0x100;
+pub const BLEND_CULL_FRONT: u32 = 0x200;
+
+/// RENZORA PATCH: how a material blends, or `BLEND_NONE` when it is opaque to
+/// rays. An emissive surface counts as opaque whatever its alpha mode, since it
+/// is a light: neon tubes and lamp glass must stay where ordinary rays (and the
+/// light sampler) can reach them.
+pub fn material_blend(material: &StandardMaterial) -> u32 {
+    use bevy_material::AlphaMode;
+    if material.emissive.to_vec3() != Vec3::ZERO {
+        return BLEND_NONE;
+    }
+    match material.alpha_mode {
+        AlphaMode::Blend => BLEND_ALPHA,
+        AlphaMode::Premultiplied => BLEND_PREMULTIPLIED,
+        AlphaMode::Add => BLEND_ADD,
+        AlphaMode::Multiply => BLEND_MULTIPLY,
+        _ => BLEND_NONE,
+    }
+}
 
 /// Stable material and texture slots, plus the retry state for assets that aren't ready yet.
 pub struct AssetState {
@@ -51,6 +89,9 @@ pub struct AssetState {
     pub material_slots: SlotAllocator<AssetId<StandardMaterial>>,
     material_textures: HashMap<AssetId<StandardMaterial>, MaterialTextures>,
     pub emissive_materials: HashSet<AssetId<StandardMaterial>>,
+    /// RENZORA PATCH: materials that blend (see [`material_blend`]), whose
+    /// instances only see-through rays hit.
+    pub see_through_materials: HashSet<AssetId<StandardMaterial>>,
     /// Materials to retry because at least one required texture is not on the GPU yet.
     unresolved_materials: HashSet<AssetId<StandardMaterial>>,
     /// Bound images whose replacement GPU data has not landed yet.
@@ -65,6 +106,7 @@ impl AssetState {
             material_slots: SlotAllocator::new(),
             material_textures: HashMap::default(),
             emissive_materials: HashSet::default(),
+            see_through_materials: HashSet::default(),
             unresolved_materials: HashSet::default(),
             pending_texture_updates: HashSet::default(),
         }
@@ -191,6 +233,12 @@ impl AssetState {
         let slot = self.material_slots.get_or_allocate(material_id);
         let emissive = material.emissive.to_vec3();
         let is_emissive = emissive != Vec3::ZERO;
+        let blend = material_blend(material);
+        let culled_faces = match material.cull_mode {
+            Some(bevy_render::render_resource::Face::Back) => BLEND_CULL_BACK,
+            Some(bevy_render::render_resource::Face::Front) => BLEND_CULL_FRONT,
+            None => 0,
+        };
         self.materials.grow_and_set(
             slot,
             GpuMaterial {
@@ -203,7 +251,9 @@ impl AssetState {
                 emissive,
                 metallic: material.metallic.clamp(0.0, 1.0),
                 reflectance: material.reflectance,
-                _padding: Vec3::ZERO,
+                alpha: LinearRgba::from(material.base_color).alpha,
+                blend: if blend == BLEND_NONE { blend } else { blend | culled_faces },
+                clearcoat: material.clearcoat.clamp(0.0, 1.0),
             },
         );
 
@@ -212,7 +262,15 @@ impl AssetState {
         } else {
             self.emissive_materials.remove(&material_id)
         };
-        if !was_resolved || was_emissive != is_emissive {
+        // RENZORA PATCH: a material turning see-through, or back, moves its
+        // instances between ray masks, which they pick up when re-resolved.
+        let is_see_through = blend != BLEND_NONE;
+        let was_see_through = if is_see_through {
+            !self.see_through_materials.insert(material_id)
+        } else {
+            self.see_through_materials.remove(&material_id)
+        };
+        if !was_resolved || was_emissive != is_emissive || was_see_through != is_see_through {
             instances.invalidate_material(material_id);
         }
     }
@@ -251,6 +309,7 @@ impl AssetState {
         self.release_material_textures(material_id);
         self.material_textures.remove(&material_id);
         self.emissive_materials.remove(&material_id);
+        self.see_through_materials.remove(&material_id);
         instances.invalidate_material(material_id);
     }
 

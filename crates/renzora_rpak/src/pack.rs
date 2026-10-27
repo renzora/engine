@@ -463,20 +463,39 @@ where
                 data
             };
             // Binary GLBs aren't UTF-8 — pull out the JSON chunk so we can
-            // discover externally-referenced textures and .bin files.
+            // discover externally-referenced textures and .bin files. A model
+            // stored as `.rvg` carries the same JSON in its compressed scene.
+            let scene_json;
+            let is_rvg_model = file_key.ends_with(".rvg");
             let text: &str = if file_key.ends_with(".glb") {
                 let Some(json) = extract_glb_json(data) else {
                     continue;
                 };
                 json
+            } else if is_rvg_model {
+                // A sidecar `.rvg` (no scene) references nothing.
+                let Some(json) = renzora_rvg::scene_json(data) else {
+                    continue;
+                };
+                scene_json = json;
+                &scene_json
             } else if let Ok(t) = std::str::from_utf8(data) {
                 t
             } else {
                 continue;
             };
             let mut refs = extract_quoted_asset_paths(text);
+            if is_rvg_model {
+                refs.extend(bound_material_files(&file_key, text));
+            }
             if file_key.ends_with(".glb") || file_key.ends_with(".gltf") {
                 refs.extend(bound_material_files(&file_key, text));
+                // The model's virtual geometry, which nothing names: the
+                // renderer finds it by swapping the extension. Packed when
+                // present; a model without one renders as ordinary geometry.
+                if let Some((stem, _)) = file_key.rsplit_once('.') {
+                    refs.push(format!("{stem}.rvg"));
+                }
             }
             if is_svg_key(&file_key) {
                 // XML allows single-quoted attributes, and Inkscape and
@@ -1168,10 +1187,11 @@ const ASSET_EXTENSIONS: &[&str] = &[
     // Renzora baked textures (pre-mipmapped, GPU-compressed; referenced by
     // `.material` files as literal paths next to the source model).
     ".rmip",
-    // 3D models
+    // 3D models, and the virtual geometry built beside them.
     ".glb",
     ".gltf",
     ".bin",
+    ".rvg",
     // Audio
     ".ogg",
     ".wav",
@@ -1815,6 +1835,76 @@ mod tests {
         );
         // The script itself is not packed — it ships as compiled code.
         assert!(!keys.iter().any(|k| k.ends_with(".rs")), "{keys:?}");
+    }
+
+    /// A model's `.rvg` ships with it, though nothing names it; a model without
+    /// one packs without complaint.
+    #[test]
+    fn a_model_s_virtual_geometry_is_packed() {
+        // A GLB with only a JSON chunk. Every length here is under 128, so the
+        // whole file is ASCII and fits the helper's text contents.
+        let json = r#"{"asset":{"version":"2.0"}}  "#;
+        let mut glb = Vec::new();
+        glb.extend_from_slice(b"glTF");
+        glb.extend_from_slice(&2u32.to_le_bytes());
+        glb.extend_from_slice(&((12 + 8 + json.len()) as u32).to_le_bytes());
+        glb.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        glb.extend_from_slice(b"JSON");
+        glb.extend_from_slice(json.as_bytes());
+        let glb = String::from_utf8(glb).unwrap();
+        let p = TempProject::new(
+            "rvg_refs",
+            &[
+                ("project.toml", "main_scene = \"scenes/level.bsn\"\n"),
+                (
+                    "scenes/level.bsn",
+                    "entity 1 {\n \"models/a.glb\"\n}\nentity 2 {\n \"models/b.glb\"\n}\n",
+                ),
+                ("models/a.glb", &glb),
+                ("models/a.rvg", "RVG1 virtual geometry"),
+                ("models/b.glb", &glb),
+            ],
+        );
+        let keys = referenced_keys(&p.0).unwrap();
+        assert!(keys.iter().any(|k| k == "models/a.rvg"), "{keys:?}");
+        assert!(keys.iter().any(|k| k == "models/b.glb"), "{keys:?}");
+        assert!(!keys.iter().any(|k| k == "models/b.rvg"), "{keys:?}");
+    }
+
+    /// A model stored as `.rvg` ships with what its scene references: its
+    /// textures, and the `.material` files its meshes are bound to by name.
+    #[test]
+    fn a_model_stored_as_rvg_packs_what_it_references() {
+        let json = r#"{"asset":{"version":"2.0"},"images":[{"uri":"textures/wall.rmip"}],"materials":[{"name":"Wall"}]}"#;
+        let mut scene = Vec::new();
+        scene.extend_from_slice(b"glTF");
+        scene.extend_from_slice(&2u32.to_le_bytes());
+        scene.extend_from_slice(&((12 + 8 + json.len()) as u32).to_le_bytes());
+        scene.extend_from_slice(&(json.len() as u32).to_le_bytes());
+        scene.extend_from_slice(b"JSON");
+        scene.extend_from_slice(json.as_bytes());
+        let rvg = renzora_rvg::RvgFile {
+            scene: Some(std::sync::Arc::new(scene)),
+            ..Default::default()
+        };
+        let p = TempProject::new(
+            "rvg_model_refs",
+            &[
+                ("project.toml", "main_scene = \"scenes/level.bsn\"\n"),
+                ("scenes/level.bsn", "entity 1 {\n \"models/statue/statue.rvg\"\n}\n"),
+                ("models/statue/textures/wall.rmip", "texture"),
+                ("models/statue/materials/Wall.material", "{}"),
+            ],
+        );
+        std::fs::write(p.0.join("models/statue/statue.rvg"), rvg.to_bytes()).unwrap();
+        let keys = referenced_keys(&p.0).unwrap();
+        for want in [
+            "models/statue/statue.rvg",
+            "models/statue/textures/wall.rmip",
+            "models/statue/materials/Wall.material",
+        ] {
+            assert!(keys.iter().any(|k| k == want), "{want} not packed: {keys:?}");
+        }
     }
 
     /// The explicit selection packs exactly what it is given, and nothing else.

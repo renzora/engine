@@ -31,7 +31,7 @@ fn load_things(asset_server: Res<AssetServer>) {
 
 Paths are **project-relative** (e.g. `models/player.glb`) — the custom asset reader resolves them against the archive or project directory (see below). When the last strong handle to an asset is dropped, Bevy queues it for unloading.
 
-> Only `.glb`/`.gltf` meshes load directly at runtime. Every other 3D format is converted to GLB at **import time** — there is no runtime FBX/OBJ/USD loader.
+> Only `.rvg`, `.glb` and `.gltf` models load at runtime. Every 3D format is converted at **import time** and stored as `.rvg`; there is no runtime FBX/OBJ/USD loader. An `.rvg` model loads as a `Gltf`, with the same labels a `.glb` has (`models/player.rvg#Scene0`), so code written for `.glb` paths works on it unchanged. See [Virtual Geometry](../rendering/virtual-geometry.md).
 
 ## Asset registry — a metadata-only index
 
@@ -53,7 +53,7 @@ Files are classified by lower-cased extension into one of nine coarse `AssetKind
 
 | `AssetKind` | Extensions matched |
 |---|---|
-| `Model` | `glb`, `gltf`, `obj`, `fbx`, `usd`, `usda`, `usdc`, `usdz`, `abc`, `dae`, `blend` |
+| `Model` | `rvg`, `glb`, `gltf`, `obj`, `fbx`, `usd`, `usda`, `usdc`, `usdz`, `abc`, `dae`, `blend` |
 | `Texture` | `png`, `jpg`, `jpeg`, `bmp`, `tga`, `webp`, `hdr`, `exr` |
 | `Material` | `material`, `material_bp` |
 | `Scene` | `scene` |
@@ -97,11 +97,11 @@ This is what lets the same code path serve assets from a packed `.rpak` in a shi
 
 ## Importing 3D models
 
-`renzora_import` accepts **14** model extensions (the importer list is larger than the runtime-loadable list). Everything except glTF is converted to GLB and written into the project; the engine then loads the resulting `.glb` at runtime.
+`renzora_import` accepts **14** model extensions (the importer list is larger than the runtime-loadable list). Every format is first converted to GLB, which is what the import window previews and what animations and materials are extracted from. When the import is committed, that GLB is built into an `.rvg` model (its scene plus its virtual geometry, `renzora_import::model_file`) and only the `.rvg` is written into the project. A GLB that cannot be built (no triangles to convert, say) is written as a `.glb` instead, which still loads.
 
 | Extension(s) | Format | Import path |
 |---|---|---|
-| `glb`, `gltf` | glTF 2.0 | Loaded directly — no conversion |
+| `glb`, `gltf` | glTF 2.0 | Optimized as GLB, then stored as `.rvg` |
 | `obj` | Wavefront OBJ | Native converter → GLB |
 | `stl` | STL | Native converter → GLB |
 | `ply` | PLY | Native converter → GLB |
@@ -986,14 +986,17 @@ pipeline's own output rather than a separate analysis:
 Findings only report. Nothing in the findings list changes how a file was
 converted — to change that, adjust the settings and let the window reconvert.
 
-The public surface (`renzora_import`) includes `detect_format`, `supported_extensions`, `ModelFormat`, `convert_to_glb` / `convert_to_glb_with_progress`, `ImportSettings`, `UpAxis`, `optimize_glb`, `compact_glb`, `prune_glb` / `PruneSpec` (drop nodes, meshes or surfaces from a converted GLB and collect what that orphans), and `inspect_glb` / `GlbStats` (a structural summary of a converted GLB, read from its JSON without loading it), plus the `extract_animations_from_*` helpers.
+The public surface (`renzora_import`) includes `detect_format`, `supported_extensions`, `ModelFormat`, `convert_to_glb` / `convert_to_glb_with_progress`, `ImportSettings`, `UpAxis`, `optimize_glb`, `compact_glb`, `prune_glb` / `PruneSpec` (drop nodes, meshes or surfaces from a converted GLB and collect what that orphans), and `inspect_glb` / `GlbStats` (a structural summary of a converted GLB, read from its JSON without loading it), `model_file` (a converted GLB as the bytes and extension to store: an `.rvg` model, or the GLB itself if it cannot be built), plus the `extract_animations_from_*` helpers.
 
 ```rust
 use renzora_import::{detect_format, convert_to_glb, ImportSettings};
 
 if let Some(format) = detect_format(path) {
-    // Anything that isn't already GLB/glTF gets baked to a .glb beside it.
+    // Every format becomes a GLB first...
     convert_to_glb(path, &output_glb, &ImportSettings::default())?;
+    // ...which is then stored as the model file, normally an `.rvg`.
+    let (bytes, ext) = renzora_import::model_file(&std::fs::read(&output_glb)?);
+    std::fs::write(output_glb.with_extension(ext), bytes)?;
 }
 ```
 

@@ -222,6 +222,9 @@ fn write_sparse_buffers(
     if bindings.tlas.uses_raw_build() {
         instances.blas_refs.grow(1);
         instances.blas_refs.write_buffers(device, queue);
+        // RENZORA PATCH: the ray masks the setup pass writes beside them.
+        instances.masks.grow(1);
+        instances.masks.write_buffers(device, queue);
     }
 
     let lights = &mut bindings.lights;

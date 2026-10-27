@@ -73,6 +73,10 @@ struct SolariLightingUniforms {
     world_cache_position_lod_scale: f32,
     frame_rng: u32,
     reset: u32,
+    /// RENZORA PATCH: written 0 here every frame; the diagnostics set it on the
+    /// views they count rays for (`debug::prepare_solari_debug`).
+    debug_flags: u32,
+    padding: [u32; 3],
 }
 
 impl SolariLightingUniforms {
@@ -90,6 +94,8 @@ impl SolariLightingUniforms {
             world_cache_position_lod_scale: settings.world_cache_position_lod_scale,
             frame_rng: frame_count.wrapping_mul(5782582),
             reset: (settings.reset || force_reset) as u32,
+            debug_flags: 0,
+            padding: [0; 3],
         }
     }
 }
@@ -120,6 +126,10 @@ pub struct SolariLightingResources {
     pub view_size: UVec2,
     /// RENZORA PATCH: the built-in denoiser's buffers. See denoise.wesl.
     pub denoiser: SolariDenoiserResources,
+    /// RENZORA PATCH: the diagnostics' counters (debug_layout.wesl). Always
+    /// there, because the lighting passes bind it, but only written to while a
+    /// `SolariDebug` asks.
+    pub debug_counters: Buffer,
 }
 
 /// RENZORA PATCH: per-view state of the built-in denoiser (denoise.wesl).
@@ -220,9 +230,10 @@ fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> 
 
 /// RENZORA PATCH: advance the denoiser one frame and upload its state. History
 /// is unusable on a frame Solari resets, on the frame the resources were made,
-/// and on the first frame after the denoiser was off.
-fn update_denoiser(render_queue: &RenderQueue, denoiser: &SolariDenoiserResources, settings: &SolariLighting, reset: bool) {
-    if !settings.denoise {
+/// and on the first frame after the denoiser was off, whether switched off or
+/// standing aside for DLSS.
+fn update_denoiser(render_queue: &RenderQueue, denoiser: &SolariDenoiserResources, active: bool, reset: bool) {
+    if !active {
         denoiser.frame.store(0, Ordering::Relaxed);
         return;
     }
@@ -254,6 +265,7 @@ pub fn prepare_solari_lighting_resources(
         Option<&SolariLightingResources>,
         Option<&MainPassResolutionOverride>,
         Has<Dlss<DlssRayReconstructionFeature>>,
+        Has<ViewDlssRayReconstructionTextures>,
     )>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
@@ -264,6 +276,8 @@ pub fn prepare_solari_lighting_resources(
         #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
         let (entity, camera, solari_lighting, solari_lighting_resources, resolution_override) =
             query_item;
+        #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
+        let has_dlss_rr = false;
         #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
         let (
             entity,
@@ -272,7 +286,12 @@ pub fn prepare_solari_lighting_resources(
             solari_lighting_resources,
             resolution_override,
             has_dlss_rr,
+            has_dlss_rr_textures,
         ) = query_item;
+        // RENZORA PATCH: the built-in denoiser steps aside while DLSS Ray
+        // Reconstruction denoises (see the node), and must start over when it
+        // takes back over: its history is from before DLSS was switched on.
+        let denoiser_active = solari_lighting.denoise && !has_dlss_rr;
 
         let Some(mut view_size) = camera.physical_viewport_size else {
             continue;
@@ -297,8 +316,18 @@ pub fn prepare_solari_lighting_resources(
             update_denoiser(
                 &render_queue,
                 &solari_lighting_resources.denoiser,
-                solari_lighting,
+                denoiser_active,
                 uniforms.reset != 0,
+            );
+            #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
+            sync_dlss_rr_textures(
+                &mut commands,
+                &render_device,
+                entity,
+                view_size,
+                has_dlss_rr,
+                has_dlss_rr_textures,
+                false,
             );
             continue;
         }
@@ -355,7 +384,7 @@ pub fn prepare_solari_lighting_resources(
         });
 
         let denoiser = create_denoiser_resources(&render_device, view_size);
-        update_denoiser(&render_queue, &denoiser, solari_lighting, true);
+        update_denoiser(&render_queue, &denoiser, denoiser_active, true);
 
         commands.entity(entity).insert(SolariLightingResources {
             constants,
@@ -366,10 +395,58 @@ pub fn prepare_solari_lighting_resources(
             world_cache_active_cells_dispatch,
             view_size,
             denoiser,
+            debug_counters: render_device.create_buffer(&BufferDescriptor {
+                label: Some("solari_debug_counters"),
+                size: super::debug::DEBUG_COUNTERS_SIZE,
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
         });
 
         #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
-        if has_dlss_rr {
+        sync_dlss_rr_textures(
+            &mut commands,
+            &render_device,
+            entity,
+            view_size,
+            has_dlss_rr,
+            has_dlss_rr_textures,
+            true,
+        );
+    }
+}
+
+/// RENZORA PATCH: give a view DLSS Ray Reconstruction's guide textures exactly
+/// while it has DLSS RR, every frame rather than only when the view's other
+/// resources are rebuilt.
+///
+/// Upstream made them only alongside the rest, which are rebuilt only when the
+/// view changes size, and never took them away. Switching DLSS off at an
+/// unchanged size (DLAA renders at full size, so always) left them on the view,
+/// and the node reads their presence as "DLSS is denoising": the built-in
+/// denoiser stood aside, DLSS no longer ran, and the raw image reached the
+/// screen. Switching DLSS on later at an unchanged size never made them, so DLSS
+/// had nothing to read.
+#[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
+fn sync_dlss_rr_textures(
+    commands: &mut Commands,
+    render_device: &RenderDevice,
+    entity: Entity,
+    view_size: UVec2,
+    wanted: bool,
+    present: bool,
+    resized: bool,
+) {
+    if !wanted {
+        if present {
+            commands.entity(entity).remove::<ViewDlssRayReconstructionTextures>();
+        }
+        return;
+    }
+    if present && !resized {
+        return;
+    }
+    {
             let diffuse_albedo = render_device.create_texture(&TextureDescriptor {
                 label: Some("solari_lighting_diffuse_albedo"),
                 size: view_size.to_extents(),
@@ -457,6 +534,5 @@ pub fn prepare_solari_lighting_resources(
                         default_view: specular_motion_vectors_view,
                     },
                 });
-        }
     }
 }

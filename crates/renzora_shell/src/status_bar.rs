@@ -470,6 +470,46 @@ fn status_snapshot_right(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right))
 }
 
+/// WCAG contrast a status segment's text must reach against the bar.
+const MIN_CONTRAST: f32 = 4.5;
+
+/// `color`, pushed toward black (on a light bar) or white (on a dark one) just
+/// far enough to read against `bg`.
+///
+/// A plugin hands its segment a fixed RGB, and nearly every plugin picked it
+/// against the dark theme: a pale green FPS counter or a light grey memory
+/// readout is unreadable on the light theme's white bar. Plugins cannot see the
+/// palette, so the host is the one place this can be fixed for all of them at
+/// once. Mixing toward black or white keeps the hue, so a green that means "ok"
+/// stays green; a color that already reads is returned untouched.
+fn legible(color: (u8, u8, u8), bg: (u8, u8, u8)) -> (u8, u8, u8) {
+    fn lum((r, g, b): (u8, u8, u8)) -> f32 {
+        let ch = |c: u8| {
+            let c = c as f32 / 255.0;
+            if c <= 0.03928 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+    }
+    fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f32 {
+        let (la, lb) = (lum(a), lum(b));
+        (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+    }
+    if contrast(color, bg) >= MIN_CONTRAST {
+        return color;
+    }
+    let target = if lum(bg) > 0.5 { 0.0 } else { 255.0 };
+    let mix = |c: u8, t: f32| (c as f32 + (target - c as f32) * t).round() as u8;
+    let mut out = color;
+    for step in 1..=10 {
+        let t = step as f32 / 10.0;
+        out = (mix(color.0, t), mix(color.1, t), mix(color.2, t));
+        if contrast(out, bg) >= MIN_CONTRAST {
+            break;
+        }
+    }
+    out
+}
+
 fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> Entity {
     match row {
         StatusRow::Label(text, color) => commands
@@ -489,7 +529,7 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                 })
                 .id();
             let mut kids = Vec::new();
-            let color = (s.color[0], s.color[1], s.color[2]);
+            let color = legible((s.color[0], s.color[1], s.color[2]), window_bg());
             if !s.icon.is_empty() {
                 let glyph = renzora_ember::font::icon_glyph(&s.icon)
                     .unwrap_or_else(|| s.icon.chars().next().unwrap_or(' '));

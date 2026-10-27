@@ -29,13 +29,17 @@ enable wgpu_ray_query;
 // (`denoise.wesl`). Each is demodulated by its material factor
 // (`denoise_utils::demodulation_factors`) and exposed. Appended after every other
 // binding of the layout, so their indices differ between the two layouts.
+// RENZORA PATCH: the diagnostics' counters (`debug_layout.wesl`): rays traced
+// per pass, and the per-frame statistics the debug pass gathers.
 @if(RESTIR) {
 @group(1) @binding(14) var noisy_diffuse: texture_storage_2d<rgba16float, read_write>;
 @group(1) @binding(15) var noisy_specular: texture_storage_2d<rgba16float, read_write>;
+@group(1) @binding(16) var<storage, read_write> debug_counters: array<atomic<u32>>;
 }
 @if(!RESTIR) {
 @group(1) @binding(10) var noisy_diffuse: texture_storage_2d<rgba16float, read_write>;
 @group(1) @binding(11) var noisy_specular: texture_storage_2d<rgba16float, read_write>;
+@group(1) @binding(12) var<storage, read_write> debug_counters: array<atomic<u32>>;
 }
 
 @if(DLSS_RR_GUIDE_BUFFERS) {
@@ -68,6 +72,12 @@ struct SolariLightingSettings {
     world_cache_position_lod_scale: f32,
     frame_rng: u32,
     reset: u32,
+    /// RENZORA PATCH: `DEBUG_COUNT_RAYS` while the diagnostics want ray counts.
+    /// Padded to the 16 bytes a uniform struct is sized in.
+    debug_flags: u32,
+    padding_a: u32,
+    padding_b: u32,
+    padding_c: u32,
 }
 
 /// Don't adjust the size of this struct without also adjusting `prepare::RESOLVED_LIGHT_SAMPLE_STRUCT_SIZE`.

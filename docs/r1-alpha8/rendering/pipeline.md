@@ -282,6 +282,8 @@ write one shared `ResolvedGraphicsQuality` resource:
 mode = "deferred"
 graphics_quality = "Medium"   # Low | Medium | High
 render_scale = 1.0            # 3D resolution as a fraction of the logical window
+virtual_geometry = true       # see Virtual Geometry
+virtual_geometry_budget_mb = 512   # GPU memory streamed virtual geometry may use
 ```
 
 ### The integrated-GPU hint

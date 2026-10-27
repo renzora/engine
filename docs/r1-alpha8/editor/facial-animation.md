@@ -23,7 +23,7 @@ Most heads arrive with no skeleton and no blend shapes: a scan, a sculpt, a bust
    A head with no eye meshes, such as a photo scan whose eyes are painted on the skin, asks for a fifth point: the middle of either eye (the other is mirrored). The jaw, lips, mouth corners and brows work as usual; Blink and the Look sliders have no effect, since there is no eye under the lids to cover or turn.
 3. Click **Build Face Rig**.
 
-The model's file is rewritten with the rig in it, and every copy in your scenes updates. The original is kept beside it as `<name>.unrigged.glb`; **Remove Rig** puts it back, and rigging again starts from that original, so a face can be re-rigged with better points. To fine-tune how the face follows its bones, paint it in [Skin mode](/docs/r1-alpha8/editor/rigging#skin-how-the-mesh-follows-the-bones).
+The model's file is rewritten with the rig in it, and every copy in your scenes updates. The original is kept beside it as `<name>.unrigged.rvg` (`.unrigged.glb` for a model stored as `.glb`); **Remove Rig** puts it back, and rigging again starts from that original, so a face can be re-rigged with better points. To fine-tune how the face follows its bones, paint it in [Skin mode](/docs/r1-alpha8/editor/rigging#skin-how-the-mesh-follows-the-bones).
 
 ## Expressions
 

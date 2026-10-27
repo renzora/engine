@@ -99,9 +99,18 @@ fn pipelines() -> Vec<Pipeline> {
         Pipeline { file: "realtime/world_cache_update", flags: &[], numeric: &[] },
         Pipeline { file: "realtime/world_cache_update", flags: &["WORLD_CACHE_QUERY_ATOMIC_MAX_LIFETIME"], numeric: &[] },
         Pipeline { file: "realtime/denoise", flags: &["DENOISE_TEMPORAL"], numeric: &[] },
-        Pipeline { file: "realtime/denoise", flags: &["DENOISE_ATROUS", "DENOISE_FEEDBACK"], numeric: &[("DENOISE_STEP", 1)] },
+        Pipeline { file: "realtime/denoise", flags: &["DENOISE_ATROUS"], numeric: &[("DENOISE_STEP", 1)] },
         Pipeline { file: "realtime/denoise", flags: &["DENOISE_ATROUS"], numeric: &[("DENOISE_STEP", 16)] },
         Pipeline { file: "realtime/denoise", flags: &["DENOISE_COMPOSITE"], numeric: &[] },
+        // See-through surfaces, with and without ReSTIR's bind group.
+        Pipeline { file: "realtime/transparent", flags: &["RESTIR"], numeric: &[] },
+        Pipeline { file: "realtime/transparent", flags: &[], numeric: &[] },
+        // The diagnostics, with and without ReSTIR's reservoirs.
+        Pipeline { file: "realtime/debug", flags: &["RESTIR"], numeric: &[] },
+        Pipeline { file: "realtime/debug", flags: &[], numeric: &[] },
+        // Not a realtime pipeline, but it shares the traced scene's shaders,
+        // which the diagnostics' ray counting changes.
+        Pipeline { file: "pathtracer/pathtracer", flags: &[], numeric: &[] },
     ]
 }
 

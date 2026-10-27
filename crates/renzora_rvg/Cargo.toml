@@ -1,0 +1,41 @@
+[package]
+name = "renzora_rvg"
+version = "0.1.0"
+edition = "2021"
+description = "Renzora Virtual Geometry (.rvg): clustered meshes in a LOD DAG. The format and loader are always available; the builder is gated behind the `bake` feature so runtime crates do not compile meshoptimizer."
+
+[features]
+default = []
+# The builder: GLB in, `.rvg` out. Import-side and editor-side code turns this
+# on; the runtime only reads files and stays free of the C++ build.
+#
+# `meshopt` is declared under the non-wasm target block below, so on the web
+# `bake` compiles to a builder that reports itself unavailable. The editor on
+# the web never converts models; it loads `.rvg` files built on the desktop.
+bake = ["dep:meshopt", "dep:gltf", "dep:serde_json"]
+# Loading an `.rvg` as a model (`model.rs`): its scene through Bevy's glTF
+# loader. Whatever loads models turns this on; the virtual geometry renderer
+# alone does not need it.
+model = ["bevy/bevy_gltf"]
+
+[dependencies]
+bevy = { workspace = true }
+thiserror = "2"
+# The body of an `.rvg` is zstd. Pure Rust both ways, so a game reading one
+# (on any platform, the web included) compiles no C, and it is the version
+# Bevy's `zstd_rust` feature and `renzora_rpak` already pull in.
+ruzstd = "0.8"
+gltf = { version = "1.4", optional = true }
+# The scene a model `.rvg` carries is edited as plain JSON (`scene.rs`), so
+# extensions and extras pass through untouched.
+serde_json = { version = "1", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# 0.7 is the first release carrying meshoptimizer's cluster LOD builder
+# (`clod_build`): clusterization, partitioning into groups and simplification
+# with locked group borders in one call. That is the whole reason this crate
+# needs no METIS or other graph partitioner.
+meshopt = { version = "0.7", optional = true }
+
+[lints]
+workspace = true

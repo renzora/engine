@@ -1,7 +1,7 @@
 //! DLSS Ray Reconstruction on Solari cameras, with Renzora's own denoiser as
 //! the fallback everywhere it cannot run.
 //!
-//! [`SolariGi::dlss`] is on by default. Whether it takes effect is decided
+//! [`SolariGi::denoiser`] asks for DLSS by default (`Auto`). Whether it takes effect is decided
 //! here, once a frame per routed camera: only when the binary was built with
 //! the DLSS SDK (the `dlss` feature, which `cargo renzora` turns on by itself
 //! when it finds the SDK), and the GPU, driver and renderer report Ray
@@ -15,6 +15,19 @@
 
 use bevy::prelude::*;
 use renzora::DlssSupport;
+
+/// A query filter for cameras DLSS Ray Reconstruction is attached to. Matches
+/// nothing in a build without the `dlss` feature.
+#[cfg(feature = "dlss")]
+pub(crate) type DlssAttached =
+    With<bevy::anti_alias::dlss::Dlss<bevy::anti_alias::dlss::DlssRayReconstructionFeature>>;
+#[cfg(not(feature = "dlss"))]
+pub(crate) type DlssAttached = With<NoDlss>;
+
+/// Never inserted: what [`DlssAttached`] looks for where DLSS is not compiled.
+#[cfg(not(feature = "dlss"))]
+#[derive(Component)]
+pub(crate) struct NoDlss;
 
 pub(crate) fn register(app: &mut App) {
     #[cfg(feature = "dlss")]
@@ -55,7 +68,7 @@ mod imp {
     use bevy::anti_alias::taa::TemporalAntiAliasing;
     use bevy::prelude::*;
     use bevy::render::camera::{MipBias, TemporalJitter};
-    use bevy::solari::realtime::SolariLighting;
+    use bevy::solari::realtime::{SolariDebug, SolariDebugView, SolariLighting};
     use renzora::{DlssMode, DlssSupport, EffectRouting, SolariGi};
 
     type RayReconstruction = Dlss<DlssRayReconstructionFeature>;
@@ -108,6 +121,7 @@ mod imp {
             Has<TemporalJitter>,
             Has<MipBias>,
             Option<&Camera>,
+            Option<&SolariDebug>,
         )>,
         mut routing: ResMut<EffectRouting>,
     ) {
@@ -117,14 +131,18 @@ mod imp {
             .iter()
             .map(|(target, list)| {
                 let gi = list.iter().find_map(|&s| sources.get(s).ok());
-                (*target, gi.map(|gi| (gi.enabled && gi.dlss, gi.dlss_mode)))
+                (*target, gi.map(|gi| (gi.enabled && gi.denoiser_choice().wants_dlss(), gi.dlss_mode)))
             })
             .collect();
         for (target, wanted) in targets {
-            let Ok((solari, dlss, ours, taa, jitter, mip_bias, camera)) = cameras.get_mut(target)
+            let Ok((solari, dlss, ours, taa, jitter, mip_bias, camera, debug)) = cameras.get_mut(target)
             else {
                 continue;
             };
+            // A diagnostics view draws into the lighting's own output, which
+            // DLSS would then take for the image and denoise, so DLSS steps
+            // aside while one is shown and the built-in denoiser runs.
+            let showing_debug_view = debug.is_some_and(|d| d.view != SolariDebugView::None);
             let (want, mode) = wanted.unwrap_or((false, DlssMode::Auto));
             // DLSS takes its render size from the camera's output size, and an
             // output a few pixels across leaves it next to nothing to render
@@ -135,7 +153,7 @@ mod imp {
             let big_enough = camera
                 .and_then(|c| c.physical_target_size())
                 .is_some_and(|size| size.min_element() >= MIN_OUTPUT_SIZE);
-            let on = want && supported && solari && big_enough;
+            let on = want && supported && solari && big_enough && !showing_debug_view;
             match (on, dlss) {
                 (true, Some(mut dlss)) => {
                     let mode = quality(mode);

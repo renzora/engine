@@ -642,12 +642,12 @@ pub fn supports_scene_thumbnail(filename: &str) -> bool {
 }
 
 /// Returns `true` if the file has a rendered thumbnail available through
-/// the model thumbnail registry. GLBs and GLTFs are the supported model
-/// formats — others (FBX, OBJ, USD) fall through to the generic icon
-/// because Bevy doesn't load them.
+/// the model thumbnail registry. Those are the formats that load as a glTF
+/// model: `.rvg` (how imported models are stored), GLB and glTF. Others (FBX,
+/// OBJ, USD) fall through to the generic icon because Bevy doesn't load them.
 pub fn supports_model_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
-    matches!(ext.as_str(), "glb" | "gltf")
+    matches!(ext.as_str(), "rvg" | "glb" | "gltf")
 }
 
 /// System that checks loading state and, once a thumbnail's image lands,

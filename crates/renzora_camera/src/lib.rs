@@ -193,12 +193,23 @@ impl Default for CameraSettings {
 #[derive(Resource, Default)]
 struct CameraDragState {
     dragging: bool,
-    /// Where the pointer was when the drag began. The hidden cursor still
-    /// travels while the camera turns (it is only confined, since winit
-    /// cannot lock it on Windows), so it is warped back here on release
-    /// rather than reappearing wherever the look-drag left it.
+    /// Where the pointer was when the drag began, and where it is held. winit
+    /// cannot lock the cursor on Windows, only confine it, so the hidden
+    /// pointer would travel while the camera turns (the camera reads raw
+    /// mouse motion, which a held pointer does not stop). A single warp back
+    /// on release did not stick: pointer-moved events from the drag still
+    /// queued were applied the next frame and put the pointer back where the
+    /// drag had left it. So it is held here every frame of the drag, and for
+    /// [`RELEASE_HOLD_FRAMES`] after.
     anchor: Option<Vec2>,
+    /// Frames left to keep holding the pointer after the drag ended.
+    release_hold: u8,
 }
+
+/// Frames the pointer is still held at its anchor after a drag ends, long
+/// enough for the drag's last queued pointer-moved events to be applied and
+/// overridden.
+const RELEASE_HOLD_FRAMES: u8 = 3;
 
 /// Smoothed WASD velocity for the editor camera. Each frame the controller
 /// computes a target velocity from held keys and lerps the current velocity
@@ -946,6 +957,59 @@ fn camera_to_cursor(
     pivot_lock.0 = true;
 }
 
+/// Scroll steps toward a surface go no further than this share of the
+/// distance left to it, so each notch closes half the gap instead of carrying
+/// the camera through the mesh: the step size follows the orbit distance,
+/// which scrolling leaves unchanged, so close up it was as large as from
+/// across the room.
+const SURFACE_APPROACH_SHARE: f32 = 0.5;
+
+/// Closer than this to the surface ahead, scrolling steps at full size again,
+/// so a wall can still be scrolled through rather than approached forever.
+const SURFACE_PASS_THROUGH: f32 = 0.02;
+
+/// The scene surface straight ahead of the editor camera, which scroll zoom
+/// slows down for. Only the scene counts: editor helpers carry
+/// `HideInHierarchy` or draw on overlay layers, and a gizmo handle in the way
+/// must not stop the camera.
+#[derive(bevy::ecs::system::SystemParam)]
+struct SurfaceAhead<'w, 's> {
+    ray_cast: bevy::picking::mesh_picking::ray_cast::MeshRayCast<'w, 's>,
+    helpers: Query<
+        'w,
+        's,
+        (
+            Has<renzora_editor_framework::HideInHierarchy>,
+            Option<&'static bevy::camera::visibility::RenderLayers>,
+        ),
+    >,
+}
+
+impl SurfaceAhead<'_, '_> {
+    /// How far along `ray` the nearest scene surface is.
+    fn distance(&mut self, ray: Ray3d) -> Option<f32> {
+        let helpers = &self.helpers;
+        let scene_only = |entity: Entity| {
+            helpers.get(entity).is_ok_and(|(hidden, layers)| {
+                !hidden
+                    && layers.is_none_or(|l| l.intersects(&bevy::camera::visibility::RenderLayers::layer(0)))
+            })
+        };
+        let settings = bevy::picking::mesh_picking::ray_cast::MeshRayCastSettings::default().with_filter(&scene_only);
+        self.ray_cast.cast_ray(ray, &settings).first().map(|(_, hit)| hit.distance)
+    }
+}
+
+/// How far one scroll step of `step` toward a surface `clearance` away may
+/// go: capped near the surface, uncapped once all but touching it, and
+/// uncapped with nothing ahead.
+fn scroll_step_toward_surface(step: f32, clearance: Option<f32>) -> f32 {
+    match clearance {
+        Some(clearance) if clearance > SURFACE_PASS_THROUGH => step.min(clearance * SURFACE_APPROACH_SHARE),
+        _ => step,
+    }
+}
+
 fn camera_controller(
     mut orbit: ResMut<OrbitCameraState>,
     settings: Res<CameraSettings>,
@@ -957,12 +1021,13 @@ fn camera_controller(
     active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     time: Res<Time>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_button: Res<ButtonInput<MouseButton>>,
+    // Paired to stay within Bevy's sixteen system parameters.
+    (keyboard, mouse_button): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>),
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
     mut camera_query: Query<&mut Transform, With<EditorCamera>>,
     mut window_query: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
+    mut surface_ahead: SurfaceAhead,
 ) {
     // Don't touch cursor or process input during play mode
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
@@ -1018,7 +1083,14 @@ fn camera_controller(
 
     let look_speed = settings.look_sensitivity * 0.01 * slow_mult;
     let orbit_speed = settings.orbit_sensitivity * 0.01 * slow_mult;
-    let zoom_speed = settings.zoom_sensitivity * slow_mult * distance_mult;
+    // Scrolling moves the camera as flying does, so it takes the camera speed
+    // too (`[` / `]`, the toolbar): with only its own sensitivity, a camera
+    // slowed for fine work still lurched a full step per notch. Relative to
+    // the default speed, so an untouched setting scrolls as it always did.
+    let zoom_speed = settings.zoom_sensitivity
+        * (settings.move_speed / CameraSettings::default().move_speed)
+        * slow_mult
+        * distance_mult;
     let move_speed = settings.move_speed * slow_mult * distance_mult;
     let delta = time.delta_secs();
 
@@ -1104,12 +1176,25 @@ fn camera_controller(
     if (right_just_pressed || middle_just_pressed) && viewport_hovered {
         drag.dragging = true;
         drag.anchor = window_query.single().ok().and_then(|(w, _)| w.cursor_position());
+        drag.release_hold = 0;
         mouse_motion.clear();
     }
     if (right_just_released || middle_just_released) && drag.dragging {
         drag.dragging = false;
-        if let (Some(at), Ok((mut window, _))) = (drag.anchor.take(), window_query.single_mut()) {
-            window.set_cursor_position(Some(at));
+        drag.release_hold = RELEASE_HOLD_FRAMES;
+    }
+    // Hold the pointer at the anchor through the drag and briefly after it.
+    if drag.dragging || drag.release_hold > 0 {
+        if let (Some(at), Ok((mut window, _))) = (drag.anchor, window_query.single_mut()) {
+            if window.cursor_position() != Some(at) {
+                window.set_cursor_position(Some(at));
+            }
+        }
+        if !drag.dragging {
+            drag.release_hold -= 1;
+            if drag.release_hold == 0 {
+                drag.anchor = None;
+            }
         }
     }
 
@@ -1153,18 +1238,32 @@ fn camera_controller(
 
     let mut scroll_changed = false;
     if !tool_active {
-        for ev in scroll_events.read() {
+        let notches: Vec<f32> = scroll_events.read().map(|ev| ev.y).collect();
+        // `forward` points from the focus to the camera, so the view looks
+        // along its negation. One ray a frame, and only while scrolling in.
+        let forward = Vec3::new(
+            orbit.pitch.cos() * orbit.yaw.sin(),
+            orbit.pitch.sin(),
+            orbit.pitch.cos() * orbit.yaw.cos(),
+        );
+        let mut clearance = notches
+            .iter()
+            .any(|&y| y > 0.0)
+            .then(|| Dir3::new(-forward).ok())
+            .flatten()
+            .and_then(|view| surface_ahead.distance(Ray3d::new(orbit.calculate_position(), view)));
+        for y in notches {
+            let mut step = y * zoom_speed;
+            if step > 0.0 {
+                step = scroll_step_toward_surface(step, clearance);
+                clearance = clearance.map(|c| c - step);
+            }
             if pivot_lock.0 {
                 // Dolly: move the camera along the view ray by changing
                 // distance, leaving `focus` anchored.
-                orbit.distance = (orbit.distance - ev.y * zoom_speed).max(0.1);
+                orbit.distance = (orbit.distance - step).max(0.1);
             } else {
-                let forward = Vec3::new(
-                    orbit.pitch.cos() * orbit.yaw.sin(),
-                    orbit.pitch.sin(),
-                    orbit.pitch.cos() * orbit.yaw.cos(),
-                );
-                orbit.focus -= forward * ev.y * zoom_speed;
+                orbit.focus -= forward * step;
             }
             scroll_changed = true;
         }
@@ -1422,6 +1521,16 @@ fn goto_selected_camera(
 /// editor's conventions (seamless ortho↔perspective at the orbit distance,
 /// metre-scale FixedVertical ortho). Shared by the focused-camera updater and
 /// the secondary-viewport sync.
+/// How close to the editor camera geometry is still drawn, in metres. Bevy's
+/// default of 0.1 sliced the near side off anything small looked at up close:
+/// in a scene built at a tenth of real size, a car's panels vanished from a
+/// quarter of a metre away and the view went straight into its interior. Not
+/// tied to the orbit distance, since the mouse wheel moves the pivot forward
+/// rather than shortening the distance, which is how a close look is usually
+/// reached. Bevy's 3D depth is reverse-Z with an infinite far plane, so a near
+/// plane this close costs no visible depth precision.
+const EDITOR_NEAR_CLIP: f32 = 0.01;
+
 fn apply_projection(
     projection: &mut Projection,
     mode: ProjectionMode,
@@ -1435,11 +1544,13 @@ fn apply_projection(
                 *projection = Projection::Perspective(PerspectiveProjection {
                     fov,
                     aspect_ratio: aspect,
+                    near: EDITOR_NEAR_CLIP,
                     far: 100_000.0,
                     ..default()
                 });
             } else if let Projection::Perspective(ref mut persp) = *projection {
                 persp.aspect_ratio = aspect;
+                persp.near = EDITOR_NEAR_CLIP;
                 persp.far = 100_000.0;
                 persp.fov = fov;
             }
@@ -2055,5 +2166,33 @@ mod tests {
         ));
         world.run_system_once(resolve_editor_viewport_fov).unwrap();
         assert!(close(world.resource::<EditorViewportFov>().0, FRAC_PI_4));
+    }
+
+    /// Scrolling toward a surface closes half the gap a notch rather than
+    /// passing through it, steps as before when it is far away or there is
+    /// nothing ahead, and goes through once all but touching it.
+    #[test]
+    fn scrolling_slows_down_toward_a_surface() {
+        assert!(close(scroll_step_toward_surface(2.0, None), 2.0));
+        assert!(close(scroll_step_toward_surface(2.0, Some(100.0)), 2.0));
+        assert!(close(scroll_step_toward_surface(2.0, Some(1.0)), 0.5));
+        assert!(close(scroll_step_toward_surface(2.0, Some(0.01)), 2.0));
+    }
+
+    /// A close look at something small keeps its near side: the editor's
+    /// projection replaces Bevy's 0.1 m near plane, whether it builds the
+    /// projection or updates one already there.
+    #[test]
+    fn the_editor_camera_draws_geometry_a_few_centimetres_away() {
+        let mut built = Projection::Orthographic(OrthographicProjection::default_3d());
+        apply_projection(&mut built, ProjectionMode::Perspective, 1.0, 1.5, FRAC_PI_4);
+        let mut updated = Projection::Perspective(PerspectiveProjection::default());
+        apply_projection(&mut updated, ProjectionMode::Perspective, 1.0, 1.5, FRAC_PI_4);
+        for projection in [built, updated] {
+            let Projection::Perspective(perspective) = projection else {
+                panic!("a perspective projection");
+            };
+            assert!(perspective.near <= 0.02, "near plane at {} m", perspective.near);
+        }
     }
 }

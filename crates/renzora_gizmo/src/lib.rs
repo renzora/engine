@@ -37,6 +37,7 @@ pub mod modal_transform;
 mod picker_2d;
 mod picking;
 mod pivot;
+mod placement;
 mod ray;
 pub mod selection_visuals;
 mod shortcuts;

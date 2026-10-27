@@ -450,14 +450,34 @@ pub fn apply_exclusions(staged: &StagedImport) -> Vec<String> {
     pruned.dropped_materials
 }
 
+/// Turn the staged GLB into the file the model is stored as, inside the
+/// staging directory: its `.rvg`, or the GLB itself if that cannot be built
+/// (see `renzora_import::model_file`). Returns the stored file's extension.
+///
+/// Slow for a big model (seconds for a whole city block), so it runs on a
+/// background task between accepting and [`commit`]. It works in the staging
+/// directory, after the exclusions are applied, so what is built is exactly
+/// the model accepted, and no GLB ever lands in the project on the way.
+pub fn build_model_file(glb_path: &Path) -> std::io::Result<&'static str> {
+    let glb = std::fs::read(glb_path)?;
+    let (bytes, extension) = renzora_import::model_file(&glb);
+    let path = glb_path.with_extension(extension);
+    std::fs::write(&path, bytes)?;
+    if path != glb_path {
+        std::fs::remove_file(glb_path)?;
+    }
+    Ok(extension)
+}
+
 /// Accept a staged tree into the project: move the files, and hand back the
 /// `.material` events for the caller to fire once they are in place.
 ///
-/// Returns the committed `.glb` path so the caller can request a thumbnail.
-pub fn commit(staged: &StagedImport) -> std::io::Result<PathBuf> {
+/// Returns the committed model's path (stored as `extension`, see
+/// [`build_model_file`]) so the caller can request a thumbnail.
+pub fn commit(staged: &StagedImport, extension: &str) -> std::io::Result<PathBuf> {
     merge_move(&staged.staging_dir, &staged.final_dir)?;
     let _ = std::fs::remove_dir_all(&staged.staging_dir);
-    Ok(staged.final_dir.join(format!("{}.glb", staged.stem)))
+    Ok(staged.final_dir.join(format!("{}.{extension}", staged.stem)))
 }
 
 /// Throw a staged tree away. Best-effort: a tree that is already gone is not

@@ -106,7 +106,7 @@ impl AssetKind {
             return AssetKind::Other;
         };
         match ext.as_str() {
-            "glb" | "gltf" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae"
+            "rvg" | "glb" | "gltf" | "obj" | "fbx" | "usd" | "usda" | "usdc" | "usdz" | "abc" | "dae"
             | "blend" => AssetKind::Model,
             e if super::image_formats::is_image_extension(e) => AssetKind::Texture,
             "material" | "material_bp" => AssetKind::Material,

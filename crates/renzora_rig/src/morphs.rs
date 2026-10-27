@@ -323,7 +323,8 @@ pub fn write_targets(glb: &mut Glb, mesh: usize, targets: &[TargetEdit]) -> Resu
 /// Where a model's original is kept before its blend shapes are first edited.
 pub fn unshaped_path(path: &std::path::Path) -> std::path::PathBuf {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
-    path.with_file_name(format!("{stem}.unshaped.glb"))
+    let rvg = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("rvg"));
+    path.with_file_name(format!("{stem}.unshaped.{}", if rvg { "rvg" } else { "glb" }))
 }
 
 /// Edit a model file's blend shapes in place, keeping the file as it was
@@ -338,7 +339,7 @@ pub fn write_shapes(
     path: &std::path::Path,
     build: impl FnOnce(&Glb) -> Result<Vec<(usize, Vec<TargetEdit>)>, GlbError>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::read_model(path)?;
     let mut glb = Glb::parse(&bytes)?;
     let edits = build(&glb)?;
     for (mesh, targets) in &edits {
@@ -348,10 +349,7 @@ pub fn write_shapes(
     if !original.exists() {
         std::fs::copy(path, &original)?;
     }
-    let tmp = path.with_extension("shapes.tmp");
-    std::fs::write(&tmp, glb.to_bytes())?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
+    crate::write_model(path, &glb.to_bytes())
 }
 
 /// The sign per axis that takes positions as the engine loaded them to

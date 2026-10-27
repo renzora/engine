@@ -805,7 +805,7 @@ fn count_models(project: &CurrentProject) -> usize {
     // Same model extensions the asset browser recognises (renzora_asset_registry's
     // `AssetKind::Model`).
     const MODEL_EXTS: &[&str] = &[
-        "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend",
+        "rvg", "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend",
     ];
     count_files(&project.path, |ext| MODEL_EXTS.contains(&ext))
 }
@@ -818,7 +818,7 @@ fn count_assets(project: &CurrentProject) -> usize {
     // because it is a marketplace texture container, not something that loads
     // as an `Image` on every target.
     const ASSET_EXTS: &[&str] = &[
-        "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend",
+        "rvg", "glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae", "blend",
         "basis", "wav", "ogg", "mp3", "flac", "material", "particle", "anim", "lua", "wgsl",
         "wesl", "toml",
     ];

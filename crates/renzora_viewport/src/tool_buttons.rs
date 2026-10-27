@@ -252,7 +252,7 @@ pub(crate) fn update_tool_buttons(world: &mut World) {
     let mut rq = world.query::<(Entity, &ShelfRoot)>();
     let roots: Vec<(Entity, bool)> = rq
         .iter(world)
-        .map(|(e, r)| (e, any_visible(&r.buttons)))
+        .map(|(e, r)| (e, r.keep_open || any_visible(&r.buttons)))
         .collect();
     for (e, show) in roots {
         if let Some(mut node) = world.get_mut::<Node>(e) {
@@ -271,6 +271,9 @@ pub(crate) fn update_tool_buttons(world: &mut World) {
 #[derive(Component)]
 pub(crate) struct ShelfRoot {
     pub buttons: Vec<Entity>,
+    /// The shelf holds buttons that always apply (undo / redo), so it stays
+    /// open even when none of `buttons` is visible.
+    pub keep_open: bool,
 }
 
 pub(crate) fn tool_button_click(

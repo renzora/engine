@@ -70,7 +70,9 @@ The same two choices appear under **File** in the main menu, in the right-click 
 | Fonts | `ttf`, `otf` |
 | Scenes | `bsn` |
 
-Models are converted to `glb` on import. Everything else is copied in as it is.
+Models are stored as `.rvg` on import, whatever format they came in: one file holding the model and its [virtual geometry](/docs/r1-alpha8/rendering/virtual-geometry). It shows in the panel as a **Model** with a thumbnail, and is dragged into the scene like any model. Everything else is copied in as it is.
+
+A project from before models were stored as `.rvg` holds them as `.glb`, each with an `.rvg` beside it that the panel hides. **Convert Models to RVG...** in the command palette turns them into `.rvg` models and updates every scene that uses them.
 
 ## The toolbar
 

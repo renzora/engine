@@ -213,7 +213,8 @@ jobs:
             -p renzora_test_harness \
             -p renzora_postprocess \
             -p renzora_shader \
-            -p renzora_rmip
+            -p renzora_rmip \
+            -p renzora_virtual_geometry
 
   clippy:
     runs-on: ubuntu-latest

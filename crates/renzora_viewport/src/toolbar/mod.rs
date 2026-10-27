@@ -3,7 +3,7 @@
 //! One bar, built from clusters. The registry-driven tool buttons
 //! (Select / Move / Rotate / Scale, plus terrain and plugin tools), the view and
 //! mode dropdowns, the shapes menu, the snap pills, camera speed, and the
-//! Display / Gizmos / Snap / Camera dropdowns all live here; the session actions
+//! options menu (Display / Gizmos / Snap / Camera) all live here; the session actions
 //! (undo / redo / save) are built here and mounted by the editor shell in the top
 //! bar, because they are session-wide rather than viewport-wide.
 //!
@@ -16,8 +16,9 @@
 //! |---|---|
 //! | [`actions`] | Undo / redo / save / maximize, and the dock swap maximize drives |
 //! | [`view`] | View + Mode dropdowns, per-viewport view angle, World/Local, 2D/3D gating |
-//! | [`display`] | The Display, Gizmos and 2D Overlays dropdowns, and the grid rows |
-//! | [`camera`] | The Camera and Snap dropdowns, and every one-shot click they carry |
+//! | [`options`] | The options menu: one trigger, a submenu each for Display / Gizmos / Snap / Camera |
+//! | [`display`] | The Display and Gizmos rows, the 2D Overlays dropdown, and the grid rows |
+//! | [`camera`] | The Camera and Snap rows, and every one-shot click they carry |
 //! | [`snap`] | The inline snap pills and the camera-speed widget |
 //! | [`rows`] | The row builders every dropdown is assembled from |
 //! | [`tools`] | Filling the tool strip from `ToolbarRegistry` |
@@ -32,6 +33,7 @@ use renzora_ember::interaction::PASS_THROUGH;
 pub(crate) mod actions;
 pub(crate) mod camera;
 pub(crate) mod display;
+pub(crate) mod options;
 pub(crate) mod rows;
 pub(crate) mod shapes;
 pub(crate) mod snap;
@@ -52,13 +54,6 @@ pub(super) const BTN_H: f32 = 22.0;
 pub(super) fn col(c: renzora_theme::ThemeColor) -> Color {
     let [r, g, b, _a] = c.to_array();
     Color::srgb_u8(r, g, b)
-}
-
-/// The same colour as a raw `(r, g, b)`, for the helpers in
-/// [`crate::lit_accent`] that have to do arithmetic on it.
-pub(super) fn col_u8(c: renzora_theme::ThemeColor) -> (u8, u8, u8) {
-    let [r, g, b, _a] = c.to_array();
-    (r, g, b)
 }
 
 /// Slugify an option label for the shared `opt.<slug>` translation namespace:
@@ -206,17 +201,10 @@ pub(crate) fn header_groups(
     // Fixed gap (not a flex spacer) so the whole toolbar reads as one centered
     // cluster rather than splitting to the left/right edges.
     let center_gap = gap(commands, 12.0);
-    let display_dd = display::build_display_dropdown(commands, fonts);
-    // Per-gizmo visibility switches. Sits next to Display because the two are
-    // read together ("why can't I see X?"); 3D-only like Display, since the 2D
-    // view has its own single Gizmos switch in the Overlays dropdown.
-    let gizmos_dd = display::build_gizmos_dropdown(commands, fonts);
-    let snap_dd = camera::build_snap_dropdown(commands, fonts);
-    let camera_dd = camera::build_camera_dropdown(commands, fonts);
-    // The Display / Gizmos / Snap / Camera dropdowns are all 3D controls — hide in 2D.
-    for e in [display_dd, gizmos_dd, snap_dd, camera_dd] {
-        commands.entity(e).insert(ThreeDOnly);
-    }
+    // Display / Gizmos / Snap / Camera, as submenus of one menu. All 3D
+    // controls, so it hides in 2D, where the Overlays dropdown stands in.
+    let options_dd = options::build_options_menu(commands, fonts);
+    commands.entity(options_dd).insert(ThreeDOnly);
     // The old fixed gaps between clusters are gone: the toolbar row spaces its
     // children itself, and each group is announced by its grip.
     for e in [gap3, gap5, snap_gap, center_gap] {
@@ -233,10 +221,7 @@ pub(crate) fn header_groups(
         // rotate and scale snap are one setting read three ways, so they should
         // sit as tight together as `3D` and `Select` do.
         (group(commands, "hdr-snaps", 2.0, &[translate, rotate, scale]), "snaps"),
-        (
-            group(commands, "hdr-display", 2.0, &[display_dd, gizmos_dd, snap_dd, camera_dd]),
-            "display",
-        ),
+        (group(commands, "hdr-display", 2.0, &[options_dd]), "display"),
         (group(commands, "hdr-overlay-2d", 2.0, &[overlay_2d_dd]), "overlay_2d"),
     ]
 }
@@ -261,19 +246,18 @@ pub fn build_maximize(commands: &mut Commands, fonts: &EmberFonts, slot: usize) 
     btn
 }
 
-/// The session-action cluster: undo / redo / save.
+/// The session-action cluster: save.
 ///
 /// Built here but mounted by the **editor shell**, in the top bar beside the
-/// hamburger. They're session-wide, not viewport-wide — you can undo and save
-/// from a workspace that has no viewport in it at all — so the top bar is where
-/// they belong, and it's the one place in the editor that's always on screen.
-/// They've previously sat in the shared toolbar strip and in the viewport's own
-/// tool bar; the driver systems in [`register`] find every widget by component
-/// and aren't gated on the viewport panel, so where they're parented has never
-/// mattered to whether they work.
+/// hamburger. Saving is session-wide, not viewport-wide, so it stays on the one
+/// bar that's on screen in every workspace. Undo and redo used to sit beside it
+/// and moved to the viewport's tool shelf (see [`build_history_actions`]),
+/// where the hand already is while editing the scene; Ctrl+Z / Ctrl+Y and the
+/// Edit menu still reach them from any workspace. The driver systems in
+/// [`register`] find every widget by component and aren't gated on the
+/// viewport panel, so where they're parented has never mattered to whether
+/// they work.
 pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", BTN_W, BTN_H, SIDE_ICON);
-    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", BTN_W, BTN_H, SIDE_ICON);
     let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk", BTN_W, BTN_H, SIDE_ICON);
     let row = commands
         .spawn((
@@ -290,8 +274,18 @@ pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Ent
             Name::new("session-actions"),
         ))
         .id();
-    commands.entity(row).add_children(&[undo, redo, save]);
+    commands.entity(row).add_child(save);
     row
+}
+
+/// Undo and redo, sized for the viewport's tool shelf. Same `HeaderAction`
+/// buttons the top bar used to carry, so the existing click and enabled-state
+/// systems drive them unchanged.
+pub(crate) fn build_history_actions(commands: &mut Commands, fonts: &EmberFonts) -> [Entity; 2] {
+    [
+        action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", SIDE_BTN, SIDE_BTN, SIDE_ICON),
+        action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", SIDE_BTN, SIDE_BTN, SIDE_ICON),
+    ]
 }
 
 /// Build the toolbar strip overlaid flush on the primary viewport's top edge —
@@ -537,7 +531,6 @@ pub(crate) fn register(app: &mut App) {
             camera::header_click,
             rows::update_click_rows,
             rows::update_panel_buttons,
-            camera::update_camera_snap_triggers,
             crate::tool_buttons::tool_button_click,
             // Nested tuple: keeps the top-level system count within Bevy's
             // 20-element tuple limit for `add_systems`.
@@ -548,6 +541,7 @@ pub(crate) fn register(app: &mut App) {
                 view::update_space_toggle,
                 view::sanitize_mode_for_view,
                 view::update_two_d_only,
+                crate::tool_shelf::place_shelf,
             ),
         )
             .run_if(in_state(SplashState::Editor)),

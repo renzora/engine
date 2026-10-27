@@ -7,6 +7,8 @@ description = "Editor-only inspector for renzora_solari. Registered via renzora:
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+# The Ray Tracing panel (panel.rs).
+renzora_ember = { path = "../../renzora_ember" }
 
 [lints]
 workspace = true

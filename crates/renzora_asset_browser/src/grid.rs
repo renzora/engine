@@ -176,8 +176,10 @@ fn read_entries(folder: &Path, search: &str) -> Vec<Entry> {
     let Some(list) = renzora_webfs::list_dir(folder) else {
         return Vec::new();
     };
+    let names: std::collections::HashSet<String> = list.iter().map(|e| e.name.clone()).collect();
     list.into_iter()
         .filter(|e| !is_hidden_name(&e.name))
+        .filter(|e| !crate::state::is_sidecar(&e.name, |sibling| names.contains(sibling)))
         .filter(|e| search.is_empty() || e.name.to_lowercase().contains(search))
         .map(|e| Entry {
             path: folder.join(&e.name),
@@ -196,7 +198,7 @@ fn read_entries(folder: &Path, search: &str) -> Vec<Entry> {
         for e in rd.flatten() {
             let path = e.path();
             let name = e.file_name().to_string_lossy().to_string();
-            if is_hidden_name(&name) {
+            if is_hidden_name(&name) || crate::state::is_sidecar(&name, |sibling| folder.join(sibling).exists()) {
                 continue;
             }
             if !search.is_empty() && !name.to_lowercase().contains(search) {

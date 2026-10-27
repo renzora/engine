@@ -1406,6 +1406,7 @@ fn assemble_graph_material(
     #[cfg(feature = "editor")]
     authored_sources().insert(shader_uuid, fragment_shader.clone());
     let writes_gbuffer = super::codegen::supports_deferred(&fragment_shader);
+    let virtual_geometry = super::codegen::supports_virtual_geometry(&fragment_shader);
     let shader = renzora::shader_source::shader(
         fragment_shader,
         format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
@@ -1419,6 +1420,7 @@ fn assemble_graph_material(
     };
     mat.extension.shader_uuid = Some(shader_uuid);
     mat.extension.writes_gbuffer = writes_gbuffer;
+    mat.extension.virtual_geometry = virtual_geometry;
 
     // Fill the base with as much of the graph as a StandardMaterial can hold,
     // before the authoritative per-material state below overwrites the fields

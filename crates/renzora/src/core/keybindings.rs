@@ -40,6 +40,8 @@ pub enum EditorAction {
     Deselect,
     /// Teleport the selected entity to the point under the mouse cursor.
     MoveSelectionToCursor,
+    /// Lower each selected entity onto the surface beneath it.
+    DropToSurface,
 
     // Edit operations
     Undo,
@@ -141,6 +143,7 @@ impl EditorAction {
             EditorAction::DuplicateAndMove => "Duplicate & Move",
             EditorAction::Deselect => "Deselect",
             EditorAction::MoveSelectionToCursor => "Move Selection to Cursor",
+            EditorAction::DropToSurface => "Drop to Surface",
             EditorAction::Undo => "Undo",
             EditorAction::Redo => "Redo",
             EditorAction::CreateNode => "Create Node",
@@ -236,6 +239,7 @@ impl EditorAction {
             | EditorAction::DuplicateAndMove
             | EditorAction::Deselect
             | EditorAction::MoveSelectionToCursor
+            | EditorAction::DropToSurface
             | EditorAction::SelectAll
             | EditorAction::Rename
             | EditorAction::HideSelected
@@ -322,6 +326,7 @@ impl EditorAction {
             EditorAction::DuplicateAndMove,
             EditorAction::Deselect,
             EditorAction::MoveSelectionToCursor,
+            EditorAction::DropToSurface,
             EditorAction::Undo,
             EditorAction::Redo,
             EditorAction::CreateNode,
@@ -600,6 +605,10 @@ impl Default for KeyBindings {
         bindings.insert(
             EditorAction::MoveSelectionToCursor,
             KeyBinding::new(KeyCode::KeyV),
+        );
+        bindings.insert(
+            EditorAction::DropToSurface,
+            KeyBinding::new(KeyCode::PageDown),
         );
         bindings.insert(EditorAction::ResetCamera, KeyBinding::new(KeyCode::Home));
         bindings.insert(EditorAction::FrameAll, KeyBinding::new(KeyCode::KeyA));

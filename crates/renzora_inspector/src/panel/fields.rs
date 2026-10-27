@@ -90,7 +90,17 @@ pub(super) fn build_field_row(
         return row;
     }
     let label = field_label_loc(field.name);
-    renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value)
+    let row = renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value);
+    // A field whose value reads as `None` is not applicable right now, and
+    // `collect` leaves it out of a section it builds. One that stops applying
+    // after the section is built (Solari's DLSS Mode, once the denoiser is
+    // switched away from DLSS) has to go too, or it stays on screen with its
+    // control fallen back to a default.
+    let (get_fn, cid) = (field.get_fn.clone(), field.cid);
+    bind_display(commands, row, move |w| {
+        tracked_read(w, entity, cid, |world| get_fn(world, entity)).is_some()
+    });
+    row
 }
 
 /// Whether a field carries an editable value worth a reset button. `Button` is a

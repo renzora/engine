@@ -196,7 +196,13 @@ impl LightState {
             .filter(|entity| !live_directional_lights.contains(entity))
             .collect();
         for entity in stale {
-            self.directional_slots.remove(&entity);
+            // RENZORA PATCH: zero the freed slot. The see-through pass lights a
+            // sheer surface from every directional light by walking this buffer
+            // (`gather_diffuse` in transparent.wesl), and a removed sun left in
+            // it would go on lighting curtains.
+            if let Some(slot) = self.directional_slots.remove(&entity) {
+                self.directional_lights.grow_and_set(slot, GpuDirectionalLight::default());
+            }
             self.remove_light(LightSourceId::Directional(entity));
         }
 

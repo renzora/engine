@@ -117,7 +117,7 @@ There is **no `renzora pack` / `renzora unpack` / `renzora keygen` CLI** — tho
 
 Internally the export pipeline:
 
-1. Runs `pack_project_with_progress` — a BFS that starts from `project.toml`'s `main_scene` and `icon`, then follows quoted asset paths it finds inside scenes, scripts, materials, and GLB JSON chunks. Only transitively-referenced files are packed. (`project.toml`/`project.ron` are always included; the editor-only `[editor]` section is stripped from the packed `project.toml`.)
+1. Runs `pack_project_with_progress`, a BFS that starts from `project.toml`'s `main_scene` and `icon`, then follows quoted asset paths it finds inside scenes, scripts, materials, GLB JSON chunks and the scene of an `.rvg` model (with the `.material` files its materials bind to). Only transitively-referenced files are packed. (`project.toml`/`project.ron` are always included; the editor-only `[editor]` section is stripped from the packed `project.toml`.)
 2. Calls `strip_for_runtime()` to drop editor-only components and `.camera.ron` sidecars from scene RON.
 3. Optionally runs `optimize_meshes` and `generate_mesh_lods` over the `.glb` entries.
 4. Writes the result via `write_to_file` (separate) or `append_to_binary` (single).

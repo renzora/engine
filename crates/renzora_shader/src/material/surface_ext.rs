@@ -164,6 +164,12 @@ pub struct SurfaceGraphExt {
     /// does forward. When it can't, that pass falls back to the base
     /// `StandardMaterial` approximation.
     pub writes_gbuffer: bool,
+
+    /// Whether the compiled shader can also shade virtual geometry
+    /// (`codegen::supports_virtual_geometry`). Read by
+    /// `renzora_virtual_geometry` when deciding which meshes to convert; it
+    /// changes nothing about ordinary pipelines, so it stays out of the key.
+    pub virtual_geometry: bool,
 }
 
 /// Parameter buffer mirrored 1:1 in WGSL (see codegen for the matching
@@ -282,6 +288,7 @@ pub fn new_graph_material(fallback: &super::runtime::FallbackTexture) -> GraphMa
             params: SurfaceGraphParams::default(),
             shader_uuid: None,
             writes_gbuffer: false,
+            virtual_geometry: false,
         },
     }
 }

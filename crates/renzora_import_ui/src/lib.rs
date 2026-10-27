@@ -34,7 +34,9 @@ impl Plugin for ImportPlugin {
                 .init_resource::<renzora::core::FileDragHovering>()
                 .init_resource::<renzora::core::ImportInPlaceQueue>()
                 .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain())
-                .add_systems(Update, (drain_import_in_place_queue, sweep_stale_staging));
+                .add_systems(Update, (drain_import_in_place_queue, sweep_stale_staging))
+                .init_resource::<overlay::PendingCommits>()
+                .add_systems(Update, overlay::finish_commits);
             window::register(_app);
             preview3d::register(_app);
             matpreview::register(_app);

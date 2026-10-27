@@ -12,12 +12,37 @@
 #   * src/realtime/restir.wesl + src/realtime/no_restir.wesl: a visible
 #     emissive surface is added after exposure, matching bevy_pbr's default, so
 #     emissive looks (and blooms) the same with Solari on as off.
+#   * src/realtime/gbuffer_utils.wesl: `gpixel_resolve` lifts a G-buffer
+#     surface two pixel footprints along its normal, so rays from a virtual
+#     geometry surface (drawn up to a pixel off the traced full detail) do not
+#     start underneath the traced surface and shadow themselves black.
 #   * A built-in denoiser (`SolariLighting::denoise`): new files
 #     realtime/denoise.wesl, denoise_utils.wesl, denoise_input.wesl and
 #     denoise.rs; the lighting split it reads (initial_path.wesl,
 #     restir.wesl, no_restir.wesl, scene/brdf.wesl `specular_brdf_share`);
 #     its textures (prepare.rs), bindings (bindings.wesl, node.rs) and
-#     dispatch (node.rs). Compiled offline by renzora_solari/tests/shaders.rs.
+#     dispatch (node.rs). Compiled offline by renzora_solari/tests/shaders.rs;
+#     its quality measured on a GPU by renzora_solari/tests/denoise_quality.rs.
+#   * Diagnostics (`SolariDebug`): new files realtime/debug.wesl,
+#     debug_layout.wesl and debug.rs; a per-thread ray count in
+#     scene/bindings.wesl `trace_ray` and scene/sampling.wesl
+#     `trace_visibility`, flushed at the end of each tracing pass (restir.wesl,
+#     no_restir.wesl, world_cache_update.wesl); the counter buffer and
+#     `debug_flags` (bindings.wesl, prepare.rs), and the dispatch (node.rs,
+#     extract.rs, mod.rs). Measured on a GPU by renzora_solari's GPU tests.
+#   * src/realtime/prepare.rs `sync_dlss_rr_textures`: DLSS Ray
+#     Reconstruction's guide textures follow DLSS on and off every frame.
+#     Upstream left them on the view after DLSS was switched off at the same
+#     size, which read as "DLSS is denoising" and put the raw image on screen.
+#   * See-through surfaces (glass, a clear-coat shell): per-instance ray masks
+#     (scene/binder/instances.rs `masks`, setup_tlas_instances.wesl, tlas.rs,
+#     mod.rs), with every existing ray tracing the opaque mask only
+#     (bindings.wesl `trace_ray_masked`); a blended material's alpha and blend
+#     mode and clear coat in `GpuMaterial` (scene/binder/assets.rs,
+#     bindings.wesl); and a pass
+#     that lights the nearest see-through surface after the denoiser, new file
+#     realtime/transparent.wesl (node.rs, mod.rs). Checked on a GPU by
+#     renzora_solari's `glass_reflects_the_scene`.
 #
 # The manifest below is the normalized one cargo publishes; its dependencies are
 # exact crates.io versions, so it builds as-is.
@@ -102,6 +127,10 @@ version = "0.20.0"
 version = "0.20.0"
 
 [dependencies.bevy_light]
+version = "0.20.0"
+
+[dependencies.bevy_material]
+# RENZORA PATCH: `AlphaMode`, for the see-through pass's materials.
 version = "0.20.0"
 
 [dependencies.bevy_math]

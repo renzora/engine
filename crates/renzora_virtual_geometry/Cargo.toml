@@ -1,0 +1,34 @@
+[package]
+name = "renzora_virtual_geometry"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry: clustered meshes with per-cluster LOD, culled and rasterized on the GPU, shaded by each material's own Bevy shader."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_rvg = { path = "../renzora_rvg" }
+# Plain-old-data GPU structs. Already in the lockfile through Bevy.
+bytemuck = { version = "1", features = ["derive"] }
+# Hands out space in the page pool (`render/pool.rs`). The allocator Bevy's
+# mesh and skin buffers use, so already in the lockfile.
+offset-allocator = "0.2"
+
+[dev-dependencies]
+# The GPU tests build their test meshes with the real builder, and load
+# models stored as `.rvg` through the real model loader.
+renzora_rvg = { path = "../renzora_rvg", features = ["bake", "model"] }
+serde_json = "1"
+# And render a real compiled node-graph material, which is registered for
+# virtual geometry by the runtime rather than by this crate.
+renzora_shader = { path = "../renzora_shader" }
+# And trace a model with Solari, through Renzora's own plugin, the way the
+# editor does: what Solari traces for a converted mesh is decided between the
+# two crates.
+renzora_solari = { path = "../renzora_solari" }
+# Which of those can run here: CI's GPU job has a software Vulkan with no ray
+# tracing, so the Solari tests ask the adapter before they build an app.
+wgpu = { version = "30", default-features = false }
+
+[lints]
+workspace = true

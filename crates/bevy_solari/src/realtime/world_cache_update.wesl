@@ -4,7 +4,9 @@ import bevy_render::maths::PI;
 import package::realtime::presample_light_tiles::unpack_resolved_light_sample;
 import package::scene::sampling::{calculate_resolved_light_contribution, trace_visibility, sample_environment_map_light};
 import package::scene::bindings::{trace_ray, resolve_ray_hit_full, RAY_T_MIN};
-import package::realtime::world_cache_query::query_world_cache;
+import constants::WORLD_CACHE_SIZE;
+import package::realtime::world_cache_query::query_world_cache_cell;
+import package::realtime::debug_layout::{flush_ray_counts, SLOT_RAYS_WORLD_CACHE};
 import package::realtime::bindings::{
     light_tile_resolved_samples,
     view,
@@ -13,6 +15,11 @@ import package::realtime::bindings::{
 };
 
 enable wgpu_ray_query;
+
+// RENZORA PATCH: how full the cache is, as a fraction of its capacity, when
+// bounces start to stop making cells, and when none do. See `sample_gi`.
+const CROWDED_FILL_START: f32 = 0.4;
+const CROWDED_FILL_END: f32 = 0.6;
 
 @compute @workgroup_size(64, 1, 1)
 fn sample_di(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_invocation_id) active_cell_id: vec3<u32>) {
@@ -27,6 +34,9 @@ fn sample_di(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_inv
     let new_radiance = sample_random_light_ris(geometry_data.world_position, geometry_data.world_normal, workgroup_id.xy, &rng);
 
     world_cache.active_cells_new_radiance[active_cell_id.x] = new_radiance;
+
+    // RENZORA PATCH: the diagnostics' ray counts.
+    flush_ray_counts(SLOT_RAYS_WORLD_CACHE, active_cell_id.x);
 }
 
 @compute @workgroup_size(64, 1, 1)
@@ -44,7 +54,21 @@ fn sample_gi(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_inv
     if ray.kind != RAY_QUERY_INTERSECTION_NONE {
         let ray_hit = resolve_ray_hit_full(ray);
         let cell_life = atomicLoad(&world_cache.life[cell_index]);
-        let radiance = query_world_cache(ray_hit.world_position, ray_hit.geometric_world_normal, view.world_position, ray.t, cell_life, &rng);
+        // RENZORA PATCH: once the cache is crowded, a bounce lands on the cell
+        // it hits without creating it or extending its life. Otherwise every
+        // cell keeps alive the cells its bounces reach, and they the cells
+        // theirs reach: in an enclosed street, where few bounces escape to the
+        // sky, that chain held the Bistro's cache at 95% of its capacity with
+        // the camera standing still. A lookup gives up after three probes, so
+        // in a cache that full most new cells were never made, and the camera
+        // revealing new surface showed dark, crawling patches of missing bounce
+        // light. Read-only, the chain's far end dies off within a cell's
+        // lifetime, while every cell the camera's own paths reach is still made
+        // and kept. Eased in over a band, not switched at one fill, so the cell
+        // count settles instead of swinging about a threshold.
+        let fill = f32(world_cache.active_cells_count) / f32(WORLD_CACHE_SIZE);
+        let create = rand_f(&rng) < saturate((CROWDED_FILL_END - fill) / (CROWDED_FILL_END - CROWDED_FILL_START));
+        let radiance = query_world_cache_cell(ray_hit.world_position, ray_hit.geometric_world_normal, view.world_position, ray.t, cell_life, create, &rng).rgb;
         world_cache.active_cells_new_radiance[active_cell_id.x] += ray_hit.material.base_color * radiance;
     } else {
         // The ray is cut short at world_cache_max_gi_ray_distance to save on traversal costs. 
@@ -52,6 +76,9 @@ fn sample_gi(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_inv
         // We could be leaking sky light due to this if world_cache_max_gi_ray_distance is too small.
         world_cache.active_cells_new_radiance[active_cell_id.x] += PI * sample_environment_map_light(ray_direction);
     }
+
+    // RENZORA PATCH: the diagnostics' ray counts.
+    flush_ray_counts(SLOT_RAYS_WORLD_CACHE, active_cell_id.x);
 }
 
 @compute @workgroup_size(64, 1, 1)

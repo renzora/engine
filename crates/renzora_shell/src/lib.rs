@@ -94,7 +94,7 @@ use theme_bridge::{
     apply_theme_effects, bump_theme_revision, palette_from_theme, sync_theme_menu_open,
     theme_bridge, ThemeFilesRevision,
 };
-use top_bar::{build_top_bar, palette_btn_click, settings_btn_click, shell_action_press};
+use top_bar::{build_top_bar, palette_btn_click, settings_btn_click, shell_action_chip, shell_action_press};
 use window_chrome::{
     build_resize_zones, update_maximize_icon, window_btn_click, window_drag, window_resize_start,
 };
@@ -323,7 +323,7 @@ impl Plugin for ShellPlugin {
                 #[cfg(target_arch = "wasm32")]
                 (web_fullscreen_click, sync_web_fullscreen_icon),
                 relocalize_on_language_change,
-                (settings_btn_click, shell_action_press),
+                (settings_btn_click, shell_action_press, shell_action_chip),
                 sync_hierarchy_filter_to_workspace,
                 toggle_bottom_panel,
                 (

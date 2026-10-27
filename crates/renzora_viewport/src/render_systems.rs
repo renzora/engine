@@ -160,6 +160,13 @@ fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
         VisualizationMode::Depth => Some(3.0),
         VisualizationMode::UvChecker => Some(4.0),
         VisualizationMode::Matcap => Some(MODE_MATCAP),
+        // Drawn over the finished frame by the virtual geometry renderer;
+        // materials stay as they are.
+        VisualizationMode::VgClusters
+        | VisualizationMode::VgTriangles
+        | VisualizationMode::VgLod
+        | VisualizationMode::VgInstances
+        | VisualizationMode::VgResidency => None,
     }
 }
 
@@ -268,7 +275,7 @@ pub fn update_render_toggles(
     // textures-off is handled below by stripping the material's texture maps in
     // place so it stays lit + shadowed. Mesh-off bypasses the swap so we can
     // discard pixels via the standard pipeline.
-    let swap_active = toggles.mesh && settings.visualization_mode != VisualizationMode::None;
+    let swap_active = toggles.mesh && viz_to_mode_index(settings.visualization_mode).is_some();
     let is_default = toggles.mesh && toggles.textures && toggles.lighting && !toggles.wireframe;
 
     // Mesh-hidden path: discard every StandardMaterial fragment via alpha mask.
@@ -518,6 +525,17 @@ pub fn apply_visualization_mode_for_custom<M: Material>(
 /// trades frame time for more shadowing lights.
 const MAX_SHADOW_CASTING_POINT_LIGHTS: usize = 4;
 
+/// Maximum number of spot lights allowed to cast real-time shadows at once,
+/// the nearest to the editor camera.
+///
+/// Spot lights used to follow the shadow toggle with no budget, on the
+/// assumption that scenes have few of them. A lit street does not: the Bistro
+/// with its shop downlights and facade uplighters has 31, each re-rendering the
+/// whole scene into its own shadow map every frame, which took the editor from
+/// about 30 frames a second to 5. One map each rather than six, so more of them
+/// fit in the budget a point light gets.
+const MAX_SHADOW_CASTING_SPOT_LIGHTS: usize = 8;
+
 /// Maximum number of directional lights allowed to cast shadows at once.
 ///
 /// Each directional light renders the full cascade set (typically 4 splits)
@@ -526,24 +544,40 @@ const MAX_SHADOW_CASTING_POINT_LIGHTS: usize = 4;
 /// cost for no visual benefit. Only the brightest casts shadows.
 const MAX_SHADOW_CASTING_DIRECTIONAL_LIGHTS: usize = 1;
 
-/// Apply the viewport shadow toggle, and — when shadows are on — enforce a
+/// The `n` lights nearest the camera (all of them, in no order, without one).
+fn nearest_lights(camera: Option<Vec3>, lights: impl Iterator<Item = (Entity, Vec3)>, n: usize) -> HashSet<Entity> {
+    let mut scored: Vec<(Entity, f32)> = lights
+        .map(|(e, at)| (e, camera.map_or(0.0, |c| c.distance_squared(at))))
+        .collect();
+    scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.into_iter().take(n).map(|(e, _)| e).collect()
+}
+
+/// Apply the viewport shadow toggle, and, when shadows are on, enforce a
 /// budget so only the nearest [`MAX_SHADOW_CASTING_POINT_LIGHTS`] point lights
-/// cast shadows. Runs every frame (cheap for a few dozen lights) so the budget
-/// follows the camera; the per-light guard avoids re-marking lights whose
-/// shadow state didn't actually change, which would thrash shadow-map alloc.
+/// and [`MAX_SHADOW_CASTING_SPOT_LIGHTS`] spot lights cast shadows. Runs every
+/// frame (cheap for a few dozen lights) so the budget follows the camera; the
+/// per-light guard avoids re-marking lights whose shadow state didn't actually
+/// change, which would thrash shadow-map alloc.
 pub fn update_shadow_settings(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
     settings: Res<ViewportSettings>,
     mut directional_lights: Query<(Entity, &mut DirectionalLight)>,
     mut point_lights: Query<(Entity, &GlobalTransform, &mut PointLight)>,
-    mut spot_lights: Query<&mut SpotLight>,
+    mut spot_lights: Query<(Entity, &GlobalTransform, &mut SpotLight)>,
 ) {
     let shadows_on = settings.render_toggles.shadows;
+    let cam = camera.iter().next().map(|t| t.translation());
 
-    // Spot lights are few; they just follow the global toggle.
-    for mut light in spot_lights.iter_mut() {
-        if light.shadow_maps_enabled != shadows_on {
-            light.shadow_maps_enabled = shadows_on;
+    let spot_casters = if shadows_on {
+        nearest_lights(cam, spot_lights.iter().map(|(e, xf, _)| (e, xf.translation())), MAX_SHADOW_CASTING_SPOT_LIGHTS)
+    } else {
+        HashSet::new()
+    };
+    for (entity, _, mut light) in spot_lights.iter_mut() {
+        let want = spot_casters.contains(&entity);
+        if light.shadow_maps_enabled != want {
+            light.shadow_maps_enabled = want;
         }
     }
 
@@ -573,22 +607,7 @@ pub fn update_shadow_settings(
 
     // Point lights: pick the nearest N to the camera as shadow casters.
     let casters: HashSet<Entity> = if shadows_on {
-        let cam = camera.iter().next().map(|t| t.translation());
-        let mut scored: Vec<(Entity, f32)> = point_lights
-            .iter()
-            .map(|(e, xf, _)| {
-                let d = cam
-                    .map(|c| c.distance_squared(xf.translation()))
-                    .unwrap_or(0.0);
-                (e, d)
-            })
-            .collect();
-        scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored
-            .into_iter()
-            .take(MAX_SHADOW_CASTING_POINT_LIGHTS)
-            .map(|(e, _)| e)
-            .collect()
+        nearest_lights(cam, point_lights.iter().map(|(e, xf, _)| (e, xf.translation())), MAX_SHADOW_CASTING_POINT_LIGHTS)
     } else {
         HashSet::new()
     };

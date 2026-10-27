@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -175,6 +175,11 @@ scripting = [
 # the verdict in `renzora::GpuRaytracing`, which is what the plugin reads to
 # decide whether to build its pipelines at all.
 solari = ["dep:renzora_solari"]
+# Virtual geometry: models with an `.rvg` beside their GLB are drawn by a
+# cluster renderer with per-cluster LOD. The exporter's capability drops it for
+# a game with no `.rvg` files, which then renders every model as ordinary
+# geometry.
+virtual_geometry = ["dep:renzora_virtual_geometry"]
 # NVIDIA DLSS Ray Reconstruction for Solari, falling back to the built-in
 # denoiser at run time wherever it is unsupported. Not in `default`: it needs
 # the DLSS SDK, the Vulkan SDK and clang to build, which `cargo renzora` checks
@@ -270,6 +275,7 @@ skybox = ["dep:renzora_skybox"]
 # carrying cloth or gaussian splatting it never uses.
 renzora_cloth = { path = "../renzora_cloth", optional = true }
 renzora_solari = { path = "../renzora_solari", optional = true }
+renzora_virtual_geometry = { path = "../renzora_virtual_geometry", optional = true }
 renzora_gaussian_splatting = { path = "../renzora_gaussian_splatting", optional = true }
 renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }

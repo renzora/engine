@@ -38,6 +38,103 @@ pub mod weights;
 pub use glb::{Glb, GlbError};
 pub use morphs::write_shapes;
 
+/// Whether `path` is a model stored as `.rvg`.
+fn is_rvg(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("rvg"))
+}
+
+#[cfg(test)]
+mod rvg_tests {
+    use super::*;
+    use bevy::math::Vec3;
+
+    /// A model stored as `.rvg` is rigged in place like a `.glb`: the result
+    /// is still an `.rvg`, its clusters now carry joints and weights, its
+    /// scene has the skeleton, and the original is kept beside it.
+    #[test]
+    fn a_model_stored_as_rvg_is_rigged_in_place() {
+        let (rings, segments) = (48u32, 24u32);
+        let mut positions = Vec::new();
+        for r in 0..=rings {
+            for s in 0..segments {
+                let theta = std::f32::consts::TAU * s as f32 / segments as f32;
+                positions.push(Vec3::new(0.2 * theta.cos(), r as f32 / rings as f32 * 4.0, 0.2 * theta.sin()));
+            }
+        }
+        let normals: Vec<Vec3> = positions.iter().map(|p| Vec3::new(p.x, 0.0, p.z).normalize()).collect();
+        let mut indices = Vec::new();
+        for r in 0..rings {
+            for s in 0..segments {
+                let (a, b) = (r * segments + s, r * segments + (s + 1) % segments);
+                let (c, d) = (a + segments, b + segments);
+                indices.extend([a, c, b, b, c, d]);
+            }
+        }
+        let geometry = glb::Geometry {
+            name: "Rope",
+            positions: &positions,
+            normals: &normals,
+            uvs: &[],
+            indices: &indices,
+            base_color: [1.0; 4],
+        };
+        let source = Glb::from_geometry(&geometry).unwrap().to_bytes();
+        let dir = std::env::temp_dir().join(format!("renzora_rig_rvg_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rope.rvg");
+        std::fs::write(&path, renzora_rvg::bake::build_model(&source).unwrap().to_bytes()).unwrap();
+
+        rig_file(&path, |glb| {
+            let (start, end) = chain::long_axis(glb)?;
+            chain::build(glb, &chain::ChainSpec { start, end, segments: 4 })
+        })
+        .unwrap();
+
+        let rigged = renzora_rvg::RvgFile::from_bytes(&std::fs::read(&path).unwrap()).unwrap();
+        assert!(rigged.scene.is_some(), "still a model .rvg");
+        assert!(
+            rigged.meshes[0].attributes.has(renzora_rvg::Attributes::SKIN),
+            "the clusters carry no joints or weights"
+        );
+        let glb = Glb::parse(&read_model(&path).unwrap()).unwrap();
+        assert!(glb.json["skins"].as_array().is_some_and(|s| !s.is_empty()), "the scene has no skin");
+        assert!(unrigged_path(&path).exists(), "the original was not kept");
+        assert!(unrigged_path(&path).to_string_lossy().ends_with(".unrigged.rvg"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// A model file's bytes as a GLB at full detail.
+///
+/// Every tool here edits a GLB. A model stored as `.rvg` (the form imported
+/// models take) is read as the full-detail GLB its scene and clusters make
+/// together, so rigging, weight painting and blend shapes work on it exactly
+/// as on a `.glb`; [`write_model`] stores the result back as `.rvg`.
+pub fn read_model(path: &std::path::Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let bytes = std::fs::read(path)?;
+    if !is_rvg(path) {
+        return Ok(bytes);
+    }
+    let file = renzora_rvg::RvgFile::from_bytes(&bytes)?;
+    Ok(renzora_rvg::bake::full_detail_glb(&file)?)
+}
+
+/// Store an edited GLB as the model file at `path`: as-is for a `.glb`, built
+/// into an `.rvg` (scene plus virtual geometry) for one. Written to a
+/// temporary file first and renamed over, so a failure never leaves half a
+/// model.
+pub fn write_model(path: &std::path::Path, glb: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = if is_rvg(path) {
+        renzora_rvg::bake::build_model(glb)?.to_bytes()
+    } else {
+        glb.to_vec()
+    };
+    let tmp = path.with_extension("model.tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 /// Rig a model file in place, keeping the original beside it as
 /// `<stem>.unrigged.glb` the first time.
 ///
@@ -54,12 +151,10 @@ pub fn rig_file<T>(
     if !original.exists() {
         std::fs::copy(path, &original)?;
     }
-    let bytes = std::fs::read(&original)?;
+    let bytes = read_model(&original)?;
     let mut glb = Glb::parse(&bytes)?;
     let out = build(&mut glb)?;
-    let tmp = path.with_extension("rigging.tmp");
-    std::fs::write(&tmp, glb.to_bytes())?;
-    std::fs::rename(&tmp, path)?;
+    write_model(path, &glb.to_bytes())?;
     Ok(out)
 }
 
@@ -74,7 +169,7 @@ pub fn rig_file<T>(
 /// from landing on the wrong vertices. The superseded weight data stays in the
 /// file, unreferenced; rigging again from the original drops it.
 pub fn write_weights(path: &std::path::Path, edits: &[(usize, usize, Vec<weights::Influences>)]) -> Result<(), Box<dyn std::error::Error>> {
-    let bytes = std::fs::read(path)?;
+    let bytes = read_model(path)?;
     let mut glb = Glb::parse(&bytes)?;
     for (mesh, prim, influences) in edits {
         let count = glb.positions(*mesh, *prim)?.len();
@@ -86,16 +181,15 @@ pub fn write_weights(path: &std::path::Path, edits: &[(usize, usize, Vec<weights
         }
         glb.set_skin_attributes(*mesh, *prim, influences);
     }
-    let tmp = path.with_extension("weights.tmp");
-    std::fs::write(&tmp, glb.to_bytes())?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
+    write_model(path, &glb.to_bytes())
 }
 
-/// Where a model's pre-rig original is kept.
+/// Where a model's pre-rig original is kept: `<stem>.unrigged.glb` beside a
+/// `.glb`, `<stem>.unrigged.rvg` beside an `.rvg`.
 pub fn unrigged_path(path: &std::path::Path) -> std::path::PathBuf {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
-    path.with_file_name(format!("{stem}.unrigged.glb"))
+    let ext = if is_rvg(path) { "rvg" } else { "glb" };
+    path.with_file_name(format!("{stem}.unrigged.{ext}"))
 }
 
 /// Put the original back, removing the rig.

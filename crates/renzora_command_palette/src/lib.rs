@@ -280,6 +280,12 @@ fn collect_items(
         ("File: Import Folder...", |w| {
             w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
         }),
+        // Only reachable from here and the Console's note about it: it is a
+        // one-off for projects from before models were stored as `.rvg`, and
+        // a permanent menu row would outlive every project that needs it.
+        ("Convert Models to RVG...", |w| {
+            w.insert_resource(renzora::core::ConvertModelsRequested);
+        }),
         ("Help: Getting Started Tutorial", |w| {
             w.insert_resource(renzora::core::TutorialRequested);
         }),

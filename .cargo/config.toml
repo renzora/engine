@@ -221,6 +221,30 @@ rustflags = [
     "--remap-path-prefix=/app/src=/renzora",
 ]
 
+# C++ that the `cc` crate compiles for Windows, which in practice means
+# meshoptimizer's cluster LOD builder (`meshopt`'s `clusterlod.cpp`, behind the
+# virtual geometry builder in `renzora_rvg`). It uses `std::vector`, and every
+# translation unit that includes the MSVC STL stamps `/FAILIFMISMATCH:
+# RuntimeLibrary` with the CRT it was built for: `MT_StaticRelease` here,
+# against the `MD_DynamicRelease` stamp in `intel_tex_2`'s prebuilt ISPC objects
+# (see the x86_64 notes above). Any binary linking both, which is the importer
+# and the editor, then refused to link.
+#
+# The stamp is the only thing that disagrees. The object really is static-CRT,
+# like everything else in the build: its own `/DEFAULTLIB` is LIBCMT, and the one
+# C++ runtime function it calls, `std::_Xlength_error`, is the one
+# `renzora_rmip::bake` supplies. `_ALLOW_RUNTIME_LIBRARY_MISMATCH` is the STL's
+# documented switch for dropping that stamp. It does not change which runtime
+# anything links against, and C code never reads it.
+#
+# Both variables, because `meshopt`'s build script compiles its `.cpp` files
+# without marking them C++ (MSVC goes by the extension), so `cc` reads CFLAGS.
+[env]
+CFLAGS_x86_64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CXXFLAGS_x86_64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CFLAGS_aarch64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CXXFLAGS_aarch64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+
 # Windows ARM64: same reasoning as x86_64 above, one target triple over. This
 # triple is NEVER produced by the Docker toolchain — xwin can only redistribute
 # the MSVC CRT + SDK, so the C compiler there is clang, and clang can't stand in

@@ -54,10 +54,10 @@ shader_graph = ["dep:renzora_shader", "render_3d"]
 render_2d = []
 # glTF model loading (`bevy::gltf::Gltf`). Gates the LOD-variant probe
 # (`mesh_lod.rs`) and the `MeshInstanceData` rehydrate path (`scene_io.rs`) —
-# both exist only to load `.glb`/`.gltf` models, so a scene built from engine
-# primitives needs neither. Implies `render_3d`: bevy's `bevy_gltf` requires
+# both exist only to load models (`.glb`/`.gltf`, and `.rvg`, whose scene is
+# glTF), so a scene built from engine primitives needs neither. Implies `render_3d`: bevy's `bevy_gltf` requires
 # `bevy_pbr`, so the two can't be stripped independently.
-gltf = ["render_3d"]
+gltf = ["render_3d", "dep:renzora_rvg"]
 audio = ["dep:renzora_audio"]
 # Multiplayer. All this crate needs it for is keeping replication bookkeeping
 # (`Networked`/`NetworkOwner`/`NetworkId`) out of saved scenes, routed through
@@ -80,6 +80,8 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_rmip = { path = "../renzora_rmip" }
+# Loads models stored as `.rvg` (its `model` loader), under the `gltf` feature.
+renzora_rvg = { path = "../renzora_rvg", optional = true, features = ["model"] }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_shader = { path = "../renzora_shader", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }

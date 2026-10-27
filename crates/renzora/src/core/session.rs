@@ -363,6 +363,13 @@ pub struct PendingAssemblyWrites(pub Vec<AssemblyWriteRequest>);
 #[derive(Resource)]
 pub struct TutorialRequested;
 
+/// Marker resource asking to convert the project's `.glb` models into `.rvg`
+/// models. Shows a confirmation first; nothing is changed until it is
+/// answered. Handled by the virtual geometry editor plugin, which owns the
+/// builder.
+#[derive(Resource)]
+pub struct ConvertModelsRequested;
+
 /// One-shot: request to toggle the settings overlay.
 #[derive(Resource)]
 pub struct ToggleSettingsRequested;

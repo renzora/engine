@@ -835,6 +835,22 @@ pub enum VisualizationMode {
     /// under any number of lights. A matcap fixes the lights to the camera and
     /// adds a curvature term, which is what makes surface detail legible.
     Matcap,
+    /// Virtual geometry, coloured by cluster: each patch of up to 128
+    /// triangles the renderer culls and picks a detail level for as one.
+    /// Ordinary geometry is drawn dimmed. Drawn by `renzora_virtual_geometry`
+    /// over the frame, in editor viewports only.
+    VgClusters,
+    /// Virtual geometry, coloured by triangle.
+    VgTriangles,
+    /// Virtual geometry, coloured by level of detail: full detail is the first
+    /// colour, each coarser level the next.
+    VgLod,
+    /// Virtual geometry, coloured by instance: one colour per converted mesh.
+    VgInstances,
+    /// Virtual geometry, coloured by streaming: green where the detail the
+    /// camera wants is on the GPU, red where a coarser level stands in while
+    /// it streams in (or because the memory budget has no room for it).
+    VgResidency,
 }
 
 impl VisualizationMode {
@@ -846,7 +862,21 @@ impl VisualizationMode {
         Self::Depth,
         Self::UvChecker,
         Self::Matcap,
+        Self::VgClusters,
+        Self::VgTriangles,
+        Self::VgLod,
+        Self::VgInstances,
+        Self::VgResidency,
     ];
+
+    /// One of the virtual geometry views, which leave materials alone and are
+    /// drawn as an overlay by the virtual geometry renderer.
+    pub fn is_virtual_geometry(self) -> bool {
+        matches!(
+            self,
+            Self::VgClusters | Self::VgTriangles | Self::VgLod | Self::VgInstances | Self::VgResidency
+        )
+    }
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -857,6 +887,11 @@ impl VisualizationMode {
             Self::Depth => "Depth",
             Self::UvChecker => "UV Checker",
             Self::Matcap => "Matcap",
+            Self::VgClusters => "Virtual Geometry: Clusters",
+            Self::VgTriangles => "Virtual Geometry: Triangles",
+            Self::VgLod => "Virtual Geometry: LOD Level",
+            Self::VgInstances => "Virtual Geometry: Instances",
+            Self::VgResidency => "Virtual Geometry: Residency",
         }
     }
 }
@@ -1463,6 +1498,12 @@ impl PersistedViewportSettings {
             "Metallic" => VisualizationMode::Metallic,
             "Depth" => VisualizationMode::Depth,
             "UvChecker" => VisualizationMode::UvChecker,
+            "Matcap" => VisualizationMode::Matcap,
+            "VgClusters" => VisualizationMode::VgClusters,
+            "VgTriangles" => VisualizationMode::VgTriangles,
+            "VgLod" => VisualizationMode::VgLod,
+            "VgInstances" => VisualizationMode::VgInstances,
+            "VgResidency" => VisualizationMode::VgResidency,
             _ => VisualizationMode::None,
         };
         s.toolbar_order = self.toolbar_order.clone();
@@ -1752,14 +1793,7 @@ mod tests {
 
     #[test]
     fn visualization_mode_string_round_trips_through_persisted() {
-        for mode in [
-            VisualizationMode::None,
-            VisualizationMode::Normals,
-            VisualizationMode::Roughness,
-            VisualizationMode::Metallic,
-            VisualizationMode::Depth,
-            VisualizationMode::UvChecker,
-        ] {
+        for &mode in VisualizationMode::ALL {
             let mut s = ViewportSettings::default();
             s.visualization_mode = mode;
             let p = PersistedViewportSettings::from_settings(&s);

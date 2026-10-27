@@ -183,10 +183,17 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         .get_resource::<renzora::core::PlayModeState>()
         .is_some_and(|p| !p.is_editing());
 
+    // A renderer feature can ask for longer settling, or for every frame (see
+    // `ViewportRedrawDemand`).
+    let demand = world.get_resource::<renzora::core::ViewportRedrawDemand>().copied().unwrap_or_default();
+    let settle_frames = demand.settle_frames.max(SETTLE_FRAMES);
+
     let reason = if realtime {
         None
     } else if playing {
         Some("play mode".to_string())
+    } else if let Some(why) = demand.continuous {
+        Some(why.to_string())
     } else {
         find_change(world, state, last_run, this_run)
     };
@@ -196,14 +203,14 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         // Realtime renders every frame through `sync_viewport_camera_activation`
         // reading the setting directly; keep the window full so switching it off
         // settles rather than cutting to a half-converged frame.
-        redraw.frames_left = SETTLE_FRAMES;
+        redraw.frames_left = settle_frames;
         redraw.awake_for = 0;
         redraw.reported = false;
         return;
     }
     match reason {
         Some(reason) => {
-            redraw.frames_left = SETTLE_FRAMES;
+            redraw.frames_left = settle_frames;
             redraw.last_reason = reason;
         }
         None => redraw.frames_left = redraw.frames_left.saturating_sub(1),
@@ -213,7 +220,7 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         redraw.reported = false;
     } else {
         redraw.awake_for += 1;
-        if redraw.awake_for >= NEVER_IDLE_FRAMES && !redraw.reported && !playing {
+        if redraw.awake_for >= NEVER_IDLE_FRAMES && !redraw.reported && !playing && demand.continuous.is_none() {
             redraw.reported = true;
             info!(
                 "[viewport] rendering on change, but something has changed every frame for {NEVER_IDLE_FRAMES} frames, so the viewport never idles. Last change: {}",

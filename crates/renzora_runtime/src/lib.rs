@@ -1454,6 +1454,31 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
 
     // ── The rest of the engine (see `plugins.rs`) ──────────────────────
     plugins::add_runtime_plugins(app);
+
+    // Node-graph materials on virtual geometry. Registered here, where both
+    // crates are linked, so neither has to depend on the other.
+    #[cfg(all(feature = "virtual_geometry", feature = "shader_graph"))]
+    {
+        use renzora_virtual_geometry::VirtualGeometryAppExt;
+        app.add_virtual_geometry_material::<renzora_shader::material::GraphMaterial>(
+            classify_graph_material,
+        );
+    }
+}
+
+/// A node-graph material can shade virtual geometry when its compiled shader
+/// has the visibility buffer branch (graphs that read particle inputs, and
+/// shaders saved by an older engine, do not), and its base qualifies the way a
+/// plain material would: opaque or cut-out, not transmissive. The base is what
+/// the cut-out and prepass passes read, as they do for ordinary meshes.
+#[cfg(all(feature = "virtual_geometry", feature = "shader_graph"))]
+fn classify_graph_material(
+    material: &renzora_shader::material::GraphMaterial,
+) -> Option<renzora_virtual_geometry::VgSurface> {
+    if !material.extension.virtual_geometry {
+        return None;
+    }
+    renzora_virtual_geometry::classify_standard(&material.base)
 }
 
 /// Resolve a font name to a render source for scripting. Prefers the editor's

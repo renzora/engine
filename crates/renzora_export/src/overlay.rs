@@ -1052,7 +1052,30 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     });
 }
 
-/// Background export worker — runs on a separate thread.
+/// Build or refresh the `.rvg` beside every model in the project. A model that
+/// fails keeps rendering as ordinary geometry in the game, so a failure is
+/// logged and the export carries on.
+fn ensure_virtual_geometry(root: &std::path::Path, tx: &mpsc::Sender<ExportMsg>) {
+    use renzora_rvg::bake::{ensure_current, find_models, Ensured};
+    let models = find_models(root, renzora::core::project_files::is_ignored);
+    for model in models {
+        let name = model
+            .strip_prefix(root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| model.display().to_string());
+        let _ = tx.send(ExportMsg::Progress(format!("Checking virtual geometry: {name}")));
+        match ensure_current(&model) {
+            Ok(Ensured::Built { bytes, seconds, .. }) => info!(
+                "[export] built virtual geometry for {name} ({:.1} MB, {seconds:.1}s)",
+                bytes as f64 / 1e6
+            ),
+            Ok(_) => {}
+            Err(e) => warn!("[export] {name} ships without virtual geometry: {e}"),
+        }
+    }
+}
+
+/// Background export worker: runs on a separate thread.
 #[allow(clippy::too_many_arguments)]
 fn export_worker(
     tx: mpsc::Sender<ExportMsg>,
@@ -1093,6 +1116,17 @@ fn export_worker(
     dlss: bool,
     cancel: Arc<AtomicBool>,
 ) {
+    // Bring every model's virtual geometry up to date first, so the pack below
+    // ships it. The editor keeps these current in the background, so this is
+    // normally a hash check per model; it matters when an export starts before
+    // that has caught up, which would otherwise ship a game that quietly draws
+    // its models the slow way.
+    if project.config.rendering.virtual_geometry
+        && !disabled_runtime_features.iter().any(|f| f == "virtual_geometry")
+    {
+        ensure_virtual_geometry(&project.path, &tx);
+    }
+
     // Pack assets
     let _ = tx.send(ExportMsg::Progress("Scanning project assets...".into()));
     let tx_pack = tx.clone();

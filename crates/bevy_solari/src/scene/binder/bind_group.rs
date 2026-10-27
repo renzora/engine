@@ -424,6 +424,14 @@ fn prepare_sparse_uploads(
         instances
             .blas_refs
             .prepare_to_populate_buffers(device, cache, jobs, groups, pipelines);
+        // RENZORA PATCH: the ray masks, written beside the BLAS references.
+        // Writing a sparse buffer only stages its changed elements; this is
+        // what sends them. Without it a reused slot kept its old mask on the
+        // GPU: a solid surface in a slot glass had left was skipped by every
+        // ordinary ray, and glass in a solid surface's was hit by them.
+        instances
+            .masks
+            .prepare_to_populate_buffers(device, cache, jobs, groups, pipelines);
     }
 
     let lights = &mut bindings.lights;
