@@ -7534,17 +7534,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_bluenoise"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_light",
- "renzora",
- "renzora_editor_framework",
- "serde",
-]
-
-[[package]]
 name = "renzora_bsn"
 version = "0.1.0"
 dependencies = [
