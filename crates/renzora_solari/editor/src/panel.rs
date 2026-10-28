@@ -29,6 +29,9 @@ const RAW_BAR: (u8, u8, u8) = (150, 150, 158);
 /// Rolling window of total rays per frame, for the chart.
 const RAY_HISTORY: usize = 32;
 
+/// Fewest pixels with a surface for the "Per pixel" ray figure to be shown.
+const MIN_PIXELS_PER_PIXEL_FIGURE: u64 = 1024;
+
 /// Solari's passes as Bevy's render diagnostics name them, and what to call
 /// them. A pass missing from this list is not shown; the total still counts it.
 const PASSES: [(&str, &str); 9] = [
@@ -349,8 +352,17 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // ── Rays ──
     let total = stat_row(commands, fonts, "Lighting rays per frame", |w| frame(w, |f| count(f.lighting_rays())));
+    // Per pixel with a surface to light. With next to none (a view of only
+    // sky), the world cache's rays, which do not depend on the view, divided
+    // by a handful of pixels read as a million rays a pixel.
     let per_pixel = stat_row(commands, fonts, "Per pixel", |w| {
-        frame(w, |f| format!("{:.2}", f.lighting_rays() as f64 / f.covered_pixels.max(1) as f64))
+        frame(w, |f| {
+            if f.covered_pixels < MIN_PIXELS_PER_PIXEL_FIGURE {
+                "-".to_string()
+            } else {
+                format!("{:.2}", f.lighting_rays() as f64 / f.covered_pixels as f64)
+            }
+        })
     });
     let initial = stat_row(commands, fonts, "First paths (shadow)", |w| {
         frame(w, |f| format!("{} ({})", count(f.rays_initial), count(f.shadow_rays_initial)))

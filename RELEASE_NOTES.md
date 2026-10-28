@@ -1,5 +1,17 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-28 00:00
+- fix(solari): a scene with nothing to ray trace no longer shows a smeared ghost of the previous scene under DLSS
+- fix(solari): the Ray Tracing panel's rays-per-pixel figure no longer reads in the millions in a view of only sky
+- security: rustls is updated to 0.23.46, which fixes four advisories
+
+## 2026-10-27 23:45
+- fix(solari): the Ray Tracing panel's path-traced reference no longer shows point-light stand-ins as glowing balls or alpha-masked leaves as solid cards
+- fix(solari): the Solari component can be added by scripts and editor tools, not only from the Inspector
+
+## 2026-10-27 23:22
+- fix(solari): tinted glass and sheer curtains near light panels and lamps are no longer covered in bright specks
+
 ## 2026-10-27 21:26
 - fix(solari): sunlit sheer curtains are no longer covered in white specks in scenes with lamps
 

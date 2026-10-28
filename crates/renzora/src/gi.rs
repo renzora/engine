@@ -55,7 +55,9 @@ pub struct GpuIsIntegrated {
 /// Bevy's `SolariLighting` (and the HDR + prepass components it requires) to
 /// each routed camera and mirrors conforming meshes into the ray-tracing scene.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
+// `Default` lets tools that add components by name (the MCP `add_component`
+// tool, scripts) create one; without it only the Inspector's own menu could.
+#[reflect(Component, Default, Serialize, Deserialize)]
 pub struct SolariGi {
     pub enabled: bool,
     /// Stop rendering shadow maps while Solari is lighting the scene.

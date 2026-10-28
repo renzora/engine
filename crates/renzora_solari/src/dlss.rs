@@ -124,8 +124,15 @@ mod imp {
             Option<&SolariDebug>,
         )>,
         mut routing: ResMut<EffectRouting>,
+        traced: Query<(), With<bevy::solari::scene::RaytracingMesh3d>>,
     ) {
         let supported = support.is_some_and(|s| s.ray_reconstruction);
+        // With nothing in the ray-traced scene Solari's lighting pass does not
+        // run, and that pass is what writes the guide images DLSS reads. DLSS
+        // then went on rebuilding the last scene from stale guides: a smeared
+        // ghost of it over the sky after switching to a scene with nothing in
+        // it. It steps aside, and comes back with a fresh history.
+        let scene_has_instances = !traced.is_empty();
         let mut dropped = false;
         let targets: Vec<(Entity, Option<(bool, DlssMode)>)> = routing
             .iter()
@@ -153,7 +160,7 @@ mod imp {
             let big_enough = camera
                 .and_then(|c| c.physical_target_size())
                 .is_some_and(|size| size.min_element() >= MIN_OUTPUT_SIZE);
-            let on = want && supported && solari && big_enough && !showing_debug_view;
+            let on = want && supported && solari && big_enough && !showing_debug_view && scene_has_instances;
             match (on, dlss) {
                 (true, Some(mut dlss)) => {
                     let mode = quality(mode);

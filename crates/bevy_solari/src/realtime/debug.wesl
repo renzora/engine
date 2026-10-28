@@ -31,7 +31,7 @@ import package::realtime::debug_layout::{
 };
 import package::scene::brdf::{evaluate_brdf, evaluate_and_sample_brdf, brdf_pdf, F_AB};
 import package::scene::sampling::{sample_random_light, random_emissive_light_pdf, power_heuristic, sample_environment_map_light};
-import package::scene::bindings::{trace_ray, resolve_ray_hit_full, RAY_T_MIN, RAY_T_MAX, MIRROR_ROUGHNESS_THRESHOLD};
+import package::scene::bindings::{trace_ray, resolve_ray_hit_full, ResolvedRayHitFull, RAY_T_MIN, RAY_T_MAX, MIRROR_ROUGHNESS_THRESHOLD};
 
 enable wgpu_ray_query;
 
@@ -327,36 +327,61 @@ fn reference_trace(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let samples = debug.reference_samples;
     var rng = pixel_index(pixel_id) + samples * 5782582u;
 
-    // Shoot the first ray from the camera
-    let pixel_center = vec2<f32>(pixel_id) + 0.5;
-    let jitter = rand_vec2f(&rng) - 0.5;
-    let pixel_uv = (pixel_center + jitter) / view.main_pass_viewport.zw;
-    let pixel_ndc = (pixel_uv * 2.0) - 1.0;
-    let primary_ray_target = view.world_from_clip * vec4(pixel_ndc.x, -pixel_ndc.y, 1.0, 1.0);
+    // RENZORA PATCH: the first surface is the one drawn at this pixel (the
+    // G-buffer), as the live image's is, not one found by a ray from the
+    // camera. A camera ray saw what is traced but never drawn (the emissive
+    // spheres standing in for point and spot lights showed as bright balls)
+    // and traced alpha-masked cards as solid, so the reference disagreed with
+    // the live image where neither was wrong. Lighting from that surface on is
+    // path traced as upstream's offline path tracer does it. See-through
+    // surfaces drawn over the image are still left out: ordinary rays pass
+    // through them, so no path here meets one.
+    let depth = textureLoad(depth_buffer, pixel_id, 0);
     var ray_origin = view.world_position;
-    var ray_direction = normalize((primary_ray_target.xyz / primary_ray_target.w) - ray_origin);
+    var ray_direction = normalize(reconstruct_world_position(pixel_id, max(depth, 1e-7), view.main_pass_viewport.zw, view.world_from_clip) - ray_origin);
     var ray_t_min = 0.0;
 
     // Path trace
     var radiance = vec3(0.0);
     var throughput = vec3(1.0);
     var p_bounce = 0.0;
+    var first = true;
     loop {
-        let ray = trace_ray(ray_origin, ray_direction, ray_t_min, RAY_T_MAX, RAY_FLAG_NONE);
-        if ray.kind != RAY_QUERY_INTERSECTION_NONE {
-            let ray_hit = resolve_ray_hit_full(ray);
+        var ray_hit: ResolvedRayHitFull;
+        if first {
+            first = false;
+            if depth == 0.0 {
+                radiance += sample_environment_map_light(ray_direction);
+                break;
+            }
+            let drawn = gpixel_resolve(textureLoad(gbuffer, pixel_id, 0), depth, pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
+            ray_hit.world_position = drawn.world_position;
+            ray_hit.world_normal = drawn.world_normal;
+            ray_hit.geometric_world_normal = drawn.world_normal;
+            ray_hit.material = drawn.material;
+        } else {
+            let ray = trace_ray(ray_origin, ray_direction, ray_t_min, RAY_T_MAX, RAY_FLAG_NONE);
+            if ray.kind == RAY_QUERY_INTERSECTION_NONE {
+                radiance += throughput * sample_environment_map_light(ray_direction);
+                break;
+            }
+            ray_hit = resolve_ray_hit_full(ray);
+            let NdotV = max(dot(ray_hit.world_normal, -ray_direction), 0.0001);
+            let p_light = random_emissive_light_pdf(ray_hit, ray.t, NdotV);
+            if dot(ray_hit.world_normal, -ray_direction) > 0.0 {
+                radiance += power_heuristic(p_bounce, p_light) * throughput * ray_hit.material.emissive;
+            }
+        }
+        {
             let wo = -ray_direction;
             let NdotV = max(dot(ray_hit.world_normal, wo), 0.0001);
             let F_ab = F_AB(ray_hit.material.perceptual_roughness, NdotV);
 
-            // Emissive contribution
+            // Emissive contribution of the drawn surface, which no light
+            // sample could have found
             var mis_weight = 1.0;
-            if p_bounce != 0.0 { // Not first bounce
-                let p_light = random_emissive_light_pdf(ray_hit, ray.t, NdotV);
-                mis_weight = power_heuristic(p_bounce, p_light);
-            }
-            if dot(ray_hit.world_normal, wo) > 0.0 {
-                radiance += mis_weight * throughput * ray_hit.material.emissive;
+            if p_bounce == 0.0 && dot(ray_hit.world_normal, wo) > 0.0 {
+                radiance += throughput * ray_hit.material.emissive;
             }
 
             // Sample direct lighting, but only if the surface is not mirror-like
@@ -387,9 +412,6 @@ fn reference_trace(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let rr = saturate(luminance(throughput));
             if rand_f(&rng) >= rr { break; }
             throughput /= rr;
-        } else {
-            radiance += throughput * sample_environment_map_light(ray_direction);
-            break;
         }
     }
 

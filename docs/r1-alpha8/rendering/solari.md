@@ -148,7 +148,8 @@ face), and lights each:
   the sun and any other directional light, and four samples of the scene's
   other lights (lamps and emissive surfaces), and half as much again from the
   side facing away, the light through the weave that makes a curtain in a
-  window glow. They are drawn the same way every
+  window glow. A gather ray that meets a lamp or light panel does not add its
+  glow, since the light samples already count it. They are drawn the same way every
   frame for each point on the surface, so the result is steady rather than
   grainy-and-flickering; clear and metallic glass skip this and cost nothing
   extra;
@@ -447,9 +448,13 @@ DLSS steps aside while a view is shown, since it would otherwise take the
 visualization for the image, so the built-in denoiser runs.
 
 **Reference.** With **Accumulate** on, a conventional path tracer converges in
-the background beside the live image, one sample per pixel per frame. It is the
-same algorithm as Solari's offline path tracer, checked against it by
-`renzora_solari`'s GPU tests. It starts over when the camera moves, and
+the background beside the live image, one sample per pixel per frame. Each path
+starts from the surface drawn at its pixel, as the live image's lighting does,
+so the point and spot lights' traced stand-ins and alpha-masked leaves look the
+same in both; from there it is the same algorithm as Solari's offline path
+tracer, checked against it by `renzora_solari`'s GPU tests. It leaves out glass
+and other see-through surfaces, which ordinary rays pass through. It starts over
+when the camera moves, and
 **Start over** restarts it after a change the camera cannot see, such as a light
 being moved. **Error vs reference** compares 3x3 neighbourhoods of the two
 images, so the reference's own early noise counts for little; it falls as the

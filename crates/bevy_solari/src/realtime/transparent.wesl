@@ -277,7 +277,13 @@ fn gather_diffuse(origin: vec3<f32>, normal: vec3<f32>, world_position: vec3<f32
         let wi = local.x * TBN[0] + local.y * TBN[1] + local.z * TBN[2];
         let light = incoming(origin, wi, rng);
         sum.exposed += light.exposed;
-        sum.emissive += light.emissive;
+        // Not `light.emissive`: an emissive surface is one of the scene's
+        // lights, and the light samples above already count it. Added here
+        // too, a lamp counted twice, and the rare ray that met a small bright
+        // one (a light panel, a point light's stand-in sphere) lit its point
+        // many times over. The rays are fixed per point, so those points
+        // stayed lit: still, bright specks over sheer curtains and tinted
+        // glass that no denoiser sees, since this pass runs after it.
     }
     return Incoming(sum.exposed / f32(DIFFUSE_GATHER_RAYS) + direct, sum.emissive / f32(DIFFUSE_GATHER_RAYS));
 }

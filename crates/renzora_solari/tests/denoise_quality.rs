@@ -1482,6 +1482,46 @@ fn a_sunlit_sheer_curtain_is_not_speckled_by_lamps() {
     assert!(specks < SHEER_SPECKS, "{:.2}% of a sunlit sheer curtain is white specks", specks * 100.0);
 }
 
+/// A sheer curtain facing a small bright lamp is smooth. Of the rays a see-through
+/// surface gathers its light with, the rare one that met the lamp added the lamp's
+/// own glow, on top of the samples of the scene's lights that already count it:
+/// the lamp counted twice, and the point whose fixed rays met it shone many times
+/// brighter than its neighbours. A tinted glass cube in a studio with a light
+/// panel and lamps was covered in still, bright specks, under DLSS too.
+#[test]
+fn a_sheer_curtain_facing_a_lamp_is_not_speckled() {
+    if !gpu_enabled() {
+        return;
+    }
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let pose = Pose {
+        eye: Vec3::new(3.0, 2.0, 0.0),
+        target: Vec3::new(0.0, 2.0, 0.0),
+    };
+    let sheet = StandardMaterial {
+        base_color: Color::srgba(1.0, 1.0, 1.0, 0.3),
+        perceptual_roughness: 1.0,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    };
+    let mut scene = |world: &mut World| {
+        glass_scene(world, Vec3::new(0.0, -20.0, 0.0), Color::BLACK, Some(sheet.clone()));
+        // A small, very bright lamp on the camera's side of the sheet, off to
+        // one side so the camera does not see it in the middle of the image.
+        let lamp = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial {
+            base_color: Color::BLACK,
+            emissive: LinearRgba::rgb(60_000.0, 50_000.0, 38_000.0),
+            ..default()
+        });
+        traced_box(world, Vec3::splat(0.15), Vec3::new(1.5, 3.5, 3.5), &lamp);
+    };
+    let (_, image, _) = render_in(&mut scene, pose, realtime(true, false), Motion::Still, 60, None);
+    write_ppm("sheer_facing_lamp", &image);
+    let specks = speck_fraction(&image);
+    println!("sheer facing a lamp: {:.3}% of its pixels are specks", specks * 100.0);
+    assert!(specks < SHEER_SPECKS, "{:.2}% of a sheer curtain facing a lamp is bright specks", specks * 100.0);
+}
+
 /// The lamps of [`a_sunlit_sheer_curtain_is_not_speckled_by_lamps`].
 const SPECKLE_LAMPS: u32 = 7;
 
