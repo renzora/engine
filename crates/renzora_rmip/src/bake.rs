@@ -164,13 +164,22 @@ pub fn bake_rgba8(
         ImageBuffer::from_raw(width, height, pixels.to_vec())
             .ok_or_else(|| "ImageBuffer::from_raw failed".to_string())?;
 
+    // Normal maps hold a vector in RGB, not colour, and keep their own resize.
+    let resize = |img: &ImageBuffer<Rgba<u8>, Vec<u8>>, w: u32, h: u32| {
+        if params.role == TextureRole::NormalMap {
+            image::imageops::resize(img, w, h, FilterType::Lanczos3)
+        } else {
+            resize_rgba(img, w, h)
+        }
+    };
+
     // ── Resolution clamp ────────────────────────────────────────────────
     // Downsample the longest side to `max_size`, preserving aspect ratio.
     if params.max_size > 0 && width.max(height) > params.max_size {
         let scale = params.max_size as f32 / width.max(height) as f32;
         let new_w = ((width as f32 * scale).round() as u32).max(1);
         let new_h = ((height as f32 * scale).round() as u32).max(1);
-        base = image::imageops::resize(&base, new_w, new_h, FilterType::Lanczos3);
+        base = resize(&base, new_w, new_h);
     }
     let width = base.width();
     let height = base.height();
@@ -195,8 +204,7 @@ pub fn bake_rgba8(
         let aw = width.div_ceil(4) * 4;
         let ah = height.div_ceil(4) * 4;
         if (aw, ah) != (width, height) {
-            let resized = image::imageops::resize(&base, aw, ah, FilterType::Lanczos3);
-            (aw, ah, resized)
+            (aw, ah, resize(&base, aw, ah))
         } else {
             (width, height, base)
         }
@@ -212,7 +220,7 @@ pub fn bake_rgba8(
     for _ in 1..mips {
         let new_w = (current.width() / 2).max(1);
         let new_h = (current.height() / 2).max(1);
-        let mut resized = image::imageops::resize(&current, new_w, new_h, FilterType::Lanczos3);
+        let mut resized = resize(&current, new_w, new_h);
         if renormalize {
             renormalize_normals(&mut resized);
         }
@@ -236,6 +244,38 @@ pub fn bake_rgba8(
     out.extend_from_slice(&format.code().to_le_bytes());
     out.extend_from_slice(&payload);
     Ok(out)
+}
+
+/// Resize an image whose colour is weighted by its alpha while it is averaged.
+///
+/// Averaging colour and alpha separately (what `imageops::resize` does) lets
+/// the colour of fully clear texels into the result. Those are usually black,
+/// so wherever a shrink blends opaque detail with clear gaps the colour comes
+/// out far too dark: a quarter-covered hair texel, a quarter brown strand and
+/// three quarters black gap, came out nearly black at a quarter opacity, and
+/// a character's hair cards, imported at a quarter of their authored size,
+/// drew as a dark veil that caught the sky's reflection as a pale halo round
+/// her head. Premultiplied, a clear texel weighs nothing, and the result keeps
+/// the strands' own colour at the coverage they really have.
+///
+/// Images with no alpha (every texel opaque) are resized as they are.
+fn resize_rgba(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, width: u32, height: u32) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    if img.pixels().all(|p| p.0[3] == 255) {
+        return image::imageops::resize(img, width, height, FilterType::Lanczos3);
+    }
+    // `image` keeps f32 channels in 0..1 and clamps to it.
+    let premultiplied: ImageBuffer<Rgba<f32>, Vec<f32>> = ImageBuffer::from_fn(img.width(), img.height(), |x, y| {
+        let [r, g, b, a] = img.get_pixel(x, y).0.map(|c| f32::from(c) / 255.0);
+        Rgba([r * a, g * a, b * a, a])
+    });
+    let resized = image::imageops::resize(&premultiplied, width, height, FilterType::Lanczos3);
+    ImageBuffer::from_fn(width, height, |x, y| {
+        let [r, g, b, a] = resized.get_pixel(x, y).0;
+        let alpha = a.clamp(0.0, 1.0);
+        let to_u8 = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let unpremultiply = |c: f32| if alpha > 0.0 { to_u8(c / alpha) } else { 0 };
+        Rgba([unpremultiply(r), unpremultiply(g), unpremultiply(b), to_u8(alpha)])
+    })
 }
 
 /// Renormalize a normal map level in place: treat each texel's RGB as a
@@ -608,6 +648,50 @@ mod tests {
         let (_, w, h, _, _) = header(&out);
         assert_eq!((w, h), (8, 4), "aspect-preserving clamp to longest side");
         assert_payload_matches(&out);
+    }
+
+    /// Hair cards: one-texel brown strands three texels apart over clear black
+    /// gaps, shrunk to a quarter on import and halved again for the next mip.
+    /// Averaging colour and alpha apart let the gaps' black in, and every
+    /// texel came out nearly black at a quarter opacity; the cards drew as a
+    /// dark veil that caught the sky as a pale halo round a character's head.
+    /// Each level keeps the strands' colour, at the coverage they really have.
+    #[test]
+    fn shrinking_keeps_the_colour_of_detail_over_clear_gaps() {
+        let (w, h) = (64u32, 64u32);
+        let strand = [180u8, 120, 60];
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for _y in 0..h {
+            for x in 0..w {
+                if x % 4 == 0 {
+                    px.extend_from_slice(&[strand[0], strand[1], strand[2], 255]);
+                } else {
+                    px.extend_from_slice(&[0, 0, 0, 0]);
+                }
+            }
+        }
+        let out = bake_rgba8(&px, w, h, BakeParams { max_size: 16, compress: false, ..Default::default() }).unwrap();
+        let (_, bw, bh, _, _) = header(&out);
+        let level0 = &out[HEADER_LEN..HEADER_LEN + (bw * bh * 4) as usize];
+        let level1 = &out[HEADER_LEN + (bw * bh * 4) as usize..][..((bw / 2) * (bh / 2) * 4) as usize];
+        for (name, level) in [("shrunk to a quarter", level0), ("its next mip", level1)] {
+            let n = (level.len() / 4) as f32;
+            let mean = |c: usize| level.chunks_exact(4).map(|p| f32::from(p[c])).sum::<f32>() / n;
+            let (r, g, b, a) = (mean(0), mean(1), mean(2), mean(3) / 255.0);
+            assert!((0.18..0.32).contains(&a), "{name}: {:.0}% opaque, the strands cover 25%", a * 100.0);
+            for (got, want) in [(r, strand[0]), (g, strand[1]), (b, strand[2])] {
+                assert!((got - f32::from(want)).abs() < 12.0, "{name}: colour ({r:.0}, {g:.0}, {b:.0}), the strands are {strand:?}");
+            }
+        }
+    }
+
+    /// An opaque image resizes exactly as before.
+    #[test]
+    fn opaque_images_resize_as_before() {
+        let px = solid(16, 16, [200, 100, 50, 255]);
+        let out = bake_rgba8(&px, 16, 16, BakeParams { max_size: 8, compress: false, ..Default::default() }).unwrap();
+        let level0 = &out[HEADER_LEN..HEADER_LEN + 8 * 8 * 4];
+        assert!(level0.chunks_exact(4).all(|p| p == [200, 100, 50, 255]));
     }
 
     #[test]

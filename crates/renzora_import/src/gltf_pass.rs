@@ -579,7 +579,20 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             ),
             // KHR specularFactor is 0..1 scaling dielectric specular; Bevy's
             // reflectance default of 0.5 corresponds to specularFactor 1.0.
-            reflectance: ext_f32(specular_ext, "specularFactor", 1.0) * 0.5,
+            //
+            // Materials are extracted from the JSON before `glb_compat` converts
+            // spec-gloss, so the `KHR_materials_specular` that conversion writes
+            // is not here yet: read the same factor from the spec-gloss block.
+            reflectance: specular_ext
+                .and_then(|s| s.get("specularFactor"))
+                .and_then(|v| v.as_f64())
+                .or_else(|| {
+                    spec_gloss
+                        .filter(|_| pbr_block_empty)
+                        .and_then(crate::glb_compat::specular_factor_from)
+                })
+                .unwrap_or(1.0) as f32
+                * 0.5,
             unlit: ext("KHR_materials_unlit").is_some(),
         };
 
@@ -1633,5 +1646,31 @@ mod tests {
         // `specularFactor` is halved on the way in, doubled on the way out.
         assert!((m.advanced.reflectance - 0.25).abs() < 1e-6);
         assert!(m.advanced.unlit);
+    }
+
+    /// Extraction reads the JSON before `glb_compat` converts spec-gloss, so
+    /// the reflectance that conversion carries has to be read here too. It
+    /// was not, and hair authored at about 1% F0 imported at the default 4%.
+    #[test]
+    fn a_spec_gloss_specular_colour_reaches_the_extracted_reflectance() {
+        let json = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "materials": [{
+                "name": "Hair",
+                "extensions": { "KHR_materials_pbrSpecularGlossiness": {
+                    "diffuseFactor": [1.0, 1.0, 1.0, 1.0],
+                    "specularFactor": [0.0129, 0.0129, 0.0129],
+                    "glossinessFactor": 0.4
+                }}
+            }]
+        });
+        let glb = pack_glb(json.to_string().as_bytes(), None);
+
+        let out = extract_glb_materials(&glb);
+        assert_eq!(out.len(), 1);
+        // F0 0.0129 = 0.16 R², so R = sqrt(0.0129 / 0.16).
+        let expected = (0.0129f32 / 0.16).sqrt();
+        let got = out[0].advanced.reflectance;
+        assert!((got - expected).abs() < 1e-4, "reflectance {got}, want {expected}");
     }
 }

@@ -158,11 +158,14 @@ Two more settings live on the material rather than on a node. They are in the **
 | Mode | For |
 |---|---|
 | Opaque | Solid surfaces; alpha is ignored. The default |
-| Mask | Cut-outs: each pixel is drawn or not, at the **Cutoff** (shown for this mode). Leaves, fences, hair cards, hard-edged decals |
+| Mask | Cut-outs: each pixel is drawn or not, at the **Cutoff** (shown for this mode). Leaves, fences, hard-edged decals |
 | Blend | See-through surfaces that fade as a whole: smoke, fades, soft decals |
 | Glass | See-through surfaces that still reflect at full strength: windows, lenses |
+| Dithered | Cut-outs with soft edges: hair, fur, wispy foliage |
 
-The difference between the last two is reflections. Blend scales everything the surface draws by its alpha, reflections included, so clear glass at 25% reflects a quarter of what it should. Glass uses alpha only for how much of what is behind is covered, and adds what the surface draws, its reflections above all, at full strength, the way real glass reflects however clear it is. Give glass a dark base colour, no metal and low roughness; the base colour is added too, as a haze. In the file Glass is `"alpha_mode": "Premultiplied"`.
+**Dithered** is for hair cards. Their textures are mostly clear with thin, partly transparent strands, and under Blend they draw as a pale see-through veil: blended layers are sorted per mesh, never build up into a solid mass, and let what is behind show through. Dithered first sharpens alpha: below **Clear** a pixel is never drawn, above **Solid** it always is, and between the two it ramps. Each pixel is then drawn whole or not at all against noise that changes every frame, which TAA averages back into soft strand edges. Being a cut-out, it writes depth and casts shadows like an opaque surface. Lower Solid for thicker hair, raise Clear to thin out a fuzzy fringe. It needs TAA on the camera; without it the fringe shows as grain. In the file it is `"alpha_mode": { "Dithered": { "low": 0.1, "high": 0.5 } }`.
+
+The difference between Blend and Glass is reflections. Blend scales everything the surface draws by its alpha, reflections included, so clear glass at 25% reflects a quarter of what it should. Glass uses alpha only for how much of what is behind is covered, and adds what the surface draws, its reflections above all, at full strength, the way real glass reflects however clear it is. Give glass a dark base colour, no metal and low roughness; the base colour is added too, as a haze. In the file Glass is `"alpha_mode": "Premultiplied"`.
 
 **Double Sided** renders back faces too, which thin surfaces like paper, foliage and glass seen from inside need.
 

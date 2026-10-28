@@ -1,5 +1,20 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-28 09:48
+- fix(materials): a material whose alpha mode or Double Sided was changed in its file recompiles instead of keeping its old shader
+
+## 2026-10-28 09:36
+- feat(materials): a Dithered alpha mode draws hair and fur as soft-edged cut-outs instead of a see-through veil
+
+## 2026-10-28 01:14
+- fix(solari): ray tracing uses a node-graph material's authored reflectance instead of the default
+
+## 2026-10-28 01:03
+- fix(import): spec-gloss models keep their authored reflectivity, so hair and fabric no longer mirror the sky
+
+## 2026-10-28 00:55
+- fix(import): hair, leaves and other see-through textures keep their colour when shrunk instead of turning into a dark, hazy veil
+
 ## 2026-10-28 00:44
 - fix(solari): a glowing mesh with more than 65,535 triangles no longer resets the GPU when it enters a ray-traced scene
 - fix(editor): crash reports show their whole message on the next launch, not only its first line

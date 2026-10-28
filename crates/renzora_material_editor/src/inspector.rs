@@ -101,7 +101,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(domain_cell).add_child(domain_v);
     commands.entity(domain_row).add_children(&[domain_lbl, domain_cell]);
 
-    let (alpha_row, cutoff_row, alpha_note, sided_row) = surface_settings(commands, fonts);
+    let (alpha_row, cutoff_row, dither_rows, alpha_note, sided_row) = surface_settings(commands, fonts);
 
     // ── Selected-node section ──
     let note = commands
@@ -115,18 +115,19 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let node_list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
     keyed_list(commands, node_list, node_snapshot);
 
-    commands.entity(root).add_children(&[mat_header, name_row, domain_row, alpha_row, cutoff_row, alpha_note, sided_row, note, node_list]);
+    commands.entity(root).add_children(&[mat_header, name_row, domain_row, alpha_row, cutoff_row, dither_rows, alpha_note, sided_row, note, node_list]);
     root
 }
 
 // ── Settings outside the graph ──────────────────────────────────────────────────
 
 /// The alpha modes, in the dropdown's order, with what each is for.
-const ALPHA_MODES: [(&str, &str); 4] = [
+const ALPHA_MODES: [(&str, &str); 5] = [
     ("Opaque", "Solid. Alpha is ignored."),
-    ("Mask", "Cut-out: each pixel is either drawn or not, at the cutoff. For leaves, fences, hair cards, decals with hard edges."),
+    ("Mask", "Cut-out: each pixel is either drawn or not, at the cutoff. For leaves, fences, decals with hard edges."),
     ("Blend", "See-through, fading as a whole: everything it draws, reflections included, scales with alpha. For smoke, fades, soft decals."),
     ("Glass", "See-through with full-strength reflections: alpha only covers what is behind. For windows and lenses; give it a dark base colour."),
+    ("Dithered", "Cut-out with soft edges, for hair and fur: alpha below Clear is gone, above Solid is solid, and the fringe between is dithered and smoothed by TAA. Lower Solid for thicker hair."),
 ];
 
 fn alpha_index(mode: AlphaMode) -> usize {
@@ -135,6 +136,7 @@ fn alpha_index(mode: AlphaMode) -> usize {
         AlphaMode::Mask { .. } => 1,
         AlphaMode::Blend => 2,
         AlphaMode::Premultiplied => 3,
+        AlphaMode::Dithered { .. } => 4,
     }
 }
 
@@ -151,7 +153,7 @@ fn edit_graph(w: &mut World, f: impl FnOnce(&mut renzora_shader::material::graph
 /// material rather than on a node, so had no node to edit them from and went
 /// without controls. They were only ever set by importing a model, or by
 /// editing the `.material` file by hand.
-fn surface_settings(commands: &mut Commands, fonts: &EmberFonts) -> (Entity, Entity, Entity, Entity) {
+fn surface_settings(commands: &mut Commands, fonts: &EmberFonts) -> (Entity, Entity, Entity, Entity, Entity) {
     let alpha_row = prop_row(commands, 2);
     let alpha_lbl = prop_label(commands, fonts, "Alpha Mode");
     let alpha_cell = editor_cell(commands);
@@ -172,6 +174,9 @@ fn surface_settings(commands: &mut Commands, fonts: &EmberFonts) -> (Entity, Ent
                     1 => AlphaMode::Mask { cutoff },
                     2 => AlphaMode::Blend,
                     3 => AlphaMode::Premultiplied,
+                    // Re-picking Dithered keeps the range it had.
+                    4 if matches!(g.alpha_mode, AlphaMode::Dithered { .. }) => g.alpha_mode,
+                    4 => AlphaMode::DITHERED_DEFAULT,
                     _ => AlphaMode::Opaque,
                 };
             })
@@ -204,6 +209,16 @@ fn surface_settings(commands: &mut Commands, fonts: &EmberFonts) -> (Entity, Ent
     commands.entity(cutoff_row).add_children(&[cutoff_lbl, cutoff_cell]);
     bind_display(commands, cutoff_row, |w| matches!(state(w).map(|s| s.graph.alpha_mode), Some(AlphaMode::Mask { .. })));
 
+    let dither_rows = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
+        .id();
+    let clear_row = dither_slider(commands, fonts, "Clear", false);
+    let solid_row = dither_slider(commands, fonts, "Solid", true);
+    commands.entity(dither_rows).add_children(&[clear_row, solid_row]);
+    bind_display(commands, dither_rows, |w| {
+        matches!(state(w).map(|s| s.graph.alpha_mode), Some(AlphaMode::Dithered { .. }))
+    });
+
     let alpha_note = commands
         .spawn((
             Text::new(""),
@@ -229,7 +244,46 @@ fn surface_settings(commands: &mut Commands, fonts: &EmberFonts) -> (Entity, Ent
     commands.entity(sided_cell).add_child(toggle);
     commands.entity(sided_row).add_children(&[sided_lbl, sided_cell]);
 
-    (alpha_row, cutoff_row, alpha_note, sided_row)
+    (alpha_row, cutoff_row, dither_rows, alpha_note, sided_row)
+}
+
+/// One end of a Dithered material's alpha ramp: `high` picks Solid, the alpha
+/// from which a pixel is always drawn, otherwise Clear, below which it never
+/// is. Each is kept on its own side of the other, since a ramp that runs
+/// backwards would draw the clearest parts of a strand and drop the solid ones.
+fn dither_slider(commands: &mut Commands, fonts: &EmberFonts, label: &str, high: bool) -> Entity {
+    let (low_default, high_default) = match AlphaMode::DITHERED_DEFAULT {
+        AlphaMode::Dithered { low, high } => (low, high),
+        _ => (0.1, 0.5),
+    };
+    let row = prop_row(commands, 3);
+    let lbl = prop_label(commands, fonts, label);
+    let cell = editor_cell(commands);
+    let slider = spin_slider(commands, &fonts.ui, "", if high { high_default } else { low_default }, 0.0, 1.0);
+    commands.entity(slider).entry::<Node>().and_modify(|mut n| n.flex_grow = 1.0);
+    bind_2way(
+        commands,
+        slider,
+        move |w: &Rx| match state(w).map(|s| s.graph.alpha_mode) {
+            Some(AlphaMode::Dithered { low, high: h }) => if high { h } else { low },
+            _ => if high { high_default } else { low_default },
+        },
+        move |w: &mut World, v: &f32| {
+            edit_graph(w, |g| {
+                if let AlphaMode::Dithered { low, high: h } = &mut g.alpha_mode {
+                    const GAP: f32 = 0.01;
+                    if high {
+                        *h = v.clamp(*low + GAP, 1.0);
+                    } else {
+                        *low = v.clamp(0.0, *h - GAP);
+                    }
+                }
+            })
+        },
+    );
+    commands.entity(cell).add_child(slider);
+    commands.entity(row).add_children(&[lbl, cell]);
+    row
 }
 
 // ── Node section snapshot ───────────────────────────────────────────────────────

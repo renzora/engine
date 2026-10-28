@@ -293,6 +293,29 @@ fn a_healthy_material_reports_nothing() {
     );
 }
 
+/// A Dithered material's shader carries its dither step, and the shader
+/// compiler accepts it: the step reads `in.position` and `globals`, which every
+/// pipeline the shader is built for has to provide.
+#[test]
+fn a_dithered_material_compiles() {
+    let mut f = Fixture::new("dithered");
+    let fs_path = f.dir.join(&f.rel);
+    let (mut graph, _) = graph_with_snippet("t", GOOD);
+    graph.alpha_mode = renzora_shader::material::graph::AlphaMode::DITHERED_DEFAULT;
+    let (json, _) =
+        renzora_shader::material::precompiled::save_compiled_and_serialize(&mut graph, &fs_path).unwrap();
+    assert!(json.contains("dither_noise"), "the shader has no dither step");
+    std::fs::write(&fs_path, json).unwrap();
+    f.spawn_user();
+    f.pump();
+
+    assert!(
+        f.problems().is_empty(),
+        "a dithered material must compile, got {:?}",
+        f.problems()
+    );
+}
+
 /// A shipped game must not run the validator, whatever the `editor` feature
 /// says. `xtask` builds both executables with one `cargo build --workspace`,
 /// so cargo unifies `renzora_shader/editor` on from `renzora_material_editor`

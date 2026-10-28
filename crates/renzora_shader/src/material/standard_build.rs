@@ -112,6 +112,12 @@ pub fn try_build_standard_material(
         return None;
     }
 
+    // Dithered alpha is a step in the generated shader that `StandardMaterial`
+    // has no equivalent of; on this path it would be a plain hard cut-out.
+    if matches!(graph.alpha_mode, GraphAlphaMode::Dithered { .. }) {
+        return None;
+    }
+
     // Apply graph-level flags first; nothing below should override these.
     let mut mat = StandardMaterial::default();
     apply_surface_flags(&mut mat, graph.alpha_mode, graph.double_sided);
@@ -583,6 +589,16 @@ pub fn apply_base_approximation(
         // per-pixel and out of reach, the same call `glb_compat` makes for a
         // spec-gloss texture it cannot convert.
         mat.perceptual_roughness = UNREPRESENTABLE_ROUGHNESS;
+    }
+
+    // ── reflectance ─────────────────────────────────────────────────────
+    // Solari's ray hits shade from this base. Left at the default 0.5, an
+    // imported hair material authored at about 1% F0 reflected four times as
+    // much there, and since a see-through layer adds its reflection over every
+    // overlapping strand, the hair drew as a pale veil of sky. A colour that
+    // differs per channel has no scalar home, so it keeps the default.
+    if let Some(v) = output.input_values.get("reflectance").and_then(uniform_reflectance) {
+        mat.reflectance = v;
     }
 
     // ── normal map ──────────────────────────────────────────────────────
@@ -1083,5 +1099,24 @@ mod tests {
         let mut mat = StandardMaterial::default();
         apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
         assert_eq!(mat.perceptual_roughness, 0.0);
+    }
+
+    /// The ray tracer shades a graph material from its base, so an authored
+    /// reflectance has to be there; a per-channel one has no scalar home.
+    #[test]
+    fn the_base_carries_a_uniform_reflectance() {
+        let base_with = |value: PinValue| {
+            let mut graph = MaterialGraph::new("Hair", MaterialDomain::Surface);
+            let output_id = graph.output_node().unwrap().id;
+            if let Some(n) = graph.get_node_mut(output_id) {
+                n.input_values.insert("reflectance".into(), value);
+            }
+            let app = asset_app();
+            let mut mat = StandardMaterial::default();
+            apply_base_approximation(&mut mat, &graph, app.world().resource::<AssetServer>());
+            mat.reflectance
+        };
+        assert_eq!(base_with(PinValue::Vec3([0.284, 0.284, 0.284])), 0.284);
+        assert_eq!(base_with(PinValue::Vec3([0.2, 0.3, 0.4])), 0.5);
     }
 }

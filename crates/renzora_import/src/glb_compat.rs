@@ -139,6 +139,14 @@ fn bake_spec_gloss(root: &mut Value) -> bool {
         pbr.insert("metallicFactor".into(), Value::from(0.0));
         pbr.insert("roughnessFactor".into(), Value::from(roughness_from(&sg)));
         obj.insert("pbrMetallicRoughness".into(), Value::Object(pbr));
+        if let Some(specular) = specular_factor_from(&sg) {
+            let extensions = obj.entry("extensions").or_insert_with(|| Value::Object(Map::new()));
+            if let Some(extensions) = extensions.as_object_mut() {
+                extensions
+                    .entry("KHR_materials_specular")
+                    .or_insert_with(|| serde_json::json!({ "specularFactor": specular }));
+            }
+        }
         changed = true;
     }
     changed
@@ -177,6 +185,35 @@ fn roughness_from(sg: &Value) -> f64 {
     } else {
         roughness
     }
+}
+
+/// The `KHR_materials_specular` `specularFactor` that gives a spec-gloss
+/// material's specular colour as its reflectance, or `None` to leave the
+/// default.
+///
+/// A spec-gloss `specularFactor` is the colour reflected head on (F0). Bevy's
+/// reflectance R gives F0 = 0.16 R², and its glTF reader takes R as half of
+/// `KHR_materials_specular`'s `specularFactor`, so the factor is 2 √(F0 / 0.16)
+/// of the strongest channel. Dropping it gave every converted surface the
+/// default 4%, and since Bevy also raises reflection at grazing angles in
+/// step with F0, hair authored at about 1% drew as cards mirroring the sky.
+///
+/// Only an explicit factor with no `specularGlossinessTexture` is carried: an
+/// absent one is the spec-gloss default of a pure mirror, which the factors-only
+/// conversion has never taken literally, and with a texture the factor only
+/// scales a per-pixel colour that is not converted here.
+pub(crate) fn specular_factor_from(sg: &Value) -> Option<f64> {
+    if sg.get("specularGlossinessTexture").is_some() {
+        return None;
+    }
+    let f0 = sg
+        .get("specularFactor")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_f64)
+        .fold(0.0f64, f64::max);
+    let reflectance = (f0.max(0.0) / 0.16).sqrt().min(1.0);
+    Some(2.0 * reflectance)
 }
 
 /// Whether a spec-gloss material declares no specular at all. Its glossiness,
@@ -558,6 +595,45 @@ mod spec_gloss_tests {
         });
         assert!(bake_spec_gloss(&mut doc));
         assert_eq!(doc["materials"][0]["pbrMetallicRoughness"]["roughnessFactor"], 1.0);
+    }
+
+    /// A spec-gloss surface's specular colour is its reflectance head on (F0),
+    /// carried over as `KHR_materials_specular`, which Bevy and the material
+    /// extraction read as reflectance. Dropped, every such surface got the
+    /// default 4%, and Bevy lifts reflection at grazing angles with it: a
+    /// character's hair, authored at about 1%, drew as cards mirroring the sky
+    /// in a pale sheet round her head.
+    #[test]
+    fn specular_colour_becomes_reflectance() {
+        let mut doc = json!({
+            "materials": [{
+                "extensions": { "KHR_materials_pbrSpecularGlossiness": {
+                    "glossinessFactor": 0.74,
+                    "specularFactor": [0.0129, 0.0084, 0.0054]
+                }}
+            }]
+        });
+        assert!(bake_spec_gloss(&mut doc));
+        let specular = doc["materials"][0]["extensions"]["KHR_materials_specular"]["specularFactor"]
+            .as_f64()
+            .expect("the specular colour carried over");
+        // reflectance = sqrt(F0 / 0.16), and specularFactor = reflectance * 2.
+        let want = 2.0 * (0.0129f64 / 0.16).sqrt();
+        assert!((specular - want).abs() < 1e-3, "specularFactor {specular}, want {want}");
+    }
+
+    /// No specular colour given, or one that only scales a texture this does
+    /// not convert: reflectance is left at the default.
+    #[test]
+    fn specular_colour_is_only_carried_when_it_is_the_whole_story() {
+        for sg in [
+            json!({ "glossinessFactor": 0.5 }),
+            json!({ "specularFactor": [0.02, 0.02, 0.02], "specularGlossinessTexture": { "index": 4 } }),
+        ] {
+            let mut doc = json!({ "materials": [{ "extensions": { "KHR_materials_pbrSpecularGlossiness": sg } }] });
+            assert!(bake_spec_gloss(&mut doc));
+            assert!(doc["materials"][0]["extensions"].get("KHR_materials_specular").is_none());
+        }
     }
 
     /// With a spec-gloss texture the factor is a multiplier over per-pixel

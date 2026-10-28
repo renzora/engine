@@ -113,7 +113,7 @@ A master `.material` file is a JSON-serialized `MaterialGraph`:
 | `nodes` | array | The graph's nodes (see below) |
 | `connections` | array | Wires between pins |
 | `next_id` | u64 | Next node id the editor will allocate |
-| `alpha_mode` | enum | `Opaque` (default), `{ "Mask": { "cutoff": 0.5 } }`, or `Blend` |
+| `alpha_mode` | enum | `Opaque` (default), `{ "Mask": { "cutoff": 0.5 } }`, `Blend`, `Premultiplied` (Glass), or `{ "Dithered": { "low": 0.1, "high": 0.5 } }` |
 | `double_sided` | bool | Render back faces too (default `false`) |
 | `compiled` | object | The compiled shader, written on save (omitted when absent) |
 | `wgsl_path` | string | Legacy — link to a precompiled `.wgsl` beside the material. Read-only; never written (omitted when absent) |

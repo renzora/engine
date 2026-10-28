@@ -384,15 +384,39 @@ pub enum AlphaMode {
     /// glass reflects the same however clear it is. Pair it with a dark base
     /// colour: the base colour is added too, as a haze.
     Premultiplied,
+    /// Cut-out with soft edges, for hair cards and fur. Alpha is first
+    /// sharpened: `low` and below is clear, `high` and above is solid, and
+    /// between them it ramps. Each pixel is then drawn whole or not at all by
+    /// comparing that against noise which changes every frame, so TAA averages
+    /// the strands' fringes back into soft edges.
+    ///
+    /// Hair under `Blend` drew as a pale veil: its texture is mostly clear
+    /// with thin, semi-transparent strands, and blended layers sorted per mesh
+    /// never build up into a solid mass. Being a cut-out, this one also writes
+    /// depth and casts shadows like any opaque surface.
+    Dithered { low: f32, high: f32 },
 }
 
 impl AlphaMode {
+    /// The sharpening range a newly chosen [`AlphaMode::Dithered`] starts
+    /// with. Matched against a reference render of imported hair cards: lower
+    /// `high` thickens the hair, higher `low` thins its fringe.
+    pub const DITHERED_DEFAULT: AlphaMode = AlphaMode::Dithered { low: 0.1, high: 0.5 };
+
     pub fn to_bevy(self) -> bevy::prelude::AlphaMode {
         match self {
             AlphaMode::Opaque => bevy::prelude::AlphaMode::Opaque,
             AlphaMode::Mask { cutoff } => bevy::prelude::AlphaMode::Mask(cutoff),
             AlphaMode::Blend => bevy::prelude::AlphaMode::Blend,
             AlphaMode::Premultiplied => bevy::prelude::AlphaMode::Premultiplied,
+            // The generated shader writes an alpha of exactly 0 or 1, which any
+            // cutoff in (0, 1] splits the same way. The midpoint of the ramp is
+            // for the passes that shade from the plain base approximation
+            // instead (Solari's hits, a VG cutout): with the raw texture alpha,
+            // it is where the sharpened alpha crosses one half.
+            AlphaMode::Dithered { low, high } => {
+                bevy::prelude::AlphaMode::Mask(((low + high) * 0.5).clamp(0.001, 1.0))
+            }
         }
     }
 }

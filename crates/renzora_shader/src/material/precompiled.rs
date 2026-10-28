@@ -73,6 +73,18 @@ impl CompiledArtifact {
     pub fn is_current(&self) -> bool {
         self.meta.codegen_version == codegen::CODEGEN_VERSION
     }
+
+    /// Whether this artifact still describes `graph`: written by the current
+    /// codegen, and for the graph's alpha mode and sidedness. Those two are
+    /// also the settings most often changed outside the editor (by hand, or by
+    /// a tool writing the file), and the shader depends on them: a Dithered
+    /// material's dither step is in the WGSL. An artifact that disagrees is
+    /// ignored and the graph compiled live, as for an outdated codegen.
+    pub fn is_usable_for(&self, graph: &MaterialGraph) -> bool {
+        self.is_current()
+            && self.meta.alpha_mode == graph.alpha_mode
+            && self.meta.double_sided == graph.double_sided
+    }
 }
 
 /// Filesystem path of the legacy `.wgsl` for a `.material` at
@@ -262,5 +274,23 @@ mod tests {
         assert!(graph.compiled.is_some(), "artifact should be embedded");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An alpha mode changed in the file after the save leaves an artifact
+    /// compiled for the old one; it must not be used, or a material switched to
+    /// Dithered would keep a shader with no dither step in it.
+    #[test]
+    fn an_artifact_for_another_alpha_mode_is_not_used() {
+        let mut graph = MaterialGraph::new("Hair", MaterialDomain::Surface);
+        graph.alpha_mode = AlphaMode::Blend;
+        save_compiled(&mut graph, Path::new("materials/hair.material")).expect("save");
+        let artifact = graph.compiled.clone().expect("artifact embedded");
+        assert!(artifact.is_usable_for(&graph));
+
+        graph.alpha_mode = AlphaMode::DITHERED_DEFAULT;
+        assert!(!artifact.is_usable_for(&graph));
+        graph.alpha_mode = AlphaMode::Blend;
+        graph.double_sided = true;
+        assert!(!artifact.is_usable_for(&graph));
     }
 }

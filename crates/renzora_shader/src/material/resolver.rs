@@ -1005,8 +1005,9 @@ fn resolve_material_file(
     // Compiled shader baked into the `.material` on save — the normal path.
     // Everything the renderer needs is right here, so codegen never runs.
     // An artifact from an older codegen falls through to live codegen below,
-    // which is what carries a codegen change to materials saved before it.
-    if let Some(compiled) = graph.compiled.as_ref().filter(|c| c.is_current()) {
+    // which is what carries a codegen change to materials saved before it, and
+    // so does one whose alpha mode or sidedness the file has since changed.
+    if let Some(compiled) = graph.compiled.as_ref().filter(|c| c.is_usable_for(&graph)) {
         let meta = &compiled.meta;
         let node_lines = meta.node_line_map.clone();
         let (handle, parameters) = assemble_graph_material(
@@ -1230,7 +1231,7 @@ fn resolve_material_instance_file(
         // master an older editor wrote. Either way every instance reuses the
         // master's compiled shader; only the parameter UBO differs. An
         // artifact from an older codegen is skipped, as in the plain case.
-        let from_precompiled = match master_graph.compiled.as_ref().filter(|c| c.is_current()) {
+        let from_precompiled = match master_graph.compiled.as_ref().filter(|c| c.is_usable_for(&master_graph)) {
             Some(compiled) => Some((
                 master_key.clone(),
                 (compiled.wgsl.clone(), compiled.meta.clone()),

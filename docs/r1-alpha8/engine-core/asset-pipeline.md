@@ -279,7 +279,14 @@ is exported by Blender to a GLB out-of-process and enters the same way.
   `pbrMetallicRoughness`: `diffuseTexture`/`diffuseFactor` become base colour,
   `glossinessFactor` becomes `1 - g` of roughness, and metallic goes to 0. Only
   materials whose metal-rough block says nothing beyond the glTF defaults are
-  touched — a file carrying a real fallback keeps it.
+  touched: a file carrying a real fallback keeps it. An explicit
+  `specularFactor` (the colour reflected head on, F0) becomes
+  `KHR_materials_specular`'s `specularFactor`, `2 √(F0 / 0.16)` of its
+  strongest channel, which the material reads as reflectance. Without it every
+  converted surface reflected the default 4%, and Bevy raises reflection at
+  grazing angles with it: hair authored at about 1% drew as cards mirroring the
+  sky. An absent factor, or one scaling a `specularGlossinessTexture`, leaves
+  the default.
 
   Dropping the *requirement* without this was half a fix. Plenty of spec-gloss
   exports carry no metal-rough data at all: every texture and colour lives
@@ -418,6 +425,17 @@ exactly — 231 MB of pure duplication on a scene like Bistro — and it made th
 GLB resolve through Bevy's **DDS** loader, which has no mapping for `ATI2`, the
 FourCC every DCC tool writes tangent-space normal maps as. Those images failed
 to load, and the model rendered untextured.
+
+### Shrinking weighs colour by alpha
+
+When a texture is shrunk (to `texture_max_size` on import, and for every mip
+level after), its colour is averaged weighted by alpha (premultiplied), so the
+colour of fully clear texels counts for nothing. Averaged plainly, the usually
+black clear texels darkened every edge where detail meets a gap: hair cards
+shrunk to a quarter came out nearly black at a quarter opacity and drew as a
+dark veil, pale where it caught the sky's reflection. Normal maps and opaque
+textures resize as before. Textures imported before this need reconverting
+(the import window's **Reconvert**) to pick it up.
 
 ### DDS is repacked, not copied
 

@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 
-use super::super::graph::{MaterialDomain, MaterialGraph, MaterialNode, NodeId};
+use super::super::graph::{AlphaMode, MaterialDomain, MaterialGraph, MaterialNode, NodeId};
 use super::ctx::Ctx;
 use super::wgsl::{
     emit_ext_shader_header, emit_module_prelude, fragment_input_aliases, noise_helpers,
@@ -55,6 +55,28 @@ fn supports_virtual_geometry_graph(ctx: &Ctx) -> bool {
 /// `pbr.wesl` calls it. Bevy 0.20 takes the material's flags and cutoff
 /// rather than the whole material.
 const ALPHA_DISCARD: &str = "    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material.flags, pbr_input.material.alpha_cutoff, pbr_input.material.base_color);\n";
+
+/// [`AlphaMode::Dithered`]'s step, run just before [`ALPHA_DISCARD`]: sharpen
+/// alpha over `low..high`, then set it to exactly 0 or 1 against per-pixel
+/// noise. The material is a cut-out to Bevy (`AlphaMode::to_bevy`), so the
+/// discard that follows drops the zeros in every pass that runs this shader,
+/// shadows and the G-buffer included.
+///
+/// Interleaved gradient noise, offset by the frame: neighbouring pixels take
+/// well-spread thresholds, so a half-covered strand reads as an even half-tone
+/// rather than clumps, and TAA, which averages successive frames, resolves it
+/// back to a soft edge.
+fn dithered_alpha(low: f32, high: f32) -> String {
+    let span = (high - low).max(1e-4);
+    format!(
+        "    {{\n        \
+         let dither_alpha = clamp((pbr_input.material.base_color.a - {low:?}) / {span:?}, 0.0, 1.0);\n        \
+         let dither_pixel = in.position.xy + 5.588238 * f32(globals.frame_count % 64u);\n        \
+         let dither_noise = fract(52.9829189 * fract(dot(dither_pixel, vec2<f32>(0.06711056, 0.00583715))));\n        \
+         pbr_input.material.base_color.a = select(0.0, 1.0, dither_alpha > dither_noise);\n    \
+         }}\n"
+    )
+}
 
 /// Merge the per-line spans recorded during emission into per-node absolute
 /// ranges. `prelude_base` / `body_base` are the 1-based absolute lines the
@@ -332,6 +354,9 @@ pub(crate) fn build_pbr_shader(
     // emissive.rgb * output_color.a`, so a glTF material authored with
     // baseColorFactor.a = 0 (common for emissive-only string lights) would
     // otherwise render with no glow.
+    if let AlphaMode::Dithered { low, high } = ctx.graph.alpha_mode {
+        shader.push_str(&dithered_alpha(low, high));
+    }
     shader.push_str(ALPHA_DISCARD);
 
     if deferred {
