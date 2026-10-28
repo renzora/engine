@@ -29,13 +29,12 @@ bundled = []
 # the whole engine build, because cargo unifies features across it.
 bevy = { version = "0.20", default-features = false }
 renzora = { path = "../../crates/renzora", default-features = false }
-# The same commit the engine workspace pins (avian's open Bevy 0.20 pull
-# request, until a release supports 0.20), so cargo sees one avian package.
+# The same release the engine workspace pins, so cargo sees one avian package.
 #
 # `xpbd_joints` is avian's joint SOLVER. Without it a joint component is
 # accepted, kept and silently ignored: bodies move as if unjoined.
-avian3d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
-avian2d = { git = "https://github.com/andriyDev/avian.git", rev = "34c9b008d2f40638a953d9218db48d54f661365d", default-features = false, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
+avian3d = { version = "0.8", default-features = false, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
+avian2d = { version = "0.8", default-features = false, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
 
 [dev-dependencies]
 # The tests drive the backend through the engine's own physics plugin, and the
