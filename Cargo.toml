@@ -256,7 +256,7 @@ bevy = { version = "0.20", default-features = false, features = [
     "morph", "morph_animation",
     # LUT/data features — NOT code-referenced by design; they gate embedded data
     # bevy_pbr samples at runtime, so grep can never justify them. `bluenoise_texture`
-    # backs `crates/renzora_bluenoise`; `area_light_luts` interacts with the deferred
+    # is sampled by bevy_pbr's SSR, deferred and environment-map passes; `area_light_luts` interacts with the deferred
     # bind-group layout (see `renzora_engine/src/scene_io.rs`); `dfg_lut` is the
     # specular BRDF table and changes PBR output if removed.
     "bluenoise_texture", "dfg_lut", "area_light_luts",

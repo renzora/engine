@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-28 17:12
+- fix(lighting): soft shadows render smooth under TAA instead of staying grainy
+
 ## 2026-10-28 13:33
 - feat(scripting): games can save named values to slots and load them back with `save_set`, `save_write` and `save_load`
 - feat(lighting): lights can cast soft shadows that blur with distance from the object

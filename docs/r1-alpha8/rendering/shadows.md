@@ -43,17 +43,17 @@ A real shadow is sharp where an object touches the ground and grows blurrier the
 
 | Light | Field | Effect |
 |---|---|---|
-| Directional | **Soft Shadow Size** | 0 is off, giving hard shadows. Above 0 is the size of the light: larger gives blurrier shadows away from the caster. |
+| Directional | **Soft Shadow Size** | 0 is off, giving hard shadows. Above 0 is the size of the light: larger gives blurrier shadows away from the caster. 0.3 to 1.5 suits a sun; much above that the blur turns to grain. |
 | Point, Spot | **Soft Shadows** | Turns them on. |
 | Point, Spot | **Radius** | The size of the bulb. Sets how blurry the shadows get, and also how large the light's reflections look on shiny surfaces. |
 
-Soft shadows cost noticeably more than hard ones, and on their own they look grainy. Add **Blue Noise Shadows** to the camera and keep TAA on, so the grain averages out over a few frames.
+Soft shadows cost noticeably more than hard ones, and each frame of them is grainy on its own. **Add TAA** (in the camera's or the world environment's anti-aliasing settings) to average the grain into a smooth blur over a few frames. While any light has soft shadows on, the engine switches cameras to temporal shadow filtering, the mode TAA needs to smooth them; you do not set that yourself.
 
 ## Resolution and filtering
 
 The shadow map's resolution is set per project by the graphics quality tier: 2048 on **High**, 1024 on **Medium**, 512 on **Low**, for every cascade.
 
-Shadow edges are filtered with a fixed hardware filter by default. Add **Blue Noise Shadows** to the camera to filter them with temporally jittered blue noise instead, which hides banding on soft edges when TAA is on.
+Shadow edges are softened with a small Gaussian filter, which is enough for hard shadows.
 
 ## Related
 

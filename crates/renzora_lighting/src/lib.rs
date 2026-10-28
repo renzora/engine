@@ -3,7 +3,7 @@
 //! Provides `Sun` (directional light via azimuth/elevation), with sync
 //! systems that keep the underlying Bevy `DirectionalLight` in lockstep.
 
-use bevy::light::SunDisk;
+use bevy::light::{ShadowFilteringMethod, SunDisk};
 use bevy::prelude::*;
 
 // ============================================================================
@@ -68,6 +68,58 @@ fn sync_sun(
 }
 
 // ============================================================================
+// Soft shadows → temporal shadow filtering
+// ============================================================================
+
+/// Switch every 3D camera to temporal shadow filtering while any light casts
+/// soft shadows, and back to Bevy's default once none does.
+///
+/// Soft shadows sample the shadow map with a sparse, rotating pattern, so a
+/// single frame of them is stippled. Only `ShadowFilteringMethod::Temporal`
+/// varies that pattern from frame to frame, which is what lets TAA average it
+/// into a smooth penumbra; under the default filter the stipple is fixed and
+/// TAA has nothing to smooth. Leaving this to the user meant soft shadows
+/// looked broken the moment they were switched on.
+///
+/// Nothing else in the engine sets `ShadowFilteringMethod`, so this owns it.
+/// It writes only when the wanted value differs, so a steady scene costs a
+/// scan of its lights and no change detection churn.
+fn match_shadow_filtering(
+    mut commands: Commands,
+    directional: Query<&DirectionalLight>,
+    points: Query<&PointLight>,
+    spots: Query<&SpotLight>,
+    mut cameras: Query<(Entity, Option<&mut ShadowFilteringMethod>), With<Camera3d>>,
+) {
+    let soft = directional
+        .iter()
+        .any(|l| l.shadow_maps_enabled && l.soft_shadow_size.is_some())
+        || points
+            .iter()
+            .any(|l| l.shadow_maps_enabled && l.soft_shadows_enabled)
+        || spots
+            .iter()
+            .any(|l| l.shadow_maps_enabled && l.soft_shadows_enabled);
+    let wanted = if soft {
+        ShadowFilteringMethod::Temporal
+    } else {
+        ShadowFilteringMethod::default()
+    };
+    for (entity, method) in &mut cameras {
+        match method {
+            Some(mut method) if *method != wanted => *method = wanted,
+            Some(_) => {}
+            // A camera without the component renders with the default, so it
+            // only needs one when soft shadows want something else.
+            None if wanted != ShadowFilteringMethod::default() => {
+                commands.entity(entity).try_insert(wanted);
+            }
+            None => {}
+        }
+    }
+}
+
+// ============================================================================
 // Plugin
 // ============================================================================
 
@@ -119,7 +171,7 @@ impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] LightingPlugin");
         app.add_systems(Startup, size_light_clusters);
-        app.add_systems(Update, sync_sun);
+        app.add_systems(Update, (sync_sun, match_shadow_filtering));
         app.add_observer(handle_sun_script_actions);
     }
 }
@@ -227,6 +279,66 @@ mod tests {
         assert_eq!(sun.illuminance, 40_000.0);
         assert!(sun.shadows_enabled);
         assert_eq!(sun.angular_diameter, 0.53);
+    }
+
+    fn filtering_app() -> (App, Entity) {
+        let mut app = App::new();
+        app.add_systems(Update, match_shadow_filtering);
+        let camera = app.world_mut().spawn(Camera3d::default()).id();
+        (app, camera)
+    }
+
+    fn filtering(app: &App, camera: Entity) -> ShadowFilteringMethod {
+        app.world()
+            .get::<ShadowFilteringMethod>(camera)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn soft_shadows_switch_cameras_to_temporal_filtering_and_back() {
+        let (mut app, camera) = filtering_app();
+        let light = app
+            .world_mut()
+            .spawn(DirectionalLight {
+                shadow_maps_enabled: true,
+                ..default()
+            })
+            .id();
+        app.update();
+        assert_eq!(filtering(&app, camera), ShadowFilteringMethod::default());
+
+        app.world_mut()
+            .get_mut::<DirectionalLight>(light)
+            .unwrap()
+            .soft_shadow_size = Some(0.5);
+        app.update();
+        assert_eq!(filtering(&app, camera), ShadowFilteringMethod::Temporal);
+
+        app.world_mut().despawn(light);
+        app.update();
+        assert_eq!(filtering(&app, camera), ShadowFilteringMethod::default());
+    }
+
+    /// A light with its shadow maps off casts no shadow at all, soft or not.
+    #[test]
+    fn a_light_without_shadow_maps_does_not_count() {
+        let (mut app, camera) = filtering_app();
+        app.world_mut().spawn(PointLight {
+            shadow_maps_enabled: false,
+            soft_shadows_enabled: true,
+            ..default()
+        });
+        app.update();
+        assert_eq!(filtering(&app, camera), ShadowFilteringMethod::default());
+
+        app.world_mut().spawn(SpotLight {
+            shadow_maps_enabled: true,
+            soft_shadows_enabled: true,
+            ..default()
+        });
+        app.update();
+        assert_eq!(filtering(&app, camera), ShadowFilteringMethod::Temporal);
     }
 
     #[test]
