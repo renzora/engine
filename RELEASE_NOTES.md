@@ -1,5 +1,15 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-28 00:44
+- fix(solari): a glowing mesh with more than 65,535 triangles no longer resets the GPU when it enters a ray-traced scene
+- fix(editor): crash reports show their whole message on the next launch, not only its first line
+
+## 2026-10-28 00:31
+- fix(editor): when the GPU stops responding, the editor saves a recovery copy of the open scene and restarts instead of failing with nothing saved
+
+## 2026-10-28 00:18
+- fix(editor): the Play and Marketplace chips have an even tint instead of fading out halfway across
+
 ## 2026-10-28 00:00
 - fix(solari): a scene with nothing to ray trace no longer shows a smeared ghost of the previous scene under DLSS
 - fix(solari): the Ray Tracing panel's rays-per-pixel figure no longer reads in the millions in a view of only sky

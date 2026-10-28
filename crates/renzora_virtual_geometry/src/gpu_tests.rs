@@ -1383,6 +1383,49 @@ fn solari_keeps_tracing_a_model_while_virtual_geometry_is_switched() {
 
 const SWITCH_SETTLE_FRAMES: usize = 120;
 
+/// A glowing mesh with more triangles than a light can be sampled over is
+/// traced without failing. Light sampling packs a triangle index into 16 bits,
+/// and registering such a mesh as a light panicked while the scene was being
+/// prepared; the GPU then read half-written scene data and lost the device. A
+/// character whose hair glowed faintly (82,008 triangles) reset the GPU as it
+/// came into a Solari scene, and only with Glass Reflections on, since
+/// blended hair is traced only then. Both an opaque and a blended one.
+#[test]
+fn solari_traces_a_glowing_mesh_too_big_to_sample_as_a_light() {
+    if !solari_gpu_tests() {
+        return;
+    }
+    let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut app, _, dir) = solari_rvg_app("big_light", true, Transform::from_xyz(0.0, 0.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y));
+    let _ = std::fs::remove_dir_all(&dir);
+    let world = app.world_mut();
+    // 256 x 160 segments: about 81,000 triangles, past 65,535.
+    let mesh = world.resource_mut::<Assets<Mesh>>().add(Sphere::new(1.0).mesh().uv(256, 160));
+    let mut materials = world.resource_mut::<Assets<StandardMaterial>>();
+    let glowing = materials.add(StandardMaterial {
+        emissive: LinearRgba::rgb(2.0, 1.5, 1.0),
+        ..default()
+    });
+    let glowing_blended = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.5, 0.4, 0.3, 0.5),
+        alpha_mode: AlphaMode::Blend,
+        emissive: LinearRgba::rgb(2.0, 1.5, 1.0),
+        ..default()
+    });
+    world.spawn((Mesh3d(mesh.clone()), MeshMaterial3d(glowing), Transform::from_xyz(-1.2, 0.0, 0.0)));
+    world.spawn((Mesh3d(mesh), MeshMaterial3d(glowing_blended), Transform::from_xyz(1.2, 0.0, 0.0)));
+    let mut traced = None;
+    for _ in 0..SWITCH_SETTLE_FRAMES {
+        app.update();
+        if let Some(stats) = app.world_mut().resource_mut::<renzora::SolariDiagnostics>().frame.take() {
+            traced = Some(stats.not_traced_fraction);
+        }
+    }
+    let traced = traced.expect("the diagnostics reported, so Solari ran");
+    println!("glowing meshes too big to sample as lights: {:.2}% not traced as drawn", traced * 100.0);
+    assert!(traced < 0.01, "{:.1}% of the image is not traced as drawn", traced * 100.0);
+}
+
 const FILLER_INSTANCES: u32 = 400;
 
 /// A surface given another's slot in the ray-traced scene is traced with its

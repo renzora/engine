@@ -324,6 +324,11 @@ You can always author light by hand instead: an emissive `StandardMaterial` on
 the bulb or fixture geometry is sampled exactly the same way, and gives the light
 a real shape.
 
+An emissive mesh can be sampled as a light only up to 65,535 triangles. A bigger
+one still glows wherever a ray meets it (in reflections and bounce light) but
+lights nothing else directly, and the Console says so once. Keep light-giving
+geometry simple, or split it.
+
 ## Bloom
 
 Bloom is not special-cased for Solari and nothing disables it — but it is

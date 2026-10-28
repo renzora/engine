@@ -59,15 +59,18 @@ pub fn on_hue(hue: (u8, u8, u8)) -> (u8, u8, u8) {
 /// rather than as pills dropped onto it.
 pub const CHIP_RADIUS: f32 = 4.0;
 
-/// Fill for a tinted top-bar chip: `hue` fading left to right into the bar.
+/// Fill for a tinted top-bar chip: an even wash of `hue`, a little stronger at
+/// the top than the bottom, as if lit from above.
 ///
 /// A flat translucent fill made each chip a solid coloured block, the loudest
-/// thing in the chrome. Fading out toward the label keeps the hue where the
-/// glyph is and lets the rest sit in the bar's own colour, in any theme, since
-/// what the fade reaches is whatever is behind it.
+/// thing in the chrome. A left-to-right fade after it quietened the chip but
+/// made it lopsided: tinted behind the glyph, gone by the label, and held
+/// together on the right only by the hairline border. A light, even wash keeps
+/// the whole chip one shape, and translucency still lets it take on the bar's
+/// own colour in any theme.
 pub fn chip_gradient(hue: Color, hot: bool) -> BackgroundGradient {
-    let (from, to) = if hot { (0.34, 0.12) } else { (0.22, 0.04) };
-    linear_gradient(90.0, [hue.with_alpha(from), hue.with_alpha(to)])
+    let (top, bottom) = if hot { (0.30, 0.20) } else { (0.18, 0.10) };
+    gradient_v(hue.with_alpha(top), hue.with_alpha(bottom))
 }
 
 /// Hairline border for a tinted chip, so it keeps an edge where the gradient

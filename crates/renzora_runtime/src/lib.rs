@@ -777,14 +777,13 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     app.insert_resource(renzora::GpuRaytracing {
         enabled: raytracing_supported(),
     });
-    // Render recovery (Bevy 0.19): by default any `RenderError` quits the app —
-    // which means a GPU device-loss (driver reset, GPU hang, or an XR headset
-    // disconnect / compositor reset) hard-crashes the editor or game. Override
-    // the handler so a `DeviceLost` instead *recreates* the renderer with the
-    // exact settings the engine booted with (`platform_wgpu_settings()`), and
-    // every other fault keeps the app alive but stops rendering rather than
-    // strobing on a persistent OOM/validation error. Only the GPU client path
-    // installs this; the headless server has no renderer.
+    // Render recovery: by default any `RenderError` quits the app, so a GPU
+    // device loss (driver reset, GPU hang or timeout, an XR compositor reset)
+    // would end the editor or game with nothing saved. The handler instead
+    // saves a recovery copy and relaunches on a device loss, tolerates
+    // transient surface faults, and turns anything else into a crash report.
+    // See `render_error_policy`. Only the GPU client path installs this; the
+    // headless server has no renderer.
     {
         use bevy::render::error_handler::RenderErrorHandler;
         app.insert_resource(RenderErrorHandler(render_error_policy));
@@ -815,24 +814,36 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     }
 }
 
-/// The renderer error policy (Bevy 0.19 `RenderErrorHandler`). It's a bare `fn`
-/// pointer (no captured state), so it rebuilds the recovery `RenderCreation`
-/// from the same `platform_wgpu_settings()` the app booted with — a recovered
-/// device keeps the engine's custom features (e.g. `POLYGON_MODE_LINE`) instead
-/// of silently falling back to Bevy defaults.
+/// The renderer error policy (Bevy's `RenderErrorHandler`). On the desktop a
+/// lost device saves a recovery copy of the open scene and relaunches
+/// ([`restart_after_device_lost`]); on the web, which cannot relaunch, it takes
+/// Bevy's partial recovery, rebuilt from the same `platform_wgpu_settings()`
+/// the app booted with so the device keeps the engine's custom features.
 fn render_error_policy(
     error: &bevy::render::error_handler::RenderError,
-    _main_world: &mut bevy::prelude::World,
+    main_world: &mut bevy::prelude::World,
     _render_world: &mut bevy::prelude::World,
 ) -> bevy::render::error_handler::RenderErrorPolicy {
     use bevy::render::error_handler::{ErrorType, RenderErrorPolicy};
-    use bevy::render::settings::RenderCreation;
     match error.ty {
-        // Recoverable: the device went away (driver reset / GPU hang / XR
-        // compositor reset). Re-create the renderer and carry on — this is the
-        // one case worth surviving silently.
+        // The device went away (driver reset, GPU hang or timeout, XR
+        // compositor reset). Bevy's `Recover` only swaps in a new device and
+        // reruns render startup: every cache built on the old one (uploaded
+        // meshes and textures, Solari's scene, the atmosphere, clustering,
+        // virtual geometry) keeps buffers that no longer exist, and every
+        // system touching one panicked at once until the editor fell over with
+        // nothing saved. A clean process is the only real recovery, so keep
+        // the user's work and restart instead.
+        #[cfg(not(target_arch = "wasm32"))]
+        ErrorType::DeviceLost => restart_after_device_lost(&error.description, main_world),
+        // A web page cannot relaunch itself, so it takes Bevy's partial
+        // recovery, which at least keeps the page alive.
+        #[cfg(target_arch = "wasm32")]
         ErrorType::DeviceLost => {
-            RenderErrorPolicy::Recover(RenderCreation::Automatic(Box::new(platform_wgpu_settings())))
+            let _ = main_world;
+            RenderErrorPolicy::Recover(bevy::render::settings::RenderCreation::Automatic(Box::new(
+                platform_wgpu_settings(),
+            )))
         }
         // Transient surface/swapchain faults are expected during legitimate
         // reconfiguration — entering/leaving play mode, window resize, viewport
@@ -894,6 +905,62 @@ fn render_error_policy(
             "Unrecoverable GPU render error ({:?}): {}",
             error.ty, error.description
         ),
+    }
+}
+
+/// Set on a process relaunched after a device loss, to the time it happened, so
+/// a second loss soon after (a scene that loses the device as it loads) exits
+/// with its report rather than relaunching forever.
+#[cfg(not(target_arch = "wasm32"))]
+const DEVICE_LOST_RELAUNCH_ENV: &str = "RENZORA_DEVICE_LOST_AT";
+
+/// Within this many seconds of a relaunch, a second device loss does not
+/// relaunch again.
+#[cfg(not(target_arch = "wasm32"))]
+const DEVICE_LOST_RELAUNCH_WINDOW_SECS: u64 = 60;
+
+/// After a device loss: save the open scene to a recovery file (editor only,
+/// and never over the scene file itself), record a crash report naming the
+/// cause and the recovery file, and relaunch. Does not return.
+#[cfg(not(target_arch = "wasm32"))]
+fn restart_after_device_lost(description: &str, main_world: &mut World) -> ! {
+    error!("[runtime] GPU device lost: {description}. Saving a recovery copy and restarting.");
+    let recovery = if renzora_engine::crash::is_editor_process() { save_recovery_scene(main_world) } else { None };
+    renzora_engine::crash::record_device_lost(description, recovery.as_deref());
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let lost_again_soon = std::env::var(DEVICE_LOST_RELAUNCH_ENV)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .is_some_and(|before| now.saturating_sub(before) < DEVICE_LOST_RELAUNCH_WINDOW_SECS);
+    if lost_again_soon {
+        error!("[runtime] the GPU device was lost again right after a restart; exiting instead of restarting again");
+        renzora::exit_now(1);
+    }
+    // The relaunched process inherits the environment, so it knows when this
+    // one restarted.
+    std::env::set_var(DEVICE_LOST_RELAUNCH_ENV, now.to_string());
+    renzora::restart_process()
+}
+
+/// Save the open scene beside the project's other editor state, in
+/// `.renzora/recovery/`, under the time it was saved. Returns where, or `None`
+/// with no project open or when the save failed (logged).
+#[cfg(not(target_arch = "wasm32"))]
+fn save_recovery_scene(world: &mut World) -> Option<std::path::PathBuf> {
+    let project = world.get_resource::<renzora::CurrentProject>()?.path.clone();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let path = project.join(".renzora").join("recovery").join(format!("device_lost_{stamp}.bsn"));
+    match renzora_engine::scene_io::save_scene(world, &path) {
+        Ok(()) => Some(path),
+        Err(e) => {
+            error!("[runtime] could not save a recovery copy of the scene: {e}");
+            None
+        }
     }
 }
 

@@ -360,7 +360,24 @@ impl InstanceState {
             .assets
             .emissive_materials
             .contains(&instance.material);
-        if is_emissive {
+        // RENZORA PATCH: light sampling packs a triangle index into 16 bits
+        // (`LightSample::light_id`), so an emissive mesh with more triangles
+        // than that cannot be sampled as a light. `new_emissive_mesh_light`
+        // panicked on one, part way through preparing the scene, and the GPU
+        // then read half-written scene data and lost the device: a character
+        // whose glowing hair had 82,008 triangles reset the GPU as it appeared.
+        // Such a mesh stays in the scene, glowing wherever a ray meets it, and
+        // only stops being a light the others sample.
+        let too_many_to_sample = triangle_count > u32::from(u16::MAX);
+        if is_emissive && too_many_to_sample {
+            once!(warn!(
+                "Solari: an emissive mesh has {triangle_count} triangles, more than the {} \
+                 a light can be sampled over. It still glows where rays meet it, but lights \
+                 nothing else directly.",
+                u16::MAX
+            ));
+        }
+        if is_emissive && !too_many_to_sample {
             lights.add_light(
                 LightSourceId::EmissiveMesh(entity),
                 GpuLightSource::new_emissive_mesh_light(slot, triangle_count),

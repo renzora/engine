@@ -23,7 +23,7 @@ static CRASH_REPORT: Mutex<Option<CrashReport>> = Mutex::new(None);
 static IS_EDITOR_PROCESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
-fn is_editor_process() -> bool {
+pub fn is_editor_process() -> bool {
     IS_EDITOR_PROCESS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -405,6 +405,33 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// Record that the GPU device was lost, as a crash report the next launch
+/// shows. A device loss is not a panic, so nothing else writes one, and the
+/// relaunch that follows would otherwise look like a crash with no cause.
+/// `recovery` names where the open scene was saved, when it was.
+pub fn record_device_lost(description: &str, recovery: Option<&std::path::Path>) {
+    let saved = match recovery {
+        Some(path) => format!(
+            "\n\nThe open scene was saved to {}. Your scene file itself was not touched; \
+             open the recovery copy to get back what was unsaved.",
+            path.display()
+        ),
+        None => String::new(),
+    };
+    let report = CrashReport {
+        message: sanitize_paths(&format!(
+            "The GPU stopped responding (device lost), so the renderer could not continue and \
+             the editor restarted.\n\nReason: {description}{saved}"
+        )),
+        location: "GPU device lost".into(),
+        backtrace: String::new(),
+        timestamp: chrono_lite_timestamp(),
+    };
+    if let Err(e) = save_crash_report(&report) {
+        error!("[crash] could not save the device-lost report: {e}");
+    }
+}
+
 /// Save the crash report to a file.
 ///
 /// In the editor build the report is overwritten in `~/.renzora/crashes/last_crash.txt`
@@ -473,20 +500,35 @@ pub fn check_previous_crash() -> Option<CrashReport> {
     }
 
     let content = std::fs::read_to_string(&crash_file).ok()?;
+    // Delete the crash file after reading
+    let _ = std::fs::remove_file(&crash_file);
+    parse_report(&content)
+}
 
+/// A report as [`CrashReport::format`] wrote it, read back.
+fn parse_report(content: &str) -> Option<CrashReport> {
     let mut message = String::new();
     let mut location = String::new();
     let mut backtrace = String::new();
     let mut timestamp = String::new();
     let mut in_backtrace = false;
+    // A message runs from `Error:` to `Location:`. Reading only the `Error:`
+    // line kept the first line of a multi-line message and dropped the rest:
+    // a device-lost report lost its reason and where the scene was saved.
+    let mut in_message = false;
 
     for line in content.lines() {
         if let Some(ts) = line.strip_prefix("Timestamp: ") {
             timestamp = ts.to_string();
         } else if let Some(err) = line.strip_prefix("Error: ") {
             message = err.to_string();
+            in_message = true;
         } else if let Some(loc) = line.strip_prefix("Location: ") {
             location = loc.to_string();
+            in_message = false;
+        } else if in_message {
+            message.push('\n');
+            message.push_str(line);
         } else if line == "=== BACKTRACE ===" {
             in_backtrace = true;
         } else if line == "=== END CRASH REPORT ===" {
@@ -497,9 +539,8 @@ pub fn check_previous_crash() -> Option<CrashReport> {
         }
     }
 
-    // Delete the crash file after reading
-    let _ = std::fs::remove_file(&crash_file);
-
+    // The blank line `format` puts between the message and `Location:`.
+    let message = message.trim_end().to_string();
     if message.is_empty() {
         return None;
     }
@@ -601,7 +642,24 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{civil_from_days, is_power_of_ten, sanitize_paths};
+    use super::{civil_from_days, is_power_of_ten, parse_report, sanitize_paths, CrashReport};
+
+    /// A report with a message over several lines reads back whole: a
+    /// device-lost report keeps its reason and where the scene was saved.
+    #[test]
+    fn a_multi_line_message_reads_back_whole() {
+        let report = CrashReport {
+            message: "The GPU stopped responding.\n\nReason: timeout\n\nSaved to ~/x.bsn.".into(),
+            location: "GPU device lost".into(),
+            backtrace: "frame 0\nframe 1\n".into(),
+            timestamp: "2026-10-28 00:35:25 UTC".into(),
+        };
+        let read = parse_report(&report.format()).expect("the report parses");
+        assert_eq!(read.message, report.message);
+        assert_eq!(read.location, report.location);
+        assert_eq!(read.timestamp, report.timestamp);
+        assert_eq!(read.backtrace.trim_end(), report.backtrace.trim_end());
+    }
 
     /// The whole point: under the editor's handler a panicking system is
     /// logged and the schedule, and the next frame, still run.
