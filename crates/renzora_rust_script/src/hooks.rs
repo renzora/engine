@@ -78,6 +78,32 @@ fn call(world: &mut World, entity: Entity, name: &str, f: ScriptHookFn, hook: &S
     }
 }
 
+/// Deliver `FixedUpdate` to every readied Rust script, once per fixed tick.
+///
+/// Only scripts that have already had `Ready`: that runs in `Update`, and a
+/// fixed tick comes first in the frame, so on the opening frame of play this
+/// skips everything rather than handing a script a tick before it set itself up.
+/// The same rule the Lua executor's fixed pass applies.
+pub fn dispatch_fixed_hooks(world: &mut World) {
+    let attached = attached(world);
+    if attached.is_empty() {
+        return;
+    }
+    // Inside `FixedUpdate`, `Time` is the fixed clock.
+    let delta = world.resource::<Time>().delta_secs();
+    let ready: Vec<(Entity, String, ScriptHookFn)> = {
+        let readied = world.resource::<ReadiedScripts>();
+        attached
+            .into_iter()
+            .filter(|(e, name)| readied.0.contains(&(*e, name.clone())))
+            .filter_map(|(e, name)| hook_fn(world, &name).map(|f| (e, name, f)))
+            .collect()
+    };
+    for (entity, name, f) in ready {
+        call(world, entity, &name, f, &ScriptHook::FixedUpdate { delta });
+    }
+}
+
 /// Fire `Ready` once per `(entity, script)`, then broadcast the frame's events.
 pub fn dispatch_hooks(world: &mut World) {
     let attached = attached(world);

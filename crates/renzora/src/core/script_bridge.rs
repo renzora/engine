@@ -308,6 +308,9 @@ pub struct ScriptInput {
     /// a newly connected pad takes the lowest free id — so unplugging pad 0
     /// doesn't shift pad 1 down.
     pub connected_gamepads: Vec<u32>,
+    /// Fingers on a touch screen and this frame's gestures. Rust scripts read
+    /// it from here; the context hands the same value to every language.
+    pub touch: crate::context::TouchState,
 }
 
 impl ScriptInput {

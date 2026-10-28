@@ -111,6 +111,55 @@ pub struct GamepadSnapshot {
     pub buttons_just_pressed: [bool; 16],
 }
 
+/// One finger on a touch screen, as a script sees it this frame.
+///
+/// Positions are logical window pixels from the top-left, the same space as
+/// `mouse_position`, so code that handles a click can handle a tap.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TouchSnapshot {
+    /// Stable for as long as this finger stays down, so a script can follow
+    /// one finger across frames while others come and go.
+    pub id: u64,
+    pub position: Vec2,
+    /// Where the finger first touched down.
+    pub start_position: Vec2,
+    /// Movement since last frame.
+    pub delta: Vec2,
+    /// The finger touched down this frame.
+    pub just_pressed: bool,
+    /// The finger lifted this frame. It is still listed for this one frame so
+    /// a script can read where it let go.
+    pub just_released: bool,
+}
+
+/// Every finger plus this frame's gestures.
+///
+/// Gestures are worked out from the touches themselves rather than taken from
+/// the operating system's gesture events, because Android sends none and iOS
+/// sends them only when a window opts in. Deriving them gives every platform
+/// the same numbers.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TouchState {
+    /// Fingers ordered by id, which on every platform is the order they went down.
+    pub touches: Vec<TouchSnapshot>,
+    /// Two-finger pinch this frame as a scale change: `0.1` means the fingers
+    /// are 10% further apart than last frame, negative means closer. 0 unless
+    /// exactly two fingers are down.
+    pub pinch: f32,
+    /// Two-finger twist this frame in radians, positive counterclockwise on
+    /// screen. 0 unless exactly two fingers are down.
+    pub rotation: f32,
+    /// Where each tap this frame landed. A tap is a finger that lifted within
+    /// [`TAP_MAX_SECONDS`] of touching down, having moved at most
+    /// [`TAP_MAX_TRAVEL`] pixels.
+    pub taps: Vec<Vec2>,
+}
+
+/// A press held longer than this is not a tap.
+pub const TAP_MAX_SECONDS: f64 = 0.3;
+/// A press that travels further than this, in logical pixels, is a drag.
+pub const TAP_MAX_TRAVEL: f32 = 12.0;
+
 /// Raycast hit result
 #[derive(Clone, Debug, Default)]
 pub struct RaycastHit {
@@ -173,6 +222,9 @@ pub struct ScriptContext {
     pub gamepad_buttons: [bool; 16],
     pub gamepad_buttons_just_pressed: [bool; 16],
     pub gamepads: Vec<GamepadSnapshot>,
+
+    // Touch screen fingers and two-finger gestures.
+    pub touch: TouchState,
 
     // Action-based input (unified keyboard + mouse + gamepad via InputMap).
     pub action_pressed: HashMap<String, bool>,
@@ -279,6 +331,7 @@ impl ScriptContext {
             gamepad_buttons: [false; 16],
             gamepad_buttons_just_pressed: [false; 16],
             gamepads: Vec::new(),
+            touch: TouchState::default(),
             action_pressed: HashMap::new(),
             action_just_pressed: HashMap::new(),
             action_just_released: HashMap::new(),

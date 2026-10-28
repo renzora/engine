@@ -22,6 +22,7 @@ pub mod mesh_lod;
 pub mod named_entities;
 pub mod procedural_meshes;
 pub mod procedural_meshes_more;
+pub mod save_location;
 pub mod scene_io;
 pub mod scene_stream;
 mod shapes;
@@ -322,6 +323,14 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
+
+        // Saved games go in a folder named for the game, known once the
+        // project loads. Editor and game alike; see `save_location`.
+        app.add_systems(
+            Update,
+            save_location::point_saves_at_project
+                .run_if(resource_exists_and_changed::<CurrentProject>),
+        );
 
         // Engine-wide blockout-grid handle for untextured primitives.
         // Registered UNCONDITIONALLY (editor and game sessions both spawn

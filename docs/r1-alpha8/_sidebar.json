@@ -49,6 +49,7 @@
           "pages": [
             { "slug": "scripting/overview", "title": "Scripting Overview" },
             { "slug": "scripting/input", "title": "Input Handling" },
+            { "slug": "scripting/saving", "title": "Saving the Game" },
             { "slug": "scripting/physics", "title": "Physics" },
             { "slug": "scripting/parkour", "title": "Parkour & Traversal" },
             { "slug": "scripting/ragdoll", "title": "Ragdoll Physics" },
@@ -161,6 +162,7 @@
             { "slug": "rendering/pipeline", "title": "Render Pipeline" },
             { "slug": "rendering/shaders", "title": "WGSL Shaders" },
             { "slug": "rendering/camera", "title": "Camera System" },
+            { "slug": "rendering/shadows", "title": "Shadows" },
             { "slug": "rendering/water", "title": "Water & Oceans" },
             { "slug": "rendering/wind", "title": "Wind" },
             { "slug": "rendering/particle-system", "title": "Particle System (.vfx)" },

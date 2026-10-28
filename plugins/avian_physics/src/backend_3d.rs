@@ -104,7 +104,11 @@ impl Plugin for Avian3dPlugin {
         );
         app.add_systems(
             PostUpdate,
-            apply_commands.in_set(PhysicsSet::Commands).run_if(active),
+            apply_commands.in_set(PhysicsSet::Commands).run_if(active.clone()),
+        );
+        app.add_systems(
+            FixedUpdate,
+            apply_fixed_commands.in_set(PhysicsSet::Commands).run_if(active),
         );
     }
 }
@@ -492,6 +496,30 @@ fn apply_commands(
             .entity(entity)
             .try_remove::<(ConstantForce, ConstantTorque, CommandForce)>();
     }
+    apply_queue(&queue, &dims, &mut forces_q, &mut commands);
+}
+
+/// What `on_fixed_update` pushed this tick, before the step that follows it.
+///
+/// No sweep of last frame's forces: that would take away the forces `on_update`
+/// scripts set on other bodies (see `PhysicsSet::Commands`). A body this tick
+/// gives a force has its `ConstantForce` replaced by the insert anyway, which is
+/// the only reset it needs.
+fn apply_fixed_commands(
+    queue: Res<PhysicsCommands>,
+    dims: Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    mut forces_q: Query<Forces>,
+    mut commands: Commands,
+) {
+    apply_queue(&queue, &dims, &mut forces_q, &mut commands);
+}
+
+fn apply_queue(
+    queue: &PhysicsCommands,
+    dims: &Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    forces_q: &mut Query<Forces>,
+    commands: &mut Commands,
+) {
     let mut forces: HashMap<Entity, (Vec3, Vec3)> = HashMap::new();
     for command in &queue.0 {
         let entity = command.entity();

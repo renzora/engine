@@ -132,6 +132,7 @@ One function takes them all, so adding a hook later is not a new export.
 | Hook | Fires when |
 |---|---|
 | `Ready` | The first frame this script runs on this entity, before its first `update`. |
+| `FixedUpdate` | Once per fixed step, after `Ready`. Carries `delta`, the fixed step in seconds. Commands it queues reach the physics step that follows. |
 | `Ui` | A markup callback fired, such as `on_press`. Carries the callback name, its arguments and the node that fired it. |
 | `Draw` | Time to repaint this entity's canvas surface. Carries the surface size in pixels. |
 | `SceneLoaded` | A scene finished loading, or failed. Carries the path and the error. |

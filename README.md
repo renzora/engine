@@ -11,14 +11,14 @@ A 3D and 2D game engine and visual editor built on <a href="https://bevyengine.o
 | Area | Features |
 |---|---|
 | **Editor** | Dockable panels with tabs, split panes and floating windows · up to four viewports · hierarchy, inspector, asset browser and console · translate, rotate and scale gizmos · infinite grid · camera presets · undo and redo · autosave · command palette · rebindable shortcuts · themes and fonts · built-in code editor · Play in its own process with live link · guided tutorial · UI scale and DPI support · runs on the web |
-| **Rendering** | Physically based materials (clearcoat, anisotropy, transmission, parallax) · node material editor generating WESL · shader editor · Solari ray-traced global illumination with its own denoiser and ray-traced glass · DLSS upscaling and ray reconstruction · `.rvg` virtual geometry · Gaussian splatting · point, spot, directional and rectangular area lights · contact shadows · environment maps, skyboxes, light probes and parallax-corrected reflection probes · planar reflections · physical atmosphere · volumetric clouds · volumetric and distance fog · SSAO · SSR · bloom · auto exposure · depth of field · motion blur · tonemapping · MSAA, FXAA, SMAA, TAA and sharpening · order-independent transparency · forward decals · around 30 shader post effects (color grading, chromatic aberration, vignette, film grain, outline, CRT, toon and more) · Low, Medium and High quality tiers · mesh LOD with crossfade · texture streaming · GPU device-loss recovery |
+| **Rendering** | Physically based materials (clearcoat, anisotropy, transmission, parallax) · node material editor generating WESL · shader editor · Solari ray-traced global illumination with its own denoiser and ray-traced glass · DLSS upscaling and ray reconstruction · `.rvg` virtual geometry · Gaussian splatting · point, spot, directional and rectangular area lights · soft shadows, contact shadows, and cascade and bias controls · environment maps, skyboxes, light probes and parallax-corrected reflection probes · planar reflections · physical atmosphere · volumetric clouds · volumetric and distance fog · SSAO · SSR · bloom · auto exposure · depth of field · motion blur · tonemapping · MSAA, FXAA, SMAA, TAA and sharpening · order-independent transparency · forward decals · around 30 shader post effects (color grading, chromatic aberration, vignette, film grain, outline, CRT, toon and more) · Low, Medium and High quality tiers · mesh LOD with crossfade · texture streaming · GPU device-loss recovery |
 | **World building** | Terrain sculpting and painting · foliage painting · spectral FFT ocean water · wind sway · tilemaps with composite objects and randomised painting · mesh modelling tools · shape library · level presets |
 | **2D** | Sprites · sprite animation clips · dedicated 2D view · 2D lighting · 2D physics with Y-sorting |
 | **Animation** | Animator with blend graphs, masks, transitions and events · retargeting · root motion · property animation with per-key easing · morph targets · facial animation · rigging tools · inverse kinematics · FBX animation import |
 | **Physics and simulation** | Pluggable physics backends (Avian 3D and 2D bundled) · ragdolls · cloth · hair strands · parkour traversal and locomotion · navmesh pathfinding · GPU particles with an effect editor and effect library |
-| **Scripting** | Rust scripts compiled as native plugins with full `&mut World` access, recompiled on save · pluggable language backends from the marketplace, several per project · hooks for ready, update, UI, drawing, RPC, animation events, HTTP and player join/leave · rebindable input action map for keyboard, mouse and multiple gamepads · APIs for physics, animation, IK, particles, parkour, ragdolls, navigation and game UI |
+| **Scripting** | Rust scripts compiled as native plugins with full `&mut World` access, recompiled on save · pluggable language backends from the marketplace, several per project · hooks for ready, update, fixed-timestep update, UI, drawing, RPC, animation events, HTTP and player join/leave · rebindable input action map for keyboard, mouse and multiple gamepads · touch input with taps, pinch and twist · save slots · APIs for physics, animation, IK, particles, parkour, ragdolls, navigation and game UI |
 | **Audio** | Own audio backend · mixer with buses and effects · spatial audio with distance falloff · pluggable audio backends |
-| **UI** | Ember UI toolkit for the editor and games · game UI editor with markup templates · rich text · font switching and weights · SVG images |
+| **UI** | Ember UI toolkit for the editor and games · game UI editor with markup templates · gamepad navigation of game menus · rich text · font switching and weights · SVG images |
 | **Multiplayer** (alpha) | Client and headless dedicated server from one binary (`--server`) · replication and RPC over UDP · network panel |
 | **XR** | Games in a VR headset over OpenXR (Quest Link, SteamVR) with a desktop mirror · headset editing mode (`cargo renzora xr`) |
 | **Plugins** | Every engine system is a removable plugin · native plugins ship as source and compile on install · bundled plugins compiled into the binary · custom panels, inspectors, material nodes, post effects, and audio, physics, network and script backends · localization |
@@ -32,13 +32,9 @@ This list changes as work lands. See `RELEASE_NOTES.md` for what each nightly ac
 
 | Feature | Status |
 |---|---|
-| Touch and gesture input for mobile games | Next up |
-| Fixed-timestep script hook (`on_fixed_update`) | Next up |
-| Shadow quality controls: cascades, bias and soft shadows | Next up |
-| Controller navigation for game menus, and accessibility (screen readers) | Next up |
+| Accessibility (screen readers) for game UI | Next up |
 | IME text entry for Chinese, Japanese and Korean input | Next up |
 | GPU occlusion culling, clustered decals, light cookies and irradiance volumes | Next up |
-| Save-game API for scripts | Next up |
 | Multiplayer: client prediction, secure handshake, avatar spawning, more transports | In progress |
 | Facial rigging and posing | In progress |
 | Code editor: minimap, code folding and undo history | In progress |

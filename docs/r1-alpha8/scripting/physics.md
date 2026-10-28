@@ -127,7 +127,7 @@ Physics script helpers don't talk to a physics engine directly: they push `Scrip
 
 | Function | Effect |
 |---|---|
-| `apply_force(x, y, z)` | Applies a force for the current frame (cleared every frame: call it each `on_update` for a sustained push). |
+| `apply_force(x, y, z)` | Applies a force for the current frame (cleared every frame: call it each `on_update`, or each `on_fixed_update`, for a sustained push). |
 | `apply_torque(x, y, z)` | The same for spin: a torque about each world axis for the current frame. |
 | `apply_impulse(x, y, z)` | Sets the body's linear velocity to this value, as a kick. (Kept as it always was, so existing scripts behave the same; it is not a true impulse.) |
 | `apply_angular_impulse(x, y, z)` | Spins the body by an instantaneous angular impulse. |
@@ -156,6 +156,20 @@ function on_update()
     end
 end
 ```
+
+Physics steps on a fixed clock, so a push that must not depend on the frame rate belongs in `on_fixed_update`. It is applied before the step that follows it:
+
+```lua
+-- hover.lua (Dynamic rigid body)
+function on_fixed_update()
+    -- the same lift every step, at any frame rate
+    if is_key_pressed("Space") then
+        apply_force(0.0, 50.0, 0.0)
+    end
+end
+```
+
+Read held keys there, not `is_key_just_pressed`: input is sampled once per frame, so an edge can land in two steps or none. See [Every frame, or every fixed step](/docs/r1-alpha8/scripting/overview#every-frame-or-every-fixed-step).
 
 > **2D bodies:** the force and velocity functions route to the entity's own world automatically. On a 2D body they apply the X/Y of a linear vector and the Z of a spin, so the same script works on a sprite. `move_controller` is 3D-only for now; drive 2D characters with `set_velocity` (lock rotation on the body so collisions don't spin it).
 

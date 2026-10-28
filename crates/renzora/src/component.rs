@@ -242,5 +242,9 @@ pub struct ScriptRuntimeState {
     pub initialized: bool,
     pub last_frame: u64,
     pub has_error: bool,
+    /// The same flag for `on_fixed_update`. Separate because `on_update`
+    /// clears `has_error` every frame it succeeds, so a fixed hook sharing it
+    /// would log its error again on every frame instead of once.
+    pub fixed_has_error: bool,
     pub last_script_modified: Option<std::time::SystemTime>,
 }

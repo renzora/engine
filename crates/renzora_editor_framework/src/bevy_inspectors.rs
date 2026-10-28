@@ -4,8 +4,8 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::light::{
-    EnvironmentMapLight, GeneratedEnvironmentMapLight, LightProbe, ParallaxCorrection,
-    VolumetricLight,
+    CascadeShadowConfig, CascadeShadowConfigBuilder, EnvironmentMapLight,
+    GeneratedEnvironmentMapLight, LightProbe, ParallaxCorrection, VolumetricLight,
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
@@ -955,6 +955,46 @@ fn transform_entry() -> InspectorEntry {
 // A whole "Visibility" section for one boolean was the clearest case of the
 // same thing: it is now the eye toggle in the entity header.
 
+/// One field on a light, read and written straight through.
+///
+/// The shadow settings are a dozen fields that differ only in which light and
+/// which field they touch. `FieldDef` takes plain function pointers, which
+/// cannot capture the field, so this writes the two closures out per use.
+macro_rules! light_field {
+    ($light:ty, $name:literal, $field:ident, $speed:expr, $min:expr, $max:expr) => {
+        FieldDef {
+            name: $name,
+            field_type: FieldType::Float {
+                speed: $speed,
+                min: $min,
+                max: $max,
+            },
+            get_fn: |world, entity| world.get::<$light>(entity).map(|l| FieldValue::Float(l.$field)),
+            set_fn: |world, entity, val| {
+                if let FieldValue::Float(v) = val {
+                    if let Some(mut l) = world.get_mut::<$light>(entity) {
+                        l.$field = v;
+                    }
+                }
+            },
+        }
+    };
+    ($light:ty, $name:literal, $field:ident, Bool) => {
+        FieldDef {
+            name: $name,
+            field_type: FieldType::Bool,
+            get_fn: |world, entity| world.get::<$light>(entity).map(|l| FieldValue::Bool(l.$field)),
+            set_fn: |world, entity, val| {
+                if let FieldValue::Bool(v) = val {
+                    if let Some(mut l) = world.get_mut::<$light>(entity) {
+                        l.$field = v;
+                    }
+                }
+            },
+        }
+    };
+}
+
 fn directional_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "directional_light",
@@ -1021,10 +1061,191 @@ fn directional_light_entry() -> InspectorEntry {
                         if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
                             l.shadow_maps_enabled = v;
                         }
+                        // A `Sun` rewrites this flag from its own copy whenever
+                        // the Sun changes, which would quietly undo the edit.
+                        if let Some(mut sun) = world.get_mut::<renzora::Sun>(entity) {
+                            sun.shadows_enabled = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Contact Shadows",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<DirectionalLight>(entity)
+                        .map(|l| FieldValue::Bool(l.contact_shadows_enabled))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(v) = val {
+                        if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
+                            l.contact_shadows_enabled = v;
+                        }
+                        if let Some(mut sun) = world.get_mut::<renzora::Sun>(entity) {
+                            sun.contact_shadows = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                // One field for Bevy's `Option`: 0 is off (`None`, hard shadows),
+                // anything above is the light's size. A separate on/off switch
+                // would have to remember a size while off, and nothing stores one.
+                name: "Soft Shadow Size",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 10.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<DirectionalLight>(entity)
+                        .map(|l| FieldValue::Float(l.soft_shadow_size.unwrap_or(0.0)))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
+                            l.soft_shadow_size = (v > 0.0).then_some(v);
+                        }
+                    }
+                },
+            },
+            light_field!(DirectionalLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
+            light_field!(DirectionalLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
+            FieldDef {
+                name: "Shadow Cascades",
+                field_type: FieldType::Int { min: 1.0, max: 4.0 },
+                get_fn: |world, entity| {
+                    cascade_layout(world, entity).map(|c| FieldValue::Float(c.count as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        edit_cascades(world, entity, |c| c.count = v.round() as usize);
+                    }
+                },
+            },
+            FieldDef {
+                name: "Shadow Distance",
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 1.0,
+                    max: 10_000.0,
+                },
+                get_fn: |world, entity| {
+                    cascade_layout(world, entity).map(|c| FieldValue::Float(c.maximum))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        edit_cascades(world, entity, |c| c.maximum = v);
+                    }
+                },
+            },
+            FieldDef {
+                name: "First Cascade Distance",
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.1,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    cascade_layout(world, entity).map(|c| FieldValue::Float(c.first))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        edit_cascades(world, entity, |c| c.first = v);
+                    }
+                },
+            },
+            FieldDef {
+                name: "Cascade Blend",
+                field_type: FieldType::Float {
+                    speed: 0.01,
+                    min: 0.0,
+                    max: 0.95,
+                },
+                get_fn: |world, entity| {
+                    cascade_layout(world, entity).map(|c| FieldValue::Float(c.overlap))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        edit_cascades(world, entity, |c| c.overlap = v);
                     }
                 },
             },
         ],
+    }
+}
+
+/// Bevy caps a directional light at four shadow cascades.
+const MAX_CASCADES: usize = 4;
+
+/// The settings a [`CascadeShadowConfig`] is built from, read back out of it.
+///
+/// Bevy keeps only the result, the far distance of each cascade, and not the
+/// builder that produced it. So an edit recovers the other settings from those
+/// distances, changes one, and builds the whole layout again.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CascadeLayout {
+    count: usize,
+    minimum: f32,
+    first: f32,
+    maximum: f32,
+    overlap: f32,
+}
+
+impl CascadeLayout {
+    fn read(config: &CascadeShadowConfig) -> Self {
+        let defaults = CascadeShadowConfigBuilder::default();
+        let count = config.bounds.len().clamp(1, MAX_CASCADES);
+        let maximum = config.bounds.last().copied().unwrap_or(defaults.maximum_distance);
+        // With one cascade its only bound is the maximum, and the first-cascade
+        // distance it was built with is gone. Fall back to Bevy's default, so
+        // raising the count again spreads the cascades sensibly instead of
+        // stacking them all at the far end.
+        let first = if count > 1 {
+            config.bounds[0]
+        } else {
+            defaults.first_cascade_far_bound.min(maximum)
+        };
+        Self {
+            count,
+            minimum: config.minimum_distance,
+            first,
+            maximum,
+            overlap: config.overlap_proportion,
+        }
+    }
+
+    /// Build the layout, clamped so Bevy's builder assertions cannot fire. They
+    /// panic, and a drag that pushes the first cascade past the shadow distance
+    /// would otherwise take the editor down with it.
+    fn build(self) -> CascadeShadowConfig {
+        let minimum = self.minimum.max(0.0);
+        let maximum = self.maximum.max(minimum + 0.01);
+        CascadeShadowConfigBuilder {
+            num_cascades: self.count.clamp(1, MAX_CASCADES),
+            minimum_distance: minimum,
+            maximum_distance: maximum,
+            first_cascade_far_bound: self.first.clamp(minimum + 0.01, maximum),
+            overlap_proportion: self.overlap.clamp(0.0, 0.95),
+        }
+        .build()
+    }
+}
+
+fn cascade_layout(world: &World, entity: Entity) -> Option<CascadeLayout> {
+    world.get::<CascadeShadowConfig>(entity).map(CascadeLayout::read)
+}
+
+fn edit_cascades(world: &mut World, entity: Entity, edit: impl FnOnce(&mut CascadeLayout)) {
+    let Some(mut layout) = cascade_layout(world, entity) else {
+        return;
+    };
+    edit(&mut layout);
+    let built = layout.build();
+    if let Some(mut config) = world.get_mut::<CascadeShadowConfig>(entity) {
+        *config = built;
     }
 }
 
@@ -1117,6 +1338,12 @@ fn point_light_entry() -> InspectorEntry {
                     }
                 },
             },
+            light_field!(PointLight, "Contact Shadows", contact_shadows_enabled, Bool),
+            light_field!(PointLight, "Soft Shadows", soft_shadows_enabled, Bool),
+            light_field!(PointLight, "Radius", radius, 0.01, 0.0, 100.0),
+            light_field!(PointLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
+            light_field!(PointLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
+            light_field!(PointLight, "Shadow Near Plane", shadow_map_near_z, 0.01, 0.001, 10.0),
         ],
     }
 }
@@ -1367,6 +1594,12 @@ fn spot_light_entry() -> InspectorEntry {
                     }
                 },
             },
+            light_field!(SpotLight, "Contact Shadows", contact_shadows_enabled, Bool),
+            light_field!(SpotLight, "Soft Shadows", soft_shadows_enabled, Bool),
+            light_field!(SpotLight, "Radius", radius, 0.01, 0.0, 100.0),
+            light_field!(SpotLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
+            light_field!(SpotLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
+            light_field!(SpotLight, "Shadow Near Plane", shadow_map_near_z, 0.01, 0.001, 10.0),
         ],
     }
 }
@@ -2017,3 +2250,49 @@ fn volumetric_light_entry() -> InspectorEntry {
 // from a WorldEnvironment-style source onto every active camera via
 // `EffectRouting`. Keeping the direct-on-camera variant here would
 // create a duplicate inspector entry with the same `type_id`.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cascade_layout_round_trips_bevys_default() {
+        let config = CascadeShadowConfig::default();
+        let layout = CascadeLayout::read(&config);
+        let defaults = CascadeShadowConfigBuilder::default();
+        assert_eq!(layout.count, defaults.num_cascades);
+        assert!((layout.maximum - defaults.maximum_distance).abs() < 1e-3);
+        assert!((layout.first - defaults.first_cascade_far_bound).abs() < 1e-3);
+        let rebuilt = layout.build();
+        assert_eq!(rebuilt.bounds, config.bounds);
+        assert_eq!(rebuilt.minimum_distance, config.minimum_distance);
+        assert_eq!(rebuilt.overlap_proportion, config.overlap_proportion);
+    }
+
+    /// Every setting an inspector drag can produce must build. Bevy's builder
+    /// panics on an inconsistent layout, and these are the ways a user reaches
+    /// one: a first cascade past the shadow distance, a near distance past the
+    /// first cascade, a blend of 1, a count of zero or above the cap.
+    #[test]
+    fn cascade_layout_never_builds_an_invalid_config() {
+        for count in [0, 1, 2, 4, 9] {
+            for (minimum, first, maximum) in
+                [(0.1, 500.0, 50.0), (20.0, 5.0, 100.0), (-1.0, 10.0, 0.0), (5.0, 5.0, 5.0)]
+            {
+                let built = CascadeLayout { count, minimum, first, maximum, overlap: 1.0 }.build();
+                assert!(!built.bounds.is_empty() && built.bounds.len() <= MAX_CASCADES);
+                assert!(built.bounds.windows(2).all(|w| w[0] <= w[1]), "{:?}", built.bounds);
+            }
+        }
+    }
+
+    #[test]
+    fn going_down_to_one_cascade_and_back_spreads_them_again() {
+        let one = CascadeLayout { count: 1, ..CascadeLayout::read(&CascadeShadowConfig::default()) }.build();
+        let mut layout = CascadeLayout::read(&one);
+        layout.count = 4;
+        let four = layout.build();
+        // Not all stacked at the shadow distance: the first sits well inside it.
+        assert!(four.bounds[0] < four.bounds[3] * 0.5, "{:?}", four.bounds);
+    }
+}

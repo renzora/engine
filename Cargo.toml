@@ -240,8 +240,13 @@ bevy = { version = "0.20", default-features = false, features = [
     # PBR / rendering detail — the texture-slot features below are all live in the
     # material system (`renzora_material`): transmission, clearcoat/multi-layer,
     # anisotropy and specular maps each have inspector fields and importer paths.
-    # DROPPED: `pbr_clustered_decals`, `pbr_light_textures`, `experimental_pbr_pcss`
-    # — zero references outside `capabilities.rs`'s strip list.
+    # DROPPED: `pbr_clustered_decals`, `pbr_light_textures`: nothing uses them.
+    # `experimental_pbr_pcss` is ON: it adds the soft-shadow fields every light's
+    # inspector edits. It must stay on in EVERY build, exports included, because
+    # it adds fields to `DirectionalLight` / `PointLight` / `SpotLight` themselves:
+    # a scene saved by an editor that had it would carry `soft_shadow_size` and
+    # friends, and a game built without it has no such fields to read them into.
+    "experimental_pbr_pcss",
     # The four optional PBR texture sets are NOT here — they live in
     # `renzora_app`'s `cfg(not(target_arch = "wasm32"))` block, because together
     # they blow WebGPU's per-stage sampler limit. See the note there.

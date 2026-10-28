@@ -148,6 +148,31 @@ impl Plugin for ScriptingPlugin {
                     .after(ScriptingSet::CommandProcessing)
                     .run_if(scripts_should_run),
             )
+            // `on_fixed_update`, once per fixed tick. Its commands are applied
+            // inside the tick, and before `PhysicsSet::Commands`, so a force or
+            // velocity a script sets reaches the physics step that follows it.
+            // Applied any later and every fixed hook would act a frame behind,
+            // and two ticks in one frame would both see the state from before
+            // either of them ran.
+            .configure_sets(
+                FixedUpdate,
+                (ScriptingSet::ScriptExecution, ScriptingSet::CommandProcessing)
+                    .chain()
+                    .before(PhysicsSet::Commands),
+            )
+            .add_systems(
+                FixedUpdate,
+                (
+                    crate::systems::run_fixed_scripts.in_set(ScriptingSet::ScriptExecution),
+                    (
+                        crate::systems::apply_script_commands,
+                        crate::systems::apply_reflection_sets,
+                    )
+                        .chain()
+                        .in_set(ScriptingSet::CommandProcessing),
+                )
+                    .run_if(scripts_should_run),
+            )
             // Sync scripts folder from CurrentProject
             .add_systems(Update, sync_scripts_folder.in_set(ScriptingSet::PreScript))
             // Hot-reload: check for modified script files
@@ -253,6 +278,7 @@ fn handle_reset_script_states(
         for entry in sc.scripts.iter_mut() {
             entry.runtime_state.initialized = false;
             entry.runtime_state.has_error = false;
+            entry.runtime_state.fixed_has_error = false;
         }
     }
 }

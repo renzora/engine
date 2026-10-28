@@ -1,5 +1,19 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-28 13:33
+- feat(scripting): games can save named values to slots and load them back with `save_set`, `save_write` and `save_load`
+- feat(lighting): lights can cast soft shadows that blur with distance from the object
+
+## 2026-10-28 13:20
+- feat(lighting): lights have shadow bias, contact shadow and near-plane fields, and directional lights have cascade count and shadow distance
+- fix(lighting): toggling Shadows on the Sun's Directional Light section no longer reverts the next time the Sun changes
+
+## 2026-10-28 13:15
+- feat(scripting): scripts can read touch screen fingers, taps, and two-finger pinch and twist
+
+## 2026-10-28 13:11
+- feat(scripting): an `on_fixed_update` hook runs once per fixed step, and the physics forces it sets land before the next step
+
 ## 2026-10-28 09:48
 - fix(materials): a material whose alpha mode or Double Sided was changed in its file recompiles instead of keeping its old shader
 

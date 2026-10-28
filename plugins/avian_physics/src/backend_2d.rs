@@ -130,7 +130,11 @@ impl Plugin for Avian2dPlugin {
         );
         app.add_systems(
             PostUpdate,
-            apply_commands.in_set(PhysicsSet::Commands).run_if(active),
+            apply_commands.in_set(PhysicsSet::Commands).run_if(active.clone()),
+        );
+        app.add_systems(
+            FixedUpdate,
+            apply_fixed_commands.in_set(PhysicsSet::Commands).run_if(active),
         );
     }
 }
@@ -494,6 +498,25 @@ fn apply_commands(
             .entity(entity)
             .try_remove::<(ConstantForce, ConstantTorque, CommandForce)>();
     }
+    apply_queue(&queue, &dims, &mut forces_q, &mut commands);
+}
+
+/// The 2D twin of `backend_3d::apply_fixed_commands`.
+fn apply_fixed_commands(
+    queue: Res<PhysicsCommands>,
+    dims: Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    mut forces_q: Query<Forces>,
+    mut commands: Commands,
+) {
+    apply_queue(&queue, &dims, &mut forces_q, &mut commands);
+}
+
+fn apply_queue(
+    queue: &PhysicsCommands,
+    dims: &Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    forces_q: &mut Query<Forces>,
+    commands: &mut Commands,
+) {
     let mut forces: HashMap<Entity, (Vec2, f32)> = HashMap::new();
     for command in &queue.0 {
         let entity = command.entity();

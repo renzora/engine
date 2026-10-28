@@ -53,6 +53,23 @@ pub trait ScriptBackend: Send + Sync {
         vars: &mut ScriptVariables,
     ) -> Result<Vec<ScriptCommand>, String>;
 
+    /// Execute the `on_fixed_update` hook, once per fixed timestep tick.
+    /// Returns commands produced by the script.
+    ///
+    /// Runs in `FixedUpdate`, so it may fire zero, one or several times in a
+    /// frame, and `delta` in the context is the fixed step. Default is a no-op
+    /// so a backend written before the hook existed compiles and keeps working:
+    /// its scripts simply never receive it.
+    fn call_on_fixed_update(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Execute the `on_rpc(name, args)` hook for a received networked RPC.
     /// Returns commands produced by the script.
     ///

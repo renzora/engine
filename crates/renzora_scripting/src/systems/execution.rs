@@ -109,15 +109,53 @@ pub struct ScriptLogEntry {
 // Re-export from renzora
 pub use renzora::TransformWrite;
 
+/// Which schedule a script pass is running in.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pass {
+    /// `Update`: `on_ready`, `on_update`, `on_draw` and every event hook.
+    Frame,
+    /// `FixedUpdate`: `on_fixed_update` only.
+    Fixed,
+}
+
 /// Exclusive system that executes scripts on all entities with a ScriptComponent.
 ///
 /// Uses exclusive world access so scripts can read component fields via `get()`.
 pub fn run_scripts(world: &mut World) {
+    run_pass(world, Pass::Frame);
+}
+
+/// The `FixedUpdate` counterpart of [`run_scripts`]: calls `on_fixed_update`.
+///
+/// The same pass with the frame-only work switched off, rather than a second
+/// copy of it, so the context a fixed hook sees cannot drift from the one
+/// `on_update` sees. `Time` inside `FixedUpdate` is Bevy's fixed clock, so the
+/// context's `delta` is the fixed step without anything here asking for it.
+///
+/// Three things are deliberately left to the frame pass:
+///
+/// * **The event inboxes.** They are drained with `mem::take`, and a drain has
+///   one consumer. Draining here would hand an RPC or a UI callback to whichever
+///   pass ran first, and a frame with no fixed tick would hand it to nobody.
+/// * **`on_ready`.** A script that has not had it yet is skipped, so a fixed
+///   hook never runs before the script set itself up. The first fixed tick of
+///   play therefore comes a frame late, which is the right way round.
+/// * **Input edges.** Input is sampled once per frame. A fixed tick sees the
+///   last frame's state, so `just_pressed` can appear in two ticks or in none.
+///   Held buttons and axes are reliable here; edges belong in `on_update`.
+pub fn run_fixed_scripts(world: &mut World) {
+    run_pass(world, Pass::Fixed);
+}
+
+fn run_pass(world: &mut World, pass: Pass) {
+    let frame = pass == Pass::Frame;
     // Bump the perf-stats frame counter once per run_scripts pass. The
     // counter is what the diagnostics panel uses to grey out scripts
     // whose entities haven't been ticked this frame (despawned tabs,
     // disabled components).
-    world.resource_mut::<ScriptPerfStats>().tick_frame();
+    if frame {
+        world.resource_mut::<ScriptPerfStats>().tick_frame();
+    }
     // Local accumulator for this pass's timing samples. Flushed into
     // the shared resource at the end so we don't fight for a mutable
     // borrow while the immutable `ScriptEngine` resource is in scope.
@@ -153,34 +191,53 @@ pub fn run_scripts(world: &mut World) {
     // inbox once. Every script's `on_rpc(name, args)` fires for each pending
     // RPC below (broadcast semantics for v1). Resource may be absent if the
     // network plugin isn't loaded — then there's simply nothing to dispatch.
-    let pending_rpcs: Vec<renzora::IncomingRpc> = world
-        .get_resource_mut::<renzora::ScriptRpcInbox>()
-        .map(|mut inbox| std::mem::take(&mut inbox.pending))
-        .unwrap_or_default();
+    //
+    // This and every inbox below are left alone by the fixed pass: see
+    // `run_fixed_scripts` for why a drain must have one consumer.
+    let pending_rpcs: Vec<renzora::IncomingRpc> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource_mut::<renzora::ScriptRpcInbox>()
+            .map(|mut inbox| std::mem::take(&mut inbox.pending))
+            .unwrap_or_default()
+    };
 
     // Player join/leave events received since last frame (server side). Each
     // fires every script's `on_player_joined(id)` / `on_player_left(id)` hook.
-    let pending_player_events: Vec<renzora::NetPlayerEvent> = world
-        .get_resource_mut::<renzora::ScriptNetLifecycleInbox>()
-        .map(|mut inbox| std::mem::take(&mut inbox.pending))
-        .unwrap_or_default();
+    let pending_player_events: Vec<renzora::NetPlayerEvent> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource_mut::<renzora::ScriptNetLifecycleInbox>()
+            .map(|mut inbox| std::mem::take(&mut inbox.pending))
+            .unwrap_or_default()
+    };
 
     // UI markup callbacks received since last frame (e.g. a bevy_hui button
     // `on_press` with no Rust binding). Each fires every script's
     // `on_ui(name, args, entity)` hook. Resource may be absent if `renzora_hui`
     // isn't loaded — then there's nothing to dispatch.
-    let pending_ui_callbacks: Vec<renzora::UiCallback> = world
-        .get_resource_mut::<renzora::ScriptUiInbox>()
-        .map(|mut inbox| std::mem::take(&mut inbox.pending))
-        .unwrap_or_default();
+    let pending_ui_callbacks: Vec<renzora::UiCallback> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource_mut::<renzora::ScriptUiInbox>()
+            .map(|mut inbox| std::mem::take(&mut inbox.pending))
+            .unwrap_or_default()
+    };
 
     // Broadcast game events queued since last frame (from `emit()` or a Rust
     // send). Each fires every script's `on_event(name, args)`. Drained here so
     // dispatch happens between hooks rather than inside one.
-    let pending_events: Vec<renzora::GameEvent> = world
-        .get_resource_mut::<renzora::GameEventQueue>()
-        .map(|mut q| std::mem::take(&mut q.pending))
-        .unwrap_or_default();
+    let pending_events: Vec<renzora::GameEvent> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource_mut::<renzora::GameEventQueue>()
+            .map(|mut q| std::mem::take(&mut q.pending))
+            .unwrap_or_default()
+    };
     // Rust-side observers see the same events. Fired before the script pass so
     // both halves of the engine observe one event in the same frame.
     for ev in &pending_events {
@@ -191,32 +248,49 @@ pub fn run_scripts(world: &mut World) {
     // *surviving* script's `on_scene_loaded(path)` / `on_scene_load_failed(
     // path, error)` hook — in practice the `Persistent` ones, since a script
     // in the outgoing scene was despawned partway through the load.
-    let pending_scene_events: Vec<renzora::SceneEvent> = world
-        .get_resource_mut::<renzora::ScriptSceneInbox>()
-        .map(|mut inbox| std::mem::take(&mut inbox.pending))
-        .unwrap_or_default();
+    let pending_scene_events: Vec<renzora::SceneEvent> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource_mut::<renzora::ScriptSceneInbox>()
+            .map(|mut inbox| std::mem::take(&mut inbox.pending))
+            .unwrap_or_default()
+    };
 
     // Animation events fired when playback crosses a clip marker since last
     // frame. Each fires every script's `on_animation_event(name, entity)` hook.
-    let pending_anim_events: Vec<renzora::AnimEvent> = world
-        .get_resource_mut::<renzora::ScriptAnimEventInbox>()
-        .map(|mut inbox| std::mem::take(&mut inbox.pending))
-        .unwrap_or_default();
+    let pending_anim_events: Vec<renzora::AnimEvent> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource_mut::<renzora::ScriptAnimEventInbox>()
+            .map(|mut inbox| std::mem::take(&mut inbox.pending))
+            .unwrap_or_default()
+    };
 
     // Completed HTTP responses since last frame (from background request
     // threads). Each fires every script's `on_http(callback, status, body)`.
-    let pending_http: Vec<crate::http::HttpResult> = world
-        .get_resource::<crate::http::HttpInbox>()
-        .map(|inbox| inbox.drain())
-        .unwrap_or_default();
+    let pending_http: Vec<crate::http::HttpResult> = if !frame {
+        Vec::new()
+    } else {
+        world
+            .get_resource::<crate::http::HttpInbox>()
+            .map(|inbox| inbox.drain())
+            .unwrap_or_default()
+    };
 
     // Draw-surface sizes published by the UI vector renderer, keyed by script
     // entity. `on_draw` is called only for entities that have a surface, sized to
     // it; the frame's draw lists collect here and get published after the loop.
-    let draw_surfaces: HashMap<Entity, Vec2> = world
-        .get_resource::<renzora::ScriptDrawSurfaces>()
-        .map(|s| s.per_entity.clone())
-        .unwrap_or_default();
+    // Empty in the fixed pass, which therefore draws nothing.
+    let draw_surfaces: HashMap<Entity, Vec2> = if !frame {
+        HashMap::new()
+    } else {
+        world
+            .get_resource::<renzora::ScriptDrawSurfaces>()
+            .map(|s| s.per_entity.clone())
+            .unwrap_or_default()
+    };
     let mut draw_results: HashMap<Entity, Vec<renzora::DrawCmd>> = HashMap::new();
 
     // Edit-mode preview: if PlayModeState exists but scripts aren't "running", the
@@ -463,6 +537,10 @@ pub fn run_scripts(world: &mut World) {
                 Some(p) => p.clone(),
                 None => continue,
             };
+            // A fixed tick waits for the frame pass to have run `on_ready`.
+            if !frame && !entry.runtime_state.initialized {
+                continue;
+            }
 
             // Build context
             let mut ctx =
@@ -514,6 +592,7 @@ pub fn run_scripts(world: &mut World) {
             ctx.gamepad_buttons = first_pad.buttons;
             ctx.gamepad_buttons_just_pressed = first_pad.buttons_just_pressed;
             ctx.gamepads = gamepads.clone();
+            ctx.touch = input.touch.clone();
 
             // Timers
             ctx.timers_just_finished = timers_finished.clone();
@@ -656,20 +735,33 @@ pub fn run_scripts(world: &mut World) {
             }
 
             let start = Instant::now();
-            let on_update_result =
-                engine.call_on_update(&script_path, &mut ctx, &mut entry.variables);
-            let on_update_dur = start.elapsed();
-            let err_msg = on_update_result.as_ref().err().map(|e| e.to_string());
-            perf_batch
-                .on_update
-                .push((script_path.clone(), on_update_dur, err_msg.clone()));
+            let (hook, tick_result, has_error) = if frame {
+                (
+                    "on_update",
+                    engine.call_on_update(&script_path, &mut ctx, &mut entry.variables),
+                    &mut entry.runtime_state.has_error,
+                )
+            } else {
+                (
+                    "on_fixed_update",
+                    engine.call_on_fixed_update(&script_path, &mut ctx, &mut entry.variables),
+                    &mut entry.runtime_state.fixed_has_error,
+                )
+            };
+            let tick_dur = start.elapsed();
+            let err_msg = tick_result.as_ref().err().map(|e| e.to_string());
+            if frame {
+                perf_batch
+                    .on_update
+                    .push((script_path.clone(), tick_dur, err_msg.clone()));
+            }
             if let Some(e) = err_msg {
-                if !entry.runtime_state.has_error {
-                    warn!("Script on_update error [{}]: {}", script_path.display(), e);
-                    entry.runtime_state.has_error = true;
+                if !*has_error {
+                    warn!("Script {hook} error [{}]: {}", script_path.display(), e);
+                    *has_error = true;
                 }
             } else {
-                entry.runtime_state.has_error = false;
+                *has_error = false;
             }
 
             // Immediate-mode draw pass — only for entities the UI renderer gave a
@@ -881,13 +973,130 @@ pub fn run_scripts(world: &mut World) {
     }
 
     // Publish this frame's immediate-mode draw lists for the UI vector renderer to
-    // reconcile into pooled shape entities. Replaces the whole map (immediate mode).
-    if let Some(mut buf) = world.get_resource_mut::<renzora::ScriptDrawBuffer>() {
-        buf.per_entity = draw_results;
+    // reconcile into pooled shape entities. Replaces the whole map (immediate mode),
+    // which is why the fixed pass must not: it draws nothing, and publishing its
+    // empty map would blank every canvas the frame pass just filled.
+    if frame {
+        if let Some(mut buf) = world.get_resource_mut::<renzora::ScriptDrawBuffer>() {
+            buf.per_entity = draw_results;
+        }
     }
 
     // Apply collected per-hook timings to the shared stats resource.
     // Deferred until after the per-entity loop so we don't fight the
     // immutable `ScriptEngine` borrow held inside it.
     perf_batch.flush(world);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::{FakeBackend, FakeBackendState};
+    use std::sync::{Arc, Mutex};
+
+    /// A world with just what a script pass reads, and one entity running
+    /// `player.fake`.
+    fn world() -> (World, Entity, Arc<Mutex<FakeBackendState>>) {
+        let backend = FakeBackend::new("fake", &["fake"]);
+        let state = backend.state_handle();
+        let mut engine = ScriptEngine::new();
+        engine.add_backend(Box::new(backend));
+
+        let mut world = World::new();
+        world.insert_resource(engine);
+        world.insert_resource(Time::<()>::default());
+        world.init_resource::<ScriptPerfStats>();
+        world.init_resource::<ScriptInput>();
+        world.init_resource::<ScriptTimers>();
+        world.init_resource::<ScriptCommandQueue>();
+        let entity = world
+            .spawn((
+                Name::new("player"),
+                ScriptComponent::from_file(PathBuf::from("player.fake")),
+            ))
+            .id();
+        (world, entity, state)
+    }
+
+    #[test]
+    fn fixed_pass_waits_for_on_ready() {
+        let (mut world, _, state) = world();
+
+        // Play's first frame: the fixed tick comes before `Update`, so the
+        // script has not been set up yet and must not be ticked.
+        run_fixed_scripts(&mut world);
+        assert!(state.lock().unwrap().fixed_update_paths.is_empty());
+        assert!(state.lock().unwrap().ready_paths.is_empty());
+
+        run_scripts(&mut world);
+        run_fixed_scripts(&mut world);
+        let state = state.lock().unwrap();
+        assert_eq!(state.ready_paths.len(), 1);
+        assert_eq!(state.fixed_update_paths, vec![PathBuf::from("player.fake")]);
+    }
+
+    #[test]
+    fn fixed_pass_calls_only_the_fixed_hook() {
+        let (mut world, _, state) = world();
+        run_scripts(&mut world);
+        let updates_before = state.lock().unwrap().update_paths.len();
+
+        run_fixed_scripts(&mut world);
+        run_fixed_scripts(&mut world);
+        let state = state.lock().unwrap();
+        assert_eq!(state.update_paths.len(), updates_before);
+        assert_eq!(state.ready_paths.len(), 1);
+        assert_eq!(state.fixed_update_paths.len(), 2);
+    }
+
+    #[test]
+    fn fixed_pass_delta_is_the_clock_it_runs_under() {
+        let (mut world, _, state) = world();
+        run_scripts(&mut world);
+        // Bevy swaps `Time` for the fixed clock inside `FixedUpdate`; the pass
+        // must read whatever `Time` holds rather than the frame's own delta.
+        world
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_micros(15_625));
+        run_fixed_scripts(&mut world);
+        assert_eq!(state.lock().unwrap().fixed_deltas, vec![0.015625]);
+    }
+
+    /// The inboxes are drained with `mem::take`, which has one consumer. A
+    /// fixed tick that took them would steal the frame's events.
+    #[test]
+    fn fixed_pass_leaves_the_event_inboxes_for_the_frame() {
+        let (mut world, _, _) = world();
+        run_scripts(&mut world);
+        world.insert_resource(renzora::GameEventQueue {
+            pending: vec![renzora::GameEvent {
+                name: "door_opened".into(),
+                args: HashMap::new(),
+                from: None,
+            }],
+        });
+
+        run_fixed_scripts(&mut world);
+        assert_eq!(world.resource::<renzora::GameEventQueue>().pending.len(), 1);
+
+        run_scripts(&mut world);
+        assert!(world.resource::<renzora::GameEventQueue>().pending.is_empty());
+    }
+
+    /// The draw buffer is replaced wholesale by a pass. The fixed pass draws
+    /// nothing, so publishing would blank every canvas between frames.
+    #[test]
+    fn fixed_pass_does_not_clear_the_draw_buffer() {
+        let (mut world, entity, _) = world();
+        run_scripts(&mut world);
+        let mut buffer = renzora::ScriptDrawBuffer::default();
+        buffer.per_entity.insert(entity, Vec::new());
+        world.insert_resource(buffer);
+
+        run_fixed_scripts(&mut world);
+        assert!(world
+            .resource::<renzora::ScriptDrawBuffer>()
+            .per_entity
+            .contains_key(&entity));
+    }
 }

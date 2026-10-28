@@ -197,6 +197,12 @@ impl Plugin for RustScriptPlugin {
                         .after(renzora_scripting::ScriptingSet::PreScript)
                         .before(renzora_scripting::ScriptingSet::ScriptExecution)
                         .run_if(scripts_should_run),
+                )
+                .add_systems(
+                    FixedUpdate,
+                    hooks::dispatch_fixed_hooks
+                        .in_set(renzora_scripting::ScriptingSet::ScriptExecution)
+                        .run_if(scripts_should_run),
                 );
             return;
         }
@@ -285,6 +291,14 @@ impl Plugin for RustScriptPlugin {
                 hooks::dispatch_hooks
                     .after(renzora_scripting::ScriptingSet::PreScript)
                     .before(renzora_scripting::ScriptingSet::ScriptExecution)
+                    .run_if(scripts_should_run),
+            )
+            // In the scripting executor's fixed set, so it runs before that
+            // tick's commands are applied and before the physics step.
+            .add_systems(
+                FixedUpdate,
+                hooks::dispatch_fixed_hooks
+                    .in_set(renzora_scripting::ScriptingSet::ScriptExecution)
                     .run_if(scripts_should_run),
             );
     }

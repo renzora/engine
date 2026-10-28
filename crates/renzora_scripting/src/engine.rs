@@ -176,6 +176,23 @@ impl ScriptEngine {
         Ok(())
     }
 
+    pub fn call_on_fixed_update(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        let commands = backend.call_on_fixed_update(&resolved, ctx, vars)?;
+        for cmd in commands {
+            ctx.process_command(cmd);
+        }
+        Ok(())
+    }
+
     /// Dispatch a script's `on_draw(g)` immediate-mode drawing pass and return the
     /// frame's draw list (surface size `width`×`height` in px). Unlike the other
     /// hooks these aren't `ScriptCommand`s — they're handed straight back for the

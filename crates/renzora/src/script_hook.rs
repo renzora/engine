@@ -121,6 +121,17 @@ pub enum ScriptHook<'a> {
     /// A peer disconnected.
     PlayerLeft { id: u64 },
 
+    /// One fixed timestep tick, the Rust counterpart to Lua's `on_fixed_update`.
+    ///
+    /// Delivered from `FixedUpdate`, so it fires zero, one or several times in a
+    /// frame depending on how long the frame took, always with the same `delta`.
+    /// That is what makes it the place for forces, velocities and anything else
+    /// that must not change with the frame rate. Per-entity, like `Ready`.
+    FixedUpdate {
+        /// The fixed step in seconds (Bevy's default is 1/64).
+        delta: f32,
+    },
+
     /// Time to repaint this entity's draw surface.
     ///
     /// The Rust counterpart to Lua's `on_draw(g)`. Delivered only to entities
@@ -149,6 +160,7 @@ impl ScriptHook<'_> {
             ScriptHook::Http { .. } => "http",
             ScriptHook::PlayerJoined { .. } => "player_joined",
             ScriptHook::PlayerLeft { .. } => "player_left",
+            ScriptHook::FixedUpdate { .. } => "fixed_update",
             ScriptHook::Draw { .. } => "draw",
         }
     }
@@ -156,9 +168,13 @@ impl ScriptHook<'_> {
     /// Is this event broadcast to every live script, rather than aimed at one
     /// entity?
     ///
-    /// [`Ready`](Self::Ready) and [`Draw`](Self::Draw) are per-entity; the rest
-    /// are broadcast. The dispatcher uses this to decide whether to filter.
+    /// [`Ready`](Self::Ready), [`FixedUpdate`](Self::FixedUpdate) and
+    /// [`Draw`](Self::Draw) are per-entity; the rest are broadcast. The
+    /// dispatcher uses this to decide whether to filter.
     pub fn is_broadcast(&self) -> bool {
-        !matches!(self, ScriptHook::Ready | ScriptHook::Draw { .. })
+        !matches!(
+            self,
+            ScriptHook::Ready | ScriptHook::FixedUpdate { .. } | ScriptHook::Draw { .. }
+        )
     }
 }

@@ -149,15 +149,19 @@ script.
 Every hook has a conventional name, so a script ported between languages does not
 need renaming:
 
-`on_ready`, `on_update`, `on_rpc`, `on_ui`, `on_draw`, `on_animation_event`,
-`on_http`, `on_player_joined`, `on_player_left`, `on_scene_loaded`,
-`on_scene_load_failed`, `on_event`.
+`on_ready`, `on_update`, `on_fixed_update`, `on_rpc`, `on_ui`, `on_draw`,
+`on_animation_event`, `on_http`, `on_player_joined`, `on_player_left`,
+`on_scene_loaded`, `on_scene_load_failed`, `on_event`.
 
-A script that does not define a hook is the common case, not an error — most
+A script that does not define a hook is the common case, not an error: most
 define two. Return `Ok` with an empty `Vec`.
 
 Every hook but `on_ready` and `on_update` has a default implementation that does
-nothing, so adding a thirteenth later breaks no existing backend.
+nothing, so adding a fourteenth later breaks no existing backend.
+
+`call_on_fixed_update` is called from `FixedUpdate`, once per fixed step, with a
+context built the same way as `on_update`'s; its `time.delta` is the fixed step.
+It is only called for a script whose `on_ready` has already run.
 
 ## Declared bindings
 

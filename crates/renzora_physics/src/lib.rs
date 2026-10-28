@@ -145,6 +145,10 @@ impl Plugin for PhysicsPlugin {
         // is emptied once each backend has taken what is its own. Slides also
         // run here, so a `move_controller` call from any script this frame is
         // in the transform before it propagates.
+        // A fixed tick applies what `on_fixed_update` pushed (see
+        // `PhysicsSet::Commands`) and must empty the queue the same way, or the
+        // `PostUpdate` apply would run every fixed-tick impulse a second time.
+        app.add_systems(FixedUpdate, clear_physics_commands.after(PhysicsSet::Commands));
         app.add_systems(
             PostUpdate,
             (

@@ -670,6 +670,21 @@ pub enum PhysicsSet {
     /// these sets; applying any earlier would delay whatever a later script
     /// pushed by a frame. Everything pushed this frame lands before the next
     /// step.
+    ///
+    /// The set also exists in `FixedUpdate`, after the `on_fixed_update` script
+    /// pass, so what a fixed hook pushes reaches the step that follows that
+    /// tick. The engine empties the queue after it there too.
+    ///
+    /// Forces are applied differently in the fixed tick. In `PostUpdate` a
+    /// backend first drops every force it applied last frame, so a force pushed
+    /// every frame is a steady one. Doing that inside a fixed tick would drop
+    /// the forces `on_update` scripts set on *other* bodies whenever any fixed
+    /// hook pushed anything: a fan driven from `on_update` would stall because
+    /// the player is driven from `on_fixed_update`. So in a fixed tick a backend
+    /// resets only the bodies this tick gives a new force or torque, replacing
+    /// what they had, and leaves the rest. The next `PostUpdate` clears them all
+    /// as usual, so a fixed-hook force lasts the remaining ticks of its frame
+    /// and is renewed by every tick that pushes it again.
     Commands,
 }
 

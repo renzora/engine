@@ -164,6 +164,12 @@ pub mod physics;
 // `renzora::lang::t("…")` so localized call sites are greppable.
 pub mod lang;
 
+// Saved games: the process-global working set of named values and the slots it
+// is written to. Here for the same reason as `lang`: every language backend and
+// every Rust script must share one store. Not glob-re-exported: callers write
+// `renzora::save::write("slot1")`, which reads as what it does.
+pub mod save;
+
 // ── Engine version / release channel ─────────────────────────────────────
 // `ENGINE_VERSION` (`r1-alphaN`) plus the release-tag resolution the export
 // downloader needs to ask GitHub for *its own* version's runtime templates

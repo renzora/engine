@@ -121,6 +121,54 @@ click produces. Nothing to enable, and no per-button annotation.
 See [Game UI → Gamepad navigation](./game-ui#gamepad-navigation) for the details,
 including how to switch it off on a screen that reads the pad itself.
 
+## Touch
+
+On a phone or tablet, every finger on the screen is listed for scripts. Positions are in logical window pixels from the top-left, the same as `mouse_x` / `mouse_y`.
+
+Fingers are numbered `1` to `touch_count()` in the order they went down. That number shifts when an earlier finger lifts, so to follow one finger across frames, remember its `touch_id(i)` and look for it again.
+
+| Function | Returns | Description |
+|---|---|---|
+| `touch_count()` | number | Fingers on the screen this frame, including any that lifted this frame |
+| `touch_id(i)` | number | An id that stays the same while this finger is down |
+| `touch_position(i)` | number, number | Where the finger is: `local x, y = touch_position(1)` |
+| `touch_start(i)` | number, number | Where it first touched down |
+| `touch_delta(i)` | number, number | How far it moved since last frame |
+| `touch_just_pressed(i)` | bool | True on the frame the finger touches down |
+| `touch_just_released(i)` | bool | True on the frame it lifts; the finger is listed for that one frame so you can read where it let go |
+| `tap_count()` | number | Taps that finished this frame |
+| `tap_position(i)` | number, number | Where tap `i` landed |
+| `pinch_delta()` | number | Two-finger pinch this frame as a scale change: `0.1` is 10% wider, negative is closer. 0 unless exactly two fingers are down |
+| `rotate_delta()` | number | Two-finger twist this frame in radians, positive counterclockwise. 0 unless exactly two fingers are down |
+
+A **tap** is a finger that lifts within 0.3 seconds of touching down and moved no more than 12 pixels. Anything longer is a press or a drag, which you read from the finger itself.
+
+Pinch and twist are worked out from the two fingers, so they behave the same on Android and iOS. A laptop trackpad's pinch does not produce them.
+
+```lua
+-- Drag with one finger to orbit, pinch to zoom, tap to select.
+local distance = 10
+
+function on_update()
+    if touch_count() == 1 then
+        local dx, dy = touch_delta(1)
+        rotate(0, -dx * 0.2, 0)
+    end
+
+    -- Each frame's pinch is small, so multiply rather than add.
+    distance = distance / (1 + pinch_delta())
+
+    for i = 1, tap_count() do
+        local x, y = tap_position(i)
+        print("tapped at " .. x .. ", " .. y)
+    end
+end
+```
+
+Rust scripts read the same data from `ScriptInput::touch` (`renzora::ScriptInput`), or from Bevy's `Touches` resource directly.
+
+The editor has no touch screen, so touch only arrives in a game running on a touch device, or on a desktop with a touch monitor.
+
 ## Raw keyboard
 
 For keys that aren't part of the movement vector, query them by name. Key names are **Bevy `KeyCode` debug strings** — `"KeyW"`, `"KeyE"`, `"Space"`, `"ShiftLeft"`, `"ArrowUp"`, `"Escape"`, and so on. Letter keys are `"KeyA"`…`"KeyZ"` (not `"A"`), and number-row digits are `"Digit0"`…`"Digit9"`.

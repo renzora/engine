@@ -20,6 +20,9 @@ pub struct FakeBackendState {
     pub file_reader: Option<FileReader>,
     pub ready_paths: Vec<PathBuf>,
     pub update_paths: Vec<PathBuf>,
+    pub fixed_update_paths: Vec<PathBuf>,
+    /// `ctx.time.delta` captured on each `call_on_fixed_update`.
+    pub fixed_deltas: Vec<f32>,
     /// `ctx.self_entity_name` captured on each `call_on_update`.
     pub seen_self_names: Vec<String>,
     /// `ctx.children` names captured on each `call_on_update`.
@@ -114,6 +117,18 @@ impl ScriptBackend for FakeBackend {
             .push(ctx.children.iter().map(|c| c.name.clone()).collect());
         state.seen_found_entities.push(ctx.found_entities.clone());
         (self.on_update)()
+    }
+
+    fn call_on_fixed_update(
+        &self,
+        path: &Path,
+        ctx: &mut ScriptContext,
+        _vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let mut state = self.state.lock().unwrap();
+        state.fixed_update_paths.push(path.to_path_buf());
+        state.fixed_deltas.push(ctx.time.delta);
+        Ok(Vec::new())
     }
 
     fn needs_reload(&self, _path: &Path) -> bool {
