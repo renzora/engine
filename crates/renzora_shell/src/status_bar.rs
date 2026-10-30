@@ -433,25 +433,53 @@ fn status_rows(world: &Rx, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
     rows
 }
 
+/// Segment `index` on one side, as it is now.
+fn segment(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Option<renzora::ShellStatusSegment> {
+    match status_rows(world, align).into_iter().nth(index) {
+        Some(StatusRow::Seg(s)) => Some(s),
+        _ => None,
+    }
+}
+
 /// The current text of segment `index` on one side: what a segment's text node
 /// is bound to, so a live metric updates in place.
 fn segment_text(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
-    match status_rows(world, align).into_iter().nth(index) {
-        Some(StatusRow::Seg(s)) => s.text,
-        _ => String::new(),
-    }
+    segment(world, align, index).map(|s| s.text).unwrap_or_default()
+}
+
+/// The glyph for a segment's icon name.
+fn icon_glyph_text(icon: &str) -> String {
+    renzora_ember::font::icon_glyph(icon)
+        .unwrap_or_else(|| icon.chars().next().unwrap_or(' '))
+        .to_string()
+}
+
+/// The current icon glyph of segment `index`: what its icon node is bound to.
+/// The MCP item swaps `plugs` for `plugs-connected` on every client
+/// connection, which with the icon hashed rebuilt the segment on every call.
+fn segment_icon(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
+    segment(world, align, index).map(|s| icon_glyph_text(&s.icon)).unwrap_or_default()
+}
+
+/// The current colour of segment `index`, made legible on the bar: what its
+/// icon and text are bound to.
+fn segment_color(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Color {
+    let color = segment(world, align, index).map_or((0, 0, 0), |s| (s.color[0], s.color[1], s.color[2]));
+    rgb(legible(color, window_bg()))
 }
 
 /// Build a keyed snapshot from a row list. `align` is the side the rows come
 /// from, for segments; the Ready label passes `None`.
 ///
-/// A segment's text is NOT part of its row hash. An FPS or memory readout
-/// changes several times a second, and with the text hashed every change
+/// A segment's text, colour and icon glyph are NOT part of its row hash (only
+/// whether it has an icon is, since that decides its nodes). An FPS or memory
+/// readout changes several times a second, and its colour whenever it crosses
+/// a threshold (the MCP item's, on every call); with them hashed each change
 /// despawned and respawned the whole segment: new nodes, a new font, the bar's
-/// children changed. Each of those dirtied the layout up to the window root, and
-/// the full re-layout that followed, of every panel, was most of the editor's
-/// layout time. The text node is bound to [`segment_text`] instead, so a new
-/// number re-measures one piece of text and nothing else.
+/// children changed. Any spawn makes Bevy walk every UI node, so each was a
+/// full re-layout of every panel. The text and colour are bound instead
+/// ([`segment_text`], [`segment_color`]), so a change re-measures or recolours
+/// one node and nothing else.
 fn rows_snapshot(
     rows: Vec<StatusRow>,
     align: Option<renzora::ShellStatusAlign>,
@@ -480,7 +508,7 @@ fn rows_snapshot(
                             (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
                         }
                     };
-                    (1u8, &s.icon, s.color, bar, s.action).hash(&mut h)
+                    (1u8, s.icon.is_empty(), bar, s.action).hash(&mut h)
                 }
             }
             (k.finish(), h.finish())
@@ -588,21 +616,26 @@ fn status_row(
             let mut kids = Vec::new();
             let color = legible((s.color[0], s.color[1], s.color[2]), window_bg());
             if !s.icon.is_empty() {
-                let glyph = renzora_ember::font::icon_glyph(&s.icon)
-                    .unwrap_or_else(|| s.icon.chars().next().unwrap_or(' '));
-                kids.push(
-                    commands
-                        .spawn((
-                            Text::new(glyph.to_string()),
-                            TextFont {
-                                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
-                                font_size: bevy::text::FontSize::Px(12.0),
-                                ..default()
-                            },
-                            TextColor(rgb(color)),
-                        ))
-                        .id(),
-                );
+                let icon = commands
+                    .spawn((
+                        Text::new(icon_glyph_text(&s.icon)),
+                        TextFont {
+                            font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                            font_size: bevy::text::FontSize::Px(12.0),
+                            ..default()
+                        },
+                        TextColor(rgb(color)),
+                    ))
+                    .id();
+                if let Some((align, index)) = source {
+                    renzora_ember::reactive::tracked::bind_text(commands, icon, move |w| {
+                        segment_icon(w, align, index)
+                    });
+                    renzora_ember::reactive::tracked::bind_text_color(commands, icon, move |w| {
+                        segment_color(w, align, index)
+                    });
+                }
+                kids.push(icon);
             }
             let text = commands
                 .spawn((
@@ -614,6 +647,9 @@ fn status_row(
             if let Some((align, index)) = source {
                 renzora_ember::reactive::tracked::bind_text(commands, text, move |w| {
                     segment_text(w, align, index)
+                });
+                renzora_ember::reactive::tracked::bind_text_color(commands, text, move |w| {
+                    segment_color(w, align, index)
                 });
             }
             kids.push(text);

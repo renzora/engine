@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 18:22
+- fix(editor): scrolling the hierarchy and other long lists no longer drops the frame rate
+- fix(editor): status bar items no longer rebuild when their colour or icon changes
+
 ## 2026-10-30 18:09
 - fix(editor): the editor no longer lays out its whole UI every frame while nothing moves, so it runs much faster with the Inspector open
 - fix(editor): the status bar's FPS and memory readouts update in place instead of rebuilding

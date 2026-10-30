@@ -176,7 +176,16 @@ fn virtual_scroll_impl<F>(
         let total_rows = total.div_ceil(cols);
 
         let first_row = (m.offset / row_h).floor().max(0.0) as usize;
-        let start_row = first_row.saturating_sub(overscan);
+        // The window moves in steps of `overscan` rows, not one row at a time.
+        // Every row entering or leaving the window is a spawn or a despawn, and
+        // each of those makes Bevy walk every UI node, so a window that slid a
+        // row per frame made scrolling a long list a full layout walk on nearly
+        // every frame. Snapped, scrolling within a step changes nothing at all.
+        // Coverage holds: the snap moves the start back by less than a step, so
+        // the start is never above `first_row - 2 * overscan + 1`, and the end
+        // (start + rows in view + 2 * overscan) still reaches past the view.
+        let step = overscan.max(1);
+        let start_row = (first_row.saturating_sub(overscan) / step) * step;
         let rows_in_view = (m.viewport_h / row_h).ceil() as usize + 1;
         let end_row = (start_row + rows_in_view + overscan * 2).min(total_rows);
 
