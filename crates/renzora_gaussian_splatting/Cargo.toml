@@ -19,7 +19,7 @@ bevy = { workspace = true }
 # The vendored gaussian-splatting renderer this plugin exposes to the runtime.
 # Default features only (stable-rust set, see the vendored Cargo.toml) — no
 # viewer/tooling extras.
-bevy_gaussian_splatting = { path = "../bevy_gaussian_splatting" }
+bevy_gaussian_splatting = { path = "../../vendor/bevy_gaussian_splatting" }
 renzora = { path = "../renzora" }
 
 # .sog bundle decoding (src/sog.rs): stored/deflate zip + lossless-WebP

@@ -10,7 +10,7 @@ renzora = { path = "../../renzora", default-features = false, features = ["edito
 renzora_navmesh = { path = ".." }
 renzora_ember = { path = "../../renzora_ember" }
 renzora_ui = { path = "../../renzora_ui" }
-vleue_navigator = { path = "../../vleue_navigator", features = ["debug-with-gizmos"] }
+vleue_navigator = { path = "../../../vendor/vleue_navigator", features = ["debug-with-gizmos"] }
 
 [lints]
 workspace = true

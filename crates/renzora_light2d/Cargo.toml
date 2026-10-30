@@ -28,7 +28,7 @@ gizmos = []
 
 [dependencies]
 bevy = { workspace = true }
-bevy_firefly = { path = "../bevy_firefly" }
+bevy_firefly = { path = "../../vendor/bevy_firefly" }
 renzora = { path = "../renzora" }
 
 [lints]

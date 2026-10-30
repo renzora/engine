@@ -51,28 +51,30 @@ members = [
     "crates/renzora",             # the SDK / contracts crate
     "crates/renzora_*",           # every renzora_* feature/effect crate
     "crates/renzora_*/editor",    # nested editor halves of dual-mode crates
-    # Vendored Bevy ecosystem crates, listed explicitly (NOT via a bevy_* glob)
-    # so bevy_oxr — its own nested workspace — is not accidentally pulled in.
-    "crates/bevy_args",
-    "crates/bevy_firefly",
-    "crates/bevy_gaussian_splatting",
-    "crates/bevy_interleave",
-    "crates/bevy_interleave_interface",
-    "crates/bevy_interleave_macros",
-    "crates/bevy_hui",
-    "crates/bevy_silk",
-    "crates/vleue_navigator",
+    # Third-party crates carried in the tree, listed explicitly (NOT globbed)
+    # so bevy_oxr, its own nested workspace, is not accidentally pulled in.
+    "vendor/bevy_args",
+    "vendor/bevy_firefly",
+    "vendor/bevy_gaussian_splatting",
+    "vendor/bevy_interleave",
+    "vendor/bevy_interleave_interface",
+    "vendor/bevy_interleave_macros",
+    "vendor/bevy_hui",
+    "vendor/bevy_silk",
+    "vendor/vleue_navigator",
     # vleue_navigator's pathfinding deps, vendored to bump their glam to 0.33
     # (Bevy 0.20's).
-    "crates/polyanya",
-    "crates/bvh2d",
+    "vendor/polyanya",
+    "vendor/bvh2d",
 ]
 ```
+
+`crates/` holds only Renzora's own crates. Third-party crates the engine has had to change (a port to its Bevy, a fix of ours) live under `vendor/`; any that build unchanged come from crates.io as ordinary dependencies.
 
 A few consequences worth knowing:
 
 - The glob keys on the `renzora_` prefix. `crates/mcp_server_plugin` and `crates/websocket_plugin` exist on disk but lack that prefix, so they fall **outside every glob** and are not workspace members (they also depend on a `../editor_plugin_api` crate that no longer exists). They are orphaned, not part of the build.
-- `crates/bevy_oxr` is **deliberately not globbed** — it is its own nested vendored workspace (containing `bevy_openxr`, `bevy_webxr`, `bevy_xr`, `bevy_xr_utils`).
+- `vendor/bevy_oxr` is **deliberately not listed** — it is its own nested vendored workspace (containing `bevy_openxr`, `bevy_webxr`, `bevy_xr`, `bevy_xr_utils`).
 - Crates under `disabled/` (currently `disabled/renzora_vr_editor`) sit outside `crates/`, so they never enter the workspace.
 
 Counting it up: **~164 top-level directories under `crates/`** plus **23 nested `editor/` subcrates** → **~187 workspace crates** in total.

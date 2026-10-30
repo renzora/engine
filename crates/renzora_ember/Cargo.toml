@@ -56,7 +56,7 @@ renzora = { path = "../renzora", default-features = false, features = ["text_mes
 # Markup runtime (folded in from the former renzora_hui crate): the vendored
 # bevy_hui parser, the game-UI canvas primitives, and the scripting bridge.
 # Both are used only by the `markup` module → gated behind `game_ui`.
-bevy_hui = { path = "../bevy_hui", optional = true }
+bevy_hui = { path = "../../vendor/bevy_hui", optional = true }
 # Stable ids for the world-UI panel picking pointers. Same crate bevy_picking
 # uses for `PointerId::Custom`, so the versions unify. Optional + tied to
 # `game_ui` because only the world-panel module needs it.

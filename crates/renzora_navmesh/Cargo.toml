@@ -32,11 +32,11 @@ serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
-vleue_navigator = { path = "../vleue_navigator", default-features = false, features = ["debug-with-gizmos"] }
+vleue_navigator = { path = "../../vendor/vleue_navigator", default-features = false, features = ["debug-with-gizmos"] }
 # Use the vendored polyanya (glam 0.32) so its `Mesh` type matches the one
 # vleue_navigator's `NavMesh::from_polyanya_mesh` expects (else two polyanya
 # versions in the graph → "different polyanya::Mesh" type error).
-polyanya = { path = "../polyanya", features = ["serde"] }
+polyanya = { path = "../../vendor/polyanya", features = ["serde"] }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 
 # Lua types referenced by the NavScriptExtension impl.

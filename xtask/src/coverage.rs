@@ -267,7 +267,7 @@ fn ignore_regex() -> String {
         r"[/\\]\.cargo[/\\]registry[/\\]".into(),
         r"[/\\]rustc[/\\]".into(),
         r"[/\\]target[/\\]".into(),
-        r"crates[/\\]bevy_oxr[/\\]".into(),
+        r"vendor[/\\]bevy_oxr[/\\]".into(),
         r"renzora_runtime[/\\]src[/\\]plugins\.rs".into(),
         r"renzora_editor[/\\]src[/\\]plugins\.rs".into(),
         r"renzora_static_plugins[/\\]".into(),

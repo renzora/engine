@@ -19,9 +19,9 @@ dlss = ["bevy_mod_openxr/bevy_raw_vulkan_init"]
 bevy = { workspace = true }
 # Contract crate: only for `renzora::VrPlayState`, the editor↔XR play handshake.
 renzora = { path = "../renzora", default-features = false }
-bevy_mod_openxr = { path = "../bevy_oxr/crates/bevy_openxr", features = ["raw_vulkan_init"] }
-bevy_mod_xr = { path = "../bevy_oxr/crates/bevy_xr" }
-bevy_xr_utils = { path = "../bevy_oxr/crates/bevy_xr_utils" }
+bevy_mod_openxr = { path = "../../vendor/bevy_oxr/crates/bevy_openxr", features = ["raw_vulkan_init"] }
+bevy_mod_xr = { path = "../../vendor/bevy_oxr/crates/bevy_xr" }
+bevy_xr_utils = { path = "../../vendor/bevy_oxr/crates/bevy_xr_utils" }
 openxr = "0.21"
 serde = { version = "1", features = ["derive"] }
 

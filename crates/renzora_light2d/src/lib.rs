@@ -10,7 +10,7 @@
 //! [`PointLight2d`] / [`Occluder2d`] entities — and persists through the
 //! reflection-driven scene serializer because the vendored crate's components
 //! carry `#[reflect(Component, Default)]` (a local patch, see
-//! `crates/bevy_firefly/Cargo.toml`).
+//! `vendor/bevy_firefly/Cargo.toml`).
 //!
 //! Editor-only wiring (inspectors, Add-Entity presets, selection gizmos, and
 //! the editor-camera lightmap preview) is compile-gated behind the `editor`

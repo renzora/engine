@@ -20,25 +20,26 @@ members = [
     # own workspace root. It generates the plugin `path` dependencies, and cargo
     # refuses to load a workspace with a dangling one, so as a member it could
     # not be built to repair the very tree it maintains. See `xtask/Cargo.toml`.
-    # Vendored Bevy ecosystem crates. Listed explicitly (not via a
-    # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
-    # is its own vendored workspace.
-    "crates/bevy_args",
-    "crates/bevy_firefly",
-    "crates/bevy_gaussian_splatting",
-    "crates/bevy_interleave",
-    "crates/bevy_interleave_interface",
-    "crates/bevy_interleave_macros",
-    "crates/bevy_hui",
-    "crates/bevy_silk",
     # Patched over Bevy's own copy; see `[patch.crates-io]` below.
     "crates/bevy_solari",
-    "crates/vleue_navigator",
+    # Third-party crates carried in the tree, each with changes of ours (a port
+    # to this Bevy, a patch). `crates/` holds only Renzora's own crates. Listed
+    # explicitly, not globbed, so `bevy_oxr`, its own vendored workspace, is not
+    # picked up.
+    "vendor/bevy_args",
+    "vendor/bevy_firefly",
+    "vendor/bevy_gaussian_splatting",
+    "vendor/bevy_interleave",
+    "vendor/bevy_interleave_interface",
+    "vendor/bevy_interleave_macros",
+    "vendor/bevy_hui",
+    "vendor/bevy_silk",
+    "vendor/vleue_navigator",
     # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.33
     # (bevy 0.20's glam). Upstream polyanya 0.16.1 is the latest and still pins
     # glam 0.30, which would otherwise clash with bevy's glam (two `Vec2` types).
-    "crates/polyanya",
-    "crates/bvh2d",
+    "vendor/polyanya",
+    "vendor/bvh2d",
 ]
 # Avian comes from crates.io (`avian3d`/`avian2d` 0.7, which target Bevy 0.19),
 # not a vendored nested workspace. It was vendored when no release supported

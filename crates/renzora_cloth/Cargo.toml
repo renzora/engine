@@ -16,7 +16,7 @@ default = []
 [dependencies]
 bevy = { workspace = true }
 # The vendored verlet cloth engine this plugin exposes to the runtime.
-bevy_silk = { path = "../bevy_silk" }
+bevy_silk = { path = "../../vendor/bevy_silk" }
 renzora = { path = "../renzora", default-features = false }
 
 [lints]

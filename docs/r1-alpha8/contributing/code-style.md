@@ -4,7 +4,7 @@ Coding conventions for contributing to the Renzora engine workspace — formatti
 
 ## Formatting
 
-Renzora uses **rustfmt defaults**. There is no top-level `rustfmt.toml` (the only one in the tree belongs to a vendored crate, `crates/bevy_silk`), so the standard style applies everywhere. Format before you commit, running rustfmt through the toolchain container:
+Renzora uses **rustfmt defaults**. There is no top-level `rustfmt.toml` (the only one in the tree belongs to a vendored crate, `vendor/bevy_silk`), so the standard style applies everywhere. Format before you commit, running rustfmt through the toolchain container:
 
 ```bash
 renzora shell -- cargo fmt --all

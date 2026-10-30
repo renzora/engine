@@ -3,7 +3,7 @@
 //! single UI crate.
 //!
 //! Uses **only the parser** half of the vendored `bevy_hui` fork (under
-//! `crates/bevy_hui/`) to read `.html` into a typed AST; [`loader`] then walks it
+//! `vendor/bevy_hui/`) to read `.html` into a typed AST; [`loader`] then walks it
 //! and spawns one entity per node with standard bevy_ui components attached
 //! directly. **No bevy_hui runtime.** See `docs/renzora_markup.md`.
 

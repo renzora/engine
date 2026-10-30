@@ -684,6 +684,7 @@ Several may be registered, and two languages coexist in one project. See
 | `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
 | `crates/renzora_scripting/` | Scripting system: hooks, the `ScriptCommand` vocabulary, context, declarative `ScriptExtension`, and the `ScriptBackend` trait a language plugin implements |
 | `plugins/` | **Bundled plugins** (`plugins/avian_physics`): `plugin!` crates compiled into the binary; delete a folder to drop one |
+| `vendor/` | **Third-party crates carried in the tree**, each because we had to change it (a port to our Bevy, a fix). `crates/` is Renzora's own crates only; a third-party crate that builds unchanged stays an ordinary crates.io dependency |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
 | `crates/renzora_cloth`, `crates/renzora_oit` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
