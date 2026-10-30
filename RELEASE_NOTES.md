@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 15:09
+- build: the engine now builds against Bevy `main`, carried in-tree in `bevy/`, with every Bevy-based dependency vendored in `vendor/`
+
 ## 2026-10-30 11:20
 - fix(rendering): the editor no longer crashes with "Compaction is already being prepared" when ray-traced meshes are rebuilt quickly, such as terrain streaming in
 
