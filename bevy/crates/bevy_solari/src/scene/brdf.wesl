@@ -104,6 +104,21 @@ fn evaluate_brdf(
     return evaluate_diffuse_brdf(wo, wi, world_normal, material, F_ab) + evaluate_specular_brdf(wo, wi, world_normal, material, F_ab);
 }
 
+// RENZORA PATCH: what fraction of the light arriving from `wi` leaves toward
+// `wo` through the specular lobe, per channel. Every estimate Solari makes
+// through one direction at the primary surface is `brdf * light / pdf`, and the
+// BRDF is the sum of the two lobes, so this fraction splits the estimate exactly
+// into a diffuse and a specular part. The denoiser filters the two separately.
+//
+// `delta` is a sample from the mirror (delta) lobe, which `evaluate_*_brdf`
+// cannot weigh against a diffuse lobe that has no delta: all of it is specular.
+fn specular_brdf_share(wo: vec3<f32>, wi: vec3<f32>, world_normal: vec3<f32>, material: ResolvedMaterial, F_ab: vec2<f32>, delta: bool) -> vec3<f32> {
+    if delta { return vec3(1.0); }
+    let specular = evaluate_specular_brdf(wo, wi, world_normal, material, F_ab);
+    let total = specular + evaluate_diffuse_brdf(wo, wi, world_normal, material, F_ab);
+    return select(specular / total, vec3(0.0), total <= vec3(0.0));
+}
+
 fn evaluate_diffuse_brdf(wo: vec3<f32>, wi: vec3<f32>, world_normal: vec3<f32>, material: ResolvedMaterial, F_ab: vec2<f32>) -> vec3<f32> {
     let NdotL = dot(world_normal, wi);
     let NdotV = dot(world_normal, wo);

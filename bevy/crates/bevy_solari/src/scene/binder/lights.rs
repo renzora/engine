@@ -290,7 +290,13 @@ impl LightState {
     ) {
         // Removals go first so that a light removed and re-added in the same frame ends up present
         for entity in removed {
-            if self.directional_light_slots.remove(&entity).is_some() {
+            if let Some(slot) = self.directional_light_slots.remove(&entity) {
+                // RENZORA PATCH: zero the freed slot. The see-through pass lights a
+                // sheer surface from every directional light by walking this buffer
+                // (`gather_diffuse` in transparent.wesl), and a removed sun left in
+                // it would go on lighting curtains.
+                self.directional_lights
+                    .grow_and_set(slot, GpuDirectionalLight::default());
                 self.remove_light(LightSourceId::DirectionalLight(entity));
             }
         }

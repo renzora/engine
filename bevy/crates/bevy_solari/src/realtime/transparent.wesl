@@ -251,7 +251,7 @@ fn gather_diffuse(origin: vec3<f32>, normal: vec3<f32>, world_position: vec3<f32
         let sample = resolve_light_sample(LightSample(0u, rand_u(&seed)), LightSource(LIGHT_SOURCE_KIND_DIRECTIONAL, d));
         let light = calculate_resolved_light_contribution(sample, origin, normal);
         directional += light.radiance * light.inverse_pdf * saturate(dot(normal, light.wi))
-            * trace_visibility(origin, sample.world_position);
+            * trace_visibility(origin, sample.world_position, RAY_FLAG_NONE);
     }
     var emissive = vec3(0.0);
     if arrayLength(&light_sources) > 0u {
@@ -260,7 +260,7 @@ fn gather_diffuse(origin: vec3<f32>, normal: vec3<f32>, world_position: vec3<f32
             if light_sources[sample.light_sample.light_id >> 16u].kind == LIGHT_SOURCE_KIND_DIRECTIONAL { continue; }
             let light = calculate_resolved_light_contribution(sample.resolved_light_sample, origin, normal);
             emissive += light.radiance * light.inverse_pdf * saturate(dot(normal, light.wi))
-                * trace_visibility(origin, sample.resolved_light_sample.world_position);
+                * trace_visibility(origin, sample.resolved_light_sample.world_position, RAY_FLAG_NONE);
         }
         emissive /= f32(DIFFUSE_LIGHT_SAMPLES);
     }

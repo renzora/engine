@@ -18,17 +18,15 @@ use bevy_image::ToExtents;
 use bevy_math::UVec2;
 use bevy_render::{
     camera::ExtractedCamera,
-    render_resource::{Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages},
-    renderer::{RenderDevice, RenderQueue},
-};
-#[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
-use bevy_render::{
     render_resource::{
+        Buffer, BufferDescriptor, BufferInitDescriptor, BufferUsages, Extent3d,
         TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
     },
+    renderer::{RenderDevice, RenderQueue},
     texture::CachedTexture,
 };
 use bytemuck::{Pod, Zeroable};
+use core::sync::atomic::{AtomicU32, Ordering};
 
 /// Size of the `LightSample` shader struct in bytes.
 const LIGHT_SAMPLE_STRUCT_SIZE: u64 = 8;
@@ -75,6 +73,10 @@ struct SolariLightingUniforms {
     world_cache_position_lod_scale: f32,
     frame_rng: u32,
     reset: u32,
+    /// RENZORA PATCH: written 0 here every frame; the diagnostics set it on the
+    /// views they count rays for (`debug::prepare_solari_debug`).
+    debug_flags: u32,
+    padding: [u32; 3],
 }
 
 impl SolariLightingUniforms {
@@ -92,6 +94,8 @@ impl SolariLightingUniforms {
             world_cache_position_lod_scale: settings.world_cache_position_lod_scale,
             frame_rng: frame_count.wrapping_mul(5782582),
             reset: (settings.reset || force_reset) as u32,
+            debug_flags: 0,
+            padding: [0; 3],
         }
     }
 }
@@ -120,6 +124,125 @@ pub struct SolariLightingResources {
     pub world_cache: Buffer,
     pub world_cache_active_cells_dispatch: Buffer,
     pub view_size: UVec2,
+    /// RENZORA PATCH: the built-in denoiser's buffers. See denoise.wesl.
+    pub denoiser: SolariDenoiserResources,
+    /// RENZORA PATCH: the diagnostics' counters (debug_layout.wesl). Always
+    /// there, because the lighting passes bind it, but only written to while a
+    /// `SolariDebug` asks.
+    pub debug_counters: Buffer,
+}
+
+/// RENZORA PATCH: per-view state of the built-in denoiser (denoise.wesl).
+///
+/// Always allocated, because the lighting passes write the split signal into
+/// `noisy_*` whether or not the denoiser then runs: keeping one layout avoids
+/// compiling every lighting pipeline twice.
+pub struct SolariDenoiserResources {
+    /// The lighting split into diffuse and specular, demodulated and exposed.
+    pub noisy_diffuse: CachedTexture,
+    pub noisy_specular: CachedTexture,
+    /// The other half of the a-trous ping-pong, which `noisy_*` is reused for
+    /// once the temporal pass has read it. rgb is the signal, a the variance.
+    pub filtered_diffuse: CachedTexture,
+    pub filtered_specular: CachedTexture,
+    /// Accumulated signal (rgb) and history length in frames (a), one per frame
+    /// parity: the temporal pass reads last frame's and writes this frame's.
+    pub history_diffuse: [CachedTexture; 2],
+    pub history_specular: [CachedTexture; 2],
+    /// Luminance moments for the noise estimate: diffuse in xy, specular in zw.
+    pub moments: [CachedTexture; 2],
+    /// What the a-trous edge-stops need of each pixel, packed once by the
+    /// temporal pass: world position in xyz (f32 bits), and the normal,
+    /// roughness and a coverage bit in w. See `pack_guide` in denoise.wesl.
+    pub guide: CachedTexture,
+    pub constants: Buffer,
+    /// Frames this view has been denoised for in a row; its parity picks the
+    /// history slots, and 0 means there is no history yet.
+    pub frame: AtomicU32,
+}
+
+impl SolariDenoiserResources {
+    /// Which history slot this frame writes; it reads the other.
+    pub fn write_slot(&self) -> usize {
+        (self.frame.load(Ordering::Relaxed) % 2) as usize
+    }
+}
+
+/// RENZORA PATCH: GPU side of the denoiser's per-frame state. Must match
+/// `DenoiserSettings` in denoise.wesl, padded to the 16 bytes a uniform needs.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct DenoiserUniforms {
+    reset: u32,
+    padding: [u32; 3],
+}
+
+fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> SolariDenoiserResources {
+    let texture_of = |label: &'static str, format: TextureFormat| {
+        let texture = render_device.create_texture(&TextureDescriptor {
+            label: Some(label),
+            size: Extent3d {
+                width: view_size.x,
+                height: view_size.y,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::STORAGE_BINDING,
+            view_formats: &[],
+        });
+        let default_view = texture.create_view(&TextureViewDescriptor::default());
+        CachedTexture {
+            texture,
+            default_view,
+        }
+    };
+    let texture = |label: &'static str| texture_of(label, TextureFormat::Rgba16Float);
+    SolariDenoiserResources {
+        noisy_diffuse: texture("solari_denoiser_noisy_diffuse"),
+        noisy_specular: texture("solari_denoiser_noisy_specular"),
+        filtered_diffuse: texture("solari_denoiser_filtered_diffuse"),
+        filtered_specular: texture("solari_denoiser_filtered_specular"),
+        history_diffuse: [
+            texture("solari_denoiser_history_diffuse_a"),
+            texture("solari_denoiser_history_diffuse_b"),
+        ],
+        history_specular: [
+            texture("solari_denoiser_history_specular_a"),
+            texture("solari_denoiser_history_specular_b"),
+        ],
+        moments: [
+            texture("solari_denoiser_moments_a"),
+            texture("solari_denoiser_moments_b"),
+        ],
+        guide: texture_of("solari_denoiser_guide", TextureFormat::Rgba32Uint),
+        constants: render_device.create_buffer(&BufferDescriptor {
+            label: Some("solari_denoiser_constants"),
+            size: size_of::<DenoiserUniforms>() as u64,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }),
+        frame: AtomicU32::new(0),
+    }
+}
+
+/// RENZORA PATCH: advance the denoiser one frame and upload its state. History
+/// is unusable on a frame Solari resets, on the frame the resources were made,
+/// and on the first frame after the denoiser was off, whether switched off or
+/// standing aside for DLSS.
+fn update_denoiser(render_queue: &RenderQueue, denoiser: &SolariDenoiserResources, active: bool, reset: bool) {
+    if !active {
+        denoiser.frame.store(0, Ordering::Relaxed);
+        return;
+    }
+    let previous = denoiser.frame.fetch_add(1, Ordering::Relaxed);
+    let uniforms = DenoiserUniforms {
+        reset: (reset || previous == 0) as u32,
+        padding: [0; 3],
+    };
+    render_queue.write_buffer(&denoiser.constants, 0, bytemuck::bytes_of(&uniforms));
 }
 
 pub struct SolariReservoirBuffers {
@@ -142,6 +265,7 @@ pub fn prepare_solari_lighting_resources(
         Option<&SolariLightingResources>,
         Option<&MainPassResolutionOverride>,
         Has<Dlss<DlssRayReconstructionFeature>>,
+        Has<ViewDlssRayReconstructionTextures>,
     )>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
@@ -152,6 +276,8 @@ pub fn prepare_solari_lighting_resources(
         #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
         let (entity, camera, solari_lighting, solari_lighting_resources, resolution_override) =
             query_item;
+        #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
+        let has_dlss_rr = false;
         #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
         let (
             entity,
@@ -160,7 +286,12 @@ pub fn prepare_solari_lighting_resources(
             solari_lighting_resources,
             resolution_override,
             has_dlss_rr,
+            has_dlss_rr_textures,
         ) = query_item;
+        // RENZORA PATCH: the built-in denoiser steps aside while DLSS Ray
+        // Reconstruction denoises (see the node), and must start over when it
+        // takes back over: its history is from before DLSS was switched on.
+        let denoiser_active = solari_lighting.denoise && !has_dlss_rr;
 
         let Some(mut view_size) = camera.physical_viewport_size else {
             continue;
@@ -181,6 +312,22 @@ pub fn prepare_solari_lighting_resources(
                 &solari_lighting_resources.constants,
                 0,
                 bytemuck::bytes_of(&uniforms),
+            );
+            update_denoiser(
+                &render_queue,
+                &solari_lighting_resources.denoiser,
+                denoiser_active,
+                uniforms.reset != 0,
+            );
+            #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
+            sync_dlss_rr_textures(
+                &mut commands,
+                &render_device,
+                entity,
+                view_size,
+                has_dlss_rr,
+                has_dlss_rr_textures,
+                false,
             );
             continue;
         }
@@ -236,6 +383,9 @@ pub fn prepare_solari_lighting_resources(
             mapped_at_creation: false,
         });
 
+        let denoiser = create_denoiser_resources(&render_device, view_size);
+        update_denoiser(&render_queue, &denoiser, denoiser_active, true);
+
         commands.entity(entity).insert(SolariLightingResources {
             constants,
             light_tile_samples,
@@ -244,10 +394,59 @@ pub fn prepare_solari_lighting_resources(
             world_cache,
             world_cache_active_cells_dispatch,
             view_size,
+            denoiser,
+            debug_counters: render_device.create_buffer(&BufferDescriptor {
+                label: Some("solari_debug_counters"),
+                size: super::debug::DEBUG_COUNTERS_SIZE,
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
         });
 
         #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
-        if has_dlss_rr {
+        sync_dlss_rr_textures(
+            &mut commands,
+            &render_device,
+            entity,
+            view_size,
+            has_dlss_rr,
+            has_dlss_rr_textures,
+            true,
+        );
+    }
+}
+
+/// RENZORA PATCH: give a view DLSS Ray Reconstruction's guide textures exactly
+/// while it has DLSS RR, every frame rather than only when the view's other
+/// resources are rebuilt.
+///
+/// Upstream made them only alongside the rest, which are rebuilt only when the
+/// view changes size, and never took them away. Switching DLSS off at an
+/// unchanged size (DLAA renders at full size, so always) left them on the view,
+/// and the node reads their presence as "DLSS is denoising": the built-in
+/// denoiser stood aside, DLSS no longer ran, and the raw image reached the
+/// screen. Switching DLSS on later at an unchanged size never made them, so DLSS
+/// had nothing to read.
+#[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
+fn sync_dlss_rr_textures(
+    commands: &mut Commands,
+    render_device: &RenderDevice,
+    entity: Entity,
+    view_size: UVec2,
+    wanted: bool,
+    present: bool,
+    resized: bool,
+) {
+    if !wanted {
+        if present {
+            commands.entity(entity).remove::<ViewDlssRayReconstructionTextures>();
+        }
+        return;
+    }
+    if present && !resized {
+        return;
+    }
+    {
             let diffuse_albedo = render_device.create_texture(&TextureDescriptor {
                 label: Some("solari_lighting_diffuse_albedo"),
                 size: view_size.to_extents(),
@@ -335,6 +534,5 @@ pub fn prepare_solari_lighting_resources(
                         default_view: specular_motion_vectors_view,
                     },
                 });
-        }
     }
 }

@@ -29,7 +29,7 @@ const REQUIRED_LIBRARIES: [&str; 5] = [
 const WORLD_CACHE_SIZE: u32 = 1 << 20;
 
 fn solari_src() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bevy_solari/src")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bevy/crates/bevy_solari/src")
 }
 
 /// Every `.wesl` under `bevy_solari/src`, as (module path, source).

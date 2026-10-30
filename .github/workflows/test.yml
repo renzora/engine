@@ -86,27 +86,21 @@ jobs:
       # dependencies; we just don't run their tests. New first-party crates stay
       # covered automatically via --workspace.
       #
-      # The avian excludes are gone with the vendored copy: avian2d/avian3d and
-      # their ecosystem crates come from crates.io now, so they are dependencies
-      # rather than members and `--workspace` never reaches them.
+      # Bevy (`bevy/`), avian and the other subtree crates (`vendor/avian`,
+      # `vendor/bevy_oxr`, vleue_navigator, ...) are excluded from the workspace
+      # in Cargo.toml, so `--workspace` never reaches them; only the vendored
+      # crates that are still members are listed here.
       - name: Run tests
         run: |
           cargo test --workspace \
             --exclude bevy_args \
             --exclude bevy_firefly \
-            --exclude bevy_gauge \
             --exclude bevy_gaussian_splatting \
             --exclude bevy_hui \
             --exclude bevy_interleave \
             --exclude bevy_interleave_interface \
             --exclude bevy_interleave_macros \
-            --exclude bevy_procedural_tree \
-            --exclude bevy_silk \
-            --exclude bevy_solari \
-            --exclude vleue_navigator \
-            --exclude bevy_mod_openxr \
-            --exclude bevy_mod_xr \
-            --exclude bevy_xr_utils
+            --exclude bevy_silk
 
   wasm:
     runs-on: ubuntu-latest
@@ -249,12 +243,6 @@ jobs:
             --exclude bevy_interleave_interface \
             --exclude bevy_interleave_macros \
             --exclude bevy_silk \
-            --exclude bevy_solari \
-            --exclude vleue_navigator \
-            --exclude polyanya \
-            --exclude bevy_mod_openxr \
-            --exclude bevy_mod_xr \
-            --exclude bevy_xr_utils \
             -- -D warnings \
             -A clippy::too_many_arguments \
             -A clippy::type_complexity

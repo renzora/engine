@@ -53,7 +53,10 @@ struct Material {
     uv_transform: mat2x2<f32>,
     alpha: f32,
     alpha_cutoff: f32,
-    _padding: vec2<f32>,
+    // RENZORA PATCH: how a see-through surface blends (`BLEND_*` in
+    // realtime/transparent.wesl), and its clear coat's strength. Were padding.
+    blend: u32,
+    clearcoat: f32,
 }
 
 const TEXTURE_MAP_NONE = 0xFFFFFFFFu;
@@ -146,8 +149,28 @@ const RAY_T_MAX = 100000.0f;
 
 const RAY_NO_CULL = 0xFFu;
 
+// RENZORA PATCH: TLAS instance masks (`RAY_MASK_*` in binder/instances.rs).
+// Every ray Solari traces sees opaque surfaces only; a see-through surface
+// (glass, a car's clear coat shell) is lit by its own pass, which looks for it
+// with `RAY_MASK_SEE_THROUGH`. Upstream traced every instance as solid, so
+// Renzora kept blended materials out of the scene entirely.
+const RAY_MASK_OPAQUE = 0x01u;
+const RAY_MASK_SEE_THROUGH = 0x02u;
+
+/// RENZORA PATCH: rays this thread has traced, for the diagnostics' ray counts
+/// (`realtime/debug_layout.wesl`, which adds it to the frame's total once per
+/// thread). A per-thread register costs nothing measurable, so it is always
+/// counted and only reported when asked.
+var<private> rays_traced: u32;
+
 fn trace_ray(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ray_t_max: f32, ray_flag: u32) -> RayIntersection {
-    let ray = RayDesc(ray_flag, RAY_NO_CULL, ray_t_min, ray_t_max, ray_origin, ray_direction);
+    return trace_ray_masked(ray_origin, ray_direction, ray_t_min, ray_t_max, ray_flag, RAY_MASK_OPAQUE);
+}
+
+/// RENZORA PATCH: `trace_ray` against the instances `mask` selects.
+fn trace_ray_masked(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ray_t_max: f32, ray_flag: u32, mask: u32) -> RayIntersection {
+    rays_traced += 1u;
+    let ray = RayDesc(ray_flag, mask, ray_t_min, ray_t_max, ray_origin, ray_direction);
     var rq: ray_query;
     rayQueryInitialize(&rq, tlas, ray);
     while rayQueryProceed(&rq) {
@@ -160,7 +183,8 @@ fn trace_ray(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ra
 }
 
 fn trace_ray_previous_frame(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ray_t_max: f32, ray_flag: u32) -> RayIntersection {
-    let ray = RayDesc(ray_flag, RAY_NO_CULL, ray_t_min, ray_t_max, ray_origin, ray_direction);
+    rays_traced += 1u;
+    let ray = RayDesc(ray_flag, RAY_MASK_OPAQUE, ray_t_min, ray_t_max, ray_origin, ray_direction);
     var rq: ray_query;
     rayQueryInitialize(&rq, previous_frame_tlas, ray);
     while rayQueryProceed(&rq) {
@@ -204,6 +228,18 @@ struct ResolvedRayHitFull {
     double_sided: bool,
 }
 
+// RENZORA PATCH: the smallest perceptual roughness Solari shades with, the
+// same floor `bevy_pbr`'s `perceptualRoughnessToRoughness` applies to every
+// raster draw. Upstream used the material's value as-is, and a perfectly smooth
+// pixel (a puddle in a glossiness map) came out black under Solari while raster
+// drew it as a mirror.
+//
+// The floor (linear roughness 0.0079) sits above MIRROR_ROUGHNESS_THRESHOLD, so
+// no surface takes the delta-mirror path any more: a mirror is shaded as a very
+// sharp GGX lobe, which is what raster shades it as. That also turns off the
+// DLSS guide pass's primary surface replacement, which keys on delta mirrors.
+const MIN_PERCEPTUAL_ROUGHNESS: f32 = 0.089;
+
 fn resolve_material(material: Material, uv: vec2<f32>) -> ResolvedMaterial {
     var m: ResolvedMaterial;
 
@@ -234,6 +270,8 @@ fn resolve_material(material: Material, uv: vec2<f32>) -> ResolvedMaterial {
         m.metallic *= metallic_roughness.b;
     }
 
+    // RENZORA PATCH: see MIN_PERCEPTUAL_ROUGHNESS.
+    m.perceptual_roughness = clamp(m.perceptual_roughness, MIN_PERCEPTUAL_ROUGHNESS, 1.0);
     m.roughness = m.perceptual_roughness * m.perceptual_roughness;
 
     return m;

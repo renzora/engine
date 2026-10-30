@@ -597,15 +597,16 @@ blotches.
 
 ## Renzora's copy of bevy_solari
 
-The engine builds its own copy of `bevy_solari` (`crates/bevy_solari`), patched
-over the one Bevy depends on. Besides the [denoiser](#denoiser) (`denoise.wesl`,
+The engine builds Bevy from its own tree (`bevy/`, Bevy's `main`), and its
+`bevy_solari` (`bevy/crates/bevy_solari`) carries Renzora's patches on top of
+upstream's. Besides the [denoiser](#denoiser) (`denoise.wesl`,
 `denoise.rs`, and the lighting split it reads) and the diagnostics behind the
 [Ray Tracing panel](#ray-tracing-panel) (`debug.wesl`, `debug_layout.wesl`,
 `debug.rs`, and a per-thread ray count in the traced scene's `trace_ray` and
 `trace_visibility`) and the [see-through
 pass](#glass-and-other-see-through-surfaces) (`transparent.wesl`, the
 per-instance ray masks, and each material's alpha and blend mode), it differs
-from upstream in four places, each marked
+from upstream in five places, each marked
 `RENZORA PATCH` in the source:
 
 - **Roughness is floored at 0.089**, as Bevy's raster renderer floors it. Upstream
@@ -633,6 +634,14 @@ from upstream in four places, each marked
   Switching DLSS off at the same size (always, under DLAA) left them in place,
   which reads as "DLSS is denoising": the built-in denoiser stood aside, DLSS no
   longer ran, and the raw, grainy image reached the screen.
+- **A removed sun's slot is zeroed**, because the see-through pass reads every
+  directional light straight from that buffer and would otherwise go on lighting
+  glass with a sun that is gone.
+
+Several patches Renzora once carried are now upstream and were dropped in the
+move to Bevy's `main`: BLAS compaction no longer crashes when a mesh is rebuilt
+while still queued, point, spot and rect lights are traced, alpha-masked
+materials are cut out by the hardware, and rays that miss sample the sky.
 
 ## Limitations
 

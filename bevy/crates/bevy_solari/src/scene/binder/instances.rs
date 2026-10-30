@@ -27,6 +27,10 @@ use tracing::{info_span, warn};
 
 pub const MAX_MESH_SLAB_COUNT: NonZeroU32 = NonZeroU32::new(500).unwrap();
 
+/// RENZORA PATCH: TLAS instance masks. Must match `scene/bindings.wesl`.
+pub const RAY_MASK_OPAQUE: u32 = 0x01;
+pub const RAY_MASK_SEE_THROUGH: u32 = 0x02;
+
 #[derive(Clone, Copy, Default, PartialEq, Pod, Zeroable)]
 #[repr(C)]
 pub struct GpuInstanceGeometryIds {
@@ -96,6 +100,9 @@ pub struct InstanceState {
     pub geometry_ids: AtomicSparseBufferVec<GpuInstanceGeometryIds>,
     pub material_ids: AtomicSparseBufferVec<u32>,
     pub blas_refs: AtomicSparseBufferVec<GpuBlasRef>,
+    /// RENZORA PATCH: each slot's TLAS ray mask, [`RAY_MASK_OPAQUE`] or
+    /// [`RAY_MASK_SEE_THROUGH`].
+    pub masks: AtomicSparseBufferVec<u32>,
     pub slots: IndexAllocator,
     /// Slab buffer references dropped this frame, released next frame since the previous frame's
     /// TLAS can still reach them through `geometry_ids`.
@@ -117,6 +124,7 @@ impl InstanceState {
             geometry_ids: storage_buffer("solari_geometry_ids"),
             material_ids: storage_buffer("solari_material_ids"),
             blas_refs: storage_buffer("solari_blas_refs"),
+            masks: storage_buffer("solari_instance_masks"),
             slots: IndexAllocator::new(),
             retired_buffers: Vec::new(),
             records: EntityHashMap::default(),
@@ -132,11 +140,18 @@ impl InstanceState {
     /// Only the `wgpu-core` TLAS build path needs this, to fill in the instance descriptors that
     /// the raw path sets up on the GPU. Slots with a null acceleration structure reference are not
     /// currently drawable, and are left out.
-    pub fn drawable(&self) -> impl Iterator<Item = (u32, BlasKey, [f32; 12])> + '_ {
+    /// RENZORA PATCH: with each slot's TLAS ray mask as well.
+    pub fn drawable(&self) -> impl Iterator<Item = (u32, BlasKey, [f32; 12], u8)> + '_ {
         self.records.values().filter_map(|instance| {
             let slot = instance.slot;
-            (self.blas_refs.get(slot) != GpuBlasRef::NONE)
-                .then(|| (slot, instance.blas_key(), self.transforms.get(slot).rows()))
+            (self.blas_refs.get(slot) != GpuBlasRef::NONE).then(|| {
+                (
+                    slot,
+                    instance.blas_key(),
+                    self.transforms.get(slot).rows(),
+                    self.masks.get(slot) as u8,
+                )
+            })
         })
     }
 
@@ -391,13 +406,36 @@ impl InstanceState {
             },
         );
         self.material_ids.grow_and_set(slot, material_slot);
+        // RENZORA PATCH: a see-through surface is hit only by the rays that look
+        // for one (`realtime/transparent.wesl`); every other ray passes through
+        // it, as light does through glass.
+        let see_through = inputs.assets.see_through_materials.contains(&instance.material);
+        self.masks
+            .grow_and_set(slot, if see_through { RAY_MASK_SEE_THROUGH } else { RAY_MASK_OPAQUE });
         self.set_blas_ref(slot, GpuBlasRef(blas_address));
 
         let is_emissive = inputs
             .assets
             .emissive_materials
             .contains(&instance.material);
-        if is_emissive {
+        // RENZORA PATCH: light sampling packs a triangle index into 16 bits
+        // (`LightSample::light_id`), so an emissive mesh with more triangles
+        // than that cannot be sampled as a light. `new_emissive_mesh_light`
+        // panicked on one, part way through preparing the scene, and the GPU
+        // then read half-written scene data and lost the device: a character
+        // whose glowing hair had 82,008 triangles reset the GPU as it appeared.
+        // Such a mesh stays in the scene, glowing wherever a ray meets it, and
+        // only stops being a light the others sample.
+        let too_many_to_sample = triangle_count > u32::from(u16::MAX);
+        if is_emissive && too_many_to_sample {
+            once!(warn!(
+                "Solari: an emissive mesh has {triangle_count} triangles, more than the {} \
+                 a light can be sampled over. It still glows where rays meet it, but lights \
+                 nothing else directly.",
+                u16::MAX
+            ));
+        }
+        if is_emissive && !too_many_to_sample {
             lights.add_light(
                 LightSourceId::EmissiveMesh(entity),
                 GpuLightSource::new_emissive_mesh_light(slot, triangle_count),

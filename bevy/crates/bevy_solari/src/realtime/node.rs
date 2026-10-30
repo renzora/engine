@@ -1,3 +1,6 @@
+// RENZORA PATCH: the diagnostics and the built-in denoiser.
+use super::debug::{debug_bind_group, debug_bind_group_layout, SolariDebugResources, SolariDebugView};
+use super::denoise::{init_denoiser_pipelines, prepare_denoiser_dispatch, DenoiserInputs, DenoiserPipelines};
 use super::{
     prepare::{
         SolariLightingResources, LIGHT_TILE_BLOCKS, WORLD_CACHE_ACTIVE_CELLS_COUNT_OFFSET,
@@ -25,11 +28,11 @@ use bevy_render::{
             sampler, storage_buffer_sized, texture_2d, texture_depth_2d, texture_storage_2d,
             uniform_buffer, uniform_buffer_sized,
         },
-        BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries, Buffer,
-        BufferInitDescriptor, BufferUsages, CachedComputePipelineId, ComputePassDescriptor,
-        ComputePipelineDescriptor, LoadOp, PipelineCache, RenderPassDescriptor, SamplerBindingType,
-        ShaderStages, ShaderType, StorageTextureAccess, TextureFormat, TextureFormatFeatureFlags,
-        TextureSampleType,
+        BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries, BindingResource,
+        Buffer, BufferInitDescriptor, BufferUsages, CachedComputePipelineId, ComputePassDescriptor,
+        ComputePipelineDescriptor, IntoBinding, LoadOp, PipelineCache, RenderPassDescriptor,
+        SamplerBindingType, ShaderStages, ShaderType, StorageTextureAccess, TextureFormat,
+        TextureFormatFeatureFlags, TextureSampleType,
     },
     renderer::{RenderAdapter, RenderContext, RenderDevice, ViewQuery},
     texture::FallbackImage,
@@ -63,6 +66,26 @@ pub struct SolariLightingPipelines {
     resolve_dlss_rr_textures_pipeline: CachedComputePipelineId,
     /// Zeroed atmosphere uniform for views without an atmosphere.
     atmosphere_fallback: Buffer,
+    /// RENZORA PATCH: the built-in denoiser.
+    denoiser: DenoiserPipelines,
+    /// RENZORA PATCH: the diagnostics (debug.wesl).
+    debug: DebugPipelines,
+    /// RENZORA PATCH: see-through surfaces (transparent.wesl), without and with
+    /// ReSTIR's bind group, indexed by `restir as usize`.
+    see_through: [CachedComputePipelineId; 2],
+    /// RENZORA PATCH: see-through surfaces in front of the sky, run after the
+    /// sky is drawn, on the bind group without ReSTIR's reservoirs.
+    see_through_sky: CachedComputePipelineId,
+}
+
+/// RENZORA PATCH: one pipeline per diagnostics pass, without and with ReSTIR
+/// (indexed by `restir as usize`), since the lighting's bind group differs.
+struct DebugPipelines {
+    layout: BindGroupLayoutDescriptor,
+    snapshot_raw: [CachedComputePipelineId; 2],
+    stats: [CachedComputePipelineId; 2],
+    view: [CachedComputePipelineId; 2],
+    reference: [CachedComputePipelineId; 2],
 }
 
 struct RestirPipelines {
@@ -88,6 +111,8 @@ type SolariLightingViewQuery = (
     &'static PreviousViewUniformOffset,
     Option<&'static AtmosphereTextures>,
     Option<&'static DynamicUniformIndex<GpuAtmosphere>>,
+    // RENZORA PATCH: the diagnostics (debug.rs).
+    Option<&'static SolariDebugResources>,
 );
 
 #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
@@ -100,8 +125,185 @@ type SolariLightingViewQuery = (
     &'static PreviousViewUniformOffset,
     Option<&'static AtmosphereTextures>,
     Option<&'static DynamicUniformIndex<GpuAtmosphere>>,
+    // RENZORA PATCH: the diagnostics (debug.rs).
+    Option<&'static SolariDebugResources>,
     Option<&'static ViewDlssRayReconstructionTextures>,
 );
+
+/// The lighting's bind group without ReSTIR's reservoirs (group 1).
+fn lighting_bind_group<'a>(
+    render_device: &RenderDevice,
+    pipeline_cache: &PipelineCache,
+    pipelines: &SolariLightingPipelines,
+    s: &'a SolariLightingResources,
+    view_output: impl IntoBinding<'a>,
+    (gbuffer, depth_buffer, motion_vectors): (impl IntoBinding<'a>, impl IntoBinding<'a>, impl IntoBinding<'a>),
+    (view_uniforms, previous_view_uniforms): (BindingResource<'a>, BindingResource<'a>),
+    (atmosphere_transmittance_lut, atmosphere_sampler, atmosphere): (
+        impl IntoBinding<'a>,
+        impl IntoBinding<'a>,
+        BindingResource<'a>,
+    ),
+) -> bevy_render::render_resource::BindGroup {
+    render_device.create_bind_group(
+        "solari_lighting_bind_group",
+        &pipeline_cache.get_bind_group_layout(&pipelines.bind_group_layout),
+        &BindGroupEntries::sequential((
+            view_output,
+            s.light_tile_samples.as_entire_binding(),
+            s.light_tile_resolved_samples.as_entire_binding(),
+            gbuffer,
+            depth_buffer,
+            motion_vectors,
+            view_uniforms,
+            previous_view_uniforms,
+            s.world_cache.as_entire_binding(),
+            s.constants.as_entire_binding(),
+            atmosphere_transmittance_lut,
+            atmosphere_sampler,
+            atmosphere,
+            &s.denoiser.noisy_diffuse.default_view,
+            &s.denoiser.noisy_specular.default_view,
+            s.debug_counters.as_entire_binding(),
+        )),
+    )
+}
+
+/// RENZORA PATCH: what the separate see-through passes read off a view.
+type SeeThroughView = (
+    &'static SolariLightingResources,
+    &'static ViewTarget,
+    &'static ViewPrepassTextures,
+    &'static ViewUniformOffset,
+    &'static PreviousViewUniformOffset,
+    &'static SolariLighting,
+);
+
+/// The resources a see-through dispatch reads, grouped so the system stays
+/// under clippy's argument limit.
+#[derive(bevy_ecs::system::SystemParam)]
+pub struct SeeThroughInputs<'w> {
+    solari_pipelines: Option<Res<'w, SolariLightingPipelines>>,
+    pipeline_cache: Res<'w, PipelineCache>,
+    scene_bindings: Res<'w, RaytracingSceneBindings>,
+    view_uniforms: Res<'w, ViewUniforms>,
+    previous_view_uniforms: Res<'w, PreviousViewUniforms>,
+    render_device: Res<'w, RenderDevice>,
+    // The lighting layout carries the atmosphere; the see-through passes bind
+    // its zeroed fallback, since their shading does not read it.
+    linear_sampler: Res<'w, LinearSampler>,
+    fallback_image: Res<'w, FallbackImage>,
+}
+
+/// RENZORA PATCH: see-through surfaces in front of the sky
+/// (`shade_see_through_sky` in transparent.wesl), drawn once the sky has
+/// filled those pixels. Scheduled after the main transparent pass because
+/// that is the first point Bevy's atmosphere (`render_sky`, not public, run
+/// before it) is certain to have drawn; forward-drawn transparents over the
+/// sky, which Solari does not light, are rare enough to take second place.
+pub fn solari_see_through_sky(
+    view: ViewQuery<SeeThroughView>,
+    inputs: SeeThroughInputs,
+    ctx: RenderContext,
+) {
+    let Some(pipelines) = &inputs.solari_pipelines else {
+        return;
+    };
+    let pipeline = pipelines.see_through_sky;
+    dispatch_see_through(view.into_inner(), &inputs, &[pipeline], "solari_see_through_sky", ctx);
+}
+
+/// Run see-through passes over a view's current image.
+fn dispatch_see_through(
+    (resources, view_target, prepass, view_uniform_offset, previous_view_uniform_offset, lighting): (
+        &SolariLightingResources,
+        &ViewTarget,
+        &ViewPrepassTextures,
+        &ViewUniformOffset,
+        &PreviousViewUniformOffset,
+        &SolariLighting,
+    ),
+    inputs: &SeeThroughInputs,
+    passes: &[CachedComputePipelineId],
+    label: &'static str,
+    mut ctx: RenderContext,
+) {
+    if !lighting.see_through {
+        return;
+    }
+    let SeeThroughInputs {
+        solari_pipelines: Some(pipelines),
+        pipeline_cache,
+        scene_bindings,
+        view_uniforms,
+        previous_view_uniforms,
+        render_device,
+        linear_sampler,
+        fallback_image,
+    } = inputs
+    else {
+        return;
+    };
+    let Some(pipelines_ready) = passes
+        .iter()
+        .map(|&id| pipeline_cache.get_compute_pipeline(id))
+        .collect::<Option<Vec<_>>>()
+    else {
+        return;
+    };
+    let (
+        Some(scene_bind_group),
+        Some(gbuffer),
+        Some(depth_buffer),
+        Some(motion_vectors),
+        Some(view_uniforms_binding),
+        Some(previous_view_uniforms_binding),
+    ) = (
+        &scene_bindings.bind_group,
+        prepass.deferred_view(),
+        prepass.depth_only_view(),
+        prepass.motion_vectors_view(),
+        view_uniforms.uniforms.binding(),
+        previous_view_uniforms.uniforms.binding(),
+    )
+    else {
+        return;
+    };
+    let bind_group = lighting_bind_group(
+        render_device,
+        pipeline_cache,
+        pipelines,
+        resources,
+        view_target.get_unsampled_color_attachment().view,
+        (gbuffer, depth_buffer, motion_vectors),
+        (view_uniforms_binding, previous_view_uniforms_binding),
+        (
+            &fallback_image.d2.texture_view,
+            &linear_sampler.0,
+            pipelines.atmosphere_fallback.as_entire_binding(),
+        ),
+    );
+
+    let diagnostics = ctx.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+    let mut pass = ctx.command_encoder().begin_compute_pass(&ComputePassDescriptor {
+        label: Some(label),
+        timestamp_writes: None,
+    });
+    let d = diagnostics.time_span(&mut pass, label);
+    pass.set_bind_group(0, scene_bind_group, &[]);
+    // The third offset is the atmosphere fallback's, a single uniform at 0.
+    pass.set_bind_group(
+        1,
+        &bind_group,
+        &[view_uniform_offset.offset, previous_view_uniform_offset.offset, 0],
+    );
+    for pipeline in pipelines_ready {
+        pass.set_pipeline(pipeline);
+        pass.dispatch_workgroups(resources.view_size.x.div_ceil(8), resources.view_size.y.div_ceil(8), 1);
+    }
+    d.end(&mut pass);
+}
 
 pub fn solari_lighting(
     view: ViewQuery<SolariLightingViewQuery>,
@@ -126,6 +328,7 @@ pub fn solari_lighting(
         previous_view_uniform_offset,
         atmosphere_textures,
         atmosphere_uniform_index,
+        debug_resources,
     ) = view.into_inner();
 
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
@@ -138,8 +341,16 @@ pub fn solari_lighting(
         previous_view_uniform_offset,
         atmosphere_textures,
         atmosphere_uniform_index,
+        debug_resources,
         view_dlss_rr_textures,
     ) = view.into_inner();
+
+    // RENZORA PATCH: DLSS Ray Reconstruction denoises on its own, from the
+    // undenoised image, so the built-in denoiser steps aside where it runs.
+    #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
+    let denoise = solari_lighting.denoise;
+    #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
+    let denoise = solari_lighting.denoise && view_dlss_rr_textures.is_none();
 
     let Some(pipelines) = solari_pipelines else {
         return;
@@ -267,25 +478,46 @@ pub fn solari_lighting(
     let view_target_attachment = view_target.get_unsampled_color_attachment();
 
     let s = solari_lighting_resources;
-    let bind_group = render_device.create_bind_group(
-        "solari_lighting_bind_group",
-        &pipeline_cache.get_bind_group_layout(&pipelines.bind_group_layout),
-        &BindGroupEntries::sequential((
-            view_target_attachment.view,
-            s.light_tile_samples.as_entire_binding(),
-            s.light_tile_resolved_samples.as_entire_binding(),
-            gbuffer,
-            depth_buffer,
-            motion_vectors,
-            view_uniforms_binding.clone(),
-            previous_view_uniforms_binding.clone(),
-            s.world_cache.as_entire_binding(),
-            s.constants.as_entire_binding(),
-            atmosphere_transmittance_lut,
-            &linear_sampler.0,
-            atmosphere.clone(),
-        )),
+    // RENZORA PATCH: built by `lighting_bind_group`, which the see-through
+    // passes share, with the denoiser's and the diagnostics' bindings appended.
+    let bind_group = lighting_bind_group(
+        &render_device,
+        &pipeline_cache,
+        &pipelines,
+        s,
+        view_target_attachment.view,
+        (gbuffer, depth_buffer, motion_vectors),
+        (view_uniforms_binding.clone(), previous_view_uniforms_binding.clone()),
+        (atmosphere_transmittance_lut, &linear_sampler.0, atmosphere.clone()),
     );
+
+    // RENZORA PATCH: the built-in denoiser. It reprojects through last frame's
+    // depth and G-buffer, which exist once the double buffers are on (see
+    // `manage_prepass_double_buffers`), so the first frame goes undenoised.
+    let denoiser_dispatch = view_prepass_textures
+        .previous_deferred_view()
+        .zip(view_prepass_textures.previous_depth_only_view())
+        .filter(|_| denoise)
+        .and_then(|(previous_gbuffer, previous_depth)| {
+            prepare_denoiser_dispatch(
+                &pipelines.denoiser,
+                &pipeline_cache,
+                &render_device,
+                solari_lighting_resources,
+                DenoiserInputs {
+                    view_uniforms: view_uniforms_binding.clone(),
+                    previous_view_uniforms: previous_view_uniforms_binding.clone(),
+                    view_uniform_offset: view_uniform_offset.offset,
+                    previous_view_uniform_offset: previous_view_uniform_offset.offset,
+                    gbuffer,
+                    depth: depth_buffer,
+                    previous_gbuffer,
+                    previous_depth,
+                    motion_vectors,
+                    view_output: BindingResource::TextureView(view_target_attachment.view),
+                },
+            )
+        });
 
     let bind_group_restir =
         restir.map(|(reservoirs, (previous_gbuffer, previous_depth_buffer))| {
@@ -310,6 +542,9 @@ pub fn solari_lighting(
                     previous_depth_buffer,
                     reservoirs.a.as_entire_binding(),
                     reservoirs.b.as_entire_binding(),
+                    &s.denoiser.noisy_diffuse.default_view,
+                    &s.denoiser.noisy_specular.default_view,
+                    s.debug_counters.as_entire_binding(),
                 )),
             )
         });
@@ -336,6 +571,23 @@ pub fn solari_lighting(
             )),
         )
     });
+
+    // RENZORA PATCH: the diagnostics, on a view that has asked for them. Their
+    // passes run on the lighting's own bind group, so they see what it wrote.
+    let debug_dispatch = debug_resources.and_then(|debug| {
+        let p = &pipelines.debug;
+        let restir_index = restir.is_some() as usize;
+        let get = |ids: &[CachedComputePipelineId; 2]| pipeline_cache.get_compute_pipeline(ids[restir_index]);
+        Some((
+            debug.frame,
+            get(&p.snapshot_raw)?,
+            get(&p.stats)?,
+            get(&p.view)?,
+            get(&p.reference)?,
+            debug_bind_group(&render_device, &pipeline_cache, &p.layout, solari_lighting_resources, debug),
+        ))
+    });
+    let lighting_bind_group = bind_group_restir.as_ref().unwrap_or(&bind_group);
 
     let diagnostics = ctx.diagnostic_recorder();
     let diagnostics = diagnostics.as_deref();
@@ -423,7 +675,10 @@ pub fn solari_lighting(
 
     d.end(&mut pass);
 
-    let d = diagnostics.time_span(&mut pass, "solari_lighting/lighting");
+    // RENZORA PATCH: the two lighting dispatches are timed apart (upstream
+    // timed them as one `solari_lighting/lighting`), since they cost very
+    // differently and only one of them depends on the ReSTIR setting.
+    let d = diagnostics.time_span(&mut pass, "solari_lighting/initial");
 
     if let Some(bind_group_restir) = &bind_group_restir {
         pass.set_bind_group(
@@ -443,13 +698,96 @@ pub fn solari_lighting(
     }
     pass.set_pipeline(initial_pipeline);
     pass.dispatch_workgroups(dx, dy, 1);
+    d.end(&mut pass);
 
     if let Some(spatial_and_shade_pipeline) = spatial_and_shade_pipeline {
+        let d = diagnostics.time_span(&mut pass, "solari_lighting/spatial_and_shade");
         pass.set_pipeline(spatial_and_shade_pipeline);
+        pass.dispatch_workgroups(dx, dy, 1);
+        d.end(&mut pass);
+    }
+
+    // RENZORA PATCH: keep the raw lighting before the denoiser overwrites it,
+    // for the diagnostics to show and measure.
+    if let Some((frame, snapshot_raw, _, _, _, debug_group)) = &debug_dispatch
+        && frame.needs_raw()
+    {
+        pass.set_bind_group(2, debug_group, &[]);
+        pass.set_pipeline(snapshot_raw);
         pass.dispatch_workgroups(dx, dy, 1);
     }
 
-    d.end(&mut pass);
+    // RENZORA PATCH: denoise the lighting just written.
+    if let Some(denoiser_dispatch) = &denoiser_dispatch {
+        denoiser_dispatch.dispatch(&mut pass, &diagnostics, dx, dy);
+    }
+
+    // RENZORA PATCH: light see-through surfaces over the finished opaque image
+    // (transparent.wesl). The denoiser bound its own groups, so the scene's
+    // and the lighting's go back first.
+    if let Some(see_through) = solari_lighting
+        .see_through
+        .then(|| pipeline_cache.get_compute_pipeline(pipelines.see_through[restir.is_some() as usize]))
+        .flatten()
+    {
+        let d = diagnostics.time_span(&mut pass, "solari_lighting/see_through");
+        pass.set_bind_group(0, scene_bind_group, &[]);
+        pass.set_bind_group(
+            1,
+            lighting_bind_group,
+            &[
+                view_uniform_offset.offset,
+                previous_view_uniform_offset.offset,
+                atmosphere_offset,
+            ],
+        );
+        pass.set_bind_group(2, None, &[]);
+        pass.set_pipeline(see_through);
+        pass.dispatch_workgroups(dx, dy, 1);
+        d.end(&mut pass);
+    }
+
+    // RENZORA PATCH: the diagnostics, on the finished image. The denoiser bound
+    // its own groups, so the lighting's go back first. The reference is traced
+    // before the statistics, which compare against it, and the visualization
+    // drawn last, since it replaces the image the statistics read.
+    if let Some((frame, snapshot_raw, stats, debug_view, reference, debug_group)) = &debug_dispatch {
+        let d = diagnostics.time_span(&mut pass, "solari_lighting/diagnostics");
+        pass.set_bind_group(0, scene_bind_group, &[]);
+        pass.set_bind_group(
+            1,
+            lighting_bind_group,
+            &[
+                view_uniform_offset.offset,
+                previous_view_uniform_offset.offset,
+                atmosphere_offset,
+            ],
+        );
+        pass.set_bind_group(2, debug_group, &[]);
+        if frame.reference {
+            pass.set_pipeline(reference);
+            pass.dispatch_workgroups(dx, dy, 1);
+            if let Some(debug) = debug_resources {
+                debug.count_reference_sample();
+            }
+        }
+        if frame.stats {
+            pass.set_pipeline(stats);
+            pass.dispatch_workgroups(dx, dy, 1);
+        }
+        // The error view reads its neighbours' finished colours, which it is
+        // overwriting as it goes, so they are copied aside first (over the raw
+        // copy, which this view does not show).
+        if frame.view == SolariDebugView::ReferenceError {
+            pass.set_pipeline(snapshot_raw);
+            pass.dispatch_workgroups(dx, dy, 1);
+        }
+        if frame.view != SolariDebugView::None {
+            pass.set_pipeline(debug_view);
+            pass.dispatch_workgroups(dx, dy, 1);
+        }
+        d.end(&mut pass);
+    }
 
     drop(pass);
 
@@ -501,6 +839,11 @@ pub fn init_solari_lighting_pipelines(
                 texture_2d(TextureSampleType::Float { filterable: true }),
                 sampler(SamplerBindingType::Filtering),
                 uniform_buffer::<GpuAtmosphere>(true),
+                // RENZORA PATCH: noisy_diffuse, noisy_specular, debug_counters
+                // (bindings.wesl).
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+                storage_buffer_sized(false, None),
             ),
         ),
     );
@@ -527,6 +870,11 @@ pub fn init_solari_lighting_pipelines(
                 texture_depth_2d(),
                 storage_buffer_sized(false, None),
                 storage_buffer_sized(false, None),
+                // RENZORA PATCH: noisy_diffuse, noisy_specular, debug_counters
+                // (bindings.wesl).
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+                texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
+                storage_buffer_sized(false, None),
             ),
         ),
     );
@@ -551,6 +899,9 @@ pub fn init_solari_lighting_pipelines(
         ),
     );
 
+    // RENZORA PATCH: the diagnostics' own group 2 (debug.rs).
+    let debug_layout = debug_bind_group_layout();
+
     let create_pipeline = |label: &'static str,
                            entry_point: &'static str,
                            shader: Handle<Shader>,
@@ -571,6 +922,9 @@ pub fn init_solari_lighting_pipelines(
             #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
             ExtraBindGroup::DlssRrGuideBuffers => {
                 layout.push(bind_group_layout_resolve_dlss_rr_textures.clone());
+            }
+            ExtraBindGroup::Debug => {
+                layout.push(debug_layout.clone());
             }
         }
 
@@ -593,6 +947,7 @@ pub fn init_solari_lighting_pipelines(
             ExtraBindGroup::DlssRrGuideBuffers => {
                 shader_defs.push("DLSS_RR_GUIDE_BUFFERS".into());
             }
+            ExtraBindGroup::Debug => {}
         }
         shader_defs.extend_from_slice(&extra_shader_defs);
 
@@ -759,7 +1114,45 @@ pub fn init_solari_lighting_pipelines(
             vec![],
         ),
         atmosphere_fallback,
+        denoiser: init_denoiser_pipelines(&pipeline_cache, &asset_server),
+        see_through: [false, true].map(|restir| {
+            create_pipeline(
+                "solari_see_through",
+                "shade_see_through",
+                load_embedded_asset!(asset_server.as_ref(), "transparent.wesl"),
+                restir,
+                ExtraBindGroup::None,
+                vec![],
+            )
+        }),
+        see_through_sky: create_pipeline(
+            "solari_see_through_sky",
+            "shade_see_through_sky",
+            load_embedded_asset!(asset_server.as_ref(), "transparent.wesl"),
+            false,
+            ExtraBindGroup::None,
+            vec![],
+        ),
+        debug: DebugPipelines {
+            layout: debug_layout.clone(),
+            snapshot_raw: [false, true].map(|restir| {
+                create_pipeline("solari_debug_snapshot_raw", "snapshot_raw", debug_shader(&asset_server), restir, ExtraBindGroup::Debug, vec![])
+            }),
+            stats: [false, true].map(|restir| {
+                create_pipeline("solari_debug_stats", "stats", debug_shader(&asset_server), restir, ExtraBindGroup::Debug, vec![])
+            }),
+            view: [false, true].map(|restir| {
+                create_pipeline("solari_debug_view", "debug_view", debug_shader(&asset_server), restir, ExtraBindGroup::Debug, vec![])
+            }),
+            reference: [false, true].map(|restir| {
+                create_pipeline("solari_debug_reference", "reference_trace", debug_shader(&asset_server), restir, ExtraBindGroup::Debug, vec![])
+            }),
+        },
     });
+}
+
+fn debug_shader(asset_server: &AssetServer) -> Handle<Shader> {
+    load_embedded_asset!(asset_server, "debug.wesl")
 }
 
 enum ExtraBindGroup {
@@ -767,4 +1160,6 @@ enum ExtraBindGroup {
     WorldCacheDispatch,
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
     DlssRrGuideBuffers,
+    /// RENZORA PATCH: the diagnostics' group (debug.rs).
+    Debug,
 }

@@ -1,6 +1,14 @@
+mod debug;
+mod denoise;
 mod extract;
 mod node;
 mod prepare;
+
+// RENZORA PATCH: the diagnostics' public surface (debug.rs).
+pub use debug::{
+    SolariDebug, SolariDebugOutput, SolariDebugStats, SolariDebugView, HISTOGRAM_BINS,
+    HISTOGRAM_MIN_LOG2, HISTOGRAM_STOPS_PER_BIN,
+};
 
 use crate::{
     scene::{prepare_raytracing_scene_resources, RaytracingSceneBindings},
@@ -10,7 +18,7 @@ use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::embedded_asset;
 use bevy_camera::Hdr;
 use bevy_core_pipeline::{
-    core_3d::main_opaque_pass_3d,
+    core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
     prepass::{
         DeferredPrepass, DeferredPrepassDoubleBuffer, DepthPrepass, DepthPrepassDoubleBuffer,
         MotionVectorPrepass,
@@ -34,7 +42,7 @@ use bevy_render::{
 };
 use bevy_shader::load_shader_library;
 use extract::extract_solari_lighting;
-use node::{init_solari_lighting_pipelines, solari_lighting};
+use node::{init_solari_lighting_pipelines, solari_lighting, solari_see_through_sky};
 use prepare::{
     prepare_solari_lighting_resources, setup_raytracing_scene_needs_previous_frame_data,
 };
@@ -61,6 +69,19 @@ impl Plugin for SolariLightingPlugin {
 
         load_shader_library!(app, "resolve_dlss_rr_textures.wesl");
 
+        // RENZORA PATCH: the built-in denoiser. See denoise.wesl.
+        load_shader_library!(app, "denoise_utils.wesl");
+        load_shader_library!(app, "denoise_input.wesl");
+        embedded_asset!(app, "denoise.wesl");
+
+        // RENZORA PATCH: see-through surfaces. See transparent.wesl.
+        embedded_asset!(app, "transparent.wesl");
+
+        // RENZORA PATCH: the diagnostics. See debug.wesl.
+        load_shader_library!(app, "debug_layout.wesl");
+        embedded_asset!(app, "debug.wesl");
+        app.register_type::<SolariDebug>();
+
         app.insert_resource(DefaultOpaqueRendererMethod::deferred());
     }
 
@@ -86,7 +107,14 @@ impl Plugin for SolariLightingPlugin {
             ),
         );
 
+        // RENZORA PATCH: the diagnostics' results, written in the render world
+        // and read in the main one, through the one shared slot.
+        let debug_output = SolariDebugOutput::default();
+        app.insert_resource(debug_output.clone());
+
         app.sub_app_mut(RenderApp)
+            .insert_resource(debug_output)
+            .init_resource::<debug::SolariDebugReadback>()
             .add_systems(
                 RenderStartup,
                 init_solari_lighting_pipelines.after(init_gpu_resource::<RaytracingSceneBindings>),
@@ -96,18 +124,31 @@ impl Plugin for SolariLightingPlugin {
                 Render,
                 (
                     prepare_solari_lighting_resources,
+                    // After the lighting's own prepare, which rewrites the
+                    // uniform the ray-count flag is set in.
+                    debug::prepare_solari_debug.after(prepare_solari_lighting_resources),
                     setup_raytracing_scene_needs_previous_frame_data
                         .before(prepare_raytracing_scene_resources),
                 )
                     .in_set(RenderSystems::PrepareResources),
             )
             .add_systems(
+                Render,
+                debug::read_back_solari_debug.in_set(RenderSystems::Cleanup),
+            )
+            .add_systems(
                 Core3d,
-                solari_lighting
-                    .before(main_opaque_pass_3d)
-                    .in_set(Core3dSystems::MainPass),
-            );
-    }
+                (
+                    solari_lighting
+                        .before(main_opaque_pass_3d)
+                        .in_set(Core3dSystems::MainPass),
+                    // RENZORA PATCH: see-through surfaces in front of the sky,
+                    // once the sky is drawn. See `solari_see_through_sky`.
+                    solari_see_through_sky
+                        .after(main_transparent_pass_3d)
+                        .in_set(Core3dSystems::MainPass),
+                ),
+            );    }
 }
 
 /// A component for a 3d camera entity to enable the Solari raytraced lighting system.
@@ -235,6 +276,28 @@ pub struct SolariLighting {
     /// After setting this to true, it will automatically be toggled
     /// back to false at the end of the frame.
     pub reset: bool,
+
+    /// RENZORA PATCH: run the built-in denoiser (`denoise.wesl`) on the
+    /// lighting, so the image is clean on any ray-tracing GPU without DLSS Ray
+    /// Reconstruction. It steps aside on a camera that has DLSS RR, which needs
+    /// this crate's upstream `dlss` feature: Renzora's `dlss` feature turns it
+    /// on in builds made with the DLSS SDK, and `renzora_solari` attaches DLSS
+    /// RR only where the GPU supports it, so everywhere else this runs.
+    ///
+    /// Needs last frame's depth and G-buffer, so it keeps the prepass double
+    /// buffers on even with [`SolariLighting::restir`] off.
+    ///
+    /// Defaults to `true`.
+    pub denoise: bool,
+
+    /// RENZORA PATCH: light see-through surfaces (glass, clear coats, lenses)
+    /// by tracing them (`transparent.wesl`), so they reflect and show the scene
+    /// around them. Off, the pass does not run, and whatever draws those
+    /// surfaces otherwise (Bevy's forward pass, which reflects only the
+    /// environment map) is left to.
+    ///
+    /// Defaults to `true`.
+    pub see_through: bool,
 }
 
 impl Default for SolariLighting {
@@ -253,11 +316,14 @@ impl Default for SolariLighting {
             world_cache_position_lod_scale: 15.0,
             world_cache_force_opaque: true,
             reset: true, // No temporal history on the first frame
+            denoise: true,
+            see_through: true,
         }
     }
 }
 
-/// Adds or removes the prepass double-buffer components according to [`SolariLighting::restir`].
+/// Adds or removes the prepass double-buffer components according to [`SolariLighting::restir`]
+/// and [`SolariLighting::denoise`].
 fn manage_prepass_double_buffers(
     views: Query<(
         Entity,
@@ -269,7 +335,8 @@ fn manage_prepass_double_buffers(
 ) {
     for (entity, solari_lighting, deferred_double_buffered, depth_double_buffered) in &views {
         let mut entity = commands.entity(entity);
-        if solari_lighting.restir {
+        // RENZORA PATCH: the denoiser reprojects through last frame's buffers too.
+        if solari_lighting.restir || solari_lighting.denoise {
             if !deferred_double_buffered {
                 entity.insert(DeferredPrepassDoubleBuffer);
             }
