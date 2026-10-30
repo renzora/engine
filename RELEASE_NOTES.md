@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 16:06
+- feat(clouds): volumetric clouds ship with the engine as a bundled plugin instead of a marketplace install
+
 ## 2026-10-30 16:03
 - docs(physics): the physics docs no longer point to the Rapier plugin, which has been retired; avian is the physics engine
 

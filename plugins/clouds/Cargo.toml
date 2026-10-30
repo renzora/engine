@@ -1,0 +1,48 @@
+# A BUNDLED plugin: an ordinary Renzora plugin (`renzora::plugin!`) that ships
+# with the engine and is compiled INTO its binary, so a fresh build has
+# volumetric clouds. `cargo renzora` finds it under `plugins/` and links it;
+# delete this folder (or `cargo renzora remove clouds`) and the next build has
+# no clouds at all.
+#
+# It is a member of the engine workspace, so a plain `cargo test --profile dist
+# -p clouds` works here and resolves the engine's own Bevy.
+#
+# No `[workspace]` and no `crate-type = ["dylib"]`, unlike an installed plugin:
+# both would stop it being linked in. To ship it as an installable plugin
+# instead, put `crate-type = ["dylib"]` back under `[lib]` and move the folder
+# out of the engine checkout.
+
+[package]
+name = "clouds"
+version = "1.0.2"
+edition = "2021"
+description = "Volumetric clouds raymarched through a spherical deck (HZD/Frostbite model)."
+
+[features]
+# Set by the build that links this plugin in. `plugin!` then leaves out the
+# loader's `#[no_mangle]` entry point, which only an installed (dlopen'd)
+# plugin needs and which two linked-in plugins would both define.
+bundled = []
+
+[dependencies]
+# `default-features = false`: the engine curates Bevy's feature set once, at the
+# workspace root. A bare `bevy = "0.20"` here would switch Bevy's defaults on for
+# the whole engine build, because cargo unifies features across it. By path:
+# nothing built on Bevy comes from crates.io (CLAUDE.md §8).
+bevy = { path = "../../bevy", default-features = false }
+renzora = { path = "../../crates/renzora", default-features = false }
+
+# No `serde`: `CloudsData` lives in the contract crate, which is where its
+# derives are.
+
+[lints]
+workspace = true
+
+# Marketplace listing (`renzora publish`). Cargo ignores this section.
+[package.metadata.renzora]
+marketplace_id = "clouds"
+category = "plugins"
+tags = ["rendering", "sky", "weather", "volumetric", "atmosphere"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

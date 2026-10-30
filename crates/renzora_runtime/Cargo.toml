@@ -430,6 +430,7 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+clouds = { path = "../../plugins/clouds", features = ["bundled"] }
 renzora_live_link = { path = "../renzora_live_link" }
 renzora_net = { path = "../renzora_net" }
 renzora_profiler = { path = "../renzora_profiler" }

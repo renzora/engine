@@ -35,9 +35,9 @@ features and needs an engine checkout; see [Building Plugins](plugins.md).
 A plugin can also ship *with the engine*, compiled into its binary. That is a
 **bundled plugin**: a folder under `plugins/` in the engine checkout, written
 exactly like any other plugin on this page, that `cargo renzora` links in rather
-than leaving to be installed. The engine's physics is one, `plugins/avian_physics`,
-which is how a fresh build simulates while physics stays something you can take
-out.
+than leaving to be installed. The engine bundles two: its physics,
+`plugins/avian_physics`, which is how a fresh build simulates while physics stays
+something you can take out, and its volumetric clouds, `plugins/clouds`.
 
 ```
 <engine checkout>/
@@ -47,6 +47,7 @@ out.
       Cargo.toml
       src/lib.rs                ends in renzora::plugin!(AvianPhysicsPlugin, Runtime);
       tests/
+    clouds/                     bundled: compiled into the binary
 ```
 
 It runs exactly as fast as engine code: it is compiled in the same build, with
@@ -62,9 +63,10 @@ Three things set its manifest apart from an installed plugin's:
 - **A `bundled` feature**, `[features] bundled = []`. The engine turns it on, and
   `renzora::plugin!` then leaves out the entry point the plugin loader looks up.
   Two plugins compiled into one binary would otherwise both define it.
-- **`bevy = { version = "0.20", default-features = false }`.** Cargo merges
-  features across the engine build, so a bare `bevy = "0.20"` would switch
-  Bevy's default features on for the whole engine.
+- **`bevy = { path = "../../bevy", default-features = false }`.** The engine's
+  own Bevy, by path, since nothing built on Bevy comes from crates.io. Cargo
+  merges features across the engine build, so leaving the defaults on would
+  switch Bevy's default features on for the whole engine.
 
 The build finds the one `renzora::plugin!` line and installs whatever it was
 given, in the runtime for `Runtime` and in the editor for `Editor`. Because it is
@@ -376,7 +378,7 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 ## Where to look for examples
 
-**`plugins/avian_physics` is a complete, real plugin** in the repository: a physics backend for both worlds, with tests. It is [bundled](#bundled-plugins), but its code is written exactly as an installed plugin's is. Every other plugin is distributed through the marketplace and built where it is installed.
+**`plugins/avian_physics` is a complete, real plugin** in the repository: a physics backend for both worlds, with tests. It is [bundled](#bundled-plugins), but its code is written exactly as an installed plugin's is, and so is `plugins/clouds`, a render plugin with its own shaders and inspector. Every other plugin is distributed through the marketplace and built where it is installed.
 
 Beyond that, the engine's own crates are a good reference: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it (the systems, the resources, the `&mut World` access, the contract-crate calls) is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
 

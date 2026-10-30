@@ -20,6 +20,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_lang::LangPlugin::default());
     #[cfg(feature = "avian")]
     app.add_plugins(avian_physics::AvianPhysicsPlugin);
+    app.add_plugins(clouds::CloudsPlugin);
     #[cfg(feature = "animation")]
     app.add_plugins(renzora_animation::AnimationPlugin::default());
     #[cfg(feature = "antialiasing")]
