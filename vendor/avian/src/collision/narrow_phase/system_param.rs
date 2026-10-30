@@ -1,0 +1,939 @@
+#[cfg(feature = "parallel")]
+use core::cell::RefCell;
+
+use crate::{
+    collision::{
+        CollisionDiagnostics,
+        collider::EnlargedAabb,
+        contact_types::{ContactEdgeFlags, ContactId, ContactRecyclingCache},
+    },
+    data_structures::{bit_vec::BitVec, pair_key::PairKey},
+    prelude::*,
+};
+#[cfg(feature = "3d")]
+use bevy::math::ops::FloatPow;
+use bevy::{
+    ecs::{
+        query::QueryData,
+        system::{SystemParam, SystemParamItem, lifetimeless::Read},
+    },
+    prelude::*,
+};
+#[cfg(feature = "parallel")]
+use thread_local::ThreadLocal;
+
+#[derive(QueryData)]
+struct ColliderQuery<C: AnyCollider> {
+    entity: Entity,
+    of: Option<Read<ColliderOf>>,
+    shape: Read<C>,
+    enlarged_aabb: Read<EnlargedAabb>,
+    position: Read<Position>,
+    rotation: Read<Rotation>,
+    transform: Option<Read<ColliderTransform>>,
+    layers: Read<CollisionLayers>,
+    friction: Option<Read<Friction>>,
+    restitution: Option<Read<Restitution>>,
+    collision_margin: Option<Read<CollisionMargin>>,
+    is_sensor: Has<Sensor>,
+}
+
+#[derive(QueryData)]
+struct RigidBodyQuery {
+    entity: Entity,
+    rb: Read<RigidBody>,
+    position: Read<Position>,
+    rotation: Read<Rotation>,
+    center_of_mass: Read<ComputedCenterOfMass>,
+    linear_velocity: Read<LinearVelocity>,
+    angular_velocity: Read<AngularVelocity>,
+    // TODO: We should define these as purely collider components and not query for them here.
+    friction: Option<Read<Friction>>,
+    restitution: Option<Read<Restitution>>,
+    collision_margin: Option<Read<CollisionMargin>>,
+    speculative_ccd: Option<Read<SpeculativeCcd>>,
+    size_metrics: Read<BodySizeMetrics>,
+}
+
+/// A system parameter for managing the narrow phase.
+///
+/// Responsibilities:
+///
+/// - Updates each active [`ContactPair`] in the [`ContactGraph`].
+/// - Sends [collision events](crate::collision::collision_events) when colliders start or stop touching.
+/// - Removes contact pairs from the [`ContactGraph`] when AABBs stop overlapping.
+/// - Records [`ContactStatusChange`]s for the solver when contacts start or stop generating contact manifolds.
+///
+/// [`ConstraintGraph`]: crate::dynamics::solver::constraint_graph::ConstraintGraph
+/// [`PhysicsIslands`]: crate::dynamics::solver::islands::PhysicsIslands
+#[derive(SystemParam)]
+#[expect(missing_docs)]
+pub struct NarrowPhase<'w, 's, C: AnyCollider> {
+    collider_query: Query<'w, 's, ColliderQuery<C>, Without<ColliderDisabled>>,
+    colliding_entities_query: Query<'w, 's, &'static mut CollidingEntities>,
+    body_query: Query<'w, 's, RigidBodyQuery, Without<RigidBodyDisabled>>,
+    pub contact_graph: ResMut<'w, ContactGraph>,
+    /// The queue of contact status changess.
+    pub contact_status_changes: ResMut<'w, ContactStatusChangeQueue>,
+    contact_status_bits: ResMut<'w, ContactStatusBits>,
+    #[cfg(feature = "parallel")]
+    thread_locals: ResMut<'w, NarrowPhaseThreadLocals>,
+    pub config: Res<'w, NarrowPhaseConfig>,
+    default_friction: Res<'w, DefaultFriction>,
+    default_restitution: Res<'w, DefaultRestitution>,
+    length_unit: Res<'w, PhysicsLengthUnit>,
+}
+
+/// A bit vector for tracking contact status changes.
+/// Set bits correspond to contact pairs that were either added or removed.
+#[derive(Resource, Default, Deref, DerefMut)]
+pub(super) struct ContactStatusBits(pub BitVec);
+
+/// Thread-local data for the narrow phase contact updates.
+#[cfg(feature = "parallel")]
+#[derive(Resource, Default, Deref, DerefMut)]
+pub(super) struct NarrowPhaseThreadLocals(pub ThreadLocal<RefCell<NarrowPhaseThreadContext>>);
+
+/// A thread-local context for the narrow phase contact updates.
+#[cfg(feature = "parallel")]
+#[derive(Default)]
+pub(super) struct NarrowPhaseThreadContext {
+    /// Bit vector for tracking contact status changes.
+    ///
+    /// Set bits correspond to contact pairs that were either added or removed.
+    ///
+    /// The thread-local bit vectors are combined with the global [`ContactStatusBits`].
+    // TODO: We could just combine all the bit vectors into the first one
+    pub contact_status_bits: BitVec,
+    /// The number of contacts recycled by the narrow phase on this thread.
+    pub recycled_count: u32,
+}
+
+/// A change in a contact's solver status, recorded by the narrow phase
+/// and applied by the solver.
+///
+/// The narrow phase only *detects and records* these changes.
+/// The solver drains the [`ContactStatusChangeQueue`] queue and applies them,
+/// keeping the narrow phase and solver decoupled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContactStatusChange {
+    /// The contact started touching and should generate constraints.
+    StartedGeneratingConstraints(ContactId),
+    /// The contact stopped touching and should stop generating constraints.
+    ///
+    /// The bodies are captured here because the contact edge no longer exists.
+    StoppedGeneratingConstraints {
+        /// The contact whose constraints should be removed.
+        contact_id: ContactId,
+        /// The first body in the contact.
+        body1: Entity,
+        /// The second body in the contact.
+        body2: Entity,
+    },
+    /// The number of manifolds of a touching contact changed by `delta`.
+    /// Constraints should be added (if `delta > 0`) or removed (if `delta < 0`)
+    /// to match the new manifold count.
+    ManifoldCountChanged {
+        /// The contact whose manifold count changed.
+        contact: ContactId,
+        /// The first body in the contact.
+        body1: Entity,
+        /// The second body in the contact.
+        body2: Entity,
+        /// The signed change in the number of manifolds.
+        delta: i32,
+    },
+}
+
+/// A queue of [`ContactStatusChange`]s recorded by the narrow phase
+/// and applied by the solver.
+#[derive(Resource, Default, Debug, Deref, DerefMut)]
+pub struct ContactStatusChangeQueue(pub Vec<ContactStatusChange>);
+
+impl<C: AnyCollider> NarrowPhase<'_, '_, C> {
+    /// Updates the narrow phase.
+    ///
+    /// - Updates each active [`ContactPair`] in the [`ContactGraph`].
+    /// - Sends [collision events](crate::collision::collision_events) when colliders start or stop touching.
+    /// - Removes contact pairs from the [`ContactGraph`] when AABBs stop overlapping.
+    /// - Records [`ContactStatusChange`]s into [`ContactStatusChangeQueue`] for the solver to apply.
+    pub fn update<H: CollisionHooks>(
+        &mut self,
+        collision_started_writer: &mut MessageWriter<CollisionStart>,
+        collision_ended_writer: &mut MessageWriter<CollisionEnd>,
+        delta_secs: f32,
+        hooks: &SystemParamItem<H>,
+        context: &SystemParamItem<C::Context>,
+        diagnostics: &mut CollisionDiagnostics,
+        commands: &mut ParallelCommands,
+    ) where
+        for<'w, 's> SystemParamItem<'w, 's, H>: CollisionHooks,
+    {
+        // Update contacts for all contact pairs.
+        self.update_contacts::<H>(delta_secs, hooks, context, diagnostics, commands);
+
+        // Process contact status changes, iterating over set bits serially to maintain determinism.
+        //
+        // The narrow phase only updates the `ContactGraph` and records `ContactStatusChange`s.
+        // The solver applies those changes to the constraint graph and physics islands.
+        //
+        // Iterating over set bits is done efficiently with the "count trailing zeros" method:
+        // https://lemire.me/blog/2018/02/21/iterating-over-set-bits-quickly/
+        for (i, mut bits) in self.contact_status_bits.blocks().enumerate() {
+            while bits != 0 {
+                let trailing_zeros = bits.trailing_zeros();
+                let contact_id = ContactId(i as u32 * 64 + trailing_zeros);
+
+                let (contact_edge, contact_pair) = self
+                    .contact_graph
+                    .get_mut_by_id(contact_id)
+                    .unwrap_or_else(|| panic!("Contact pair not found for {contact_id:?}"));
+
+                // Three options:
+                // 1. The AABBs are no longer overlapping, and the contact pair should be removed.
+                // 2. The colliders started touching, and a collision started event should be sent.
+                // 3. The colliders stopped touching, and a collision ended event should be sent.
+                if contact_pair.aabbs_disjoint() {
+                    // Send a collision ended event if the contact pair was touching.
+                    let send_event = contact_edge
+                        .flags
+                        .contains(ContactEdgeFlags::TOUCHING | ContactEdgeFlags::CONTACT_EVENTS);
+                    if send_event {
+                        collision_ended_writer.write(CollisionEnd {
+                            collider1: contact_pair.collider1,
+                            collider2: contact_pair.collider2,
+                            body1: contact_pair.body1,
+                            body2: contact_pair.body2,
+                        });
+                    }
+
+                    // Remove from `CollidingEntities`.
+                    Self::remove_colliding_entities(
+                        &mut self.colliding_entities_query,
+                        contact_pair.collider1,
+                        contact_pair.collider2,
+                    );
+
+                    let pair_key = PairKey::new(
+                        contact_pair.collider1.index_u32(),
+                        contact_pair.collider2.index_u32(),
+                    );
+
+                    if contact_pair.generates_constraints()
+                        && let (Some(body1), Some(body2)) = (contact_pair.body1, contact_pair.body2)
+                    {
+                        self.contact_status_changes.push(
+                            ContactStatusChange::StoppedGeneratingConstraints {
+                                contact_id,
+                                body1,
+                                body2,
+                            },
+                        );
+                    }
+
+                    // Remove the contact edge from the contact graph.
+                    self.contact_graph.remove_edge_by_id(&pair_key, contact_id);
+                } else if contact_pair.collision_started() {
+                    // Send collision started event.
+                    if contact_edge.events_enabled() {
+                        collision_started_writer.write(CollisionStart {
+                            collider1: contact_pair.collider1,
+                            collider2: contact_pair.collider2,
+                            body1: contact_pair.body1,
+                            body2: contact_pair.body2,
+                        });
+                    }
+
+                    // Add to `CollidingEntities`.
+                    Self::add_colliding_entities(
+                        &mut self.colliding_entities_query,
+                        contact_pair.collider1,
+                        contact_pair.collider2,
+                    );
+
+                    debug_assert!(
+                        !contact_pair.manifolds.is_empty(),
+                        "Manifolds should not be empty when colliders start touching"
+                    );
+
+                    contact_edge.flags.set(ContactEdgeFlags::TOUCHING, true);
+
+                    // Clear the status change flags.
+                    contact_pair
+                        .flags
+                        .set(ContactPairFlags::STARTED_TOUCHING, false);
+                    contact_pair
+                        .flags
+                        .set(ContactPairFlags::STARTED_GENERATING_CONSTRAINTS, false);
+
+                    if contact_pair.generates_constraints() {
+                        self.contact_status_changes.push(
+                            ContactStatusChange::StartedGeneratingConstraints(contact_id),
+                        );
+                    }
+                } else if contact_pair
+                    .flags
+                    .contains(ContactPairFlags::STOPPED_TOUCHING)
+                {
+                    // Send collision ended event.
+                    if contact_edge.events_enabled() {
+                        collision_ended_writer.write(CollisionEnd {
+                            collider1: contact_pair.collider1,
+                            collider2: contact_pair.collider2,
+                            body1: contact_pair.body1,
+                            body2: contact_pair.body2,
+                        });
+                    }
+
+                    // Remove from `CollidingEntities`.
+                    Self::remove_colliding_entities(
+                        &mut self.colliding_entities_query,
+                        contact_pair.collider1,
+                        contact_pair.collider2,
+                    );
+
+                    debug_assert!(
+                        contact_pair.manifolds.is_empty(),
+                        "Manifolds should be empty when colliders stopped touching"
+                    );
+
+                    contact_edge.flags.set(ContactEdgeFlags::TOUCHING, false);
+
+                    // Clear the status change flags.
+                    contact_pair
+                        .flags
+                        .set(ContactPairFlags::STOPPED_TOUCHING, false);
+
+                    if contact_pair.generates_constraints()
+                        && let (Some(body1), Some(body2)) = (contact_pair.body1, contact_pair.body2)
+                    {
+                        self.contact_status_changes.push(
+                            ContactStatusChange::StoppedGeneratingConstraints {
+                                contact_id,
+                                body1,
+                                body2,
+                            },
+                        );
+                    }
+                } else if contact_pair.is_touching()
+                    && contact_pair
+                        .flags
+                        .contains(ContactPairFlags::STARTED_GENERATING_CONSTRAINTS)
+                {
+                    // The contact pair should start generating constraints.
+                    contact_pair
+                        .flags
+                        .set(ContactPairFlags::STARTED_GENERATING_CONSTRAINTS, false);
+
+                    self.contact_status_changes.push(
+                        ContactStatusChange::StartedGeneratingConstraints(contact_id),
+                    );
+                } else if contact_pair.is_touching()
+                    && contact_pair.generates_constraints()
+                    && contact_pair.manifold_count_change != 0
+                {
+                    // The contact pair is still touching, but the manifold count changed.
+                    // Let the solver add or remove the corresponding constraints.
+                    let delta = contact_pair.manifold_count_change;
+                    contact_pair.manifold_count_change = 0;
+
+                    if let (Some(body1), Some(body2)) = (contact_pair.body1, contact_pair.body2) {
+                        self.contact_status_changes.push(
+                            ContactStatusChange::ManifoldCountChanged {
+                                contact: contact_id,
+                                body1,
+                                body2,
+                                delta,
+                            },
+                        );
+                    }
+                }
+
+                // Clear the least significant set bit.
+                bits &= bits - 1;
+            }
+        }
+    }
+
+    /// Adds the colliding entities to their respective [`CollidingEntities`] components.
+    fn add_colliding_entities(
+        query: &mut Query<&mut CollidingEntities>,
+        entity1: Entity,
+        entity2: Entity,
+    ) {
+        if let Ok(mut colliding_entities1) = query.get_mut(entity1) {
+            colliding_entities1.insert(entity2);
+        }
+        if let Ok(mut colliding_entities2) = query.get_mut(entity2) {
+            colliding_entities2.insert(entity1);
+        }
+    }
+
+    /// Removes the colliding entities from their respective [`CollidingEntities`] components.
+    fn remove_colliding_entities(
+        query: &mut Query<&mut CollidingEntities>,
+        entity1: Entity,
+        entity2: Entity,
+    ) {
+        if let Ok(mut colliding_entities1) = query.get_mut(entity1) {
+            colliding_entities1.remove(&entity2);
+        }
+        if let Ok(mut colliding_entities2) = query.get_mut(entity2) {
+            colliding_entities2.remove(&entity1);
+        }
+    }
+
+    /// Updates contacts for all contact pairs in the [`ContactGraph`].
+    ///
+    /// Also updates the [`ContactStatusBits`] resource to track status changes for each contact pair.
+    /// Set bits correspond to contact pairs that were either added or removed,
+    /// while unset bits correspond to contact pairs that were persisted.
+    ///
+    /// The order of contact pairs is preserved.
+    fn update_contacts<H: CollisionHooks>(
+        &mut self,
+        delta_secs: f32,
+        hooks: &SystemParamItem<H>,
+        collider_context: &SystemParamItem<C::Context>,
+        diagnostics: &mut CollisionDiagnostics,
+        par_commands: &mut ParallelCommands,
+    ) where
+        for<'w, 's> SystemParamItem<'w, 's, H>: CollisionHooks,
+    {
+        let length_unit = self.length_unit.0;
+        let contact_tolerance = length_unit * self.config.contact_tolerance;
+        let recycle_distance = length_unit * self.config.recycle_distance;
+        let recycle_distance_non_touching = recycle_distance.min(contact_tolerance);
+        #[cfg(feature = "2d")]
+        let recycle_angle_cos = ops::cos(self.config.recycle_angle);
+        #[cfg(feature = "3d")]
+        let recycle_angular_distance = ops::cos(self.config.recycle_angle * 0.5).squared();
+        let inv_delta_secs = delta_secs.recip();
+
+        // Contact bit vecs must be sized based on the full contact capacity,
+        // not the number of active contact pairs, because pair indices
+        // are unstable and can be invalidated when pairs are removed.
+        let bit_count = self.contact_graph.edges.raw_edges().len();
+
+        // Clear the bit vector used to track status changes for each contact pair.
+        self.contact_status_bits.set_bit_count_and_clear(bit_count);
+
+        #[cfg(feature = "parallel")]
+        self.thread_locals.iter_mut().for_each(|context| {
+            let thread_locals = &mut context.borrow_mut();
+            thread_locals
+                .contact_status_bits
+                .set_bit_count_and_clear(bit_count);
+            thread_locals.recycled_count = 0;
+        });
+
+        // Compute contacts for all contact pairs in parallel or serially
+        // based on the `parallel` feature.
+        //
+        // Constraints are also generated for each contact pair that is touching
+        // or expected to start touching.
+        //
+        // If parallelism is used, status changes are written to thread-local bit vectors,
+        // where set bits correspond to contact pairs that were added or removed.
+        // At the end, the bit vectors are combined using bit-wise OR.
+        //
+        // If parallelism is not used, status changes are instead written
+        // directly to the global bit vector.
+        //
+        // TODO: An alternative to thread-local bit vectors could be to have one larger bit vector
+        //       and to chunk it into smaller bit vectors for each thread. Might not be any faster though.
+        crate::utils::par_for_each(self.contact_graph.active_pairs_mut(), 64, |_i, contacts| {
+            let contact_id = contacts.contact_id.0 as usize;
+
+            #[cfg(not(feature = "parallel"))]
+            let contact_status_bits = &mut self.contact_status_bits;
+            #[cfg(not(feature = "parallel"))]
+            let recycled_count = &mut diagnostics.recycled_count;
+
+            // TODO: Move this out of the chunk iteration? Requires refactoring `par_for_each!`.
+            #[cfg(feature = "parallel")]
+            // Get the thread-local narrow phase context.
+            let mut thread_context = self
+                .thread_locals
+                .get_or(|| {
+                    // No thread-local bit vector exists for this thread yet.
+                    // Create a new one with the same capacity as the global bit vector.
+                    let mut contact_status_bits = BitVec::new(bit_count);
+                    contact_status_bits.set_bit_count_and_clear(bit_count);
+                    NarrowPhaseThreadContext {
+                        contact_status_bits,
+                        recycled_count: 0,
+                    }
+                    .into()
+                })
+                .borrow_mut();
+
+            #[cfg(feature = "parallel")]
+            let NarrowPhaseThreadContext {
+                contact_status_bits,
+                recycled_count,
+            } = &mut *thread_context;
+
+            // Get the colliders for the contact pair.
+            let Ok([collider1, collider2]) = self
+                .collider_query
+                .get_many([contacts.collider1, contacts.collider2])
+            else {
+                return;
+            };
+
+            // An extra speculative distance requested for this timestep.
+            // This can be used to ensure that TOI impacts are handled by the discrete solver,
+            // or more generally for speculative contacts.
+            let mut speculative_distance = core::mem::take(&mut contacts.speculative_distance);
+
+            // Check if the AABBs of the colliders still overlap and the contact pair is valid.
+            let overlap = collider1.enlarged_aabb.intersects(
+                &collider2
+                    .enlarged_aabb
+                    .grow(Vector::splat(speculative_distance)),
+            );
+
+            // Also check if the collision layers are still compatible and the contact pair is valid.
+            // TODO: Ideally, we would have fine-grained change detection for `CollisionLayers`
+            //       rather than checking it for every pair here.
+            if !overlap || !collider1.layers.interacts_with(*collider2.layers) {
+                // The AABBs no longer overlap. The contact pair should be removed.
+                contacts.flags.set(ContactPairFlags::DISJOINT_AABB, true);
+                contact_status_bits.set(contact_id);
+            } else {
+                // The AABBs overlap. Compute contacts.
+
+                let was_touching = contacts.flags.contains(ContactPairFlags::TOUCHING);
+
+                let body1_bundle = collider1
+                    .of
+                    .and_then(|&ColliderOf { body }| self.body_query.get(body).ok());
+                let body2_bundle = collider2
+                    .of
+                    .and_then(|&ColliderOf { body }| self.body_query.get(body).ok());
+
+                // The rigid body's friction, restitution, and collision margin
+                // will be used if the collider doesn't have them specified.
+                let (
+                    is_static1,
+                    collider_offset1,
+                    world_com1,
+                    body_pos1,
+                    body_rot1,
+                    lin_vel1,
+                    ang_vel1,
+                    rb_friction1,
+                    rb_collision_margin1,
+                    speculative_ccd1,
+                    size_metrics1,
+                ) = body1_bundle
+                    .as_ref()
+                    .map(|body| {
+                        (
+                            body.rb.is_static(),
+                            (collider1.position.0 - body.position.0).f32(),
+                            body.rotation * body.center_of_mass.0,
+                            body.position.0,
+                            Rot::from(*body.rotation),
+                            body.linear_velocity.0,
+                            body.angular_velocity.0,
+                            body.friction,
+                            body.collision_margin,
+                            body.speculative_ccd.copied(),
+                            *body.size_metrics,
+                        )
+                    })
+                    .unwrap_or_default();
+                let (
+                    is_static2,
+                    collider_offset2,
+                    world_com2,
+                    body_pos2,
+                    body_rot2,
+                    lin_vel2,
+                    ang_vel2,
+                    rb_friction2,
+                    rb_collision_margin2,
+                    speculative_ccd2,
+                    size_metrics2,
+                ) = body2_bundle
+                    .as_ref()
+                    .map(|body| {
+                        (
+                            body.rb.is_static(),
+                            (collider2.position.0 - body.position.0).f32(),
+                            body.rotation * body.center_of_mass.0,
+                            body.position.0,
+                            Rot::from(*body.rotation),
+                            body.linear_velocity.0,
+                            body.angular_velocity.0,
+                            body.friction,
+                            body.collision_margin,
+                            body.speculative_ccd.copied(),
+                            *body.size_metrics,
+                        )
+                    })
+                    .unwrap_or_default();
+
+                // Store these to avoid having to query for the bodies
+                // when processing status changes for the constraint graph.
+                contacts.flags.set(ContactPairFlags::STATIC1, is_static1);
+                contacts.flags.set(ContactPairFlags::STATIC2, is_static2);
+
+                // Compute the relative pose of the bodies in the local space of the first body.
+                let inv_rot1 = body_rot1.inverse();
+                let pos12 = (body_pos2 - body_pos1).f32();
+                let rot12_1 = inv_rot1 * body_rot2;
+                let pos12_1 = inv_rot1 * pos12;
+
+                // Contact recycling optimization, based on Box2D/Box3D by Erin Catto.
+                // This is inspired by persistent contact manifolds used in some physics engines,
+                // but allows larger relative motion, and has fewer tuning parameters (distance and angle).
+                // This has a huge impact on the performance and stability of stacks and resting bodies.
+                'recycle: {
+                    if recycle_distance <= 0.0 {
+                        // Recycling is disabled.
+                        break 'recycle;
+                    }
+
+                    let Some(cache) = contacts.recycling_cache.as_ref() else {
+                        // No previous contact data to recycle.
+                        break 'recycle;
+                    };
+
+                    #[cfg(feature = "2d")]
+                    {
+                        let cos1 = body_rot1.cos * cache.rotation1.cos
+                            + body_rot1.sin * cache.rotation1.sin;
+                        let cos2 = body_rot2.cos * cache.rotation2.cos
+                            + body_rot2.sin * cache.rotation2.sin;
+                        let min_cos = cos1.min(cos2);
+                        if min_cos <= recycle_angle_cos {
+                            // The relative rotation has changed too much.
+                            break 'recycle;
+                        }
+                    }
+                    #[cfg(feature = "3d")]
+                    {
+                        let angle1 = body_rot1.dot(cache.rotation1);
+                        let angle2 = body_rot2.dot(cache.rotation2);
+                        let min_angle = (angle1 * angle1).min(angle2 * angle2);
+                        if min_angle <= recycle_angular_distance {
+                            // The relative rotation has changed too much.
+                            break 'recycle;
+                        }
+                    }
+
+                    let sweep_radius1 = if is_static1 {
+                        0.0
+                    } else {
+                        size_metrics1.sweep_radius
+                    };
+                    let sweep_radius2 = if is_static2 {
+                        0.0
+                    } else {
+                        size_metrics2.sweep_radius
+                    };
+                    let max_extent = sweep_radius1.max(sweep_radius2);
+                    let distance_squared = pos12_1.distance_squared(cache.relative_translation);
+
+                    let tolerance = if was_touching {
+                        recycle_distance
+                    } else {
+                        recycle_distance_non_touching
+                    };
+
+                    #[cfg(feature = "2d")]
+                    {
+                        let distance = distance_squared.sqrt();
+                        let delta_rotation = rot12_1.inverse() * cache.relative_rotation;
+                        if distance + max_extent * delta_rotation.sin.abs() >= tolerance {
+                            // The relative motion is too large.
+                            break 'recycle;
+                        }
+                    }
+                    #[cfg(feature = "3d")]
+                    {
+                        if distance_squared >= tolerance * tolerance {
+                            // The relative motion is too large.
+                            break 'recycle;
+                        } else {
+                            // Check the maximum motion along the arc of the relative rotation.
+                            let distance = distance_squared.sqrt();
+                            let slack = tolerance - distance;
+                            let delta_rotation = cache.relative_rotation.inverse() * rot12_1;
+                            // TODO: Use a Vec3 max_extent and a symmetric cross product
+                            let arc = delta_rotation.chord_length() * max_extent;
+                            if arc >= slack {
+                                // The relative motion is too large.
+                                break 'recycle;
+                            }
+                        }
+                    }
+
+                    // The relative motion is small enough for contact recycling!
+                    let delta_rot1 = body_rot1 * cache.rotation1.inverse();
+                    let delta_rot2 = body_rot2 * cache.rotation2.inverse();
+                    #[cfg(feature = "3d")]
+                    let delta_rot1 = Mat3::from_quat(delta_rot1);
+                    #[cfg(feature = "3d")]
+                    let delta_rot2 = Mat3::from_quat(delta_rot2);
+                    let com12 = world_com2 - world_com1 + pos12;
+
+                    contacts.manifolds.iter_mut().for_each(|manifold| {
+                        manifold.points.iter_mut().for_each(|point| {
+                            // Keep anchors but update separation. This eliminates jitter.
+                            let r1 = delta_rot1 * point.anchor1;
+                            let r2 = delta_rot2 * point.anchor2;
+                            let delta_separation = com12 + (r2 - r1);
+                            point.penetration =
+                                point.base_penetration - delta_separation.dot(manifold.normal);
+                        });
+                    });
+
+                    *recycled_count += 1;
+
+                    return;
+                }
+
+                // Update the recycling cache for the next frame.
+                contacts.recycling_cache = Some(ContactRecyclingCache {
+                    rotation1: body_rot1,
+                    rotation2: body_rot2,
+                    relative_translation: pos12_1,
+                    relative_rotation: rot12_1,
+                });
+
+                // If either collider is a sensor or either body is disabled, no constraints should be generated.
+                let is_disabled = body1_bundle.is_none()
+                    || body2_bundle.is_none()
+                    || collider1.is_sensor
+                    || collider2.is_sensor;
+
+                if !is_disabled && !contacts.generates_constraints() {
+                    // This can happen when a sensor is removed, or when a collider is attached to a body.
+                    contacts
+                        .flags
+                        .set(ContactPairFlags::STARTED_GENERATING_CONSTRAINTS, true);
+                    contact_status_bits.set(contact_id);
+                }
+
+                contacts
+                    .flags
+                    .set(ContactPairFlags::GENERATE_CONSTRAINTS, !is_disabled);
+
+                // Get combined friction and restitution coefficients of the colliders
+                // or the bodies they are attached to. Fall back to the global defaults.
+                let friction = collider1
+                    .friction
+                    .or(rb_friction1)
+                    .copied()
+                    .unwrap_or(self.default_friction.0)
+                    .combine(
+                        collider2
+                            .friction
+                            .or(rb_friction2)
+                            .copied()
+                            .unwrap_or(self.default_friction.0),
+                    )
+                    .dynamic_coefficient;
+                let restitution = collider1
+                    .restitution
+                    .copied()
+                    .unwrap_or(self.default_restitution.0)
+                    .combine(
+                        collider2
+                            .restitution
+                            .copied()
+                            .unwrap_or(self.default_restitution.0),
+                    )
+                    .coefficient;
+
+                // Use the collider's own collision margin if specified, and fall back to the body's
+                // collision margin.
+                //
+                // The collision margin adds artificial thickness to colliders for performance
+                // and stability. See the `CollisionMargin` documentation for more details.
+                let collision_margin1 = collider1
+                    .collision_margin
+                    .or(rb_collision_margin1)
+                    .map_or(0.0, |margin| margin.0);
+                let collision_margin2 = collider2
+                    .collision_margin
+                    .or(rb_collision_margin2)
+                    .map_or(0.0, |margin| margin.0);
+                let collision_margin_sum = collision_margin1 + collision_margin2;
+
+                // The relative linear velocity is used below to compute the normal speed
+                // at each contact point for restitution and speculative contact pruning.
+                let relative_linear_velocity = lin_vel2 - lin_vel1;
+
+                // Compute the effective speculative margin from the opt-in `SpeculativeCcd` component.
+                let max_distance1 = speculative_ccd1.map_or(0.0, |s| s.max_distance);
+                let max_distance2 = speculative_ccd2.map_or(0.0, |s| s.max_distance);
+
+                if max_distance1 != 0.0 || max_distance2 != 0.0 {
+                    // Clamp each body's contribution to its maximum speculative distance.
+                    let clamped_vel1 = if max_distance1 < f32::MAX {
+                        lin_vel1.clamp_length_max(max_distance1 * inv_delta_secs)
+                    } else {
+                        lin_vel1
+                    };
+                    let clamped_vel2 = if max_distance2 < f32::MAX {
+                        lin_vel2.clamp_length_max(max_distance2 * inv_delta_secs)
+                    } else {
+                        lin_vel2
+                    };
+
+                    // The margin is how far the bodies are expected to move relative to each other.
+                    let margin = (clamped_vel2 - clamped_vel1).length() * delta_secs;
+                    speculative_distance = margin.max(speculative_distance);
+                }
+
+                // Ensure that the speculative distance is at least as large as the contact tolerance.
+                speculative_distance = speculative_distance.max(contact_tolerance);
+
+                // The maximum distance at which contacts are detected.
+                let max_contact_distance = collision_margin_sum + speculative_distance;
+
+                // Save the old manifolds for warm starting.
+                let old_manifolds = contacts.manifolds.clone();
+
+                // TODO: It'd be good to persist the manifolds and let Parry match contacts.
+                //       This isn't currently done because it requires using Parry's contact manifold type.
+                // Compute the contact manifolds.
+                let context =
+                    ColliderPairContext::new(collider1.entity, collider2.entity, collider_context);
+                collider1.shape.contact_manifolds_with_context(
+                    collider2.shape,
+                    collider1.position.0,
+                    *collider1.rotation,
+                    collider2.position.0,
+                    *collider2.rotation,
+                    max_contact_distance,
+                    &mut contacts.manifolds,
+                    context,
+                );
+
+                // Transform and prune contact data.
+                contacts.manifolds.retain_mut(|manifold| {
+                    // Set the initial surface properties.
+                    manifold.friction = friction;
+                    manifold.restitution = restitution;
+                    #[cfg(feature = "2d")]
+                    {
+                        manifold.tangent_speed = 0.0;
+                    }
+                    #[cfg(feature = "3d")]
+                    {
+                        manifold.tangent_velocity = Vec3::ZERO;
+                    }
+
+                    let normal = manifold.normal;
+
+                    // Transform and prune contact points.
+                    manifold.retain_points_mut(|point| {
+                        // Transform contact points to be relative to the centers of mass of the bodies.
+                        point.anchor1 += collider_offset1 - world_com1;
+                        point.anchor2 += collider_offset2 - world_com2;
+
+                        // Add the collision margin to the penetration depth.
+                        point.penetration += collision_margin_sum;
+
+                        // Store the base penetration depth for contact recycling.
+                        point.base_penetration = point.penetration;
+
+                        // Compute the relative velocity along the contact normal.
+                        #[cfg(feature = "2d")]
+                        let relative_velocity = relative_linear_velocity
+                            + ang_vel2 * point.anchor2.perp()
+                            - ang_vel1 * point.anchor1.perp();
+                        #[cfg(feature = "3d")]
+                        let relative_velocity = relative_linear_velocity
+                            + ang_vel2.cross(point.anchor2)
+                            - ang_vel1.cross(point.anchor1);
+                        let normal_speed = relative_velocity.dot(normal);
+                        point.normal_speed = normal_speed;
+
+                        // Keep the contact if (1) the separation distance is below the required threshold,
+                        // or if (2) the bodies are expected to come into contact within the next time step.
+                        -point.penetration < speculative_distance || {
+                            let delta_distance = normal_speed * delta_secs;
+                            delta_distance - point.penetration < speculative_distance
+                        }
+                    });
+
+                    // Prune extra contact points.
+                    #[cfg(feature = "3d")]
+                    if manifold.points.len() > 4 {
+                        manifold.prune_points();
+                    }
+
+                    !manifold.points.is_empty()
+                });
+
+                // Check if the colliders are now touching.
+                let mut touching = !contacts.manifolds.is_empty();
+
+                if touching && contacts.flags.contains(ContactPairFlags::MODIFY_CONTACTS) {
+                    par_commands.command_scope(|mut commands| {
+                        touching = hooks.modify_contacts(contacts, &mut commands);
+                    });
+                    if !touching {
+                        contacts.manifolds.clear();
+                    }
+                }
+
+                contacts.flags.set(ContactPairFlags::TOUCHING, touching);
+
+                // TODO: Manifold reduction
+
+                // TODO: This condition is pretty arbitrary, mainly to skip dense trimeshes.
+                //       If we let Parry handle contact matching, this wouldn't be needed.
+                if contacts.manifolds.len() <= 4 && self.config.match_contacts {
+                    // TODO: Cache this?
+                    let distance_threshold = 0.1 * self.length_unit.0;
+
+                    for manifold in contacts.manifolds.iter_mut() {
+                        for previous_manifold in old_manifolds.iter() {
+                            manifold.match_contacts(&previous_manifold.points, distance_threshold);
+                        }
+                    }
+                }
+
+                // Record how many manifolds were added or removed.
+                // This is used to add or remove contact constraints in the `ConstraintGraph` for persistent contacts.
+                contacts.manifold_count_change =
+                    contacts.manifolds.len() as i32 - old_manifolds.len() as i32;
+
+                // TODO: For unmatched contacts, apply any leftover impulses from the previous frame.
+
+                if touching && !was_touching {
+                    // The colliders started touching.
+                    contacts.flags.set(ContactPairFlags::STARTED_TOUCHING, true);
+                    contact_status_bits.set(contact_id);
+                } else if !touching && was_touching {
+                    // The colliders stopped touching.
+                    contacts.flags.set(ContactPairFlags::STOPPED_TOUCHING, true);
+                    contact_status_bits.set(contact_id);
+                } else if contacts.manifold_count_change != 0 {
+                    // The manifold count changed, but the colliders are still touching.
+                    // This is used to add or remove contact constraints in the `ConstraintGraph`.
+                    contact_status_bits.set(contact_id);
+                }
+            };
+        });
+
+        #[cfg(feature = "parallel")]
+        {
+            // Combine the thread-local bit vectors serially using bit-wise OR.
+            self.thread_locals.iter_mut().for_each(|context| {
+                let thread_context = context.borrow();
+                let contact_status_bits = &thread_context.contact_status_bits;
+                self.contact_status_bits.or(contact_status_bits);
+                diagnostics.recycled_count += thread_context.recycled_count;
+            });
+        }
+    }
+}
