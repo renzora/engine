@@ -132,8 +132,8 @@ naga = { version = "30", features = ["termcolor", "wgsl-in"] }
 # plugin) for the sake of one physics plugin. An installed avian would be refused
 # outright, since the SDK's Bevy would lack the feature. Pinned here, Bevy
 # compiles the same with or without it.
-bevy_curve = { version = "0.20", default-features = false, features = ["approx"] }
-bevy_shape = { version = "0.20", default-features = false, features = ["approx"] }
+bevy_curve = { path = "../../bevy/crates/bevy_curve", default-features = false, features = ["approx"] }
+bevy_shape = { path = "../../bevy/crates/bevy_shape", default-features = false, features = ["approx"] }
 # Translates pre-0.20 (naga_oil) shader text to WESL in `shader_source`. Here
 # rather than in a plugin crate because native plugins build shaders at runtime
 # too, and they can only reach the contract crate. A leaf with no dependencies

@@ -27,13 +27,16 @@ libm = ["bevy/libm"]
 critical-section = ["bevy/critical-section"]
 
 [dependencies]
-bevy = { version = "0.20", default-features = false }
+# RENZORA: from Renzora's `bevy/` by path, never crates.io. Re-point after a
+# subtree pull.
+bevy = { path = "../../bevy", default-features = false }
 
 # Serialization
 serde = { version = "1.0", default-features = false, optional = true }
 
 [dev-dependencies]
-bevy = { version = "0.20", default-features = false, features = ["2d", "ui"] }
+# RENZORA: the same source as the regular dependency; cargo requires one.
+bevy = { path = "../../bevy", default-features = false, features = ["2d", "ui"] }
 
 [lints.clippy]
 std_instead_of_core = "warn"

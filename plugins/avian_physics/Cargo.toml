@@ -26,21 +26,22 @@ bundled = []
 [dependencies]
 # `default-features = false`: the engine curates Bevy's feature set once, at the
 # workspace root. A bare `bevy = "0.20"` here would switch Bevy's defaults on for
-# the whole engine build, because cargo unifies features across it.
-bevy = { version = "0.20", default-features = false }
+# the whole engine build, because cargo unifies features across it. By path:
+# nothing built on Bevy comes from crates.io (CLAUDE.md §8).
+bevy = { path = "../../bevy", default-features = false }
 renzora = { path = "../../crates/renzora", default-features = false }
-# The same release the engine workspace pins, so cargo sees one avian package.
+# The engine's vendored avian (`vendor/avian`), so cargo sees one avian package.
 #
 # `xpbd_joints` is avian's joint SOLVER. Without it a joint component is
 # accepted, kept and silently ignored: bodies move as if unjoined.
-avian3d = { version = "0.8", default-features = false, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
-avian2d = { version = "0.8", default-features = false, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
+avian3d = { path = "../../vendor/avian/crates/avian3d", default-features = false, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
+avian2d = { path = "../../vendor/avian/crates/avian2d", default-features = false, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
 
 [dev-dependencies]
 # The tests drive the backend through the engine's own physics plugin, and the
 # parkour traversal tests need real colliders to probe, which is why they live
 # here rather than in `renzora_parkour`.
-bevy = { version = "0.20", default-features = false, features = ["debug"] }
+bevy = { path = "../../bevy", default-features = false, features = ["debug"] }
 renzora_physics = { path = "../../crates/renzora_physics" }
 renzora_parkour = { path = "../../crates/renzora_parkour" }
 

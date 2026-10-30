@@ -47,7 +47,9 @@ glam = { version = "0.33.9", default-features = false }
 libm = { version = "0.2", optional = true }
 
 # Reflection
-bevy_reflect = { version = "0.20", optional = true }
+# RENZORA: from Renzora's `bevy/` by path, never crates.io. Re-point after a
+# subtree pull.
+bevy_reflect = { path = "../../bevy/crates/bevy_reflect", optional = true }
 serde = { version = "1.0", optional = true, features = ["serde_derive"] }
 
 [dev-dependencies]

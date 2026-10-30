@@ -58,14 +58,16 @@ std = ["bevy_math/std", "bevy_shape/std", "glam_matrix_extras/std"]
 [dependencies]
 # Math
 approx = { version = "0.5", optional = true }
-bevy_math = { version = "0.20", default-features = false }
-bevy_shape = { version = "0.20", default-features = false }
-glam_matrix_extras = { version = "0.4", default-features = false, features = [
+# RENZORA: Bevy and the Bevy-based crates come from Renzora's tree by path
+# (`bevy/`, `vendor/`), never crates.io. Re-point these after a subtree pull.
+bevy_math = { path = "../../bevy/crates/bevy_math", default-features = false }
+bevy_shape = { path = "../../bevy/crates/bevy_shape", default-features = false }
+glam_matrix_extras = { path = "../glam_matrix_extras", default-features = false, features = [
     "f32",
 ] }
 
 # Serialization
-bevy_reflect = { version = "0.20", default-features = false, optional = true }
+bevy_reflect = { path = "../../bevy/crates/bevy_reflect", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, optional = true }
 
 [dev-dependencies]
@@ -74,12 +76,13 @@ bevy_heavy = { path = ".", features = ["approx"] }
 
 # Math
 approx = { version = "0.5", default-features = false }
-bevy_math = { version = "0.20", default-features = false, features = [
+# RENZORA: the same sources as the regular dependencies; cargo requires one.
+bevy_math = { path = "../../bevy/crates/bevy_math", default-features = false, features = [
     "std",
     "approx",
     "rand",
 ] }
-bevy_shape = { version = "0.20", default-features = false, features = [
+bevy_shape = { path = "../../bevy/crates/bevy_shape", default-features = false, features = [
     "std",
     "approx",
     "rand",

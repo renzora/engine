@@ -32,20 +32,21 @@ android_system_properties = { version = "0.1.5", optional = true }
 
 # bevy can't be placed behind target or proc macros won't work properly
 [dependencies]
-bevy_ecs = { version = "0.20", default-features = false }
-bevy_math = { version = "0.20", default-features = false }
-bevy_render = { version = "0.20", default-features = false }
+# RENZORA: Bevy comes from Renzora's `bevy/` by path, never crates.io.
+bevy_ecs = { path = "../../../../bevy/crates/bevy_ecs", default-features = false }
+bevy_math = { path = "../../../../bevy/crates/bevy_math", default-features = false }
+bevy_render = { path = "../../../../bevy/crates/bevy_render", default-features = false }
 # 0.20 port: the `ExtractResource` derive expands to paths in `bevy_extract`.
-bevy_extract = { version = "0.20", default-features = false }
-bevy_app = { version = "0.20", default-features = false }
-bevy_reflect = { version = "0.20", default-features = false, optional = true }
-bevy_log = { version = "0.20", default-features = false }
-bevy_transform = { version = "0.20", default-features = false }
-bevy_camera = { version = "0.20", default-features = false }
-bevy_derive = { version = "0.20", default-features = false }
-bevy_platform = { version = "0.20", default-features = false }
-bevy_winit = { version = "0.20", default-features = false, optional = true }
-bevy_window = { version = "0.20", default-features = false, optional = true }
+bevy_extract = { path = "../../../../bevy/crates/bevy_extract", default-features = false }
+bevy_app = { path = "../../../../bevy/crates/bevy_app", default-features = false }
+bevy_reflect = { path = "../../../../bevy/crates/bevy_reflect", default-features = false, optional = true }
+bevy_log = { path = "../../../../bevy/crates/bevy_log", default-features = false }
+bevy_transform = { path = "../../../../bevy/crates/bevy_transform", default-features = false }
+bevy_camera = { path = "../../../../bevy/crates/bevy_camera", default-features = false }
+bevy_derive = { path = "../../../../bevy/crates/bevy_derive", default-features = false }
+bevy_platform = { path = "../../../../bevy/crates/bevy_platform", default-features = false }
+bevy_winit = { path = "../../../../bevy/crates/bevy_winit", default-features = false, optional = true }
+bevy_window = { path = "../../../../bevy/crates/bevy_window", default-features = false, optional = true }
 
 # all other dependencies are placed under this since on wasm, this crate is completely empty
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

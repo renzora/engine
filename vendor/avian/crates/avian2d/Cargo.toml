@@ -75,16 +75,18 @@ bench = false
 
 [dependencies]
 avian_derive = { path = "../avian_derive", version = "0.2" }
-bevy = { version = "0.20", default-features = false, features = [
+# RENZORA: Bevy and the Bevy-based crates below come from Renzora's tree by path
+# (`bevy/`, `vendor/`), never crates.io. Re-point these after a subtree pull.
+bevy = { path = "../../../../bevy", default-features = false, features = [
     "std",
     "bevy_log",
 ] }
-bevy_curve = { version = "0.20", features = ["approx"] }
-bevy_math = { version = "0.20", features = ["approx"] }
-bevy_shape = { version = "0.20", features = ["approx"] }
-glam_matrix_extras = { version = "0.4", features = ["bevy_reflect"] }
-bevy_heavy = { version = "0.6" }
-bevy_transform_interpolation = { version = "0.6" }
+bevy_curve = { path = "../../../../bevy/crates/bevy_curve", features = ["approx"] }
+bevy_math = { path = "../../../../bevy/crates/bevy_math", features = ["approx"] }
+bevy_shape = { path = "../../../../bevy/crates/bevy_shape", features = ["approx"] }
+glam_matrix_extras = { path = "../../../glam_matrix_extras", features = ["bevy_reflect"] }
+bevy_heavy = { path = "../../../bevy_heavy" }
+bevy_transform_interpolation = { path = "../../../bevy_transform_interpolation" }
 libm = { version = "0.2", optional = true }
 approx = "0.5"
 parry2d = { version = "0.31", optional = true }
@@ -102,8 +104,9 @@ disqualified = { version = "1.0" }
 
 [dev-dependencies]
 examples_common_2d = { path = "../examples_common_2d" }
-bevy = { version = "0.20", default-features = false, features = ["2d", "ui"] }
-bevy_heavy = { version = "0.6", features = ["approx"] }
+# RENZORA: the same sources as the regular dependencies; cargo requires one.
+bevy = { path = "../../../../bevy", default-features = false, features = ["2d", "ui"] }
+bevy_heavy = { path = "../../../bevy_heavy", features = ["approx"] }
 glam = { version = "0.33", features = ["bytemuck"] }
 bytemuck = "1.19"
 criterion = { version = "0.8", features = ["html_reports"] }

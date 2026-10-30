@@ -5,7 +5,9 @@ resolver = "2"
 # update. `cargo check -p renzora_<name>` works from the root, and
 # `[workspace.lints]` / `[workspace.dependencies]` propagate cleanly.
 members = [
-    ".",
+    # No "." for the root crate: a workspace root that is a package is always a
+    # member, and cargo reads "." as covering every path under the root, which
+    # made each crate in `exclude` an explicit member and so never excluded.
     # Engine crate + every plugin (`renzora` + `renzora_*`).
     "crates/renzora",
     "crates/renzora_*",
@@ -20,10 +22,8 @@ members = [
     # own workspace root. It generates the plugin `path` dependencies, and cargo
     # refuses to load a workspace with a dangling one, so as a member it could
     # not be built to repair the very tree it maintains. See `xtask/Cargo.toml`.
-    # Patched over Bevy's own copy; see `[patch.crates-io]` below.
-    "crates/bevy_solari",
-    # Third-party crates carried in the tree, each with changes of ours (a port
-    # to this Bevy, a patch). `crates/` holds only Renzora's own crates. Listed
+    # Third-party crates built on Bevy, carried in the tree and pointed at
+    # `bevy/` (CLAUDE.md §8). `crates/` holds only Renzora's own crates. Listed
     # explicitly, not globbed, so `bevy_oxr`, its own vendored workspace, is not
     # picked up.
     "vendor/bevy_args",
@@ -34,12 +34,20 @@ members = [
     "vendor/bevy_interleave_macros",
     "vendor/bevy_hui",
     "vendor/bevy_silk",
+]
+# Trees that come in as git subtrees and build only as dependencies: Bevy (its
+# own workspace), avian (its own workspace), and the single-crate subtrees, which
+# would otherwise be claimed as members of this workspace by sitting inside it.
+# Excluded so they are never linted or tested as Renzora code, and so a subtree
+# pull never has to touch a workspace list.
+exclude = [
+    "bevy",
+    "vendor/avian",
+    "vendor/bevy_oxr",
+    "vendor/bevy_heavy",
+    "vendor/bevy_transform_interpolation",
+    "vendor/glam_matrix_extras",
     "vendor/vleue_navigator",
-    # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.33
-    # (bevy 0.20's glam). Upstream polyanya 0.16.1 is the latest and still pins
-    # glam 0.30, which would otherwise clash with bevy's glam (two `Vec2` types).
-    "vendor/polyanya",
-    "vendor/bvh2d",
 ]
 # Avian comes from crates.io (`avian3d`/`avian2d` 0.7, which target Bevy 0.19),
 # not a vendored nested workspace. It was vendored when no release supported
@@ -127,10 +135,12 @@ members = [
 #     explicit `GhostNode` marker — a bare component-less child was never traversed
 #     under either setting.
 #
-# SOURCE: Bevy 0.20 is published on crates.io. The `bevy` umbrella pulls its
-# sub-crates as matching 0.20.x registry deps, so the tree stays internally
-# consistent: one Bevy across the dlopen boundary.
-bevy = { version = "0.20", default-features = false, features = [
+# SOURCE: `bevy/`, Bevy's `main` as a git subtree, by path. Nothing built on
+# Bevy comes from crates.io (CLAUDE.md §8): every crate in the build, ours and
+# vendored, reaches this one copy, so there is one Bevy across the dlopen
+# boundary. No `version`: `main` calls itself a pre-release (`0.20.0-dev`), which
+# a plain "0.20" requirement would refuse.
+bevy = { path = "bevy", default-features = false, features = [
     # ── The `2d` / `3d` / `ui` metas, EXPANDED LEAF BY LEAF ──────────────────
     # Bevy's default is the four metas `2d, 3d, ui, audio`. We take
     # `default-features = false` and re-add all but `audio` — Renzora's audio is
@@ -309,22 +319,19 @@ bevy = { version = "0.20", default-features = false, features = [
     # `docker/windows/Dockerfile` carries a cross-compile workaround — that hack
     # can go with it.
 ] }
-# Individual Bevy sub-crates that some vendored ecosystem crates depend on
-# directly (not via the `bevy` umbrella). Same 0.20 line as `bevy` above so they
-# resolve to the one 0.20.x release, preserving a single Bevy across the dlopen
-# boundary.
-bevy_math = { version = "0.20", default-features = false }
-bevy_reflect = { version = "0.20", default-features = false }
-bevy_light = { version = "0.20", default-features = false }
-bevy_picking = { version = "0.20", default-features = false }
-# Avian 0.8 is the first release built for Bevy 0.20 (published 2026-10-20);
-# it replaces the pin on avian's then-open 0.20 pull request. The engine itself
-# no longer links avian (it is the `avian_physics` native plugin); only the
-# vendored `bevy_silk`'s optional collision feature names it. Keeping the entry
-# here also keeps avian's versions in Cargo.lock, which the SDK ships so a plugin
-# depending on avian resolves the same graph. Keep this and the plugin in step.
-avian3d = { version = "0.8", default-features = false }
-avian2d = { version = "0.8", default-features = false }
+# Individual Bevy sub-crates that some crates depend on directly (not via the
+# `bevy` umbrella), from the same `bevy/` tree.
+bevy_math = { path = "bevy/crates/bevy_math", default-features = false }
+bevy_reflect = { path = "bevy/crates/bevy_reflect", default-features = false }
+bevy_light = { path = "bevy/crates/bevy_light", default-features = false }
+bevy_picking = { path = "bevy/crates/bevy_picking", default-features = false }
+# Avian, vendored at its 0.8.0 release (`vendor/avian`, a git subtree) and
+# pointed at `bevy/`. The engine itself does not link avian (it is the bundled
+# `avian_physics` plugin); the vendored `bevy_silk`'s optional collision feature
+# names it too. Keeping the entry here also keeps avian in Cargo.lock, which the
+# SDK ships so a plugin depending on avian resolves the same graph.
+avian3d = { path = "vendor/avian/crates/avian3d", default-features = false }
+avian2d = { path = "vendor/avian/crates/avian2d", default-features = false }
 log = "0.4"
 
 [package]
@@ -731,13 +738,6 @@ lto = "thin"
 incremental = false
 opt-level = "s"
 strip = "symbols"
-
-# Bevy depends on `bevy_solari` itself (through its `bevy_solari` feature), so
-# the fork has to replace that copy rather than sit beside it: two would mean two
-# `SolariLighting` types. See crates/bevy_solari/Cargo.toml for what it changes.
-[patch.crates-io]
-bevy_solari = { path = "crates/bevy_solari" }
-
 
 [lints]
 workspace = true
