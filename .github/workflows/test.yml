@@ -86,6 +86,11 @@ jobs:
       # dependencies; we just don't run their tests. New first-party crates stay
       # covered automatically via --workspace.
       #
+      # Nothing built on Bevy may come from crates.io (CLAUDE.md §8): a second
+      # Bevy builds and only fails at runtime, so it is stopped here by name.
+      - name: Check every Bevy crate comes from bevy/
+        run: cargo renzora check-bevy
+
       # Bevy (`bevy/`), avian and the other subtree crates (`vendor/avian`,
       # `vendor/bevy_oxr`, vleue_navigator, ...) are excluded from the workspace
       # in Cargo.toml, so `--workspace` never reaches them; only the vendored

@@ -62,6 +62,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod bevy_source;
 mod bundle;
 mod coverage;
 mod dlss;
@@ -296,11 +297,24 @@ fn main() -> ExitCode {
             let args: Vec<String> = std::env::args().skip(2).collect();
             wasm::build_and_stage(&repo, &args)
         }
+        // Fail if anything built on Bevy comes from crates.io instead of
+        // `bevy/` or `vendor/`. Runs before every build; standalone for CI.
+        // See `bevy_source.rs`.
+        "check-bevy" => match bevy_source::check(&repo) {
+            Ok(()) => {
+                println!("[xtask] every Bevy crate in the build comes from bevy/");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("[xtask] error: {e}");
+                ExitCode::FAILURE
+            }
+        },
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
                  (expected: run | xr | dist | sdk | wasm [--no-opt] | profile | \
-                 coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
+                 coverage [--check|--bless] | sync [--check] | check-bevy | remove <crate-name>)"
             );
             ExitCode::from(2)
         }
@@ -315,6 +329,13 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
     // remember.
     if let Err(e) = sync::sync(repo, false) {
         eprintln!("[xtask] plugin sync failed: {e}");
+        return Err(ExitCode::FAILURE);
+    }
+    // One Bevy, from `bevy/`: a second one from crates.io builds fine and fails
+    // only at runtime, so it is caught here, before the compile. See
+    // `bevy_source.rs`.
+    if let Err(e) = bevy_source::check(repo) {
+        eprintln!("[xtask] error: {e}");
         return Err(ExitCode::FAILURE);
     }
     // DLSS whenever this machine can build it; see `dlss.rs`.

@@ -606,9 +606,12 @@ Several may be registered, and two languages coexist in one project. See
   - **Updating one:** bring in the new upstream version, re-point its Bevy
     dependency if the update changed that line, and fix what breaks.
   - **`crates/` is Renzora's crates only**; third-party code never goes there.
-  - A check in `cargo renzora` and CI fails the build if `Cargo.lock` ever holds
-    a Bevy crate from crates.io, naming the crate that pulled it in. That means a
-    dependency needs vendoring, not that the check needs loosening.
+  - `cargo renzora check-bevy` (run before every `cargo renzora` build, and in
+    CI) fails if the build graph holds a Bevy crate from anywhere but `bevy/`,
+    naming the crate that pulled it in. That means a dependency needs vendoring,
+    not that the check needs loosening. It reads `cargo tree`, not `Cargo.lock`:
+    the lockfile also lists optional dependencies nobody enables, such as the
+    registry `bevy_reflect` behind `rerecast`'s off-by-default feature.
 
 - **Edit source files with the Edit/Write tools — never through the shell.**
   No `python - <<'EOF'` heredocs, no `sed -i`, no `perl -pi`, no "write a patch
