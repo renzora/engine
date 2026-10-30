@@ -1,0 +1,9 @@
+name = "Invert"
+version = "2.0.0"
+description = "Inverts the colours of the frame. A post-process effect: drop invert.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "invert"
+tags = ["post-processing", "shader", "colour", "invert"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

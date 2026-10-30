@@ -1,0 +1,9 @@
+name = "Edge Glow"
+version = "2.0.0"
+description = "Edge detection with the edges lit up: outlines glow rather than being drawn as flat lines. A post-process effect: drop edge_glow.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "edge_glow"
+tags = ["post-processing", "shader", "edge-detection", "glow", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

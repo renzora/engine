@@ -1,0 +1,9 @@
+name = "Pixelation"
+version = "2.0.0"
+description = "Snaps the frame to a coarse square grid, for a low-resolution look. A post-process effect: drop pixelation.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "pixelation"
+tags = ["post-processing", "shader", "pixelation", "retro", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

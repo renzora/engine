@@ -1,0 +1,9 @@
+name = "Underwater"
+version = "2.0.0"
+description = "Submerged look: a blue-green tint, a rolling refraction, and caustic light playing over the frame. A post-process effect: drop underwater.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "underwater"
+tags = ["post-processing", "shader", "water", "caustics", "underwater"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

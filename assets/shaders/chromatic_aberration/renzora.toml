@@ -1,0 +1,9 @@
+name = "Chromatic Aberration"
+version = "2.0.0"
+description = "Splits the colour channels across the frame, the way a cheap lens does. A post-process effect: drop chromatic_aberration.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "chromatic_aberration"
+tags = ["post-processing", "shader", "lens", "chromatic-aberration"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

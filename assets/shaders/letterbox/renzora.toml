@@ -1,0 +1,9 @@
+name = "Letterbox"
+version = "2.0.0"
+description = "Black bars top and bottom, for cutscenes and cinematic framing. A post-process effect: drop letterbox.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "letterbox"
+tags = ["post-processing", "shader", "cinematic", "framing"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

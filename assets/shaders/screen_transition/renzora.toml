@@ -1,0 +1,8 @@
+name = "Screen Transition"
+version = "2.0.0"
+description = "Wipes and fades between scenes. A post-process effect: drop screen_transition.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "screen_transition"
+tags = ["post-processing", "shader", "transition", "wipe", "fade"]
+price_credits = 0
+min_engine_version = "r1-alpha8"

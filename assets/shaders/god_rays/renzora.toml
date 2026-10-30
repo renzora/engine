@@ -1,0 +1,9 @@
+name = "God Rays"
+version = "2.0.0"
+description = "Volumetric light shafts radiating from a point on screen: the frame is marched outward from the light position, accumulating brightness along the way. A post-process effect: drop god_rays.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "god_rays"
+tags = ["post-processing", "shader", "lighting", "volumetric", "light-shafts"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

@@ -1,0 +1,9 @@
+name = "Oil Painting"
+version = "2.0.0"
+description = "A simplified Kuwahara filter with luminance bucketing on top, which is what gives it visible brush clumps rather than the smooth flattening Kuwahara produces. A post-process effect: drop oil_painting.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "oil_painting"
+tags = ["post-processing", "shader", "painterly", "oil-painting", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

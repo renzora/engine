@@ -1,0 +1,9 @@
+name = "Scanlines"
+version = "2.0.0"
+description = "CRT scanlines: horizontal dark lines across the frame, optionally drifting. A post-process effect: drop scanlines.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "scanlines"
+tags = ["post-processing", "shader", "crt", "retro", "scanlines"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

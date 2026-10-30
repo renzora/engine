@@ -1,0 +1,9 @@
+name = "Glitch"
+version = "2.0.0"
+description = "Digital glitch: blocks of the frame are displaced and their colour channels drift, the way a corrupt video stream tears. A post-process effect: drop glitch.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "glitch"
+tags = ["post-processing", "shader", "glitch", "digital", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

@@ -1,0 +1,9 @@
+name = "Color Grading"
+version = "2.0.0"
+description = "Whole-frame colour correction: exposure and contrast, saturation, gamma, and a temperature/tint pair for warming or cooling the picture. A post-process effect: drop color_grading.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "color_grading"
+tags = ["post-processing", "shader", "colour", "grading", "tonemapping"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

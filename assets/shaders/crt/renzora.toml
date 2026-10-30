@@ -1,0 +1,9 @@
+name = "CRT"
+version = "2.0.0"
+description = "Screen curvature, scanlines, a colour fringe and a vignette in one pass. A post-process effect: drop crt.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "crt"
+tags = ["post-processing", "shader", "crt", "retro", "scanlines"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

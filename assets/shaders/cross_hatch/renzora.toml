@@ -1,0 +1,9 @@
+name = "Cross Hatch"
+version = "2.0.0"
+description = "Cross-hatch shading, as a pen-and-ink drawing shades with overlapping strokes: the darker the pixel, the more layers of hatching it gets. A post-process effect: drop cross_hatch.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "cross_hatch"
+tags = ["post-processing", "shader", "cross-hatch", "sketch", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

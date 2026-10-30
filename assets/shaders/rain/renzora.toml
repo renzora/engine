@@ -1,0 +1,9 @@
+name = "Rain"
+version = "2.0.0"
+description = "Rain on the lens: droplets and runnels over the finished frame, as if the camera itself is wet. A post-process effect: drop rain.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "rain"
+tags = ["post-processing", "shader", "weather", "rain", "lens"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

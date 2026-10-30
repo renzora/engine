@@ -1,0 +1,9 @@
+name = "Wave"
+version = "2.0.0"
+description = "Sine wave distortion: the frame ripples along a travelling sine. A post-process effect: drop wave.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "wave"
+tags = ["post-processing", "shader", "distortion", "animated"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"
