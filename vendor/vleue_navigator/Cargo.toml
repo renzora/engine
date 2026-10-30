@@ -64,6 +64,8 @@ debug-with-gizmos = ["bevy/bevy_gizmos"]
 detailed-layers = ["polyanya/detailed-layers"]
 avian2d = ["dep:avian2d"]
 avian3d = ["dep:avian3d"]
+# RENZORA: local avoidance between navigation agents (`src/avoidance.rs`).
+avoidance = []
 
 [[example]]
 name = "auto_navmesh_avian2d"

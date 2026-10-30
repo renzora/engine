@@ -107,6 +107,19 @@ cargo clippy --profile dist [-p <crate>]
 cargo test   --profile dist -p <crate>
 ```
 
+**The `dist` profile alone does not keep it to one set.** Cargo keeps a separate
+copy of every crate for each different way it is compiled, all inside
+`target/dist`: `check` output is stored apart from `build` output, and a
+different feature set compiles a second Bevy. `cargo renzora` builds with
+`--features dlss` whenever `DLSS_SDK` is set, so a plain `cargo check
+--profile dist --workspace` on such a machine is a whole second engine's worth
+of artefacts that `cargo renzora` never reuses. That is how `target/` reached
+580 GB on 2026-10-30 with no `target/debug` at all. **A whole-workspace build
+goes through `cargo renzora dist`**; if you need its errors without the stop at
+the first failing crate, run the same command it prints (`[xtask] cargo build
+...`) and add only `--keep-going`. Per-crate `check`/`clippy`/`test` are for
+iterating on one crate, not for surveying the workspace.
+
 **To build or test, use `cargo renzora dist`, not `cargo renzora`.** The two
 build and stage exactly the same thing; the difference is that the plain form
 then *launches* the editor. Launching is the user's to do: they are usually

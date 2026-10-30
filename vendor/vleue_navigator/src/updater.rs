@@ -27,6 +27,24 @@ use crate::{NavMesh, obstacles::ObstacleSource};
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct CachableObstacle;
 
+/// A marker component to exclude an entity from obstacle generation.
+///
+/// Add this to navigation agents or other entities with colliders that should
+/// not be treated as obstacles during [`NavMesh`] generation.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct NavMeshAgentExclusion;
+
+/// Message sent when a [`NavMesh`] has been successfully built or rebuilt.
+///
+/// This can be used to react to navmesh updates, for example to re-query paths.
+#[derive(Message, Debug, Clone)]
+pub struct NavMeshBuilt {
+    /// The entity owning the [`ManagedNavMesh`].
+    pub entity: Entity,
+    /// The handle to the [`NavMesh`] asset that was built.
+    pub handle: Handle<NavMesh>,
+}
+
 /// A NavMesh that will be updated automatically.
 #[derive(Component, Debug, Deref)]
 #[require(NavMeshStatus, NavMeshUpdateMode, Transform, GlobalTransform)]
@@ -199,8 +217,36 @@ impl Default for NavMeshUpdateMode {
 #[derive(Component, Debug, Copy, Clone)]
 pub struct NavMeshUpdateModeBlocking;
 
+/// Wrapper around [`build_navmesh_inner`] that catches panics from the
+/// underlying CDT (`spade`) when obstacle geometry is degenerate —
+/// overlapping polygons, coincident vertices, obstacles on the outer edge,
+/// etc. On panic we log and return an empty layer so the editor/runtime
+/// keeps running; the user sees a blank navmesh instead of a crash.
 #[cfg_attr(feature = "tracing", instrument(skip_all))]
 fn build_navmesh<T: ObstacleSource>(
+    obstacles: Vec<(GlobalTransform, T)>,
+    cached_obstacles: Vec<(GlobalTransform, T)>,
+    settings: NavMeshSettings,
+    mesh_transform: Transform,
+) -> (Option<Triangulation>, Layer) {
+    use std::panic::AssertUnwindSafe;
+    let result = std::panic::catch_unwind(AssertUnwindSafe(move || {
+        build_navmesh_inner(obstacles, cached_obstacles, settings, mesh_transform)
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => {
+            log::warn!(
+                "NavMesh build panicked (likely degenerate obstacle geometry — \
+                 try separating overlapping obstacles, pulling them inside the \
+                 volume, or reducing agent_radius)"
+            );
+            (None, Layer::default())
+        }
+    }
+}
+
+fn build_navmesh_inner<T: ObstacleSource>(
     obstacles: Vec<(GlobalTransform, T)>,
     cached_obstacles: Vec<(GlobalTransform, T)>,
     settings: NavMeshSettings,
@@ -327,7 +373,11 @@ type ObstacleQueries<'world, 'state, 'a, 'b, 'c, Obstacle, Marker> = (
         'world,
         'state,
         (Entity, Ref<'a, GlobalTransform>, Ref<'b, Obstacle>),
-        (With<Marker>, Without<CachableObstacle>),
+        (
+            With<Marker>,
+            Without<CachableObstacle>,
+            Without<NavMeshAgentExclusion>,
+        ),
     >,
     Query<
         'world,
@@ -338,7 +388,7 @@ type ObstacleQueries<'world, 'state, 'a, 'b, 'c, Obstacle, Marker> = (
             &'b Obstacle,
             Ref<'c, CachableObstacle>,
         ),
-        With<Marker>,
+        (With<Marker>, Without<NavMeshAgentExclusion>),
     >,
 );
 
@@ -373,9 +423,13 @@ fn trigger_navmesh_build<Marker: Component, Obstacle: ObstacleSource>(
         }
     }
 
-    for (_, mut settings, ..) in &mut navmeshes {
+    for (_, mut settings, global_transform, ..) in &mut navmeshes {
         if settings.is_changed() {
             debug!("cache cleared due to settings change");
+            settings.bypass_change_detection().cached = None;
+        }
+        if global_transform.is_changed() {
+            debug!("cache cleared due to navmesh transform change");
             settings.bypass_change_detection().cached = None;
         }
     }
@@ -383,9 +437,9 @@ fn trigger_navmesh_build<Marker: Component, Obstacle: ObstacleSource>(
     let has_removed_obstacles = !removed_obstacles.is_empty();
     let mut to_check = navmeshes
         .iter_mut()
-        .filter_map(|(entity, settings, transform, mode, ..)| {
+        .filter_map(|(entity, settings, global_transform, mode, ..)| {
             if settings.is_changed()
-                || transform.is_changed()
+                || global_transform.is_changed()
                 || cachable_obstacles_changed
                 || has_removed_obstacles
                 || matches!(mode, NavMeshUpdateMode::OnDemand(true))
@@ -464,11 +518,22 @@ fn trigger_navmesh_build<Marker: Component, Obstacle: ObstacleSource>(
                     settings_local,
                     transform_local,
                 );
-                *writer.write().unwrap() = Some(TaskResult {
-                    layer,
-                    duration: start.elapsed(),
-                    to_cache,
-                });
+                match writer.write() {
+                    Ok(mut guard) => {
+                        *guard = Some(TaskResult {
+                            layer,
+                            duration: start.elapsed(),
+                            to_cache,
+                        });
+                    }
+                    Err(poisoned) => {
+                        *poisoned.into_inner() = Some(TaskResult {
+                            layer,
+                            duration: start.elapsed(),
+                            to_cache,
+                        });
+                    }
+                }
             } else {
                 AsyncComputeTaskPool::get()
                     .spawn(async move {
@@ -479,11 +544,22 @@ fn trigger_navmesh_build<Marker: Component, Obstacle: ObstacleSource>(
                             settings_local,
                             transform_local,
                         );
-                        *writer.write().unwrap() = Some(TaskResult {
-                            layer,
-                            duration: start.elapsed(),
-                            to_cache,
-                        });
+                        match writer.write() {
+                            Ok(mut guard) => {
+                                *guard = Some(TaskResult {
+                                    layer,
+                                    duration: start.elapsed(),
+                                    to_cache,
+                                });
+                            }
+                            Err(poisoned) => {
+                                *poisoned.into_inner() = Some(TaskResult {
+                                    layer,
+                                    duration: start.elapsed(),
+                                    to_cache,
+                                });
+                            }
+                        }
                     })
                     .detach();
             }
@@ -510,9 +586,13 @@ fn update_navmesh_asset(
     mut live_navmeshes: NavMeshWaitingUpdateQuery,
     mut navmeshes: ResMut<Assets<NavMesh>>,
     mut diagnostics: Diagnostics,
+    mut built_events: MessageWriter<NavMeshBuilt>,
 ) {
     for (entity, handle, task, global_transform, mut status, mut settings) in &mut live_navmeshes {
-        let mut task = task.0.write().unwrap();
+        let mut task = match task.0.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if let Some(TaskResult {
             layer,
             duration,
@@ -559,6 +639,10 @@ fn update_navmesh_asset(
 
             if let Some(layer_id) = &settings.layer {
                 *status = NavMeshStatus::Built;
+                built_events.write(NavMeshBuilt {
+                    entity,
+                    handle: handle.0.clone(),
+                });
 
                 if mesh.layers.len() < *layer_id as usize + 1 {
                     mesh.layers.resize(
@@ -568,8 +652,9 @@ fn update_navmesh_asset(
                 }
                 mesh.remove_stitches_to_layer(*layer_id);
                 mesh.layers[*layer_id as usize] = layer;
-                // TODO: rotate this to get the value in the correct space
-                mesh.layers[*layer_id as usize].offset = global_transform.translation().xz();
+                let (_, rotation, translation) = global_transform.to_scale_rotation_translation();
+                let local_pos = rotation.inverse() * translation;
+                mesh.layers[*layer_id as usize].offset = Vec2::new(local_pos.x, local_pos.z);
 
                 let stitch_segments =
                     settings
@@ -674,6 +759,10 @@ fn update_navmesh_asset(
                     .insert(&handle.0, navmesh)
                     .expect("Failed to update navmesh");
                 *status = NavMeshStatus::Built;
+                built_events.write(NavMeshBuilt {
+                    entity,
+                    handle: handle.0.clone(),
+                });
             }
             diagnostics.add_measurement(&NAVMESH_BUILD_DURATION, || duration.as_secs_f64());
         }
@@ -732,12 +821,13 @@ impl<Obstacle: ObstacleSource, Marker: Component> Plugin
     for NavmeshUpdaterPlugin<Obstacle, Marker>
 {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            PostUpdate,
-            trigger_navmesh_build::<Marker, Obstacle>.after(TransformSystems::Propagate),
-        )
-        .add_systems(PreUpdate, (drop_dead_tasks, update_navmesh_asset).chain())
-        .register_diagnostic(Diagnostic::new(NAVMESH_BUILD_DURATION));
+        app.add_message::<NavMeshBuilt>()
+            .add_systems(
+                PostUpdate,
+                trigger_navmesh_build::<Marker, Obstacle>.after(TransformSystems::Propagate),
+            )
+            .add_systems(PreUpdate, (drop_dead_tasks, update_navmesh_asset).chain())
+            .register_diagnostic(Diagnostic::new(NAVMESH_BUILD_DURATION));
 
         #[cfg(feature = "avian2d")]
         {

@@ -19,7 +19,7 @@ use bevy::{
     app::Update,
     asset::Assets,
     color::Color,
-    prelude::{Component, Gizmos, Query, Res, Resource},
+    prelude::{Component, Gizmos, IntoScheduleConfigs, Query, Res, Resource, resource_exists},
 };
 use bevy::{
     app::{App, Plugin},
@@ -33,17 +33,22 @@ use bevy::{
 use itertools::Itertools;
 
 pub mod asset_loaders;
+#[cfg(feature = "avoidance")]
+pub mod avoidance;
 mod obstacles;
 mod updater;
 
 /// Prelude for imports
 pub mod prelude {
+    #[cfg(feature = "avoidance")]
+    pub use crate::avoidance::{AvoidanceConfig, AvoidancePlugin, NavigationAgent};
     pub use crate::obstacles::{
         ObstacleSource, cached::CachedObstacle, primitive::PrimitiveObstacle,
     };
     pub use crate::updater::{
-        CachableObstacle, ManagedNavMesh, NAVMESH_BUILD_DURATION, NavMeshSettings, NavMeshStatus,
-        NavMeshUpdateMode, NavMeshUpdateModeBlocking, NavmeshUpdaterPlugin,
+        CachableObstacle, ManagedNavMesh, NAVMESH_BUILD_DURATION, NavMeshAgentExclusion,
+        NavMeshBuilt, NavMeshSettings, NavMeshStatus, NavMeshUpdateMode, NavMeshUpdateModeBlocking,
+        NavmeshUpdaterPlugin,
     };
     pub use crate::{NavMesh, Triangulation, VleueNavigatorPlugin};
     #[cfg(feature = "debug-with-gizmos")]
@@ -82,7 +87,10 @@ impl Plugin for VleueNavigatorPlugin {
             .init_asset::<NavMesh>();
 
         #[cfg(feature = "debug-with-gizmos")]
-        app.add_systems(Update, display_navmesh);
+        app.add_systems(
+            Update,
+            display_navmesh.run_if(resource_exists::<bevy::prelude::GizmoConfigStore>),
+        );
     }
 }
 
@@ -280,14 +288,15 @@ impl NavMesh {
 
     fn transform_path(&self, path: Path) -> TransformedPath {
         let transform = self.transform();
+        let path_3d: Vec<Vec3> = path
+            .path
+            .into_iter()
+            .map(|coords| transform.transform_point(coords.extend(0.0)))
+            .collect();
+        let length = path_3d.windows(2).map(|w| w[0].distance(w[1])).sum();
         TransformedPath {
-            // TODO: recompute length
-            length: path.length,
-            path: path
-                .path
-                .into_iter()
-                .map(|coords| transform.transform_point(coords.extend(0.0)))
-                .collect(),
+            length,
+            path: path_3d,
             #[cfg(feature = "detailed-layers")]
             path_with_layers: path
                 .path_with_layers

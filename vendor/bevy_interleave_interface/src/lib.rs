@@ -110,6 +110,9 @@ where
     Self: bevy::asset::Asset,
     Self: bevy::reflect::GetTypeRegistration,
     Self: bevy::reflect::FromReflect,
+    // Bevy main: `FromReflect` no longer implies `Reflect`, which
+    // `register_asset_reflect` still needs.
+    Self: bevy::reflect::Reflect,
 {
     type PackedType;
 

@@ -189,9 +189,11 @@ impl InnerObstacleSource for TypedShape<'_> {
 }
 
 pub fn on_sleeping_inserted(trigger: On<Insert<Sleeping>>, mut commands: Commands) {
+    // RENZORA PATCH: `try_insert`: the body can be despawned before the command
+    // applies (a scene reload, a destroyed prop), and `insert` panics on that.
     commands
         .entity(trigger.event().entity)
-        .insert(CachableObstacle);
+        .try_insert(CachableObstacle);
 }
 
 pub fn on_sleeping_removed(trigger: On<Remove<Sleeping>>, mut commands: Commands) {

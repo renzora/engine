@@ -49,7 +49,7 @@ use bevy::camera::CameraMainTextureUsages;
 use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::ecs::system::SystemParam;
 use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight, PointLight, SpotLight, VolumetricLight};
-use bevy::mesh::{Indices, MeshVertexAttributeId, PrimitiveTopology};
+use bevy::mesh::{Indices, MeshRaytracingFlags, MeshVertexAttributeId, PrimitiveTopology};
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::pbr::{
     prepare_lights, DefaultOpaqueRendererMethod, ExtractedDirectionalLight, ExtractedPointLight,
@@ -628,10 +628,14 @@ fn mirror_raytracing_meshes(
         if is_raytraceable_instance(&materials, material, visibility, layers) != Some(true) {
             continue;
         }
+        // Loaded: `is_raytraceable_instance` answered from it.
+        let Some(kind) = materials.get(&material.0).map(blas_kind) else {
+            continue;
+        };
         let Some(source) = traced_source(mesh3d, geometry) else {
             continue;
         };
-        match traceable_mesh(source, &mut meshes, &mut proxies) {
+        match traceable_mesh(source, kind, &mut meshes, &mut proxies) {
             // try_insert: the entity may despawn between this query and command
             // apply (scene reloads / asset streaming churn entities constantly
             // in the editor); a plain insert would panic on the dead entity.
@@ -771,7 +775,8 @@ fn sync_traced_twins(
             continue;
         }
         let source_mesh = traced_source(mesh3d, geometry);
-        let traced = match source_mesh.map(|m| traceable_mesh(m, &mut trace.meshes, &mut trace.proxies)) {
+        let kind = blas_kind(material);
+        let traced = match source_mesh.map(|m| traceable_mesh(m, kind, &mut trace.meshes, &mut trace.proxies)) {
             Some(Traceable::Ready(handle)) => handle,
             // Waiting on full detail is like waiting on an asset.
             None | Some(Traceable::Loading) => {
@@ -842,7 +847,22 @@ enum Traceable {
     Never,
 }
 
-/// Geometry Solari's BLAS builder will accept for the mesh `handle`.
+/// Which BLAS a mesh drawn with `material` needs: Solari builds an opaque one,
+/// and a non-opaque one whose hits are alpha tested for masked materials
+/// (foliage, fences). A blended material is traced through an opaque BLAS:
+/// only the see-through pass's rays reach it, and they shade the blend
+/// themselves. The same split Solari's binder makes, so a mesh declares the
+/// BLAS its material will look for.
+fn blas_kind(material: &StandardMaterial) -> MeshRaytracingFlags {
+    match material.alpha_mode {
+        AlphaMode::Mask(_) | AlphaMode::AlphaToCoverage => MeshRaytracingFlags::NON_OPAQUE,
+        _ => MeshRaytracingFlags::OPAQUE,
+    }
+}
+
+/// Geometry Solari's BLAS builder will accept for the mesh `handle`, declaring
+/// the `kind` of BLAS its material needs ([`blas_kind`]). A mesh shared by
+/// opaque and masked materials ends up declaring both.
 ///
 /// Two routes. Prefer repairing the source in place (it costs no extra memory
 /// and is all most GLBs need), and fall back to a stripped copy for meshes whose
@@ -850,6 +870,7 @@ enum Traceable {
 /// shared asset without breaking the rasterized draw.
 fn traceable_mesh(
     handle: &Handle<Mesh>,
+    kind: MeshRaytracingFlags,
     meshes: &mut Assets<Mesh>,
     proxies: &mut RaytracingProxies,
 ) -> Traceable {
@@ -865,7 +886,7 @@ fn traceable_mesh(
         // borrow (and trigger asset re-extraction) when there's work to do.
         let needs_tangents = mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none();
         let needs_u32 = matches!(mesh.indices(), Some(Indices::U16(_)));
-        let needs_flag = !mesh.enable_raytracing;
+        let needs_flag = !mesh.raytracing.contains(kind);
 
         if needs_tangents || needs_u32 || needs_flag {
             let Some(mut mesh) = meshes.get_mut(handle) else {
@@ -886,7 +907,7 @@ fn traceable_mesh(
                 };
                 mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
             }
-            mesh.enable_raytracing = true;
+            mesh.raytracing |= kind;
         }
         return Traceable::Ready(handle.clone());
     }
@@ -894,15 +915,27 @@ fn traceable_mesh(
     if let Some(cached) = proxies.0.get(&handle.id()).cloned() {
         // A cached `None` is a source we already failed to convert; don't
         // retry (and re-warn about) it every frame.
-        return cached.map_or(Traceable::Never, Traceable::Ready);
+        let Some(proxy) = cached else {
+            return Traceable::Never;
+        };
+        // The copy was made for the first material that used it; a second
+        // material may need the other kind of BLAS as well. Checked before the
+        // mutable borrow, which would re-extract the mesh every frame.
+        if meshes.get(&proxy).is_some_and(|m| !m.raytracing.contains(kind)) {
+            if let Some(mut m) = meshes.get_mut(&proxy) {
+                m.raytracing |= kind;
+            }
+        }
+        return Traceable::Ready(proxy);
     }
     // `build_raytracing_proxy` returns an owned mesh, which ends the immutable
     // borrow of `meshes` that `mesh` holds, so the insert below is allowed.
-    let Some(proxy) = build_raytracing_proxy(mesh) else {
+    let Some(mut proxy) = build_raytracing_proxy(mesh) else {
         warn!("[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be built");
         proxies.0.insert(handle.id(), None);
         return Traceable::Never;
     };
+    proxy.raytracing = kind;
     let proxy = meshes.add(proxy);
     proxies.0.insert(handle.id(), Some(proxy.clone()));
     Traceable::Ready(proxy)
@@ -1247,7 +1280,7 @@ fn build_proxy_sphere() -> Option<Mesh> {
     if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
         return None;
     }
-    mesh.enable_raytracing = true;
+    mesh.raytracing = MeshRaytracingFlags::OPAQUE;
     Some(mesh)
 }
 
@@ -1738,7 +1771,9 @@ fn build_raytracing_proxy(source: &Mesh) -> Option<Mesh> {
         let tangents = tangents_from_normals(&proxy)?;
         proxy.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
     }
-    proxy.enable_raytracing = true;
+    // The caller declares the kind of BLAS (`traceable_mesh`); opaque unless
+    // told otherwise.
+    proxy.raytracing = MeshRaytracingFlags::OPAQUE;
     Some(proxy)
 }
 
@@ -1904,7 +1939,7 @@ mod tests {
     /// The exact rule `bevy_solari`'s BLAS builder applies, replicated here so
     /// the test fails if our copy ever drifts from it.
     fn bevy_would_build_a_blas(mesh: &Mesh) -> bool {
-        mesh.enable_raytracing
+        !mesh.raytracing.is_empty()
             && mesh.primitive_topology() == PrimitiveTopology::TriangleList
             && mesh
                 .attributes()
