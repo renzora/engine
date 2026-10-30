@@ -1,0 +1,534 @@
+use bevy_app::prelude::*;
+use bevy_asset::{
+    embedded_asset, load_embedded_asset, AssetServer, Assets, Handle, RenderAssetUsages,
+};
+use bevy_camera::{Camera, CompositingSpace};
+use bevy_ecs::prelude::*;
+use bevy_image::{CompressedImageFormats, Image, ImageSampler, ImageType};
+#[cfg(not(feature = "tonemapping_luts"))]
+use bevy_log::error;
+use bevy_log::warn;
+use bevy_render::{
+    camera::ExtractedCamera,
+    extract_component::ExtractComponentPlugin,
+    extract_resource::{ExtractResource, ExtractResourcePlugin},
+    render_asset::RenderAssets,
+    render_resource::{
+        binding_types::{sampler, texture_2d, texture_3d, uniform_buffer},
+        *,
+    },
+    renderer::RenderDevice,
+    texture::{FallbackImage, GpuImage},
+    view::{ColorGrading, ExtractedView, ResolvedCompositingSpace, ViewTarget, ViewUniform},
+    GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
+};
+use bevy_shader::{load_shader_library, Shader, ShaderDefVal};
+use bitflags::bitflags;
+
+mod node;
+
+pub use bevy_render::view::{DebandDither, Tonemapping};
+use bevy_utils::default;
+pub use node::tonemapping;
+
+use crate::FullscreenShader;
+
+/// 3D LUT (look up table) textures used for tonemapping
+#[derive(Resource, Clone, ExtractResource)]
+#[extract_app(RenderApp)]
+pub struct TonemappingLuts {
+    pub blender_filmic: Handle<Image>,
+    pub agx: Handle<Image>,
+    pub tony_mc_mapface: Handle<Image>,
+}
+
+pub struct TonemappingPlugin;
+
+impl Plugin for TonemappingPlugin {
+    fn build(&self, app: &mut App) {
+        load_shader_library!(app, "lut_bindings.wesl");
+
+        embedded_asset!(app, "tonemapping_frag.wesl");
+
+        if !app.world().is_resource_added::<TonemappingLuts>() {
+            let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+
+            #[cfg(feature = "tonemapping_luts")]
+            let tonemapping_luts = {
+                TonemappingLuts {
+                    blender_filmic: images.add(setup_tonemapping_lut_image(
+                        include_bytes!("luts/Blender_-11_12.ktx2"),
+                        ImageType::Extension("ktx2"),
+                    )),
+                    agx: images.add(setup_tonemapping_lut_image(
+                        include_bytes!("luts/AgX-default_contrast.ktx2"),
+                        ImageType::Extension("ktx2"),
+                    )),
+                    tony_mc_mapface: images.add(setup_tonemapping_lut_image(
+                        include_bytes!("luts/tony_mc_mapface.ktx2"),
+                        ImageType::Extension("ktx2"),
+                    )),
+                }
+            };
+
+            #[cfg(not(feature = "tonemapping_luts"))]
+            let tonemapping_luts = {
+                let placeholder = images.add(lut_placeholder());
+                TonemappingLuts {
+                    blender_filmic: placeholder.clone(),
+                    agx: placeholder.clone(),
+                    tony_mc_mapface: placeholder,
+                }
+            };
+
+            app.insert_resource(tonemapping_luts);
+        }
+
+        app.add_plugins(ExtractResourcePlugin::<TonemappingLuts>::default());
+
+        app.add_plugins((
+            ExtractComponentPlugin::<Tonemapping>::default(),
+            ExtractComponentPlugin::<DebandDither>::default(),
+        ));
+
+        app.add_systems(PostUpdate, check_tonemapping_none);
+
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+        render_app
+            .init_gpu_resource::<SpecializedRenderPipelines<TonemappingPipeline>>()
+            .add_systems(RenderStartup, init_tonemapping_pipeline)
+            .add_systems(
+                Render,
+                // `block_on_render_pipeline` mutates `PipelineCache`, which conflicts
+                // with every other system that uses the cache. Their order doesn't matter.
+                prepare_view_tonemapping_pipelines
+                    .in_set(RenderSystems::Prepare)
+                    .ambiguous_with_all(),
+            );
+    }
+}
+
+/// Warns when a camera has [`Tonemapping::None`] together with
+/// [`DebandDither::Enabled`] or a non-default [`ColorGrading`], since neither
+/// has any effect without tonemapping.
+pub fn check_tonemapping_none(
+    cameras: Query<
+        (
+            NameOrEntity,
+            &Tonemapping,
+            Option<&DebandDither>,
+            Option<&ColorGrading>,
+        ),
+        (
+            With<Camera>,
+            Or<(
+                Changed<Tonemapping>,
+                Changed<DebandDither>,
+                Changed<ColorGrading>,
+            )>,
+        ),
+    >,
+) {
+    for (camera, tonemapping, dither, color_grading) in &cameras {
+        if tonemapping.is_enabled() {
+            continue;
+        }
+        if dither == Some(&DebandDither::Enabled) {
+            warn!(
+                "Camera {camera} has `Tonemapping::None` with `DebandDither::Enabled`, so dithering has no effect. \
+                Use `Tonemapping::Linear` to keep dithering, or set `DebandDither::Disabled`."
+            );
+        }
+        if color_grading.is_some_and(|grading| *grading != ColorGrading::default()) {
+            warn!(
+                "Camera {camera} has `Tonemapping::None` with a non-default `ColorGrading`, so color grading has no effect. \
+                Use `Tonemapping::Linear` to keep color grading, or set `ColorGrading::default()`."
+            );
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct TonemappingPipeline {
+    texture_bind_group: BindGroupLayoutDescriptor,
+    sampler: Sampler,
+    fullscreen_shader: FullscreenShader,
+    fragment_shader: Handle<Shader>,
+}
+
+bitflags! {
+    /// Various flags describing what tonemapping needs to do.
+    ///
+    /// This allows the shader to skip unneeded steps.
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    pub struct TonemappingPipelineKeyFlags: u8 {
+        /// The hue needs to be changed.
+        const HUE_ROTATE                = 0x01;
+        /// The white balance needs to be adjusted.
+        const WHITE_BALANCE             = 0x02;
+        /// Saturation/contrast/gamma/gain/lift for one or more sections
+        /// (shadows, midtones, highlights) need to be adjusted.
+        const SECTIONAL_COLOR_GRADING   = 0x04;
+        /// The view composites in gamma-encoded sRGB space.
+        const SRGB_COMPOSITING          = 0x08;
+        /// The view composites in Oklab space.
+        const OKLAB_COMPOSITING         = 0x10;
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TonemappingPipelineKey {
+    target_format: TextureFormat,
+    deband_dither: DebandDither,
+    tonemapping: Tonemapping,
+    flags: TonemappingPipelineKeyFlags,
+}
+
+impl SpecializedRenderPipeline for TonemappingPipeline {
+    type Key = TonemappingPipelineKey;
+
+    fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
+        let mut shader_defs = Vec::new();
+
+        shader_defs.push(ShaderDefVal::UInt(
+            "TONEMAPPING_LUT_TEXTURE_BINDING_INDEX".into(),
+            3,
+        ));
+        shader_defs.push(ShaderDefVal::UInt(
+            "TONEMAPPING_LUT_SAMPLER_BINDING_INDEX".into(),
+            4,
+        ));
+
+        if let DebandDither::Enabled = key.deband_dither {
+            shader_defs.push("DEBAND_DITHER".into());
+        }
+
+        // Define shader flags depending on the color grading options in use.
+        if key.flags.contains(TonemappingPipelineKeyFlags::HUE_ROTATE) {
+            shader_defs.push("HUE_ROTATE".into());
+        }
+        if key
+            .flags
+            .contains(TonemappingPipelineKeyFlags::WHITE_BALANCE)
+        {
+            shader_defs.push("WHITE_BALANCE".into());
+        }
+        if key
+            .flags
+            .contains(TonemappingPipelineKeyFlags::SECTIONAL_COLOR_GRADING)
+        {
+            shader_defs.push("SECTIONAL_COLOR_GRADING".into());
+        }
+
+        if key
+            .flags
+            .contains(TonemappingPipelineKeyFlags::SRGB_COMPOSITING)
+        {
+            shader_defs.push("COMPOSITING_SPACE_SRGB".into());
+        }
+        if key
+            .flags
+            .contains(TonemappingPipelineKeyFlags::OKLAB_COMPOSITING)
+        {
+            shader_defs.push("COMPOSITING_SPACE_OKLAB".into());
+        }
+
+        match key.tonemapping {
+            Tonemapping::None | Tonemapping::Linear => {
+                shader_defs.push("TONEMAP_METHOD_LINEAR".into());
+            }
+            Tonemapping::Reinhard => shader_defs.push("TONEMAP_METHOD_REINHARD".into()),
+            Tonemapping::ReinhardLuminance => {
+                shader_defs.push("TONEMAP_METHOD_REINHARD_LUMINANCE".into());
+            }
+            Tonemapping::AcesFitted => shader_defs.push("TONEMAP_METHOD_ACES_FITTED".into()),
+            Tonemapping::AgX => {
+                #[cfg(not(feature = "tonemapping_luts"))]
+                error!(
+                    "AgX tonemapping requires the `tonemapping_luts` feature.
+                    Either enable the `tonemapping_luts` feature for bevy in `Cargo.toml` (recommended),
+                    or use a different `Tonemapping` method for your `Camera2d`/`Camera3d`."
+                );
+                shader_defs.push("TONEMAP_METHOD_AGX".into());
+            }
+            Tonemapping::SomewhatBoringDisplayTransform => {
+                shader_defs.push("TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM".into());
+            }
+            Tonemapping::TonyMcMapface => {
+                #[cfg(not(feature = "tonemapping_luts"))]
+                error!(
+                    "TonyMcMapFace tonemapping requires the `tonemapping_luts` feature.
+                    Either enable the `tonemapping_luts` feature for bevy in `Cargo.toml` (recommended),
+                    or use a different `Tonemapping` method for your `Camera2d`/`Camera3d`."
+                );
+                shader_defs.push("TONEMAP_METHOD_TONY_MC_MAPFACE".into());
+            }
+            Tonemapping::BlenderFilmic => {
+                #[cfg(not(feature = "tonemapping_luts"))]
+                error!(
+                    "BlenderFilmic tonemapping requires the `tonemapping_luts` feature.
+                    Either enable the `tonemapping_luts` feature for bevy in `Cargo.toml` (recommended),
+                    or use a different `Tonemapping` method for your `Camera2d`/`Camera3d`."
+                );
+                shader_defs.push("TONEMAP_METHOD_BLENDER_FILMIC".into());
+            }
+            Tonemapping::KhronosPbrNeutral => shader_defs.push("TONEMAP_METHOD_PBR_NEUTRAL".into()),
+        }
+        RenderPipelineDescriptor {
+            label: Some("tonemapping pipeline".into()),
+            layout: vec![self.texture_bind_group.clone()],
+            vertex: self.fullscreen_shader.to_vertex_state(),
+            fragment: Some(FragmentState {
+                shader: self.fragment_shader.clone(),
+                shader_defs,
+                targets: vec![Some(ColorTargetState {
+                    format: key.target_format,
+                    blend: None,
+                    write_mask: ColorWrites::ALL,
+                })],
+                ..default()
+            }),
+            ..default()
+        }
+    }
+}
+
+pub fn init_tonemapping_pipeline(
+    mut commands: Commands,
+    render_device: Res<RenderDevice>,
+    fullscreen_shader: Res<FullscreenShader>,
+    asset_server: Res<AssetServer>,
+) {
+    let mut entries = DynamicBindGroupLayoutEntries::new_with_indices(
+        ShaderStages::FRAGMENT,
+        (
+            (0, uniform_buffer::<ViewUniform>(true)),
+            (
+                1,
+                texture_2d(TextureSampleType::Float { filterable: false }),
+            ),
+            (2, sampler(SamplerBindingType::NonFiltering)),
+        ),
+    );
+    let lut_layout_entries = get_lut_bind_group_layout_entries();
+    entries = entries.extend_with_indices(((3, lut_layout_entries[0]), (4, lut_layout_entries[1])));
+
+    let tonemap_texture_bind_group =
+        BindGroupLayoutDescriptor::new("tonemapping_hdr_texture_bind_group_layout", &entries);
+
+    let sampler = render_device.create_sampler(&SamplerDescriptor::default());
+
+    commands.insert_resource(TonemappingPipeline {
+        texture_bind_group: tonemap_texture_bind_group,
+        sampler,
+        fullscreen_shader: fullscreen_shader.clone(),
+        fragment_shader: load_embedded_asset!(asset_server.as_ref(), "tonemapping_frag.wesl"),
+    });
+}
+
+/// A view's specialized tonemapping pipeline and the method it runs.
+#[derive(Component)]
+pub struct ViewTonemappingPipeline {
+    pipeline_id: CachedRenderPipelineId,
+    /// The tonemapping method the pipeline runs.
+    method: Tonemapping,
+}
+
+/// Picks the pipeline flags for a view's color grading and compositing space.
+fn tonemapping_key_flags(
+    color_grading: &ColorGrading,
+    compositing_space: Option<CompositingSpace>,
+) -> TonemappingPipelineKeyFlags {
+    // As an optimization, we omit parts of the shader that are unneeded.
+    let mut flags = TonemappingPipelineKeyFlags::empty();
+    flags.set(
+        TonemappingPipelineKeyFlags::HUE_ROTATE,
+        color_grading.global.hue != 0.0,
+    );
+    flags.set(
+        TonemappingPipelineKeyFlags::WHITE_BALANCE,
+        color_grading.global.temperature != 0.0 || color_grading.global.tint != 0.0,
+    );
+    flags.set(
+        TonemappingPipelineKeyFlags::SECTIONAL_COLOR_GRADING,
+        color_grading
+            .all_sections()
+            .any(|section| *section != default()),
+    );
+
+    flags.set(
+        TonemappingPipelineKeyFlags::SRGB_COMPOSITING,
+        compositing_space == Some(CompositingSpace::Srgb),
+    );
+    flags.set(
+        TonemappingPipelineKeyFlags::OKLAB_COMPOSITING,
+        compositing_space == Some(CompositingSpace::Oklab),
+    );
+    flags
+}
+
+pub fn prepare_view_tonemapping_pipelines(
+    mut commands: Commands,
+    mut pipeline_cache: ResMut<PipelineCache>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<TonemappingPipeline>>,
+    upscaling_pipeline: Res<TonemappingPipeline>,
+    view_targets: Query<
+        (
+            Entity,
+            &ExtractedView,
+            Option<&ResolvedCompositingSpace>,
+            Option<&Tonemapping>,
+            Option<&DebandDither>,
+            Option<&ViewTonemappingPipeline>,
+            Option<&ExtractedCamera>,
+        ),
+        With<ViewTarget>,
+    >,
+) {
+    for (entity, view, resolved_space, tonemapping, dither, existing_pipeline, camera) in
+        view_targets.iter()
+    {
+        let method = *tonemapping.unwrap_or(&Tonemapping::None);
+
+        // `Tonemapping::None` views and views that tonemap in their material shaders
+        // don't run the pass. Render world entities persist across frames, so remove a
+        // pipeline left from an earlier frame.
+        if !method.is_enabled() || camera.is_some_and(|camera| camera.tonemap_in_shader) {
+            if existing_pipeline.is_some() {
+                commands.entity(entity).remove::<ViewTonemappingPipeline>();
+            }
+            continue;
+        }
+
+        let flags = tonemapping_key_flags(
+            &view.color_grading,
+            ResolvedCompositingSpace::space(resolved_space),
+        );
+
+        let key = TonemappingPipelineKey {
+            target_format: view.target_format,
+            deband_dither: *dither.unwrap_or(&DebandDither::Disabled),
+            tonemapping: method,
+            flags,
+        };
+        let pipeline = pipelines.specialize(&pipeline_cache, &upscaling_pipeline, key);
+
+        // Without a ready pipeline the pass is skipped, and the camera shows untonemapped
+        // output. Block until the pipeline compiles. This returns at once when it's
+        // already compiled.
+        pipeline_cache.block_on_render_pipeline(pipeline);
+
+        commands.entity(entity).insert(ViewTonemappingPipeline {
+            pipeline_id: pipeline,
+            method,
+        });
+    }
+}
+
+pub fn get_lut_bindings<'a>(
+    images: &'a RenderAssets<GpuImage>,
+    tonemapping_luts: &'a TonemappingLuts,
+    tonemapping: &Tonemapping,
+    fallback_image: &'a FallbackImage,
+) -> (&'a TextureView, &'a Sampler) {
+    let image = match tonemapping {
+        // AgX lut texture used when tonemapping doesn't need a texture since it's very small (32x32x32)
+        Tonemapping::None
+        | Tonemapping::Linear
+        | Tonemapping::Reinhard
+        | Tonemapping::ReinhardLuminance
+        | Tonemapping::AcesFitted
+        | Tonemapping::AgX
+        | Tonemapping::KhronosPbrNeutral
+        | Tonemapping::SomewhatBoringDisplayTransform => &tonemapping_luts.agx,
+        Tonemapping::TonyMcMapface => &tonemapping_luts.tony_mc_mapface,
+        Tonemapping::BlenderFilmic => &tonemapping_luts.blender_filmic,
+    };
+    let lut_image = images.get(image).unwrap_or(&fallback_image.d3);
+    (&lut_image.texture_view, &lut_image.sampler)
+}
+
+pub fn get_lut_bind_group_layout_entries() -> [BindGroupLayoutEntryBuilder; 2] {
+    [
+        texture_3d(TextureSampleType::Float { filterable: true }),
+        sampler(SamplerBindingType::Filtering),
+    ]
+}
+
+#[expect(clippy::allow_attributes, reason = "`dead_code` is not always linted.")]
+#[allow(
+    dead_code,
+    reason = "There is unused code when the `tonemapping_luts` feature is disabled."
+)]
+fn setup_tonemapping_lut_image(bytes: &[u8], image_type: ImageType) -> Image {
+    let image_sampler = ImageSampler::Descriptor(bevy_image::ImageSamplerDescriptor {
+        label: Some("Tonemapping LUT sampler".to_string()),
+        address_mode_u: bevy_image::ImageAddressMode::ClampToEdge,
+        address_mode_v: bevy_image::ImageAddressMode::ClampToEdge,
+        address_mode_w: bevy_image::ImageAddressMode::ClampToEdge,
+        mag_filter: bevy_image::ImageFilterMode::Linear,
+        min_filter: bevy_image::ImageFilterMode::Linear,
+        mipmap_filter: bevy_image::ImageFilterMode::Linear,
+        ..default()
+    });
+    Image::from_buffer(
+        bytes,
+        image_type,
+        CompressedImageFormats::NONE,
+        false,
+        image_sampler,
+        // LUT must be kept in main world for render recovery reasons
+        RenderAssetUsages::default(),
+    )
+    .unwrap()
+}
+
+pub fn lut_placeholder() -> Image {
+    let format = TextureFormat::Rgba8Unorm;
+    let data = vec![255, 0, 255, 255];
+    Image {
+        data: Some(data),
+        data_order: TextureDataOrder::default(),
+        texture_descriptor: TextureDescriptor {
+            size: Extent3d::default(),
+            format,
+            dimension: TextureDimension::D3,
+            label: None,
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        sampler: ImageSampler::Default,
+        texture_view_descriptor: None,
+        asset_usage: RenderAssetUsages::RENDER_WORLD,
+        copy_on_resize: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compositing_space_sets_exactly_its_flag() {
+        let flags_for = |space: Option<CompositingSpace>| {
+            tonemapping_key_flags(&ColorGrading::default(), space)
+        };
+        assert_eq!(
+            flags_for(Some(CompositingSpace::Srgb)),
+            TonemappingPipelineKeyFlags::SRGB_COMPOSITING
+        );
+        assert_eq!(
+            flags_for(Some(CompositingSpace::Oklab)),
+            TonemappingPipelineKeyFlags::OKLAB_COMPOSITING
+        );
+        assert_eq!(
+            flags_for(Some(CompositingSpace::Linear)),
+            TonemappingPipelineKeyFlags::empty()
+        );
+        assert_eq!(flags_for(None), TonemappingPipelineKeyFlags::empty());
+    }
+}

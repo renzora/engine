@@ -1,0 +1,393 @@
+use crate::{
+    io::{
+        AssetReaderError, AssetWriterError, MissingAssetWriterError,
+        MissingProcessedAssetReaderError, MissingProcessedAssetWriterError, Reader, Writer,
+    },
+    meta::{AssetAction, AssetMeta, AssetMetaDyn, ProcessDependencyInfo, ProcessedInfo, Settings},
+    processor::AssetProcessor,
+    saver::{AssetSaver, SavedAsset},
+    transformer::{AssetTransformer, IdentityAssetTransformer, TransformedAsset},
+    AssetLoadError, AssetLoader, AssetPath, DeserializeMetaError, LoadedAsset,
+    MissingAssetLoaderForExtensionError, MissingAssetLoaderForTypeNameError,
+};
+use alloc::{
+    borrow::ToOwned,
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
+use bevy_ecs::error::BevyError;
+use bevy_reflect::TypePath;
+use bevy_tasks::{BoxedFuture, ConditionalSendFuture};
+use core::marker::PhantomData;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Asset "processor" logic that reads input asset bytes (stored on [`ProcessContext`]), processes the value in some way,
+/// and then writes the final processed bytes with [`Writer`]. The resulting bytes must be loadable with the given [`Process::OutputLoader`].
+///
+/// This is a "low level", maximally flexible interface. Most use cases are better served by the [`LoadTransformAndSave`] implementation
+/// of [`Process`].
+pub trait Process: TypePath + Send + Sync + Sized + 'static {
+    /// The configuration / settings used to process the asset. This will be stored in the [`AssetMeta`] and is user-configurable per-asset.
+    type Settings: Settings + Default + Serialize + for<'a> Deserialize<'a>;
+    /// The [`AssetLoader`] that will be used to load the final processed asset.
+    type OutputLoader: AssetLoader;
+    /// Processes the asset stored on `context` in some way using the settings stored on `meta`. The results are written to `writer`. The
+    /// final written processed asset is loadable using [`Process::OutputLoader`]. This load will use the returned [`AssetLoader::Settings`].
+    fn process(
+        &self,
+        context: &mut ProcessContext,
+        settings: &Self::Settings,
+        writer: &mut Writer,
+    ) -> impl ConditionalSendFuture<
+        Output = Result<<Self::OutputLoader as AssetLoader>::Settings, ProcessError>,
+    >;
+}
+
+/// A flexible [`Process`] implementation that loads the source [`Asset`] using the `L` [`AssetLoader`], then transforms
+/// the `L` asset into an `S` [`AssetSaver`] asset using the `T` [`AssetTransformer`], and lastly saves the asset using the `S` [`AssetSaver`].
+///
+/// When creating custom processors, it is generally recommended to use the [`LoadTransformAndSave`] [`Process`] implementation,
+/// as it encourages you to separate your code into an [`AssetLoader`] capable of loading assets without processing enabled,
+/// an [`AssetTransformer`] capable of converting from an `L` asset to an `S` asset, and
+/// an [`AssetSaver`] that allows you save any `S` asset. However you can
+/// also implement [`Process`] directly if [`LoadTransformAndSave`] feels limiting or unnecessary.
+///
+/// If your [`Process`] does not need to transform the [`Asset`], you can use [`IdentityAssetTransformer`] as `T`.
+/// This will directly return the input [`Asset`], allowing your [`Process`] to directly load and then save an [`Asset`].
+/// However, this pattern should only be used for cases such as file format conversion.
+/// Otherwise, consider refactoring your [`AssetLoader`] and [`AssetSaver`] to isolate the transformation step into an explicit [`AssetTransformer`].
+///
+/// This uses [`LoadTransformAndSaveSettings`] to configure the processor.
+///
+/// [`Asset`]: crate::Asset
+#[derive(TypePath)]
+pub struct LoadTransformAndSave<
+    L: AssetLoader,
+    T: AssetTransformer<AssetInput = L::Asset>,
+    S: AssetSaver<Asset = T::AssetOutput>,
+> {
+    transformer: T,
+    saver: S,
+    marker: PhantomData<fn() -> L>,
+}
+
+impl<L: AssetLoader, S: AssetSaver<Asset = L::Asset>> From<S>
+    for LoadTransformAndSave<L, IdentityAssetTransformer<L::Asset>, S>
+{
+    fn from(value: S) -> Self {
+        LoadTransformAndSave {
+            transformer: IdentityAssetTransformer::new(),
+            saver: value,
+            marker: PhantomData,
+        }
+    }
+}
+
+/// Settings for the [`LoadTransformAndSave`] [`Process::Settings`] implementation.
+///
+/// `LoaderSettings` corresponds to [`AssetLoader::Settings`], `TransformerSettings` corresponds to [`AssetTransformer::Settings`],
+/// and `SaverSettings` corresponds to [`AssetSaver::Settings`].
+#[derive(Serialize, Deserialize, Default)]
+pub struct LoadTransformAndSaveSettings<LoaderSettings, TransformerSettings, SaverSettings> {
+    /// The [`AssetLoader::Settings`] for [`LoadTransformAndSave`].
+    pub loader_settings: LoaderSettings,
+    /// The [`AssetTransformer::Settings`] for [`LoadTransformAndSave`].
+    pub transformer_settings: TransformerSettings,
+    /// The [`AssetSaver::Settings`] for [`LoadTransformAndSave`].
+    pub saver_settings: SaverSettings,
+}
+
+impl<
+        L: AssetLoader,
+        T: AssetTransformer<AssetInput = L::Asset>,
+        S: AssetSaver<Asset = T::AssetOutput>,
+    > LoadTransformAndSave<L, T, S>
+{
+    pub fn new(transformer: T, saver: S) -> Self {
+        LoadTransformAndSave {
+            transformer,
+            saver,
+            marker: PhantomData,
+        }
+    }
+}
+
+/// An error that is encountered during [`Process::process`].
+#[derive(Error, Debug)]
+pub enum ProcessError {
+    #[error(transparent)]
+    MissingAssetLoaderForExtension(#[from] MissingAssetLoaderForExtensionError),
+    #[error(transparent)]
+    MissingAssetLoaderForTypeName(#[from] MissingAssetLoaderForTypeNameError),
+    /// No processor with that name is registered..
+    #[error("The processor '{0}' does not exist")]
+    #[from(ignore)]
+    MissingProcessor(String),
+    /// The given short name is ambiguous between several processors.
+    #[error("The processor '{processor_short_name}' is ambiguous between several processors: {ambiguous_processor_names:?}")]
+    AmbiguousProcessor {
+        /// The given string for the processor name.
+        processor_short_name: String,
+        /// The list of processors that might match it.
+        ambiguous_processor_names: Vec<&'static str>,
+    },
+    /// Encountered an [`AssetReaderError`] for this path.
+    #[error("Encountered an AssetReader error for '{path}': {err}")]
+    #[from(ignore)]
+    AssetReaderError {
+        path: AssetPath<'static>,
+        err: AssetReaderError,
+    },
+    /// Encountered an [`AssetWriterError`] for this path.
+    #[error("Encountered an AssetWriter error for '{path}': {err}")]
+    #[from(ignore)]
+    AssetWriterError {
+        path: AssetPath<'static>,
+        err: AssetWriterError,
+    },
+    #[error(transparent)]
+    MissingAssetWriterError(#[from] MissingAssetWriterError),
+    #[error(transparent)]
+    MissingProcessedAssetReaderError(#[from] MissingProcessedAssetReaderError),
+    #[error(transparent)]
+    MissingProcessedAssetWriterError(#[from] MissingProcessedAssetWriterError),
+    /// Encountered an [`AssetReaderError`] when reading the asset metadata for this path.
+    #[error("Failed to read asset metadata for {path}: {err}")]
+    #[from(ignore)]
+    ReadAssetMetaError {
+        path: AssetPath<'static>,
+        err: AssetReaderError,
+    },
+    #[error(transparent)]
+    DeserializeMetaError(#[from] DeserializeMetaError),
+    #[error(transparent)]
+    AssetLoadError(#[from] AssetLoadError),
+    /// The wrong meta type was passed into a processor.
+    /// This is probably an internal implementation error.
+    #[error("The wrong meta type was passed into a processor. This is probably an internal implementation error.")]
+    WrongMetaType,
+    /// Encountered an error while saving the asset.
+    #[error("Encountered an error while saving the asset: {0}")]
+    #[from(ignore)]
+    AssetSaveError(BevyError),
+    /// Encountered an error while transforming the asset.
+    #[error("Encountered an error while transforming the asset: {0}")]
+    #[from(ignore)]
+    AssetTransformError(Box<dyn core::error::Error + Send + Sync + 'static>),
+    /// Assets without extensions are not supported.
+    #[error("Assets without extensions are not supported.")]
+    ExtensionRequired,
+}
+
+impl<Loader, Transformer, Saver> Process for LoadTransformAndSave<Loader, Transformer, Saver>
+where
+    Loader: AssetLoader,
+    Transformer: AssetTransformer<AssetInput = Loader::Asset>,
+    Saver: AssetSaver<Asset = Transformer::AssetOutput>,
+{
+    type Settings =
+        LoadTransformAndSaveSettings<Loader::Settings, Transformer::Settings, Saver::Settings>;
+    type OutputLoader = Saver::OutputLoader;
+
+    async fn process(
+        &self,
+        context: &mut ProcessContext<'_>,
+        settings: &Self::Settings,
+        writer: &mut Writer,
+    ) -> Result<<Self::OutputLoader as AssetLoader>::Settings, ProcessError> {
+        let pre_transformed_asset = TransformedAsset::from_loaded(
+            context
+                .load_source_asset::<Loader>(&settings.loader_settings)
+                .await?,
+        );
+
+        let post_transformed_asset = self
+            .transformer
+            .transform(pre_transformed_asset, &settings.transformer_settings)
+            .await
+            .map_err(|err| ProcessError::AssetTransformError(err.into()))?;
+
+        let saved_asset =
+            SavedAsset::<Transformer::AssetOutput>::from_transformed(&post_transformed_asset);
+
+        let output_settings = self
+            .saver
+            .save(
+                writer,
+                saved_asset,
+                &settings.saver_settings,
+                context.path.clone(),
+            )
+            .await
+            .map_err(|error| ProcessError::AssetSaveError(error.into()))?;
+        Ok(output_settings)
+    }
+}
+
+/// A type-erased variant of [`Process`] that enables interacting with processor implementations without knowing
+/// their type.
+pub trait ErasedProcessor: Send + Sync {
+    /// Type-erased variant of [`Process::process`].
+    fn process<'a>(
+        &'a self,
+        context: &'a mut ProcessContext,
+        settings: &'a dyn Settings,
+        writer: &'a mut Writer,
+    ) -> BoxedFuture<'a, Result<Box<dyn AssetMetaDyn>, ProcessError>>;
+    /// Deserialized `meta` as type-erased [`AssetMeta`], operating under the assumption that it matches the meta
+    /// for the underlying [`Process`] impl.
+    fn deserialize_meta(&self, meta: &[u8]) -> Result<Box<dyn AssetMetaDyn>, DeserializeMetaError>;
+    /// Returns the type-path of the original [`Process`].
+    fn type_path(&self) -> &'static str;
+    /// Returns the short type path of this processor.
+    fn short_type_path(&self) -> &'static str;
+    /// Returns the default type-erased [`AssetMeta`] for the underlying [`Process`] impl.
+    fn default_meta(&self, processor_path_kind: MetaTypePathKind) -> Box<dyn AssetMetaDyn>;
+}
+
+/// Specifies which kind of path to use to specify a type.
+pub enum MetaTypePathKind {
+    /// Use the short type path.
+    Short,
+    /// Use the fully-qualified type path.
+    Long,
+}
+
+impl<P: Process> ErasedProcessor for P {
+    fn process<'a>(
+        &'a self,
+        context: &'a mut ProcessContext,
+        settings: &'a dyn Settings,
+        writer: &'a mut Writer,
+    ) -> BoxedFuture<'a, Result<Box<dyn AssetMetaDyn>, ProcessError>> {
+        Box::pin(async move {
+            let settings = settings.downcast_ref().ok_or(ProcessError::WrongMetaType)?;
+            let loader_settings = <P as Process>::process(self, context, settings, writer).await?;
+            let output_meta: Box<dyn AssetMetaDyn> =
+                Box::new(AssetMeta::<P::OutputLoader, ()>::new(AssetAction::Load {
+                    loader: P::OutputLoader::type_path().to_string(),
+                    settings: loader_settings,
+                }));
+            Ok(output_meta)
+        })
+    }
+
+    fn deserialize_meta(&self, meta: &[u8]) -> Result<Box<dyn AssetMetaDyn>, DeserializeMetaError> {
+        let meta: AssetMeta<(), P> = ron::de::from_bytes(meta)?;
+        Ok(Box::new(meta))
+    }
+
+    fn type_path(&self) -> &'static str {
+        P::type_path()
+    }
+
+    fn short_type_path(&self) -> &'static str {
+        P::short_type_path()
+    }
+
+    fn default_meta(&self, processor_path_kind: MetaTypePathKind) -> Box<dyn AssetMetaDyn> {
+        let type_path = match processor_path_kind {
+            MetaTypePathKind::Short => P::short_type_path(),
+            MetaTypePathKind::Long => P::type_path(),
+        };
+        Box::new(AssetMeta::<(), P>::new(AssetAction::Process {
+            processor: type_path.to_string(),
+            settings: P::Settings::default(),
+        }))
+    }
+}
+
+/// Provides scoped data access to the [`AssetProcessor`].
+/// This must only expose processor data that is represented in the asset's hash.
+pub struct ProcessContext<'a> {
+    /// The "new" processed info for the final processed asset. It is [`ProcessContext`]'s
+    /// job to populate `process_dependencies` with any asset dependencies used to process
+    /// this asset (ex: loading an asset value from the [`AssetServer`] of the [`AssetProcessor`])
+    ///
+    /// DO NOT CHANGE ANY VALUES HERE OTHER THAN APPENDING TO `process_dependencies`
+    ///
+    /// Do not expose this publicly as it would be too easily to invalidate state.
+    ///
+    /// [`AssetServer`]: crate::server::AssetServer
+    pub(crate) new_processed_info: &'a mut ProcessedInfo,
+    /// This exists to expose access to asset values (via the [`AssetServer`]).
+    ///
+    /// ANY ASSET VALUE THAT IS ACCESSED SHOULD BE ADDED TO `new_processed_info.process_dependencies`
+    ///
+    /// Do not expose this publicly as it would be too easily to invalidate state by forgetting to update
+    /// `process_dependencies`.
+    ///
+    /// [`AssetServer`]: crate::server::AssetServer
+    processor: &'a AssetProcessor,
+    path: &'a AssetPath<'static>,
+    reader: Box<dyn Reader + 'a>,
+}
+
+impl<'a> ProcessContext<'a> {
+    pub(crate) fn new(
+        processor: &'a AssetProcessor,
+        path: &'a AssetPath<'static>,
+        reader: Box<dyn Reader + 'a>,
+        new_processed_info: &'a mut ProcessedInfo,
+    ) -> Self {
+        Self {
+            processor,
+            path,
+            reader,
+            new_processed_info,
+        }
+    }
+
+    /// Load the source asset using the `L` [`AssetLoader`] and the passed in `meta` config.
+    /// This will take the "load dependencies" (asset values used when loading with `L`]) and
+    /// register them as "process dependencies" because they are asset values required to process the
+    /// current asset.
+    pub async fn load_source_asset<L: AssetLoader>(
+        &mut self,
+        settings: &L::Settings,
+    ) -> Result<LoadedAsset<L::Asset>, AssetLoadError> {
+        let server = &self.processor.server;
+        let loader_name = L::type_path();
+        let loader = server.get_asset_loader_with_type_name(loader_name).await?;
+        let loaded_asset = server
+            .load_with_settings_loader_and_reader(
+                self.path,
+                settings,
+                &*loader,
+                &mut self.reader,
+                false,
+                true,
+            )
+            .await?;
+        for (path, full_hash) in &loaded_asset.loader_dependencies {
+            self.new_processed_info
+                .process_dependencies
+                .push(ProcessDependencyInfo {
+                    full_hash: *full_hash,
+                    path: path.to_owned(),
+                });
+        }
+        // Note: we can't use unwrap because the error is the original asset (which doesn't impl
+        // Debug).
+        let Ok(loaded_asset) = loaded_asset.downcast() else {
+            // This should be impossible, since we looked up the loader by its type, and the loader
+            // type tells us its output type.
+            panic!("Loader of type L did not return asset of type L::Asset");
+        };
+        Ok(loaded_asset)
+    }
+
+    /// The path of the asset being processed.
+    #[inline]
+    pub fn path(&self) -> &AssetPath<'static> {
+        self.path
+    }
+
+    /// The reader for the asset being processed.
+    #[inline]
+    pub fn asset_reader(&mut self) -> &mut dyn Reader {
+        &mut self.reader
+    }
+}

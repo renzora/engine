@@ -1,0 +1,3849 @@
+use crate::{
+    layout::{
+        layout_tree::{ComputedLayout, TaffyStyle},
+        UiTreeDirty,
+    },
+    ui_transform::{UiGlobalTransform, UiTransform},
+    ComputedStackIndex, ContentSize, CornerRadius, FocusPolicy, UiRect, Val,
+};
+use bevy_camera::{visibility::Visibility, Camera, RenderTarget};
+use bevy_color::{Alpha, Color};
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::{prelude::*, system::SystemParam};
+use bevy_math::{Affine2, BVec2, Rect, UVec2, Vec2, Vec4, Vec4Swizzles};
+use bevy_reflect::prelude::*;
+use bevy_sprite::BorderRect;
+use bevy_text::{EmSize, RemSize, DEFAULT_REM_SIZE_PX};
+use bevy_utils::once;
+use bevy_window::{PrimaryWindow, WindowRef};
+use core::num::NonZero;
+use derive_more::derive::From;
+use smallvec::SmallVec;
+use thiserror::Error;
+use tracing::warn;
+
+/// Provides the computed size and layout properties of a UI [`Node`].
+///
+/// All of the fields are automatically calculated during `PostUpdate` in the [`UiSystems::Layout`](super::UiSystems) set.
+///
+/// The fields are measured in physical pixels.
+/// You can multiply by the `inverse_scale_factor` field to convert back to logical pixels.
+///
+/// Fields in this struct are public but should only rarely be directly modified.
+/// For example, in a scrollbar you may want to derive the handle's size from the proportion of
+/// scrollable content in-view. You can directly modify `ComputedNode` after layout to set the
+/// handle size without a frame delay.
+#[derive(Component, Debug, Copy, Clone, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, Clone)]
+#[require(ComputedStackIndex)]
+pub struct ComputedNode {
+    /// The size of the node as width and height in physical pixels.
+    pub size: Vec2,
+    /// Size of this node's content in physical pixels.
+    pub content_size: Vec2,
+    /// Space allocated for scrollbars.
+    pub scrollbar_size: Vec2,
+    /// Resolved offset of scrolled content
+    pub scroll_position: Vec2,
+    /// The width of this node's outline in physical pixels.
+    /// If this value is negative or zero then no outline will be rendered.
+    pub outline_width: f32,
+    /// The amount of space between the outline and the edge of the node.
+    pub outline_offset: f32,
+    /// The unrounded size of the node as width and height in physical pixels.
+    pub unrounded_size: Vec2,
+    /// Resolved border values in physical pixels.
+    pub border: BorderRect,
+    /// Resolved border radius values in physical pixels.
+    pub border_radius: ResolvedBorderRadius,
+    /// Resolved padding values in physical pixels.
+    pub padding: BorderRect,
+    /// Inverse scale factor for this Node.
+    /// Multiply physical coordinates by the inverse scale factor to give logical coordinates.
+    pub inverse_scale_factor: f32,
+    /// The font size used to resolve this node's `Val::Em` lengths, in logical pixels.
+    ///
+    /// Copied from the node's [`EmSize`] component during layout.
+    pub em_size: EmSize,
+    /// The root font size used to resolve this node's `Val::Rem` lengths, in logical pixels.
+    ///
+    /// Copied from the [`RemSize`] resource during layout.
+    // Stored per node rather than read from the resource because `ComputedNode` is extracted
+    // to the render world and `RemSize` is not.
+    pub rem_size: RemSize,
+}
+
+impl ComputedNode {
+    /// The calculated node size as width and height in physical pixels.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn size(&self) -> Vec2 {
+        self.size
+    }
+
+    /// The calculated node content size as width and height in physical pixels.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn content_size(&self) -> Vec2 {
+        self.content_size
+    }
+
+    /// Check if the node is empty.
+    /// A node is considered empty if it has a zero or negative extent along either of its axes.
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.size.x <= 0. || self.size.y <= 0.
+    }
+
+    /// The calculated node size as width and height in physical pixels before rounding.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn unrounded_size(&self) -> Vec2 {
+        self.unrounded_size
+    }
+
+    /// Returns the thickness of the UI node's outline in physical pixels.
+    /// If this value is negative or zero then no outline will be rendered.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn outline_width(&self) -> f32 {
+        self.outline_width
+    }
+
+    /// Returns the amount of space between the outline and the edge of the node in physical pixels.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn outline_offset(&self) -> f32 {
+        self.outline_offset
+    }
+
+    /// Returns the size of the node when including its outline.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn outlined_node_size(&self) -> Vec2 {
+        let offset = 2. * (self.outline_offset + self.outline_width);
+        Vec2::new(self.size.x + offset, self.size.y + offset)
+    }
+
+    /// Returns the border radius for each corner of the outline
+    /// An outline's border radius is derived from the node's border-radius
+    /// so that the outline wraps the border equally at all points.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn outline_radius(&self) -> ResolvedBorderRadius {
+        let outer_distance = self.outline_width + self.outline_offset;
+        const fn compute_radius(radius: Vec2, outer_distance: f32) -> Vec2 {
+            if 0. < radius.x && 0. < radius.y {
+                Vec2::new(radius.x + outer_distance, radius.y + outer_distance)
+            } else {
+                Vec2::ZERO
+            }
+        }
+        ResolvedBorderRadius {
+            top_left: compute_radius(self.border_radius.top_left, outer_distance),
+            top_right: compute_radius(self.border_radius.top_right, outer_distance),
+            bottom_right: compute_radius(self.border_radius.bottom_right, outer_distance),
+            bottom_left: compute_radius(self.border_radius.bottom_left, outer_distance),
+        }
+    }
+
+    /// Returns the thickness of the node's border on each edge in physical pixels.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn border(&self) -> BorderRect {
+        self.border
+    }
+
+    /// Returns the border radius for each of the node's corners in physical pixels.
+    ///
+    /// Automatically calculated by [`update_border_radius`](`super::layout::update_border_radius`).
+    #[inline]
+    pub const fn border_radius(&self) -> ResolvedBorderRadius {
+        self.border_radius
+    }
+
+    /// Returns the inner border radius for each of the node's corners in physical pixels.
+    pub fn inner_radius(&self) -> ResolvedBorderRadius {
+        fn clamp_corner(r: Vec2, size: Vec2, offset: Vec2) -> Vec2 {
+            r.min(0.5 * size + offset)
+        }
+        let b = Vec4::from((self.border.min_inset, self.border.max_inset));
+        let s = self.size() - b.xy() - b.zw();
+        ResolvedBorderRadius {
+            top_left: clamp_corner(self.border_radius.top_left, s, b.xy()),
+            top_right: clamp_corner(self.border_radius.top_right, s, b.zy()),
+            bottom_right: clamp_corner(self.border_radius.bottom_right, s, b.xw()),
+            bottom_left: clamp_corner(self.border_radius.bottom_left, s, b.zw()),
+        }
+    }
+
+    /// Returns the thickness of the node's padding on each edge in physical pixels.
+    ///
+    /// Automatically calculated by [`update_computed_nodes`](`super::layout::update_computed_nodes`).
+    #[inline]
+    pub const fn padding(&self) -> BorderRect {
+        self.padding
+    }
+
+    /// Returns the combined inset on each edge including both padding and border thickness in physical pixels.
+    #[inline]
+    pub fn content_inset(&self) -> BorderRect {
+        let mut content_inset = self.border + self.padding;
+        content_inset.max_inset += self.scrollbar_size;
+        content_inset
+    }
+
+    /// Returns the inverse of the scale factor for this node.
+    /// To convert from physical coordinates to logical coordinates multiply by this value.
+    #[inline]
+    pub const fn inverse_scale_factor(&self) -> f32 {
+        self.inverse_scale_factor
+    }
+
+    // Returns true if `point` within the node.
+    //
+    // Matches the sdf function in `ui.wgsl` that is used by the UI renderer to draw rounded rectangles.
+    pub fn contains_point(&self, transform: UiGlobalTransform, point: Vec2) -> bool {
+        let Some(local_point) = transform
+            .try_inverse()
+            .map(|transform| transform.transform_point2(point))
+        else {
+            return false;
+        };
+        let [top, bottom] = if local_point.x < 0. {
+            [self.border_radius.top_left, self.border_radius.bottom_left]
+        } else {
+            [
+                self.border_radius.top_right,
+                self.border_radius.bottom_right,
+            ]
+        };
+        let r = if local_point.y < 0. { top } else { bottom };
+        let corner_to_point = local_point.abs() - 0.5 * self.size;
+        let inside_straight_edge = corner_to_point.max_element() < 0.;
+        if !inside_straight_edge || r.cmple(Vec2::ZERO).any() {
+            return inside_straight_edge;
+        }
+        let q = corner_to_point + r;
+        q.cmple(Vec2::ZERO).any() || (q / r).length_squared() < 1.
+    }
+
+    /// Transform a point to normalized node space with the center of the node at the origin and the corners at [+/-0.5, +/-0.5]
+    pub fn normalize_point(&self, transform: UiGlobalTransform, point: Vec2) -> Option<Vec2> {
+        self.size
+            .cmpgt(Vec2::ZERO)
+            .all()
+            .then(|| transform.try_inverse())
+            .flatten()
+            .map(|transform| transform.transform_point2(point) / self.size)
+    }
+
+    /// Resolve the node's clipping rect in local space
+    pub fn resolve_clip_rect(
+        &self,
+        overflow: Overflow,
+        overflow_clip_margin: OverflowClipMargin,
+    ) -> Rect {
+        let mut clip_rect = Rect::from_center_size(Vec2::ZERO, self.size);
+
+        let clip_inset = match overflow_clip_margin.visual_box {
+            VisualBox::BorderBox => BorderRect::ZERO,
+            VisualBox::ContentBox => self.content_inset(),
+            VisualBox::PaddingBox => self.border(),
+        };
+
+        clip_rect =
+            clip_rect.inflate(overflow_clip_margin.margin.max(0.) / self.inverse_scale_factor);
+
+        clip_rect.min += clip_inset.min_inset;
+        clip_rect.max -= clip_inset.max_inset;
+
+        if overflow.x == OverflowAxis::Visible {
+            clip_rect.min.x = -f32::INFINITY;
+            clip_rect.max.x = f32::INFINITY;
+        }
+        if overflow.y == OverflowAxis::Visible {
+            clip_rect.min.y = -f32::INFINITY;
+            clip_rect.max.y = f32::INFINITY;
+        }
+
+        clip_rect
+    }
+
+    /// Returns the node's border-box in object-centered physical coordinates.
+    /// This is the full rectangle enclosing the node.
+    #[inline]
+    pub fn border_box(&self) -> Rect {
+        Rect::from_center_size(Vec2::ZERO, self.size)
+    }
+
+    /// Returns the node's padding-box in object-centered physical coordinates.
+    /// This is the region inside the border containing the node's padding and content areas.
+    #[inline]
+    pub fn padding_box(&self) -> Rect {
+        let mut out = self.border_box();
+        out.min += self.border.min_inset;
+        out.max -= self.border.max_inset;
+        out
+    }
+
+    /// Returns the node's content-box in object-centered physical coordinates.
+    /// This is the innermost region of the node, where its content is placed.
+    #[inline]
+    pub fn content_box(&self) -> Rect {
+        let mut out = self.border_box();
+        let content_inset = self.content_inset();
+        out.min += content_inset.min_inset;
+        out.max -= content_inset.max_inset;
+        out
+    }
+
+    const fn compute_thumb(
+        gutter_min: f32,
+        content_length: f32,
+        gutter_length: f32,
+        scroll_position: f32,
+    ) -> [f32; 2] {
+        if content_length <= gutter_length {
+            return [gutter_min, gutter_min + gutter_length];
+        }
+        let thumb_len = gutter_length * gutter_length / content_length;
+        let thumb_min = gutter_min + scroll_position * gutter_length / content_length;
+        [thumb_min, thumb_min + thumb_len]
+    }
+
+    /// Compute the bounds of the horizontal scrollbar and the thumb
+    /// in object-centered coordinates.
+    pub fn horizontal_scrollbar(&self) -> Option<(Rect, [f32; 2])> {
+        if self.scrollbar_size.y <= 0. {
+            return None;
+        }
+        let content_inset = self.content_inset();
+        let half_size = 0.5 * self.size;
+        let min_x = -half_size.x + content_inset.min_inset.x;
+        let max_x = half_size.x - content_inset.max_inset.x;
+        let min_y = half_size.y - content_inset.max_inset.y;
+        let max_y = min_y + self.scrollbar_size.y;
+        let gutter = Rect {
+            min: Vec2::new(min_x, min_y),
+            max: Vec2::new(max_x, max_y),
+        };
+        Some((
+            gutter,
+            Self::compute_thumb(
+                gutter.min.x,
+                self.content_size.x,
+                gutter.size().x,
+                self.scroll_position.x,
+            ),
+        ))
+    }
+
+    /// Compute the bounds of the vertical scrollbar and the thumb
+    /// in object-centered coordinates.
+    pub fn vertical_scrollbar(&self) -> Option<(Rect, [f32; 2])> {
+        if self.scrollbar_size.x <= 0. {
+            return None;
+        }
+        let content_inset = self.content_inset();
+        let half_size = 0.5 * self.size;
+        let min_x = half_size.x - content_inset.max_inset.x;
+        let max_x = min_x + self.scrollbar_size.x;
+        let min_y = -half_size.y + content_inset.min_inset.y;
+        let max_y = half_size.y - content_inset.max_inset.y;
+        let gutter = Rect {
+            min: Vec2::new(min_x, min_y),
+            max: Vec2::new(max_x, max_y),
+        };
+        Some((
+            gutter,
+            Self::compute_thumb(
+                gutter.min.y,
+                self.content_size.y,
+                gutter.size().y,
+                self.scroll_position.y,
+            ),
+        ))
+    }
+}
+
+impl ComputedNode {
+    pub const DEFAULT: Self = Self {
+        size: Vec2::ZERO,
+        content_size: Vec2::ZERO,
+        scrollbar_size: Vec2::ZERO,
+        scroll_position: Vec2::ZERO,
+        outline_width: 0.,
+        outline_offset: 0.,
+        unrounded_size: Vec2::ZERO,
+        border_radius: ResolvedBorderRadius::ZERO,
+        border: BorderRect::ZERO,
+        padding: BorderRect::ZERO,
+        inverse_scale_factor: 1.,
+        em_size: EmSize(DEFAULT_REM_SIZE_PX),
+        rem_size: RemSize(DEFAULT_REM_SIZE_PX),
+    };
+}
+
+impl Default for ComputedNode {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// The scroll position of the node. Values are in logical pixels, increasing from top-left to bottom-right.
+///
+/// Increasing the x-coordinate causes the scrolled content to visibly move left on the screen, while increasing the y-coordinate causes the scrolled content to move up.
+/// This might seem backwards, however what's really happening is that
+/// the scroll position is moving the visible "window" in the local coordinate system of the scrolled content -
+/// moving the window down causes the content to move up.
+///
+/// Updating the values of `ScrollPosition` will reposition the children of the node by the offset amount in logical pixels.
+/// `ScrollPosition` may be updated by the layout system when a layout change makes a previously valid `ScrollPosition` invalid.
+/// Changing this does nothing on a `Node` without setting at least one `OverflowAxis` to `OverflowAxis::Scroll`.
+#[derive(Component, Debug, Clone, Default, Deref, DerefMut, Reflect)]
+#[reflect(Component, Default, Clone)]
+pub struct ScrollPosition(pub Vec2);
+
+impl ScrollPosition {
+    pub const DEFAULT: Self = Self(Vec2::ZERO);
+}
+
+impl From<Vec2> for ScrollPosition {
+    fn from(value: Vec2) -> Self {
+        Self(value)
+    }
+}
+
+/// Controls whether a UI element ignores its parent's [`ScrollPosition`] along specific axes.
+///
+/// When an axis is set to `true`, the node will not have the parent’s scroll position applied
+/// on that axis. This can be used to keep an element visually fixed along one or both axes
+/// even when its parent UI element is scrolled.
+#[derive(Component, Debug, Clone, Default, Deref, DerefMut, Reflect)]
+#[reflect(Component, Default, Clone)]
+pub struct IgnoreScroll(pub BVec2);
+
+impl From<BVec2> for IgnoreScroll {
+    fn from(value: BVec2) -> Self {
+        Self(value)
+    }
+}
+
+/// The base component for UI entities. It describes UI layout and style properties.
+///
+/// When defining new types of UI entities, require [`Node`] to make them behave like UI nodes.
+///
+/// Nodes can be laid out using either Flexbox or CSS Grid Layout.
+///
+/// See below for general learning resources and for documentation on the individual style properties.
+///
+/// ### Flexbox
+///
+/// - [MDN: Basic Concepts of Flexbox](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Flexible_Box_Layout/Basic_Concepts_of_Flexbox)
+/// - [A Complete Guide To Flexbox](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) by CSS Tricks. This is detailed guide with illustrations and comprehensive written explanation of the different Flexbox properties and how they work.
+/// - [Flexbox Froggy](https://flexboxfroggy.com/). An interactive tutorial/game that teaches the essential parts of Flexbox in a fun engaging way.
+///
+/// ### CSS Grid
+///
+/// - [MDN: Basic Concepts of Grid Layout](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Grid_Layout/Basic_Concepts_of_Grid_Layout)
+/// - [A Complete Guide To CSS Grid](https://css-tricks.com/snippets/css/complete-guide-grid/) by CSS Tricks. This is detailed guide with illustrations and comprehensive written explanation of the different CSS Grid properties and how they work.
+/// - [CSS Grid Garden](https://cssgridgarden.com/). An interactive tutorial/game that teaches the essential parts of CSS Grid in a fun engaging way.
+///
+/// # See also
+///
+/// - [`RelativeCursorPosition`](crate::RelativeCursorPosition) to obtain the cursor position relative to this node
+
+#[derive(Component, Clone, PartialEq, Debug, Reflect)]
+#[require(
+    TaffyStyle,
+    ComputedNode,
+    ComputedStackIndex,
+    ComputedLayout,
+    ContentSize,
+    ComputedUiTargetCamera,
+    ComputedUiRenderTargetInfo,
+    UiTransform,
+    BackgroundColor,
+    BorderColor,
+    FocusPolicy,
+    ScrollPosition,
+    Visibility,
+    ZIndex,
+    EmSize,
+    UiTreeDirty
+)]
+#[reflect(Component, Default, PartialEq, Debug, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize),
+    serde(default)
+)]
+pub struct Node {
+    /// Which layout algorithm to use when laying out this node's contents:
+    ///   - [`Display::Flex`]: Use the Flexbox layout algorithm
+    ///   - [`Display::Grid`]: Use the CSS Grid layout algorithm
+    ///   - [`Display::None`]: Hide this node and perform layout as if it does not exist.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/display>
+    pub display: Display,
+
+    /// Which part of a Node's box length styles like width and height control
+    ///   - [`BoxSizing::BorderBox`]: They refer to the "border box" size (size including padding and border)
+    ///   - [`BoxSizing::ContentBox`]: They refer to the "content box" size (size excluding padding and border)
+    ///
+    /// `BoxSizing::BorderBox` is generally considered more intuitive and is the default in Bevy even though it is not on the web.
+    ///
+    /// See: <https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing>
+    pub box_sizing: BoxSizing,
+
+    /// Whether a node should be laid out in-flow with, or independently of its siblings:
+    ///  - [`PositionType::Relative`]: Layout this node in-flow with other nodes using the usual (flexbox/grid) layout algorithm.
+    ///  - [`PositionType::Absolute`]: Layout this node on top and independently of other nodes.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/position>
+    pub position_type: PositionType,
+
+    /// Whether overflowing content should be displayed or clipped.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow>
+    pub overflow: Overflow,
+
+    /// How much space in logical pixels should be reserved for scrollbars when overflow is set to scroll or auto on an axis.
+    pub scrollbar_width: f32,
+
+    /// How the bounds of clipped content should be determined
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow-clip-margin>
+    pub overflow_clip_margin: OverflowClipMargin,
+
+    /// The horizontal position of the left edge of the node.
+    ///  - For relatively positioned nodes, this is relative to the node's position as computed during regular layout.
+    ///  - For absolutely positioned nodes, this is relative to the *parent* node's bounding box.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/left>
+    pub left: Val,
+
+    /// The horizontal position of the right edge of the node.
+    ///  - For relatively positioned nodes, this is relative to the node's position as computed during regular layout.
+    ///  - For absolutely positioned nodes, this is relative to the *parent* node's bounding box.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/right>
+    pub right: Val,
+
+    /// The vertical position of the top edge of the node.
+    ///  - For relatively positioned nodes, this is relative to the node's position as computed during regular layout.
+    ///  - For absolutely positioned nodes, this is relative to the *parent* node's bounding box.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/top>
+    pub top: Val,
+
+    /// The vertical position of the bottom edge of the node.
+    ///  - For relatively positioned nodes, this is relative to the node's position as computed during regular layout.
+    ///  - For absolutely positioned nodes, this is relative to the *parent* node's bounding box.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/bottom>
+    pub bottom: Val,
+
+    /// The ideal width of the node. `width` is used when it is within the bounds defined by `min_width` and `max_width`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/width>
+    pub width: Val,
+
+    /// The ideal height of the node. `height` is used when it is within the bounds defined by `min_height` and `max_height`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/height>
+    pub height: Val,
+
+    /// The minimum width of the node. `min_width` is used if it is greater than `width` and/or `max_width`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/min-width>
+    pub min_width: Val,
+
+    /// The minimum height of the node. `min_height` is used if it is greater than `height` and/or `max_height`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/min-height>
+    pub min_height: Val,
+
+    /// The maximum width of the node. `max_width` is used if it is within the bounds defined by `min_width` and `width`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/max-width>
+    pub max_width: Val,
+
+    /// The maximum height of the node. `max_height` is used if it is within the bounds defined by `min_height` and `height`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/max-height>
+    pub max_height: Val,
+
+    /// The aspect ratio of the node (defined as `width / height`)
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/aspect-ratio>
+    pub aspect_ratio: Option<f32>,
+
+    /// Used to control how each individual item is aligned by default within the space they're given.
+    /// - For Flexbox containers, sets default cross axis alignment of the child items.
+    /// - For CSS Grid containers, controls block (vertical) axis alignment of children of this grid container within their grid areas.
+    ///
+    /// This value is overridden if [`AlignSelf`] on the child node is set.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/align-items>
+    pub align_items: AlignItems,
+
+    /// Used to control how each individual item is aligned by default within the space they're given.
+    /// - For Flexbox containers, this property has no effect. See `justify_content` for main axis alignment of flex items.
+    /// - For CSS Grid containers, sets default inline (horizontal) axis alignment of child items within their grid areas.
+    ///
+    /// This value is overridden if [`JustifySelf`] on the child node is set.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items>
+    pub justify_items: JustifyItems,
+
+    /// Used to control how the specified item is aligned within the space it's given.
+    /// - For Flexbox items, controls cross axis alignment of the item.
+    /// - For CSS Grid items, controls block (vertical) axis alignment of a grid item within its grid area.
+    ///
+    /// If set to `Auto`, alignment is inherited from the value of [`AlignItems`] set on the parent node.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/align-self>
+    pub align_self: AlignSelf,
+
+    /// Used to control how the specified item is aligned within the space it's given.
+    /// - For Flexbox items, this property has no effect. See `justify_content` for main axis alignment of flex items.
+    /// - For CSS Grid items, controls inline (horizontal) axis alignment of a grid item within its grid area.
+    ///
+    /// If set to `Auto`, alignment is inherited from the value of [`JustifyItems`] set on the parent node.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self>
+    pub justify_self: JustifySelf,
+
+    /// Used to control how items are distributed.
+    /// - For Flexbox containers, controls alignment of lines if `flex_wrap` is set to [`FlexWrap::Wrap`] and there are multiple lines of items.
+    /// - For CSS Grid containers, controls alignment of grid rows.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/align-content>
+    pub align_content: AlignContent,
+
+    /// Used to control how items are distributed.
+    /// - For Flexbox containers, controls alignment of items in the main axis.
+    /// - For CSS Grid containers, controls alignment of grid columns.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content>
+    pub justify_content: JustifyContent,
+
+    /// Sets the inline axis direction (LTR or RTL) used for layout.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/direction>
+    pub direction: InlineDirection,
+
+    /// The amount of space around a node outside its border.
+    ///
+    /// If a percentage value is used, the percentage is calculated based on the width of the parent node.
+    ///
+    /// # Example
+    /// ```
+    /// # use bevy_ui::{Node, UiRect, Val};
+    /// let node = Node {
+    ///     margin: UiRect {
+    ///         left: Val::Percent(10.),
+    ///         right: Val::Percent(10.),
+    ///         top: Val::Percent(15.),
+    ///         bottom: Val::Percent(15.)
+    ///     },
+    ///     ..Default::default()
+    /// };
+    /// ```
+    /// A node with this style and a parent with dimensions of 100px by 300px will have calculated margins of 10px on both left and right edges, and 15px on both top and bottom edges.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/margin>
+    pub margin: UiRect,
+
+    /// The amount of space between the edges of a node and its contents.
+    ///
+    /// If a percentage value is used, the percentage is calculated based on the width of the parent node.
+    ///
+    /// # Example
+    /// ```
+    /// # use bevy_ui::{Node, UiRect, Val};
+    /// let node = Node {
+    ///     padding: UiRect {
+    ///         left: Val::Percent(1.),
+    ///         right: Val::Percent(2.),
+    ///         top: Val::Percent(3.),
+    ///         bottom: Val::Percent(4.)
+    ///     },
+    ///     ..Default::default()
+    /// };
+    /// ```
+    /// A node with this style and a parent with dimensions of 300px by 100px will have calculated padding of 3px on the left, 6px on the right, 9px on the top and 12px on the bottom.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/padding>
+    pub padding: UiRect,
+
+    /// The amount of space between the margins of a node and its padding.
+    ///
+    /// If a percentage value is used, the percentage is calculated based on the width of the parent node.
+    ///
+    /// The size of the node will be expanded if there are constraints that prevent the layout algorithm from placing the border within the existing node boundary.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/border-width>
+    pub border: UiRect,
+
+    /// Used to add rounded corners to a UI node. You can set a UI node to have uniformly
+    /// rounded corners or specify different radii for each corner. If a given radius exceeds half
+    /// the length of the smallest dimension between the node's height or width, the radius will
+    /// calculated as half the smallest dimension.
+    ///
+    /// Elliptical nodes are not supported yet. Percentage values are based on the node's smallest
+    /// dimension, either width or height.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use bevy_ecs::prelude::*;
+    /// # use bevy_ui::prelude::*;
+    /// # use bevy_color::palettes::basic::{BLUE};
+    /// fn setup_ui(mut commands: Commands) {
+    ///     commands.spawn((
+    ///         Node {
+    ///             width: Val::Px(100.),
+    ///             height: Val::Px(100.),
+    ///             border: UiRect::all(Val::Px(2.)),
+    ///             border_radius: BorderRadius::new(
+    ///                 // top left
+    ///                 Val::Px(10.),
+    ///                 // top right
+    ///                 Val::Px(20.),
+    ///                 // bottom right
+    ///                 Val::Px(30.),
+    ///                 // bottom left
+    ///                 Val::Px(40.),
+    ///             ),
+    ///             ..Default::default()
+    ///         },
+    ///         BackgroundColor(BLUE.into()),
+    ///     ));
+    /// }
+    /// ```
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius>
+    pub border_radius: BorderRadius,
+
+    /// Whether a Flexbox container should be a row or a column. This property has no effect on Grid nodes.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-direction>
+    pub flex_direction: FlexDirection,
+
+    /// Whether a Flexbox container should wrap its contents onto multiple lines if they overflow. This property has no effect on Grid nodes.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-wrap>
+    pub flex_wrap: FlexWrap,
+
+    /// Defines how much a flexbox item should grow if there's space available. Defaults to 0 (don't grow at all).
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-grow>
+    pub flex_grow: f32,
+
+    /// Defines how much a flexbox item should shrink if there's not enough space available. Defaults to 1.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-shrink>
+    pub flex_shrink: f32,
+
+    /// The initial length of a flexbox in the main axis, before flex growing/shrinking properties are applied.
+    ///
+    /// `flex_basis` overrides `width` (if the main axis is horizontal) or `height` (if the main axis is vertical) when both are set, but it obeys the constraints defined by `min_width`/`min_height` and `max_width`/`max_height`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis>
+    pub flex_basis: Val,
+
+    /// The size of the gutters between items in a vertical flexbox layout or between rows in a grid layout.
+    ///
+    /// Note: Values of `Val::Auto` are not valid and are treated as zero.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/row-gap>
+    pub row_gap: Val,
+
+    /// The size of the gutters between items in a horizontal flexbox layout or between column in a grid layout.
+    ///
+    /// Note: Values of `Val::Auto` are not valid and are treated as zero.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/column-gap>
+    pub column_gap: Val,
+
+    /// Controls whether automatically placed grid items are placed row-wise or column-wise as well as whether the sparse or dense packing algorithm is used.
+    /// Only affects Grid layouts.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow>
+    pub grid_auto_flow: GridAutoFlow,
+
+    /// Defines the number of rows a grid has and the sizes of those rows. If grid items are given explicit placements then more rows may
+    /// be implicitly generated by items that are placed out of bounds. The sizes of those rows are controlled by `grid_auto_rows` property.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-rows>
+    pub grid_template_rows: Vec<RepeatedGridTrack>,
+
+    /// Defines the number of columns a grid has and the sizes of those columns. If grid items are given explicit placements then more columns may
+    /// be implicitly generated by items that are placed out of bounds. The sizes of those columns are controlled by `grid_auto_columns` property.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-columns>
+    pub grid_template_columns: Vec<RepeatedGridTrack>,
+
+    /// Defines the size of implicitly created rows. Rows are created implicitly when grid items are given explicit placements that are out of bounds
+    /// of the rows explicitly created using `grid_template_rows`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-rows>
+    pub grid_auto_rows: Vec<GridTrack>,
+    /// Defines the size of implicitly created columns. Columns are created implicitly when grid items are given explicit placements that are out of bounds
+    /// of the columns explicitly created using `grid_template_columns`.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-columns>
+    pub grid_auto_columns: Vec<GridTrack>,
+
+    /// The row in which a grid item starts and how many rows it spans.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-row>
+    pub grid_row: GridPlacement,
+
+    /// The column in which a grid item starts and how many columns it spans.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-column>
+    pub grid_column: GridPlacement,
+}
+
+impl Node {
+    pub const DEFAULT: Self = Self {
+        display: Display::DEFAULT,
+        box_sizing: BoxSizing::DEFAULT,
+        position_type: PositionType::DEFAULT,
+        left: Val::Auto,
+        right: Val::Auto,
+        top: Val::Auto,
+        bottom: Val::Auto,
+        flex_direction: FlexDirection::DEFAULT,
+        flex_wrap: FlexWrap::DEFAULT,
+        align_items: AlignItems::DEFAULT,
+        justify_items: JustifyItems::DEFAULT,
+        align_self: AlignSelf::DEFAULT,
+        justify_self: JustifySelf::DEFAULT,
+        align_content: AlignContent::DEFAULT,
+        justify_content: JustifyContent::DEFAULT,
+        direction: InlineDirection::Ltr,
+        margin: UiRect::DEFAULT,
+        padding: UiRect::DEFAULT,
+        border: UiRect::DEFAULT,
+        border_radius: BorderRadius::DEFAULT,
+        flex_grow: 0.0,
+        flex_shrink: 1.0,
+        flex_basis: Val::Auto,
+        width: Val::Auto,
+        height: Val::Auto,
+        min_width: Val::Auto,
+        min_height: Val::Auto,
+        max_width: Val::Auto,
+        max_height: Val::Auto,
+        aspect_ratio: None,
+        overflow: Overflow::DEFAULT,
+        overflow_clip_margin: OverflowClipMargin::DEFAULT,
+        scrollbar_width: 0.,
+        row_gap: Val::ZERO,
+        column_gap: Val::ZERO,
+        grid_auto_flow: GridAutoFlow::DEFAULT,
+        grid_template_rows: Vec::new(),
+        grid_template_columns: Vec::new(),
+        grid_auto_rows: Vec::new(),
+        grid_auto_columns: Vec::new(),
+        grid_column: GridPlacement::DEFAULT,
+        grid_row: GridPlacement::DEFAULT,
+    };
+}
+
+impl Default for Node {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Sets the inline axis direction (LTR or RTL) used for layout.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum InlineDirection {
+    /// Left-to-right
+    #[default]
+    Ltr,
+    /// Right-to-left
+    Rtl,
+}
+
+/// Used to control how each individual item is aligned by default within the space they're given.
+/// - For Flexbox containers, sets default cross axis alignment of the child items.
+/// - For CSS Grid containers, controls block (vertical) axis alignment of children of this grid container within their grid areas.
+///
+/// # Safe alignments
+///
+/// Safe alignments will fall back to [`Self::Start`] if aligning the items would overflow the container, so
+/// the start of the content stays visible.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/align-items>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum AlignItems {
+    /// The items are packed in their default position as if no alignment was applied.
+    Default,
+    /// The items are packed towards the start of the axis.
+    Start,
+    /// Like [`Start`](Self::Start) but safe [`safe`](Self#safe-alignments)
+    StartSafe,
+    /// The items are packed towards the end of the axis.
+    End,
+    /// Like [`End`](Self::End) but safe [`safe`](Self#safe-alignments)
+    EndSafe,
+    /// The items are packed towards the start of the axis, unless the flex direction is reversed;
+    /// then they are packed towards the end of the axis.
+    FlexStart,
+    /// Like [`FlexStart`](Self::FlexStart) but safe [`safe`](Self#safe-alignments)
+    FlexStartSafe,
+    /// The items are packed towards the end of the axis, unless the flex direction is reversed;
+    /// then they are packed towards the start of the axis.
+    FlexEnd,
+    /// Like [`FlexEnd`](Self::FlexEnd) but safe [`safe`](Self#safe-alignments)
+    FlexEndSafe,
+    /// The items are packed along the center of the axis.
+    Center,
+    /// Like [`Center`](Self::Center) but safe [`safe`](Self#safe-alignments)
+    CenterSafe,
+    /// The items are packed such that their baselines align.
+    Baseline,
+    /// The items are stretched to fill the space they're given.
+    Stretch,
+}
+
+impl AlignItems {
+    pub const DEFAULT: Self = Self::Default;
+
+    /// Returns `true` if this alignment is considered [`safe`](Self#safe-alignments).
+    pub const fn is_safe(&self) -> bool {
+        match self {
+            AlignItems::StartSafe
+            | AlignItems::CenterSafe
+            | AlignItems::EndSafe
+            | AlignItems::FlexStartSafe
+            | AlignItems::FlexEndSafe => true,
+            // Explicitly enumerate variants so we don't forget to extend this when changing them.
+            AlignItems::Default
+            | AlignItems::Start
+            | AlignItems::Center
+            | AlignItems::End
+            | AlignItems::FlexStart
+            | AlignItems::FlexEnd
+            | AlignItems::Baseline
+            | AlignItems::Stretch => false,
+        }
+    }
+
+    /// Converts `self` to a [`safe`](Self#safe-alignments) alignment if possible.
+    /// Returns `self` if there isn't a `safe` variant.
+    pub const fn to_safe(self) -> Self {
+        match self {
+            AlignItems::Start => AlignItems::StartSafe,
+            AlignItems::Center => AlignItems::CenterSafe,
+            AlignItems::End => AlignItems::EndSafe,
+            AlignItems::FlexStart => AlignItems::FlexStartSafe,
+            AlignItems::FlexEnd => AlignItems::FlexEndSafe,
+            AlignItems::Default
+            | AlignItems::StartSafe
+            | AlignItems::EndSafe
+            | AlignItems::CenterSafe
+            | AlignItems::FlexStartSafe
+            | AlignItems::FlexEndSafe
+            | AlignItems::Baseline
+            | AlignItems::Stretch => self,
+        }
+    }
+}
+
+impl Default for AlignItems {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Used to control how each individual item is aligned by default within the space they're given.
+/// - For Flexbox containers, this property has no effect. See `justify_content` for main axis alignment of flex items.
+/// - For CSS Grid containers, sets default inline (horizontal) axis alignment of child items within their grid areas.
+///
+/// # Safe alignments
+///
+/// Safe alignments will fall back to [`Self::Start`] if aligning the items would overflow the container, so
+/// the start of the content stays visible.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-items>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum JustifyItems {
+    /// The items are packed in their default position as if no alignment was applied.
+    Default,
+    /// The items are packed towards the start of the axis.
+    Start,
+    /// Like [`Start`](Self::Start) but safe [`safe`](Self#safe-alignments)
+    StartSafe,
+    /// The items are packed towards the end of the axis.
+    End,
+    /// Like [`End`](Self::End) but safe [`safe`](Self#safe-alignments)
+    EndSafe,
+    /// The items are packed along the center of the axis
+    Center,
+    /// Like [`Center`](Self::Center) but safe [`safe`](Self#safe-alignments)
+    CenterSafe,
+    /// The items are packed such that their baselines align.
+    Baseline,
+    /// The items are stretched to fill the space they're given.
+    Stretch,
+}
+
+impl JustifyItems {
+    pub const DEFAULT: Self = Self::Default;
+
+    /// Returns `true` if this alignment is considered [`safe`](Self#safe-alignments).
+    pub const fn is_safe(&self) -> bool {
+        match self {
+            JustifyItems::StartSafe | JustifyItems::CenterSafe | JustifyItems::EndSafe => true,
+            // Explicitly enumerate variants so we don't forget to extend this when changing them.
+            JustifyItems::Default
+            | JustifyItems::Start
+            | JustifyItems::Center
+            | JustifyItems::End
+            | JustifyItems::Baseline
+            | JustifyItems::Stretch => false,
+        }
+    }
+
+    /// Converts `self` to a [`safe`](Self#safe-alignments) alignment if possible.
+    /// Returns `self` if there isn't a `safe` variant.
+    pub const fn to_safe(self) -> Self {
+        match self {
+            JustifyItems::Start => JustifyItems::StartSafe,
+            JustifyItems::Center => JustifyItems::CenterSafe,
+            JustifyItems::End => JustifyItems::EndSafe,
+            JustifyItems::Default
+            | JustifyItems::StartSafe
+            | JustifyItems::EndSafe
+            | JustifyItems::CenterSafe
+            | JustifyItems::Baseline
+            | JustifyItems::Stretch => self,
+        }
+    }
+}
+
+impl Default for JustifyItems {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Used to control how the specified item is aligned within the space it's given.
+/// - For Flexbox items, controls cross axis alignment of the item.
+/// - For CSS Grid items, controls block (vertical) axis alignment of a grid item within its grid area.
+///
+/// # Safe alignments
+///
+/// Safe alignments will fall back to [`Self::Start`] if aligning the items would overflow the container, so
+/// the start of the content stays visible.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/align-self>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum AlignSelf {
+    /// Use the parent node's [`AlignItems`] value to determine how this item should be aligned.
+    Auto,
+    /// This item will be aligned with the start of the axis.
+    Start,
+    /// Like [`Start`](Self::Start) but safe [`safe`](Self#safe-alignments)
+    StartSafe,
+    /// This item will be aligned with the end of the axis.
+    End,
+    /// Like [`End`](Self::End) but safe [`safe`](Self#safe-alignments)
+    EndSafe,
+    /// This item will be aligned with the start of the axis, unless the flex direction is reversed;
+    /// then it will be aligned with the end of the axis.
+    FlexStart,
+    /// Like [`FlexStart`](Self::FlexStart) but safe [`safe`](Self#safe-alignments)
+    FlexStartSafe,
+    /// This item will be aligned with the end of the axis, unless the flex direction is reversed;
+    /// then it will be aligned with the start of the axis.
+    FlexEnd,
+    /// Like [`FlexEnd`](Self::FlexEnd) but safe [`safe`](Self#safe-alignments)
+    FlexEndSafe,
+    /// This item will be aligned along the center of the axis.
+    Center,
+    /// Like [`Center`](Self::Center) but safe [`safe`](Self#safe-alignments)
+    CenterSafe,
+    /// This item will be aligned at the baseline.
+    Baseline,
+    /// This item will be stretched to fill the container.
+    Stretch,
+}
+
+impl AlignSelf {
+    pub const DEFAULT: Self = Self::Auto;
+
+    /// Returns `true` if this alignment is considered [`safe`](Self#safe-alignments).
+    pub const fn is_safe(&self) -> bool {
+        match self {
+            AlignSelf::StartSafe
+            | AlignSelf::CenterSafe
+            | AlignSelf::EndSafe
+            | AlignSelf::FlexStartSafe
+            | AlignSelf::FlexEndSafe => true,
+            // Explicitly enumerate variants so we don't forget to extend this when changing them.
+            AlignSelf::Start
+            | AlignSelf::Center
+            | AlignSelf::End
+            | AlignSelf::FlexStart
+            | AlignSelf::FlexEnd
+            | AlignSelf::Stretch
+            | AlignSelf::Auto
+            | AlignSelf::Baseline => false,
+        }
+    }
+
+    /// Converts `self` to a [`safe`](Self#safe-alignments) alignment if possible.
+    /// Returns `self` if there isn't a `safe` variant.
+    pub const fn to_safe(self) -> Self {
+        match self {
+            AlignSelf::Start => AlignSelf::StartSafe,
+            AlignSelf::Center => AlignSelf::CenterSafe,
+            AlignSelf::End => AlignSelf::EndSafe,
+            AlignSelf::FlexStart => AlignSelf::FlexStartSafe,
+            AlignSelf::FlexEnd => AlignSelf::FlexEndSafe,
+            AlignSelf::StartSafe
+            | AlignSelf::EndSafe
+            | AlignSelf::CenterSafe
+            | AlignSelf::FlexStartSafe
+            | AlignSelf::FlexEndSafe
+            | AlignSelf::Stretch
+            | AlignSelf::Auto
+            | AlignSelf::Baseline => self,
+        }
+    }
+}
+
+impl Default for AlignSelf {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Used to control how the specified item is aligned within the space it's given.
+/// - For children of flex nodes, this property has no effect. See `justify_content` for main axis alignment of flex items.
+/// - For CSS Grid items, controls inline (horizontal) axis alignment of a grid item within its grid area.
+///
+/// # Safe alignments
+///
+/// Safe alignments will fall back to [`Self::Start`] if aligning the items would overflow the container, so
+/// the start of the content stays visible.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-self>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum JustifySelf {
+    /// Use the parent node's [`JustifyItems`] value to determine how this item should be aligned.
+    Auto,
+    /// This item will be aligned with the start of the axis.
+    Start,
+    /// Like [`Start`](Self::Start) but safe [`safe`](Self#safe-alignments)
+    StartSafe,
+    /// This item will be aligned with the end of the axis.
+    End,
+    /// Like [`End`](Self::End) but safe [`safe`](Self#safe-alignments)
+    EndSafe,
+    /// This item will be aligned along the center of the axis.
+    Center,
+    /// Like [`Center`](Self::Center) but safe [`safe`](Self#safe-alignments)
+    CenterSafe,
+    /// This item will be aligned at the baseline.
+    Baseline,
+    /// This item will be stretched to fill the space it's given.
+    Stretch,
+}
+
+impl JustifySelf {
+    pub const DEFAULT: Self = Self::Auto;
+
+    /// Returns `true` if this alignment is considered [`safe`](Self#safe-alignments).
+    pub const fn is_safe(&self) -> bool {
+        match self {
+            JustifySelf::StartSafe | JustifySelf::CenterSafe | JustifySelf::EndSafe => true,
+            // Explicitly enumerate variants so we don't forget to extend this when changing them.
+            JustifySelf::Start
+            | JustifySelf::Center
+            | JustifySelf::End
+            | JustifySelf::Auto
+            | JustifySelf::Stretch
+            | JustifySelf::Baseline => false,
+        }
+    }
+
+    /// Converts `self` to a [`safe`](Self#safe-alignments) alignment if possible.
+    /// Returns `self` if there isn't a `safe` variant.
+    pub const fn to_safe(self) -> Self {
+        match self {
+            JustifySelf::Start => JustifySelf::StartSafe,
+            JustifySelf::Center => JustifySelf::CenterSafe,
+            JustifySelf::End => JustifySelf::EndSafe,
+            JustifySelf::StartSafe
+            | JustifySelf::EndSafe
+            | JustifySelf::CenterSafe
+            | JustifySelf::Auto
+            | JustifySelf::Stretch
+            | JustifySelf::Baseline => self,
+        }
+    }
+}
+
+impl Default for JustifySelf {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Used to control how items are distributed.
+/// - For Flexbox containers, controls alignment of lines if `flex_wrap` is set to [`FlexWrap::Wrap`] and there are multiple lines of items.
+/// - For CSS Grid containers, controls alignment of grid rows.
+///
+/// # Safe alignments
+///
+/// Safe alignments will fall back to [`Self::Start`] if aligning the items would overflow the container, so
+/// the start of the content stays visible.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/align-content>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum AlignContent {
+    /// The items are packed in their default position as if no alignment was applied.
+    Default,
+    /// The items are packed towards the start of the axis.
+    Start,
+    /// Like [`Start`](Self::Start) but safe [`safe`](Self#safe-alignments)
+    StartSafe,
+    /// The items are packed towards the end of the axis.
+    End,
+    /// Like [`End`](Self::End) but safe [`safe`](Self#safe-alignments)
+    EndSafe,
+    /// The items are packed towards the start of the axis, unless the flex direction is reversed;
+    /// then the items are packed towards the end of the axis.
+    FlexStart,
+    /// Like [`FlexStart`](Self::FlexStart) but safe [`safe`](Self#safe-alignments)
+    FlexStartSafe,
+    /// The items are packed towards the end of the axis, unless the flex direction is reversed;
+    /// then the items are packed towards the start of the axis.
+    FlexEnd,
+    /// Like [`FlexEnd`](Self::FlexEnd) but safe [`safe`](Self#safe-alignments)
+    FlexEndSafe,
+    /// The items are packed along the center of the axis.
+    Center,
+    /// Like [`Center`](Self::Center) but safe [`safe`](Self#safe-alignments)
+    CenterSafe,
+    /// The items are stretched to fill the container along the axis.
+    Stretch,
+    /// The items are distributed such that the gap between any two items is equal.
+    SpaceBetween,
+    /// The items are distributed such that the gap between and around any two items is equal.
+    SpaceEvenly,
+    /// The items are distributed such that the gap between and around any two items is equal, with half-size gaps on either end.
+    SpaceAround,
+}
+
+impl AlignContent {
+    pub const DEFAULT: Self = Self::Default;
+
+    /// Returns `true` if this alignment is considered [`safe`](Self#safe-alignments).
+    pub const fn is_safe(&self) -> bool {
+        match self {
+            AlignContent::StartSafe
+            | AlignContent::CenterSafe
+            | AlignContent::EndSafe
+            | AlignContent::FlexStartSafe
+            | AlignContent::FlexEndSafe => true,
+            // Explicitly enumerate variants so we don't forget to extend this when changing them.
+            AlignContent::Default
+            | AlignContent::Start
+            | AlignContent::Center
+            | AlignContent::End
+            | AlignContent::FlexStart
+            | AlignContent::FlexEnd
+            | AlignContent::Stretch
+            | AlignContent::SpaceBetween
+            | AlignContent::SpaceEvenly
+            | AlignContent::SpaceAround => false,
+        }
+    }
+
+    /// Converts `self` to a [`safe`](Self#safe-alignments) alignment if possible.
+    /// Returns `self` if there isn't a `safe` variant.
+    pub const fn to_safe(self) -> Self {
+        match self {
+            AlignContent::Start => AlignContent::StartSafe,
+            AlignContent::Center => AlignContent::CenterSafe,
+            AlignContent::End => AlignContent::EndSafe,
+            AlignContent::FlexStart => AlignContent::FlexStartSafe,
+            AlignContent::FlexEnd => AlignContent::FlexEndSafe,
+            AlignContent::Default
+            | AlignContent::StartSafe
+            | AlignContent::EndSafe
+            | AlignContent::CenterSafe
+            | AlignContent::FlexStartSafe
+            | AlignContent::FlexEndSafe
+            | AlignContent::Stretch
+            | AlignContent::SpaceBetween
+            | AlignContent::SpaceEvenly
+            | AlignContent::SpaceAround => self,
+        }
+    }
+}
+
+impl Default for AlignContent {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Used to control how items are distributed.
+/// - For Flexbox containers, controls alignment of items in the main axis.
+/// - For CSS Grid containers, controls alignment of grid columns.
+///
+/// # Safe alignments
+///
+/// Safe alignments will fall back to [`Self::Start`] if aligning the items would overflow the container, so
+/// the start of the content stays visible.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/justify-content>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum JustifyContent {
+    /// The items are packed in their default position as if no alignment was applied.
+    Default,
+    /// The items are packed towards the start of the axis.
+    Start,
+    /// Like [`Start`](Self::Start) but safe [`safe`](Self#safe-alignments)
+    StartSafe,
+    /// The items are packed towards the end of the axis.
+    End,
+    /// Like [`End`](Self::End) but safe [`safe`](Self#safe-alignments)
+    EndSafe,
+    /// The items are packed towards the start of the axis, unless the flex direction is reversed;
+    /// then the items are packed towards the end of the axis.
+    FlexStart,
+    /// Like [`FlexStart`](Self::FlexStart) but safe [`safe`](Self#safe-alignments)
+    FlexStartSafe,
+    /// The items are packed towards the end of the axis, unless the flex direction is reversed;
+    /// then the items are packed towards the start of the axis.
+    FlexEnd,
+    /// Like [`FlexEnd`](Self::FlexEnd) but safe [`safe`](Self#safe-alignments)
+    FlexEndSafe,
+    /// The items are packed along the center of the axis.
+    Center,
+    /// Like [`Center`](Self::Center) but safe [`safe`](Self#safe-alignments)
+    CenterSafe,
+    /// The items are stretched to fill the container along the axis.
+    Stretch,
+    /// The items are distributed such that the gap between any two items is equal.
+    SpaceBetween,
+    /// The items are distributed such that the gap between and around any two items is equal.
+    SpaceEvenly,
+    /// The items are distributed such that the gap between and around any two items is equal, with half-size gaps on either end.
+    SpaceAround,
+}
+
+impl JustifyContent {
+    pub const DEFAULT: Self = Self::Default;
+
+    /// Returns `true` if this alignment is considered [`safe`](Self#safe-alignments).
+    pub const fn is_safe(&self) -> bool {
+        match self {
+            JustifyContent::StartSafe
+            | JustifyContent::CenterSafe
+            | JustifyContent::EndSafe
+            | JustifyContent::FlexStartSafe
+            | JustifyContent::FlexEndSafe => true,
+            // Explicitly enumerate variants so we don't forget to extend this when changing them.
+            JustifyContent::Default
+            | JustifyContent::Start
+            | JustifyContent::Center
+            | JustifyContent::End
+            | JustifyContent::FlexStart
+            | JustifyContent::FlexEnd
+            | JustifyContent::Stretch
+            | JustifyContent::SpaceBetween
+            | JustifyContent::SpaceEvenly
+            | JustifyContent::SpaceAround => false,
+        }
+    }
+
+    /// Converts `self` to a [`safe`](Self#safe-alignments) alignment if possible.
+    /// Returns `self` if there isn't a `safe` variant.
+    pub const fn to_safe(self) -> Self {
+        match self {
+            JustifyContent::Start => JustifyContent::StartSafe,
+            JustifyContent::Center => JustifyContent::CenterSafe,
+            JustifyContent::End => JustifyContent::EndSafe,
+            JustifyContent::FlexStart => JustifyContent::FlexStartSafe,
+            JustifyContent::FlexEnd => JustifyContent::FlexEndSafe,
+            JustifyContent::Default
+            | JustifyContent::StartSafe
+            | JustifyContent::EndSafe
+            | JustifyContent::CenterSafe
+            | JustifyContent::FlexStartSafe
+            | JustifyContent::FlexEndSafe
+            | JustifyContent::Stretch
+            | JustifyContent::SpaceBetween
+            | JustifyContent::SpaceEvenly
+            | JustifyContent::SpaceAround => self,
+        }
+    }
+}
+
+impl Default for JustifyContent {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Defines the layout model used by this node.
+///
+/// Part of the [`Node`] component.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum Display {
+    /// Use Flexbox layout model to determine the position of this [`Node`]'s children.
+    Flex,
+    /// Use CSS Grid layout model to determine the position of this [`Node`]'s children.
+    Grid,
+    /// Use CSS Block layout model to determine the position of this [`Node`]'s children.
+    Block,
+    /// Use no layout, don't render this node and its children.
+    ///
+    /// If you want to hide a node and its children,
+    /// but keep its layout in place, set its [`Visibility`] component instead.
+    None,
+}
+
+impl Display {
+    pub const DEFAULT: Self = Self::Flex;
+}
+
+impl Default for Display {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Which part of a Node's box length styles like width and height control
+///
+/// See: <https://developer.mozilla.org/en-US/docs/Web/CSS/box-sizing>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum BoxSizing {
+    /// Length styles like width and height refer to the "border box" size (size including padding and border)
+    BorderBox,
+    /// Length styles like width and height refer to the "content box" size (size excluding padding and border)
+    ContentBox,
+}
+
+impl BoxSizing {
+    pub const DEFAULT: Self = Self::BorderBox;
+}
+
+impl Default for BoxSizing {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Defines how flexbox items are ordered within a flexbox
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum FlexDirection {
+    /// Same way as text direction along the main axis.
+    Row,
+    /// Flex from top to bottom.
+    Column,
+    /// Opposite way as text direction along the main axis.
+    RowReverse,
+    /// Flex from bottom to top.
+    ColumnReverse,
+}
+
+impl FlexDirection {
+    pub const DEFAULT: Self = Self::Row;
+}
+
+impl Default for FlexDirection {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Whether to show or hide overflowing items
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct Overflow {
+    /// Whether to show or clip overflowing items on the x axis
+    pub x: OverflowAxis,
+    /// Whether to show or clip overflowing items on the y axis
+    pub y: OverflowAxis,
+}
+
+impl Overflow {
+    pub const DEFAULT: Self = Self {
+        x: OverflowAxis::DEFAULT,
+        y: OverflowAxis::DEFAULT,
+    };
+
+    /// Show overflowing items on both axes
+    pub const fn visible() -> Self {
+        Self {
+            x: OverflowAxis::Visible,
+            y: OverflowAxis::Visible,
+        }
+    }
+
+    /// Clip overflowing items on both axes
+    pub const fn clip() -> Self {
+        Self {
+            x: OverflowAxis::Clip,
+            y: OverflowAxis::Clip,
+        }
+    }
+
+    /// Clip overflowing items on the x axis
+    pub const fn clip_x() -> Self {
+        Self {
+            x: OverflowAxis::Clip,
+            y: OverflowAxis::Visible,
+        }
+    }
+
+    /// Clip overflowing items on the y axis
+    pub const fn clip_y() -> Self {
+        Self {
+            x: OverflowAxis::Visible,
+            y: OverflowAxis::Clip,
+        }
+    }
+
+    /// Hide overflowing items on both axes by influencing layout and then clipping
+    pub const fn hidden() -> Self {
+        Self {
+            x: OverflowAxis::Hidden,
+            y: OverflowAxis::Hidden,
+        }
+    }
+
+    /// Hide overflowing items on the x axis by influencing layout and then clipping
+    pub const fn hidden_x() -> Self {
+        Self {
+            x: OverflowAxis::Hidden,
+            y: OverflowAxis::Visible,
+        }
+    }
+
+    /// Hide overflowing items on the y axis by influencing layout and then clipping
+    pub const fn hidden_y() -> Self {
+        Self {
+            x: OverflowAxis::Visible,
+            y: OverflowAxis::Hidden,
+        }
+    }
+
+    /// Overflow is visible on both axes
+    pub const fn is_visible(&self) -> bool {
+        self.x.is_visible() && self.y.is_visible()
+    }
+
+    pub const fn scroll() -> Self {
+        Self {
+            x: OverflowAxis::Scroll,
+            y: OverflowAxis::Scroll,
+        }
+    }
+
+    /// Scroll overflowing items on the x axis
+    pub const fn scroll_x() -> Self {
+        Self {
+            x: OverflowAxis::Scroll,
+            y: OverflowAxis::Visible,
+        }
+    }
+
+    /// Scroll overflowing items on the y axis
+    pub const fn scroll_y() -> Self {
+        Self {
+            x: OverflowAxis::Visible,
+            y: OverflowAxis::Scroll,
+        }
+    }
+}
+
+impl Default for Overflow {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Whether to show or hide overflowing items
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum OverflowAxis {
+    /// Show overflowing items.
+    Visible,
+    /// Hide overflowing items by clipping.
+    Clip,
+    /// Hide overflowing items by influencing layout and then clipping.
+    Hidden,
+    /// Scroll overflowing items.
+    Scroll,
+}
+
+impl OverflowAxis {
+    pub const DEFAULT: Self = Self::Visible;
+
+    /// Overflow is visible on this axis
+    pub const fn is_visible(&self) -> bool {
+        matches!(self, Self::Visible)
+    }
+}
+
+impl Default for OverflowAxis {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// The bounds of the visible area when a UI node is clipped.
+#[derive(Default, Copy, Clone, PartialEq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct OverflowClipMargin {
+    /// Visible unclipped area
+    pub visual_box: VisualBox,
+    /// Width of the margin on each edge of the visual box in logical pixels.
+    /// The width of the margin will be zero if a negative value is set.
+    pub margin: f32,
+}
+
+impl OverflowClipMargin {
+    pub const DEFAULT: Self = Self {
+        visual_box: VisualBox::PaddingBox,
+        margin: 0.,
+    };
+
+    /// Clip any content that overflows outside the content box
+    pub const fn content_box() -> Self {
+        Self {
+            visual_box: VisualBox::ContentBox,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Clip any content that overflows outside the padding box
+    pub const fn padding_box() -> Self {
+        Self {
+            visual_box: VisualBox::PaddingBox,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Clip any content that overflows outside the border box
+    pub const fn border_box() -> Self {
+        Self {
+            visual_box: VisualBox::BorderBox,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Add a margin on each edge of the visual box in logical pixels.
+    /// The width of the margin will be zero if a negative value is set.
+    pub const fn with_margin(mut self, margin: f32) -> Self {
+        self.margin = margin;
+        self
+    }
+}
+
+/// Used to determine which region of a UI node is used for visual bounds.
+#[derive(Default, Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum VisualBox {
+    /// Use the content box.
+    ContentBox,
+    /// Use the padding box.
+    #[default]
+    PaddingBox,
+    /// Use the border box.
+    BorderBox,
+}
+
+/// The strategy used to position this node
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum PositionType {
+    /// Relative to all other nodes with the [`PositionType::Relative`] value.
+    Relative,
+    /// Independent of all other nodes, but relative to its parent node.
+    Absolute,
+}
+
+impl PositionType {
+    pub const DEFAULT: Self = Self::Relative;
+}
+
+impl Default for PositionType {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Defines if flexbox items appear on a single line or on multiple lines
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum FlexWrap {
+    /// Single line, will overflow if needed.
+    NoWrap,
+    /// Multiple lines, if needed.
+    Wrap,
+    /// Same as [`FlexWrap::Wrap`] but new lines will appear before the previous one.
+    WrapReverse,
+}
+
+impl FlexWrap {
+    pub const DEFAULT: Self = Self::NoWrap;
+}
+
+impl Default for FlexWrap {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Controls whether grid items are placed row-wise or column-wise as well as whether the sparse or dense packing algorithm is used.
+///
+/// The "dense" packing algorithm attempts to fill in holes earlier in the grid, if smaller items come up later.
+/// This may cause items to appear out-of-order when doing so would fill in holes left by larger items.
+///
+/// Defaults to [`GridAutoFlow::Row`].
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow>
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum GridAutoFlow {
+    /// Items are placed by filling each row in turn, adding new rows as necessary.
+    Row,
+    /// Items are placed by filling each column in turn, adding new columns as necessary.
+    Column,
+    /// Combines `Row` with the dense packing algorithm.
+    RowDense,
+    /// Combines `Column` with the dense packing algorithm.
+    ColumnDense,
+}
+
+impl GridAutoFlow {
+    pub const DEFAULT: Self = Self::Row;
+}
+
+impl Default for GridAutoFlow {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Default, Copy, Clone, PartialEq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum MinTrackSizingFunction {
+    /// Track minimum size should be a fixed pixel value
+    Px(f32),
+    /// Track minimum size should be a percentage value
+    Percent(f32),
+    /// Track minimum size should be a multiple of the grid container's font size.
+    Em(f32),
+    /// Track minimum size should be a multiple of the root font size.
+    Rem(f32),
+    /// Track minimum size should be content sized under a min-content constraint
+    MinContent,
+    /// Track minimum size should be content sized under a max-content constraint
+    MaxContent,
+    /// Track minimum size should be automatically sized
+    #[default]
+    Auto,
+    /// Track minimum size should be a percent of the viewport's smaller dimension.
+    VMin(f32),
+    /// Track minimum size should be a percent of the viewport's larger dimension.
+    VMax(f32),
+    /// Track minimum size should be a percent of the viewport's height dimension.
+    Vh(f32),
+    /// Track minimum size should be a percent of the viewport's width dimension.
+    Vw(f32),
+}
+
+#[derive(Default, Copy, Clone, PartialEq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum MaxTrackSizingFunction {
+    /// Track maximum size should be a fixed pixel value
+    Px(f32),
+    /// Track maximum size should be a percentage value
+    Percent(f32),
+    /// Track maximum size should be a multiple of the grid container's font size.
+    Em(f32),
+    /// Track maximum size should be a multiple of the root font size.
+    Rem(f32),
+    /// Track maximum size should be content sized under a min-content constraint
+    MinContent,
+    /// Track maximum size should be content sized under a max-content constraint
+    MaxContent,
+    /// Track maximum size should be sized according to the fit-content formula with a fixed pixel limit
+    FitContentPx(f32),
+    /// Track maximum size should be sized according to the fit-content formula with a percentage limit
+    FitContentPercent(f32),
+    /// Track maximum size should be automatically sized
+    #[default]
+    Auto,
+    /// The dimension as a fraction of the total available grid space (`fr` units in CSS)
+    /// Specified value is the numerator of the fraction. Denominator is the sum of all fractions specified in that grid dimension.
+    ///
+    /// Spec: <https://www.w3.org/TR/css3-grid-layout/#fr-unit>
+    Fraction(f32),
+    /// Track maximum size should be a percent of the viewport's smaller dimension.
+    VMin(f32),
+    /// Track maximum size should be a percent of the viewport's smaller dimension.
+    VMax(f32),
+    /// Track maximum size should be a percent of the viewport's height dimension.
+    Vh(f32),
+    /// Track maximum size should be a percent of the viewport's width dimension.
+    Vw(f32),
+}
+
+/// A [`GridTrack`] is a Row or Column of a CSS Grid. This struct specifies what size the track should be.
+/// See below for the different "track sizing functions" you can specify.
+#[derive(Copy, Clone, PartialEq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct GridTrack {
+    pub(crate) min_sizing_function: MinTrackSizingFunction,
+    pub(crate) max_sizing_function: MaxTrackSizingFunction,
+}
+
+impl GridTrack {
+    pub const DEFAULT: Self = Self {
+        min_sizing_function: MinTrackSizingFunction::Auto,
+        max_sizing_function: MaxTrackSizingFunction::Auto,
+    };
+
+    /// Create a grid track with a fixed pixel size
+    pub fn px<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Px(value),
+            max_sizing_function: MaxTrackSizingFunction::Px(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with a percentage size
+    pub fn percent<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Percent(value),
+            max_sizing_function: MaxTrackSizingFunction::Percent(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with size as a multiple of the grid container's font size.
+    pub fn em<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Em(value),
+            max_sizing_function: MaxTrackSizingFunction::Em(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with size as a multiple of the root font size.
+    pub fn rem<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Rem(value),
+            max_sizing_function: MaxTrackSizingFunction::Rem(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with an `fr` size.
+    /// Note that this will give the track a content-based minimum size.
+    /// Usually you are best off using `GridTrack::flex` instead which uses a zero minimum size.
+    pub fn fr<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Auto,
+            max_sizing_function: MaxTrackSizingFunction::Fraction(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with a `minmax(0, Nfr)` size.
+    pub fn flex<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Px(0.0),
+            max_sizing_function: MaxTrackSizingFunction::Fraction(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track which is automatically sized to fit its contents.
+    pub fn auto<T: From<Self>>() -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Auto,
+            max_sizing_function: MaxTrackSizingFunction::Auto,
+        }
+        .into()
+    }
+
+    /// Create a grid track which is automatically sized to fit its contents when sized at their "min-content" sizes
+    pub fn min_content<T: From<Self>>() -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::MinContent,
+            max_sizing_function: MaxTrackSizingFunction::MinContent,
+        }
+        .into()
+    }
+
+    /// Create a grid track which is automatically sized to fit its contents when sized at their "max-content" sizes
+    pub fn max_content<T: From<Self>>() -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::MaxContent,
+            max_sizing_function: MaxTrackSizingFunction::MaxContent,
+        }
+        .into()
+    }
+
+    /// Create a `fit-content()` grid track with fixed pixel limit.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/fit-content_function>
+    pub fn fit_content_px<T: From<Self>>(limit: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Auto,
+            max_sizing_function: MaxTrackSizingFunction::FitContentPx(limit),
+        }
+        .into()
+    }
+
+    /// Create a `fit-content()` grid track with percentage limit.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/fit-content_function>
+    pub fn fit_content_percent<T: From<Self>>(limit: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Auto,
+            max_sizing_function: MaxTrackSizingFunction::FitContentPercent(limit),
+        }
+        .into()
+    }
+
+    /// Create a `minmax()` grid track.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/minmax>
+    pub fn minmax<T: From<Self>>(min: MinTrackSizingFunction, max: MaxTrackSizingFunction) -> T {
+        Self {
+            min_sizing_function: min,
+            max_sizing_function: max,
+        }
+        .into()
+    }
+
+    /// Create a grid track with a percentage of the viewport's smaller dimension
+    pub fn vmin<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::VMin(value),
+            max_sizing_function: MaxTrackSizingFunction::VMin(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with a percentage of the viewport's larger dimension
+    pub fn vmax<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::VMax(value),
+            max_sizing_function: MaxTrackSizingFunction::VMax(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with a percentage of the viewport's height dimension
+    pub fn vh<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Vh(value),
+            max_sizing_function: MaxTrackSizingFunction::Vh(value),
+        }
+        .into()
+    }
+
+    /// Create a grid track with a percentage of the viewport's width dimension
+    pub fn vw<T: From<Self>>(value: f32) -> T {
+        Self {
+            min_sizing_function: MinTrackSizingFunction::Vw(value),
+            max_sizing_function: MaxTrackSizingFunction::Vw(value),
+        }
+        .into()
+    }
+}
+
+impl Default for GridTrack {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug, Reflect, From)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+/// How many times to repeat a repeated grid track
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/repeat>
+pub enum GridTrackRepetition {
+    /// Repeat the track fixed number of times
+    Count(u16),
+    /// Repeat the track to fill available space
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/repeat#auto-fill>
+    AutoFill,
+    /// Repeat the track to fill available space but collapse any tracks that do not end up with
+    /// an item placed in them.
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/CSS/repeat#auto-fit>
+    AutoFit,
+}
+
+impl Default for GridTrackRepetition {
+    fn default() -> Self {
+        Self::Count(1)
+    }
+}
+
+impl From<i32> for GridTrackRepetition {
+    fn from(count: i32) -> Self {
+        Self::Count(count as u16)
+    }
+}
+
+impl From<usize> for GridTrackRepetition {
+    fn from(count: usize) -> Self {
+        Self::Count(count as u16)
+    }
+}
+
+/// Represents a *possibly* repeated [`GridTrack`].
+///
+/// The repetition parameter can either be:
+///   - The integer `1`, in which case the track is non-repeated.
+///   - a `u16` count to repeat the track N times.
+///   - A `GridTrackRepetition::AutoFit` or `GridTrackRepetition::AutoFill`.
+///
+/// Note: that in the common case you want a non-repeating track (repetition count 1), you may use the constructor methods on [`GridTrack`]
+/// to create a `RepeatedGridTrack`. i.e. `GridTrack::px(10.0)` is equivalent to `RepeatedGridTrack::px(1, 10.0)`.
+///
+/// You may only use one auto-repetition per track list. And if your track list contains an auto repetition
+/// then all tracks (in and outside of the repetition) must be fixed size (px or percent). Integer repetitions are just shorthand for writing out
+/// N tracks longhand and are not subject to the same limitations.
+#[derive(Clone, PartialEq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct RepeatedGridTrack {
+    pub(crate) repetition: GridTrackRepetition,
+    pub(crate) tracks: SmallVec<[GridTrack; 1]>,
+}
+
+impl RepeatedGridTrack {
+    /// Create a repeating set of grid tracks with a fixed pixel size
+    pub fn px<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::px(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with a percentage size
+    pub fn percent<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::percent(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with size as a multiple of the grid container's font size.
+    pub fn em<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::em(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with size as a multiple of the root font size.
+    pub fn rem<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::rem(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with automatic size
+    pub fn auto<T: From<Self>>(repetition: u16) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::auto()]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with an `fr` size.
+    /// Note that this will give the track a content-based minimum size.
+    /// Usually you are best off using `GridTrack::flex` instead which uses a zero minimum size.
+    pub fn fr<T: From<Self>>(repetition: u16, value: f32) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::fr(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with a `minmax(0, Nfr)` size.
+    pub fn flex<T: From<Self>>(repetition: u16, value: f32) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::flex(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with min-content size
+    pub fn min_content<T: From<Self>>(repetition: u16) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::min_content()]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with max-content size
+    pub fn max_content<T: From<Self>>(repetition: u16) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::max_content()]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of `fit-content()` grid tracks with fixed pixel limit
+    pub fn fit_content_px<T: From<Self>>(repetition: u16, limit: f32) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::fit_content_px(limit)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of `fit-content()` grid tracks with percentage limit
+    pub fn fit_content_percent<T: From<Self>>(repetition: u16, limit: f32) -> T {
+        Self {
+            repetition: GridTrackRepetition::Count(repetition),
+            tracks: SmallVec::from_buf([GridTrack::fit_content_percent(limit)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of `minmax()` grid track
+    pub fn minmax<T: From<Self>>(
+        repetition: impl Into<GridTrackRepetition>,
+        min: MinTrackSizingFunction,
+        max: MaxTrackSizingFunction,
+    ) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::minmax(min, max)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with the percentage size of the viewport's smaller dimension
+    pub fn vmin<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::vmin(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with the percentage size of the viewport's larger dimension
+    pub fn vmax<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::vmax(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with the percentage size of the viewport's height dimension
+    pub fn vh<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::vh(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repeating set of grid tracks with the percentage size of the viewport's width dimension
+    pub fn vw<T: From<Self>>(repetition: impl Into<GridTrackRepetition>, value: f32) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_buf([GridTrack::vw(value)]),
+        }
+        .into()
+    }
+
+    /// Create a repetition of a set of tracks
+    pub fn repeat_many<T: From<Self>>(
+        repetition: impl Into<GridTrackRepetition>,
+        tracks: impl Into<Vec<GridTrack>>,
+    ) -> T {
+        Self {
+            repetition: repetition.into(),
+            tracks: SmallVec::from_vec(tracks.into()),
+        }
+        .into()
+    }
+}
+
+impl Default for RepeatedGridTrack {
+    fn default() -> Self {
+        Self {
+            repetition: Default::default(),
+            tracks: SmallVec::from_buf([GridTrack::default()]),
+        }
+    }
+}
+
+impl From<GridTrack> for RepeatedGridTrack {
+    fn from(track: GridTrack) -> Self {
+        Self {
+            repetition: GridTrackRepetition::Count(1),
+            tracks: SmallVec::from_buf([track]),
+        }
+    }
+}
+
+impl From<GridTrack> for Vec<GridTrack> {
+    fn from(track: GridTrack) -> Self {
+        vec![track]
+    }
+}
+
+impl From<GridTrack> for Vec<RepeatedGridTrack> {
+    fn from(track: GridTrack) -> Self {
+        vec![RepeatedGridTrack {
+            repetition: GridTrackRepetition::Count(1),
+            tracks: SmallVec::from_buf([track]),
+        }]
+    }
+}
+
+impl From<RepeatedGridTrack> for Vec<RepeatedGridTrack> {
+    fn from(track: RepeatedGridTrack) -> Self {
+        vec![track]
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+/// Represents the position of a grid item in a single axis.
+///
+/// There are 3 fields which may be set:
+///   - `start`: which grid line the item should start at
+///   - `end`: which grid line the item should end at
+///   - `span`: how many tracks the item should span
+///
+/// The default `span` is 1. If neither `start` or `end` is set then the item will be placed automatically.
+///
+/// Generally, at most two fields should be set. If all three fields are specified then `span` will be ignored. If `end` specifies an earlier
+/// grid line than `start` then `end` will be ignored and the item will have a span of 1.
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Grid_Layout/Line-based_Placement_with_CSS_Grid>
+pub struct GridPlacement {
+    /// The grid line at which the item should start.
+    /// Lines are 1-indexed.
+    /// Negative indexes count backwards from the end of the grid.
+    /// Zero is not a valid index.
+    pub(crate) start: Option<NonZero<i16>>,
+    /// How many grid tracks the item should span.
+    /// Defaults to 1.
+    pub(crate) span: Option<NonZero<u16>>,
+    /// The grid line at which the item should end.
+    /// Lines are 1-indexed.
+    /// Negative indexes count backwards from the end of the grid.
+    /// Zero is not a valid index.
+    pub(crate) end: Option<NonZero<i16>>,
+}
+
+impl GridPlacement {
+    pub const DEFAULT: Self = Self {
+        start: None,
+        span: NonZero::<u16>::new(1),
+        end: None,
+    };
+
+    /// Place the grid item automatically (letting the `span` default to `1`).
+    pub fn auto() -> Self {
+        Self::DEFAULT
+    }
+
+    /// Place the grid item automatically, specifying how many tracks it should `span`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `span` is `0`.
+    pub fn span(span: u16) -> Self {
+        Self {
+            start: None,
+            end: None,
+            span: try_into_grid_span(span).expect("Invalid span value of 0."),
+        }
+    }
+
+    /// Place the grid item specifying the `start` grid line (letting the `span` default to `1`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` is `0`.
+    pub fn start(start: i16) -> Self {
+        Self {
+            start: try_into_grid_index(start).expect("Invalid start value of 0."),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Place the grid item specifying the `end` grid line (letting the `span` default to `1`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `end` is `0`.
+    pub fn end(end: i16) -> Self {
+        Self {
+            end: try_into_grid_index(end).expect("Invalid end value of 0."),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Place the grid item specifying the `start` grid line and how many tracks it should `span`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` or `span` is `0`.
+    pub fn start_span(start: i16, span: u16) -> Self {
+        Self {
+            start: try_into_grid_index(start).expect("Invalid start value of 0."),
+            end: None,
+            span: try_into_grid_span(span).expect("Invalid span value of 0."),
+        }
+    }
+
+    /// Place the grid item specifying `start` and `end` grid lines (`span` will be inferred)
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` or `end` is `0`.
+    pub fn start_end(start: i16, end: i16) -> Self {
+        Self {
+            start: try_into_grid_index(start).expect("Invalid start value of 0."),
+            end: try_into_grid_index(end).expect("Invalid end value of 0."),
+            span: None,
+        }
+    }
+
+    /// Place the grid item specifying the `end` grid line and how many tracks it should `span`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `end` or `span` is `0`.
+    pub fn end_span(end: i16, span: u16) -> Self {
+        Self {
+            start: None,
+            end: try_into_grid_index(end).expect("Invalid end value of 0."),
+            span: try_into_grid_span(span).expect("Invalid span value of 0."),
+        }
+    }
+
+    /// Mutate the item, setting the `start` grid line
+    ///
+    /// # Panics
+    ///
+    /// Panics if `start` is `0`.
+    pub fn set_start(mut self, start: i16) -> Self {
+        self.start = try_into_grid_index(start).expect("Invalid start value of 0.");
+        self
+    }
+
+    /// Mutate the item, setting the `end` grid line
+    ///
+    /// # Panics
+    ///
+    /// Panics if `end` is `0`.
+    pub fn set_end(mut self, end: i16) -> Self {
+        self.end = try_into_grid_index(end).expect("Invalid end value of 0.");
+        self
+    }
+
+    /// Mutate the item, setting the number of tracks the item should `span`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `span` is `0`.
+    pub fn set_span(mut self, span: u16) -> Self {
+        self.span = try_into_grid_span(span).expect("Invalid span value of 0.");
+        self
+    }
+
+    /// Returns the grid line at which the item should start, or `None` if not set.
+    pub fn get_start(self) -> Option<i16> {
+        self.start.map(NonZero::<i16>::get)
+    }
+
+    /// Returns the grid line at which the item should end, or `None` if not set.
+    pub fn get_end(self) -> Option<i16> {
+        self.end.map(NonZero::<i16>::get)
+    }
+
+    /// Returns span for this grid item, or `None` if not set.
+    pub fn get_span(self) -> Option<u16> {
+        self.span.map(NonZero::<u16>::get)
+    }
+}
+
+impl Default for GridPlacement {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Convert an `i16` to `NonZero<i16>`, fails on `0` and returns the `InvalidZeroIndex` error.
+fn try_into_grid_index(index: i16) -> Result<Option<NonZero<i16>>, GridPlacementError> {
+    Ok(Some(
+        NonZero::<i16>::new(index).ok_or(GridPlacementError::InvalidZeroIndex)?,
+    ))
+}
+
+/// Convert a `u16` to `NonZero<u16>`, fails on `0` and returns the `InvalidZeroSpan` error.
+fn try_into_grid_span(span: u16) -> Result<Option<NonZero<u16>>, GridPlacementError> {
+    Ok(Some(
+        NonZero::<u16>::new(span).ok_or(GridPlacementError::InvalidZeroSpan)?,
+    ))
+}
+
+/// Errors that occur when setting constraints for a `GridPlacement`
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Error)]
+pub enum GridPlacementError {
+    #[error("Zero is not a valid grid position")]
+    InvalidZeroIndex,
+    #[error("Spans cannot be zero length")]
+    InvalidZeroSpan,
+}
+
+/// The background color of the node
+///
+/// This serves as the "fill" color.
+#[derive(Component, Copy, Clone, Debug, Deref, DerefMut, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct BackgroundColor(pub Color);
+
+impl BackgroundColor {
+    /// Background color is transparent by default.
+    pub const DEFAULT: Self = Self(Color::NONE);
+}
+
+impl Default for BackgroundColor {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl<T: Into<Color>> From<T> for BackgroundColor {
+    fn from(color: T) -> Self {
+        Self(color.into())
+    }
+}
+
+/// The border color of the UI node.
+#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct BorderColor {
+    pub top: Color,
+    pub right: Color,
+    pub bottom: Color,
+    pub left: Color,
+}
+
+impl<T: Into<Color>> From<T> for BorderColor {
+    fn from(color: T) -> Self {
+        Self::all(color.into())
+    }
+}
+
+impl BorderColor {
+    /// Border color is transparent by default.
+    pub const DEFAULT: Self = BorderColor {
+        top: Color::NONE,
+        right: Color::NONE,
+        bottom: Color::NONE,
+        left: Color::NONE,
+    };
+
+    /// Helper to create a `BorderColor` struct with all borders set to the given color
+    #[inline]
+    pub fn all(color: impl Into<Color>) -> Self {
+        let color = color.into();
+        Self {
+            top: color,
+            bottom: color,
+            left: color,
+            right: color,
+        }
+    }
+
+    /// Helper to set all border colors to a given color.
+    pub fn set_all(&mut self, color: impl Into<Color>) -> &mut Self {
+        let color: Color = color.into();
+        self.top = color;
+        self.bottom = color;
+        self.left = color;
+        self.right = color;
+        self
+    }
+
+    /// Check if all contained border colors are transparent
+    pub fn is_fully_transparent(&self) -> bool {
+        self.top.is_fully_transparent()
+            && self.bottom.is_fully_transparent()
+            && self.left.is_fully_transparent()
+            && self.right.is_fully_transparent()
+    }
+}
+
+impl Default for BorderColor {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+/// The [`Outline`] component adds an outline outside the edge of a UI node.
+/// Outlines do not take up space in the layout.
+///
+/// To add an [`Outline`] to a UI node you can spawn a `(Node, Outline)` tuple bundle:
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ui::prelude::*;
+/// # use bevy_color::palettes::basic::{RED, BLUE};
+/// fn setup_ui(mut commands: Commands) {
+///     commands.spawn((
+///         Node {
+///             width: Val::Px(100.),
+///             height: Val::Px(100.),
+///             ..Default::default()
+///         },
+///         BackgroundColor(BLUE.into()),
+///         Outline::new(Val::Px(10.), Val::ZERO, RED.into())
+///     ));
+/// }
+/// ```
+///
+/// [`Outline`] components can also be added later to existing UI nodes:
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ui::prelude::*;
+/// # use bevy_picking::hover::Hovered;
+/// # use bevy_color::Color;
+/// fn outline_hovered_button_system(
+///     mut commands: Commands,
+///     mut node_query: Query<(Entity, &Hovered, Option<&mut Outline>), Changed<Hovered>>,
+/// ) {
+///     for (entity, hovered, mut maybe_outline) in node_query.iter_mut() {
+///         let outline_color =
+///             if hovered.get() {
+///                 Color::WHITE
+///             } else {
+///                 Color::NONE
+///             };
+///         if let Some(mut outline) = maybe_outline {
+///             outline.color = outline_color;
+///         } else {
+///             commands.entity(entity).insert(Outline::new(Val::Px(10.), Val::ZERO, outline_color));
+///         }
+///     }
+/// }
+/// ```
+/// Inserting and removing an [`Outline`] component repeatedly will result in table moves, so it is generally preferable to
+/// set `Outline::color` to [`Color::NONE`] to hide an outline.
+pub struct Outline {
+    /// The width of the outline.
+    ///
+    /// Percentage `Val` values are resolved based on the width of the outlined [`Node`].
+    pub width: Val,
+    /// The amount of space between a node's outline the edge of the node.
+    ///
+    /// Percentage `Val` values are resolved based on the width of the outlined [`Node`].
+    pub offset: Val,
+    /// The color of the outline.
+    ///
+    /// If you are frequently toggling outlines for a UI node on and off it is recommended to set [`Color::NONE`] to hide the outline.
+    /// This avoids the table moves that would occur from the repeated insertion and removal of the `Outline` component.
+    pub color: Color,
+}
+
+impl Outline {
+    /// Create a new outline
+    pub const fn new(width: Val, offset: Val, color: Color) -> Self {
+        Self {
+            width,
+            offset,
+            color,
+        }
+    }
+}
+
+impl Default for Outline {
+    fn default() -> Self {
+        Self {
+            color: Color::WHITE,
+            width: Val::Px(1.),
+            offset: Val::Px(0.),
+        }
+    }
+}
+
+/// A single local-space clipping rect.
+#[derive(Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Default, Debug, PartialEq, Clone)]
+pub struct CalculatedClipRect {
+    /// The clip rect in the clipping node's local space.
+    pub rect: Rect,
+    /// Transform from world space into the clipping node's local space.
+    pub world_to_clip_local: Affine2,
+}
+
+impl Default for CalculatedClipRect {
+    fn default() -> Self {
+        Self {
+            rect: Rect::default(),
+            world_to_clip_local: Affine2::IDENTITY,
+        }
+    }
+}
+
+/// The calculated clipping inherited by the node.
+#[derive(Component, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+pub enum CalculatedClip {
+    /// Clip rects inherited from ancestors.
+    Rects(SmallVec<[CalculatedClipRect; 2]>),
+    /// The node and descendants are fully clipped.
+    FullyClipped,
+}
+
+impl Default for CalculatedClip {
+    fn default() -> Self {
+        Self::Rects(SmallVec::new())
+    }
+}
+
+impl CalculatedClip {
+    pub fn with_rect(&self, rect: Rect, transform: &UiGlobalTransform) -> Self {
+        if !self.is_fully_clipped()
+            && let Some(world_to_local_clip) = transform.try_inverse()
+        {
+            let mut clip = self.clone();
+            clip.push_rect(rect, world_to_local_clip);
+            clip
+        } else {
+            CalculatedClip::FullyClipped
+        }
+    }
+
+    /// Returns true if the node and descendants are fully clipped.
+    #[inline]
+    pub const fn is_fully_clipped(&self) -> bool {
+        matches!(self, Self::FullyClipped)
+    }
+
+    /// Returns the inherited clipping rects, if this node is not fully clipped.
+    #[inline]
+    pub fn rects(&self) -> Option<&[CalculatedClipRect]> {
+        match self {
+            Self::Rects(rects) => Some(rects),
+            Self::FullyClipped => None,
+        }
+    }
+
+    /// Returns true if the point is contained by all inherited clipping rects.
+    #[inline]
+    pub fn contains_point(&self, point: Vec2) -> bool {
+        match self {
+            Self::Rects(rects) => rects.iter().all(|clip_rect| {
+                clip_rect
+                    .rect
+                    .contains(clip_rect.world_to_clip_local.transform_point2(point))
+            }),
+            Self::FullyClipped => false,
+        }
+    }
+
+    /// Adds a clipping rect if this node is not fully clipped.
+    #[inline]
+    pub fn push_rect(&mut self, rect: Rect, world_to_clip_local: Affine2) {
+        if let Self::Rects(rects) = self {
+            rects.push(CalculatedClipRect {
+                rect,
+                world_to_clip_local,
+            });
+        }
+    }
+}
+
+/// UI node entities with this component will ignore any clipping rect they inherit,
+/// the node will not be clipped regardless of its ancestors' `Overflow` setting.
+#[derive(Component, Clone, Default, Reflect)]
+#[reflect(Component, Default, Clone)]
+pub struct OverrideClip;
+
+#[expect(
+    rustdoc::redundant_explicit_links,
+    reason = "To go around the `<code>` limitations, we put the link twice so we're \
+sure it's recognized as a markdown link."
+)]
+/// Indicates that this [`Node`] entity's front-to-back ordering is not controlled solely
+/// by its location in the UI hierarchy. A node with a higher z-index will appear on top
+/// of sibling nodes with a lower z-index.
+///
+/// UI nodes that have the same z-index will appear according to the order in which they
+/// appear in the UI hierarchy. In such a case, the last node to be added to its parent
+/// will appear in front of its siblings.
+///
+/// Nodes without this component will be treated as if they had a value of
+/// <code>[ZIndex][ZIndex]\(0\)</code>.
+///
+/// Use [`GlobalZIndex`] if you need to order separate UI hierarchies or nodes that are
+/// not siblings in a given UI hierarchy.
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+pub struct ZIndex(pub i32);
+
+/// `GlobalZIndex` allows a [`Node`] entity anywhere in the UI hierarchy to escape the implicit draw ordering of the UI's layout tree and
+/// be rendered above or below other UI nodes.
+/// Root UI nodes without a `GlobalZIndex` component receive an implicit global z-index of `0`.
+/// Nodes with a `GlobalZIndex` of greater than 0 will be drawn on top of nodes without a `GlobalZIndex` or nodes with a lower `GlobalZIndex`.
+/// Nodes with a `GlobalZIndex` of less than 0 will be drawn below nodes without a `GlobalZIndex` or nodes with a greater `GlobalZIndex`.
+/// The order of nodes with the same `GlobalZIndex` is stable between frames.
+///
+/// If two Nodes have the same `GlobalZIndex`, ties are decided in order by:
+///
+/// * The node with the higher `ZIndex`.
+/// * The node that was newly added this frame.
+/// * The node with a changed `GlobalZIndex` or `ZIndex`.
+///
+/// Otherwise the order is preserved from the previous frame.
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+pub struct GlobalZIndex(pub i32);
+
+/// Sets a color to fill the regions outside the Node's border created when a border radius is set.
+///
+/// This can be useful to create artistic "inner radius" effects when used with extra nodes beside existing nodes,
+/// such as when creating tab widgets.
+#[derive(Component, Copy, Clone, Debug, Deref, DerefMut, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct OuterColor(pub Color);
+
+impl OuterColor {
+    /// Outer color is transparent by default.
+    pub const DEFAULT: Self = Self(Color::NONE);
+}
+
+impl Default for OuterColor {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl<T: Into<Color>> From<T> for OuterColor {
+    fn from(color: T) -> Self {
+        Self(color.into())
+    }
+}
+
+/// Used to add rounded corners to a UI node. You can set a UI node to have uniformly
+/// rounded corners, elliptical corners, or specify a different radius for each corner. If a given
+/// radius exceeds half the length of the node's height or width, the radius will be calculated
+/// as half the height or width.
+///
+/// Percentage horizontal and vertical values are based on the node's width and height, respectively.
+///
+/// # Example
+/// ```rust
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ui::prelude::*;
+/// # use bevy_color::palettes::basic::{BLUE};
+/// fn setup_ui(mut commands: Commands) {
+///     commands.spawn((
+///         Node {
+///             width: Val::Px(100.),
+///             height: Val::Px(100.),
+///             border: UiRect::all(Val::Px(2.)),
+///             border_radius: BorderRadius {
+///                 // rounded corners, x and y radii equal
+///                 top_left: CornerRadius::circular(px(10.)),
+///                 top_right: percent(20.).into(),
+///                 // elliptical corner
+///                 bottom_right: CornerRadius::new(px(30.), px(20.)),
+///                 bottom_left: CornerRadius { x: px(10.), y: px(40.) },
+///             },
+///             ..Default::default()
+///         },
+///         BackgroundColor(BLUE.into()),
+///     ));
+/// }
+/// ```
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/CSS/border-radius>
+#[derive(Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(PartialEq, Default, Debug, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct BorderRadius {
+    /// Border radius of the top left corner
+    pub top_left: CornerRadius,
+    /// Border radius of the top right corner
+    pub top_right: CornerRadius,
+    /// Border radius of the bottom right corner
+    pub bottom_right: CornerRadius,
+    /// Border radius of the bottom left corner
+    pub bottom_left: CornerRadius,
+}
+
+impl Default for BorderRadius {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl BorderRadius {
+    pub const DEFAULT: Self = Self::ZERO;
+
+    /// Zero curvature. All the corners will be right-angled.
+    pub const ZERO: Self = Self {
+        top_left: CornerRadius::ZERO,
+        top_right: CornerRadius::ZERO,
+        bottom_right: CornerRadius::ZERO,
+        bottom_left: CornerRadius::ZERO,
+    };
+
+    /// Maximum curvature. The UI Node will take a capsule shape or circular if width and height are equal.
+    pub const MAX: Self = Self {
+        top_left: CornerRadius::MAX,
+        top_right: CornerRadius::MAX,
+        bottom_right: CornerRadius::MAX,
+        bottom_left: CornerRadius::MAX,
+    };
+
+    //// The node will be drawn as an ellipse with a horizontal radius of half its width and a vertical radius of half its height.
+    pub const MAX_ELLIPTICAL: Self = Self {
+        top_left: CornerRadius::MAX_ELLIPTICAL,
+        top_right: CornerRadius::MAX_ELLIPTICAL,
+        bottom_right: CornerRadius::MAX_ELLIPTICAL,
+        bottom_left: CornerRadius::MAX_ELLIPTICAL,
+    };
+
+    /// Set all four corners to the same curvature.
+    #[inline]
+    pub fn all(radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        Self {
+            top_left: radius,
+            top_right: radius,
+            bottom_left: radius,
+            bottom_right: radius,
+        }
+    }
+
+    #[inline]
+    pub fn new(
+        top_left: impl Into<CornerRadius>,
+        top_right: impl Into<CornerRadius>,
+        bottom_right: impl Into<CornerRadius>,
+        bottom_left: impl Into<CornerRadius>,
+    ) -> Self {
+        Self {
+            top_left: top_left.into(),
+            top_right: top_right.into(),
+            bottom_right: bottom_right.into(),
+            bottom_left: bottom_left.into(),
+        }
+    }
+
+    /// Sets each corner to a circular radius in logical pixels.
+    #[inline]
+    pub const fn px(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
+        Self {
+            top_left: CornerRadius::circular(Val::Px(top_left)),
+            top_right: CornerRadius::circular(Val::Px(top_right)),
+            bottom_right: CornerRadius::circular(Val::Px(bottom_right)),
+            bottom_left: CornerRadius::circular(Val::Px(bottom_left)),
+        }
+    }
+
+    /// Sets each corners to a circular radius in percentage values.
+    #[inline]
+    pub const fn percent(
+        top_left: f32,
+        top_right: f32,
+        bottom_right: f32,
+        bottom_left: f32,
+    ) -> Self {
+        Self {
+            top_left: CornerRadius::circular(Val::Percent(top_left)),
+            top_right: CornerRadius::circular(Val::Percent(top_right)),
+            bottom_right: CornerRadius::circular(Val::Percent(bottom_right)),
+            bottom_left: CornerRadius::circular(Val::Percent(bottom_left)),
+        }
+    }
+
+    /// Sets the radius for the top left corner.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn top_left(radius: impl Into<CornerRadius>) -> Self {
+        Self {
+            top_left: radius.into(),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radius for the top right corner.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn top_right(radius: impl Into<CornerRadius>) -> Self {
+        Self {
+            top_right: radius.into(),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radius for the bottom right corner.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn bottom_right(radius: impl Into<CornerRadius>) -> Self {
+        Self {
+            bottom_right: radius.into(),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radii for the bottom left corner.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn bottom_left(radius: impl Into<CornerRadius>) -> Self {
+        Self {
+            bottom_left: radius.into(),
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radii for the top left and bottom left corners.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn left(radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        Self {
+            top_left: radius,
+            bottom_left: radius,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radii for the top right and bottom right corners.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn right(radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        Self {
+            top_right: radius,
+            bottom_right: radius,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radii for the top left and top right corners.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn top(radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        Self {
+            top_left: radius,
+            top_right: radius,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Sets the radii for the bottom left and bottom right corners.
+    /// Remaining corners will be right-angled.
+    #[inline]
+    pub fn bottom(radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        Self {
+            bottom_left: radius,
+            bottom_right: radius,
+            ..Self::DEFAULT
+        }
+    }
+
+    /// Returns the [`BorderRadius`] with its `top_left` field set to the given value.
+    #[inline]
+    pub fn with_top_left(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.top_left = radius.into();
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `top_right` field set to the given value.
+    #[inline]
+    pub fn with_top_right(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.top_right = radius.into();
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `bottom_right` field set to the given value.
+    #[inline]
+    pub fn with_bottom_right(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.bottom_right = radius.into();
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `bottom_left` field set to the given value.
+    #[inline]
+    pub fn with_bottom_left(mut self, radius: impl Into<CornerRadius>) -> Self {
+        self.bottom_left = radius.into();
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `top_left` and `bottom_left` fields set to the given value.
+    #[inline]
+    pub fn with_left(mut self, radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        self.top_left = radius;
+        self.bottom_left = radius;
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `top_right` and `bottom_right` fields set to the given value.
+    #[inline]
+    pub fn with_right(mut self, radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        self.top_right = radius;
+        self.bottom_right = radius;
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `top_left` and `top_right` fields set to the given value.
+    #[inline]
+    pub fn with_top(mut self, radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        self.top_left = radius;
+        self.top_right = radius;
+        self
+    }
+
+    /// Returns the [`BorderRadius`] with its `bottom_left` and `bottom_right` fields set to the given value.
+    #[inline]
+    pub fn with_bottom(mut self, radius: impl Into<CornerRadius>) -> Self {
+        let radius = radius.into();
+        self.bottom_left = radius;
+        self.bottom_right = radius;
+        self
+    }
+
+    /// Resolve the border radii for the corners from the given context values.
+    /// Returns the radii of the each corner in physical pixels.
+    pub fn resolve(
+        &self,
+        scale_factor: f32,
+        node_size: Vec2,
+        viewport_size: Vec2,
+        em_size: EmSize,
+        rem_size: RemSize,
+    ) -> ResolvedBorderRadius {
+        ResolvedBorderRadius {
+            top_left: self.top_left.resolve(
+                scale_factor,
+                node_size,
+                viewport_size,
+                em_size,
+                rem_size,
+            ),
+            top_right: self.top_right.resolve(
+                scale_factor,
+                node_size,
+                viewport_size,
+                em_size,
+                rem_size,
+            ),
+            bottom_left: self.bottom_left.resolve(
+                scale_factor,
+                node_size,
+                viewport_size,
+                em_size,
+                rem_size,
+            ),
+            bottom_right: self.bottom_right.resolve(
+                scale_factor,
+                node_size,
+                viewport_size,
+                em_size,
+                rem_size,
+            ),
+        }
+    }
+}
+
+impl<T> From<T> for BorderRadius
+where
+    T: Into<CornerRadius>,
+{
+    fn from(value: T) -> Self {
+        Self::all(value)
+    }
+}
+
+/// Represents the resolved border radii values for a UI node.
+///
+/// The values are in physical pixels.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Reflect)]
+#[reflect(Clone, PartialEq, Default)]
+pub struct ResolvedBorderRadius {
+    pub top_left: Vec2,
+    pub top_right: Vec2,
+    pub bottom_right: Vec2,
+    pub bottom_left: Vec2,
+}
+
+impl ResolvedBorderRadius {
+    pub const ZERO: Self = Self {
+        top_left: Vec2::ZERO,
+        top_right: Vec2::ZERO,
+        bottom_right: Vec2::ZERO,
+        bottom_left: Vec2::ZERO,
+    };
+}
+
+impl From<ResolvedBorderRadius> for [[f32; 4]; 2] {
+    fn from(radius: ResolvedBorderRadius) -> Self {
+        [
+            [
+                radius.top_left.x,
+                radius.top_right.x,
+                radius.bottom_right.x,
+                radius.bottom_left.x,
+            ],
+            [
+                radius.top_left.y,
+                radius.top_right.y,
+                radius.bottom_right.y,
+                radius.bottom_left.y,
+            ],
+        ]
+    }
+}
+
+/// The border style of the UI node.
+#[derive(Component, Copy, Clone, PartialEq, Eq, Debug, Reflect)]
+#[reflect(Component, Default, PartialEq, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub enum BorderStyle {
+    Solid,
+    Double,
+    Inset,
+    Outset,
+    Groove,
+    Ridge,
+}
+
+impl BorderStyle {
+    pub const DEFAULT: Self = Self::Solid;
+}
+
+impl Default for BorderStyle {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+#[derive(Component, Clone, Debug, Default, PartialEq, Reflect, Deref, DerefMut)]
+#[reflect(Component, PartialEq, Default, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+/// List of shadows to draw for a [`Node`].
+///
+/// Draw order is determined implicitly from the vector of [`ShadowStyle`]s, back-to-front.
+pub struct BoxShadow(pub Vec<ShadowStyle>);
+
+impl BoxShadow {
+    /// A single drop shadow
+    pub fn new(
+        color: Color,
+        x_offset: Val,
+        y_offset: Val,
+        spread_radius: Val,
+        blur_radius: Val,
+    ) -> Self {
+        Self(vec![ShadowStyle {
+            color,
+            x_offset,
+            y_offset,
+            spread_radius,
+            blur_radius,
+        }])
+    }
+}
+
+impl From<ShadowStyle> for BoxShadow {
+    fn from(value: ShadowStyle) -> Self {
+        Self(vec![value])
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(PartialEq, Default, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+pub struct ShadowStyle {
+    /// The shadow's color
+    pub color: Color,
+    /// Horizontal offset
+    pub x_offset: Val,
+    /// Vertical offset
+    pub y_offset: Val,
+    /// How much the shadow should spread outward.
+    ///
+    /// Negative values will make the shadow shrink inwards.
+    /// Percentage values are based on the width of the UI node.
+    pub spread_radius: Val,
+    /// Blurriness of the shadow
+    pub blur_radius: Val,
+}
+
+impl Default for ShadowStyle {
+    fn default() -> Self {
+        Self {
+            color: Color::BLACK,
+            x_offset: Val::Percent(20.),
+            y_offset: Val::Percent(20.),
+            spread_radius: Val::ZERO,
+            blur_radius: Val::Percent(10.),
+        }
+    }
+}
+
+#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Component, Debug, PartialEq, Default, Clone)]
+#[cfg_attr(
+    feature = "serialize",
+    derive(serde::Serialize, serde::Deserialize),
+    reflect(Serialize, Deserialize)
+)]
+/// This component can be added to any UI node to modify its layout behavior.
+pub struct LayoutConfig {
+    /// If set to true the coordinates for this node and its descendents will be rounded to the nearest physical pixel.
+    /// This can help prevent visual artifacts like blurry images or semi-transparent edges that can occur with sub-pixel positioning.
+    ///
+    /// Defaults to true.
+    pub use_rounding: bool,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self { use_rounding: true }
+    }
+}
+
+/// Indicates that this root [`Node`] entity should be rendered to a specific camera.
+///
+/// UI then will be laid out respecting the camera's viewport and scale factor, and
+/// rendered to this camera's [`bevy_camera::RenderTarget`].
+///
+/// Setting this component on a non-root node will have no effect. It will be overridden
+/// by the root node's component.
+///
+/// Root node's without an explicit [`UiTargetCamera`] will be rendered to the default UI camera,
+/// which is either a single camera with the [`IsDefaultUiCamera`] marker component or the highest
+/// order camera targeting the primary window.
+#[derive(Component, FromTemplate, Clone, Debug, Reflect, Eq, PartialEq)]
+#[reflect(Component, Debug, PartialEq, Clone)]
+pub struct UiTargetCamera(pub Entity);
+
+impl UiTargetCamera {
+    pub fn entity(&self) -> Entity {
+        self.0
+    }
+}
+
+/// Marker used to identify default cameras, they will have priority over the [`PrimaryWindow`] camera.
+///
+/// This is useful if the [`PrimaryWindow`] has two cameras, one of them used
+/// just for debug purposes and the user wants a way to choose the default [`Camera`]
+/// without having to add a [`UiTargetCamera`] to the root node.
+///
+/// Another use is when the user wants the Ui to be in another window by default,
+/// all that is needed is to place this component on the camera
+///
+/// ```
+/// # use bevy_ui::prelude::*;
+/// # use bevy_ecs::prelude::Commands;
+/// # use bevy_camera::{Camera, Camera2d, RenderTarget};
+/// # use bevy_window::{Window, WindowRef};
+///
+/// fn spawn_camera(mut commands: Commands) {
+///     let another_window = commands.spawn(Window {
+///         title: String::from("Another window"),
+///         ..Default::default()
+///     }).id();
+///     commands.spawn((
+///         Camera2d,
+///         Camera {
+///             ..Default::default()
+///         },
+///         RenderTarget::Window(WindowRef::Entity(another_window)),
+///         // We add the Marker here so all Ui will spawn in
+///         // another window if no UiTargetCamera is specified
+///         IsDefaultUiCamera
+///     ));
+/// }
+/// ```
+#[derive(Component, Default, Clone, Copy, Reflect)]
+#[reflect(Component, Default)]
+pub struct IsDefaultUiCamera;
+
+#[derive(SystemParam)]
+pub struct DefaultUiCamera<'w, 's> {
+    cameras: Query<'w, 's, (Entity, &'static Camera, &'static RenderTarget)>,
+    default_cameras: Query<'w, 's, Entity, (With<Camera>, With<IsDefaultUiCamera>)>,
+    primary_window: Query<'w, 's, Entity, With<PrimaryWindow>>,
+}
+
+impl<'w, 's> DefaultUiCamera<'w, 's> {
+    pub fn get(&self) -> Option<Entity> {
+        self.default_cameras.single().ok().or_else(|| {
+            // If there isn't a single camera and the query isn't empty, there is two or more cameras queried.
+            if !self.default_cameras.is_empty() {
+                once!(warn!("Two or more Entities with IsDefaultUiCamera found when only one Camera with this marker is allowed."));
+            }
+            self.cameras
+                .iter()
+                .filter(|(_, _, render_target)| match render_target {
+                    RenderTarget::Window(WindowRef::Primary) => true,
+                    RenderTarget::Window(WindowRef::Entity(w)) => {
+                        self.primary_window.get(*w).is_ok()
+                    }
+                    _ => false,
+                })
+                .max_by_key(|(e, c, _)| (c.order, *e))
+                .map(|(e, _, _)| e)
+        })
+    }
+}
+
+/// Derived information about the camera target for this UI node.
+///
+/// Updated in [`UiSystems::Prepare`](crate::UiSystems::Prepare) by [`propagate_ui_target_cameras`](crate::update::propagate_ui_target_cameras)
+#[derive(Component, Clone, Copy, Debug, Reflect, PartialEq, Default)]
+#[reflect(Component, Default, PartialEq, Clone)]
+pub struct ComputedUiTargetCamera {
+    pub(crate) camera: Option<Entity>,
+}
+
+impl ComputedUiTargetCamera {
+    /// Returns the id of the target camera for this UI node.
+    pub fn get(&self) -> Option<Entity> {
+        self.camera
+    }
+}
+
+/// Derived information about the render target for this UI node.
+#[derive(Component, Clone, Copy, Debug, Reflect, PartialEq)]
+#[reflect(Component, Default, PartialEq, Clone)]
+pub struct ComputedUiRenderTargetInfo {
+    /// The scale factor of the target camera's render target.
+    pub(crate) scale_factor: f32,
+    /// The size of the target camera's viewport in physical pixels.
+    pub(crate) physical_size: UVec2,
+}
+
+impl Default for ComputedUiRenderTargetInfo {
+    fn default() -> Self {
+        Self {
+            scale_factor: 1.,
+            physical_size: UVec2::ZERO,
+        }
+    }
+}
+
+impl ComputedUiRenderTargetInfo {
+    pub const fn scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    /// Returns the size of the target camera's viewport in physical pixels.
+    pub const fn physical_size(&self) -> UVec2 {
+        self.physical_size
+    }
+
+    /// Returns the size of the target camera's viewport in logical pixels.
+    pub fn logical_size(&self) -> Vec2 {
+        self.physical_size.as_vec2() / self.scale_factor
+    }
+}
+
+/// A UI entity with a `FixedNode` component is treated as a root node, even when it has a UI node parent.
+/// A `FixedNode` UI entity is positioned relative to the target camera's viewport rather that its parent element.
+///
+/// `FixedNode`s don't inherit their parent's layout, clipping or transform context.
+/// `FixedNode` is ignored on a `GhostNode`.
+/// `FixedNode` on a parentless node is redundant.
+/// All of a `FixedNode`'s ancestors must be `Node` entities.
+#[derive(Component, Debug, Copy, Clone, Default, Reflect)]
+#[reflect(Component, Default, Clone)]
+#[require(Node)]
+pub struct FixedNode;
+
+/// Marker component for `Node` entities that should be replaced by their children during UI layout.
+///
+/// - A `GhostNode` is a UI node entity, it requires `Node` but all the field's on its `Node` component are ignored.
+/// - A `GhostNode` is given zero size during layout.
+/// - Its position is the same as its parent (before `UiTransform`, is present, is applied).
+/// - Its `UiTransform` will be resolved and applied normally, except that instead of its own size, percentage
+///   values are based on the size of the `GhostNode`'s parent.
+/// - Events pass through normally.
+/// - `FixedNode` is ignored on a `GhostNode`.
+/// - `OverrideClip` is not ignored on a `GhostNode`.
+/// - Clipping propagates through `GhostNode`'s but their `Node::overflow` setting is ignored.
+/// - A `GhostNode`'s children's `Val::Percent` coords are resolved based on the the size of their nearest non-ghost ancestor,
+///   skipping any intermediate ghosts, or the size of the viewport if they have no non-ghost ancestors.
+/// - A root `GhostNode`'s children are UI root nodes each with their own implicit viewport node.
+#[derive(Component, Debug, Copy, Clone, Reflect, Default)]
+#[reflect(Component, Debug, Clone)]
+#[require(Node)]
+pub struct GhostNode;
+
+#[cfg(test)]
+mod tests {
+    use crate::ComputedNode;
+    use crate::GridPlacement;
+    use crate::Overflow;
+    use crate::OverflowClipMargin;
+    use crate::VisualBox;
+    use bevy_math::{Rect, Vec2};
+    use bevy_sprite::BorderRect;
+
+    #[test]
+    fn invalid_grid_placement_values() {
+        assert!(std::panic::catch_unwind(|| GridPlacement::span(0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::start(0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::end(0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::start_end(0, 1)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::start_end(-1, 0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::start_span(1, 0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::start_span(0, 1)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::end_span(0, 1)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::end_span(1, 0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::default().set_start(0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::default().set_end(0)).is_err());
+        assert!(std::panic::catch_unwind(|| GridPlacement::default().set_span(0)).is_err());
+    }
+
+    #[test]
+    fn grid_placement_accessors() {
+        assert_eq!(GridPlacement::start(5).get_start(), Some(5));
+        assert_eq!(GridPlacement::end(-4).get_end(), Some(-4));
+        assert_eq!(GridPlacement::span(2).get_span(), Some(2));
+        assert_eq!(GridPlacement::start_end(11, 21).get_span(), None);
+        assert_eq!(GridPlacement::start_span(3, 5).get_end(), None);
+        assert_eq!(GridPlacement::end_span(-4, 12).get_start(), None);
+    }
+
+    #[test]
+    fn computed_node_both_scrollbars() {
+        let node = ComputedNode {
+            size: Vec2::splat(100.),
+            scrollbar_size: Vec2::splat(10.),
+            content_size: Vec2::splat(100.),
+            ..Default::default()
+        };
+
+        let (gutter, thumb) = node.horizontal_scrollbar().unwrap();
+        assert_eq!(
+            gutter,
+            Rect {
+                min: Vec2::new(-50., 40.),
+                max: Vec2::new(40., 50.)
+            }
+        );
+        assert_eq!(thumb, [-50., 31.]);
+
+        let (gutter, thumb) = node.vertical_scrollbar().unwrap();
+        assert_eq!(
+            gutter,
+            Rect {
+                min: Vec2::new(40., -50.),
+                max: Vec2::new(50., 40.)
+            }
+        );
+        assert_eq!(thumb, [-50., 31.]);
+    }
+
+    #[test]
+    fn computed_node_single_horizontal_scrollbar() {
+        let mut node = ComputedNode {
+            size: Vec2::splat(100.),
+            scrollbar_size: Vec2::new(0., 10.),
+            content_size: Vec2::new(200., 100.),
+            scroll_position: Vec2::new(0., 0.),
+            ..Default::default()
+        };
+
+        assert_eq!(None, node.vertical_scrollbar());
+
+        let (gutter, thumb) = node.horizontal_scrollbar().unwrap();
+        assert_eq!(
+            gutter,
+            Rect {
+                min: Vec2::new(-50., 40.),
+                max: Vec2::new(50., 50.)
+            }
+        );
+        assert_eq!(thumb, [-50., 0.]);
+
+        node.scroll_position.x += 100.;
+        let (gutter, thumb) = node.horizontal_scrollbar().unwrap();
+        assert_eq!(
+            gutter,
+            Rect {
+                min: Vec2::new(-50., 40.),
+                max: Vec2::new(50., 50.)
+            }
+        );
+        assert_eq!(thumb, [0., 50.]);
+    }
+
+    #[test]
+    fn computed_node_single_vertical_scrollbar() {
+        let mut node = ComputedNode {
+            size: Vec2::splat(100.),
+            scrollbar_size: Vec2::new(10., 0.),
+            content_size: Vec2::new(100., 200.),
+            scroll_position: Vec2::new(0., 0.),
+            ..Default::default()
+        };
+
+        assert_eq!(None, node.horizontal_scrollbar());
+
+        let (gutter, thumb) = node.vertical_scrollbar().unwrap();
+        assert_eq!(
+            gutter,
+            Rect {
+                min: Vec2::new(40., -50.),
+                max: Vec2::new(50., 50.)
+            }
+        );
+        assert_eq!(thumb, [-50., 0.]);
+
+        node.scroll_position.y += 100.;
+        let (gutter, thumb) = node.vertical_scrollbar().unwrap();
+        assert_eq!(
+            gutter,
+            Rect {
+                min: Vec2::new(40., -50.),
+                max: Vec2::new(50., 50.)
+            }
+        );
+        assert_eq!(thumb, [0., 50.]);
+    }
+
+    #[test]
+    fn border_box_is_centered_rect_of_node_size() {
+        let node = ComputedNode {
+            size: Vec2::new(100.0, 50.0),
+            ..Default::default()
+        };
+        let border_box = node.border_box();
+
+        assert_eq!(border_box.min, Vec2::new(-50.0, -25.0));
+        assert_eq!(border_box.max, Vec2::new(50.0, 25.0));
+    }
+
+    #[test]
+    fn padding_box_subtracts_border_thickness() {
+        let node = ComputedNode {
+            size: Vec2::new(100.0, 60.0),
+            border: BorderRect {
+                min_inset: Vec2::new(5.0, 3.0),
+                max_inset: Vec2::new(7.0, 9.0),
+            },
+            ..Default::default()
+        };
+        let padding_box = node.padding_box();
+
+        assert_eq!(padding_box.min, Vec2::new(-50.0 + 5.0, -30.0 + 3.0));
+        assert_eq!(padding_box.max, Vec2::new(50.0 - 7.0, 30.0 - 9.0));
+    }
+
+    #[test]
+    fn content_box_uses_content_inset() {
+        let node = ComputedNode {
+            size: Vec2::new(80.0, 40.0),
+            padding: BorderRect {
+                min_inset: Vec2::new(4.0, 2.0),
+                max_inset: Vec2::new(6.0, 8.0),
+            },
+            ..Default::default()
+        };
+        let content_box = node.content_box();
+
+        assert_eq!(content_box.min, Vec2::new(-40.0 + 4.0, -20.0 + 2.0));
+        assert_eq!(content_box.max, Vec2::new(40.0 - 6.0, 20.0 - 8.0));
+    }
+
+    fn abs_diff_eq_rect(s: Rect, t: Rect) -> bool {
+        s.min.abs_diff_eq(t.min, 1e-5) && s.max.abs_diff_eq(t.max, 1e-5)
+    }
+
+    #[test]
+    fn overflow_clip_margin_boxes() {
+        let size = 100.;
+        let b = 3.;
+        let p = 5.;
+        let m = 7.;
+        let computed_node = ComputedNode {
+            size: Vec2::splat(size),
+            border: BorderRect::all(b),
+            padding: BorderRect::all(p),
+            ..Default::default()
+        };
+
+        let r = Rect::from_center_size(Vec2::ZERO, Vec2::splat(size));
+
+        assert!(abs_diff_eq_rect(
+            computed_node.resolve_clip_rect(
+                Overflow::clip(),
+                OverflowClipMargin {
+                    visual_box: VisualBox::BorderBox,
+                    margin: m,
+                },
+            ),
+            r.inflate(m),
+        ));
+
+        assert!(abs_diff_eq_rect(
+            computed_node.resolve_clip_rect(
+                Overflow::clip(),
+                OverflowClipMargin {
+                    visual_box: VisualBox::PaddingBox,
+                    margin: m,
+                },
+            ),
+            r.inflate(m - b),
+        ));
+
+        assert!(abs_diff_eq_rect(
+            computed_node.resolve_clip_rect(
+                Overflow::clip(),
+                OverflowClipMargin {
+                    visual_box: VisualBox::ContentBox,
+                    margin: m,
+                },
+            ),
+            r.inflate(m - b - p),
+        ));
+    }
+
+    #[test]
+    fn overflow_clip_margin_is_logical() {
+        let size = 100.;
+        let m = 10.;
+        let scale_factor = 2.;
+        let computed_node = ComputedNode {
+            size: Vec2::splat(size),
+            inverse_scale_factor: 1. / scale_factor,
+            ..Default::default()
+        };
+
+        let r = computed_node.resolve_clip_rect(
+            Overflow::clip(),
+            OverflowClipMargin {
+                visual_box: VisualBox::BorderBox,
+                margin: m,
+            },
+        );
+        let s = Rect::from_center_size(Vec2::ZERO, Vec2::splat(size)).inflate(m * scale_factor);
+
+        assert!(abs_diff_eq_rect(r, s));
+    }
+}

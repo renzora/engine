@@ -1,0 +1,472 @@
+use crate::{
+    ComputedNode, ComputedUiRenderTargetInfo, ContentSize, FixedMeasure, Measure, MeasureArgs,
+    Node, NodeMeasure,
+};
+use bevy_asset::Assets;
+use bevy_color::Color;
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::{
+    change_detection::DetectChanges,
+    component::Component,
+    entity::Entity,
+    query::With,
+    reflect::ReflectComponent,
+    system::{Query, Res, ResMut},
+    world::Ref,
+};
+use bevy_image::prelude::*;
+use bevy_log::warn_once;
+use bevy_math::Vec2;
+use bevy_reflect::{std_traits::ReflectDefault, Reflect};
+use bevy_text::{
+    ComputedTextBlock, DefaultFontSource, Font, FontAtlasSet, FontCx, FontHinting, LayoutCx,
+    LetterSpacing, LineBreak, LineHeight, RemSize, ScaleCx, TextBounds, TextColor, TextError,
+    TextFont, TextLayout, TextLayoutInfo, TextMeasureInfo, TextPipeline, TextReader, TextSection,
+    TextWriter,
+};
+use taffy::{style::AvailableSpace, MaybeMath, ResolveOrZero};
+use tracing::error;
+
+/// UI text system flags.
+///
+/// Used internally by [`measure_text_system`] and [`text_system`] to schedule text for processing.
+#[derive(Component, Debug, Clone, Reflect)]
+#[reflect(Component, Default, Debug, Clone)]
+pub struct TextNodeFlags {
+    /// If set then a new measure function for the text node will be created.
+    needs_measure_fn: bool,
+    /// If set then the text will be recomputed.
+    needs_recompute: bool,
+    /// The most recently installed fixed measure for non-wrapping text.
+    no_wrap_measure: Option<Vec2>,
+}
+
+impl Default for TextNodeFlags {
+    fn default() -> Self {
+        Self {
+            needs_measure_fn: true,
+            needs_recompute: true,
+            no_wrap_measure: None,
+        }
+    }
+}
+
+impl TextNodeFlags {
+    /// Caches `size`, returning whether it differs from the previously cached measure.
+    fn cache_no_wrap_measure(&mut self, size: Vec2) -> bool {
+        let changed = self.no_wrap_measure != Some(size);
+        self.no_wrap_measure = Some(size);
+        changed
+    }
+
+    fn clear_no_wrap_measure(&mut self) {
+        self.no_wrap_measure = None;
+    }
+}
+
+/// The top-level UI text component.
+///
+/// Adding [`Text`] to an entity will pull in required components for setting up a UI text node.
+///
+/// The string in this component is the first 'text span' in a hierarchy of text spans that are collected into
+/// a [`ComputedTextBlock`]. See [`TextSpan`](bevy_text::TextSpan) for the component used by children of entities with [`Text`].
+///
+///
+/// ```
+/// # use bevy_asset::Handle;
+/// # use bevy_color::Color;
+/// # use bevy_color::palettes::basic::BLUE;
+/// # use bevy_ecs::world::World;
+/// # use bevy_text::{Font, FontSize, Justify, TextLayout, TextFont, TextColor, TextSpan};
+/// # use bevy_ui::prelude::Text;
+/// #
+/// # let font_handle: Handle<Font> = Default::default();
+/// # let mut world = World::default();
+/// #
+/// // Basic usage.
+/// world.spawn(Text::new("hello world!"));
+///
+/// // With non-default style.
+/// world.spawn((
+///     Text::new("hello world!"),
+///     TextFont {
+///         font: font_handle.clone().into(),
+///         font_size: FontSize::Px(60.0),
+///         ..Default::default()
+///     },
+///     TextColor(BLUE.into()),
+/// ));
+///
+/// // With text justification.
+/// world.spawn((
+///     Text::new("hello world\nand bevy!"),
+///     TextLayout::justify(Justify::Center)
+/// ));
+///
+/// // With spans
+/// world.spawn(Text::new("hello ")).with_children(|parent| {
+///     parent.spawn(TextSpan::new("world"));
+///     parent.spawn((TextSpan::new("!"), TextColor(BLUE.into())));
+/// });
+/// ```
+#[derive(Component, Debug, Default, Clone, Deref, DerefMut, Reflect, PartialEq)]
+#[reflect(Component, Default, Debug, PartialEq, Clone)]
+#[require(
+    Node,
+    TextLayout,
+    TextFont,
+    TextColor,
+    LineHeight,
+    LetterSpacing,
+    TextNodeFlags,
+    ContentSize,
+    // Hinting is enabled by default as UI text is normally pixel.
+    FontHinting::Enabled
+)]
+pub struct Text(pub String);
+
+impl Text {
+    /// Makes a new text component.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+}
+
+impl TextSection for Text {
+    fn get_text(&self) -> &str {
+        self.as_str()
+    }
+    fn get_text_mut(&mut self) -> &mut String {
+        &mut *self
+    }
+}
+
+impl From<&str> for Text {
+    fn from(value: &str) -> Self {
+        Self(String::from(value))
+    }
+}
+
+impl From<String> for Text {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+/// Adds a shadow behind text
+///
+/// Use the `Text2dShadow` component for `Text2d` shadows
+#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Component, Default, Debug, Clone, PartialEq)]
+pub struct TextShadow {
+    /// Shadow displacement in logical pixels
+    /// With a value of zero the shadow will be hidden directly behind the text
+    pub offset: Vec2,
+    /// Color of the shadow
+    pub color: Color,
+}
+
+impl Default for TextShadow {
+    fn default() -> Self {
+        Self {
+            offset: Vec2::splat(4.),
+            color: Color::linear_rgba(0., 0., 0., 0.75),
+        }
+    }
+}
+
+/// UI alias for [`TextReader`].
+pub type TextUiReader<'w, 's> = TextReader<'w, 's, Text>;
+
+/// UI alias for [`TextWriter`].
+pub type TextUiWriter<'w, 's> = TextWriter<'w, 's, Text>;
+
+/// Text measurement for UI layout. See [`NodeMeasure`].
+pub struct TextMeasure {
+    pub info: TextMeasureInfo,
+}
+
+impl TextMeasure {
+    /// Checks if the Parley text layout is needed for measuring the text.
+    #[inline]
+    pub const fn needs_buffer(
+        width: Option<f32>,
+        height: Option<f32>,
+        available_width: AvailableSpace,
+    ) -> bool {
+        height.is_none()
+            && (width.is_some() || matches!(available_width, AvailableSpace::Definite(_)))
+    }
+}
+
+impl Measure for TextMeasure {
+    fn measure(&self, measure_args: MeasureArgs) -> Vec2 {
+        let mut width = measure_args.resolve_width();
+        let height = measure_args.resolve_height();
+
+        let MeasureArgs {
+            available_width,
+            buffer,
+            font_system,
+            style,
+            ..
+        } = measure_args;
+
+        // The text is wrapped inside the content box, so subtract horizontal padding and border.
+        if style.box_sizing == taffy::style::BoxSizing::BorderBox {
+            let context = taffy::Size {
+                width: width.effective,
+                height: height.effective,
+            };
+            let calc = |_, _| 0.;
+            let padding = style.padding.resolve_or_zero(context, calc);
+            let border = style.border.resolve_or_zero(context, calc);
+            let total_x_inset = padding.left + padding.right + border.left + border.right;
+            width.min = width.min.map(|min| (min - total_x_inset).max(0.));
+            width.max = width.max.map(|max| (max - total_x_inset).max(0.));
+            width.effective = width
+                .effective
+                .map(|effective| (effective - total_x_inset).max(0.));
+        }
+
+        let x = width
+            .effective
+            .unwrap_or_else(|| match available_width {
+                AvailableSpace::Definite(x) => {
+                    // It is possible for the "min content width" to be larger than
+                    // the "max content width" when soft-wrapping right-aligned text
+                    // and possibly other situations.
+
+                    x.max(self.info.min.x).min(self.info.max.x)
+                }
+                AvailableSpace::MinContent => self.info.min.x,
+                AvailableSpace::MaxContent => self.info.max.x,
+            })
+            .maybe_clamp(width.min, width.max);
+
+        let size = height.effective.map_or_else(
+            || {
+                if width.effective.is_some() || available_width.is_definite() {
+                    if let Some(buffer) = buffer {
+                        self.info
+                            .compute_size(TextBounds::new_horizontal(x), buffer, font_system)
+                    } else {
+                        error!("text measure failed, buffer is missing");
+                        Vec2::default()
+                    }
+                } else {
+                    match available_width {
+                        AvailableSpace::MinContent => Vec2::new(x, self.info.min.y),
+                        AvailableSpace::MaxContent => Vec2::new(x, self.info.max.y),
+                        _ => unreachable!(),
+                    }
+                }
+            },
+            |y| Vec2::new(x, y),
+        );
+
+        Vec2::new(
+            size.x.maybe_clamp(width.min, width.max),
+            size.y.maybe_clamp(height.min, height.max),
+        )
+        .ceil()
+    }
+}
+
+/// Generates a new [`Measure`] for a text node on changes to its [`Text`] component.
+///
+/// A `Measure` is used by the UI's layout algorithm to determine the appropriate amount of space
+/// to provide for the text given the fonts, the text itself and the constraints of the layout.
+///
+/// * Measures are regenerated on changes to either [`ComputedTextBlock`] or [`ComputedUiRenderTargetInfo`].
+/// * Changes that only modify the colors of a `Text` do not require a new `Measure`. This system
+///   is only able to detect that a `Text` component has changed and will regenerate the `Measure` on
+///   color changes. This can be expensive, particularly for large blocks of text, and the [`bypass_change_detection`](bevy_ecs::change_detection::DetectChangesMut::bypass_change_detection)
+///   method should be called when only changing the `Text`'s colors.
+pub fn measure_text_system(
+    fonts: Res<Assets<Font>>,
+    mut text_query: Query<
+        (
+            Entity,
+            Ref<Text>,
+            Ref<TextLayout>,
+            &mut ContentSize,
+            &mut TextNodeFlags,
+            &mut ComputedTextBlock,
+            Ref<ComputedUiRenderTargetInfo>,
+            &ComputedNode,
+        ),
+        With<Node>,
+    >,
+    mut text_reader: TextUiReader,
+    mut text_pipeline: ResMut<TextPipeline>,
+    mut font_system: ResMut<FontCx>,
+    mut layout_cx: ResMut<LayoutCx>,
+    rem_size: Res<RemSize>,
+    default_font_source: Res<DefaultFontSource>,
+) {
+    for (
+        entity,
+        text,
+        block,
+        mut content_size,
+        mut text_flags,
+        mut computed,
+        computed_target,
+        computed_node,
+    ) in &mut text_query
+    {
+        // Note: the ComputedTextBlock::needs_rerender bool is cleared in create_text_measure().
+        // 1e-5 epsilon to ignore tiny scale factor float errors
+        if !(1e-5
+            < (computed_target.scale_factor() - computed_node.inverse_scale_factor.recip()).abs()
+            || computed.needs_rerender(computed_target.is_changed(), rem_size.is_changed())
+            || text.is_changed()
+            || text_flags.needs_measure_fn
+            || content_size.is_added())
+        {
+            continue;
+        }
+
+        match text_pipeline.create_text_measure(
+            entity,
+            fonts.as_ref(),
+            text_reader.iter(entity),
+            computed_target.scale_factor,
+            &block,
+            computed.as_mut(),
+            &mut font_system,
+            &mut layout_cx,
+            computed_target.logical_size(),
+            *rem_size,
+            &default_font_source.0,
+        ) {
+            Ok(measure) => {
+                if block.linebreak == LineBreak::NoWrap {
+                    let size = measure.max;
+                    let measure_changed = text_flags.cache_no_wrap_measure(size);
+                    if content_size.is_added() || measure_changed {
+                        content_size.set(NodeMeasure::Fixed(FixedMeasure { size }));
+                    }
+                } else {
+                    text_flags.clear_no_wrap_measure();
+                    content_size.set(NodeMeasure::Text(TextMeasure { info: measure }));
+                }
+
+                // Text measure func created successfully, so set `TextNodeFlags` to schedule a recompute
+                text_flags.needs_measure_fn = false;
+                text_flags.needs_recompute = true;
+            }
+            Err(
+                TextError::NoSuchFont
+                | TextError::NoSuchFontFamily(_)
+                | TextError::DegenerateScaleFactor,
+            ) => {
+                // Try again next frame
+                text_flags.needs_measure_fn = true;
+            }
+            Err(
+                e @ (TextError::FailedToAddGlyph(_)
+                | TextError::FailedToGetGlyphImage(_)
+                | TextError::MissingAtlasLayout
+                | TextError::MissingAtlasTexture
+                | TextError::InconsistentAtlasState),
+            ) => {
+                panic!("Fatal error when processing text: {e}.");
+            }
+        };
+    }
+}
+
+/// Updates the layout and size information for a UI text node on changes to the size value of its [`Node`] component,
+/// or when the `needs_recompute` field of [`TextNodeFlags`] is set to true.
+/// This information is computed by the [`TextPipeline`] and then stored in [`TextLayoutInfo`].
+///
+/// ## World Resources
+///
+/// [`ResMut<Assets<Image>>`](Assets<Image>) -- This system only adds new [`Image`] assets.
+/// It does not modify or observe existing ones. The exception is when adding new glyphs to a [`bevy_text::FontAtlas`].
+pub fn text_system(
+    mut textures: ResMut<Assets<Image>>,
+    mut font_atlas_set: ResMut<FontAtlasSet>,
+    mut text_pipeline: ResMut<TextPipeline>,
+    mut text_query: Query<(
+        Ref<ComputedNode>,
+        &TextLayout,
+        &mut TextLayoutInfo,
+        &mut TextNodeFlags,
+        &mut ComputedTextBlock,
+        Ref<FontHinting>,
+    )>,
+    mut scale_cx: ResMut<ScaleCx>,
+) {
+    for (node, block, mut text_layout_info, mut text_flags, mut computed, hinting) in
+        &mut text_query
+    {
+        if node.is_changed() || text_flags.needs_recompute || hinting.is_changed() {
+            // Skip the text node if it is waiting for a new measure func
+            if text_flags.needs_measure_fn {
+                continue;
+            }
+
+            let physical_node_size = if block.linebreak == LineBreak::NoWrap {
+                // With `NoWrap` set, no constraints are placed on the width of the text.
+                TextBounds::UNBOUNDED
+            } else {
+                let content_box_size = node.content_box().size();
+                TextBounds::new(content_box_size.x, content_box_size.y)
+            };
+
+            match text_pipeline.update_text_layout_info(
+                &mut text_layout_info,
+                &mut font_atlas_set,
+                &mut textures,
+                &mut computed,
+                &mut scale_cx,
+                physical_node_size,
+                block.justify,
+                *hinting,
+            ) {
+                Err(
+                    TextError::NoSuchFont
+                    | TextError::NoSuchFontFamily(_)
+                    | TextError::DegenerateScaleFactor,
+                ) => {
+                    // There was an error processing the text layout, try again next frame
+                    text_flags.needs_recompute = true;
+                }
+                Err(e @ TextError::FailedToGetGlyphImage(_)) => {
+                    warn_once!("{e}.");
+                    text_flags.needs_recompute = false;
+                    text_layout_info.clear();
+                }
+                Err(
+                    e @ (TextError::FailedToAddGlyph(_)
+                    | TextError::MissingAtlasLayout
+                    | TextError::MissingAtlasTexture
+                    | TextError::InconsistentAtlasState),
+                ) => {
+                    panic!("Fatal error when processing text: {e}.");
+                }
+                Ok(()) => {
+                    text_flags.needs_recompute = false;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_no_wrap_measure_is_reused() {
+        let mut flags = TextNodeFlags::default();
+        let size = Vec2::new(100.0, 20.0);
+
+        assert!(flags.cache_no_wrap_measure(size));
+        assert!(!flags.cache_no_wrap_measure(size));
+        assert!(flags.cache_no_wrap_measure(Vec2::new(101.0, 20.0)));
+    }
+}
