@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 16:15
+- fix(scene): scenes saved before the move to Bevy main load with their hierarchy intact instead of flattened
+
 ## 2026-10-30 16:06
 - feat(clouds): volumetric clouds ship with the engine as a bundled plugin instead of a marketplace install
 

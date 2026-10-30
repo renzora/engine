@@ -374,7 +374,8 @@ fn reflect_component_value(
             type_path: type_path.to_string(),
             offset,
         })?;
-    let seed = TypedReflectDeserializer::new(registration, registry);
+    let mut legacy = LegacyEntityBits;
+    let seed = TypedReflectDeserializer::with_processor(registration, registry, &mut legacy);
     let mut ron_de =
         ron::Deserializer::from_str(value_str).map_err(|e| BsnError::Deserialize {
             type_path: type_path.to_string(),
@@ -384,6 +385,103 @@ fn reflect_component_value(
         type_path: type_path.to_string(),
         message: e.to_string(),
     })
+}
+
+/// Reads an [`Entity`] in either of the forms a scene has stored it in.
+///
+/// Bevy used to write an entity inside a component value (a `ChildOf`, a
+/// joint's bodies) as its raw bits, `21474832900`, and now writes its display
+/// form, `"4004v0"`, and reads only that from a text format. Every scene saved
+/// before the change would otherwise lose every entity reference on load: each
+/// `ChildOf` was skipped, the whole hierarchy came in flat, and a terrain whose
+/// chunks were no longer its children built a second set beside them. Saving
+/// writes the new form, so a scene converts the first time it is saved.
+struct LegacyEntityBits;
+
+impl bevy::reflect::serde::ReflectDeserializerProcessor for LegacyEntityBits {
+    fn try_deserialize<'de, D>(
+        &mut self,
+        registration: &TypeRegistration,
+        _registry: &TypeRegistry,
+        deserializer: D,
+    ) -> Result<Result<Box<dyn PartialReflect>, D>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct EitherForm;
+
+        impl serde::de::Visitor<'_> for EitherForm {
+            type Value = Entity;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an entity as `{index}v{generation}` or as its raw bits")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Entity, E> {
+                v.parse().map_err(E::custom)
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Entity, E> {
+                Entity::try_from_bits(v).ok_or_else(|| E::custom(format!("invalid entity id bits {v}")))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Entity, E> {
+                u64::try_from(v)
+                    .map_err(|_| E::custom(format!("invalid entity id bits {v}")))
+                    .and_then(|v| self.visit_u64(v))
+            }
+        }
+
+        /// The one field of a newtype around an entity.
+        struct Newtype;
+
+        impl<'de> serde::de::Visitor<'de> for Newtype {
+            type Value = Entity;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a newtype around an entity")
+            }
+
+            fn visit_newtype_struct<D: serde::Deserializer<'de>>(self, d: D) -> Result<Entity, D::Error> {
+                d.deserialize_any(EitherForm)
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Entity, A::Error> {
+                struct Field;
+                impl<'de> serde::de::DeserializeSeed<'de> for Field {
+                    type Value = Entity;
+                    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Entity, D::Error> {
+                        d.deserialize_any(EitherForm)
+                    }
+                }
+                seq.next_element_seed(Field)?
+                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))
+            }
+        }
+
+        if registration.type_id() == std::any::TypeId::of::<Entity>() {
+            let entity = deserializer.deserialize_any(EitherForm)?;
+            return Ok(Ok(Box::new(entity)));
+        }
+
+        // `ChildOf` and its kind reflect with their own serde `Deserialize`, so
+        // reflection hands the whole value to serde and never reaches the
+        // entity inside. Read the field here instead and give back the value as
+        // a dynamic tuple struct, which reflection turns into the real type.
+        let bevy::reflect::TypeInfo::TupleStruct(info) = registration.type_info() else {
+            return Ok(Err(deserializer));
+        };
+        let wraps_entity = info.field_len() == 1 && info.field_at(0).is_some_and(|f| f.is::<Entity>());
+        if !wraps_entity || registration.data::<bevy::reflect::ReflectDeserialize>().is_none() {
+            return Ok(Err(deserializer));
+        }
+        let name = info.type_path_table().ident().unwrap_or("Entity");
+        let entity = deserializer.deserialize_newtype_struct(name, Newtype)?;
+        let mut value = bevy::reflect::tuple_struct::DynamicTupleStruct::default();
+        value.set_represented_type(Some(registration.type_info()));
+        value.insert(entity);
+        Ok(Ok(Box::new(value)))
+    }
 }
 
 /// A tiny hand-rolled cursor over the interim BSN grammar. The only non-trivial
@@ -805,6 +903,51 @@ entity 4294967295 {
         );
         assert_eq!(scene.entities.len(), 1);
         assert_eq!(scene.entities[0].components.len(), 2);
+    }
+
+    /// A parent written as raw bits (every scene saved before Bevy moved to the
+    /// `{index}v{generation}` form) and one written the new way both come back
+    /// as the right parent. The bits form used to be skipped, so a whole scene
+    /// loaded with its hierarchy flattened and only a warning to say so.
+    #[test]
+    fn child_of_loads_in_both_entity_forms() {
+        let atr = registry();
+        atr.write().register::<ChildOf>();
+        for parent_ref in ["4294967295", "\"0v0\""] {
+            let text = format!(
+                "\
+// renzora interim bsn v1
+entity 4294967295 {{
+    bevy_ecs::name::Name: \"parent\",
+}}
+entity 4294967294 {{
+    bevy_ecs::name::Name: \"child\",
+    bevy_ecs::hierarchy::ChildOf: ({parent_ref}),
+}}
+"
+            );
+            let (scene, skipped) = {
+                let reg = atr.read();
+                BsnSerializer.deserialize_lossy(&text, &reg).expect("parses")
+            };
+            assert!(skipped.is_empty(), "{parent_ref}: skipped {skipped:?}");
+
+            let mut dst = World::new();
+            dst.insert_resource(atr.clone());
+            let mut map = EntityHashMap::default();
+            scene.write_to_world(&mut dst, &mut map).expect("write");
+            let named = |name: &str| {
+                *map.values()
+                    .find(|&&e| dst.get::<Name>(e).is_some_and(|n| n.as_str() == name))
+                    .expect("entity present")
+            };
+            let (parent, child) = (named("parent"), named("child"));
+            assert_eq!(
+                dst.get::<ChildOf>(child).map(ChildOf::parent),
+                Some(parent),
+                "{parent_ref}: the child should hang off the loaded parent"
+            );
+        }
     }
 
     /// The forms that are *nearly* right are the ones a person writes, so pin
