@@ -8,6 +8,10 @@
 //! - Scroll wheel: dolly zoom (move along view direction)
 //! - Shift: move faster (2x)
 //! - Ctrl: move slower (0.25x)
+//!
+//! The orbit pivot shows as a ring while it is in use (`pivot_marker`).
+
+mod pivot_marker;
 
 use bevy::camera::primitives::Aabb;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
@@ -242,8 +246,9 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraVelocityState>()
             .init_resource::<PivotLock>()
             .init_resource::<OrbitMirror>()
-            .init_resource::<EditorViewportFov>()
-            .add_systems(
+            .init_resource::<EditorViewportFov>();
+        pivot_marker::install(app);
+        app.add_systems(
                 Update,
                 toggle_pivot_lock.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
@@ -282,6 +287,10 @@ impl Plugin for CameraPlugin {
                     update_camera_projection,
                     sync_orbit_snapshot,
                     apply_orbit_on_change,
+                    // After every writer of the orbit, so whatever moved the
+                    // pivot this frame shows it this frame.
+                    pivot_marker::track_pivot,
+                    pivot_marker::draw_pivot,
                     // …persist the edited angle back to the focused slot, then
                     // drive the other views from their own stored angles.
                     mirror_focused_orbit_out,
@@ -882,9 +891,15 @@ fn handle_camera_view_request(
     commands.remove_resource::<renzora::core::CameraViewRequest>();
 }
 
-/// Move the camera's orbit pivot to the point under the mouse cursor (ground
-/// plane intersection). Keeps the camera's world position unchanged — only
-/// the pivot/distance/yaw/pitch are recomputed.
+/// Move the camera's orbit pivot to the point under the mouse cursor: the
+/// scene surface there, or the ground plane where there is none. Keeps the
+/// camera's world position unchanged; only the pivot/distance/yaw/pitch are
+/// recomputed.
+///
+/// The surface comes first because the plane alone put the pivot underground
+/// on anything raised: over a 300 m mountain it landed hundreds of metres
+/// below the slope you pointed at, and orbit and zoom took that distance.
+#[allow(clippy::too_many_arguments)]
 fn camera_to_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
@@ -896,6 +911,7 @@ fn camera_to_cursor(
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    mut surface: SurfaceAhead,
 ) {
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
@@ -936,13 +952,13 @@ fn camera_to_cursor(
         return;
     };
     let dir = ray.direction.as_vec3();
-    if dir.y.abs() <= 1e-6 {
+    let on_plane = || {
+        let t = -ray.origin.y / dir.y;
+        (dir.y.abs() > 1e-6 && t > 0.0 && t <= 10_000.0).then_some(t)
+    };
+    let Some(t) = surface.distance(ray).or_else(on_plane) else {
         return;
-    }
-    let t = -ray.origin.y / dir.y;
-    if t <= 0.0 || t > 10_000.0 {
-        return;
-    }
+    };
     let target = ray.origin + dir * t;
 
     let current_cam_pos = orbit.calculate_position();
@@ -1143,6 +1159,24 @@ fn camera_controller(
         if keyboard.pressed(KeyCode::KeyQ) {
             vertical -= 1.0;
         }
+        // Flying keeps the orbit distance as it is (it moves the pivot along
+        // with the camera), so scaling by that distance never slowed the
+        // camera as it neared the ground: a pivot left a kilometre away flew
+        // at a kilometre a second right down to the grass. So while flying the
+        // speed follows the nearest scene surface below or ahead instead, and
+        // only falls back to the orbit distance over empty space.
+        let flying = move_delta.length_squared() > 0.0 || vertical != 0.0;
+        let move_speed = if settings.distance_relative_speed && flying {
+            let eye = orbit.calculate_position();
+            [Some(Dir3::NEG_Y), Dir3::new(-forward).ok()]
+                .into_iter()
+                .flatten()
+                .filter_map(|dir| surface_ahead.distance(Ray3d::new(eye, dir)))
+                .reduce(f32::min)
+                .map_or(move_speed, |clearance| settings.move_speed * slow_mult * (clearance / 10.0).max(0.1))
+        } else {
+            move_speed
+        };
         if move_delta.length_squared() > 0.0 {
             target_velocity = move_delta.normalize() * move_speed;
         }

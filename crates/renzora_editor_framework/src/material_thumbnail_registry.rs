@@ -49,6 +49,13 @@ impl MaterialThumbnailRegistry {
         self.handles.insert(path, handle);
     }
 
+    /// Whether a thumbnail for `path` has been asked for and is not done.
+    /// With [`Self::handle`], how a caller tells a capture that failed (neither)
+    /// from one still running.
+    pub fn is_in_flight(&self, path: &PathBuf) -> bool {
+        self.in_flight.contains(path)
+    }
+
     /// Called by the renderer when a capture failed (parse error, unsupported
     /// domain, IO error, etc.) — clears the in-flight flag so the request
     /// can be retried later.
@@ -65,9 +72,8 @@ impl MaterialThumbnailRegistry {
     /// Clear every cached thumbnail entry, every in-flight marker, and
     /// every pending request. Called when re-opening a project from
     /// inside the editor — without this, [`request`](Self::request)
-    /// short-circuits on every path the previous session had thumbnailed,
-    /// no requests enqueue, and the splash's "Material thumbnails" task
-    /// is left stuck at 0/N forever.
+    /// short-circuits on every path the previous session had thumbnailed
+    /// and the new project's materials never get theirs.
     ///
     /// Doesn't touch the on-disk PNG cache — those are still valid
     /// across sessions and will be reloaded by the first re-request.

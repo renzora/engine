@@ -373,7 +373,10 @@ impl NativeAssets {
 /// listings, the tree's two, and the tree's search walk — and a file hidden by
 /// four of them is a file that reappears when you search for it.
 pub(crate) fn is_hidden_name(name: &str) -> bool {
-    name.starts_with('.') || name == "project.toml"
+    // `terrain_clusters` holds the virtual geometry the editor builds for
+    // terrain chunks (`renzora_terrain::clusters`): one `.rvg` per chunk,
+    // rebuilt as the ground changes, nothing to place or open by hand.
+    name.starts_with('.') || name == "project.toml" || name == "terrain_clusters"
 }
 
 /// An `.rvg` kept beside a `.glb` (or `.gltf`) of the same name: the virtual

@@ -8,7 +8,9 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
-renzora = { path = "../renzora", default-features = false }
+# `render_3d`: the ray tracer's stand-in material contract (`TracedStandIn`),
+# which is how terrain reaches Solari (see `surface`).
+renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }
 # `default-features = false`: terrain only tags chunks with the avian-free
 # collider DATA types (`PhysicsBodyData`/`CollisionShapeData`) — it never needs
 # a physics engine. Whichever physics plugin is installed simulates it; a
@@ -17,6 +19,14 @@ renzora_physics = { path = "../renzora_physics", default-features = false }
 # Grass blades are uploaded straight into an instance-stepped vertex buffer, so
 # `GrassInstance` has to be `Pod` for `RawBufferVec` to accept it.
 bytemuck = { version = "1", features = ["derive"] }
+# The cluster file type a chunk drawn as virtual geometry reads (`clusters`).
+# Format and loader only: the builder is the `bake` feature, which only the
+# editor turns on, so a game compiles no meshoptimizer.
+renzora_rvg = { path = "../renzora_rvg" }
+# A terrain is textured by a node-graph material (`landscape`): it builds its
+# own instance of the shared `GraphMaterial` and reads the material's layer
+# names off the graph. No cycle: the material crate knows nothing of terrain.
+renzora_shader = { path = "../renzora_shader" }
 
 [lints]
 workspace = true

@@ -18,7 +18,7 @@ So an "export" is really: take the already-built game binary for a target platfo
 Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-only). Triggering Export from the editor opens a modal in three columns:
 
 - **Presets** on the left, listed under their platform family (Desktop, Mobile, TV, Web). Each says in words whether it can export as it stands: *Lean build*, *Template installed*, *Template available to download*, or *No template yet*. Press **+** to add one for a platform.
-- **Settings** in the middle, in five tabs: **Output** (binary name, export directory, icon, window, console logging, dedicated server), **Packaging** (packaging mode, runtime template, app bundle, modding, size and compression), **Features** (the lean engine-feature strip), **Plugins**, and **Files** (what goes into the archive). The last three show a count beside their name: features switched on, plugins shipping, files shipping.
+- **Settings** in the middle, in five tabs: **Output** (binary name, export directory, icon, window, console logging, profiling, dedicated server), **Packaging** (packaging mode, runtime template, app bundle, modding, size and compression), **Features** (the lean engine-feature strip), **Plugins**, and **Files** (what goes into the archive). The last three show a count beside their name: features switched on, plugins shipping, files shipping.
 - **This build** on the right: a summary of the platform, packaging mode, engine features, plugins, files and output folder, and under it **Before you export**, a list of checks. Each one that is a problem has a button that fixes it: **Download** or **Install from file** for a missing runtime template, **Retry** when GitHub could not be reached, **Choose folder**, **Use lean build**, or **Review** to jump to the tab the problem is on. The footer says which release templates come from.
 
 The **Export** button in the header names its target (*Export Web*). While anything in the checks list blocks the export, the button is grey and carries the number of blocking items; the list and the button use the same checks, so a grey button always has its reason listed beside it.
@@ -36,6 +36,7 @@ Packaging modes are picked from option cards rather than radio buttons. The rele
 | **Compression level** | Zstd level used when packing the `.rpak` |
 | **Compress binary with UPX** | Pack the shipped executable and libraries with UPX (see [below](#compressing-the-binary-with-upx)) |
 | **Console logging** | Whether the shipped build keeps a console/log |
+| **Allow profiling** | The game announces itself on your network so the editor's companion can profile it on any device. Only your editor can connect. Leave off for builds you ship. See [The Companion](../editor/companion) |
 | **Include server** | Also emit a dedicated-server bundle (desktop only) |
 | **Mesh optimization** | Optional simplify / quantize / LOD generation while packing |
 | **Plugins** | Which Runtime-scope plugins to include, and whether they ship as files or are linked into the binary |

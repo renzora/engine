@@ -1,49 +1,43 @@
-//! The built-in blockout grid — the material a primitive wears before anyone
+//! The built-in blockout grid: the material a primitive wears before anyone
 //! has given it one.
 //!
 //! It is generated, not loaded: one texture baked at startup, so there is no
 //! asset to ship, nothing to go missing from a project, and nothing to keep in
-//! sync with an exported `.rpak`. A flat field ruled into squares by thin bright
-//! lines, with a bright four-pointed star on every fourth intersection.
+//! sync with an exported `.rpak`. A soft two-tone checker ruled into squares by
+//! thin dark lines, with a heavier, darker line around every
+//! [`GRID_CELLS`]-square section.
 //!
-//! # Why it is this plain
+//! # Why it looks like this
 //!
-//! It used to be rounded tiles separated by dark grout, with a heavy rule around
-//! every [`GRID_CELLS`]-square section and a cross through that section's
-//! middle. The rounded tiles and the heavy rule are gone: they drew a coarse
-//! second grid over the first, so a wall read as a pattern of large marked
-//! panels rather than as a ruled surface, and the eye picked out the decoration
-//! instead of the measure.
+//! It is the classic level-editor brush grid. The cells give the fine measure
+//! (25 cm) and the section line gives the coarse one (a metre), so a wall can be
+//! counted off at a glance without reading individual cells. The field passes
+//! the shape's tint through whole, so an orange cube is the orange that was
+//! picked and the lines are darker shades of it.
 //!
-//! The cross survives, inverted. It marks the same thing the heavy rule did, one
-//! section every [`GRID_CELLS`] cells, but it does it by brightening a single
-//! intersection rather than by drawing a box round the whole section: a mark you
-//! can count off to judge a distance, which is the job, without a second set of
-//! edges competing with the geometry's own. It sits *on* an intersection with
-//! its arms along the lines, so it thickens the grid where it lands instead of
-//! cutting across it, and it tapers to a point so it reads as a mark rather than
-//! as a shape.
+//! An earlier version ruled the grid in **bright** lines over a darkened field,
+//! with a four-pointed star marking each section's centre in place of a section
+//! line. It held up on sunlit floors but darkened every tint to a third of its
+//! value and the star read as decoration rather than as a measure, so it was
+//! replaced by this.
 //!
-//! The lines are **brighter** than the field they rule, not darker. A greybox is
-//! read at a glance for its proportions, and light rules on a darker face carry
-//! at distance and at grazing angles the way dark grout does not: grout closes up
-//! into a muddy smear as the surface turns away, where a bright rule thins out
-//! and stays legible.
+//! # The grooves
 //!
-//! **It is deliberately flat.** An earlier version bevelled the tile edges in a
-//! normal map and put ambient occlusion in the grout, and the result read as a
-//! wall of moulded plastic tiles rather than as a greyboxing aid: relief that
-//! strong competes with the actual shape of the geometry you are blocking out,
-//! which is the one thing the material must not do. It also lit the seam of a
-//! sphere's UVs into a visible zigzag ridge. What survives from that attempt is
-//! the mip chain and the anisotropic sampling — those were fixing a real problem
-//! (thin rules with no mips crawl as soon as the camera moves) and cost nothing
-//! visually.
+//! Each line is a hairline V-groove in a normal map baked beside the colour
+//! ([`build_grid_normal_image`]), cut into a surface that is otherwise dead
+//! flat. Together with a fairly glossy finish that is what makes the grid answer
+//! the sun: a low light glints off the groove walls that face it and smears a
+//! highlight across the faces, instead of lighting the whole surface as one flat
+//! card.
 //!
-//! The texture is a multiplier over the shape's own tint, so the *line* is the
-//! part that passes the tint through untouched and the field is held below it.
-//! That is the only way round it: a multiply cannot brighten, so a line lighter
-//! than its surroundings has to be made by darkening the surroundings.
+//! **Raised tiles are wrong here.** Two versions rounded or bevelled the tiles
+//! themselves, one with ambient occlusion in the grout, and both read as toy
+//! bricks or moulded plastic: relief across the face competes with the actual
+//! shape of the geometry you are blocking out. Keep relief inside the lines.
+//! The heavier of the two also lit a sphere's UV seam into a zigzag ridge, which
+//! the per-triangle box projection in `renzora_engine::blockout` no longer
+//! produces. The mip chain and the anisotropic sampling date from it too: thin
+//! rules with no mips crawl as soon as the camera moves.
 
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
@@ -53,77 +47,61 @@ use bevy::render::render_resource::TextureFormat;
 /// The blockout projection maps one repeat to one world unit, so this is also
 /// the number of cells per metre: four, i.e. a 25 cm cell, which is fine enough
 /// to measure a doorway against and coarse enough not to turn a wall into noise.
+/// One repeat is one section, so the section line falls on the wrap seam.
 pub const GRID_CELLS: usize = 4;
 
-/// Handle to the generated blockout-grid image, inserted at startup by the
+/// Handles to the generated blockout-grid images, inserted at startup by the
 /// engine. Consumers treat the resource as optional so headless/server builds
 /// (no `Assets<Image>`) still work.
 ///
-/// Every untextured primitive shares this one image — only the tint, which lives
+/// Every untextured primitive shares these images; only the tint, which lives
 /// in `base_color`/[`MeshColor`](super::MeshColor), differs per shape.
 #[derive(Resource, Clone)]
-pub struct GridTexture(pub Handle<Image>);
+pub struct GridTexture {
+    /// The colour multiplier, from [`build_grid_image`].
+    pub color: Handle<Image>,
+    /// The line grooves, from [`build_grid_normal_image`].
+    pub normal: Handle<Image>,
+}
+
+// All in texels of the repeating tile.
+//
+// 256 texels to a 25 cm cell. Linear magnification softens every edge by one
+// texel, so up close the resolution *is* the sharpness: at 128 a line edge
+// blurred over two millimetres and read as out of focus with the camera near a
+// wall. (`Nearest` magnification would be sharper, but wgpu rejects it on a
+// sampler with anisotropic filtering; see `bake`.)
+const CELL: usize = 256;
+const SIZE: usize = GRID_CELLS * CELL;
+/// Cell line width. Thin: it is the fine measure, and a heavy one would
+/// compete with the section line.
+const LINE: f32 = 8.0;
+/// Section line width, two and a half cell lines, so it reads as the coarse
+/// measure from across a room and survives the first few mips.
+const SECTION_LINE: f32 = 20.0;
 
 /// Bake the blockout grid, mip chain included.
 ///
-/// Single source of truth for every consumer — a freshly spawned primitive, its
-/// rehydration after a scene load, and the viewport's Textures-off swap — so
+/// Single source of truth for every consumer (a freshly spawned primitive, its
+/// rehydration after a scene load, and the viewport's Textures-off swap) so
 /// "this has no texture yet" looks the same however you arrived at it.
 pub fn build_grid_image() -> Image {
-    // All in texels of the repeating tile.
-    const CELL: usize = 128;
-    const SIZE: usize = GRID_CELLS * CELL;
-    /// Line width. Thin on purpose: this is a ruler laid over the surface, and
-    /// a heavy rule starts reading as a gap between panels instead.
-    const LINE: f32 = 5.0;
-    // Edges resolve over about a texel. Not zero — a hard step would alias on
-    // the top mip, where the anisotropic sampler is reading close to 1:1 — and
-    // no wider than half the line, or the ramps meet in the middle and the line
-    // never reaches full value: a soft grey smear instead of a rule.
-    const EDGE: f32 = 1.0;
+    // Half a texel: with both widths even and the lines centred on texel
+    // corners, every texel lands wholly inside a line or wholly outside it, so
+    // a line's edge is as sharp as linear magnification allows: one texel of
+    // blend. A one-texel ramp left a half-tone texel on each edge, which
+    // magnified into a two-texel soft band.
+    const EDGE: f32 = 0.5;
 
-    /// How far each arm of the star reaches, and how wide it is where they
-    /// cross. Short of the neighbouring intersection on purpose: a star that
-    /// reached one would join up with the next and the marks would read as a
-    /// second grid, which is what the heavy section rule did wrong.
-    const STAR_ARM: f32 = CELL as f32 * 0.85;
-    const STAR_WIDTH: f32 = 12.0;
-
-    // Linear multipliers over `base_color`: 1.0 leaves the tint alone.
-    //
-    // The ordinary line stops short of 1.0 so the star has somewhere brighter to
-    // go. Being both wider and brighter is what lets it read at a glance from
-    // across a room, which is the only reason it is there.
-    //
-    // The field is well below the line, and further below it than a flat swatch
-    // of the texture suggests it needs to be. A lit surface is not a swatch: a
-    // sunlit face is pushed to the top of the range where everything compresses
-    // together, and a grid that reads clearly on the texture itself washes out
-    // to nothing on the floor of an actual scene. The contrast has to be sized
-    // for the lit case, which is the only one anybody sees.
-    const FIELD_VALUE: f32 = 0.30;
-    const LINE_VALUE: f32 = 0.85;
-    const STAR_VALUE: f32 = 1.0;
-
-    // The middle of the texture is `GRID_CELLS / 2` cells in, and `GRID_CELLS`
-    // is even, so it lands exactly on an intersection. That is what puts the
-    // star on the grid rather than across it.
-    const CENTRE: f32 = SIZE as f32 * 0.5;
-
-    /// One arm of the star: `along` runs down its length, `across` its width.
-    ///
-    /// The half-width falls to nothing over the arm's reach, which is what
-    /// gives the taper. Two of these at right angles make the star, and they
-    /// overlap at the centre where both are at full width.
-    ///
-    /// The falloff is quadratic rather than linear: an arm that narrows in a
-    /// straight line is a thin triangle and reads as a smudge on the line it
-    /// sits on, where one that holds its width through the middle and then runs
-    /// out to a point reads as a mark placed there deliberately.
-    fn arm(along: f32, across: f32) -> f32 {
-        let t = (along.abs() / STAR_ARM).clamp(0.0, 1.0);
-        ramp(STAR_WIDTH * 0.5 * (1.0 - t * t) - across.abs(), EDGE)
-    }
+    // Linear multipliers over `base_color`: 1.0 leaves the tint alone. Cells
+    // alternate between the tint itself and a slightly darker shade of it, a
+    // soft checker that lets you count cells along a receding floor where the
+    // lines have merged into the mips. The lines are darker shades again, the
+    // section line darker than the cell line so the two measures stay apart.
+    const FIELD_VALUE: f32 = 1.0;
+    const FIELD_ALT_VALUE: f32 = 0.78;
+    const LINE_VALUE: f32 = 0.55;
+    const SECTION_VALUE: f32 = 0.22;
 
     let mut level = Vec::with_capacity(SIZE * SIZE);
     for y in 0..SIZE {
@@ -135,16 +113,74 @@ pub fn build_grid_image() -> Image {
             // it and form one line of the full width rather than two half ones.
             let d = seam_distance(px, CELL as f32).min(seam_distance(py, CELL as f32));
             let line = ramp(LINE * 0.5 - d, EDGE);
+            // The same for the section boundary, which is the wrap seam.
+            let ds = seam_distance(px, SIZE as f32).min(seam_distance(py, SIZE as f32));
+            let section = ramp(SECTION_LINE * 0.5 - ds, EDGE);
 
-            let (dx, dy) = (px - CENTRE, py - CENTRE);
-            let star = arm(dx, dy).max(arm(dy, dx));
-
-            let value = FIELD_VALUE + (LINE_VALUE - FIELD_VALUE) * line;
-            level.push(value + (STAR_VALUE - value) * star);
+            // `GRID_CELLS` is even, so the checker carries on unbroken across
+            // the wrap seam.
+            let field = if (x / CELL + y / CELL).is_multiple_of(2) { FIELD_VALUE } else { FIELD_ALT_VALUE };
+            let value = field + (LINE_VALUE - field) * line;
+            level.push(Vec3::splat(value + (SECTION_VALUE - value) * section));
         }
     }
 
-    bake(level, SIZE)
+    bake(level, TextureFormat::Rgba8UnormSrgb, false, |v| {
+        let byte = srgb_byte(v.x);
+        [byte, byte, byte, 255]
+    })
+}
+
+/// Bake the line grooves as a tangent-space normal map, mip chain included.
+///
+/// Every line is a shallow V cut into an otherwise perfectly flat surface: the
+/// cell faces have no relief at all, and only the line's own width slopes. Under
+/// a low sun the wall facing the light catches a hairline glint and the far wall
+/// falls dark, which is what makes the grid respond to the light as you turn.
+/// The groove sits *inside* the dark line, so it reads as a scored line on a
+/// flat panel and never as a raised tile. A rounded tile bevel was tried here
+/// first and read as toy bricks.
+///
+/// Tangent space here is the box projection's: `+x` is `+u`, `+y` is `+v`
+/// (down the image), and `renzora_engine::blockout` writes tangents that agree,
+/// rather than relying on a generic tangent generator's handedness.
+pub fn build_grid_normal_image() -> Image {
+    /// Groove wall slope: depth gained per texel toward the line's centre. 1 is
+    /// a 45 degree wall, steep enough to throw a clear glint across the narrow
+    /// width it has.
+    const SLOPE: f32 = 1.0;
+
+    // Depth of the groove under a texel coordinate along one axis, in texels.
+    // The section line is wider than a cell line, so its groove is too.
+    fn groove(v: f32) -> f32 {
+        let half = if seam_distance(v, SIZE as f32) < CELL as f32 * 0.5 {
+            SECTION_LINE * 0.5
+        } else {
+            LINE * 0.5
+        };
+        (half - seam_distance(v, CELL as f32)).max(0.0) * SLOPE
+    }
+
+    // Surface height: flat at zero, dropping into whichever groove is deeper
+    // where two cross.
+    fn height(x: f32, y: f32) -> f32 {
+        -groove(x).max(groove(y))
+    }
+
+    let mut level = Vec::with_capacity(SIZE * SIZE);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            let dx = (height(px + 1.0, py) - height(px - 1.0, py)) * 0.5;
+            let dy = (height(px, py + 1.0) - height(px, py - 1.0)) * 0.5;
+            level.push(Vec3::new(-dx, -dy, 1.0).normalize());
+        }
+    }
+
+    bake(level, TextureFormat::Rgba8Unorm, true, |n| {
+        let byte = |c: f32| ((c * 0.5 + 0.5).clamp(0.0, 1.0) * 255.0).round() as u8;
+        [byte(n.x), byte(n.y), byte(n.z), 255]
+    })
 }
 
 /// Distance to the nearest multiple of `period`: a cell boundary, and at the
@@ -160,21 +196,30 @@ fn ramp(depth: f32, width: f32) -> f32 {
 }
 
 /// Encode level 0 and every mip below it into one image. Downsampling happens
-/// on the f32 values — in *linear* space, not on sRGB bytes — so a distant
+/// on the f32 values, in *linear* space, not on sRGB bytes, so a distant
 /// surface averages to the brightness it should rather than to the darker
 /// result gamma-space filtering gives.
-fn bake(mut level: Vec<f32>, size: usize) -> Image {
+///
+/// `renormalize` is for the normal map: an average of unit vectors is shorter
+/// than a unit vector, and a short normal darkens the lighting of every distant
+/// tile edge.
+fn bake(
+    mut level: Vec<Vec3>,
+    format: TextureFormat,
+    renormalize: bool,
+    encode: fn(Vec3) -> [u8; 4],
+) -> Image {
     use bevy::asset::RenderAssetUsages;
     use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
     use bevy::render::render_resource::{Extent3d, TextureDimension};
 
+    let size = SIZE;
     let mut data: Vec<u8> = Vec::with_capacity(size * size * 4 * 4 / 3);
     let mut width = size;
     let mut mip_level_count = 0u32;
     loop {
         for value in &level {
-            let byte = srgb_byte(*value);
-            data.extend_from_slice(&[byte, byte, byte, 255]);
+            data.extend_from_slice(&encode(*value));
         }
         mip_level_count += 1;
         if width == 1 {
@@ -186,13 +231,12 @@ fn bake(mut level: Vec<f32>, size: usize) -> Image {
         for y in 0..half {
             for x in 0..half {
                 let (x0, y0) = (x * 2, y * 2);
-                next.push(
-                    (level[y0 * width + x0]
-                        + level[y0 * width + x0 + 1]
-                        + level[(y0 + 1) * width + x0]
-                        + level[(y0 + 1) * width + x0 + 1])
-                        * 0.25,
-                );
+                let mean = (level[y0 * width + x0]
+                    + level[y0 * width + x0 + 1]
+                    + level[(y0 + 1) * width + x0]
+                    + level[(y0 + 1) * width + x0 + 1])
+                    * 0.25;
+                next.push(if renormalize { mean.normalize_or(Vec3::Z) } else { mean });
             }
         }
         level = next;
@@ -210,7 +254,7 @@ fn bake(mut level: Vec<f32>, size: usize) -> Image {
         },
         TextureDimension::D2,
         data[..size * size * 4].to_vec(),
-        TextureFormat::Rgba8UnormSrgb,
+        format,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
     image.texture_descriptor.mip_level_count = mip_level_count;
@@ -218,10 +262,16 @@ fn bake(mut level: Vec<f32>, size: usize) -> Image {
     image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
         address_mode_u: ImageAddressMode::Repeat,
         address_mode_v: ImageAddressMode::Repeat,
+        // Linear, though `Nearest` would draw the hard texels below with a
+        // sharper edge up close: wgpu rejects any non-linear filter on a
+        // sampler with anisotropy above 1 ("all filter modes must be linear"),
+        // and the editor died with an unrecoverable validation error the first
+        // time a blockout shape drew. Grazing angles matter more than the last
+        // texel of edge, so anisotropy stays and the edge softens by one texel.
         mag_filter: ImageFilterMode::Linear,
         min_filter: ImageFilterMode::Linear,
         mipmap_filter: ImageFilterMode::Linear,
-        // Grazing angles are the whole job here — a blockout floor is mostly
+        // Grazing angles are the whole job here: a blockout floor is mostly
         // seen edge-on, and that is exactly where trilinear alone turns to mush.
         anisotropy_clamp: 16,
         ..Default::default()
@@ -259,104 +309,137 @@ mod tests {
         assert_eq!(image.data.as_ref().map(Vec::len), Some(expected));
     }
 
-    /// The line is what passes the tint through, and the field is held below
-    /// it. A multiply cannot brighten, so this ordering is the only way a rule
-    /// ends up lighter than the surface it rules; getting it backwards is the
-    /// dark-grout version this replaced.
+    /// The field passes the tint through whole and the cell lines are darker
+    /// shades of it, so a shape is the colour that was picked for it.
     #[test]
-    fn lines_are_brighter_than_the_field_they_rule() {
+    fn field_passes_the_tint_and_lines_are_darker() {
         let image = build_grid_image();
         let size = image.texture_descriptor.size.width as usize;
         let cell = size / GRID_CELLS;
         let data = image.data.clone().unwrap();
         let texel = |x: usize, y: usize| data[(y * size + x) * 4];
 
-        // A cell boundary, and the middle of the cell beyond it. Both clear of
-        // the star at the texture's centre.
-        let line = texel(cell, cell + cell / 2);
-        let field = texel(cell + cell / 2, cell + cell / 2);
-        assert!(line > field, "line {line} should be brighter than field {field}");
-        assert!(field < 220, "the field must be held well below the line");
+        let mid = cell + cell / 2;
+        let field = texel(mid, mid);
+        let alt = texel(mid + cell, mid);
+        let line = texel(cell, mid);
+        assert_eq!(field, 255, "the field must pass the tint through");
+        assert!(alt < field, "the checker's other cell {alt} should be darker");
+        assert!(line < alt, "line {line} should be darker than both cells");
     }
 
-    /// The star is brighter and wider than the line it lands on, or it would be
-    /// invisible from the distance a greybox is judged at. It is also the only
-    /// thing brighter than a line, so it is what the tint passes through whole.
+    /// The section line is darker and wider than a cell line, or the coarse
+    /// measure would not stand out from the fine one.
     #[test]
-    fn the_star_is_brighter_and_wider_than_the_line() {
+    fn section_line_is_darker_and_wider_than_a_cell_line() {
         let image = build_grid_image();
         let size = image.texture_descriptor.size.width as usize;
+        let cell = size / GRID_CELLS;
         let data = image.data.clone().unwrap();
         let texel = |x: usize, y: usize| data[(y * size + x) * 4];
-        let cell = size / GRID_CELLS;
 
-        let centre = size / 2;
-        // A plain intersection: two lines crossing, and nothing more.
-        let plain = texel(cell, cell);
-        assert_eq!(texel(centre, centre), 255, "the star centre passes the tint");
+        let mid = cell + cell / 2;
+        let cell_line = texel(cell, mid);
+        let section_line = texel(0, mid);
         assert!(
-            texel(centre, centre) > plain,
-            "the star must outshine a plain intersection"
+            section_line < cell_line,
+            "section line {section_line} should be darker than cell line {cell_line}"
         );
 
-        // The star is the only thing on the texture brighter than a line, and it
-        // is a run of texels rather than a single bright one, or it would vanish
-        // into the first mip.
-        let brighter_than_a_line =
-            |x: usize| (0..size).filter(|&y| texel(x, y) > plain).count();
+        // Width: texels in a row no lighter than a cell line, near each kind of
+        // line. (Not "darker than the field": the checker's darker cells are.)
+        let dark_run =
+            |from: usize, to: usize| (from..to).filter(|&x| texel(x, mid) <= cell_line).count();
+        let section_width = dark_run(0, cell / 2) + dark_run(size - cell / 2, size);
+        let cell_width = dark_run(cell / 2, cell + cell / 2);
         assert!(
-            brighter_than_a_line(centre) > 40,
-            "the star arm covered only {} texels",
-            brighter_than_a_line(centre)
-        );
-        assert_eq!(
-            brighter_than_a_line(cell),
-            0,
-            "a plain line should have nothing brighter sitting on it"
+            section_width > cell_width,
+            "section line {section_width} texels should be wider than cell line {cell_width}"
         );
     }
 
-    /// The star's arms must stop short of the neighbouring intersections. Joined
-    /// up, they would draw the coarse second grid the heavy section rule used to,
-    /// which is the thing this texture was rebuilt to get rid of.
+    /// wgpu rejects a sampler with anisotropy above 1 unless every filter is
+    /// linear, and the rejection is an unrecoverable validation error: the
+    /// editor crashed the first time a blockout shape drew.
     #[test]
-    fn the_stars_do_not_join_up() {
+    fn the_sampler_is_one_wgpu_accepts() {
+        use bevy::image::{ImageFilterMode, ImageSampler};
         let image = build_grid_image();
-        let size = image.texture_descriptor.size.width as usize;
-        let cell = size / GRID_CELLS;
-        let data = image.data.unwrap();
-        let texel = |x: usize, y: usize| data[(y * size + x) * 4];
-
-        let centre = size / 2;
-        // Just short of the next intersection along, and clear of both lines
-        // there, so anything left in the sample is the arm overreaching.
-        let near_the_next = texel(centre + cell - 10, centre + 10);
-        let field = texel(centre + cell / 2, centre + cell / 2);
-        assert_eq!(
-            near_the_next, field,
-            "the arm still had width a whole cell out from the centre"
-        );
-    }
-
-    /// One line weight and one cell size, everywhere. The old texture drew a
-    /// heavy rule around each section and a cross through its middle, which is a
-    /// second, coarser grid over the first: the wrap seam and the tile centre
-    /// used to be marked, and now they are ordinary.
-    #[test]
-    fn the_grid_is_uniform() {
-        let image = build_grid_image();
-        let size = image.texture_descriptor.size.width as usize;
-        let cell = size / GRID_CELLS;
-        let data = image.data.clone().unwrap();
-        let texel = |x: usize, y: usize| data[(y * size + x) * 4];
-
-        // The centre of the texture is the middle of a cell, not a cross.
-        assert_eq!(texel(size / 2 + cell / 2, size / 2 + cell / 2), texel(cell / 2, cell / 2));
-        // Every cell boundary is the same line: no section is marked out.
-        for n in 0..GRID_CELLS {
+        let ImageSampler::Descriptor(sampler) = &image.sampler else {
+            panic!("the grid names its own sampler");
+        };
+        if sampler.anisotropy_clamp > 1 {
             assert_eq!(
-                texel(n * cell, cell / 2),
-                texel(cell, cell / 2),
+                (sampler.mag_filter, sampler.min_filter, sampler.mipmap_filter),
+                (ImageFilterMode::Linear, ImageFilterMode::Linear, ImageFilterMode::Linear),
+                "anisotropic filtering needs every filter linear"
+            );
+        }
+    }
+
+    /// The relief is a groove inside the line and nothing else: the cell face,
+    /// right up to the line's edge, faces straight out, and the groove's walls
+    /// tilt in toward the line's centre. A tilt on the face itself is the
+    /// raised-tile look that read as toy bricks; walls tilting outward would be
+    /// a ridge rather than a groove.
+    #[test]
+    fn the_only_relief_is_a_groove_in_the_line() {
+        let image = build_grid_normal_image();
+        let size = image.texture_descriptor.size.width as usize;
+        assert_eq!(image.texture_descriptor.mip_level_count, size.ilog2() + 1);
+        let cell = size / GRID_CELLS;
+        let data = image.data.clone().unwrap();
+        let normal = |x: usize, y: usize| {
+            let i = (y * size + x) * 4;
+            (data[i] as i32 - 128, data[i + 1] as i32 - 128, data[i + 2] as i32)
+        };
+
+        let mid = cell + cell / 2;
+        let half = LINE as usize / 2;
+        let is_flat = |n: (i32, i32, i32)| n.0.abs() <= 1 && n.1.abs() <= 1;
+        assert!(is_flat(normal(mid, mid)), "cell face tilts: {:?}", normal(mid, mid));
+        // Two texels clear of the line on either side: still dead flat.
+        assert!(is_flat(normal(cell + half + 2, mid)), "the face slopes into the line");
+        assert!(is_flat(normal(cell - half - 3, mid)), "the face slopes into the line");
+
+        // Inside the line, the wall right of centre faces back toward `-u` and
+        // the wall left of it toward `+u`; the same for `v` down the image.
+        let right_wall = normal(cell + 1, mid);
+        let left_wall = normal(cell - 2, mid);
+        let lower_wall = normal(mid, cell + 1);
+        assert!(right_wall.0 < -10, "right wall should face -u: {right_wall:?}");
+        assert!(left_wall.0 > 10, "left wall should face +u: {left_wall:?}");
+        assert!(lower_wall.1 < -10, "lower wall should face -v: {lower_wall:?}");
+    }
+
+    /// Level 0 holds only the four values, never one between them: an
+    /// in-between texel on a line's edge would widen the blend the sampler's
+    /// linear magnification already adds, and show up close as a soft band.
+    #[test]
+    fn edges_are_hard_on_the_top_level() {
+        let image = build_grid_image();
+        let size = image.texture_descriptor.size.width as usize;
+        let data = image.data.clone().unwrap();
+        let mut values: Vec<u8> = (0..size * size).map(|i| data[i * 4]).collect();
+        values.sort_unstable();
+        values.dedup();
+        assert_eq!(values.len(), 4, "expected two cells, line and section only: {values:?}");
+    }
+
+    /// Every interior cell boundary is the same line; only the section boundary
+    /// on the wrap seam is heavier.
+    #[test]
+    fn interior_cell_lines_are_uniform() {
+        let image = build_grid_image();
+        let size = image.texture_descriptor.size.width as usize;
+        let cell = size / GRID_CELLS;
+        let data = image.data.clone().unwrap();
+        let texel = |x: usize, y: usize| data[(y * size + x) * 4];
+
+        for n in 1..GRID_CELLS {
+            assert_eq!(
+                texel(n * cell, cell + cell / 2),
+                texel(cell, cell + cell / 2),
                 "boundary {n} differs from the others"
             );
         }

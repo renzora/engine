@@ -13,7 +13,7 @@ use bevy::camera::visibility::VisibilityRange;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use renzora::physics::{
-    PhysicsDim, ResolvedCollider, ResolvedShape, RuntimePhysics, RuntimePhysics2d, TriMeshData,
+    HeightfieldSource, PhysicsDim, ResolvedCollider, ResolvedShape, RuntimePhysics, RuntimePhysics2d, TriMeshData,
 };
 
 use crate::data::{CollisionShapeData, CollisionShapeType};
@@ -98,15 +98,31 @@ pub fn insert_resolved(
 /// Build the trimesh for every pending mesh collider whose `Mesh3d` has loaded.
 /// Runs every frame; removes the marker on success.
 ///
+/// An entity that hands over its own heights ([`HeightfieldSource`], a terrain
+/// chunk) gets a heightfield from them instead, and needs no loaded mesh at
+/// all.
+///
 /// The offset and rotation are left at zero: a trimesh's vertices are already in
 /// the entity's local space, and the fitted offset auto-fit writes describes the
 /// mesh's box, not a displacement of it.
+#[allow(clippy::type_complexity)]
 pub fn resolve_mesh_colliders(
     mut commands: Commands,
     meshes: Option<Res<Assets<Mesh>>>,
-    pending: Query<(Entity, &Mesh3d, &CollisionShapeData), With<PendingMeshCollider>>,
+    pending: Query<(Entity, &Mesh3d, &CollisionShapeData), (With<PendingMeshCollider>, Without<HeightfieldSource>)>,
+    fields: Query<(Entity, &CollisionShapeData, &HeightfieldSource), With<PendingMeshCollider>>,
 ) {
     let Some(meshes) = meshes else { return };
+    for (entity, shape, source) in &fields {
+        let resolved = ResolvedCollider {
+            rotation: Quat::IDENTITY,
+            ..collider(shape, ResolvedShape::Heightfield(source.0.clone()), Vec3::ZERO)
+        };
+        commands
+            .entity(entity)
+            .try_insert(resolved)
+            .try_remove::<PendingMeshCollider>();
+    }
     for (entity, mesh_ref, shape) in &pending {
         let Some(trimesh) = meshes.get(&mesh_ref.0).and_then(trimesh_from_mesh) else {
             continue;
@@ -148,7 +164,11 @@ type ModelRoot = (
     Has<PendingMeshCollider>,
     Has<ResolvedCollider>,
 );
-type ModelRootFilter = (Without<Mesh3d>, With<RuntimePhysics>, Without<RuntimePhysics2d>);
+/// Not an entity that hands over its own heights: a terrain chunk streamed out
+/// has no `Mesh3d` and looks like a model root, and was being given a trimesh
+/// merged from its stand-in and detail meshes, which put back exactly the
+/// collider streaming had dropped.
+type ModelRootFilter = (Without<Mesh3d>, With<RuntimePhysics>, Without<RuntimePhysics2d>, Without<HeightfieldSource>);
 
 /// A mesh collider on an entity with no mesh of its own, such as the root of an
 /// imported model, collides as every mesh under it merged into one trimesh.

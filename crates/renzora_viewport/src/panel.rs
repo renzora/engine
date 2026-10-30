@@ -166,6 +166,11 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         // Loading card, centred, while a dropped model is still loading.
         let loading = crate::load_overlay::build(commands, fonts);
         commands.entity(content).add_child(loading);
+
+        // Progress card, top centre, while the scene fills in (a new
+        // terrain being shaped and built).
+        let work = crate::work_card::build(commands, fonts);
+        commands.entity(content).add_child(work);
     }
 
     // The primary viewport (slot 0) owns the shared header; the extra slots are

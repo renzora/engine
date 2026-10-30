@@ -1,5 +1,247 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 11:20
+- fix(rendering): the editor no longer crashes with "Compaction is already being prepared" when ray-traced meshes are rebuilt quickly, such as terrain streaming in
+
+## 2026-10-30 11:16
+- fix(terrain): fog now reaches terrain that wears the blockout grid
+- feat(editor): New Environment starts as a clear mid-morning with sky-lit shadows and distance haze, seen through a wider, filmic camera
+
+## 2026-10-30 10:47
+- feat(editor): New Environment's landscape is a broad flat floor in a basin of low hills, with the camera at eye height on the floor
+
+## 2026-10-30 08:25
+- fix(terrain): a large terrain fills in a few chunks a frame, nearest the camera first, instead of freezing the editor while every chunk builds
+- feat(editor): a progress card at the top of the viewport counts down a terrain being shaped and built
+- fix(editor): New Environment no longer freezes the editor for seconds, and starts the camera in the meadow
+- fix(terrain): New Environment's terrain no longer shows lines along its chunk borders
+
+## 2026-10-30 07:53
+- feat(editor): the New Environment starter builds a sculpted landscape of meadow and mountains instead of a flat tile
+
+## 2026-10-30 07:47
+- feat(editor): the camera's orbit pivot shows as a ring with its distance while you orbit, pan or zoom
+- fix(editor): Camera to Cursor (End) puts the pivot on the surface under the mouse instead of the ground plane below it
+
+## 2026-10-30 07:30
+- fix(editor): flying the viewport camera slows down near the ground and walls instead of keeping the speed of a distant orbit pivot
+
+## 2026-10-30 07:24
+- fix(editor): a selected terrain's outline follows the ground instead of lying flat at its lowest height
+- fix(editor): selecting a large terrain no longer costs several milliseconds a frame
+
+## 2026-10-29 17:07
+- fix(terrain): Alpine Landscape's textures are mipmapped and compressed, so distant ground no longer looks grainy
+- fix(terrain): generating noise over a large terrain runs on every core instead of freezing the editor
+- fix(terrain): large terrains no longer lose several milliseconds a frame to their distant stand-ins
+- feat(terrain): Alpine Landscape's graph is laid out in labelled bands, one per layer, with nothing overlapping
+
+## 2026-10-29 15:45
+- fix(terrain): growing a terrain to thousands of chunks no longer runs the GPU out of memory; only the chunks near the camera are built at full detail
+- fix(terrain): the chunk map draws crisp cells instead of a blur
+- fix(terrain): a terrain with no material no longer reads "Loading..." in its material slot
+
+## 2026-10-29 14:41
+- feat(terrain): the Terrain component is redesigned as a material slot over Manage, Sculpt, Paint and Foliage tabs, in real units throughout
+- feat(terrain): the Manage tab has a clickable chunk map with streaming state, size and streaming settings with Apply for rebuilds, and the generator graph card
+- feat(terrain): sculpt brushes are grouped, each shows only its own settings, and the falloff is a named curve with a drawn preview
+- feat(terrain): Set Height can pick its target height from the ground
+- feat(terrain): the Paint tab lists the material's layers with coverage, and exposes slope and height masks
+- feat(foliage): foliage types are tiles with blade counts, and the brush size is in metres
+- refactor(terrain): the Generate toolbar, the Resize tool and the Edit Terrain dialog are replaced by the Manage tab
+
+## 2026-10-29 14:02
+- feat(terrain): a terrain is textured by one node-graph landscape material, chosen in its new Landscape Material section
+- feat(materials): Landscape nodes (Layer Coords, Layer Blend, Layer Sample, Slope) for building terrain materials
+- feat(terrain): Alpine Landscape, the default landscape material, with grass, gravel, rock and snow placed by slope and height
+- feat(terrain): the Paint tab paints the material's layers as weights that always add up to the whole, sized in metres, with a target weight
+- feat(terrain): scenes with the old terrain Surface or painted overlay layers convert to a landscape material when opened in the editor
+- feat(materials): a material can sample up to 16 different textures, and nodes reading the same texture share one slot
+- feat(mcp): terrain tools to set a terrain's material, list its layers and paint them
+- refactor(terrain): the overlay paint meshes, the splatmap material and the Terrain Layer material domain are gone
+
+## 2026-10-29 13:44
+- feat(terrain): terrain graphs (`.tgraph`), a node graph that builds a terrain's heights and named masks from primitives, shaping, erosion and data nodes
+- feat(terrain): a Terrain workspace to edit terrain graphs, with a shaded preview on every node that updates in the background
+- feat(terrain): a Terrain Generator component builds a terrain from a graph in the background and keeps its hand sculpting on a layer above
+- feat(terrain): Highlands, Rolling Hills and Desert terrain graphs on the Assets panel's create menu
+- feat(mcp): a `build_graph` terrain tool builds a terrain graph into a terrain
+
+## 2026-10-29 13:12
+- perf(terrain): terrain chunks collide as heightfields instead of triangle meshes, so streaming chunks in no longer stalls the frame
+- feat(physics): a heightfield collider shape for the physics contract, with every backend building it
+- fix(terrain): a terrain no longer disappears after its chunks stream back in
+- fix(terrain): a streamed-out chunk no longer keeps or regrows a collider
+
+## 2026-10-29 12:00
+- feat(terrain): a new Eroded noise mode, now the Generate default, makes winding ridges, spurs and soft valleys
+- fix(terrain): Erode no longer combs slopes with parallel grooves; gullies come out metres wide with soft sediment floors
+- fix(terrain): Smooth and Relax work at a scale set by the brush size, so a big brush softens big features
+- fix(terrain): Flatten, Set Height and Ramp leave sloped banks at the brush edge instead of vertical walls
+- feat(terrain): Terrace cuts level treads with sloped risers and takes its step height in metres
+- feat(terrain): the Cliff brush builds layered rock strata instead of vertical stripes
+- fix(terrain): smoothing and levelling brushes work across chunk seams
+- fix(terrain): noise no longer jumps at lattice lines below zero coordinates
+
+## 2026-10-29 11:51
+- feat(terrain): the default Surface uses new 2k grass, gravel, rock and snow textures with height maps
+- feat(terrain): Surface textures are hex-tiled with random turns and shifts, so their repeat no longer shows
+- feat(terrain): Surface layers meet along their height maps, so grass settles into rock cracks instead of cross-fading
+- feat(terrain): the Surface adds dry and lush patches across the land and keeps distant ground from greying out
+- fix(terrain): default snow only covers ground above 190 metres instead of 60
+- fix(terrain): a Surface still on the first default textures moves to the new defaults when its scene loads
+
+## 2026-10-29 11:44
+- feat(terrain): terrain chunks stream in the editor around the viewport camera, and on by default for a new terrain
+- fix(terrain): the Erode button rains in proportion to the terrain's area, so large terrains weather as much as small ones
+- fix(terrain): a terrain Surface with anti-tiling on no longer draws black
+- feat(terrain): a streamed-out chunk is drawn by a coarse stand-in instead of disappearing, and can still be sculpted
+- fix(terrain): a new terrain wears the same blockout grid as a new shape
+- fix(terrain): changing a terrain's streaming or detail settings no longer rebuilds every chunk
+- fix(terrain): chunks streamed back in no longer show a seam line against their neighbours
+
+## 2026-10-29 11:07
+- fix(terrain): terrain drawn as virtual geometry no longer shows pinholes along chunk seams in the distance
+
+## 2026-10-29 10:41
+- feat(terrain): terrain is drawn as virtual geometry, with clusters the editor builds in the background as you sculpt and saves for exported games
+- feat(export): an exported game ships the virtual geometry of its terrains
+- fix(terrain): a new terrain shows the default checkerboard until a Surface is added
+- fix(terrain): terrain drawn as virtual geometry is shaded with its Surface instead of one flat dark colour
+
+## 2026-10-29 10:00
+- fix(terrain): steep eroded slopes no longer show black streaks under Solari
+- fix(solari): terrain is always part of the ray-traced scene, so a scene of only terrain no longer renders black
+- fix(terrain): distant terrain switches to coarser detail twice as far away, so the change is much harder to see
+- fix(terrain): chunk edges are lit the same on both sides, so seams no longer show as lines on hillsides
+- fix(terrain): a sun on the default shadow cascades casts shadows across the whole terrain when zoomed out
+- fix(terrain): the terrain inspector's action and tab buttons wrap instead of being cut off in a narrow panel
+
+## 2026-10-29 09:55
+- fix(materials): a `.glb` copied into a project without importing it keeps its own materials instead of filling the Console with missing `.material` errors
+- fix(scene): placing a model with no scene, such as the virtual geometry `.rvg` beside a `.glb`, no longer leaves the loading overlay stuck
+- fix(companion): the virtual geometry `.rvg` kept beside a `.glb` no longer gets a thumbnail of its own
+
+## 2026-10-29 09:36
+- fix(terrain): no gaps open between terrain chunks drawn at different detail, even on rough eroded ground
+- fix(terrain): smooth, flatten and the other blending brushes no longer bake height layers into the sculpted ground
+- fix(terrain): a scripted sculpt stroke moves the ground by the height asked for, and repeated passes add up
+- fix(terrain): a scripted Ramp stroke slopes from the ground at its first point to the ground at its last
+
+## 2026-10-29 03:39
+- feat(terrain): the Erosion and Hydro brushes really erode, with simulated rain carving gullies and slopes settling, across chunk seams
+- feat(terrain): an Erode button in the Generate panel weathers the whole terrain
+- feat(terrain): plugins can query ground height, sculpt, generate and erode terrain through `renzora::terrain_tools`
+- feat(engine): CC0 rocks and ground plants ship as model presets for dressing terrain
+- feat(terrain): brush size, strength and falloff show their values and can be typed
+- feat(terrain): a paint layer without a material paints dirt instead of placeholder green
+- fix(terrain): painting a layer stays interactive on large terrains
+- fix(terrain): foliage painting carries on across chunk seams
+- fix(terrain): distant terrain no longer shows dark lines between chunks of different detail
+- fix(terrain): terrain undo entries are named for the brush used
+- fix(terrain): the Generate panel's controls wrap instead of being cut off in a narrow inspector
+
+## 2026-10-29 02:51
+- feat(terrain): distant terrain chunks are drawn with fewer triangles, set by Detail Levels and Detail Distance in Edit Terrain
+- feat(terrain): the default Surface keeps grass on gentler slopes, with greener grass and greyer rock
+- fix(terrain): terrain is part of Solari's ray-traced scene, so it casts shadows and bounces light
+
+## 2026-10-29 02:32
+- feat(terrain): new terrains are textured by rule with grass, gravel, rock and snow by slope and height, editable in the Surface section
+- feat(terrain): the engine ships a default set of CC0 ground textures, copied into a project the first time a terrain uses them
+- fix(terrain): having a large terrain selected no longer drops the editor's frame rate
+- perf(editor): looking up a component by name for reflection no longer scans every registered type
+
+## 2026-10-29 01:59
+- fix(terrain): the Terrain inspector has Generate, Resize and Edit Terrain buttons again, so the terrain generator can be reached
+
+## 2026-10-29 01:42
+- feat(engine): the default shape grid is a glossier two-tone checker whose lines are fine grooves that glint in the sun
+- fix(engine): the default shape grid is sharper up close
+
+## 2026-10-29 01:07
+- feat(editor): projects open without waiting for material thumbnails, which the companion renders after loading
+- feat(companion): the companion renders material thumbnails and fills in every missing model and material thumbnail once a project opens
+
+## 2026-10-29 00:43
+- feat(engine): a project index lists every file in the open project, kept current by the file watcher, for panels to read instead of searching the disk
+- feat(companion): the companion watches the project, renders thumbnails for models as they are added or changed, and deletes them with their model
+- feat(companion): a Cache screen shows the thumbnail cache and can fill or clear it
+- feat(editor): the document switcher shows the document's name without the project's, and its headings stand out
+
+## 2026-10-29 00:23
+- fix(editor): a scene's own entity keeps its name when a model in the scene has a node with the same name, instead of becoming `_1` after switching scene tabs
+- fix(animation): the Animation workspace looks for model files on a background thread instead of stalling the editor every four seconds
+- fix(companion): the profiler's graphs no longer grow the companion's GPU memory while they draw
+- fix(companion): a profiled game that closes shows as closed rather than as a failed connection
+
+## 2026-10-28 23:58
+- fix(companion): the Debug and Jobs screens scroll with the mouse wheel when their content runs past the window
+
+## 2026-10-28 23:41
+- feat(companion): the debug panels are probes on the companion's Debug screen, and the editor's Debug workspace is gone
+- feat(engine): a plugin can offer a debug probe the companion shows, without writing any UI
+- feat(companion): model thumbnails render in the companion with the editor's own capture
+- feat(companion): every companion job waits while a profile records, with Run anyway on the Jobs screen
+- feat(companion): frames recorded while a companion job ran are greyed in the frame graph and counted in the profile summary
+
+## 2026-10-28 22:41
+- fix(companion): the Render screen's graph holds still while recording instead of rebuilding and flickering as passes swap places
+- feat(companion): the profiler's timeline scrolls up and down through its threads with the wheel over their names, Ctrl + wheel, or a drag
+
+## 2026-10-28 22:34
+- fix(companion): the Render screen's wires join the nodes they connect instead of piling up to one side
+- fix(companion): the profiler's thread lanes leave out the frame-wide wrapper bars, so more threads fit and the GPU lane stays on screen
+- fix(companion): the Jobs screen only says jobs are waiting for a recording when one is
+
+## 2026-10-28 22:04
+- fix(engine): the editor no longer crashes with a GPU validation error when a blockout shape's grid first draws
+
+## 2026-10-28 21:54
+- feat(companion): the Render screen reads top to bottom, one row per group of passes that ran together, and opens at the top at a readable zoom
+- fix(companion): the profiler's Slowest in view strip stays on screen, and overlapping span labels no longer print over each other
+- feat(editor): a node graph view can open fitted to its width at the top
+
+## 2026-10-28 21:35
+- feat(companion): model imports convert, bake their textures and build their `.rvg` in the companion when it is connected
+- feat(companion): the companion opens from a spanner beside the Settings gear instead of the status bar and the top-right chip
+- feat(editor): a plugin can add an icon-only tool button beside the Settings gear
+- fix(companion): the Render screen finds a camera's passes on every thread and lays them out by what ran at the same time
+- feat(companion): the Profiler and Render screens are a single column, with frame details in the header
+
+## 2026-10-28 21:14
+- fix(companion): the timeline lists the main thread first, then the render thread, then the pools in number order
+- fix(companion): the timeline's ruler counts from the start of the frame in view instead of repeating the same time
+- fix(companion): long names in Slowest in view are shortened instead of wrapping, and render-world wrappers are left out
+
+## 2026-10-28 21:02
+- perf(profiler): recording costs the recorded process about a third less, and frames are encoded off its main thread
+- fix(companion): a following timeline keeps its zoom and steps to the newest frame twice a second instead of jumping every redraw
+- feat(companion): the timeline has a Follow button, and zooming no longer stops following
+- feat(companion): the editor's MCP tools can start a recording and ask the companion for a summary and the causes of slow frames
+
+## 2026-10-28 20:19
+- feat(companion): the companion has a profiler with a zoomable per-thread timeline, a frame graph and GPU pass times
+- feat(companion): the companion shows the render schedule as a node graph in the order its systems ran
+- feat(companion): the companion finds games on the network, connects to them, and saves and opens captures
+- feat(companion): texture thumbnails, Rust script compiles, virtual geometry bakes and marketplace uploads run in the companion when it is connected
+- feat(export): an Allow profiling option lets the companion on this machine profile the exported game
+- fix(scripting): a script without a given hook no longer costs a context build every frame for it
+
+## 2026-10-28 19:16
+- feat(engine): the default shape grid is now light cells ruled in thin dark lines, with a heavier dark line around each 4x4 section
+- fix(engine): the default grid no longer smears into jagged lines on spheres and other curved shapes
+- fix(engine): the default grid stays sharp when the camera is close to it
+
+## 2026-10-28 19:10
+- feat(editor): a plugin's status bar text can be clickable, and clicking Companion opens the companion's window in front
+
+## 2026-10-28 18:47
+- feat(profiler): every build can record how long each system takes, ready for the companion's profiler; installed plugins rebuild once after updating
+
+## 2026-10-28 18:06
+- feat(editor): the editor starts a companion process beside itself for background work, shown in the status bar and opened from the top bar
+
 ## 2026-10-28 17:12
 - fix(lighting): soft shadows render smooth under TAA instead of staying grainy
 

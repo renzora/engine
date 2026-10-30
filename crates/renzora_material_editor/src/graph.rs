@@ -47,6 +47,7 @@ fn category_icon(category: &str) -> &'static str {
         "Procedural" => "waves",
         "Animation" => "timer",
         "Utility" => "wrench",
+        "Landscape" => "mountains",
         "Output" => "sign-out",
         _ => "circle",
     }

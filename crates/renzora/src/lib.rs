@@ -147,6 +147,12 @@ pub use wind::*;
 // friends read better qualified at the call site.
 pub mod scene_query;
 
+// Terrain operations (ground height, sculpt, generate, erode) for crates that
+// must not link the terrain crate, which today means the MCP server. The
+// terrain editor installs the service. Not glob re-exported, like
+// `scene_query`.
+pub mod terrain_tools;
+
 // The physics contract: the components scenes save, the runtime state the
 // engine and a backend exchange, and the `PhysicsBackend` trait a physics engine
 // implements. Here because a backend plugin must name these types without
@@ -169,6 +175,21 @@ pub mod lang;
 // every Rust script must share one store. Not glob-re-exported: callers write
 // `renzora::save::write("slot1")`, which reads as what it does.
 pub mod save;
+
+// Copies of the editor it starts (Play's game, the companion): tied to the
+// editor's lifetime and heard in its Console. Here because more than one crate
+// launches them, and the job object they join must be one per process.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod child_process;
+
+// The profiler's recorder: a log layer that timestamps every span (each Bevy
+// system run is one) into per-thread buffers. Here because its switch and
+// buffers must be one per process. See the module docs.
+pub mod profiling;
+
+// Debug readouts a process offers the companion: registered by any crate or
+// plugin, built only while a companion watches them. See the module docs.
+pub mod probes;
 
 // ── Engine version / release channel ─────────────────────────────────────
 // `ENGINE_VERSION` (`r1-alphaN`) plus the release-tag resolution the export
@@ -235,7 +256,7 @@ pub mod get_handler;
 // The names a backend actually writes, lifted to the root the way `ScriptCtx`
 // and `ScriptHook` are. A plugin implementing a language should not have to know
 // which of five modules each type happens to sit in.
-pub use backend::{AppScriptBackendExt, FileReader, ScriptBackend};
+pub use backend::{AppScriptBackendExt, FileReader, ScriptBackend, ANY_HOOK};
 pub use command::ScriptCommand;
 pub use component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};

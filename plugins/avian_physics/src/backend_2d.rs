@@ -221,7 +221,8 @@ fn collider_for(shape: &ResolvedShape) -> Option<Collider> {
         | ResolvedShape::Sphere { .. }
         | ResolvedShape::Capsule { .. }
         | ResolvedShape::Cylinder { .. }
-        | ResolvedShape::TriMesh(_) => return None,
+        | ResolvedShape::TriMesh(_)
+        | ResolvedShape::Heightfield(_) => return None,
     })
 }
 

@@ -343,11 +343,12 @@ impl Plugin for RuntimePlugin {
         // the grid is correctly skipped).
         #[cfg(feature = "render_3d")]
         if app.world().contains_resource::<Assets<Image>>() {
-            let handle = app
-                .world_mut()
-                .resource_mut::<Assets<Image>>()
-                .add(renzora::core::build_grid_image());
-            app.insert_resource(renzora::core::GridTexture(handle));
+            let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+            let grid = renzora::core::GridTexture {
+                color: images.add(renzora::core::build_grid_image()),
+                normal: images.add(renzora::core::build_grid_normal_image()),
+            };
+            app.insert_resource(grid);
         }
 
         // Register the .rmip asset loader so import-baked mipmapped

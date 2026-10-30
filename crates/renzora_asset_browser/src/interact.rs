@@ -316,6 +316,7 @@ pub(crate) fn open_action(path: &Path) -> Option<(&'static str, String)> {
     match renzora_editor_framework::doc_kind_for_path(path) {
         Some(DocTabKind::Material) => Some(("palette", renzora::lang::t("assets.open_in.material_editor"))),
         Some(DocTabKind::Particle) => Some(("sparkle", renzora::lang::t("assets.open_in.particle_editor"))),
+        Some(DocTabKind::TerrainGraph) => Some(("mountains", renzora::lang::t_or("assets.open_in.terrain_graph", "Open in Terrain Graph"))),
         Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
         Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
         // Without this arm a `.html` fell through to `None` and lost its

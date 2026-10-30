@@ -66,6 +66,10 @@ pub struct ShellStatusSegment {
     pub text: String,
     pub color: [u8; 3],
     pub bar: Option<ShellStatusBar>,
+    /// Clicking the segment invokes this shell action, the same message a
+    /// top-bar button sends (see [`ShellActionInvoked`]). `None` leaves it
+    /// plain text.
+    pub action: Option<&'static str>,
 }
 
 impl ShellStatusSegment {
@@ -75,12 +79,21 @@ impl ShellStatusSegment {
             text: text.into(),
             color,
             bar: None,
+            action: None,
         }
     }
 
     /// Draw a progress bar after the text.
     pub fn bar(mut self, bar: ShellStatusBar) -> Self {
         self.bar = Some(bar);
+        self
+    }
+
+    /// Make the segment clickable: a click invokes the shell action `id`, which
+    /// whoever registered it handles. A status item is often the first place
+    /// someone looks for the thing it reports on, so it can open that thing.
+    pub fn action(mut self, id: &'static str) -> Self {
+        self.action = Some(id);
         self
     }
 }
@@ -142,11 +155,16 @@ pub struct ShellActionItem {
     pub order: i32,
 }
 
-/// Registry of plugin-contributed top-bar buttons. Any plugin can push to it;
-/// the shell renders them beside the gear.
+/// Registry of plugin-contributed top-bar buttons. Any plugin can push to it.
 #[derive(Resource, Default)]
 pub struct ShellActionRegistry {
+    /// Labelled chips at the right end of the bar, beside the update chip:
+    /// places to go, like the Marketplace.
     pub items: Vec<ShellActionItem>,
+    /// Icon-only glyphs just right of the Settings gear, in its quiet style:
+    /// editor tools that open a window of their own, like the companion. Their
+    /// `label` and `color` are ignored.
+    pub tools: Vec<ShellActionItem>,
 }
 
 /// A shell action was invoked.
@@ -321,6 +339,10 @@ pub trait RenzoraShellExt {
     /// Register a top-bar icon button. Pressing it writes a
     /// [`ShellActionInvoked`] carrying the id.
     fn register_shell_action(&mut self, item: ShellActionItem) -> &mut Self;
+
+    /// Register an icon-only tool button beside the Settings gear. Pressing it
+    /// writes a [`ShellActionInvoked`] carrying the id, as an action does.
+    fn register_shell_tool(&mut self, item: ShellActionItem) -> &mut Self;
 }
 
 impl RenzoraShellExt for bevy::app::App {
@@ -361,6 +383,16 @@ impl RenzoraShellExt for bevy::app::App {
         self.world_mut()
             .resource_mut::<ShellActionRegistry>()
             .items
+            .push(item);
+        self
+    }
+
+    fn register_shell_tool(&mut self, item: ShellActionItem) -> &mut Self {
+        self.init_resource::<ShellActionRegistry>();
+        self.add_message::<ShellActionInvoked>();
+        self.world_mut()
+            .resource_mut::<ShellActionRegistry>()
+            .tools
             .push(item);
         self
     }

@@ -154,6 +154,7 @@ pub fn spawn_runtime(
     project_path: &Path,
     embed_parent: Option<isize>,
     live_link: Option<&renzora::LiveLinkEndpoint>,
+    profiling_key: Option<&str>,
 ) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
     let mut command = Command::new(binary);
@@ -172,227 +173,27 @@ pub fn spawn_runtime(
             .arg("--live-link-token")
             .arg(&link.token);
     }
+    // The key the companion pairs with, so it can profile this game. On this
+    // machine only: no `--profiling-lan`.
+    if let Some(key) = profiling_key {
+        command.arg("--profiling-key").arg(key);
+    }
     // Piped, and therefore *must* be drained: a pipe nobody reads fills up and
     // then blocks the child on its next log line. The reader threads below are
     // what makes this safe, not just useful.
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child = command.spawn()?;
-    #[cfg(target_os = "windows")]
-    job::tie_to_editor(&child);
+    // Ended with the editor however the editor ends: a game left behind holds
+    // the executable open and fails the next build's staging step.
+    renzora::child_process::tie_to_editor(&child, "the game");
     if let Some(stdout) = child.stdout.take() {
-        forward_to_console(stdout);
+        renzora::child_process::forward_to_console(stdout, "Runtime");
     }
     if let Some(stderr) = child.stderr.take() {
-        forward_to_console(stderr);
+        renzora::child_process::forward_to_console(stderr, "Runtime");
     }
     Ok(child)
-}
-
-/// Ending the game when the editor ends, however it ends.
-///
-/// [`kill_on_app_exit`] covers a normal quit, and only that. An editor that
-/// crashed, was killed from Task Manager, or lost its window some other way
-/// never reached it, and a game left behind holds the executable open, which
-/// fails the next build at the staging step with "being used by another
-/// process" and nothing on screen to close.
-///
-/// A job object closes that gap in the OS rather than in our code: every game
-/// goes into one job, set to kill its processes when the job's last handle
-/// closes, and the only handle is this process's. Windows closes it when the
-/// editor ends, for any reason, and takes the game with it.
-#[cfg(target_os = "windows")]
-mod job {
-    use std::os::windows::io::AsRawHandle;
-    use std::sync::OnceLock;
-
-    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
-    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
-
-    #[repr(C)]
-    #[derive(Default)]
-    struct BasicLimits {
-        per_process_user_time_limit: i64,
-        per_job_user_time_limit: i64,
-        limit_flags: u32,
-        minimum_working_set_size: usize,
-        maximum_working_set_size: usize,
-        active_process_limit: u32,
-        affinity: usize,
-        priority_class: u32,
-        scheduling_class: u32,
-    }
-
-    #[repr(C)]
-    #[derive(Default)]
-    struct IoCounters {
-        counts: [u64; 6],
-    }
-
-    #[repr(C)]
-    #[derive(Default)]
-    struct ExtendedLimits {
-        basic: BasicLimits,
-        io: IoCounters,
-        process_memory_limit: usize,
-        job_memory_limit: usize,
-        peak_process_memory_used: usize,
-        peak_job_memory_used: usize,
-    }
-
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn CreateJobObjectW(attributes: *const core::ffi::c_void, name: *const u16) -> isize;
-        fn SetInformationJobObject(
-            job: isize,
-            class: i32,
-            info: *const core::ffi::c_void,
-            len: u32,
-        ) -> i32;
-        fn AssignProcessToJobObject(job: isize, process: isize) -> i32;
-    }
-
-    /// The one job every game joins, created on first use and never closed:
-    /// closing it is what would end the games, and that is the process exit's
-    /// job.
-    fn editor_job() -> Option<isize> {
-        static JOB: OnceLock<Option<isize>> = OnceLock::new();
-        *JOB.get_or_init(|| {
-            // SAFETY: null attributes and name are documented as valid, and the
-            // limits struct is a correctly laid out JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-            // that outlives the call.
-            unsafe {
-                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-                if job == 0 {
-                    return None;
-                }
-                let mut limits = ExtendedLimits::default();
-                limits.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-                let ok = SetInformationJobObject(
-                    job,
-                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-                    (&limits as *const ExtendedLimits).cast(),
-                    std::mem::size_of::<ExtendedLimits>() as u32,
-                );
-                (ok != 0).then_some(job)
-            }
-        })
-    }
-
-    /// Put `child` in the editor's job. Best effort: a game that could not be
-    /// added still runs, and a normal quit still ends it.
-    pub(super) fn tie_to_editor(child: &std::process::Child) {
-        let Some(job) = editor_job() else {
-            bevy::log::warn!("[play] could not create a job object; a crashed editor may leave the game running");
-            return;
-        };
-        // SAFETY: the handle is the live child's own, borrowed for the call.
-        let ok = unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as isize) };
-        if ok == 0 {
-            bevy::log::warn!("[play] could not tie the game to the editor; a crashed editor may leave it running");
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        /// The struct is passed by pointer and size, so a wrong layout is a
-        /// silent misread by the kernel rather than a compile error. 144 is
-        /// the 64-bit size; nothing ships for 32-bit Windows.
-        #[cfg(target_pointer_width = "64")]
-        #[test]
-        fn the_limits_struct_matches_the_win32_layout() {
-            assert_eq!(std::mem::size_of::<super::ExtendedLimits>(), 144);
-        }
-    }
-}
-
-/// Read `stream` line by line on its own thread, pushing each line into the
-/// editor console. Detached: the read ends when the child closes the pipe, so
-/// the thread retires itself with the process it was reading.
-fn forward_to_console(stream: impl std::io::Read + Send + 'static) {
-    use renzora::core::console_log::console_log;
-    use std::io::{BufRead, BufReader};
-
-    std::thread::spawn(move || {
-        // Lossy rather than strict UTF-8: a runtime that dies mid-line, or logs
-        // a path the OS handed it in some other encoding, must not silence the
-        // rest of the stream.
-        for line in BufReader::new(stream).split(b'\n') {
-            let Ok(bytes) = line else { break };
-            let line = String::from_utf8_lossy(&bytes);
-            let line = strip_ansi(line.trim_end_matches('\r'));
-            if line.trim().is_empty() {
-                continue;
-            }
-            let (level, message) = classify_runtime_line(&line);
-            console_log(level, "Runtime", message);
-        }
-    });
-}
-
-/// Drop SGR colour escapes. `tracing_subscriber` colours its output whether or
-/// not the sink is a terminal, and a pipe is never one, so without this every
-/// forwarded line arrives wrapped in `\x1b[…m` noise.
-fn strip_ansi(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        if c != '\u{1b}' {
-            out.push(c);
-            continue;
-        }
-        // `ESC [ … <final byte in @..~>`. Anything else after ESC is a short
-        // escape we simply drop along with its one following character.
-        if chars.next() != Some('[') {
-            continue;
-        }
-        for c in chars.by_ref() {
-            if ('@'..='~').contains(&c) {
-                break;
-            }
-        }
-    }
-    out
-}
-
-/// Split a forwarded log line into a console level and the text to show.
-///
-/// The runtime's lines look like `<timestamp>  INFO  <target>: <message>`. Both
-/// the timestamp and the level are dropped: the console renders its own level
-/// colour and the timestamp is noise next to the editor's own lines.
-fn classify_runtime_line(line: &str) -> (renzora::core::console_log::LogLevel, String) {
-    use renzora::core::console_log::LogLevel;
-
-    let mut rest = line.trim_start();
-    // An RFC3339 timestamp is the first token and always ends in `Z`.
-    if let Some((first, tail)) = rest.split_once(char::is_whitespace) {
-        if first.ends_with('Z') && first.contains(':') {
-            rest = tail.trim_start();
-        }
-    }
-
-    for (token, level) in [
-        ("ERROR", LogLevel::Error),
-        ("WARN", LogLevel::Warning),
-        ("INFO", LogLevel::Info),
-        ("DEBUG", LogLevel::Info),
-        ("TRACE", LogLevel::Info),
-    ] {
-        if let Some(tail) = rest.strip_prefix(token) {
-            if tail.starts_with(char::is_whitespace) {
-                return (level, tail.trim_start().to_string());
-            }
-        }
-    }
-
-    // No level token: wgpu/naga chatter, or a panic. A panic is the one thing
-    // here nobody can afford to have filed as routine information.
-    let level = if line.contains("panicked at") || line.starts_with("thread '") {
-        LogLevel::Error
-    } else {
-        LogLevel::Info
-    };
-    (level, rest.to_string())
 }
 
 /// Detach the running child, if any, and kill it. Returns whether a child
@@ -517,44 +318,4 @@ pub fn kill_on_app_exit(
     };
     info!("[exit] fast exit (code {code})");
     renzora::exit_now(code);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use renzora::core::console_log::LogLevel;
-
-    #[test]
-    fn colour_escapes_are_stripped() {
-        let line = "\u{1b}[2m2026-08-10T13:24:25Z\u{1b}[0m \u{1b}[32m INFO\u{1b}[0m ready";
-        assert_eq!(strip_ansi(line), "2026-08-10T13:24:25Z  INFO ready");
-    }
-
-    #[test]
-    fn the_timestamp_and_level_come_off_the_front() {
-        let (level, message) =
-            classify_runtime_line("2026-08-10T13:24:25.159700Z  WARN renzora_audio: no ears");
-        assert_eq!(level, LogLevel::Warning);
-        assert_eq!(message, "renzora_audio: no ears");
-    }
-
-    /// A line the runtime's own logger didn't write — wgpu chatter, a panic —
-    /// still has to arrive, and a panic must not arrive as routine info.
-    #[test]
-    fn an_unprefixed_line_survives_and_a_panic_is_an_error() {
-        let (level, message) = classify_runtime_line("wgpu: picked adapter");
-        assert_eq!(level, LogLevel::Info);
-        assert_eq!(message, "wgpu: picked adapter");
-
-        let (level, _) = classify_runtime_line("thread 'main' panicked at src/main.rs:12:5:");
-        assert_eq!(level, LogLevel::Error);
-    }
-
-    /// `INFORMATIONAL` is not the `INFO` token, and a word boundary is the only
-    /// thing that tells them apart.
-    #[test]
-    fn a_level_token_needs_a_word_boundary() {
-        let (_, message) = classify_runtime_line("INFOrmational text");
-        assert_eq!(message, "INFOrmational text");
-    }
 }

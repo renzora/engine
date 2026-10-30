@@ -1453,6 +1453,11 @@ pub struct ProjectConfig {
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
     pub console_logging: bool,
+    /// Set by an export with "Allow profiling" on: the editor's pairing key.
+    /// The game then announces itself on the network and accepts the editor's
+    /// companion. `None` in every normal build, which never opens a port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiling_key: Option<String>,
     /// Default UI font for the shipped game — a name resolved by the font
     /// registry, a project `fonts/` path (e.g. `"fonts/Inter.ttf"`), or a system
     /// family. Applied at runtime startup (the game's ember UI uses it); `None`
@@ -1488,6 +1493,7 @@ impl Default for ProjectConfig {
             rendering: RenderingConfig::default(),
             physics: PhysicsProjectConfig::default(),
             console_logging: false,
+            profiling_key: None,
             ui_font: None,
             network: None,
             audio: AudioConfig::default(),
@@ -1704,6 +1710,7 @@ mod tests {
             rendering: RenderingConfig::default(),
             physics: PhysicsProjectConfig::default(),
             console_logging: false,
+            profiling_key: None,
             network: None,
             audio: AudioConfig {
                 buses: vec![BusConfig {

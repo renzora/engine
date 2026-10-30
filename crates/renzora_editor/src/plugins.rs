@@ -25,6 +25,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_camera::CameraPlugin::default());
     app.add_plugins(renzora_code_editor::CodeEditorPlugin::default());
     app.add_plugins(renzora_command_palette::CommandPalettePlugin::default());
+    app.add_plugins(renzora_companion::CompanionHostPlugin::default());
     app.add_plugins(renzora_console::ConsolePlugin::default());
     app.add_plugins(renzora_context_menu::ContextMenuPlugin::default());
     app.add_plugins(renzora_distance_fog_editor::DistanceFogEditorPlugin::default());
@@ -72,6 +73,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_ssao_editor::SsaoEditorPlugin::default());
     app.add_plugins(renzora_ssr_editor::SsrEditorPlugin::default());
     app.add_plugins(renzora_terrain_editor::TerrainEditorPlugin::default());
+    app.add_plugins(renzora_terrain_graph_editor::TerrainGraphEditorPlugin::default());
     app.add_plugins(renzora_test_component::TestComponentPlugin::default());
     app.add_plugins(renzora_theme_status::ThemeStatusPlugin::default());
     app.add_plugins(renzora_tilemap_editor::TilemapEditorPlugin::default());

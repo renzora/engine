@@ -74,7 +74,17 @@ pub fn handle_play_mode_transitions(world: &mut World) {
     );
     let embed_parent = crate::game_panel::embed_parent(world);
     let live_link = world.get_resource::<renzora::LiveLinkEndpoint>().cloned();
-    match spawn_runtime(&binary, &project_path, embed_parent, live_link.as_ref()) {
+    // The editor's own profiling key, so the companion can profile the game.
+    let profiling_key = world
+        .get_resource::<renzora::profiling::ProfilingAccess>()
+        .map(|a| a.key.clone());
+    match spawn_runtime(
+        &binary,
+        &project_path,
+        embed_parent,
+        live_link.as_ref(),
+        profiling_key.as_deref(),
+    ) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);

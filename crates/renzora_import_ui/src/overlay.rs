@@ -449,6 +449,8 @@ pub(crate) fn run_import(world: &mut World) {
         state.converted_with = Some(converted_with);
     };
 
+    let companion = world.get_resource::<renzora::CompanionJobs>().map(|jobs| jobs.remote());
+
     // Spawn background thread
     std::thread::spawn(move || {
         import_worker(
@@ -460,6 +462,7 @@ pub(crate) fn run_import(world: &mut World) {
                 target_dir,
                 layout,
                 staging_base,
+                companion,
             },
         );
     });
@@ -558,8 +561,18 @@ pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
     // Then build the model's `.rvg` from it, off the main thread: seconds for
     // a big model. The rest of the commit waits for it in `finish_commits`.
     let glb_path = st.glb_path.clone();
-    let task = bevy::tasks::AsyncComputeTaskPool::get()
-        .spawn(async move { crate::staged::build_model_file(&glb_path).map_err(|e| e.to_string()) });
+    let companion = world.get_resource::<renzora::CompanionJobs>().map(|jobs| jobs.remote());
+    let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+        // In the companion when one is connected; its answer is the extension
+        // the model was stored with, as the local build's is.
+        if let Some(answer) = companion.as_ref().and_then(|c| {
+            let target = glb_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            c.run(renzora_import::remote::BUILD_KIND, target, &glb_path, &mut |_, _| {})
+        }) {
+            return answer.map(|ext| if ext == "rvg" { "rvg" } else { "glb" });
+        }
+        crate::staged::build_model_file(&glb_path).map_err(|e| e.to_string())
+    });
     world.resource_mut::<PendingCommits>().0.push(PendingCommit {
         staged: st,
         dropped_materials,
@@ -729,6 +742,45 @@ struct ImportJob {
     /// First staging slot this run may use. Runs are handed disjoint blocks so
     /// a batch added while an earlier one is still staged cannot overwrite it.
     staging_base: usize,
+    /// Converts models in the companion process while one is connected.
+    companion: Option<renzora::CompanionRemote>,
+}
+
+/// Convert `source` in the companion. `None` when there is no companion to
+/// ask, and the caller converts it here as before. The bool says the meshes
+/// were optimized already.
+///
+/// The baker's texture progress comes back as `"done/total name"` notes and
+/// goes to `on_texture` as the editor's own conversion would send it, so the
+/// import window's bar moves the same either way.
+fn convert_in_companion(
+    companion: Option<&renzora::CompanionRemote>,
+    source: &std::path::Path,
+    settings: &ImportSettings,
+    scratch: &std::path::Path,
+    on_texture: &renzora_import::ProgressFn,
+) -> Option<Result<(renzora_import::ImportResult, bool), String>> {
+    use renzora_import::remote::{ConvertArgs, Converted, CONVERT_KIND};
+    let companion = companion?;
+    let _ = std::fs::remove_dir_all(scratch);
+    let args = ConvertArgs { source: source.to_path_buf(), settings: settings.clone(), out_dir: scratch.to_path_buf() };
+    let target = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let answer = companion.run(CONVERT_KIND, target, &args, &mut |_, note| {
+        let Some((count, name)) = note.split_once(' ') else { return };
+        let Some((done, total)) = count.split_once('/') else { return };
+        if let (Ok(done), Ok(total)) = (done.parse(), total.parse()) {
+            on_texture(done, total, name);
+        }
+    })?;
+    Some(answer.and_then(|json| {
+        let converted: Converted =
+            serde_json::from_str(&json).map_err(|e| format!("the companion's answer could not be read: {e}"))?;
+        let optimized = converted.optimized;
+        converted
+            .into_result()
+            .map(|result| (result, optimized))
+            .map_err(|e| format!("the companion's model could not be read: {e}"))
+    }))
 }
 
 fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
@@ -737,6 +789,7 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
         files,
         settings,
         target_dir,
+        companion,
         layout,
         staging_base,
     } = job;
@@ -840,7 +893,20 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
             }
         };
 
-        match renzora_import::convert_to_glb_with_progress(source_path, &settings, &on_texture) {
+        // In the companion when one is connected, here otherwise. Its scratch
+        // folder holds the GLB and textures until this file is staged.
+        let scratch = crate::staged::staging_dir(&project.path, staging_base + i).with_extension("companion");
+        let (converted, optimized) =
+            match convert_in_companion(companion.as_ref(), source_path, &settings, &scratch, &on_texture) {
+                Some(Ok((result, optimized))) => (Ok(result), optimized),
+                Some(Err(e)) => (Err(e), false),
+                None => (
+                    renzora_import::convert_to_glb_with_progress(source_path, &settings, &on_texture)
+                        .map_err(|e| e.to_string()),
+                    false,
+                ),
+            };
+        match converted {
             Ok(result) => {
                 // --- Phase: optimizing ---
                 let opt_settings = MeshOptSettings {
@@ -850,7 +916,7 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                     ..Default::default()
                 };
 
-                let mut glb_bytes = if opt_settings.any_enabled() {
+                let mut glb_bytes = if opt_settings.any_enabled() && !optimized {
                     let _ = tx.send(ImportMsg::Progress {
                         current: i + 1,
                         total,
@@ -1272,7 +1338,7 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                 let msg = if let Some(note) = fallback_note {
                     format!("{} ({})", e, note)
                 } else {
-                    format!("{}", e)
+                    e
                 };
                 errors.push(format!("{}: {}", file_name, msg));
                 let _ = tx.send(ImportMsg::Log(ImportLogEntry {
@@ -1282,6 +1348,8 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                 }));
             }
         }
+        // Everything in it has been copied into the staging tree by now.
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 
     // Final message

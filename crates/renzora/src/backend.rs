@@ -12,6 +12,11 @@ use crate::context::ScriptContext;
 /// Returns `Some(source)` if the file was found, `None` otherwise.
 pub type FileReader = Arc<dyn Fn(&Path) -> Option<String> + Send + Sync>;
 
+/// [`ScriptBackend::defines_hook`]'s "any hook the executor calls": a backend
+/// answering `Some(false)` for it is skipped by the executor entirely, as a
+/// Rust script is (its own dispatcher runs it).
+pub const ANY_HOOK: &str = "*";
+
 /// Trait that script language backends must implement.
 /// Each backend (Lua, Rhai, etc.) provides its own compilation, execution,
 /// and variable marshalling logic while producing the same `ScriptCommand`s.
@@ -52,6 +57,19 @@ pub trait ScriptBackend: Send + Sync {
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
     ) -> Result<Vec<ScriptCommand>, String>;
+
+    /// Whether the script at `path` defines `hook` (`"on_fixed_update"`, …), or
+    /// any hook this executor would call when `hook` is [`ANY_HOOK`].
+    ///
+    /// Asked before the executor builds a script's context, which is the
+    /// expensive part of calling a hook: an input snapshot, the scene's name
+    /// maps and the read handlers, per script, per pass. `Some(false)` skips all
+    /// of it. `None` (the default) means "cannot tell cheaply", and the hook is
+    /// called as it always was; answering is an optimisation, never required.
+    fn defines_hook(&self, path: &Path, hook: &str) -> Option<bool> {
+        let _ = (path, hook);
+        None
+    }
 
     /// Execute the `on_fixed_update` hook, once per fixed timestep tick.
     /// Returns commands produced by the script.

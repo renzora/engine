@@ -1449,6 +1449,92 @@ fn spawn_world_environment(world: &mut World) -> Entity {
         .id()
 }
 
+/// The New Environment starter's daylight: a clear mid-morning with the sun low
+/// enough to model the hills, a sky that lights the shadows as brightly as it
+/// looks, and haze that settles the far hills back into the distance.
+///
+/// The World Environment preset itself keeps its own values; this is the look
+/// of one starter, so a scene already built on the preset does not change.
+///
+/// - Sun 16 degrees up, in front of the starting camera and a little to its
+///   left, and white: the colour of a midday sun, left to the atmosphere to
+///   warm as it sinks rather than tinted on top of that.
+/// - Sky light at full strength. The preset's 0.3 kept direct shadows crisp
+///   under a strong sun, but it also left every slope facing away from the
+///   sun nearly black, which is not what the eye sees outdoors.
+/// - The ground under the air is a pale, sunlit field (0.67), which brightens
+///   the low sky; the air itself 60 km deep.
+/// - Broken cloud, a little under half the sky: at half, the sky over the
+///   hills read grey rather than blue.
+/// - Exponential haze thin enough that the floor stays clear and the hills at
+///   700 m are about half hidden. The fog has no height falloff, so a camera
+///   high above the land sees more of it than one standing on the floor.
+fn outdoor_daylight(world: &mut World, environment: Entity) {
+    let mut entity = world.entity_mut(environment);
+    let direction = entity.get_mut::<Sun>().map(|mut sun| {
+        sun.azimuth = 316.0;
+        sun.elevation = 16.0;
+        sun.color = Vec3::ONE;
+        sun.direction()
+    });
+    if let Some(direction) = direction {
+        entity.insert(Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, direction)));
+        if let Some(mut light) = entity.get_mut::<DirectionalLight>() {
+            light.color = Color::WHITE;
+        }
+    }
+    if let Some(mut ibl) = entity.get_mut::<renzora_environment_map::EnvironmentMapComponentSettings>() {
+        ibl.intensity = 1.0;
+    }
+    if let Some(mut atmosphere) = entity.get_mut::<renzora_atmosphere::AtmosphereComponentSettings>() {
+        atmosphere.ground_albedo = 0.67;
+        atmosphere.top_radius = atmosphere.bottom_radius + 60_000.0;
+    }
+    if let Some(mut clouds) = entity.get_mut::<renzora::CloudsData>() {
+        clouds.coverage = 0.4;
+    }
+    if let Some(mut env) = entity.get_mut::<renzora::WorldEnvironment>() {
+        env.fog.enabled = true;
+        env.fog.mode = 1;
+        env.fog.density = 0.001;
+        // Haze lit by the sky alone, without a glow gathered toward the sun.
+        env.fog.directional_light_color = [0.0, 0.0, 0.0];
+    }
+}
+
+/// The New Environment camera's lens and picture: a 90 degree view across a
+/// 16:9 frame, the filmic curve, bloom from every bright pixel rather than only
+/// the brightest, and auto exposure metering across a wide range of light.
+///
+/// Inserted with [`CameraEffectsSeeded`] so `seed_camera_effects` leaves them
+/// as they are.
+fn outdoor_camera() -> impl Bundle {
+    (
+        CameraEffectsSeeded,
+        // Vertical, as the projection takes it: 90 degrees across at 16:9.
+        Projection::Perspective(PerspectiveProjection {
+            fov: 2.0 * (1.0f32 / (16.0 / 9.0)).atan(),
+            ..default()
+        }),
+        renzora_tonemapping::TonemappingSettings {
+            // ACES fitted.
+            mode: 3,
+            ..default()
+        },
+        renzora_bloom_effect::BloomSettings {
+            threshold: 0.0,
+            ..default()
+        },
+        renzora::AutoExposureSettings {
+            range_min: -10.0,
+            range_max: 16.0,
+            ..default()
+        },
+        renzora_antialiasing::TaaSettings::default(),
+        bevy::camera::Exposure { ev100: 9.7 },
+    )
+}
+
 fn register_lighting_presets(app: &mut App) {
     use renzora::{AppEditorExt, EntityPreset, SceneStarter};
 
@@ -1460,29 +1546,38 @@ fn register_lighting_presets(app: &mut App) {
         spawn_fn: spawn_world_environment,
     });
 
-    // "New Environment" scene starter — combines the environment entity
-    // (sun + atmosphere + clouds + fog) with a terrain so the user has an
-    // outdoor scene to immediately start sculpting.
+    // "New Environment" scene starter: the environment entity (sun +
+    // atmosphere + clouds + fog) over a sculpted landscape, a flat floor in a
+    // basin of low hills (`renzora_terrain::starter`), so an outdoor scene
+    // starts looking like one.
     app.register_scene_starter(SceneStarter {
         id: "environment",
         title: "New Environment",
-        description: "Sun, atmosphere, fog, and a fresh terrain",
+        description: "Sun, sky, fog, and a sculpted landscape",
         icon: "tree-evergreen",
         produces: &[],
         spawn_fn: |world: &mut World| {
-            spawn_world_environment(world);
-            renzora_terrain::mesh::spawn_terrain(world);
-            // Add a default camera so the new scene has a viewpoint.
+            let environment = spawn_world_environment(world);
+            outdoor_daylight(world, environment);
+            renzora_terrain::starter::spawn_starter_terrain(world);
+            // On the floor at eye height, looking across it at the hills.
+            let (eye, target) = renzora_terrain::starter::starter_view();
             world.spawn((
-                Name::new("Camera"),
-                renzora::core::SceneCamera,
-                Camera3d::default(),
-                Camera {
-                    is_active: false,
-                    ..default()
-                },
-                Transform::from_xyz(20.0, 15.0, 20.0).looking_at(Vec3::ZERO, Vec3::Y),
+                (
+                    Name::new("Camera"),
+                    renzora::core::SceneCamera,
+                    Camera3d::default(),
+                    Camera {
+                        is_active: false,
+                        ..default()
+                    },
+                    Transform::from_translation(eye).looking_at(target, Vec3::Y),
+                ),
+                outdoor_camera(),
             ));
+            // And the editor's view with it, rather than the default orbit's
+            // close look at the ground under the origin.
+            world.insert_resource(renzora::core::CameraViewRequest::LookAt { eye, target });
         },
     });
 

@@ -59,7 +59,14 @@ A `.glb` model renders as ordinary geometry until its `.rvg` is ready, then
 switches over without a reload. That `.rvg` is current when it was built from
 exactly this `.glb` by this version of the builder, both recorded in its
 header, and deleting it is always safe: the editor rebuilds it. The asset
-browser hides it, since it is part of the `.glb` beside it.
+browser hides it, since it is part of the `.glb` beside it, and it gets no
+thumbnail. It holds no scene, so it is not a model to place: place the `.glb`.
+A scene entity that names it anyway loads nothing, with a warning in the log.
+
+The same goes for a `.glb` copied into a project folder without importing it,
+from a file manager or a tool. It gets an `.rvg` beside it like any other, and
+renders with the materials inside it: only an imported model has the
+`materials/` folder of editable `.material` files its meshes are bound to.
 
 When such a project opens, the Console says how many models are stored as
 `.glb`. **Convert Models to RVG...** in the command palette (`Ctrl+P`) turns
@@ -127,6 +134,12 @@ The budget caps memory; it is not a target. A scene that fits uses what its
 views need and no more, so most projects never reach it. Lower it for
 low-memory hardware: the cost is detail that stays coarse up close, never a
 hole.
+
+## Terrain
+
+Terrain chunks are drawn as virtual geometry too, from clusters the editor
+builds as the ground settles and saves under `terrain_clusters/`. See
+[Terrain: Virtual geometry](../editor/terrain.md#virtual-geometry).
 
 ## Mixing with ordinary geometry
 

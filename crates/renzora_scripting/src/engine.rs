@@ -176,6 +176,18 @@ impl ScriptEngine {
         Ok(())
     }
 
+    /// Whether `hook` needs calling for the script at `path`: false only when
+    /// its backend says the script does not define it. A script with no
+    /// backend answers true, so calling it reports the missing backend.
+    pub fn defines_hook(&self, path: &Path, hook: &str) -> bool {
+        let Some(backend) = self.backend_for(path) else {
+            return true;
+        };
+        backend
+            .defines_hook(&self.resolve_path(path), hook)
+            .unwrap_or(true)
+    }
+
     pub fn call_on_fixed_update(
         &self,
         path: &Path,

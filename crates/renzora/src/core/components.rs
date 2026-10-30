@@ -1001,7 +1001,10 @@ pub enum PbrAlphaMode {
 ///
 /// Defaults mirror the glTF 2.0 spec so a material that omits a channel renders
 /// identically to one that never had it (e.g. `ior = 1.5`, no clearcoat).
-#[derive(Clone, Debug)]
+///
+/// Serializable because an import converted in the companion process sends
+/// its materials back to the editor as JSON.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PbrAdvanced {
     /// `KHR_materials_clearcoat` clearcoatFactor — strength of the lacquer layer.
     pub clearcoat: f32,

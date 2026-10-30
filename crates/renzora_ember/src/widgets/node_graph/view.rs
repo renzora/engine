@@ -103,6 +103,11 @@ pub struct NodeGraphView {
     pub pending_connect: Option<(u64, String, bool, (u8, u8, u8), u32)>,
     /// Caller sets to re-frame all nodes; cleared by the widget once applied.
     pub fit_request: bool,
+    /// Caller sets to fit the graph's WIDTH (never zooming past 1) and show
+    /// its top, for a tall graph read top to bottom, which a whole-graph fit
+    /// shrinks past reading. Replaces the opening fit when set before it.
+    /// Cleared once applied.
+    pub fit_width_request: bool,
     /// Whether this view has ever been framed. A graph's node positions belong to
     /// the *document*, not the viewport, so opening at pan 0 / zoom 1 routinely
     /// lands on empty canvas with the graph off to one side — the widget
@@ -1532,11 +1537,12 @@ fn ngv_view_ops(
     for (vp, mut g, vcn, children) in &mut graphs {
         // A view nobody has framed yet fits itself once (see `framed`).
         let auto_fit = !g.framed;
-        if !auto_fit && !g.fit_request && !g.center_request && g.zoom_request.is_none() {
+        if !auto_fit && !g.fit_request && !g.fit_width_request && !g.center_request && g.zoom_request.is_none() {
             continue;
         }
         let Some(canvas) = children.iter().find(|&c| canvases.contains(c)) else {
             g.fit_request = false;
+            g.fit_width_request = false;
             g.center_request = false;
             g.zoom_request = None;
             continue;
@@ -1568,7 +1574,7 @@ fn ngv_view_ops(
             g.framed = true;
         }
 
-        if g.fit_request || g.center_request || auto_fit {
+        if g.fit_request || g.fit_width_request || g.center_request || auto_fit {
             let (mut mn, mut mx, mut any, mut unlaid) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false, false);
             for (n, node, ncn) in &nodes {
                 if n.viewport != vp {
@@ -1595,7 +1601,16 @@ fn ngv_view_ops(
             if any && !unlaid {
                 let bbox_c = (mn + mx) * 0.5;
                 let bbox_s = (mx - mn).max(Vec2::splat(1.0));
-                if g.fit_request || auto_fit {
+                if g.fit_width_request {
+                    let pad = 80.0;
+                    let zoom = (vp_size.x / (bbox_s.x + pad)).min(1.0).clamp(super::MIN_ZOOM, super::MAX_ZOOM);
+                    // The point to put at the viewport's centre: the graph's
+                    // middle across, and down from its top by half a screen.
+                    let focus = Vec2::new(bbox_c.x, mn.y - pad * 0.5 + vp_size.y * 0.5 / zoom);
+                    view.zoom = zoom;
+                    view.pan = (center - focus) * zoom;
+                    g.fit_width_request = false;
+                } else if g.fit_request || auto_fit {
                     let pad = 80.0;
                     let zoom = (vp_size.x / (bbox_s.x + pad)).min(vp_size.y / (bbox_s.y + pad)).clamp(super::MIN_ZOOM, super::MAX_ZOOM);
                     view.zoom = zoom;

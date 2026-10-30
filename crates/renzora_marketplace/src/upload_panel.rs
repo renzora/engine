@@ -103,11 +103,52 @@ fn engine_versions() -> &'static [&'static str] {
 /// A file the user picked from a native dialog. Bytes are read lazily on the
 /// upload worker thread (the main file can be hundreds of MB), so we hold only
 /// the path + display metadata here.
-#[derive(Clone)]
-struct PickedFile {
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct PickedFile {
     path: PathBuf,
     name: String,
     size: u64,
+}
+
+/// Everything a publish needs, so it can run away from the panel: on a thread
+/// here, or in the companion (job kind `"upload"`), which calls [`run_upload`]
+/// with the same value. Only the access token travels, not the session.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct UploadJob {
+    access_token: Option<String>,
+    meta: PublishMeta,
+    file: PickedFile,
+    thumb: Option<PickedFile>,
+    screenshots: Vec<PickedFile>,
+    video_url: String,
+    audio: Vec<PickedFile>,
+}
+
+/// Read the files, upload the asset, attach its media. Media is best-effort:
+/// a failed screenshot does not fail the publish.
+pub fn run_upload(job: &UploadJob) -> Result<UploadedItem, String> {
+    let session = AuthSession {
+        user: None,
+        access_token: job.access_token.clone(),
+        refresh_token: None,
+    };
+    let main = read_upload_file(&job.file)?;
+    let thumb_up = job.thumb.as_ref().map(read_upload_file).transpose()?;
+    let item = publish::upload_asset(&session, &job.meta, &main, thumb_up.as_ref())?;
+    for shot in &job.screenshots {
+        if let Ok(f) = read_upload_file(shot) {
+            let _ = publish::add_asset_media(&session, &item.id, &MediaUpload::Image(f));
+        }
+    }
+    if !job.video_url.is_empty() {
+        let _ = publish::add_asset_media(&session, &item.id, &MediaUpload::Video(job.video_url.clone()));
+    }
+    for clip in &job.audio {
+        if let Ok(f) = read_upload_file(clip) {
+            let _ = publish::add_asset_media(&session, &item.id, &MediaUpload::Audio(f));
+        }
+    }
+    Ok(item)
 }
 
 /// Which slot a completed file-pick fills (posted from the picker worker thread).
@@ -171,6 +212,8 @@ struct Uploader {
     // Submit.
     submitting: bool,
     submit_rx: Option<Receiver<Result<UploadedItem, String>>>,
+    /// A publish handed to the companion: its job id, and where its answer goes.
+    submit_job: Option<(renzora::CompanionJobId, Sender<Result<UploadedItem, String>>)>,
     error: Option<String>,
     success: Option<String>,
     success_url: Option<String>,
@@ -211,6 +254,7 @@ impl Default for Uploader {
             pick_rx,
             submitting: false,
             submit_rx: None,
+            submit_job: None,
             error: None,
             success: None,
             success_url: None,
@@ -266,6 +310,7 @@ pub(crate) struct UploaderPanel;
 impl Plugin for UploaderPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<Uploader>();
+        renzora::init_companion_jobs(app);
         // Not a dock panel any more — publishing is a view inside the
         // marketplace overlay (see `store::build`), which is where you already
         // are when you decide to sell something. The systems are registered
@@ -275,7 +320,7 @@ impl Plugin for UploaderPanel {
         app.add_systems(
             Update,
             (
-                uploader_poll,
+                (forward_upload_answer, uploader_poll).chain(),
                 nav_click,
                 pick_click,
                 tag_click,
@@ -1140,9 +1185,10 @@ fn nav_click(
     publish_q: Query<&UiInteraction, (With<PublishBtn>, Changed<UiInteraction>)>,
     session: Option<Res<AuthSession>>,
     mut state: ResMut<Uploader>,
+    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
 ) {
     if publish_q.iter().any(|i| *i == UiInteraction::Pressed) {
-        start_publish(&mut state, session.as_deref());
+        start_publish(&mut state, session.as_deref(), jobs.as_deref_mut());
     }
 }
 
@@ -1297,7 +1343,7 @@ fn success_link_click(q: Query<&UiInteraction, (With<SuccessLinkBtn>, Changed<Ui
 
 /// Kick off the publish: read files + upload + attach media, all on one worker
 /// thread. Enforces the "credited asset → free" rule the website does.
-fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
+fn start_publish(state: &mut Uploader, session: Option<&AuthSession>, jobs: Option<&mut renzora::CompanionJobs>) {
     if state.submitting {
         return;
     }
@@ -1371,10 +1417,15 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
         metadata: serde_json::Value::Object(extra),
     };
 
-    let thumb = state.thumbnail.clone();
-    let screenshots = state.screenshots.clone();
-    let video_url = state.video_url.trim().to_string();
-    let audio = state.audio.clone();
+    let job = UploadJob {
+        access_token: session.access_token.clone(),
+        meta,
+        file,
+        thumb: state.thumbnail.clone(),
+        screenshots: state.screenshots.clone(),
+        video_url: state.video_url.trim().to_string(),
+        audio: state.audio.clone(),
+    };
 
     state.submitting = true;
     state.error = None;
@@ -1382,31 +1433,32 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>) {
     let (tx, rx) = unbounded();
     state.submit_rx = Some(rx);
 
+    // The companion when there is one: reading and sending a large asset is
+    // seconds of work that has nothing to do with the editor's frame. Its
+    // answer comes back through the same channel (see `forward_upload_answer`).
+    if let Some(id) = jobs.and_then(|jobs| jobs.submit("upload", job.meta.name.clone(), &job)) {
+        state.submit_job = Some((id, tx));
+        return;
+    }
     std::thread::spawn(move || {
-        let result = (|| -> Result<UploadedItem, String> {
-            let main = read_upload_file(&file)?;
-            let thumb_up = thumb.as_ref().map(read_upload_file).transpose()?;
-            let item = publish::upload_asset(&session, &meta, &main, thumb_up.as_ref())?;
-            // Attach media (best-effort — failures don't fail the publish).
-            for shot in &screenshots {
-                if let Ok(f) = read_upload_file(shot) {
-                    let _ = publish::add_asset_media(&session, &item.id, &MediaUpload::Image(f));
-                }
-            }
-            {
-                if !video_url.is_empty() {
-                    let _ = publish::add_asset_media(&session, &item.id, &MediaUpload::Video(video_url.clone()));
-                }
-                for clip in &audio {
-                    if let Ok(f) = read_upload_file(clip) {
-                        let _ = publish::add_asset_media(&session, &item.id, &MediaUpload::Audio(f));
-                    }
-                }
-            }
-            Ok(item)
-        })();
-        let _ = tx.send(result);
+        let _ = tx.send(run_upload(&job));
     });
+}
+
+/// Hand the companion's answer for a publish to the panel's usual channel.
+fn forward_upload_answer(mut answers: MessageReader<renzora::CompanionJobDone>, mut state: ResMut<Uploader>) {
+    for answer in answers.read() {
+        let Some((id, _)) = &state.submit_job else { continue };
+        if *id != answer.id {
+            continue;
+        }
+        if let Some((_, tx)) = state.submit_job.take() {
+            let result = answer.result.clone().and_then(|json| {
+                serde_json::from_str::<UploadedItem>(&json).map_err(|e| format!("unreadable answer: {e}"))
+            });
+            let _ = tx.send(result);
+        }
+    }
 }
 
 fn read_upload_file(f: &PickedFile) -> Result<UploadFile, String> {

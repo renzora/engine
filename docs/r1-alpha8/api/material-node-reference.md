@@ -133,6 +133,10 @@ tan.
 > filter/wrap settings (or a default linear sampler). This keeps the fragment stage
 > under the 16-sampler limit that Metal and baseline Vulkan/WebGPU impose.
 
+A graph can sample up to **16 different 2D images** (a Sprite material up to 6).
+Nodes that read the same image share one slot, so sampling a texture from several
+places costs nothing extra; a seventeenth image is a compile error that says so.
+
 | Node | Inputs | Outputs | What it does |
 |------|--------|---------|--------------|
 | `texture/sample` — **Sample Texture** | `uv` (Vec2 = mesh UV) | `color` (Color), `rgb` (Vec3), `r`, `g`, `b`, `a` (Float) | Standard 2D `textureSample`. |
@@ -370,6 +374,29 @@ names the node.
 
 ---
 
+## Landscape
+
+What a terrain's material is built from (see [Terrain](../editor/terrain.md#the-landscape-material)).
+A terrain binds its painted layer weights and its bounds to its own instance of
+the material; on any other mesh these nodes still compile and draw sensibly, with
+world X/Z coordinates and every weight zero except the first layer's, which is one.
+Surface, Vegetation and Unlit materials can use them; a Sprite material cannot.
+Header color: green.
+
+| Node | Inputs | Outputs | What it does |
+|------|--------|---------|--------------|
+| `landscape/layer_coords`: **Landscape Layer Coords** | `scale` (Mapping Scale, metres per repeat = 4), `rotation` (degrees = 0), `pan` (Vec2 metres) | `uv` (Vec2) | Texture coordinates across the whole terrain in metres from its corner, so tiling never restarts at a chunk edge. A normal map sampled through these is oriented by the ground's normal (a top-down projection), not by mesh tangents. |
+| `landscape/layer_blend`: **Layer Blend** | per layer 1 to 8: `name_N` (String), `blend_N` (String: Weight, Height or Alpha), `layer_N` (Vec4), `height_N` (Float = 0.5), `auto_N` (Float = 0); `height_blending` (=0.8) | `result` (Vec4), `rgb` (Vec3), `normal` (Vec3, normalised), `value` (Float) | Mixes the wired layers by the terrain's painted weights. **Weight** layers mix evenly; **Height** layers share their weight so the taller one (weight plus height) wins where they meet, with `height_blending` setting how crisp that edge is; **Alpha** layers are laid over the rest by their weight. `auto_N` paints a layer on by rule (a slope or height band built from other nodes), exactly as the brush would, over the painted weights, later layers over earlier ones. Unwired layers are ignored. One value type per node: use one Layer Blend for colour, one for normals and one for roughness, with the same names. |
+| `landscape/layer_sample`: **Layer Sample** | `name` (String) | `weight` (Float) | The painted weight of one named layer, 0 to 1, to drive anything else: wet sand by the shore, darker grass under trees. A name no Layer Blend uses is a layer of its own, still paintable. |
+| `landscape/slope`: **Landscape Slope** | none | `degrees` (Float), `height` (Float, world metres), `normal_y` (Float) | The ground's slope from flat and its height: what auto rules such as rock on cliffs or snow on peaks are built from. |
+
+The layer names, in the order the Layer Blends (by node id, then slot) and then
+the Layer Samples name them, are the layers a terrain's Paint tab lists, at most
+eight. From code: `renzora_shader::material::landscape::landscape_layers(&graph)`,
+also returned as `CompileResult::landscape_layers`.
+
+---
+
 ## Custom
 
 The escape hatch when no node expresses what you need. Header color: red.
@@ -440,12 +467,6 @@ The full PBR master; maps 1:1 onto Bevy's `StandardMaterial`.
 
 > Connecting either transmission pin makes the resolver flip on Bevy's transmissive
 > pass automatically.
-
-### `output/terrain_layer` — Terrain Layer Output
-
-A paintable terrain layer, blended through the splatmap. Pins: `base_color`,
-`metallic`, `roughness`, `normal`, `height` (=0.5). Compiles to the layer functions
-the terrain shader blends per-pixel.
 
 ### `output/vegetation` — Vegetation Output
 

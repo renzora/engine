@@ -70,6 +70,8 @@ pub mod embed;
 pub mod server;
 mod plugins;
 mod render_scale;
+#[cfg(all(feature = "virtual_geometry", feature = "terrain"))]
+mod terrain_vg;
 /// `RENZORA_SHUFFLE_SEED`: shuffle system order to expose ordering bugs.
 pub mod schedule_shuffle;
 mod viewport_stretch;
@@ -341,29 +343,94 @@ pub fn init_app() -> App {
     app
 }
 
-/// Clean log formatter for the exported (standalone) game.
+/// One log line: `TIMESTAMP LEVEL target: message fields`, and no span context.
 ///
-/// The editor runs in a real terminal, so it keeps Bevy's default ANSI-colored
-/// formatter. The exported game's output is usually read from a piped/redirected
-/// console or a log file that doesn't interpret ANSI, where the defaults dump
-/// raw escape sequences (`←[2m`, `←[32m`, …) on every line instead of colors,
-/// which is the bulk of the unreadability. We turn ANSI off and use the
-/// `.compact()` formatter, which drops the leading `system{name="…"}:` span-name
-/// prefix, leaving plain `TIMESTAMP LEVEL target: message` lines.
+/// Every system runs inside a span (Bevy's `trace` feature, which the profiler
+/// needs), and tracing's own formatters print the spans an event happened in:
+/// the full one as a `system{name="…"}:` prefix, the compact one as fields
+/// appended after the message. Either way every line the engine logs carried
+/// the name of the system that logged it, which is noise in a terminal and in
+/// the editor's Console (which reads a game's output line by line).
+struct PlainLine {
+    ansi: bool,
+}
+
+impl<S, N> bevy::log::tracing_subscriber::fmt::FormatEvent<S, N> for PlainLine
+where
+    S: bevy::log::tracing::Subscriber + for<'a> bevy::log::tracing_subscriber::registry::LookupSpan<'a>,
+    N: for<'a> bevy::log::tracing_subscriber::fmt::FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &bevy::log::tracing_subscriber::fmt::FmtContext<'_, S, N>,
+        mut writer: bevy::log::tracing_subscriber::fmt::format::Writer<'_>,
+        event: &bevy::log::tracing::Event<'_>,
+    ) -> std::fmt::Result {
+        use bevy::log::tracing::Level;
+        use bevy::log::tracing_subscriber::fmt::time::{FormatTime, SystemTime};
+        let meta = event.metadata();
+        if self.ansi {
+            write!(writer, "\x1b[2m")?;
+        }
+        SystemTime.format_time(&mut writer)?;
+        let (color, level) = match *meta.level() {
+            Level::ERROR => ("\x1b[31m", "ERROR"),
+            Level::WARN => ("\x1b[33m", " WARN"),
+            Level::INFO => ("\x1b[32m", " INFO"),
+            Level::DEBUG => ("\x1b[34m", "DEBUG"),
+            Level::TRACE => ("\x1b[35m", "TRACE"),
+        };
+        if self.ansi {
+            write!(writer, "\x1b[0m {color}{level}\x1b[0m \x1b[2m{}\x1b[0m: ", meta.target())?;
+        } else {
+            write!(writer, " {level} {}: ", meta.target())?;
+        }
+        ctx.field_format().format_fields(writer.by_ref(), event)?;
+        writeln!(writer)
+    }
+}
+
+/// Log formatter for the exported (standalone) game and the companion.
+///
+/// Their output is usually read from a pipe or a log file that does not
+/// interpret ANSI, where colour codes dump raw escape sequences (`←[2m`,
+/// `←[32m`, …) on every line, so this one is plain. See [`PlainLine`].
 fn runtime_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
     use bevy::log::tracing_subscriber::fmt;
     Some(Box::new(
         fmt::Layer::default()
             .with_writer(std::io::stderr)
             .with_ansi(false)
-            .event_format(fmt::format().with_ansi(false).compact()),
+            .event_format(PlainLine { ansi: false }),
     ))
 }
 
-/// Editor fmt layer: keep Bevy's default ANSI formatter (the editor runs in a
-/// real terminal). `None` tells `LogPlugin` to use its built-in formatter.
+/// The extra log layers a desktop session installs: the warning capture behind
+/// Scene Diagnostics, and the profiler's recorder.
+///
+/// The recorder has to be installed here, with the subscriber, because a log
+/// layer cannot be added later; and it has to see each span being created,
+/// which for a system happens once, at setup. It costs one atomic load per span
+/// until `renzora::profiling::set_recording` turns it on.
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+fn engine_log_layers(app: &mut App) -> Option<bevy::log::BoxedLayer> {
+    use bevy::log::tracing_subscriber::Layer;
+    let recorder = renzora::profiling::ProfileLayer;
+    Some(match renzora::runtime_warnings::runtime_warnings_layer(app) {
+        Some(warnings) => Box::new(warnings.and_then(recorder)),
+        None => Box::new(recorder),
+    })
+}
+
+/// Editor fmt layer: coloured, since the editor runs in a real terminal, and
+/// without span context, for the reason on [`PlainLine`].
 fn editor_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
-    None
+    use bevy::log::tracing_subscriber::fmt;
+    Some(Box::new(
+        fmt::Layer::default()
+            .with_writer(std::io::stderr)
+            .event_format(PlainLine { ansi: true }),
+    ))
 }
 
 /// Pre-initialize Bevy's IO task pool with a large per-thread stack **before**
@@ -600,7 +667,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         if is_editor { editor_fmt_layer } else { runtime_fmt_layer };
     let plugins = plugins.set(bevy::log::LogPlugin {
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-        custom_layer: renzora::runtime_warnings::runtime_warnings_layer,
+        custom_layer: engine_log_layers,
         fmt_layer,
         // Web: silence Bevy's own per-error line from the render error handler.
         //
@@ -1119,6 +1186,59 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     app.add_plugins(ScheduleRunnerPlugin::run_loop(wait));
 }
 
+/// The plugin set for `renzora --companion`: the process the editor starts
+/// beside itself for profiling and background work.
+///
+/// A window of its own, but one that behaves unlike the game's:
+///
+/// - It opens **hidden**. The companion starts with every editor, and a second
+///   window appearing at each launch would be noise; the editor's top-bar
+///   button shows it.
+/// - Its close button **hides** it rather than ending the process, so closing
+///   the window does not throw away the companion's state or its work. The
+///   process ends with the editor, never on its own, hence `DontExit`.
+/// - It updates **reactively**: at most 10 times a second while focused and 4
+///   while not. It must stay out of the way of the editor and of a game being
+///   measured, and nothing it shows needs more.
+pub fn add_companion_rendering(app: &mut App) {
+    use bevy::render::{settings::RenderCreation, RenderPlugin};
+    use bevy::window::{ExitCondition, Window, WindowPlugin};
+    use bevy::winit::{UpdateMode, WinitSettings};
+    use core::time::Duration;
+
+    init_io_task_pool_with_large_stack();
+    insert_dlss_project_id(app);
+    app.add_plugins(
+        DefaultPlugins
+            .set(RenderPlugin {
+                render_creation: RenderCreation::Automatic(Box::new(platform_wgpu_settings())),
+                ..default()
+            })
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "Renzora Companion".into(),
+                    visible: false,
+                    #[cfg(not(target_arch = "wasm32"))]
+                    resolution: bevy::window::WindowResolution::new(1280, 800),
+                    ..default()
+                }),
+                exit_condition: ExitCondition::DontExit,
+                close_when_requested: false,
+                ..default()
+            })
+            // Plain lines: the editor reads them through a pipe into its
+            // Console, where ANSI colour codes would be noise.
+            .set(bevy::log::LogPlugin {
+                fmt_layer: runtime_fmt_layer,
+                ..default()
+            }),
+    );
+    app.insert_resource(WinitSettings {
+        focused_mode: UpdateMode::reactive(Duration::from_millis(100)),
+        unfocused_mode: UpdateMode::reactive_low_power(Duration::from_millis(250)),
+    });
+}
+
 /// Apply `CurrentProject.config.window` to the primary window at runtime startup.
 ///
 /// The runtime template ships pre-built — every project would otherwise see
@@ -1531,6 +1651,10 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
             classify_graph_material,
         );
     }
+
+    // Terrain chunks as virtual geometry, for the same reason.
+    #[cfg(all(feature = "virtual_geometry", feature = "terrain"))]
+    terrain_vg::install(app);
 }
 
 /// A node-graph material can shade virtual geometry when its compiled shader

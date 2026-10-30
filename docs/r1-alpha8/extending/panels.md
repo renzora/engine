@@ -343,6 +343,16 @@ ShellStatusSegment::new("download-simple", format!("Installing {name} — {size}
 
 `Busy` animates in its own system, so it costs no rebuilds. A `Fraction` is quantized to whole percent before the status bar hashes the row, so a continuously moving value rebuilds the segment at most a hundred times rather than every frame.
 
+#### Making a segment clickable
+
+A status item is often the first place someone looks for the thing it reports on, so a segment can open it. `.action(id)` makes the segment clickable: a click sends a `ShellActionInvoked` with that id, the same message a top-bar button sends, and your plugin handles it the same way.
+
+```rust
+ShellStatusSegment::new("pulse", "My Thing", muted).action("my_plugin.open")
+```
+
+The id is usually one you registered with `register_shell_action`, so the button and the status text do the same thing. The pointer turns into a hand over a clickable segment.
+
 ### A top-bar button
 
 ```rust
@@ -366,6 +376,21 @@ fn open_my_thing(mut invoked: MessageReader<ShellActionInvoked>) {
 Buttons land at the right end of the top bar, beside the update chip. Nothing but the **id** crosses the boundary — no callback, no type — so a plugin the shell has never linked can put a control in the chrome, and anything else that should open the same thing writes the same message. That is how the Assets panel's *Import → Search Marketplace* row opens the marketplace overlay without either crate knowing the other exists.
 
 `label` and `tooltip` are functions rather than strings because registration happens during `App` assembly, long before the chrome is built and before the user has had a chance to change language. `color` tints the glyph and the button's fill; leave it `None` for the quiet icon-only treatment the gear gets, and set it when the button is somewhere to *go* rather than a toggle. Pick a hue no other chip is using — two tinted pills of the same colour side by side read as one control in two halves.
+
+### A tool beside the gear
+
+An editor tool that opens a window of its own belongs with the editor's own controls rather than at the far end of the bar. `register_shell_tool` takes the same `ShellActionItem` and puts it just right of the Settings gear, as an icon-only glyph in the gear's style; `label` and `color` are ignored there. Presses arrive as a `ShellActionInvoked`, exactly as for an action. The companion's spanner is one.
+
+```rust
+app.register_shell_tool(ShellActionItem {
+    id: "my_plugin.tool",
+    icon: "wrench",
+    label: None,
+    color: None,
+    tooltip: || "My Tool".to_string(),
+    order: 0,
+});
+```
 
 ### Viewport toolbar and strips
 

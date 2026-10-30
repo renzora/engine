@@ -1438,7 +1438,7 @@ fn assemble_graph_material(
         MaterialDomain::Unlit | MaterialDomain::Sprite => {
             mat.base.unlit = true;
         }
-        MaterialDomain::Surface | MaterialDomain::Vegetation | MaterialDomain::TerrainLayer => {
+        MaterialDomain::Surface | MaterialDomain::Vegetation => {
             mat.base.unlit = false;
         }
     }
@@ -1454,20 +1454,11 @@ fn assemble_graph_material(
             continue;
         }
         let handle: Handle<Image> = asset_server.load(&tb.asset_path);
-        match (tb.kind, tb.binding) {
-            (codegen::TextureKind::D2, 0) => mat.extension.texture_0 = Some(handle),
-            (codegen::TextureKind::D2, 1) => mat.extension.texture_1 = Some(handle),
-            (codegen::TextureKind::D2, 2) => mat.extension.texture_2 = Some(handle),
-            (codegen::TextureKind::D2, 3) => mat.extension.texture_3 = Some(handle),
-            (codegen::TextureKind::D2, 4) => mat.extension.texture_4 = Some(handle),
-            (codegen::TextureKind::D2, 5) => mat.extension.texture_5 = Some(handle),
-            (codegen::TextureKind::Cube, 0) => mat.extension.cube_0 = Some(handle),
-            (codegen::TextureKind::D2Array, 0) => mat.extension.array_0 = Some(handle),
-            (codegen::TextureKind::D3, 0) => mat.extension.volume_0 = Some(handle),
-            _ => warn!(
+        if !mat.extension.set_texture(tb.kind, tb.binding, handle) {
+            warn!(
                 "Material '{}' wants more textures than the extension provides ({:?} slot {})",
                 path, tb.kind, tb.binding
-            ),
+            );
         }
     }
 

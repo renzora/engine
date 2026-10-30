@@ -326,6 +326,12 @@ pub enum ResolvedShape {
     /// Shared, because the same mesh collider can sit on many entities and a
     /// backend may keep a reference for as long as the body lives.
     TriMesh(Arc<TriMeshData>),
+    /// A grid of heights. Far cheaper than the same ground as a [`Self::TriMesh`]:
+    /// built in a fraction of the time (terrain streaming builds dozens of
+    /// chunks at once, and their trimeshes cost a 60 ms hitch) and queried
+    /// without a triangle tree. Spans `0..size` on X and Z in the entity's
+    /// local space, from its origin.
+    Heightfield(Arc<HeightfieldData>),
     Rectangle { half_extents: Vec2 },
     Circle { radius: f32 },
     Capsule2d { radius: f32, half_height: f32 },
@@ -337,6 +343,61 @@ pub struct TriMeshData {
     pub vertices: Vec<Vec3>,
     pub indices: Vec<[u32; 3]>,
 }
+
+/// The heights of a [`ResolvedShape::Heightfield`]: `columns` samples along X
+/// by `rows` along Z, row by row (`heights[z * columns + x]`), evenly spaced
+/// across `size`, in local units.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct HeightfieldData {
+    pub heights: Vec<f32>,
+    pub columns: usize,
+    pub rows: usize,
+    pub size: Vec2,
+}
+
+impl HeightfieldData {
+    /// The local position of sample `(x, z)`.
+    pub fn point(&self, x: usize, z: usize) -> Vec3 {
+        let step = Vec2::new(
+            self.size.x / (self.columns.max(2) - 1) as f32,
+            self.size.y / (self.rows.max(2) - 1) as f32,
+        );
+        Vec3::new(x as f32 * step.x, self.heights[z * self.columns + x], z as f32 * step.y)
+    }
+
+    /// The same surface as triangles, for consumers that only read meshes
+    /// (navmesh obstacles), split along the same diagonal as the terrain's
+    /// render mesh.
+    pub fn triangles(&self) -> TriMeshData {
+        let (c, r) = (self.columns, self.rows);
+        let mut out = TriMeshData {
+            vertices: Vec::with_capacity(c * r),
+            indices: Vec::with_capacity(c.saturating_sub(1) * r.saturating_sub(1) * 2),
+        };
+        for z in 0..r {
+            for x in 0..c {
+                out.vertices.push(self.point(x, z));
+            }
+        }
+        for z in 0..r.saturating_sub(1) {
+            for x in 0..c.saturating_sub(1) {
+                let tl = (z * c + x) as u32;
+                let (tr, bl) = (tl + 1, tl + c as u32);
+                let br = bl + 1;
+                out.indices.push([tl, bl, tr]);
+                out.indices.push([tr, bl, br]);
+            }
+        }
+        out
+    }
+}
+
+/// Hands the physics layer ready-made heights for a mesh collider, in place
+/// of reading triangles out of the entity's `Mesh3d`. The terrain puts one on
+/// each chunk: its heights are already a grid, and a grid builds and queries
+/// far faster than a trimesh of the same ground.
+#[derive(Component, Clone, Debug)]
+pub struct HeightfieldSource(pub Arc<HeightfieldData>);
 
 /// Everything a backend needs to build an entity's collider. Replaced (not
 /// edited) whenever the shape changes, so `Changed<ResolvedCollider>` is the
@@ -393,6 +454,28 @@ impl ResolvedCollider {
                 }
                 if mesh.vertices.is_empty() {
                     return (self.offset, self.offset);
+                }
+                return (self.offset + min, self.offset + max);
+            }
+            ResolvedShape::Heightfield(field) => {
+                let (lo, hi) = field
+                    .heights
+                    .iter()
+                    .fold((f32::MAX, f32::MIN), |(lo, hi), &h| (lo.min(h), hi.max(h)));
+                if field.heights.is_empty() {
+                    return (self.offset, self.offset);
+                }
+                let corners = [
+                    Vec3::new(0.0, lo, 0.0),
+                    Vec3::new(field.size.x, hi, field.size.y),
+                    Vec3::new(field.size.x, lo, 0.0),
+                    Vec3::new(0.0, hi, field.size.y),
+                ];
+                let (mut min, mut max) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+                for c in corners {
+                    let p = self.rotation * c;
+                    min = min.min(p);
+                    max = max.max(p);
                 }
                 return (self.offset + min, self.offset + max);
             }

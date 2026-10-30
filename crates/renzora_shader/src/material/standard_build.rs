@@ -48,8 +48,7 @@ pub fn try_build_standard_material(
     asset_server: &AssetServer,
 ) -> Option<StandardMaterial> {
     // StandardMaterial only models the Surface domain. Vegetation needs a
-    // custom vertex stage; TerrainLayer compiles to layer_main/layer_pbr and
-    // is consumed by a different shader entirely.
+    // custom vertex stage, and Unlit and Sprite shade through other paths.
     if graph.domain != MaterialDomain::Surface {
         return None;
     }

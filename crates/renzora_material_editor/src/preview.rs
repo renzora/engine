@@ -1136,7 +1136,6 @@ fn update_preview_material(
     // `new_graph_material` fills every 2D slot with fallback-white and leaves
     // cube/array/3D as None (Bevy's FallbackImage covers the layout), so unused
     // slots stay valid without explicit resets.
-    use renzora_shader::material::codegen::TextureKind;
     let mut material = new_graph_material(&fallback);
     material.extension.shader_uuid = Some(preview_uuid);
     material.extension.params.slots = default_slots;
@@ -1166,20 +1165,11 @@ fn update_preview_material(
             continue;
         }
         let handle: Handle<Image> = asset_server.load(&tb.asset_path);
-        match (tb.kind, tb.binding) {
-            (TextureKind::D2, 0) => material.extension.texture_0 = Some(handle),
-            (TextureKind::D2, 1) => material.extension.texture_1 = Some(handle),
-            (TextureKind::D2, 2) => material.extension.texture_2 = Some(handle),
-            (TextureKind::D2, 3) => material.extension.texture_3 = Some(handle),
-            (TextureKind::D2, 4) => material.extension.texture_4 = Some(handle),
-            (TextureKind::D2, 5) => material.extension.texture_5 = Some(handle),
-            (TextureKind::Cube, 0) => material.extension.cube_0 = Some(handle),
-            (TextureKind::D2Array, 0) => material.extension.array_0 = Some(handle),
-            (TextureKind::D3, 0) => material.extension.volume_0 = Some(handle),
-            _ => warn!(
+        if !material.extension.set_texture(tb.kind, tb.binding, handle) {
+            warn!(
                 "[material_preview] Texture binding slot {:?}/{} not routed!",
                 tb.kind, tb.binding
-            ),
+            );
         }
     }
 

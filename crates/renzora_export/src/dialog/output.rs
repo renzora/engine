@@ -120,6 +120,18 @@ fn options_sections(commands: &mut Commands, fonts: &EmberFonts, p: Platform, de
         |s| s.console_logging,
         |s, v| s.console_logging = v,
     )];
+    // A profiling build carries this editor's pairing key, so the companion
+    // can find and profile it on a phone or headset.
+    if !matches!(p, Platform::WebWasm32) {
+        rows.push(switch_row(
+            commands,
+            fonts,
+            &renzora::lang::t("export.options.allow_profiling"),
+            Some(&renzora::lang::t("export.options.allow_profiling_hint")),
+            |s| s.allow_profiling,
+            |s, v| s.allow_profiling = v,
+        ));
+    }
     if desktop && p.supports_dedicated_server() {
         // Asking for a dedicated server is asking for networking, so it turns
         // the capability back on rather than shipping a server binary with the

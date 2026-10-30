@@ -1,6 +1,6 @@
 //! Output nodes — the terminal of every graph. One per domain: the full PBR
-//! surface, a terrain splat layer, vegetation (surface + vertex offset), and
-//! unlit.
+//! surface (which is also what a terrain's landscape material ends in),
+//! vegetation (surface + vertex offset), unlit and sprite.
 
 use crate::material::graph::{PinTemplate, PinType, PinValue};
 
@@ -48,27 +48,6 @@ pub static OUTPUT_SURFACE: MaterialNodeDef = MaterialNodeDef {
         PinTemplate::input("anisotropy_strength", "Anisotropy Strength", PinType::Float).with_default(PinValue::Float(0.0)),
         PinTemplate::input("anisotropy_rotation", "Anisotropy Rotation", PinType::Float).with_default(PinValue::Float(0.0)),
     ],
-    color: CLR_OUTPUT,
-};
-
-pub static OUTPUT_TERRAIN_LAYER: MaterialNodeDef = MaterialNodeDef {
-    node_type: "output/terrain_layer",
-    display_name: "Terrain Layer Output",
-    category: CAT_OUTPUT,
-    description: "Terrain layer material (blended via splatmap)",
-    pins: || {
-        vec![
-            PinTemplate::input("base_color", "Base Color", PinType::Color)
-                .with_default(PinValue::Color([0.5, 0.5, 0.5, 1.0])),
-            PinTemplate::input("metallic", "Metallic", PinType::Float)
-                .with_default(PinValue::Float(0.0)),
-            PinTemplate::input("roughness", "Roughness", PinType::Float)
-                .with_default(PinValue::Float(0.5)),
-            PinTemplate::input("normal", "Normal", PinType::Vec3),
-            PinTemplate::input("height", "Height", PinType::Float)
-                .with_default(PinValue::Float(0.5)),
-        ]
-    },
     color: CLR_OUTPUT,
 };
 

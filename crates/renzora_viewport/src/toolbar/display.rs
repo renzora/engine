@@ -120,6 +120,8 @@ pub(super) fn gizmos_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<En
         &renzora::lang::t("viewport.gizmos.cameras"),
         show_camera_gizmos
     ));
+    // The editor camera's own orbit pivot, shown while navigating.
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.gizmos.pivot"), show_pivot));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.scene_icons"), show_scene_icons));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.labels"), show_labels));
     // The game's own UI, not an editor overlay — but it belongs here because

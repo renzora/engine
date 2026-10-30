@@ -30,7 +30,7 @@ use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
-use renzora_ember::theme::{play_green, rgb, text_muted, text_primary, warn_amber};
+use renzora_ember::theme::{faint_bg, play_green, rgb, text_muted, text_primary, warn_amber};
 use renzora_ember::widgets::{menu_item, menu_item_styled, trigger_rect, MenuAction};
 use renzora_ember::UiInteraction;
 
@@ -77,14 +77,9 @@ pub(crate) fn build_scene_switcher(
         _ => Color::NONE,
     });
 
-    let project = label(commands, font, text_muted());
-    bind_text(commands, project, |w: &Rx| {
-        w.get_resource::<renzora::CurrentProject>()
-            .map(|p| p.config.name.clone())
-            .unwrap_or_default()
-    });
-    let slash = label(commands, font, text_muted());
-    commands.entity(slash).insert(Text::new("/"));
+    // No project name in front: it is the same for every document in a session
+    // and already in the window's title, and it took the bar's room from the
+    // document's own name.
 
     // The document's type glyph in its type colour, the same mark the asset
     // browser gives that kind of file, so a material reads as a material before
@@ -108,7 +103,7 @@ pub(crate) fn build_scene_switcher(
     let caret = glyph(commands, "caret-down", text_muted(), 11.0);
     commands.entity(caret).insert(PASS_THROUGH);
 
-    commands.entity(btn).add_children(&[project, slash, icon, doc, caret]);
+    commands.entity(btn).add_children(&[icon, doc, caret]);
     btn
 }
 
@@ -351,12 +346,13 @@ pub(crate) struct SwitcherCloseDoc(u64);
 pub(crate) struct SwitcherGroup(&'static str);
 
 /// The kinds, in the order the Open column groups them.
-const KIND_ORDER: [renzora_ui::DocTabKind; 7] = [
+const KIND_ORDER: [renzora_ui::DocTabKind; 8] = [
     renzora_ui::DocTabKind::Scene,
     renzora_ui::DocTabKind::Material,
     renzora_ui::DocTabKind::Shader,
     renzora_ui::DocTabKind::Script,
     renzora_ui::DocTabKind::Particle,
+    renzora_ui::DocTabKind::TerrainGraph,
     renzora_ui::DocTabKind::Ui,
     renzora_ui::DocTabKind::Other,
 ];
@@ -368,6 +364,7 @@ fn kind_key(kind: renzora_ui::DocTabKind) -> &'static str {
         renzora_ui::DocTabKind::Particle => "particle",
         renzora_ui::DocTabKind::Script => "script",
         renzora_ui::DocTabKind::Shader => "shader",
+        renzora_ui::DocTabKind::TerrainGraph => "terrain_graph",
         renzora_ui::DocTabKind::Ui => "ui",
         renzora_ui::DocTabKind::Other => "other",
     }
@@ -380,6 +377,7 @@ fn kind_title(kind: renzora_ui::DocTabKind) -> String {
         renzora_ui::DocTabKind::Particle => ("scene_switcher.group.particles", "Particles"),
         renzora_ui::DocTabKind::Script => ("scene_switcher.group.scripts", "Scripts"),
         renzora_ui::DocTabKind::Shader => ("scene_switcher.group.shaders", "Shaders"),
+        renzora_ui::DocTabKind::TerrainGraph => ("scene_switcher.group.terrain_graphs", "Terrain Graphs"),
         renzora_ui::DocTabKind::Ui => ("scene_switcher.group.ui", "UI"),
         renzora_ui::DocTabKind::Other => ("scene_switcher.group.other", "Other"),
     };
@@ -518,16 +516,22 @@ fn build_switcher_body(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     body
 }
 
-/// A column's title with a live count on the right.
+/// A column's title with a live count on the right, on a band of its own so
+/// it reads as a heading and not as one more row of the list under it.
 fn column_header(commands: &mut Commands, fonts: &EmberFonts, title: &str, count: impl Fn(&Rx) -> usize + Send + Sync + 'static) -> Entity {
     let row = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(4.0), Val::Px(4.0)),
-            ..default()
-        })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(5.0), Val::Px(5.0)),
+                margin: UiRect::bottom(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(faint_bg())),
+        ))
         .id();
     let mut font = ui_font(&fonts.ui, 11.0);
     font.weight = bevy::text::FontWeight::SEMIBOLD;
@@ -712,15 +716,17 @@ fn group_header(commands: &mut Commands, fonts: &EmberFonts, kind: renzora_ui::D
                 border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..default()
             },
-            BackgroundColor(Color::NONE),
+            BackgroundColor(rgb(faint_bg())),
             UiInteraction::default(),
             SwitcherGroup(kind_key(kind)),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
+    // A band like the column headers', so a group's heading stands apart
+    // from the documents in it; lighter on hover, since it folds.
     bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
         Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
-        _ => Color::NONE,
+        _ => rgb(faint_bg()),
     });
     let caret = icon_text(commands, &fonts.phosphor, if folded { "caret-right" } else { "caret-down" }, text_muted(), 10.0);
     let swatch = commands

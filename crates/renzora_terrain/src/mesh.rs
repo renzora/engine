@@ -86,56 +86,141 @@ fn add_perimeter_wall(
 /// between adjacent chunks deliberately get no wall so the chunks meet flush.
 /// Closed solid means players can't fall through holes or off the edges.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {
-    let resolution = terrain.chunk_resolution;
-    let spacing = terrain.vertex_spacing();
+    generate_chunk_lod_mesh(terrain, chunk, 1)
+}
+
+/// The chunks beside one, for the heights just past its edges.
+///
+/// A vertex normal is taken from the heights on either side of it, and at a
+/// chunk's edge one side belongs to the next chunk. Without it the edge took a
+/// one-sided slope, each chunk a different one, so the two chunks lit their
+/// shared edge differently and every seam showed as a line on a hillside.
+#[derive(Default, Clone, Copy)]
+pub struct ChunkNeighbours<'a> {
+    pub west: Option<&'a TerrainChunkData>,
+    pub east: Option<&'a TerrainChunkData>,
+    pub south: Option<&'a TerrainChunkData>,
+    pub north: Option<&'a TerrainChunkData>,
+}
+
+impl<'a> ChunkNeighbours<'a> {
+    /// The neighbours of the chunk at `(x, z)`, from a lookup by grid cell.
+    pub fn around(x: u32, z: u32, find: impl Fn(u32, u32) -> Option<&'a TerrainChunkData>) -> Self {
+        Self {
+            west: x.checked_sub(1).and_then(|w| find(w, z)),
+            east: find(x + 1, z),
+            south: z.checked_sub(1).and_then(|s| find(x, s)),
+            north: find(x, z + 1),
+        }
+    }
+}
+
+/// [`generate_chunk_mesh`] from every `step`th height sample: a coarser
+/// version of the chunk for drawing at a distance (see `lod`). `step` must
+/// divide `chunk_resolution - 1`.
+///
+/// Normals still come from the full-detail heights at each kept vertex, so a
+/// coarse chunk lights like the fine one and switching between them changes
+/// the silhouette, not the shading.
+///
+/// A coarse chunk keeps every full-detail vertex along its border, and its
+/// outer ring of cells fans into them from a vertex at each cell's centre.
+/// Every chunk therefore has the same border vertices whatever level it and
+/// its neighbours are drawing, so the seams are closed exactly, on any ground.
+/// Skirts were tried first and could not do this: a skirt only hangs down, so
+/// it filled the slit where a coarse edge rose above its neighbour but not the
+/// one where it dipped below, and eroded ground opened pinholes along seams.
+pub fn generate_chunk_lod_mesh(terrain: &TerrainData, chunk: &TerrainChunkData, step: u32) -> Mesh {
+    generate_chunk_lod_mesh_beside(terrain, chunk, step, ChunkNeighbours::default())
+}
+
+/// [`generate_chunk_lod_mesh`] with the chunks around it, so the normals along
+/// its edges match theirs (see [`ChunkNeighbours`]).
+pub fn generate_chunk_lod_mesh_beside(
+    terrain: &TerrainData,
+    chunk: &TerrainChunkData,
+    step: u32,
+    neighbours: ChunkNeighbours,
+) -> Mesh {
+    let full_resolution = terrain.chunk_resolution;
+    let step = step.max(1);
+    let resolution = (full_resolution - 1) / step + 1;
+    let full_spacing = terrain.vertex_spacing();
     let height_range = terrain.height_range();
+    let last = full_resolution - 1;
+    let sample = |x: u32, z: u32| chunk.get_height(x, z, full_resolution);
+    let world_height = |x: u32, z: u32| terrain.min_height + sample(x, z) * height_range;
+    // A full-detail sample one step past the chunk's edge, read from the
+    // neighbour there (whose edge is shared, so one in from it), or clamped
+    // to this chunk's own edge at the outside of the terrain. Only one of x
+    // and z is ever out of range: the differences below step along one axis.
+    let around = |x: i32, z: i32| -> f32 {
+        let (l, r) = (last as i32, full_resolution);
+        let out = match (x, z) {
+            (-1, z) => neighbours.west.map(|n| n.get_height(last - 1, z as u32, r)),
+            (x, z) if x > l => neighbours.east.map(|n| n.get_height(1, z as u32, r)),
+            (x, -1) => neighbours.south.map(|n| n.get_height(x as u32, last - 1, r)),
+            (x, z) if z > l => neighbours.north.map(|n| n.get_height(x as u32, 1, r)),
+            _ => None,
+        };
+        let h = out.unwrap_or_else(|| sample(x.clamp(0, l) as u32, z.clamp(0, l) as u32));
+        terrain.min_height + h * height_range
+    };
 
     let surface_vert_count = (resolution * resolution) as usize;
-    // Hint: surface verts + floor 4 + worst-case 4 walls × 2 × resolution.
-    let total_vert_hint = surface_vert_count + 4 + 8 * resolution as usize;
+    // Hint: surface verts + border verts + ring centres + floor 4 + walls.
+    let total_vert_hint = surface_vert_count + 12 * full_resolution as usize + 4;
     let mut positions = Vec::with_capacity(total_vert_hint);
-    // Normals for the surface get computed by central differences below; size
-    // the buffer to match `positions` so indices line up, then push for floor
-    // and walls.
-    let mut normals = vec![Vec3::Y; surface_vert_count];
+    let mut normals = Vec::with_capacity(total_vert_hint);
     let mut uvs = Vec::with_capacity(total_vert_hint);
 
-    // Generate vertices
+    // One surface vertex at a full-detail sample. Positions come from the
+    // sample's own index, never from a coarse index times a coarse spacing, so
+    // a border vertex lands on exactly the same float in every level. Normals
+    // are central differences on the full-detail grid, so a coarse chunk
+    // lights like the fine one and a level switch changes only the silhouette.
+    let push = |positions: &mut Vec<Vec3>, normals: &mut Vec<Vec3>, uvs: &mut Vec<[f32; 2]>, fx: u32, fz: u32| {
+        let index = positions.len() as u32;
+        positions.push(Vec3::new(fx as f32 * full_spacing, world_height(fx, fz), fz as f32 * full_spacing));
+        let (x, z) = (fx as i32, fz as i32);
+        let dx = (around(x + 1, z) - around(x - 1, z)) / (2.0 * full_spacing);
+        let dz = (around(x, z + 1) - around(x, z - 1)) / (2.0 * full_spacing);
+        normals.push(Vec3::new(-dx, 1.0, -dz).normalize());
+        uvs.push([fx as f32 / last as f32, fz as f32 / last as f32]);
+        index
+    };
+
     for z in 0..resolution {
         for x in 0..resolution {
-            let h = terrain.min_height + chunk.get_height(x, z, resolution) * height_range;
-            positions.push(Vec3::new(x as f32 * spacing, h, z as f32 * spacing));
-            uvs.push([
-                x as f32 / (resolution - 1) as f32,
-                z as f32 / (resolution - 1) as f32,
-            ]);
+            push(&mut positions, &mut normals, &mut uvs, x * step, z * step);
         }
     }
 
-    // Calculate normals using central differences
-    for z in 0..resolution {
-        for x in 0..resolution {
-            let h_left = chunk.get_height(x.saturating_sub(1), z, resolution);
-            let h_right = chunk.get_height((x + 1).min(resolution - 1), z, resolution);
-            let h_down = chunk.get_height(x, z.saturating_sub(1), resolution);
-            let h_up = chunk.get_height(x, (z + 1).min(resolution - 1), resolution);
+    // The four borders at full detail, indexed by full-detail sample along
+    // the edge. Samples a coarse vertex already covers reuse it.
+    let mut border = |coarse: &dyn Fn(u32) -> u32, at: &dyn Fn(u32) -> (u32, u32)| -> Vec<u32> {
+        (0..full_resolution)
+            .map(|k| {
+                if k % step == 0 {
+                    coarse(k / step)
+                } else {
+                    let (fx, fz) = at(k);
+                    push(&mut positions, &mut normals, &mut uvs, fx, fz)
+                }
+            })
+            .collect()
+    };
+    let r = resolution;
+    let south = border(&|i| i, &|k| (k, 0));
+    let north = border(&|i| (r - 1) * r + i, &|k| (k, last));
+    let west = border(&|i| i * r, &|k| (0, k));
+    let east = border(&|i| i * r + r - 1, &|k| (last, k));
 
-            let hl = terrain.min_height + h_left * height_range;
-            let hr = terrain.min_height + h_right * height_range;
-            let hd = terrain.min_height + h_down * height_range;
-            let hu = terrain.min_height + h_up * height_range;
-
-            let dx = (hr - hl) / (2.0 * spacing);
-            let dz = (hu - hd) / (2.0 * spacing);
-
-            normals[(z * resolution + x) as usize] = Vec3::new(-dx, 1.0, -dz).normalize();
-        }
-    }
-
-    // Generate indices (two triangles per quad)
+    // Indices: two triangles per inner cell, a fan per border cell.
     let quad_count = ((resolution - 1) * (resolution - 1)) as usize;
     // +6 indices for the floor plate (two triangles)
     let mut indices = Vec::with_capacity(quad_count * 6 + 6);
+    let mut ring: Vec<u32> = Vec::with_capacity(4 * step as usize + 4);
 
     for z in 0..(resolution - 1) {
         for x in 0..(resolution - 1) {
@@ -144,13 +229,49 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
             let bl = tl + resolution;
             let br = bl + 1;
 
-            indices.push(tl);
-            indices.push(bl);
-            indices.push(tr);
+            let on_border = x == 0 || z == 0 || x + 2 == resolution || z + 2 == resolution;
+            if step == 1 || !on_border {
+                indices.push(tl);
+                indices.push(bl);
+                indices.push(tr);
 
-            indices.push(tr);
-            indices.push(bl);
-            indices.push(br);
+                indices.push(tr);
+                indices.push(bl);
+                indices.push(br);
+                continue;
+            }
+
+            // Walk the cell tl, bl, br, tr (the winding of the quads above),
+            // taking every full-detail vertex on a side that lies on the
+            // chunk's border. Each side contributes its start, not its end.
+            ring.clear();
+            let (x0, z0) = (x * step, z * step);
+            if x == 0 {
+                ring.extend((z0..z0 + step).map(|k| west[k as usize]));
+            } else {
+                ring.push(tl);
+            }
+            if z + 2 == resolution {
+                ring.extend((x0..x0 + step).map(|k| north[k as usize]));
+            } else {
+                ring.push(bl);
+            }
+            if x + 2 == resolution {
+                ring.extend((z0 + 1..=z0 + step).rev().map(|k| east[k as usize]));
+            } else {
+                ring.push(br);
+            }
+            if z == 0 {
+                ring.extend((x0 + 1..=x0 + step).rev().map(|k| south[k as usize]));
+            } else {
+                ring.push(tr);
+            }
+            let centre = push(&mut positions, &mut normals, &mut uvs, x0 + step / 2, z0 + step / 2);
+            for i in 0..ring.len() {
+                indices.push(centre);
+                indices.push(ring[i]);
+                indices.push(ring[(i + 1) % ring.len()]);
+            }
         }
     }
 
@@ -175,7 +296,7 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
         .clamp(0.0, 1.0);
     let chunk_min_world_y = terrain.min_height + chunk_min_h_norm * height_range;
     let floor_y = chunk_min_world_y - TERRAIN_FLOOR_GAP;
-    let chunk_extent = (resolution - 1) as f32 * spacing;
+    let chunk_extent = last as f32 * full_spacing;
     let floor_base = positions.len() as u32;
     let floor_corners = [
         Vec3::new(0.0, floor_y, 0.0),
@@ -201,67 +322,24 @@ pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> M
     // neighbouring chunks would double-wall; suppress them. Each wall is
     // walked CCW around the chunk (interior on the left) so the standardized
     // quad winding in `add_perimeter_wall` faces outward.
-    let is_external_south = chunk.chunk_z == 0;
-    let is_external_east = chunk.chunk_x + 1 == terrain.chunks_x;
-    let is_external_north = chunk.chunk_z + 1 == terrain.chunks_z;
-    let is_external_west = chunk.chunk_x == 0;
-
-    if is_external_south {
+    let mut wall = |strip: Vec<u32>, outward: Vec3| {
+        add_perimeter_wall(&mut positions, &mut normals, &mut uvs, &mut indices, &strip, floor_y, outward);
+    };
+    if chunk.chunk_z == 0 {
         // z=0, walk +X.
-        let strip: Vec<u32> = (0..resolution).collect();
-        add_perimeter_wall(
-            &mut positions,
-            &mut normals,
-            &mut uvs,
-            &mut indices,
-            &strip,
-            floor_y,
-            Vec3::NEG_Z,
-        );
+        wall(south, Vec3::NEG_Z);
     }
-    if is_external_east {
-        // x=resolution-1, walk +Z.
-        let strip: Vec<u32> = (0..resolution)
-            .map(|z| z * resolution + (resolution - 1))
-            .collect();
-        add_perimeter_wall(
-            &mut positions,
-            &mut normals,
-            &mut uvs,
-            &mut indices,
-            &strip,
-            floor_y,
-            Vec3::X,
-        );
+    if chunk.chunk_x + 1 == terrain.chunks_x {
+        // x=last, walk +Z.
+        wall(east, Vec3::X);
     }
-    if is_external_north {
-        // z=resolution-1, walk -X.
-        let strip: Vec<u32> = (0..resolution)
-            .rev()
-            .map(|x| (resolution - 1) * resolution + x)
-            .collect();
-        add_perimeter_wall(
-            &mut positions,
-            &mut normals,
-            &mut uvs,
-            &mut indices,
-            &strip,
-            floor_y,
-            Vec3::Z,
-        );
+    if chunk.chunk_z + 1 == terrain.chunks_z {
+        // z=last, walk -X.
+        wall(north.into_iter().rev().collect(), Vec3::Z);
     }
-    if is_external_west {
+    if chunk.chunk_x == 0 {
         // x=0, walk -Z.
-        let strip: Vec<u32> = (0..resolution).rev().map(|z| z * resolution).collect();
-        add_perimeter_wall(
-            &mut positions,
-            &mut normals,
-            &mut uvs,
-            &mut indices,
-            &strip,
-            floor_y,
-            Vec3::NEG_X,
-        );
+        wall(west.into_iter().rev().collect(), Vec3::NEG_X);
     }
 
     let mut mesh = Mesh::new(
@@ -308,9 +386,9 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             Transform::from_xyz(0.0, TERRAIN_GRID_CLEARANCE, 0.0),
             Visibility::default(),
             terrain_data.clone(),
-            // Paintable from frame one (`ensure_painter_system` covers
-            // scene-loaded terrains, but only on the next Update).
-            crate::painter::Painter::default(),
+            // No material: a new terrain shows the blockout grid until one is
+            // chosen (a `TerrainMaterial`; Alpine Landscape is the engine's
+            // default, see `landscape`).
             renzora::SelectionStop,
         ))
         .id();
@@ -351,66 +429,68 @@ pub fn spawn_terrain_chunks(
         mats.add(TerrainCheckerboardMaterial::default())
     });
 
-    // Build chunk data + meshes
-    let mut chunks: Vec<(TerrainChunkData, Handle<Mesh>, Vec3)> = Vec::new();
-    {
-        let mut meshes = world.resource_mut::<Assets<Mesh>>();
-        for cz in 0..terrain_data.chunks_z {
-            for cx in 0..terrain_data.chunks_x {
-                let chunk = TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
-                let mesh = generate_chunk_mesh(terrain_data, &chunk);
-                let mesh_handle = meshes.add(mesh);
-                let origin = terrain_data.chunk_world_origin(cx, cz);
-                chunks.push((chunk, mesh_handle, origin));
+    // Chunk data only. The meshes are built by `rehydrate_terrain_chunks` for
+    // the chunks streaming keeps resident, so a large grid is never built at
+    // full detail all at once (see `stream_terrain_chunks`).
+    let mut spawned = Vec::new();
+    for cz in 0..terrain_data.chunks_z {
+        for cx in 0..terrain_data.chunks_x {
+            let mut chunk_data = TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
+            chunk_data.dirty = false;
+            let origin = terrain_data.chunk_world_origin(cx, cz);
+            let chunk_entity = world
+                .spawn((
+                    Name::new(format!("Chunk ({},{})", cx, cz)),
+                    Visibility::default(),
+                    Transform::from_translation(origin),
+                    PhysicsBodyData::static_body(),
+                    CollisionShapeData::mesh(),
+                    chunk_data,
+                    TerrainChunkOf(terrain_entity),
+                ))
+                .id();
+            match (&checker, &material) {
+                (Some(checker), _) => {
+                    world
+                        .entity_mut(chunk_entity)
+                        .insert(MeshMaterial3d(checker.clone()));
+                }
+                (None, Some(mat)) => {
+                    world.entity_mut(chunk_entity).insert(mat.clone());
+                }
+                (None, None) => {}
             }
+            // Insert ChildOf separately to trigger Bevy's hierarchy hooks
+            // (on_insert hooks don't fire when ChildOf is part of a spawn bundle)
+            world
+                .entity_mut(chunk_entity)
+                .insert(ChildOf(terrain_entity));
+            spawned.push(chunk_entity);
         }
-    }
-
-    let mut spawned = Vec::with_capacity(chunks.len());
-    for (mut chunk_data, mesh_handle, origin) in chunks {
-        chunk_data.dirty = false;
-        let cx = chunk_data.chunk_x;
-        let cz = chunk_data.chunk_z;
-        let chunk_entity = world
-            .spawn((
-                Name::new(format!("Chunk ({},{})", cx, cz)),
-                Mesh3d(mesh_handle),
-                Transform::from_translation(origin),
-                PhysicsBodyData::static_body(),
-                CollisionShapeData::mesh(),
-                chunk_data,
-                TerrainChunkOf(terrain_entity),
-            ))
-            .id();
-        match (&checker, &material) {
-            (Some(checker), _) => {
-                world
-                    .entity_mut(chunk_entity)
-                    .insert(MeshMaterial3d(checker.clone()));
-            }
-            (None, Some(mat)) => {
-                world.entity_mut(chunk_entity).insert(mat.clone());
-            }
-            (None, None) => {}
-        }
-        // Insert ChildOf separately to trigger Bevy's hierarchy hooks
-        // (on_insert hooks don't fire when ChildOf is part of a spawn bundle)
-        world
-            .entity_mut(chunk_entity)
-            .insert(ChildOf(terrain_entity));
-        spawned.push(chunk_entity);
     }
 
     spawned
 }
 
+/// Most chunks given a full-detail mesh in one frame. Each also costs its
+/// levels of detail (`ensure_chunk_lods`, which follows the mesh) and a GPU
+/// upload, and a new 2 km terrain wanted about two hundred at once: three
+/// frames of two to three seconds each. A dozen a frame, built in parallel
+/// and nearest the camera first, fills the ground in under the camera while
+/// the editor keeps drawing.
+const MAX_BUILDS_PER_FRAME: usize = 12;
+
 /// Rehydrate terrain chunks after scene load — spawns mesh, material, collider,
 /// and `TerrainChunkOf` for chunks that have `TerrainChunkData` but no `Mesh3d`.
+/// At most [`MAX_BUILDS_PER_FRAME`] a frame, nearest the streaming focus first.
+#[allow(clippy::too_many_arguments)]
 pub fn rehydrate_terrain_chunks(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
+    focus: Option<Res<crate::streaming::StreamFocus>>,
     terrain_query: Query<&TerrainData>,
+    roots: Query<&GlobalTransform>,
     chunk_query: Query<
         (
             Entity,
@@ -422,31 +502,94 @@ pub fn rehydrate_terrain_chunks(
         // `TerrainChunkStreamedOut` chunks are meshless on purpose — the
         // streaming system removed the marker's mesh and will hand the chunk
         // back to this system by removing the marker (see `streaming.rs`).
-        (Without<Mesh3d>, Without<super::data::TerrainChunkStreamedOut>),
+        // A chunk still waiting for its heights would be built flat and then
+        // again (`starter::PendingShape`).
+        (
+            Without<Mesh3d>,
+            Without<super::data::TerrainChunkStreamedOut>,
+            Without<crate::starter::PendingShape>,
+        ),
     >,
+    all_chunks: Query<(&TerrainChunkData, &TerrainChunkOf)>,
+    pending: Query<&TerrainChunkOf, With<crate::starter::PendingShape>>,
 ) {
     if chunk_query.is_empty() {
         return;
     }
+    // A terrain still being shaped builds nothing yet, not even its shaped
+    // chunks: a chunk's edges are lit from its neighbours' heights, so one
+    // built beside a neighbour that was still flat kept a seam along that
+    // edge after the neighbour got its real heights.
+    let shaping: std::collections::HashSet<Entity> = pending.iter().map(|of| of.0).collect();
 
-    let material = materials.add(TerrainCheckerboardMaterial::default());
+    // Which chunks this frame: the nearest, by the centre of the chunk on the
+    // ground. Without a focus (no camera yet) the order does not matter.
+    let focus = focus.and_then(|f| f.0);
+    let mut queue: Vec<(f32, Entity, Entity)> = chunk_query
+        .iter()
+        .filter_map(|(entity, chunk, chunk_of, child_of, _)| {
+            // Resolve parent terrain: prefer TerrainChunkOf, fall back to ChildOf parent
+            let parent = chunk_of.map(|c| c.0).or_else(|| child_of.map(|c| c.0))?;
+            if shaping.contains(&parent) {
+                return None;
+            }
+            let terrain = terrain_query.get(parent).ok()?;
+            let distance = match (focus, roots.get(parent)) {
+                (Some(focus), Ok(root)) => {
+                    let half = terrain.chunk_size * 0.5;
+                    let centre = root.transform_point(
+                        terrain.chunk_world_origin(chunk.chunk_x, chunk.chunk_z) + Vec3::new(half, 0.0, half),
+                    );
+                    focus.xz().distance_squared(centre.xz())
+                }
+                _ => 0.0,
+            };
+            Some((distance, entity, parent))
+        })
+        .collect();
+    queue.sort_by(|a, b| a.0.total_cmp(&b.0));
+    queue.truncate(MAX_BUILDS_PER_FRAME);
 
-    for (entity, chunk_data, chunk_of, child_of, mat_ref) in chunk_query.iter() {
-        // Resolve parent terrain: prefer TerrainChunkOf, fall back to ChildOf parent
-        let parent = chunk_of.map(|c| c.0).or_else(|| child_of.map(|c| c.0));
-        let Some(parent_entity) = parent else {
+    // Every chunk by terrain and cell, for the neighbours' edge heights: a
+    // chunk streamed back in beside resident ones must light its edges as they
+    // do, or the seam line comes back wherever streaming has been.
+    let grid: HashMap<(Entity, u32, u32), &TerrainChunkData> = all_chunks
+        .iter()
+        .map(|(chunk, of)| ((of.0, chunk.chunk_x, chunk.chunk_z), chunk))
+        .collect();
+
+    // The meshes are pure work on the heights, so they build in parallel.
+    let jobs: Vec<(Entity, Entity, &TerrainData, &TerrainChunkData, ChunkNeighbours)> = queue
+        .iter()
+        .filter_map(|&(_, entity, parent)| {
+            let (_, chunk, ..) = chunk_query.get(entity).ok()?;
+            let terrain = terrain_query.get(parent).ok()?;
+            let neighbours =
+                ChunkNeighbours::around(chunk.chunk_x, chunk.chunk_z, |x, z| grid.get(&(parent, x, z)).copied());
+            Some((entity, parent, terrain, chunk, neighbours))
+        })
+        .collect();
+    let built: Vec<(Entity, Entity, Mesh)> = bevy::tasks::ComputeTaskPool::get().scope(|scope| {
+        for (entity, parent, terrain, chunk, neighbours) in &jobs {
+            scope.spawn(async move { (*entity, *parent, generate_chunk_lod_mesh_beside(terrain, chunk, 1, *neighbours)) });
+        }
+    });
+
+    let mut material: Option<Handle<TerrainCheckerboardMaterial>> = None;
+    for (entity, parent_entity, mesh) in built {
+        let Ok((_, _, chunk_of, _, mat_ref)) = chunk_query.get(entity) else {
             continue;
         };
-        let Ok(terrain_data) = terrain_query.get(parent_entity) else {
-            continue;
-        };
 
-        // Ensure parent has required hierarchy components (scene loader may omit them)
+        // Ensure parent has required hierarchy components (scene loader may omit
+        // them). Only when missing: a default `InheritedVisibility` is hidden,
+        // and nothing recomputes it while the root's `Visibility` is unchanged,
+        // so overwriting it hid the whole terrain. That ran once per scene load
+        // until chunks streamed back in through here, then on every stream-in.
         commands
             .entity(parent_entity)
-            .insert((GlobalTransform::default(), InheritedVisibility::default()));
+            .insert_if_new((GlobalTransform::default(), InheritedVisibility::default()));
 
-        let mesh = generate_chunk_mesh(terrain_data, chunk_data);
         let mesh_handle = meshes.add(mesh);
 
         let mut ec = commands.entity(entity);
@@ -458,7 +601,10 @@ pub fn rehydrate_terrain_chunks(
 
         // Only apply default checkerboard if chunk has no custom material assigned
         if mat_ref.is_none() {
-            ec.insert(MeshMaterial3d(material.clone()));
+            let material = material
+                .get_or_insert_with(|| materials.add(TerrainCheckerboardMaterial::default()))
+                .clone();
+            ec.insert(MeshMaterial3d(material));
         }
 
         // Restore TerrainChunkOf if missing (scene load doesn't serialize it)
@@ -479,7 +625,6 @@ pub fn rehydrate_terrain_chunks(
 /// command batch, so a terrain is never legitimately chunkless.
 pub fn backfill_missing_chunks(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
     terrains: Query<(Entity, &TerrainData)>,
     chunks: Query<(Option<&TerrainChunkOf>, Option<&ChildOf>), With<TerrainChunkData>>,
@@ -511,13 +656,12 @@ pub fn backfill_missing_chunks(
             for cx in 0..terrain_data.chunks_x {
                 let mut chunk_data =
                     TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
-                let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
                 chunk_data.dirty = false;
-                let mesh_handle = meshes.add(mesh);
                 let origin = terrain_data.chunk_world_origin(cx, cz);
+                // Meshless, like every other route that makes chunks: the
+                // resident ones are built by `rehydrate_terrain_chunks`.
                 commands.entity(terrain_entity).with_child((
                     Name::new(format!("Chunk ({},{})", cx, cz)),
-                    Mesh3d(mesh_handle),
                     MeshMaterial3d(material.clone()),
                     Transform::from_translation(origin),
                     Visibility::default(),
@@ -553,23 +697,41 @@ pub fn terrain_chunk_mesh_update_system(
     terrain_query: Query<&TerrainData>,
     mut chunk_query: Query<(Entity, &mut TerrainChunkData, &TerrainChunkOf, &Mesh3d)>,
 ) {
-    for (entity, mut chunk, chunk_of, mesh_handle) in chunk_query.iter_mut() {
-        // Keyed on `mesh_stale` (set by composition), NOT `dirty` (set by
-        // writers) — see the flag docs on `TerrainChunkData`.
+    // Keyed on `mesh_stale` (set by composition), NOT `dirty` (set by
+    // writers): see the flag docs on `TerrainChunkData`.
+    if !chunk_query.iter().any(|(_, chunk, _, _)| chunk.mesh_stale) {
+        return;
+    }
+    // Every chunk by terrain and grid cell, for the neighbours' edge heights.
+    let grid: HashMap<(Entity, u32, u32), &TerrainChunkData> = chunk_query
+        .iter()
+        .map(|(_, chunk, of, _)| ((of.0, chunk.chunk_x, chunk.chunk_z), chunk))
+        .collect();
+    let mut rebuilt = Vec::new();
+    for (entity, chunk, chunk_of, mesh_handle) in chunk_query.iter() {
         if !chunk.mesh_stale {
             continue;
         }
         let Ok(terrain) = terrain_query.get(chunk_of.0) else {
             continue;
         };
-        let new_mesh = generate_chunk_mesh(terrain, &chunk);
+        let neighbours = ChunkNeighbours::around(chunk.chunk_x, chunk.chunk_z, |x, z| {
+            grid.get(&(chunk_of.0, x, z)).copied()
+        });
+        let new_mesh = generate_chunk_lod_mesh_beside(terrain, chunk, 1, neighbours);
         if let Some(mut mesh) = meshes.get_mut(&mesh_handle.0) {
             *mesh = new_mesh;
         }
+        rebuilt.push(entity);
+    }
+    drop(grid);
+    for entity in rebuilt {
         commands.entity(entity).try_insert(ColliderStale {
             last_change: time.elapsed_secs(),
         });
-        chunk.mesh_stale = false;
+        if let Ok((_, mut chunk, _, _)) = chunk_query.get_mut(entity) {
+            chunk.mesh_stale = false;
+        }
     }
 }
 
@@ -582,7 +744,10 @@ pub fn flush_stale_colliders_system(
     mut commands: Commands,
     time: Res<Time>,
     sculpt_state: Res<crate::data::TerrainSculptState>,
-    stale: Query<(Entity, &ColliderStale)>,
+    // A streamed-out chunk has no collider on purpose: rebuilding one for an
+    // edit made just before it left put the collider back on every chunk a
+    // generate or erode had touched, and with it most of what streaming saves.
+    stale: Query<(Entity, &ColliderStale), Without<crate::data::TerrainChunkStreamedOut>>,
 ) {
     if sculpt_state.is_sculpting {
         return;
@@ -597,6 +762,52 @@ pub fn flush_stale_colliders_system(
             .remove::<ColliderStale>()
             .try_insert(CollisionShapeData::mesh());
     }
+}
+
+/// Give every chunk whose collider is being (re)built its heights as a
+/// heightfield, so physics builds that instead of a trimesh from the mesh.
+///
+/// A trimesh of a 129-vertex chunk is 32 thousand triangles, and the physics
+/// engine works out mass properties for each one it builds: with streaming
+/// bringing in dozens of chunks at once, that alone was a 57 ms frame. A
+/// heightfield is the same ground, built from the grid the chunk already has.
+///
+/// Keyed on the collider request (`CollisionShapeData` added or reinserted,
+/// which is what the debounced rebuild above does), so a held brush stroke
+/// never rebuilds it.
+#[allow(clippy::type_complexity)]
+pub fn sync_chunk_heightfields(
+    mut commands: Commands,
+    terrains: Query<&TerrainData>,
+    chunks: Query<
+        (Entity, &TerrainChunkData, &TerrainChunkOf),
+        (Changed<CollisionShapeData>, Without<crate::data::TerrainChunkStreamedOut>),
+    >,
+) {
+    for (entity, chunk, of) in &chunks {
+        let Ok(terrain) = terrains.get(of.0) else { continue };
+        if let Some(field) = chunk_heightfield(terrain, chunk) {
+            commands
+                .entity(entity)
+                .try_insert(renzora::physics::HeightfieldSource(std::sync::Arc::new(field)));
+        }
+    }
+}
+
+/// A chunk's composed heights as a heightfield in the chunk's local space.
+pub fn chunk_heightfield(terrain: &TerrainData, chunk: &TerrainChunkData) -> Option<renzora::physics::HeightfieldData> {
+    let res = terrain.chunk_resolution as usize;
+    let source = if chunk.heights.len() == res * res { &chunk.heights } else { &chunk.base_heights };
+    if res < 2 || source.len() != res * res {
+        return None;
+    }
+    let range = terrain.height_range();
+    Some(renzora::physics::HeightfieldData {
+        heights: source.iter().map(|h| terrain.min_height + h * range).collect(),
+        columns: res,
+        rows: res,
+        size: Vec2::splat(terrain.chunk_size),
+    })
 }
 
 /// Bilinear resampling of heightmap from one resolution to another.
@@ -644,17 +855,38 @@ fn resample_heights(old_heights: &[f32], old_res: u32, new_res: u32) -> Vec<f32>
 ///
 /// Handles chunk grid changes, resolution changes, height range changes.
 /// Resamples heightmaps via bilinear interpolation when resolution changes.
+#[allow(clippy::too_many_arguments)]
 pub fn terrain_data_changed_system(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut terrain_materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
     changed_terrain: Query<(Entity, &TerrainData), Changed<TerrainData>>,
     added: Query<Entity, Added<TerrainData>>,
     mut chunk_query: Query<(Entity, &TerrainChunkOf, &mut TerrainChunkData)>,
+    // Painted layer weights, carried over to the respawned chunk in the same
+    // cell (resampled on first read if the resolution changed).
+    weights: Query<&crate::landscape::TerrainChunkWeights>,
+    // The fields the chunk meshes are built from, per terrain, as last seen.
+    mut shapes: Local<HashMap<Entity, [u32; 6]>>,
 ) {
     for (terrain_entity, terrain_data) in changed_terrain.iter() {
+        let shape = [
+            terrain_data.chunks_x,
+            terrain_data.chunks_z,
+            terrain_data.chunk_resolution,
+            terrain_data.chunk_size.to_bits(),
+            terrain_data.min_height.to_bits(),
+            terrain_data.max_height.to_bits(),
+        ];
+        let previous = shapes.insert(terrain_entity, shape);
         // Skip first insertion — chunks are spawned by the terrain creation command
         if added.contains(terrain_entity) {
+            continue;
+        }
+        // Only the grid, resolution, chunk size and height range change what a
+        // chunk's mesh is. Anything else (streaming, levels of detail) used to
+        // rebuild every chunk, its collider and its virtual geometry: toggling
+        // streaming on a 256-chunk terrain stalled the editor for seconds.
+        if previous == Some(shape) {
             continue;
         }
 
@@ -720,6 +952,10 @@ pub fn terrain_data_changed_system(
             .iter()
             .map(|(_, cx, cz, h)| ((*cx, *cz), h.clone()))
             .collect();
+        let old_weights: HashMap<(u32, u32), crate::landscape::TerrainChunkWeights> = existing
+            .iter()
+            .filter_map(|(e, cx, cz, _)| weights.get(*e).ok().map(|w| ((*cx, *cz), w.clone())))
+            .collect();
 
         // Despawn all old chunk entities
         for (chunk_entity, _, _, _) in &existing {
@@ -752,16 +988,16 @@ pub fn terrain_data_changed_system(
                     mesh_stale: false,
                 };
 
-                let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
-                let mesh_handle = meshes.add(mesh);
                 let origin = terrain_data.chunk_world_origin(cx, cz);
 
+                // No mesh: streaming decides which chunks get one (see
+                // `stream_terrain_chunks`) and `rehydrate_terrain_chunks`
+                // builds those, so a large grid never builds them all at once.
                 commands.entity(terrain_entity).with_child((
                     // The scene saver only serializes named entities — a
                     // nameless chunk silently vanishes from the save and the
                     // terrain loads back as an empty root.
                     Name::new(format!("Chunk ({},{})", cx, cz)),
-                    Mesh3d(mesh_handle),
                     MeshMaterial3d(material.clone()),
                     Transform::from_translation(origin),
                     Visibility::default(),
@@ -769,6 +1005,7 @@ pub fn terrain_data_changed_system(
                     CollisionShapeData::mesh(),
                     chunk_data,
                     TerrainChunkOf(terrain_entity),
+                    old_weights.get(&(cx, cz)).cloned().unwrap_or_default(),
                 ));
             }
         }

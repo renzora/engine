@@ -218,7 +218,9 @@ tilemap = ["dep:renzora_tilemap"]
 sprite_anim = ["dep:renzora_sprite_anim"]
 # `renzora_navmesh?/terrain`: enable navmesh's terrain-obstacle support only when
 # navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
-terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain"]
+# `shader_graph` too: a terrain is textured by a node-graph landscape material,
+# and `renzora_terrain` links the material crate for it.
+terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain", "shader_graph"]
 # Pulls the backend as well as the API. They are two crates because the mixer
 # links neither Bevy nor the engine, not because a build would ever want one
 # without the other: `renzora_audio` is the bus graph, the components and the
@@ -430,8 +432,10 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # it. If you hit that, delete the offending line below.
 renzora_live_link = { path = "../renzora_live_link" }
 renzora_net = { path = "../renzora_net" }
+renzora_profiler = { path = "../renzora_profiler" }
 renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_svg = { path = "../renzora_svg" }
+renzora_terrain_graph = { path = "../renzora_terrain_graph" }
 # ── end generated ──
 
 # Loading the editor image beside the executable — see `src/editor_image.rs`.

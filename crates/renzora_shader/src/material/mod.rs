@@ -2,6 +2,8 @@ pub mod alpha_override;
 pub mod codegen;
 pub mod graph;
 pub mod instance;
+pub mod landscape;
+pub mod landscape_preset;
 pub mod material_ref;
 pub mod nodes;
 pub mod pbr_build;

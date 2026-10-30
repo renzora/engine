@@ -26,10 +26,7 @@ mod shaders;
 mod wgsl;
 
 use ctx::Ctx;
-use shaders::{
-    build_pbr_shader, build_sprite_shader, build_terrain_layer_shader, build_unlit_shader,
-    build_vegetation_vertex_shader,
-};
+use shaders::{build_pbr_shader, build_sprite_shader, build_unlit_shader, build_vegetation_vertex_shader};
 use wgsl::parallax_helper_wgsl;
 
 /// Registry of loaded material functions, keyed by function name.
@@ -42,6 +39,14 @@ pub type FunctionRegistry = HashMap<String, MaterialFunction>;
 /// all three locations together.
 pub const MAX_PARAMETER_SLOTS: usize = 32;
 
+/// How many distinct 2D images a 3D graph can sample: the `texture_0` ..
+/// `texture_15` slots of `surface_ext::SurfaceGraphExt`. A sprite has the
+/// first [`MAX_SPRITE_D2_TEXTURES`] only (`SpriteGraphExt`).
+pub const MAX_D2_TEXTURES: usize = 16;
+
+/// The 2D slots a sprite material's extension declares.
+pub const MAX_SPRITE_D2_TEXTURES: usize = 6;
+
 /// Bumped whenever codegen's output changes in a way a saved material should
 /// pick up. A `.material` embeds the shader it was compiled to, and the
 /// resolver ignores an embedded shader stamped with an older version (see
@@ -50,7 +55,9 @@ pub const MAX_PARAMETER_SLOTS: usize = 32;
 ///
 /// 1: Surface shaders gained a deferred G-buffer branch.
 /// 2: Surface shaders gained the virtual geometry (visibility buffer) branch.
-pub const CODEGEN_VERSION: u32 = 2;
+/// 3: Sample nodes reading the same image share one 2D slot, which renumbers
+///    the slots of any graph that sampled an image twice.
+pub const CODEGEN_VERSION: u32 = 3;
 
 /// Whether a generated Surface shader can also run as the deferred G-buffer
 /// pass. Read from the source rather than carried beside it, so it holds for a
@@ -120,6 +127,10 @@ pub struct CompileResult {
     /// engine bug, not a user bug. This is what lets compile errors point
     /// at a node instead of a line nobody can see.
     pub node_lines: Vec<(u64, u32, u32)>,
+    /// The landscape layers the graph declares, in the order its shader reads
+    /// their weights ([`super::landscape::landscape_layers`]). Empty for a
+    /// graph with no Landscape nodes.
+    pub landscape_layers: Vec<String>,
 }
 
 /// One named graph-boundary parameter discovered by the compiler.
@@ -194,6 +205,7 @@ pub fn compile_with_functions(
                 requires_transmission: false,
                 parameters: Vec::new(),
                 node_lines: Vec::new(),
+                landscape_layers: Vec::new(),
             };
         }
     };
@@ -273,12 +285,21 @@ pub fn compile_with_functions(
         resolved.insert(pin_name.clone(), expr);
     }
 
+    // A sprite's extension has six 2D slots, not sixteen; past them the
+    // shader would name bindings its material does not have.
+    if graph.domain == MaterialDomain::Sprite
+        && ctx.next_texture_binding as usize > MAX_SPRITE_D2_TEXTURES
+    {
+        ctx.errors.push(format!(
+            "a Sprite material samples at most {MAX_SPRITE_D2_TEXTURES} different textures"
+        ));
+    }
+
     // Build the full shader
     let (fragment_shader, node_lines) = match graph.domain {
         MaterialDomain::Surface | MaterialDomain::Vegetation => {
             build_pbr_shader(&ctx, &resolved, graph.domain)
         }
-        MaterialDomain::TerrainLayer => build_terrain_layer_shader(&ctx, &resolved),
         MaterialDomain::Unlit => build_unlit_shader(&ctx, &resolved),
         MaterialDomain::Sprite => build_sprite_shader(&ctx, &resolved),
     };
@@ -304,6 +325,7 @@ pub fn compile_with_functions(
         requires_transmission,
         parameters: ctx.parameters,
         node_lines,
+        landscape_layers: super::landscape::landscape_layers(graph),
     }
 }
 
@@ -345,7 +367,9 @@ mod tests {
             (MaterialDomain::Unlit, "input/particle_age"),
             (MaterialDomain::Surface, "texture/sample_normal"),
             (MaterialDomain::Vegetation, "input/uv"),
-            (MaterialDomain::TerrainLayer, "input/uv"),
+            (MaterialDomain::Surface, "landscape/layer_coords"),
+            (MaterialDomain::Surface, "landscape/layer_sample"),
+            (MaterialDomain::Surface, "landscape/slope"),
         ] {
             let mut graph = MaterialGraph::new("Dump", domain);
             let n = graph.add_node(ty, [0.0, 0.0]);
@@ -661,14 +685,73 @@ mod tests {
         assert!(vertex.contains("position_world_to_clip(world_pos.xyz)"), "{vertex}");
     }
 
-    /// WGSL has no struct declarations inside a function.
+    /// A file saved with the retired Terrain Layer domain still parses, as a
+    /// Surface graph, and is refused by name instead of crashing the loader.
     #[test]
-    fn terrain_layer_declares_its_input_struct_at_module_scope() {
-        let graph = MaterialGraph::new("Grass", MaterialDomain::TerrainLayer);
-        let shader = compile(&graph).fragment_shader;
-        let decl = shader.find("struct FakeIn").expect("FakeIn");
-        let main = shader.find("fn layer_main").expect("layer_main");
-        assert!(decl < main, "{shader}");
+    fn an_old_terrain_layer_material_loads_and_is_refused() {
+        let json = r#"{"name":"Old","domain":"TerrainLayer","nodes":[{"id":1,"node_type":"output/terrain_layer","position":[0.0,0.0],"input_values":{}}],"connections":[],"next_id":2}"#;
+        let graph: MaterialGraph = serde_json::from_str(json).expect("old domain parses");
+        assert_eq!(graph.domain, MaterialDomain::Surface);
+        let result = compile(&graph);
+        assert!(result.errors.iter().any(|e| e.contains("output/terrain_layer")), "{:?}", result.errors);
+    }
+
+    /// Two sample nodes reading the same image share one slot, and a graph
+    /// may now use more than the original six.
+    #[test]
+    fn samples_of_one_image_share_a_slot_and_sixteen_fit() {
+        let mut graph = MaterialGraph::new("Many", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let mut last = None;
+        for i in 0..16 {
+            let n = graph.add_node("texture/sample", [0.0, 0.0]);
+            graph.get_node_mut(n).unwrap().input_values.insert(
+                "texture".into(),
+                PinValue::TexturePath(format!("textures/t{i}.png")),
+            );
+            let add = graph.add_node("math/add", [0.0, 0.0]);
+            graph.connect(n, "color", add, "a");
+            if let Some(prev) = last {
+                graph.connect(prev, "result", add, "b");
+            }
+            last = Some(add);
+        }
+        // A second read of texture 3, and of texture 3 again through triplanar.
+        let again = graph.add_node("texture/sample", [0.0, 0.0]);
+        graph.get_node_mut(again).unwrap().input_values.insert(
+            "texture".into(),
+            PinValue::TexturePath("textures/t3.png".into()),
+        );
+        let add = graph.add_node("math/add", [0.0, 0.0]);
+        graph.connect(again, "color", add, "a");
+        graph.connect(last.unwrap(), "result", add, "b");
+        graph.connect(add, "result", out, "base_color");
+
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.texture_bindings.len(), 16);
+        let s = &result.fragment_shader;
+        assert!(s.contains("@group(3) @binding(133) var texture_15: texture_2d<f32>;"), "{s}");
+
+        // A seventeenth image is refused at compile time.
+        let extra = graph.add_node("texture/sample", [0.0, 0.0]);
+        graph.get_node_mut(extra).unwrap().input_values.insert(
+            "texture".into(),
+            PinValue::TexturePath("textures/t16.png".into()),
+        );
+        graph.connect(extra, "color", out, "emissive");
+        assert!(!compile(&graph).errors.is_empty());
+    }
+
+    /// A graph using six slots or fewer declares exactly the bindings it did
+    /// before slots 6..15 existed.
+    #[test]
+    fn a_small_graph_declares_only_the_original_six_slots() {
+        let graph = MaterialGraph::new("Plain", MaterialDomain::Surface);
+        let s = compile(&graph).fragment_shader;
+        assert!(s.contains("var texture_5: texture_2d<f32>;"), "{s}");
+        assert!(!s.contains("texture_6"), "{s}");
+        assert!(!s.contains("landscape"), "{s}");
     }
 
     /// A Custom node may still hold old-dialect code (`#ifdef`), which makes
@@ -733,15 +816,6 @@ mod tests {
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
         assert!(result.fragment_shader.contains("fract(floor("));
-    }
-
-    #[test]
-    fn compile_terrain_layer() {
-        let graph = MaterialGraph::new("Grass", MaterialDomain::TerrainLayer);
-        let result = compile(&graph);
-        assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
-        assert!(result.fragment_shader.contains("fn layer_main"));
-        assert!(result.fragment_shader.contains("fn layer_pbr"));
     }
 
     #[test]
@@ -941,20 +1015,74 @@ mod tests {
         assert!(!shader.contains(".rgb * 2.0 - 1.0"));
     }
 
-    /// Terrain compiles to `layer_main()`, whose `FakeIn` has no
-    /// `world_tangent` and which never imports `pbr_functions` — emitting the
-    /// TBN conversion there would simply fail to compile. That domain consumes
-    /// the tangent-space value directly, so it must stay untouched.
+    /// A normal map laid down by Landscape Layer Coords is projected from
+    /// above in world space, so it is oriented by the surface normal, not by a
+    /// chunk's tangents (which describe UVs that restart at every chunk edge).
     #[test]
-    fn a_terrain_layer_normal_map_stays_in_tangent_space() {
-        let mut graph = MaterialGraph::new("TerrainNormal", MaterialDomain::TerrainLayer);
+    fn a_landscape_normal_map_is_oriented_without_tangents() {
+        let mut graph = MaterialGraph::new("TerrainNormal", MaterialDomain::Surface);
+        let coords = graph.add_node("landscape/layer_coords", [-400.0, 0.0]);
         let n = graph.add_node("texture/sample_normal", [-200.0, 0.0]);
         let output_id = graph.output_node().unwrap().id;
+        graph.connect(coords, "uv", n, "uv");
         graph.connect(n, "normal", output_id, "normal");
 
         let shader = compile(&graph).fragment_shader;
-        assert!(!shader.contains("calculate_tbn_mikktspace"));
-        assert!(!shader.contains("in.world_tangent"));
+        assert!(!shader.contains("calculate_tbn_mikktspace"), "{shader}");
+        assert!(!shader.contains("in.world_tangent"), "{shader}");
+        assert!(shader.contains("landscape.bounds.xy"), "{shader}");
+    }
+
+    /// A Layer Blend over Weight, Height and Alpha layers with an auto rule:
+    /// every stage is emitted, the weights are read once, and the layer list
+    /// comes back with the result.
+    #[test]
+    fn a_layer_blend_mixes_by_painted_weight() {
+        let mut graph = MaterialGraph::new("Blend", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let blend = graph.add_node("landscape/layer_blend", [0.0, 0.0]);
+        let rough = graph.add_node("landscape/layer_blend", [0.0, 0.0]);
+        let slope = graph.add_node("landscape/slope", [0.0, 0.0]);
+        let wet = graph.add_node("landscape/layer_sample", [0.0, 0.0]);
+        let colour = graph.add_node("color/constant", [0.0, 0.0]);
+        let set = |g: &mut MaterialGraph, id: NodeId, pin: &str, v: &str| {
+            g.get_node_mut(id).unwrap().input_values.insert(pin.into(), PinValue::String(v.into()));
+        };
+        for (slot, name, mode) in [(0, "Grass", "Height"), (1, "Rock", "Height"), (2, "Snow", "Weight"), (3, "Moss", "Alpha")] {
+            set(&mut graph, blend, &format!("name_{slot}"), name);
+            set(&mut graph, blend, &format!("blend_{slot}"), mode);
+            graph.connect(colour, "color", blend, &format!("layer_{slot}"));
+        }
+        set(&mut graph, rough, "name_0", "Rock");
+        graph.connect(colour, "color", rough, "layer_0");
+        set(&mut graph, wet, "name", "Wet");
+        graph.connect(slope, "degrees", blend, "auto_1");
+        graph.connect(blend, "result", out, "base_color");
+        graph.connect(rough, "value", out, "roughness");
+        graph.connect(wet, "weight", out, "metallic");
+
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.landscape_layers, ["Grass", "Rock", "Snow", "Moss", "Wet"]);
+        let s = &result.fragment_shader;
+        assert_eq!(s.matches("= landscape_layer_weights(in.world_position.xyz);").count(), 1, "{s}");
+        assert!(s.contains("@group(3) @binding(122) var<uniform> landscape: LandscapeParams;"), "{s}");
+        assert!(s.contains("@group(3) @binding(123) var landscape_weights: texture_2d_array<f32>;"), "{s}");
+        assert!(s.contains("fn landscape_layer_weights("), "{s}");
+        // The rule, the height cut and the alpha layer all made it in.
+        assert!(s.contains("= saturate(land_slope"), "{s}");
+        assert!(s.contains("_kt = max("), "{s}");
+        assert!(s.contains(" = mix(land_b"), "{s}");
+        // Rock in the second blend reads the same layer index as in the first.
+        assert!(s.contains(".w[1];"), "{s}");
+        assert!(supports_deferred(s) && supports_virtual_geometry(s), "{s}");
+    }
+
+    /// A sprite has no landscape bindings, so the nodes are refused there.
+    #[test]
+    fn a_sprite_refuses_landscape_nodes() {
+        assert!(MaterialDomain::Sprite.refuses_node("landscape/layer_blend").is_some());
+        assert!(MaterialDomain::Surface.refuses_node("landscape/layer_blend").is_none());
     }
 
     /// 1-based line of the first line containing `needle`.

@@ -349,7 +349,12 @@ impl Plugin for RenzoraEditorPlugin {
 
 /// What [`enforce_entity_ids`] reads per entity: its name, and the name it
 /// would have had if a rename made it unique.
-type NamedEntity<'a> = (Entity, bevy::ecs::change_detection::Ref<'a, Name>, Option<&'a renzora::BindName>);
+type NamedEntity<'a> = (
+    Entity,
+    bevy::ecs::change_detection::Ref<'a, Name>,
+    Option<&'a renzora::BindName>,
+    Has<ChildOf>,
+);
 
 /// Enforce the one-unique-`snake_case`-id-per-entity rule across the scene. Any
 /// entity `Name` that carries spaces/invalid characters is sanitized, and
@@ -362,9 +367,14 @@ type NamedEntity<'a> = (Entity, bevy::ecs::change_detection::Ref<'a, Name>, Opti
 ///   then early-outs — cheap in steady state.
 /// - Excludes UI nodes (`Without<Node>`): markup nodes use their own `#id`
 ///   naming scheme and must not be churned or de-duplicated here.
-/// - Deterministic: entities are processed in `Entity` order, so on a collision
-///   the lower-index entity keeps the base id and later ones get suffixed — ids
-///   never flip-flop between frames regardless of query iteration order.
+/// - Deterministic: top-level entities first, then everything nested, each in
+///   `Entity` order, so on a collision a top-level entity keeps the base id
+///   and the rest get suffixed: ids never flip-flop between frames regardless
+///   of query iteration order. Top level first because entity order alone is
+///   not stable across a reload: a scene's own `ground` kept its name while it
+///   happened to be created before Bistro's model node `ground`, and became
+///   `ground_1` when switching scene tabs and back created them the other way
+///   round. Top-level entities are the ones a person named.
 /// - Rewrites go through `Commands` (deferred `insert`), avoiding a read+write
 ///   conflict on `Name`; the re-inserted clean id is idempotent, so the next
 ///   frame's pass finds nothing to do.
@@ -376,17 +386,17 @@ fn enforce_entity_ids(
     names: Query<NamedEntity, (Without<bevy::ui::Node>, Without<renzora::core::HideInHierarchy>)>,
     mut commands: Commands,
 ) {
-    if !names.iter().any(|(_, n, _)| n.is_changed()) {
+    if !names.iter().any(|(_, n, ..)| n.is_changed()) {
         return;
     }
-    let mut current: Vec<(Entity, String, Option<String>)> = names
+    let mut current: Vec<(Entity, String, Option<String>, bool)> = names
         .iter()
-        .map(|(e, n, bind)| (e, n.as_str().to_string(), bind.map(|b| b.0.clone())))
+        .map(|(e, n, bind, nested)| (e, n.as_str().to_string(), bind.map(|b| b.0.clone()), nested))
         .collect();
-    current.sort_by_key(|(e, ..)| *e);
+    current.sort_by_key(|(e, _, _, nested)| (*nested, *e));
 
     let mut taken: bevy::platform::collections::HashSet<String> = Default::default();
-    for (e, raw, bind) in &current {
+    for (e, raw, bind, _) in &current {
         let clean = renzora::sanitize_id(raw);
         let unique = renzora::unique_id(&clean, |c| taken.contains(c));
         taken.insert(unique.clone());
@@ -1047,6 +1057,9 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
         "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        // A terrain graph opens in the Terrain workspace's node graph
+        // (`renzora_terrain_graph_editor`).
+        "tgraph" => DocTabKind::TerrainGraph,
         // See the note on the copy of this table in `renzora_asset_browser`.
         "html" => DocTabKind::Ui,
         "wgsl" | "wesl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
@@ -1146,6 +1159,20 @@ mod tests {
         world.run_system(pass).unwrap();
         assert_eq!(name_of(&world, second), "face_jaw_1");
         assert_eq!(bind_of(&world, second).as_deref(), Some("face_jaw"));
+    }
+
+    /// A model's node of the same name, created first (as a scene tab's
+    /// restore can), does not cost the scene's own top-level entity its name.
+    #[test]
+    fn a_top_level_entity_keeps_its_name_over_a_nested_one() {
+        let (mut world, pass) = world_with_pass();
+        let (node, authored) = in_order(&mut world);
+        let model = world.spawn(Name::new("bistro")).id();
+        world.entity_mut(node).insert((Name::new("ground"), ChildOf(model)));
+        world.entity_mut(authored).insert(Name::new("ground"));
+        world.run_system(pass).unwrap();
+        assert_eq!(name_of(&world, authored), "ground");
+        assert_eq!(name_of(&world, node), "ground_1");
     }
 
     /// A hidden helper of the same name (the Animation workspace's copy of a

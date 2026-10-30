@@ -239,6 +239,12 @@ pub(crate) fn tab_viewport(
         },
     );
     settings_row(commands, fonts, body, 7, &tr("settings.row.editor_camera"), dd);
+    let t = ctl_toggle(
+        commands, vp.show_pivot,
+        |w| w.resource::<ViewportSettings>().show_pivot,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_pivot = v,
+    );
+    settings_row(commands, fonts, body, 8, &tr("viewport.gizmos.pivot"), t);
 
     let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.gizmos"), A_TEAL);
     commands.entity(col).add_child(sec);

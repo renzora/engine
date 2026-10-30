@@ -396,66 +396,6 @@ fn writes_gbuffer(ctx: &Ctx, domain: MaterialDomain) -> bool {
         && !ctx.uses_env_map
 }
 
-pub(crate) fn build_terrain_layer_shader(
-    ctx: &Ctx,
-    resolved: &HashMap<String, String>,
-) -> (String, Vec<(u64, u32, u32)>) {
-    let base_color = resolved
-        .get("base_color")
-        .cloned()
-        .unwrap_or("vec4<f32>(0.5, 0.5, 0.5, 1.0)".into());
-    let metallic = resolved.get("metallic").cloned().unwrap_or("0.0".into());
-    let roughness = resolved.get("roughness").cloned().unwrap_or("0.5".into());
-    let _height = resolved.get("height").cloned().unwrap_or("0.5".into());
-
-    let mut shader = String::new();
-    shader.push_str("// Auto-generated terrain layer shader\n");
-    shader.push_str("import bevy_pbr::render::mesh_view_bindings::globals;\n\n");
-    shader.push_str(&texture_bindings_wgsl(ctx));
-    shader.push_str(&noise_helpers(ctx));
-    let prelude_base = shader.matches('\n').count() as u32 + 1;
-    emit_module_prelude(ctx, &mut shader);
-
-    // The graph body reads `in.uv` and friends the way a fragment shader
-    // would; this stands in for the `VertexOutput` it does not have. At module
-    // scope because WGSL has no struct declarations inside a function.
-    shader.push_str("\nstruct FakeIn { uv: vec2<f32>, world_position: vec4<f32>, world_normal: vec3<f32> };\n");
-
-    // layer_main: returns base color
-    shader.push_str("\nfn layer_main(uv: vec2<f32>, world_pos: vec3<f32>, world_normal: vec3<f32>, time: f32) -> vec4<f32> {\n");
-    shader.push_str("    // Alias inputs for compatibility\n");
-    shader.push_str("    let in = FakeIn(uv, vec4<f32>(world_pos, 1.0), world_normal);\n");
-    // Terrain has explicit UV; vertex_color isn't meaningful here so use white.
-    shader.push_str("    let mat_uv = uv;\n");
-    shader.push_str("    let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n");
-    let body_base = shader.matches('\n').count() as u32 + 1;
-    for line in &ctx.lines {
-        shader.push_str(line);
-        shader.push('\n');
-    }
-    let output_id = ctx.graph.output_node().unwrap().id;
-    let feeder = |pin: &str| {
-        ctx.graph
-            .connection_to(output_id, pin)
-            .map(|c| c.from_node)
-            .unwrap_or(output_id)
-    };
-    let mut extra: Vec<(NodeId, u32, u32)> = Vec::new();
-    let start = shader.matches('\n').count() as u32 + 1;
-    shader.push_str(&format!("    return {base_color};\n"));
-    extra.push((feeder("base_color"), start, start));
-    shader.push_str("}\n\n");
-
-    // layer_pbr: returns (metallic, roughness)
-    shader.push_str("fn layer_pbr(uv: vec2<f32>, world_pos: vec3<f32>) -> vec2<f32> {\n");
-    let start = shader.matches('\n').count() as u32 + 1;
-    shader.push_str(&format!("    return vec2<f32>({metallic}, {roughness});\n"));
-    extra.push((feeder("metallic"), start, start));
-    shader.push_str("}\n");
-
-    (shader, node_line_ranges(ctx, prelude_base, body_base, &extra))
-}
-
 /// Unlit domain uses the same extension-hook skeleton as Surface. The key
 /// difference is the resolver flips `StandardMaterial.unlit = true` on the
 /// base — that makes `apply_pbr_lighting` return `base_color` unchanged,

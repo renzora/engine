@@ -13,6 +13,28 @@ use renzora_ember::theme::{divider, rgb, text_muted, window_bg};
 use renzora_ember::widgets::{menu_item, scroll_area_keyed, Popup};
 use renzora_ember::UiInteraction;
 
+/// A status segment that invokes a shell action when clicked; see
+/// [`renzora::ShellStatusSegment::action`].
+#[derive(Component)]
+pub(crate) struct StatusSegmentAction(&'static str);
+
+/// Send a clicked segment's action, exactly as a top-bar button would.
+///
+/// Through the `Messages` resource rather than a `MessageWriter`: the message
+/// type only exists once some plugin has registered a shell action, and a shell
+/// without one must not fail to run this system.
+pub(crate) fn status_segment_click(
+    segments: Query<(&UiInteraction, &StatusSegmentAction), Changed<UiInteraction>>,
+    messages: Option<ResMut<bevy::ecs::message::Messages<renzora::ShellActionInvoked>>>,
+) {
+    let Some(mut messages) = messages else { return };
+    for (interaction, action) in &segments {
+        if *interaction == UiInteraction::Pressed {
+            messages.write(renzora::ShellActionInvoked(action.0));
+        }
+    }
+}
+
 /// Marks the status-bar theme picker's trigger so its open/closed state can be
 /// mirrored into [`ThemeMenuOpen`] each frame.
 #[derive(Component)]
@@ -437,7 +459,7 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
                             (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
                         }
                     };
-                    (1u8, &s.icon, &s.text, s.color, bar).hash(&mut h)
+                    (1u8, &s.icon, &s.text, s.color, bar, s.action).hash(&mut h)
                 }
             }
             (k.finish(), h.finish())
@@ -528,6 +550,13 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                     ..default()
                 })
                 .id();
+            if let Some(action) = s.action {
+                commands.entity(r).insert((
+                    UiInteraction::default(),
+                    StatusSegmentAction(action),
+                    renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                ));
+            }
             let mut kids = Vec::new();
             let color = legible((s.color[0], s.color[1], s.color[2]), window_bg());
             if !s.icon.is_empty() {

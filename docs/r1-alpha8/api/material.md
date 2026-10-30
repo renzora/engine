@@ -94,7 +94,7 @@ commands.entity(mesh).insert(MaterialAlphaOverride::BLEND);
 // or: MaterialAlphaOverride { mode: PbrAlphaMode::Mask, cutoff: 0.5 }
 ```
 
-This is for **overlays** â€” a [terrain paint layer](/docs/r1-alpha8/editor/terrain#painting-layers) is the built-in case. An overlay wears the same rock or water material a cliff or a lake does, but fades out at its edges through per-vertex alpha, so it needs blending whether or not the material was authored transparent. Editing the material would change it everywhere; this changes it here.
+This is for **overlays**, such as a decal mesh laid over the ground. An overlay wears the same rock or water material a cliff or a lake does, but fades out at its edges through per-vertex alpha, so it needs blending whether or not the material was authored transparent. Editing the material would change it everywhere; this changes it here.
 
 The resolver honours the override by **cloning** the compiled material and setting the alpha mode on the clone. Every handle inside is shared with the master (textures, the compiled shader, the parameter block), so a variant costs one asset entry and no recompile, and one variant is shared by every entity asking for the same material at the same mode. Editing and saving the material re-derives it.
 
@@ -228,7 +228,6 @@ Two of those stored constants can't be expressed as `StandardMaterial` fields â€
 
 | Node type | Domain | Input pins |
 |-----------|--------|------------|
-| `output/terrain_layer` | Terrain Layer (blended via splatmap) | `base_color`, `metallic`, `roughness`, `normal`, `height` |
 | `output/vegetation` | PBR + vertex displacement | `base_color`, `metallic`, `roughness`, `normal`, `emissive`, `ao`, `alpha`, `vertex_offset` |
 | `output/unlit` | Unlit (no lighting) | `color`, `alpha` |
 | `output/sprite` | Sprite (2D) | `color`, `alpha` |

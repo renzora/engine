@@ -37,6 +37,14 @@ fn find_registration<'a>(
     registry: &'a TypeRegistry,
     component_type: &str,
 ) -> Option<&'a TypeRegistration> {
+    // The exact short name is a map lookup. Only a name in another case needs
+    // the scan below, which walks every registered type lowercasing each one:
+    // thousands of allocations, and the terrain selection outline used to
+    // make a couple of hundred such lookups a frame (35 ms on a 64-chunk
+    // terrain).
+    if let Some(reg) = registry.get_with_short_type_path(component_type) {
+        return Some(reg);
+    }
     let query = component_type.to_lowercase();
     registry.iter().find(|reg| {
         let path = reg.type_info().type_path();

@@ -1,7 +1,7 @@
 //! Import settings that control how models are converted to GLB.
 
 /// Axis convention for the up direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum UpAxis {
     /// Detect from the source file (default).
     Auto,
@@ -17,7 +17,7 @@ pub enum UpAxis {
 /// objects, a renderer wants as few draw calls as possible, and an editor wants
 /// things it can click. There is no answer that is right for all three, so it
 /// is a choice rather than a decision baked into the converters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SceneStructure {
     /// Keep the hierarchy the converter produced.
     ///
@@ -39,7 +39,7 @@ pub enum SceneStructure {
 /// `PartialEq` is load-bearing rather than incidental: the import window
 /// reconverts on its own when any of this changes, and it decides that by
 /// comparing the settings it last converted with against the ones now on screen.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportSettings {
     /// Uniform scale factor applied to all geometry.
     pub scale: f32,

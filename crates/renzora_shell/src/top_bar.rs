@@ -107,6 +107,9 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     let hamburger = hamburger_menu_item(commands, font);
     let session = renzora_viewport::toolbar::build_session_actions(commands, fonts);
     let settings = settings_button(commands);
+    // Plugin tools (the companion's spanner) sit right after the gear, as more
+    // of the same small glyphs.
+    let tools = build_shell_actions(commands, true);
     // The document you are in, where Play used to be. Play moved to the right
     // zone beside the Marketplace: the left end now says what you are
     // editing, and the right end holds the things that run or ship it.
@@ -119,7 +122,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // the trailing zone where Windows and most Linux desktops put them. One bar,
     // two conventions, chosen by the platform rather than by a setting: nobody
     // wants Mac buttons on Windows.
-    lead.extend([hamburger, session, settings, scene]);
+    lead.extend([hamburger, session, settings, tools, scene]);
     commands.entity(left).add_children(&lead);
 
     let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
@@ -324,7 +327,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // is the last place anyone looks for somewhere to *go*. Over here it is a
     // labelled, tinted chip beside the update chip: the two of them are the
     // bar's "things that are waiting for you" corner.
-    let actions = build_shell_actions(commands);
+    let actions = build_shell_actions(commands, false);
     let play = build_play_group(commands, font);
 
     commands.entity(right).add_children(&[play, actions, update_chip, window]);
@@ -365,7 +368,11 @@ fn settings_button(commands: &mut Commands) -> Entity {
 /// built after the splash. A plugin that registers later gets its button on the
 /// next chrome rebuild (a theme or layout change), which is the same deal
 /// status-bar items and panels get.
-fn build_shell_actions(commands: &mut Commands) -> Entity {
+///
+/// With `tools`, the registry's tools instead: the icon-only row beside the
+/// gear, drawn in the gear's quiet style whatever the item asks for, so a tool
+/// reads as one more of the editor's own controls.
+fn build_shell_actions(commands: &mut Commands, tools: bool) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -374,7 +381,7 @@ fn build_shell_actions(commands: &mut Commands) -> Entity {
                 column_gap: Val::Px(2.0),
                 ..default()
             },
-            Name::new("top-bar-actions"),
+            Name::new(if tools { "top-bar-tools" } else { "top-bar-actions" }),
         ))
         .id();
     commands.queue(move |world: &mut World| {
@@ -388,8 +395,8 @@ fn build_shell_actions(commands: &mut Commands) -> Entity {
         let items: Vec<Item> = world
             .get_resource::<renzora::ShellActionRegistry>()
             .map(|reg| {
-                let mut v: Vec<(i32, Item)> = reg
-                    .items
+                let list = if tools { &reg.tools } else { &reg.items };
+                let mut v: Vec<(i32, Item)> = list
                     .iter()
                     .map(|i| {
                         (
@@ -397,8 +404,8 @@ fn build_shell_actions(commands: &mut Commands) -> Entity {
                             Item {
                                 id: i.id,
                                 icon: i.icon,
-                                label: i.label.map(|f| f()),
-                                color: i.color,
+                                label: if tools { None } else { i.label.map(|f| f()) },
+                                color: if tools { None } else { i.color },
                                 tooltip: (i.tooltip)(),
                             },
                         )

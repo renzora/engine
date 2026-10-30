@@ -106,6 +106,9 @@ mod toasts;
 mod docs_panel;
 #[cfg(not(target_arch = "wasm32"))]
 mod upload_panel;
+/// The companion runs publishes too, through the same function.
+#[cfg(not(target_arch = "wasm32"))]
+pub use upload_panel::{run_upload, UploadJob};
 #[cfg(not(target_arch = "wasm32"))]
 mod util;
 #[cfg(not(target_arch = "wasm32"))]

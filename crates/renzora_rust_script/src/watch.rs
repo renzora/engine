@@ -51,6 +51,12 @@ pub struct ScriptWatcher {
     /// Builds in flight, so one script recompiling does not stop another from
     /// being noticed.
     building: HashMap<PathBuf, Task<Result<PathBuf, String>>>,
+    /// Builds handed to the companion, by its job id. rustc is the work, and
+    /// in the companion its file reading, staging and waiting happen in a
+    /// process the OS schedules below the editor's.
+    remote: HashMap<renzora::CompanionJobId, PathBuf>,
+    /// Companion builds that answered, waiting for [`finish`] to load them.
+    remote_done: Vec<(PathBuf, Result<PathBuf, String>)>,
     /// The one-off project walk that runs when a project opens.
     ///
     /// Only then. This used to run on a 0.5s timer, inline on the main thread,
@@ -129,6 +135,7 @@ pub fn watch(
     mut watcher: ResMut<ScriptWatcher>,
     project: Option<Res<CurrentProject>>,
     mut changes: MessageReader<ProjectFileChanged>,
+    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
 ) {
     let Some(project) = project else {
         // Drained rather than left: without a project there is nothing to build,
@@ -183,7 +190,7 @@ pub fn watch(
     for (src, mtime) in sources {
         // Already building: let it finish rather than starting a second rustc
         // for the same file.
-        if watcher.building.contains_key(&src) {
+        if watcher.building.contains_key(&src) || watcher.remote.values().any(|p| *p == src) {
             continue;
         }
         if watcher.seen.get(&src) == Some(&mtime) {
@@ -193,6 +200,20 @@ pub fn watch(
         // Recorded BEFORE the build, so a script that fails to compile is not
         // retried until it is edited again.
         watcher.seen.insert(src.clone(), mtime);
+
+        // The companion when there is one; this process otherwise, as always.
+        if let Some(jobs) = jobs.as_deref_mut() {
+            let args = renzora::job_args::RustScriptBuild {
+                sdk_dir: sdk_dir.clone(),
+                project: project_path.clone(),
+                source: src.clone(),
+            };
+            let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if let Some(id) = jobs.submit("rust_script", name, &args) {
+                watcher.remote.insert(id, src);
+                continue;
+            }
+        }
 
         let sdk_dir = sdk_dir.clone();
         let project_path = project_path.clone();
@@ -209,6 +230,16 @@ pub fn watch(
     }
 }
 
+/// Take in the companion's answers for the builds handed to it.
+pub fn collect_remote(mut answers: MessageReader<renzora::CompanionJobDone>, mut watcher: ResMut<ScriptWatcher>) {
+    for answer in answers.read() {
+        if let Some(src) = watcher.remote.remove(&answer.id) {
+            let result = answer.result.clone().map(PathBuf::from);
+            watcher.remote_done.push((src, result));
+        }
+    }
+}
+
 /// Load whatever finished building this frame.
 ///
 /// Separate from [`watch`] because the load must happen on the main thread — it
@@ -221,7 +252,7 @@ pub fn finish(world: &mut World) {
         // Polled exactly once each: `poll_once` takes the result, so a second
         // poll on a finished task would find nothing and the build would be
         // silently dropped.
-        let mut done = Vec::new();
+        let mut done = std::mem::take(&mut watcher.remote_done);
         for (src, task) in watcher.building.iter_mut() {
             if let Some(result) = block_on(poll_once(task)) {
                 done.push((src.clone(), result));

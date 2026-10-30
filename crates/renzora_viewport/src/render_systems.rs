@@ -103,7 +103,7 @@ impl FromWorld for DefaultGridTexture {
         // and "fresh untextured shape" share one image; otherwise build it
         // from the same contract-crate source of truth.
         if let Some(shared) = world.get_resource::<renzora::core::GridTexture>() {
-            return Self(shared.0.clone());
+            return Self(shared.color.clone());
         }
         let image = renzora::core::build_grid_image();
         let mut assets = world.resource_mut::<Assets<Image>>();

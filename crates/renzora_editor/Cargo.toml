@@ -226,12 +226,14 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_companion = { path = "../renzora_companion" }
 renzora_http = { path = "../renzora_http" }
 renzora_live_link_editor = { path = "../renzora_live_link/editor" }
 renzora_parkour_editor = { path = "../renzora_parkour/editor" }
 renzora_particles_editor = { path = "../renzora_particles/editor" }
 renzora_planar_reflection_editor = { path = "../renzora_planar_reflection/editor" }
 renzora_project_watch = { path = "../renzora_project_watch" }
+renzora_terrain_graph_editor = { path = "../renzora_terrain_graph/editor" }
 renzora_update = { path = "../renzora_update" }
 renzora_virtual_geometry_editor = { path = "../renzora_virtual_geometry/editor" }
 # ── end generated ──

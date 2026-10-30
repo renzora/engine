@@ -211,6 +211,11 @@ pub struct MeshInput {
     /// The material is alpha-masked: leaves, grass, fences. Simplified more
     /// conservatively, so a canopy keeps its outline at a distance.
     pub cutout: bool,
+    /// Keep every open edge at full detail at every level. For a mesh that
+    /// is one tile of a larger surface built separately (a terrain chunk):
+    /// its edges meet a neighbour's, and each tile simplifying its own edge
+    /// independently opened pinholes along every seam at a distance.
+    pub lock_open_borders: bool,
 }
 
 /// Up to this many triangles, the proxy is the full-detail mesh.
@@ -350,6 +355,7 @@ fn read_primitive(primitive: &gltf::Primitive<'_>, blob: Option<&[u8]>) -> Resul
         positions,
         indices,
         cutout: primitive.material().alpha_mode() == gltf::material::AlphaMode::Mask,
+        lock_open_borders: false,
     })
 }
 
@@ -528,7 +534,12 @@ fn run_clod(input: &MeshInput) -> (Vec<RawCluster>, Vec<meshopt::ClodGroup>) {
         config.simplify_fallback_sloppy = false;
     }
 
-    let locks = if input.cutout { open_border_locks(input) } else { Vec::new() };
+    if input.lock_open_borders {
+        // The sloppy fallback ignores locks, so it is off for a locked edge
+        // as for foliage.
+        config.simplify_fallback_sloppy = false;
+    }
+    let locks = if input.cutout || input.lock_open_borders { open_border_locks(input) } else { Vec::new() };
 
     let mesh = meshopt::ClodMesh {
         vertex_lock: (!locks.is_empty()).then_some(locks.as_slice()),

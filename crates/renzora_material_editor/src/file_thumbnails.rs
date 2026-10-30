@@ -184,7 +184,9 @@ fn intake_thumbnail_requests(
     asset_server: Res<AssetServer>,
     project: Option<Res<CurrentProject>>,
     job: Option<Res<MaterialThumbnailLoadingJob>>,
+    (jobs, mut companion): (Option<ResMut<renzora::CompanionJobs>>, ResMut<CompanionCaptures>),
 ) {
+    let mut jobs = jobs;
     let advance_skip =
         |tasks: &mut LoadingTasks, job: &Option<Res<MaterialThumbnailLoadingJob>>, name: &str| {
             if let Some(j) = job.as_ref() {
@@ -231,7 +233,17 @@ fn intake_thumbnail_requests(
             }
         }
 
-        // Miss — prepare a capture job. If anything goes wrong (bad JSON,
+        // Miss: the companion renders it when one is connected (see
+        // `CompanionCaptures`).
+        if !companion.local_only.contains(&material_path) {
+            let args = renzora::job_args::MaterialThumbnail { project: project.path.clone(), material: material_path.clone() };
+            if let Some(id) = jobs.as_mut().and_then(|j| j.submit("material_thumbnail", short_name.clone(), &args)) {
+                companion.jobs.insert(id, (material_path, thumb_path));
+                continue;
+            }
+        }
+
+        // Here: prepare a capture job. If anything goes wrong (bad JSON,
         // compile errors, non-Surface domain), we still push a job with
         // `compile: None`; the render path falls back to a plain default
         // material sphere so every `.material` gets *some* thumbnail.
@@ -869,83 +881,27 @@ fn fire_armed_captures(mut commands: Commands, mut armed: ResMut<ArmedCaptures>)
     }
 }
 
-/// Walks the project's `assets/` directory looking for `.material` files.
-fn scan_project_materials(project_root: &std::path::Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let assets_dir = project_root.join("assets");
-    let start = if assets_dir.is_dir() {
-        assets_dir
-    } else {
-        project_root.to_path_buf()
-    };
-    let mut stack = vec![start];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_dir() {
-                // Skip cache folders so we don't recurse into them. `.cache/`
-                // is the current home for thumbnails and other generated
-                // artifacts; `.thumbs/` is the legacy materials-only path
-                // we still skip in case a project hasn't been migrated yet.
-                let name = path.file_name().and_then(|n| n.to_str());
-                if name == Some(".cache") || name == Some(".thumbs") {
-                    continue;
-                }
-                stack.push(path);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) == Some("material") {
-                out.push(path);
-            }
-        }
-    }
-    out.sort();
-    out
-}
-
-/// On entry to [`SplashState::Loading`], scan the project for `.material`
-/// files, register a loading task, and enqueue every file for capture.
-fn queue_loading_thumbnails(
-    mut commands: Commands,
-    mut registry: ResMut<MaterialThumbnailRegistry>,
-    mut tasks: ResMut<LoadingTasks>,
-    project: Option<Res<CurrentProject>>,
-) {
-    // Drop every entry the previous session populated so each request
-    // we enqueue below actually goes through. Otherwise re-entering
-    // Loading from the editor (File → Open Project) would find every
-    // path already in `entries` and silently no-op, leaving the
-    // "Material thumbnails" task stuck at 0/N. The on-disk PNG cache
-    // survives this — first request will reload from there.
+/// On entry to [`SplashState::Loading`]: forget the previous project's
+/// thumbnails and move a legacy cache into place. Nothing is rendered here.
+///
+/// This used to find every `.material` in the project and render the ones
+/// without a cached thumbnail, as a task the loading screen waited for: a
+/// project could not be opened until every material had been drawn. Now a
+/// thumbnail is asked for when something shows it (the Assets panel, the
+/// material drawer), and the companion renders whatever is missing in the
+/// background once the project is open (see `renzora_companion`'s cache).
+fn queue_loading_thumbnails(mut registry: ResMut<MaterialThumbnailRegistry>, project: Option<Res<CurrentProject>>) {
+    // Drop every entry the previous session populated, so a thumbnail asked
+    // for in the new project is not answered from the old one. The on-disk
+    // PNG cache survives this; the first request reloads from there.
     registry.reset();
 
     // Best-effort move from the legacy `.thumbs/` directory to
-    // `.cache/thumbnails/`. Runs before any thumbnail request so cache
-    // hits below find their PNGs at the new path. Skipped if either
-    // the legacy path is absent or the new path already exists.
+    // `.cache/thumbnails/`, before any thumbnail is asked for, so cache hits
+    // find their PNGs at the new path. Skipped if either the legacy path is
+    // absent or the new path already exists.
     if let Some(p) = project.as_deref() {
         migrate_legacy_thumbnail_cache(p);
-    }
-
-    let Some(project) = project else {
-        // No project → nothing to do; still register a no-op task so the
-        // loading screen has something to show and can transition.
-        let handle = tasks.register("Material thumbnails", 0);
-        commands.insert_resource(MaterialThumbnailLoadingJob { handle });
-        return;
-    };
-
-    let materials = scan_project_materials(&project.path);
-    let total = materials.len() as u32;
-    let handle = tasks.register("Material thumbnails", total);
-    commands.insert_resource(MaterialThumbnailLoadingJob { handle });
-    emit_thumbnail_progress(0, total, "");
-
-    for path in materials {
-        registry.request(path);
     }
 }
 
@@ -1014,11 +970,14 @@ pub struct MaterialFileThumbnailPlugin;
 impl Plugin for MaterialFileThumbnailPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] MaterialFileThumbnailPlugin");
+        renzora::init_companion_jobs(app);
         app.init_resource::<MaterialThumbnailRegistry>()
             .init_resource::<PendingCaptures>()
             .init_resource::<ArmedCaptures>()
             .init_resource::<CaptureCells>()
             .init_resource::<PendingDiskLoads>()
+            .init_resource::<CompanionCaptures>()
+            .init_resource::<LoadingTasks>()
             .add_systems(PostStartup, setup_shared_thumbnail_lights)
             .add_systems(OnEnter(SplashState::Loading), queue_loading_thumbnails)
             .add_systems(OnExit(SplashState::Loading), clear_loading_job)
@@ -1026,12 +985,64 @@ impl Plugin for MaterialFileThumbnailPlugin {
                 Update,
                 (
                     intake_thumbnail_requests,
+                    collect_companion_captures,
                     run_pending_captures,
                     fire_armed_captures,
                     resolve_disk_loads,
                 )
                     .chain(),
             );
+    }
+}
+
+/// Captures handed to the companion process, and the materials it failed on.
+///
+/// A capture compiles the material's shader and renders a sphere with it:
+/// work that competes with the scene being edited. The companion runs this
+/// same plugin and renders into the same cache file; the editor only loads the
+/// PNG. With no companion connected, or for a material it could not render,
+/// the capture happens here as it always did.
+#[derive(Resource, Default)]
+struct CompanionCaptures {
+    /// Job id to the material and its cache file.
+    jobs: std::collections::HashMap<renzora::CompanionJobId, (PathBuf, PathBuf)>,
+    /// Materials the companion failed on: captured here from now on.
+    local_only: std::collections::HashSet<PathBuf>,
+}
+
+/// Turn finished companion captures into cache loads, and failed ones back
+/// into requests the editor captures itself.
+fn collect_companion_captures(
+    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut captures: ResMut<CompanionCaptures>,
+    mut registry: ResMut<MaterialThumbnailRegistry>,
+    mut disk_loads: ResMut<PendingDiskLoads>,
+    asset_server: Res<AssetServer>,
+    project: Option<Res<CurrentProject>>,
+) {
+    for answer in done.read() {
+        let Some((material_path, thumb_path)) = captures.jobs.remove(&answer.id) else {
+            continue;
+        };
+        let loaded = answer.result.is_ok()
+            && project.as_ref().is_some_and(|project| match try_load_cached_thumb(&thumb_path, &asset_server, project) {
+                Some(handle) => {
+                    disk_loads.entries.push(PendingDiskLoad { material_path: material_path.clone(), handle });
+                    true
+                }
+                None => false,
+            });
+        if !loaded {
+            if let Err(why) = &answer.result {
+                warn!(
+                    "[material_thumbnails] the companion could not render {}: {why}; rendering it here",
+                    material_path.display()
+                );
+            }
+            captures.local_only.insert(material_path.clone());
+            // Still in flight in the registry, so straight back to intake.
+            registry.incoming_requests.push_back(material_path);
+        }
     }
 }
 

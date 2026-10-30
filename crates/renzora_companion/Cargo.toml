@@ -1,0 +1,48 @@
+[package]
+name = "renzora_companion"
+version = "0.1.0"
+edition = "2021"
+description = "The companion process: started by the editor beside itself, for profiling and background work, so the editor only does game-making. Installed only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# The palette only, for now: the companion's window is drawn in the editor's
+# colours. Its panels move onto ember's widgets with the profiler.
+renzora_ember = { path = "../renzora_ember" }
+# The profiler's stream format and frame types; the companion is its reader.
+renzora_profiler = { path = "../renzora_profiler" }
+serde = { version = "1", features = ["derive"] }
+# The job handlers call the same functions the editor used to call itself.
+renzora_rust_script = { path = "../renzora_rust_script" }
+renzora_plugin_build = { path = "../renzora_plugin_build" }
+renzora_rvg = { path = "../renzora_rvg", features = ["bake"] }
+renzora_marketplace = { path = "../renzora_marketplace" }
+# Model imports: the conversion, texture bakes and `.rvg` build.
+renzora_import = { path = "../renzora_import" }
+# Model thumbnails, rendered with the editor's own capture code
+# (`model_thumbnails`), the loaders it needs (`.rmip` textures; `renzora_rvg`
+# above loads `.rvg` models), and the asset reader's project path.
+renzora_asset_browser = { path = "../renzora_asset_browser" }
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_engine = { path = "../renzora_engine" }
+renzora_rmip = { path = "../renzora_rmip" }
+# Material thumbnails: the graph material plugins a capture renders with, and
+# the material editor's capture code (`file_thumbnails`).
+renzora_shader = { path = "../renzora_shader" }
+renzora_material_editor = { path = "../renzora_material_editor" }
+# The channel Bevy's file watcher reports into (see `app::cache`). Bevy does
+# not re-export it; the version is the one `bevy_asset` resolves.
+async-channel = "2"
+# Texture thumbnails: the same decoders and resize the asset browser used.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp"] }
+serde_json = "1"
+
+# `FileWatcher`, for watching the open project (`app::cache`), is behind Bevy's
+# `file_watcher` feature. The root manifest turns it on for desktop builds;
+# repeated so this crate also builds on its own.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { workspace = true, features = ["file_watcher"] }
+
+[lints]
+workspace = true

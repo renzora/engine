@@ -68,3 +68,92 @@ fn ensure_density_maps(
 }
 
 renzora::add!(FoliageEditorPlugin, Editor);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_terrain::data::{TerrainChunkOf, TerrainData};
+    use renzora_terrain::foliage::{
+        DensityFoliageBatch as FoliageBatch, FoliageConfig, FoliageRebuildCost, GrassChunk,
+    };
+    use std::time::Duration;
+
+    /// A stroke held over a chunk, end to end: the mask is created, the brush
+    /// writes it, and the rescatter turns it into blades. Everything after the
+    /// hover ray, which needs a window and a camera.
+    #[test]
+    fn a_held_stroke_scatters_grass() {
+        let mut app = App::new();
+        app.insert_resource(Time::<()>::default())
+            .init_resource::<FoliagePaintSettings>()
+            .init_resource::<systems::FoliagePaintState>()
+            .init_resource::<FoliageConfig>()
+            .init_resource::<FoliageRebuildCost>()
+            .add_systems(
+                Update,
+                (
+                    ensure_density_maps,
+                    systems::foliage_paint_system,
+                    systems::foliage_paint_finish_system,
+                    renzora_terrain::foliage::systems::foliage_scatter_rebuild_system,
+                )
+                    .chain(),
+            );
+
+        let terrain = TerrainData {
+            chunks_x: 8,
+            chunks_z: 8,
+            chunk_size: 64.0,
+            chunk_resolution: 129,
+            ..default()
+        };
+        let res = terrain.chunk_resolution;
+        let root = app
+            .world_mut()
+            .spawn((terrain, GlobalTransform::default()))
+            .id();
+        let chunk = app
+            .world_mut()
+            .spawn((
+                TerrainChunkData::new(3, 3, res, 0.2),
+                TerrainChunkOf(root),
+                GlobalTransform::from_translation(Vec3::new(-64.0, 0.0, -64.0)),
+            ))
+            .id();
+
+        // First frame only seeds the mask.
+        app.update();
+        assert!(app.world().get::<FoliageDensityMap>(chunk).is_some());
+
+        {
+            let mut state = app.world_mut().resource_mut::<systems::FoliagePaintState>();
+            state.is_painting = true;
+            state.active_chunk = Some(chunk);
+            state.hover_uv = Some(Vec2::splat(0.5));
+        }
+        for _ in 0..10 {
+            app.world_mut()
+                .resource_mut::<Time>()
+                .advance_by(Duration::from_millis(16));
+            app.update();
+        }
+        app.world_mut()
+            .resource_mut::<systems::FoliagePaintState>()
+            .is_painting = false;
+        app.update();
+        app.update();
+
+        let map = app.world().get::<FoliageDensityMap>(chunk).unwrap();
+        let painted = map.density_weights.iter().filter(|w| w[0] > 0.0).count();
+        assert!(painted > 0, "the stroke wrote nothing into the mask");
+
+        let blades: usize = app
+            .world_mut()
+            .query::<(&FoliageBatch, &GrassChunk)>()
+            .iter(app.world())
+            .filter(|(b, _)| b.chunk_entity == chunk)
+            .map(|(_, g)| g.len())
+            .sum();
+        assert!(blades > 0, "a painted mask scattered no blades");
+    }
+}

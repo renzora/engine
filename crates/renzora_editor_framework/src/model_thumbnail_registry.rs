@@ -50,6 +50,13 @@ impl ModelThumbnailRegistry {
         self.handles.insert(path, handle);
     }
 
+    /// Whether a thumbnail for `path` has been asked for and is not done.
+    /// With [`Self::handle`], how a caller tells a capture that failed (neither)
+    /// from one still running.
+    pub fn is_in_flight(&self, path: &PathBuf) -> bool {
+        self.in_flight.contains(path)
+    }
+
     /// Called by the renderer when a capture failed (asset load timeout,
     /// missing scene, etc.) — clears the in-flight flag so the request
     /// can be retried later.

@@ -224,6 +224,9 @@ impl Plugin for RustScriptPlugin {
             // `ScriptsActive` problem `finish` handles below, and the same worst
             // place to discover it: a shipped game rather than the editor.
             .add_message::<renzora::core::project_files::ProjectFileChanged>()
+            // Builds go to the companion when one is connected; registered
+            // here too so a game, which has none, still has the messages.
+            .add_message::<renzora::CompanionJobDone>()
             // Recompile on save. Unlike `dispatch` these are NOT gated on play
             // mode: a script should build when you save it, so the error is in
             // front of you while you are still looking at the code — not the next
@@ -251,7 +254,7 @@ impl Plugin for RustScriptPlugin {
                     watch::scan_on_project_open
                         .run_if(in_state(SplashState::Editor).or_else(not_editor_session)),
                     watch::watch,
-                    watch::finish,
+                    (watch::collect_remote, watch::finish).chain(),
                 ),
             )
             // Claims `.rs` with the engine. Not done in `build` because the

@@ -7585,6 +7585,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_companion"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "bevy",
+ "image",
+ "renzora",
+ "renzora_asset_browser",
+ "renzora_editor_framework",
+ "renzora_ember",
+ "renzora_engine",
+ "renzora_import",
+ "renzora_marketplace",
+ "renzora_material_editor",
+ "renzora_plugin_build",
+ "renzora_profiler",
+ "renzora_rmip",
+ "renzora_rust_script",
+ "renzora_rvg",
+ "renzora_shader",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "renzora_console"
 version = "0.1.0"
 dependencies = [
@@ -7668,6 +7693,7 @@ dependencies = [
  "renzora_camera",
  "renzora_code_editor",
  "renzora_command_palette",
+ "renzora_companion",
  "renzora_console",
  "renzora_context_menu",
  "renzora_distance_fog",
@@ -7733,6 +7759,7 @@ dependencies = [
  "renzora_ssr_editor",
  "renzora_terrain",
  "renzora_terrain_editor",
+ "renzora_terrain_graph_editor",
  "renzora_test_component",
  "renzora_theme_status",
  "renzora_tilemap_editor",
@@ -8040,6 +8067,7 @@ dependencies = [
  "renzora_rmip",
  "renzora_rvg",
  "ron 0.8.1",
+ "serde",
  "serde_json",
  "stl_io",
  "thiserror 2.0.18",
@@ -8060,6 +8088,7 @@ dependencies = [
  "renzora_grid",
  "renzora_import",
  "rfd",
+ "serde_json",
 ]
 
 [[package]]
@@ -8514,12 +8543,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_profiler"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "serde_json",
+]
+
+[[package]]
 name = "renzora_project_watch"
 version = "0.1.0"
 dependencies = [
  "async-channel",
  "bevy",
  "renzora",
+ "serde_json",
 ]
 
 [[package]]
@@ -8618,6 +8657,7 @@ dependencies = [
  "renzora_physics",
  "renzora_planar_reflection",
  "renzora_postprocess",
+ "renzora_profiler",
  "renzora_ragdoll",
  "renzora_rust_script",
  "renzora_scripting",
@@ -8629,6 +8669,7 @@ dependencies = [
  "renzora_ssr",
  "renzora_svg",
  "renzora_terrain",
+ "renzora_terrain_graph",
  "renzora_tilemap",
  "renzora_tonemapping",
  "renzora_virtual_geometry",
@@ -8935,6 +8976,8 @@ dependencies = [
  "png 0.17.16",
  "renzora",
  "renzora_physics",
+ "renzora_rvg",
+ "renzora_shader",
  "serde",
  "serde_json",
 ]
@@ -8948,10 +8991,39 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_foliage_editor",
+ "renzora_rmip",
+ "renzora_rvg",
+ "renzora_shader",
  "renzora_terrain",
+ "renzora_terrain_graph",
+ "renzora_terrain_graph_editor",
  "renzora_undo",
  "rfd",
  "serde_json",
+]
+
+[[package]]
+name = "renzora_terrain_graph"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_terrain",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "renzora_terrain_graph_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_editor_framework",
+ "renzora_ember",
+ "renzora_terrain",
+ "renzora_terrain_graph",
+ "renzora_undo",
 ]
 
 [[package]]
@@ -9123,6 +9195,7 @@ dependencies = [
  "renzora_rvg",
  "renzora_shader",
  "renzora_solari",
+ "renzora_test_harness",
  "serde_json",
  "wgpu",
 ]
@@ -9136,6 +9209,7 @@ dependencies = [
  "renzora_ember",
  "renzora_rvg",
  "renzora_virtual_geometry",
+ "serde_json",
 ]
 
 [[package]]

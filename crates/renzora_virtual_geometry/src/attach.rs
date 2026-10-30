@@ -540,6 +540,13 @@ pub(crate) struct TracedMeshes(HashMap<(AssetId<RvgFile>, u32), Handle<Mesh>>);
 /// ray tracer needs it while virtual geometry draws the detail. A mesh that
 /// stops being virtual geometry loses its `TracedGeometry`: `full_detail` then
 /// makes its `Mesh3d` the full detail, which is traced like any mesh.
+///
+/// Only a mesh that *stops* being virtual geometry. `TracedGeometry(None)` is
+/// also how other crates keep a mesh out of the traced scene (a terrain's
+/// levels of detail and stream stand-ins, see `renzora_terrain`), and taking
+/// it off every mesh without virtual geometry fought that system every frame:
+/// one inserted, this removed, for every stand-in of a large terrain, about
+/// 6 ms a frame at 4096 chunks.
 #[allow(clippy::type_complexity)]
 pub(crate) fn traced_geometry(
     mut commands: Commands,
@@ -548,13 +555,16 @@ pub(crate) fn traced_geometry(
     mut meshes: ResMut<Assets<Mesh>>,
     mut traced: ResMut<TracedMeshes>,
     full_detail: Res<FullDetailMeshes>,
-    mut marked: Query<(Entity, &mut TracedGeometry, Option<&VirtualGeometry>)>,
+    mut marked: Query<(&mut TracedGeometry, &VirtualGeometry)>,
+    mut no_longer_vg: RemovedComponents<VirtualGeometry>,
+    still_marked: Query<(), (With<TracedGeometry>, Without<VirtualGeometry>)>,
 ) {
-    for (entity, mut geometry, vg) in &mut marked {
-        let Some(vg) = vg else {
+    for entity in no_longer_vg.read() {
+        if still_marked.contains(entity) {
             commands.entity(entity).try_remove::<TracedGeometry>();
-            continue;
-        };
+        }
+    }
+    for (mut geometry, vg) in &mut marked {
         if wanted.is_none() {
             if geometry.0.is_some() {
                 geometry.0 = None;

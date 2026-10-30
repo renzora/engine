@@ -378,6 +378,59 @@ impl Default for CameraOrbitSnapshot {
     }
 }
 
+/// The editor camera's orbit pivot as the viewport should show it. Written by
+/// the camera, which draws the marker; read by the viewport, which labels it
+/// with the distance. `opacity` 0 means hidden.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct PivotMarkerState {
+    pub position: Vec3,
+    /// From the camera to the pivot, in metres.
+    pub distance: f32,
+    /// Pivot lock (L) is on: zoom and pan keep the pivot where it is.
+    pub locked: bool,
+    pub opacity: f32,
+}
+
+/// Work in progress the viewport shows a progress card for: anything that
+/// fills the scene in over several seconds (a large terrain being shaped and
+/// built). Each owner keeps one entry under its own `id`, and removes it when
+/// done; the viewport shows the first.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct ViewportWork {
+    pub items: Vec<WorkItem>,
+}
+
+/// One entry of [`ViewportWork`]: what is happening, and how far along it is.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkItem {
+    pub id: &'static str,
+    pub label: String,
+    pub done: u32,
+    pub total: u32,
+}
+
+impl ViewportWork {
+    /// The entry `id` holds, if any.
+    pub fn get(&self, id: &str) -> Option<&WorkItem> {
+        self.items.iter().find(|w| w.id == id)
+    }
+
+    /// What `id`'s entry should become, `None` to remove it: whether that
+    /// differs from what is there. Owners check this through a read before
+    /// writing, so an unchanged entry does not wake the viewport every frame.
+    pub fn differs(&self, id: &str, next: Option<&WorkItem>) -> bool {
+        self.get(id) != next
+    }
+
+    /// Replace `id`'s entry, or remove it with `None`.
+    pub fn set(&mut self, id: &'static str, next: Option<WorkItem>) {
+        self.items.retain(|w| w.id != id);
+        if let Some(item) = next {
+            self.items.push(item);
+        }
+    }
+}
+
 /// Cached clip-from-world matrix of the editor camera, plus camera world position.
 /// Updated every frame. Used by CPU-projected viewport overlays (grid, gizmos).
 #[derive(Resource, Debug, Clone)]
@@ -1154,6 +1207,11 @@ pub struct ViewportSettings {
     pub show_light_gizmos: bool,
     /// The selected camera's frustum wireframe + forward arrow. On by default.
     pub show_camera_gizmos: bool,
+    /// The editor camera's orbit pivot, drawn while you orbit, pan or zoom
+    /// and for a moment after F / End / A / Home move it. On by default: how
+    /// far away the pivot is sets how fast zoom and orbit move, and with
+    /// nothing on screen a pivot left a kilometre off was invisible.
+    pub show_pivot: bool,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
@@ -1244,6 +1302,7 @@ impl Default for ViewportSettings {
             show_skeleton_gizmos: true,
             show_light_gizmos: true,
             show_camera_gizmos: true,
+            show_pivot: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
@@ -1363,6 +1422,8 @@ pub struct PersistedViewportSettings {
     pub show_light_gizmos: bool,
     #[serde(default = "default_true")]
     pub show_camera_gizmos: bool,
+    #[serde(default = "default_true")]
+    pub show_pivot: bool,
     /// The collider gizmo's on/off half. Stored separately from
     /// `collision_always` (rather than replacing both with one enum string) so
     /// existing configs keep their Selected Only / Always choice: they simply
@@ -1447,6 +1508,7 @@ impl PersistedViewportSettings {
             show_skeleton_gizmos: s.show_skeleton_gizmos,
             show_light_gizmos: s.show_light_gizmos,
             show_camera_gizmos: s.show_camera_gizmos,
+            show_pivot: s.show_pivot,
             show_collider_gizmos: !matches!(
                 s.collision_gizmo_visibility,
                 CollisionGizmoVisibility::Off
@@ -1529,6 +1591,7 @@ impl PersistedViewportSettings {
         s.show_skeleton_gizmos = self.show_skeleton_gizmos;
         s.show_light_gizmos = self.show_light_gizmos;
         s.show_camera_gizmos = self.show_camera_gizmos;
+        s.show_pivot = self.show_pivot;
         s.collision_gizmo_visibility = match (self.show_collider_gizmos, self.collision_always) {
             (false, _) => CollisionGizmoVisibility::Off,
             (true, true) => CollisionGizmoVisibility::Always,
@@ -1683,6 +1746,7 @@ mod tests {
             show_skeleton_gizmos: false,
             show_light_gizmos: false,
             show_camera_gizmos: false,
+            show_pivot: false,
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,
             projection_mode: ProjectionMode::Orthographic,
             viewport_mode: ViewportMode::default(),
@@ -1759,6 +1823,7 @@ mod tests {
         assert_eq!(original.show_skeleton_gizmos, restored.show_skeleton_gizmos);
         assert_eq!(original.show_light_gizmos, restored.show_light_gizmos);
         assert_eq!(original.show_camera_gizmos, restored.show_camera_gizmos);
+        assert_eq!(original.show_pivot, restored.show_pivot);
         assert!(matches!(
             restored.collision_gizmo_visibility,
             CollisionGizmoVisibility::Always

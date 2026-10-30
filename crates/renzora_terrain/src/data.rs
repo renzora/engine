@@ -50,6 +50,11 @@ pub enum NoiseMode {
     Billow,
     Warped,
     Hybrid,
+    /// Mountains that look weathered before any erosion runs: a warped, soft
+    /// crested ridged multifractal for the ranges, with derivative damped
+    /// detail that thins out on steep flanks and in valley floors. See
+    /// [`crate::sculpt::eroded_noise`].
+    Eroded,
 }
 
 impl NoiseMode {
@@ -60,11 +65,20 @@ impl NoiseMode {
             Self::Billow => "Billow",
             Self::Warped => "Warped",
             Self::Hybrid => "Hybrid",
+            Self::Eroded => "Eroded",
         }
     }
 
+    /// Whether the mode reads `warp_strength`.
+    pub fn uses_warp(&self) -> bool {
+        matches!(self, Self::Warped | Self::Eroded)
+    }
+
+    /// Every mode, in the order the dropdowns list them. Eroded leads because
+    /// it is the one that reads as real ground.
     pub fn all() -> &'static [NoiseMode] {
         &[
+            Self::Eroded,
             Self::Fbm,
             Self::Ridge,
             Self::Billow,
@@ -192,13 +206,12 @@ pub struct TerrainData {
     pub chunk_resolution: u32,
     pub max_height: f32,
     pub min_height: f32,
-    /// When `true`, chunk *residency* streams by camera distance in a running
-    /// game (and editor play/simulate): chunks beyond `stream_radius` drop
-    /// their mesh + collider (the big memory — heightmap data stays on the
-    /// entity) and rebuild when the camera approaches. Editor edit mode keeps
-    /// every chunk resident for sculpting. `#[serde(default)]` /
-    /// `#[reflect(default)]` so terrains saved before these fields existed
-    /// still deserialize.
+    /// When `true`, chunk *residency* streams by camera distance, in the
+    /// editor (following the viewport camera) as in a game: chunks beyond
+    /// `stream_radius` drop their mesh, collider and detail (the heightmap
+    /// stays) and are drawn by a coarse stand-in until the camera comes back
+    /// (see `streaming`). On for a new terrain; a terrain saved without the
+    /// field loads with it off, as it was.
     #[serde(default)]
     #[reflect(default)]
     pub stream_chunks: bool,
@@ -208,10 +221,31 @@ pub struct TerrainData {
     #[serde(default = "default_stream_radius")]
     #[reflect(default = "default_stream_radius")]
     pub stream_radius: f32,
+    /// Coarser versions of each chunk drawn as it gets farther away, each
+    /// with half the vertices per side of the one before (see `lod`). 0 draws
+    /// every chunk at full detail at any distance.
+    #[serde(default = "default_lod_levels")]
+    #[reflect(default = "default_lod_levels")]
+    pub lod_levels: u32,
+    /// Scales the distances at which each coarser level takes over. Above 1
+    /// keeps detail farther out; below 1 drops it sooner.
+    #[serde(default = "default_lod_distance")]
+    #[reflect(default = "default_lod_distance")]
+    pub lod_distance: f32,
 }
 
+/// Far enough that the switch to a stand-in happens past where virtual
+/// geometry and the levels of detail have already thinned a chunk out.
 fn default_stream_radius() -> f32 {
-    256.0
+    512.0
+}
+
+fn default_lod_levels() -> u32 {
+    4
+}
+
+fn default_lod_distance() -> f32 {
+    1.0
 }
 
 impl Default for TerrainData {
@@ -227,8 +261,10 @@ impl Default for TerrainData {
             // editor grid plane.
             max_height: 40.0,
             min_height: -10.0,
-            stream_chunks: false,
+            stream_chunks: true,
             stream_radius: default_stream_radius(),
+            lod_levels: default_lod_levels(),
+            lod_distance: default_lod_distance(),
         }
     }
 }
@@ -386,7 +422,12 @@ pub struct TerrainSettings {
     pub warp_strength: f32,
 
     // Terrace
-    pub terrace_steps: u32,
+    /// Height of one terrace step, in metres. A count of steps over the
+    /// terrain's whole height range made the step size change whenever the
+    /// range did, and on a tall terrain eight steps were 40 m cliffs.
+    pub terrace_height: f32,
+    /// 0..1: how much of each step is riser. 0 is a gentle ramp between
+    /// treads, 1 a short steep riser (never vertical: see the brush).
     pub terrace_sharpness: f32,
 
     // Stamp
@@ -414,7 +455,7 @@ impl Default for TerrainSettings {
             noise_seed: 42,
             noise_mode: NoiseMode::Fbm,
             warp_strength: 0.5,
-            terrace_steps: 8,
+            terrace_height: 4.0,
             terrace_sharpness: 0.8,
             stamp_blend_mode: StampBlendMode::Add,
             stamp_rotation: 0.0,

@@ -541,6 +541,16 @@ fn run_pass(world: &mut World, pass: Pass) {
             if !frame && !entry.runtime_state.initialized {
                 continue;
             }
+            // Asked before the context is built, because building it is the
+            // cost: per script, per pass, an input snapshot and clones of the
+            // scene's name maps. A Rust script is run by its own dispatcher and
+            // says so for every hook; a fixed tick skips a script with no
+            // `on_fixed_update`. Measured at 0.9 ms a tick for one Rust script
+            // in a furnished scene before this.
+            let hook = if frame { renzora::ANY_HOOK } else { "on_fixed_update" };
+            if !world.resource::<ScriptEngine>().defines_hook(&script_path, hook) {
+                continue;
+            }
 
             // Build context
             let mut ctx =
@@ -997,7 +1007,13 @@ mod tests {
     /// A world with just what a script pass reads, and one entity running
     /// `player.fake`.
     fn world() -> (World, Entity, Arc<Mutex<FakeBackendState>>) {
-        let backend = FakeBackend::new("fake", &["fake"]);
+        world_with(|_| None)
+    }
+
+    /// [`world`] with the backend answering `defines_hook` with `defines`.
+    fn world_with(defines: fn(&str) -> Option<bool>) -> (World, Entity, Arc<Mutex<FakeBackendState>>) {
+        let mut backend = FakeBackend::new("fake", &["fake"]);
+        backend.defines = defines;
         let state = backend.state_handle();
         let mut engine = ScriptEngine::new();
         engine.add_backend(Box::new(backend));
@@ -1033,6 +1049,31 @@ mod tests {
         let state = state.lock().unwrap();
         assert_eq!(state.ready_paths.len(), 1);
         assert_eq!(state.fixed_update_paths, vec![PathBuf::from("player.fake")]);
+    }
+
+    /// A script that has no `on_fixed_update` is not handed to the backend on a
+    /// fixed tick, and still gets its frame hooks.
+    #[test]
+    fn fixed_pass_skips_a_script_without_the_hook() {
+        let (mut world, _, state) = world_with(|hook| Some(hook != "on_fixed_update"));
+        run_scripts(&mut world);
+        run_fixed_scripts(&mut world);
+        let state = state.lock().unwrap();
+        assert_eq!(state.ready_paths.len(), 1);
+        assert_eq!(state.update_paths.len(), 1);
+        assert!(state.fixed_update_paths.is_empty());
+    }
+
+    /// A backend that runs its scripts itself (Rust) is skipped by both passes.
+    #[test]
+    fn a_backend_that_defines_no_hooks_is_skipped_entirely() {
+        let (mut world, _, state) = world_with(|_| Some(false));
+        run_scripts(&mut world);
+        run_fixed_scripts(&mut world);
+        let state = state.lock().unwrap();
+        assert!(state.ready_paths.is_empty());
+        assert!(state.update_paths.is_empty());
+        assert!(state.fixed_update_paths.is_empty());
     }
 
     #[test]

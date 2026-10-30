@@ -70,6 +70,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_particles::ParticlesPlugin::default());
     app.add_plugins(renzora_planar_reflection::PlanarReflectionPlugin::default());
     app.add_plugins(renzora_postprocess::PostProcessPlugin::default());
+    app.add_plugins(renzora_profiler::ProfilerPlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
     app.add_plugins(renzora_rust_script::RustScriptPlugin::default());
@@ -92,6 +93,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_terrain::TerrainPlugin::default());
     #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain::foliage::FoliagePlugin::default());
+    app.add_plugins(renzora_terrain_graph::TerrainGraphPlugin::default());
     #[cfg(feature = "tilemap")]
     app.add_plugins(renzora_tilemap::TilemapPlugin::default());
     app.add_plugins(renzora_tonemapping::TonemappingPlugin::default());

@@ -1,281 +1,112 @@
-//! Everything the panel's widgets do once clicked: tool/tab switching, the
-//! enum combos' screen-menus, the heightmap and stamp file dialogs, and the
-//! layer material drop target.
+//! What the component's controls do once clicked: mode tabs, brush picks,
+//! layer rows, the stamp menu and file dialogs, the Manage buttons, and the
+//! two asset slots' drag and drop.
+//!
+//! Anything that touches files, the undo stack or many chunks at once is
+//! queued as an exclusive command rather than done inside the click system:
+//! a file dialog blocks the thread, and a resize or a whole-terrain edit is
+//! not something to do while holding queries over the chunks.
 
-use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{ActiveTool, AssetDragPayload, EditorSelection};
+use renzora_editor_framework::{AssetDragPayload, DocTabKind};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{menu_item, screen_menu};
 use renzora_ember::UiInteraction;
 
-use renzora_terrain::data::{
-    FlattenMode, NoiseMode, StampBlendMode, StampBrushData, StampPreset, TerrainBrushType,
-    TerrainData, TerrainSettings, TerrainTab, TerrainToolState,
-};
-use renzora_terrain::paint::{SurfacePaintCommand, SurfacePaintSettings, SurfacePaintState};
+use renzora_shader::material::landscape_preset::ALPINE_LANDSCAPE_PATH;
+use renzora_terrain::data::{StampBrushData, StampPreset, TerrainBrushType, TerrainData, TerrainSettings};
+use renzora_terrain::paint::SurfacePaintSettings;
+use renzora_terrain_graph::TerrainGenerator;
 
-use crate::terrain_inspector::TerrainInspectorTab;
+use crate::systems::HeightPick;
+use crate::terrain_inspector::{ShownTerrainTab, TerrainInspectorTab};
 
-use super::sculpt::{flatten_mode_label, stamp_blend_label};
-use super::{
-    set_settings, AddLayerBtn, FalloffTypeBtn, FlattenModeCombo, HeightmapExportBtn,
-    HeightmapImportBtn, LayerRow, MaterialClearBtn, MaterialDropZone, NoiseModeCombo, PaintToolBtn,
-    SculptToolBtn, ShapeBtn, ShapeTarget, StampBlendCombo, StampLoadBtn, StampPresetCombo, TabBtn,
-    MATERIAL_EXTS,
-};
+use super::manage::{apply_draft, ManageDraft};
+use super::{arm, panel_terrain, AssetSlot, HeightPickBtn, LayerRow, ManageAction, ModeTabBtn, SculptToolBtn, StampLoadBtn, StampPresetCombo};
 
+fn pressed(i: &UiInteraction) -> bool {
+    *i == UiInteraction::Pressed
+}
 
-pub(super) fn tab_click(
-    q: Query<(&UiInteraction, &TabBtn), Changed<UiInteraction>>,
-    mut settings: Option<ResMut<TerrainSettings>>,
-    mut inspector_tab: Option<ResMut<TerrainInspectorTab>>,
-    selection: Option<Res<EditorSelection>>,
-    terrains: Query<Entity, With<TerrainData>>,
+/// A mode tab shows its pane and arms its tool (Manage arms Select).
+pub(super) fn mode_tab_click(
+    q: Query<(&UiInteraction, &ModeTabBtn), Changed<UiInteraction>>,
+    mut armed: ResMut<TerrainInspectorTab>,
+    mut shown: ResMut<ShownTerrainTab>,
 ) {
-    let Some(settings) = settings.as_mut() else { return };
-    for (interaction, btn) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.tab = btn.tab;
-            // Switching the panel tab also switches the active tool — the
-            // panel and the viewport toolbar drive the same state.
-            if let Some(tab) = inspector_tab.as_mut() {
-                **tab = match btn.tab {
-                    TerrainTab::Sculpt => TerrainInspectorTab::Sculpt,
-                    TerrainTab::Paint => TerrainInspectorTab::Paint,
-                    TerrainTab::Foliage => TerrainInspectorTab::Foliage,
-                };
+    for (i, tab) in &q {
+        if pressed(i) {
+            if *armed != tab.0 {
+                *armed = tab.0;
             }
-            select_first_terrain_if_needed(selection.as_deref(), &terrains);
+            if shown.0 != tab.0 {
+                shown.0 = tab.0;
+            }
         }
     }
 }
 
-/// `sync_active_tool_system` only arms terrain tools while a terrain is
-/// selected — so panel interactions select the first terrain when the current
-/// selection isn't one (same behaviour as the viewport toolbar buttons).
-fn select_first_terrain_if_needed(
-    selection: Option<&EditorSelection>,
-    terrains: &Query<Entity, With<TerrainData>>,
-) {
-    let Some(selection) = selection else { return };
-    let selected_is_terrain = selection.get().is_some_and(|e| terrains.contains(e));
-    if !selected_is_terrain {
-        if let Some(first) = terrains.iter().next() {
-            selection.set(Some(first));
-        }
-    }
-}
-
-/// Keep the panel following the viewport toolbar: when a terrain tool
-/// activates (toolbar click, inspector tab), reveal the panel body and switch
-/// its Sculpt/Paint tab to match, so the two never show contradictory state.
-pub(super) fn follow_active_tool(
-    active: Option<Res<ActiveTool>>,
-    mut last: Local<Option<ActiveTool>>,
-    mut tool: Option<ResMut<TerrainToolState>>,
-    mut settings: Option<ResMut<TerrainSettings>>,
-) {
-    let Some(active) = active.map(|a| *a) else { return };
-    if *last == Some(active) {
-        return;
-    }
-    *last = Some(active);
-    if !matches!(
-        active,
-        ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
-    ) {
-        return;
-    }
-    if let Some(tool) = tool.as_mut() {
-        if !tool.active {
-            tool.active = true;
-        }
-    }
-    let want = match active {
-        ActiveTool::TerrainSculpt => Some(TerrainTab::Sculpt),
-        ActiveTool::TerrainPaint => Some(TerrainTab::Paint),
-        _ => None,
-    };
-    if let (Some(settings), Some(want)) = (settings.as_mut(), want) {
-        if settings.tab != want {
-            settings.tab = want;
-        }
-    }
-}
-
-/// Picking a sculpt brush also **arms sculpt mode**.
-///
-/// It used to only set `brush_type`, and the mode came from a separate button on
-/// the viewport shelf. With the brushes in the Terrain component that button is
-/// gone, and a brush that set what would be painted without arming the painting
-/// was a click that visibly did nothing. Clicking a tool is the whole gesture:
-/// it picks the tool *and* puts the viewport in the mode that uses it.
+/// Picking a sculpt brush also **arms sculpt mode**: clicking a tool is the
+/// whole gesture. A brush that set what would be sculpted without arming the
+/// sculpting was a click that visibly did nothing.
 pub(super) fn sculpt_tool_click(
     q: Query<(&UiInteraction, &SculptToolBtn), Changed<UiInteraction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
     mut stamp: Option<ResMut<StampBrushData>>,
-    mut tab: Option<ResMut<TerrainInspectorTab>>,
+    mut commands: Commands,
 ) {
     let Some(settings) = settings.as_mut() else { return };
-    for (interaction, btn) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.brush_type = btn.brush;
-            // Through the tab, not `ActiveTool` directly: `sync_active_tool_system`
-            // re-derives the tool from the tab every frame while a terrain is
-            // selected, so a tool set behind its back is overwritten next frame.
-            if let Some(tab) = tab.as_mut() {
-                **tab = TerrainInspectorTab::Sculpt;
-            }
-            // Picking Stamp with nothing loaded gets a default shape so the
-            // brush works immediately instead of silently no-opping.
-            if btn.brush == TerrainBrushType::Stamp {
-                if let Some(stamp) = stamp.as_mut() {
-                    if !stamp.is_loaded() {
-                        **stamp = StampBrushData::generate(StampPreset::Dome, 256);
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Picking a paint brush also arms paint mode — see [`sculpt_tool_click`].
-pub(super) fn paint_tool_click(
-    q: Query<(&UiInteraction, &PaintToolBtn), Changed<UiInteraction>>,
-    mut settings: Option<ResMut<SurfacePaintSettings>>,
-    mut tab: Option<ResMut<TerrainInspectorTab>>,
-) {
-    let Some(settings) = settings.as_mut() else { return };
-    for (interaction, btn) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.brush_type = btn.brush;
-            if let Some(tab) = tab.as_mut() {
-                **tab = TerrainInspectorTab::Paint;
-            }
-        }
-    }
-}
-
-pub(super) fn shape_btn_click(
-    q: Query<(&UiInteraction, &ShapeBtn), Changed<UiInteraction>>,
-    mut terrain: Option<ResMut<TerrainSettings>>,
-    mut paint: Option<ResMut<SurfacePaintSettings>>,
-) {
-    for (interaction, btn) in &q {
-        if *interaction != UiInteraction::Pressed {
+    for (i, btn) in &q {
+        if !pressed(i) {
             continue;
         }
-        match btn.target {
-            ShapeTarget::Sculpt => {
-                if let Some(t) = terrain.as_mut() {
-                    t.brush_shape = btn.shape;
-                }
-            }
-            ShapeTarget::Paint => {
-                if let Some(p) = paint.as_mut() {
-                    p.brush_shape = btn.shape;
+        settings.brush_type = btn.brush;
+        commands.queue(|w: &mut World| arm(w, TerrainInspectorTab::Sculpt));
+        // Picking Stamp with nothing loaded gets a default shape, so the brush
+        // works at once instead of silently doing nothing.
+        if btn.brush == TerrainBrushType::Stamp {
+            if let Some(stamp) = stamp.as_mut() {
+                if !stamp.is_loaded() {
+                    **stamp = StampBrushData::generate(StampPreset::Dome, 256);
                 }
             }
         }
     }
 }
 
-pub(super) fn falloff_type_btn_click(
-    q: Query<(&UiInteraction, &FalloffTypeBtn), Changed<UiInteraction>>,
-    mut settings: Option<ResMut<TerrainSettings>>,
+/// Picking a layer makes it the brush, and picks up the paint brush.
+pub(super) fn layer_row_click(
+    q: Query<(&UiInteraction, &LayerRow), Changed<UiInteraction>>,
+    mut settings: Option<ResMut<SurfacePaintSettings>>,
+    mut commands: Commands,
 ) {
     let Some(settings) = settings.as_mut() else { return };
-    for (interaction, btn) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.falloff_type = btn.ft;
+    for (i, row) in &q {
+        if pressed(i) {
+            settings.active_layer = row.index;
+            commands.queue(|w: &mut World| arm(w, TerrainInspectorTab::Paint));
         }
     }
 }
 
-pub(super) fn flatten_mode_combo_open(
-    q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
-        (With<FlattenModeCombo>, Changed<UiInteraction>),
-    >,
-    windows: Query<&Window>,
-    fonts: Option<Res<EmberFonts>>,
-    mut commands: Commands,
-) {
-    let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
-        return;
-    };
-    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
-        return;
-    };
-    let size = cn.size() * cn.inverse_scale_factor();
-    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let modes = [FlattenMode::Both, FlattenMode::Raise, FlattenMode::Lower];
-    let kids: Vec<Entity> = modes
-        .iter()
-        .map(|&mode| {
-            menu_item(&mut commands, &fonts, "dot", &flatten_mode_label(mode), move |w| {
-                set_settings(w, |s| s.flatten_mode = mode);
-            })
-        })
-        .collect();
-    commands.entity(menu).add_children(&kids);
-}
-
-pub(super) fn noise_mode_combo_open(
-    q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
-        (With<NoiseModeCombo>, Changed<UiInteraction>),
-    >,
-    windows: Query<&Window>,
-    fonts: Option<Res<EmberFonts>>,
-    mut commands: Commands,
-) {
-    let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
-        return;
-    };
-    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
-        return;
-    };
-    let size = cn.size() * cn.inverse_scale_factor();
-    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let kids: Vec<Entity> = NoiseMode::all()
-        .iter()
-        .map(|&mode| {
-            menu_item(&mut commands, &fonts, "dot", mode.display_name(), move |w| {
-                set_settings(w, |s| s.noise_mode = mode);
-            })
-        })
-        .collect();
-    commands.entity(menu).add_children(&kids);
-}
+type ComboPress<'a> = (&'a UiInteraction, &'a RelativeCursorPosition, &'a ComputedNode);
 
 pub(super) fn stamp_preset_combo_open(
-    q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
-        (With<StampPresetCombo>, Changed<UiInteraction>),
-    >,
+    q: Query<ComboPress, (With<StampPresetCombo>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
-        return;
-    };
-    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
-        return;
-    };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| pressed(i)) else { return };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    // Root-spawned by `screen_menu`, so the inspector's clipping can't eat it.
     let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
     let presets = [
         StampPreset::Dome,
@@ -289,7 +120,7 @@ pub(super) fn stamp_preset_combo_open(
     let kids: Vec<Entity> = presets
         .iter()
         .map(|&preset| {
-            menu_item(&mut commands, &fonts, "dot", preset.display_name(), move |w| {
+            menu_item(&mut commands, &fonts, "stamp", preset.display_name(), move |w| {
                 if let Some(mut stamp) = w.get_resource_mut::<StampBrushData>() {
                     *stamp = StampBrushData::generate(preset, 256);
                 }
@@ -299,250 +130,252 @@ pub(super) fn stamp_preset_combo_open(
     commands.entity(menu).add_children(&kids);
 }
 
-pub(super) fn stamp_blend_combo_open(
-    q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
-        (With<StampBlendCombo>, Changed<UiInteraction>),
-    >,
-    windows: Query<&Window>,
-    fonts: Option<Res<EmberFonts>>,
-    mut commands: Commands,
-) {
-    let Some(fonts) = fonts else { return };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == UiInteraction::Pressed) else {
-        return;
-    };
-    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
-        return;
-    };
-    let size = cn.size() * cn.inverse_scale_factor();
-    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let modes = [
-        StampBlendMode::Add,
-        StampBlendMode::Subtract,
-        StampBlendMode::Replace,
-        StampBlendMode::Max,
-        StampBlendMode::Min,
-    ];
-    let kids: Vec<Entity> = modes
-        .iter()
-        .map(|&mode| {
-            menu_item(&mut commands, &fonts, "dot", &stamp_blend_label(mode), move |w| {
-                set_settings(w, |s| s.stamp_blend_mode = mode);
-            })
-        })
-        .collect();
-    commands.entity(menu).add_children(&kids);
-}
-
-pub(super) fn stamp_load_click(
-    q: Query<&UiInteraction, (With<StampLoadBtn>, Changed<UiInteraction>)>,
-    mut commands: Commands,
-) {
-    if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|world: &mut World| {
-            let _ = world.run_system_once(run_stamp_load);
-        });
+pub(super) fn stamp_load_click(q: Query<&UiInteraction, (With<StampLoadBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
+    if q.iter().any(pressed) {
+        commands.queue(load_stamp);
     }
 }
 
-fn run_stamp_load(world: &mut World) {
+fn load_stamp(world: &mut World) {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Stamp image", &["png"])
-            .pick_file()
-        else {
-            return;
-        };
+        let Some(path) = rfd::FileDialog::new().add_filter("Stamp image", &["png"]).pick_file() else { return };
         let Ok(bytes) = std::fs::read(&path) else {
-            bevy::log::error!("Failed to read stamp file {path:?}");
+            error!("Failed to read stamp file {path:?}");
             return;
         };
         match StampBrushData::load_from_png(&bytes) {
             Ok((width, height, pixels)) => {
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "Stamp".to_string());
-                world.insert_resource(StampBrushData {
-                    pixels,
-                    width,
-                    height,
-                    name,
-                });
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Stamp".into());
+                world.insert_resource(StampBrushData { pixels, width, height, name });
             }
-            Err(e) => bevy::log::error!("Stamp PNG load failed: {e}"),
+            Err(e) => error!("Stamp PNG load failed: {e}"),
         }
     }
     #[cfg(target_arch = "wasm32")]
     let _ = world;
 }
 
-pub(super) fn layer_row_click(
-    q: Query<(&UiInteraction, &LayerRow), Changed<UiInteraction>>,
-    mut settings: Option<ResMut<SurfacePaintSettings>>,
+/// Pick toggles: armed, the next click on the ground sets Set Height's target
+/// instead of sculpting (see `crate::systems::height_pick_system`).
+pub(super) fn height_pick_click(
+    q: Query<&UiInteraction, (With<HeightPickBtn>, Changed<UiInteraction>)>,
+    mut pick: ResMut<HeightPick>,
+    mut commands: Commands,
 ) {
-    let Some(settings) = settings.as_mut() else { return };
-    for (interaction, row) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.active_layer = row.index;
+    if q.iter().any(pressed) {
+        pick.armed = !pick.armed;
+        if pick.armed {
+            commands.queue(|w: &mut World| arm(w, TerrainInspectorTab::Sculpt));
         }
     }
 }
 
-pub(super) fn add_layer_click(
-    q: Query<&UiInteraction, (With<AddLayerBtn>, Changed<UiInteraction>)>,
-    mut state: Option<ResMut<SurfacePaintState>>,
-) {
-    let Some(state) = state.as_mut() else { return };
-    if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        state.pending_commands.push(SurfacePaintCommand::AddLayer);
+pub(super) fn manage_action_click(q: Query<(&UiInteraction, &ManageAction), Changed<UiInteraction>>, mut commands: Commands) {
+    for (i, action) in &q {
+        if pressed(i) {
+            let action = *action;
+            commands.queue(move |w: &mut World| run_action(w, action));
+        }
     }
 }
 
-pub(super) fn heightmap_import_click(
-    q: Query<&UiInteraction, (With<HeightmapImportBtn>, Changed<UiInteraction>)>,
-    mut commands: Commands,
-) {
-    if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|world: &mut World| {
-            let _ = world.run_system_once(run_heightmap_import);
-        });
+fn run_action(world: &mut World, action: ManageAction) {
+    let Some(terrain) = panel_terrain(world) else { return };
+    match action {
+        ManageAction::Apply => apply_draft(world),
+        ManageAction::Revert => {
+            if let Some(mut d) = world.get_resource_mut::<ManageDraft>() {
+                d.revert();
+            }
+        }
+        ManageAction::Reroll => {
+            if let Some(mut g) = world.get_mut::<TerrainGenerator>(terrain) {
+                g.seed = renzora_terrain::generate::next_seed(g.seed as u32) as u64;
+            }
+        }
+        ManageAction::Build => renzora_terrain_graph_editor::request_build(world, terrain),
+        ManageAction::CancelBuild => renzora_terrain_graph_editor::cancel_build(world, terrain),
+        ManageAction::EditGraph => {
+            if let Some(path) = world.get::<TerrainGenerator>(terrain).map(|g| g.graph.clone()).filter(|p| !p.is_empty()) {
+                open_project_file(world, &path, DocTabKind::TerrainGraph);
+            }
+        }
+        ManageAction::EditMaterial => {
+            if let Some(path) = world.get::<renzora_terrain::landscape::TerrainMaterial>(terrain).map(|m| m.path.clone()).filter(|p| !p.is_empty()) {
+                open_project_file(world, &path, DocTabKind::Material);
+            }
+        }
+        ManageAction::UseAlpine => assign_material(world, terrain, ALPINE_LANDSCAPE_PATH),
+        ManageAction::ChooseMaterial => {
+            if let Some(path) = pick_project_file(world, "Landscape material", &["material"]) {
+                assign_material(world, terrain, &path);
+            }
+        }
+        ManageAction::ChooseGraph => {
+            if let Some(path) = pick_project_file(world, "Terrain graph", &[renzora_terrain_graph::EXTENSION]) {
+                assign_graph(world, terrain, &path);
+            }
+        }
+        ManageAction::ErodeAll => erode_all(world, terrain),
+        ManageAction::FlattenAll => crate::generate_tool::reset_now(world, terrain),
+        ManageAction::ImportHeightmap => import_heightmap(world, terrain),
+        ManageAction::ExportHeightmap => export_heightmap(world, terrain),
     }
 }
 
-pub(super) fn heightmap_export_click(
-    q: Query<&UiInteraction, (With<HeightmapExportBtn>, Changed<UiInteraction>)>,
-    mut commands: Commands,
-) {
-    if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.queue(|world: &mut World| {
-            let _ = world.run_system_once(run_heightmap_export);
-        });
+fn open_project_file(world: &mut World, path: &str, kind: DocTabKind) {
+    let Some(abs) = world.get_resource::<CurrentProject>().map(|p| p.resolve_path(path)) else { return };
+    renzora_editor_framework::open_asset_tab(world, &abs, kind);
+}
+
+fn assign_material(world: &mut World, terrain: Entity, path: &str) {
+    if world.get::<renzora_terrain::landscape::TerrainMaterial>(terrain).is_some_and(|m| m.path == path) {
+        return;
+    }
+    if let Err(e) = renzora_terrain::landscape::assign_material(world, terrain, path) {
+        warn!("[terrain] {e}");
     }
 }
 
-/// Import a heightmap file into every chunk.
-fn run_heightmap_import(world: &mut World) {
+fn assign_graph(world: &mut World, terrain: Entity, path: &str) {
+    match world.get_mut::<TerrainGenerator>(terrain) {
+        Some(mut g) => {
+            if g.graph != path {
+                g.graph = path.to_string();
+            }
+        }
+        None => {
+            world.entity_mut(terrain).insert(TerrainGenerator::new(path, 1337));
+        }
+    }
+}
+
+/// A file dialog for a project asset, answered project-relative.
+fn pick_project_file(world: &World, what: &str, exts: &[&str]) -> Option<String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Heightmap", &["png", "r16", "raw"])
-            .pick_file()
-        else {
-            return;
-        };
-        let import_settings = renzora_terrain::heightmap_import::HeightmapImportSettings::default();
-        let mut terrain_query = world.query::<&renzora_terrain::data::TerrainData>();
-        let Some(terrain_data) = terrain_query.iter(world).next().cloned() else {
-            return;
-        };
-        match renzora_terrain::heightmap_import::import_heightmap(&path, &import_settings, &terrain_data) {
+        let project = world.get_resource::<CurrentProject>()?;
+        let path = rfd::FileDialog::new().add_filter(what, exts).set_directory(&project.path).pick_file()?;
+        Some(project.make_asset_relative(&path))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (world, what, exts);
+        None
+    }
+}
+
+/// Weather the whole terrain through the same operation the MCP's
+/// erode_terrain uses, so it is one undo step and erodes the same way.
+fn erode_all(world: &mut World, terrain: Entity) {
+    let Some(tools) = world.get_resource::<renzora::terrain_tools::TerrainTools>().copied() else { return };
+    // The default rain count suits a 512 m terrain; scale it with the area so
+    // every terrain gets the same density.
+    let area = world
+        .get::<TerrainData>(terrain)
+        .map_or(1.0, |t| t.total_width() * t.total_depth() / (512.0 * 512.0));
+    let base = renzora::terrain_tools::TerrainErode::default().droplets;
+    let droplets = ((base as f32 * area.max(0.25)) as u32).min(2_000_000);
+    let request = renzora::terrain_tools::TerrainErode { terrain: Some(terrain), droplets, ..default() };
+    if let Err(e) = (tools.erode)(world, &request) {
+        warn!("[terrain] {e}");
+    }
+}
+
+/// Import a heightmap file into this terrain's chunks.
+fn import_heightmap(world: &mut World, terrain: Entity) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf};
+        let Some(path) = rfd::FileDialog::new().add_filter("Heightmap", &["png", "r16", "raw"]).pick_file() else { return };
+        let Some(data) = world.get::<TerrainData>(terrain).cloned() else { return };
+        let settings = renzora_terrain::heightmap_import::HeightmapImportSettings::default();
+        match renzora_terrain::heightmap_import::import_heightmap(&path, &settings, &data) {
             Ok(imported) => {
-                let mut chunk_query = world.query::<&mut renzora_terrain::data::TerrainChunkData>();
-                for mut chunk in chunk_query.iter_mut(world) {
-                    if let Some((_, _, heights)) = imported
-                        .iter()
-                        .find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z)
-                    {
+                let mut q = world.query::<(&mut TerrainChunkData, &TerrainChunkOf)>();
+                for (mut chunk, of) in q.iter_mut(world) {
+                    if of.0 != terrain {
+                        continue;
+                    }
+                    if let Some((_, _, heights)) = imported.iter().find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z) {
                         chunk.base_heights = heights.clone();
                         chunk.dirty = true;
                     }
                 }
             }
-            Err(e) => bevy::log::error!("Heightmap import failed: {e}"),
+            Err(e) => error!("Heightmap import failed: {e}"),
         }
     }
     #[cfg(target_arch = "wasm32")]
-    let _ = world;
+    let _ = (world, terrain);
 }
 
-/// Export the composed heightmap to a PNG.
-fn run_heightmap_export(world: &mut World) {
+/// Export this terrain's composed heights to a 16-bit PNG.
+fn export_heightmap(world: &mut World, terrain: Entity) {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let Some(path) = rfd::FileDialog::new().add_filter("PNG", &["png"]).save_file() else {
-            return;
-        };
-        let mut terrain_query = world.query::<&renzora_terrain::data::TerrainData>();
-        let Some(terrain_data) = terrain_query.iter(world).next().cloned() else {
-            return;
-        };
-        let mut chunk_query = world.query::<&renzora_terrain::data::TerrainChunkData>();
-        let chunks: Vec<&renzora_terrain::data::TerrainChunkData> = chunk_query.iter(world).collect();
-        match renzora_terrain::heightmap_import::export_heightmap_png16(&terrain_data, &chunks) {
-            Ok(data) => {
-                if let Err(e) = std::fs::write(&path, &data) {
-                    bevy::log::error!("Failed to write heightmap: {e}");
+        use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf};
+        let Some(path) = rfd::FileDialog::new().add_filter("PNG", &["png"]).save_file() else { return };
+        let Some(data) = world.get::<TerrainData>(terrain).cloned() else { return };
+        let mut q = world.query::<(&TerrainChunkData, &TerrainChunkOf)>();
+        let chunks: Vec<&TerrainChunkData> = q.iter(world).filter(|(_, of)| of.0 == terrain).map(|(c, _)| c).collect();
+        match renzora_terrain::heightmap_import::export_heightmap_png16(&data, &chunks) {
+            Ok(bytes) => {
+                if let Err(e) = std::fs::write(&path, &bytes) {
+                    error!("Failed to write heightmap: {e}");
                 }
             }
-            Err(e) => bevy::log::error!("Heightmap export failed: {e}"),
+            Err(e) => error!("Heightmap export failed: {e}"),
         }
     }
     #[cfg(target_arch = "wasm32")]
-    let _ = world;
+    let _ = (world, terrain);
 }
 
-/// Drop a dragged `.material` asset onto the hovered layer zone → queue an
-/// `AssignMaterial` command.
-pub(super) fn material_drop(
+/// Drop a `.material` on the material slot or a `.tgraph` on the generator
+/// slot.
+pub(super) fn asset_slot_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
     project: Option<Res<CurrentProject>>,
-    zones: Query<(&RelativeCursorPosition, &MaterialDropZone)>,
-    mut state: Option<ResMut<SurfacePaintState>>,
+    slots: Query<(&RelativeCursorPosition, &AssetSlot)>,
+    mut commands: Commands,
 ) {
     if !mouse.just_released(MouseButton::Left) {
         return;
     }
-    let (Some(payload), Some(state)) = (payload, state.as_mut()) else {
-        return;
-    };
-    if !payload.is_detached || !payload.matches_extensions(MATERIAL_EXTS) {
-        return;
-    }
-    for (rcp, zone) in &zones {
-        if !rcp.cursor_over {
+    let Some(payload) = payload.filter(|p| p.is_detached) else { return };
+    for (rcp, slot) in &slots {
+        if !rcp.cursor_over || !payload.matches_extensions(slot.extensions()) {
             continue;
         }
         let path = project
             .as_ref()
             .map(|p| p.make_asset_relative(&payload.path))
             .unwrap_or_else(|| payload.path.to_string_lossy().to_string());
-        state.pending_commands.push(SurfacePaintCommand::AssignMaterial {
-            layer: zone.layer,
-            path,
+        let slot = *slot;
+        commands.queue(move |w: &mut World| {
+            let Some(terrain) = panel_terrain(w) else { return };
+            match slot {
+                AssetSlot::Material => assign_material(w, terrain, &path),
+                AssetSlot::Graph => assign_graph(w, terrain, &path),
+            }
         });
         break;
     }
 }
 
-pub(super) fn material_clear_click(
-    q: Query<(&UiInteraction, &MaterialClearBtn), Changed<UiInteraction>>,
-    mut state: Option<ResMut<SurfacePaintState>>,
-) {
-    let Some(state) = state.as_mut() else { return };
-    for (interaction, btn) in &q {
-        if *interaction == UiInteraction::Pressed {
-            state
-                .pending_commands
-                .push(SurfacePaintCommand::ClearMaterial(btn.layer));
-        }
-    }
-}
-
-/// Accent the zone border while a compatible `.material` asset is dragged over.
-pub(super) fn material_drop_highlight(
+/// Accent a slot's border while an asset it takes is dragged over it.
+pub(super) fn asset_slot_highlight(
     payload: Option<Res<AssetDragPayload>>,
-    mut zones: Query<(&RelativeCursorPosition, &mut BorderColor), With<MaterialDropZone>>,
+    mut slots: Query<(&RelativeCursorPosition, &AssetSlot, &mut BorderColor)>,
 ) {
-    for (rcp, mut bc) in &mut zones {
-        let active = payload
+    for (rcp, slot, mut bc) in &mut slots {
+        let hot = payload
             .as_ref()
-            .is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(MATERIAL_EXTS));
-        let want = BorderColor::all(rgb(if active { accent() } else { border() }));
+            .is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(slot.extensions()));
+        let want = BorderColor::all(rgb(if hot { accent() } else { border() }));
         if *bc != want {
             *bc = want;
         }

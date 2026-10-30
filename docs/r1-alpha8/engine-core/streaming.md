@@ -1,6 +1,6 @@
 # Streaming
 
-Streaming is loading and unloading content *while the game runs*, instead of front-loading everything behind a loading screen. Renzora streams at four levels (scene loading, mesh detail (LOD), world content, and texture resolution), and they share one rule: **streaming is active in a running game, including one started with the editor's Play button; the editor itself always keeps the whole world resident** so you can see and edit everything. Dedicated servers never stream (there is no camera, and gameplay needs the full world).
+Streaming is loading and unloading content *while the game runs*, instead of front-loading everything behind a loading screen. Renzora streams at four levels (scene loading, mesh detail (LOD), world content, and texture resolution), and they share one rule: **streaming is active in a running game, including one started with the editor's Play button; the editor itself keeps the whole world resident** so you can see and edit everything. Terrain chunks are the exception (see [Terrain chunk streaming](#terrain-chunk-streaming)). Dedicated servers never stream (there is no camera, and gameplay needs the full world).
 
 All distance checks measure from the *streaming camera*: the active game camera.
 
@@ -48,7 +48,11 @@ This is the building block for open worlds: partition your map into sub-scenes (
 
 ### Terrain chunk streaming
 
-On the terrain's **Terrain** inspector section, enable **Stream Chunks** and set **Stream Radius**. In a running game, chunks whose center is beyond the radius drop their render mesh and physics collider — the heavy memory — while the heightmap data stays resident (it's the authored data, and it's small). Chunks rebuild from their heights as the camera approaches. Stream-out happens one chunk-size beyond the radius, so boundary chunks don't flicker.
+**Stream Chunks** is on for a new terrain (terrains saved before it existed load with it off), with a **Stream Radius** of 512 m. Terrain is the one exception to the editor rule above: it streams in the editor too, measured from the viewport camera, because a large terrain held fully resident costs frame rate and memory in proportion to its size rather than to what is in view.
+
+Chunks whose center is beyond the radius, measured across the ground, drop their render mesh, physics collider, levels of detail and virtual geometry, the heavy memory, while the heightmap data stays resident (it's the authored data, and it's small). In their place each is drawn by a stand-in: one small mesh, eight cells across, in the chunk's own material, with its edges at full detail so it meets its neighbours with no gaps. A far chunk can still be sculpted, since brushes work on the heights, and its stand-in follows the edit. Chunks rebuild at full detail from their heights as the camera approaches. Stream-out happens one chunk-size beyond the radius, so boundary chunks don't flicker.
+
+A new terrain, or one whose grid or resolution changes, builds full detail only for the chunks inside the radius; the rest start as stand-ins. Growing a terrain to thousands of chunks therefore costs memory for what is near the camera, not for the whole grid. Chunks are built a dozen a frame, nearest the camera first, so a large terrain arriving at once (a scene load, the New Environment starter) fills in over a few frames instead of stalling one; while more than a couple of dozen are waiting, a progress card at the top of the viewport counts them down (`ViewportWork`).
 
 ## Texture streaming
 

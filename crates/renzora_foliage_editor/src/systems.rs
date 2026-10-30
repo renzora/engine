@@ -1,10 +1,11 @@
 //! Foliage painting systems — hover, brush, scroll, gizmo.
 
-use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
-use renzora_terrain::data::{compute_brush_falloff, BrushShape, TerrainChunkData, TerrainData};
+use renzora_terrain::data::{
+    compute_brush_falloff, BrushShape, TerrainChunkData, TerrainChunkOf, TerrainData,
+};
 use renzora_terrain::foliage::{
     FoliageBrushType, FoliageDensityMap, FoliagePaintSettings, FoliageRebuildCost,
     MAX_FOLIAGE_TYPES,
@@ -38,12 +39,11 @@ pub struct FoliageToolState {
 pub fn foliage_paint_hover_system(
     mouse: Res<ButtonInput<MouseButton>>,
     mut paint_state: ResMut<FoliagePaintState>,
-    mut ray_cast: MeshRayCast,
     camera_query: Query<(&Camera, &GlobalTransform), With<renzora_editor_framework::EditorCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
-    chunk_query: Query<(Entity, &GlobalTransform), With<TerrainChunkData>>,
-    terrain_query: Query<&TerrainData>,
+    chunk_query: Query<(Entity, &TerrainChunkData, &TerrainChunkOf)>,
+    terrain_query: Query<(Entity, &TerrainData, &GlobalTransform)>,
 ) {
     // Only process when viewport is hovered (not over a panel/slider)
     let Some(vp) = viewport.as_ref().filter(|v| v.hovered) else {
@@ -76,41 +76,17 @@ pub fn foliage_paint_hover_system(
         return;
     };
 
-    // Find closest terrain chunk intersection. Chunks only: the default
-    // settings early-exit on the nearest mesh, and grass blades / paint-layer
-    // overlays float just above the surface — an unfiltered ray dies on them
-    // and the brush goes dead over already-painted areas.
-    let settings = MeshRayCastSettings {
-        filter: &|entity| chunk_query.contains(entity),
-        ..default()
-    };
-    let hits = ray_cast.cast_ray(ray, &settings);
-    let mut best: Option<(Entity, f32, Vec3)> = None;
-    for (entity, hit) in hits.iter() {
-        if chunk_query.contains(*entity) {
-            match best {
-                None => best = Some((*entity, hit.distance, hit.point)),
-                Some((_, d, _)) if hit.distance < d => {
-                    best = Some((*entity, hit.distance, hit.point));
-                }
-                _ => {}
-            }
-        }
-    }
+    // Against the terrain's heights rather than its meshes (see
+    // `renzora_terrain::raycast`): grass blades and paint-layer overlays float
+    // just above the surface and are not part of it, so the brush reaches the
+    // ground under them.
+    let chunks: Vec<_> = chunk_query.iter().collect();
+    let hit = renzora_terrain::raycast::raycast_terrains(ray, terrain_query.iter(), chunks);
 
-    if let Some((entity, _, point)) = best {
-        paint_state.hover_position = Some(point);
-        paint_state.active_chunk = Some(entity);
-
-        // Compute UV from world position relative to chunk
-        if let Ok((_, chunk_transform)) = chunk_query.get(entity) {
-            if let Some(terrain_data) = terrain_query.iter().next() {
-                let local = point - chunk_transform.translation();
-                let uv_x = (local.x / terrain_data.chunk_size).clamp(0.0, 1.0);
-                let uv_z = (local.z / terrain_data.chunk_size).clamp(0.0, 1.0);
-                paint_state.hover_uv = Some(Vec2::new(uv_x, uv_z));
-            }
-        }
+    if let Some(hit) = hit {
+        paint_state.hover_position = Some(hit.point);
+        paint_state.active_chunk = Some(hit.chunk);
+        paint_state.hover_uv = Some(hit.chunk_uv.clamp(Vec2::ZERO, Vec2::ONE));
     } else {
         paint_state.hover_position = None;
         paint_state.hover_uv = None;
@@ -127,7 +103,7 @@ pub fn foliage_paint_system(
     settings: Res<FoliagePaintSettings>,
     time: Res<Time>,
     cost: Res<FoliageRebuildCost>,
-    mut density_query: Query<&mut FoliageDensityMap>,
+    mut density_query: Query<(Entity, &mut FoliageDensityMap, &TerrainChunkData, &TerrainChunkOf)>,
 ) {
     if !paint_state.is_painting {
         return;
@@ -138,25 +114,71 @@ pub fn foliage_paint_system(
     let Some(uv) = paint_state.hover_uv else {
         return;
     };
-    let Ok(mut density_map) = density_query.get_mut(entity) else {
+    let Ok((_, active_map, active_chunk, active_of)) = density_query.get(entity) else {
         return;
     };
-
-    // Track this chunk for the final rebuild on release
-    if !paint_state.dirty_chunks.contains(&entity) {
-        paint_state.dirty_chunks.push(entity);
-    }
-
-    let res = density_map.resolution;
+    let res = active_map.resolution;
+    let (acx, acz, terrain) = (active_chunk.chunk_x as f32, active_chunk.chunk_z as f32, active_of.0);
     let dt = time.delta_secs();
 
-    // `was_painting` is still last frame's value here — `foliage_paint_finish_system`
-    // updates it at the end of the chain — so this is the first frame of a stroke.
-    // Arm the preview so the first blades land immediately rather than an
-    // interval later, which on an expensive chunk is half a second of nothing.
-    if !paint_state.was_painting {
-        paint_state.since_preview = f32::MAX;
+    // Every chunk of this terrain the brush overlaps, not only the one under
+    // its centre: neighbours share their edge texels, so the brush centre in
+    // a neighbour's texels is the same point shifted by one chunk (`res - 1`
+    // texels) per chunk of distance. A stroke along a seam used to stop dead at
+    // it, half a brush of grass and half of nothing.
+    let radius_texels = (settings.brush_radius * res as f32).max(1.0);
+    let preview = {
+        paint_state.since_preview += dt;
+        // `was_painting` is still last frame's value here, so this is the
+        // first frame of a stroke: preview at once rather than an interval
+        // later, which on an expensive chunk is half a second of nothing.
+        if !paint_state.was_painting {
+            paint_state.since_preview = f32::MAX;
+        }
+        let due = paint_state.since_preview >= cost.live_interval();
+        if due {
+            paint_state.since_preview = 0.0;
+        }
+        due
+    };
+    for (chunk_entity, mut density_map, chunk, of) in &mut density_query {
+        if of.0 != terrain || density_map.resolution != res {
+            continue;
+        }
+        let span = (res - 1) as f32;
+        let center = Vec2::new(
+            (uv.x + acx - chunk.chunk_x as f32) * span,
+            (uv.y + acz - chunk.chunk_z as f32) * span,
+        );
+        if center.x < -radius_texels || center.y < -radius_texels || center.x > span + radius_texels || center.y > span + radius_texels {
+            continue;
+        }
+        if paint_chunk(&mut density_map, &settings, dt, center, radius_texels) {
+            if !paint_state.dirty_chunks.contains(&chunk_entity) {
+                paint_state.dirty_chunks.push(chunk_entity);
+            }
+            // Live preview, on a duty cycle paced by what a rebuild costs
+            // (`FoliageRebuildCost`); `foliage_paint_finish_system` rebuilds
+            // every touched chunk on release, so a stroke never ends on a
+            // stale preview.
+            if preview {
+                density_map.dirty = true;
+            }
+        }
     }
+}
+
+/// One frame of the brush on one chunk's density map, its centre at `center`
+/// in that map's texels. Returns whether the brush reached the map.
+fn paint_chunk(
+    density_map: &mut FoliageDensityMap,
+    settings: &FoliagePaintSettings,
+    dt: f32,
+    center: Vec2,
+    radius_texels: f32,
+) -> bool {
+    let res = density_map.resolution;
+
     // Paced against `FULL_COVERAGE_WEIGHT` in `mesh_gen`: coverage is now
     // proportional to the painted weight with nothing propping it up from below,
     // so the brush has to actually reach that weight within the handful of frames
@@ -165,7 +187,7 @@ pub fn foliage_paint_system(
     let strength = settings.brush_strength * dt * 12.0;
     let type_idx = settings.active_type;
     if type_idx >= MAX_FOLIAGE_TYPES {
-        return;
+        return false;
     }
 
     // Grow / Trim write the chunk's height channel instead of a type's density
@@ -178,10 +200,10 @@ pub fn foliage_paint_system(
     }
     let target = brush.target(settings.brush_height);
 
-    // Brush radius is in UV space (0..1), convert to texel space
-    let radius_texels = (settings.brush_radius * res as f32).max(1.0);
-    let center_x = uv.x * (res - 1) as f32;
-    let center_z = uv.y * (res - 1) as f32;
+    let (center_x, center_z) = (center.x, center.y);
+    if center_x + radius_texels < 0.0 || center_z + radius_texels < 0.0 {
+        return false;
+    }
 
     let min_x = ((center_x - radius_texels).floor() as i32).max(0) as u32;
     let max_x = ((center_x + radius_texels).ceil() as u32).min(res - 1);
@@ -233,21 +255,7 @@ pub fn foliage_paint_system(
             *cell += effect * (target - *cell);
         }
     }
-
-    // Live preview. A rebuild regenerates the whole chunk mesh, so this used to
-    // wait for mouse-release entirely — which meant a stroke showed nothing until
-    // you let go, and you were painting blind. Instead it runs on a duty cycle
-    // paced by what a rebuild actually costs on *this* chunk
-    // (`FoliageRebuildCost`), so a bare chunk previews at 20 Hz and a heavily
-    // grassed one backs off to a rate it can afford. Only the chunk under the
-    // cursor is marked — it's the only one this stroke can have touched — and
-    // `foliage_paint_finish_system` still rebuilds every touched chunk on release
-    // so the result never ends on a stale preview.
-    paint_state.since_preview += dt;
-    if paint_state.since_preview >= cost.live_interval() {
-        paint_state.since_preview = 0.0;
-        density_map.dirty = true;
-    }
+    min_x <= max_x && min_z <= max_z
 }
 
 /// Scroll wheel resizes foliage brush (no modifier key needed).

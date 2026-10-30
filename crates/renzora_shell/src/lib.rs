@@ -305,6 +305,7 @@ impl Plugin for ShellPlugin {
             (
                 about::process_about_request,
                 about::about_credit_click,
+                status_bar::status_segment_click,
                 (
                     contributors::poll_contributors,
                     about::about_contributors_fill,

@@ -3,7 +3,6 @@
 //! Terrain sculpting & painting systems — hover detection, brush application, gizmo rendering.
 
 use bevy::input::mouse::MouseWheel;
-use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -11,8 +10,9 @@ use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora_terrain::data::*;
 use renzora_editor_framework::EditorSelection;
+use renzora_terrain::landscape::{LandscapeStroke, TerrainChunkWeights, TerrainLandscape};
 use renzora_terrain::paint::{self, SurfacePaintState};
-use renzora_terrain::painter::{PaintLayer, Painter};
+use renzora_terrain::raycast::TerrainRayHit;
 use renzora_terrain::sculpt;
 use renzora_terrain::undo::TerrainUndoEntry;
 
@@ -118,7 +118,18 @@ fn get_terrain_height_at(
 
 // ── Hover system ─────────────────────────────────────────────────────────────
 
+/// The nearest terrain under `ray`, for the hover systems' queries.
+fn raycast_terrains(
+    ray: Ray3d,
+    terrains: &Query<(Entity, &TerrainData, &GlobalTransform)>,
+    chunks: &Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
+) -> Option<TerrainRayHit> {
+    let chunks: Vec<_> = chunks.iter().map(|(e, chunk, of, _)| (e, chunk, of)).collect();
+    renzora_terrain::raycast::raycast_terrains(ray, terrains.iter(), chunks)
+}
+
 /// Detect brush position on terrain via mesh raycast (accurate on sculpted surfaces).
+#[allow(clippy::too_many_arguments)]
 pub fn terrain_sculpt_hover_system(
     viewport: Res<ViewportState>,
     window_query: Query<&Window, With<PrimaryWindow>>,
@@ -128,7 +139,6 @@ pub fn terrain_sculpt_hover_system(
     mut sculpt_state: ResMut<TerrainSculptState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     _settings: Res<TerrainSettings>,
-    mut mesh_ray_cast: MeshRayCast,
 ) {
     sculpt_state.brush_visible = false;
 
@@ -142,32 +152,12 @@ pub fn terrain_sculpt_hover_system(
         return;
     };
 
-    // Mesh raycast — hits actual sculpted geometry. Filtered to terrain
-    // chunks only: the default settings early-exit on the nearest mesh, and
-    // paint-layer overlays / grass sit just above the surface, so an
-    // unfiltered ray dies on them and the brush goes dead over painted areas.
-    let settings = MeshRayCastSettings {
-        filter: &|entity| chunk_query.contains(entity),
-        ..default()
-    };
-    let hits = mesh_ray_cast.cast_ray(ray, &settings);
+    // Against the heights, not the meshes (see `renzora_terrain::raycast`).
+    // Paint-layer overlays and grass sit just above the surface and are not
+    // part of it, so the brush reaches the ground under them.
+    let hit = raycast_terrains(ray, &terrain_query, &chunk_query);
 
-    // Find closest hit on a terrain chunk entity
-    let mut closest_hit: Option<(Vec3, Entity, f32)> = None;
-
-    for (hit_entity, hit) in hits.iter() {
-        // Check if this entity is a terrain chunk
-        if let Some((_, _, chunk_of, _)) = chunk_query.iter().find(|(e, _, _, _)| *e == *hit_entity)
-        {
-            let terrain_entity = chunk_of.0;
-            let dist = hit.distance;
-            if closest_hit.is_none() || dist < closest_hit.as_ref().unwrap().2 {
-                closest_hit = Some((hit.point, terrain_entity, dist));
-            }
-        }
-    }
-
-    if let Some((hit_pos, terrain_entity, _)) = closest_hit {
+    if let Some(TerrainRayHit { point: hit_pos, terrain: terrain_entity, .. }) = hit {
         sculpt_state.hover_position = Some(hit_pos);
         sculpt_state.active_terrain = Some(terrain_entity);
         sculpt_state.brush_visible = true;
@@ -195,9 +185,50 @@ pub fn terrain_sculpt_hover_system(
     }
 }
 
+// ── Pick from ground ─────────────────────────────────────────────────────────
+
+/// Set Height's "Pick from ground": while armed, the next click on the terrain
+/// sets the target height to the ground under the cursor instead of sculpting.
+#[derive(Resource, Default)]
+pub struct HeightPick {
+    pub armed: bool,
+}
+
+/// Turn an armed pick's click into a target height, and swallow the stroke it
+/// would otherwise start.
+///
+/// Runs after the hover system, which has already sampled the ground at the
+/// click (`flatten_start_height`, the same normalised height Flatten levels
+/// to) and before the sculpt system, which would otherwise apply a first dab.
+/// Escape disarms it.
+pub fn height_pick_system(
+    mut pick: ResMut<HeightPick>,
+    mut sculpt_state: ResMut<TerrainSculptState>,
+    mut settings: ResMut<TerrainSettings>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+) {
+    if !pick.armed {
+        return;
+    }
+    if keys.just_pressed(KeyCode::Escape) {
+        pick.armed = false;
+        return;
+    }
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    if let Some(h) = sculpt_state.flatten_start_height {
+        settings.target_height = h;
+        sculpt_state.is_sculpting = false;
+        pick.armed = false;
+    }
+}
+
 // ── Sculpt system ────────────────────────────────────────────────────────────
 
 /// Apply sculpting brush and draw brush gizmo.
+#[allow(clippy::too_many_arguments)]
 pub fn terrain_sculpt_system(
     sculpt_state: Res<TerrainSculptState>,
     settings: Res<TerrainSettings>,
@@ -280,31 +311,40 @@ pub fn terrain_sculpt_system(
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let dt = time.delta_secs();
 
-    for (mut chunk, chunk_of, _) in chunk_query.iter_mut() {
-        if chunk_of.0 != terrain_entity {
-            continue;
+    // Erosion works on the heights across chunk seams (a gully runs on into
+    // the next chunk), so it takes the terrain's chunks together rather than
+    // one at a time. Raindrops per frame scale with strength and frame time,
+    // so a stroke erodes at the same rate at any frame rate.
+    if matches!(settings.brush_type, TerrainBrushType::Erosion | TerrainBrushType::Hydro) {
+        let mut chunks: Vec<&mut TerrainChunkData> = chunk_query
+            .iter_mut()
+            .filter(|(_, of, _)| of.0 == terrain_entity)
+            .map(|(c, _, _)| c.into_inner())
+            .collect();
+        let area = Some((Vec2::new(local_x, local_z), settings.brush_radius));
+        let seed = (time.elapsed_secs() * 1000.0) as u32;
+        let (droplets, thermal) = match settings.brush_type {
+            TerrainBrushType::Hydro => ((settings.brush_strength * dt * 6000.0) as u32 + 1, 0),
+            _ => (0, (settings.brush_strength * dt * 60.0).ceil() as u32),
+        };
+        renzora_terrain::erosion::erode(terrain_data, &mut chunks, area, droplets, thermal, 34.0, seed);
+        return;
+    }
+
+    // The terrain's chunks together: Smooth, Flatten and the other area
+    // brushes read across chunk seams. The `dirty` flag a brush sets on the
+    // chunks it actually moved is what drives the rebuild.
+    let mut chunks: Vec<&mut TerrainChunkData> = chunk_query
+        .iter_mut()
+        .filter(|(_, of, _)| of.0 == terrain_entity)
+        .map(|(c, _, _)| c.into_inner())
+        .collect();
+    if is_stamp {
+        for chunk in chunks.iter_mut() {
+            sculpt::apply_stamp(chunk, terrain_data, &settings, &stamp_data, local_x, local_z);
         }
-        if is_stamp {
-            sculpt::apply_stamp(
-                &mut chunk,
-                terrain_data,
-                &settings,
-                &stamp_data,
-                local_x,
-                local_z,
-            );
-        } else {
-            sculpt::apply_brush(
-                &mut chunk,
-                terrain_data,
-                &settings,
-                &sculpt_state,
-                local_x,
-                local_z,
-                dt,
-                shift,
-            );
-        }
+    } else {
+        sculpt::apply_brush_dab(terrain_data, &mut chunks, &settings, &sculpt_state, local_x, local_z, dt, shift);
     }
 }
 
@@ -457,7 +497,6 @@ pub fn terrain_paint_hover_system(
     chunk_query: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
     mut paint_state: ResMut<SurfacePaintState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
-    mut mesh_ray_cast: MeshRayCast,
 ) {
     paint_state.brush_visible = false;
 
@@ -469,42 +508,11 @@ pub fn terrain_paint_hover_system(
         return;
     };
 
-    // Mesh raycast — hits actual sculpted geometry. Chunks only, for the
-    // same reason as the sculpt hover: painted overlays would otherwise
-    // swallow the ray and block repainting already-painted areas.
-    let settings = MeshRayCastSettings {
-        filter: &|entity| chunk_query.contains(entity),
-        ..default()
-    };
-    let hits = mesh_ray_cast.cast_ray(ray, &settings);
+    // Against the heights, as the sculpt hover does; painted overlays sit
+    // above the surface and must not block repainting.
+    let hit = raycast_terrains(ray, &terrain_query, &chunk_query);
 
-    let mut closest: Option<(Vec3, Entity, Entity, Vec2, f32)> = None;
-
-    for (hit_entity, hit) in hits.iter() {
-        // Check if this entity is a terrain chunk
-        if let Some((_, _chunk_data, chunk_of, chunk_transform)) =
-            chunk_query.iter().find(|(e, _, _, _)| *e == *hit_entity)
-        {
-            let terrain_entity = chunk_of.0;
-            let Ok((_, terrain_data, _)) = terrain_query.get(terrain_entity) else {
-                continue;
-            };
-
-            // Convert world hit position to chunk UV
-            let local_hit = hit.point - chunk_transform.translation();
-            let uv = Vec2::new(
-                local_hit.x / terrain_data.chunk_size,
-                local_hit.z / terrain_data.chunk_size,
-            );
-
-            let dist = hit.distance;
-            if closest.is_none() || dist < closest.as_ref().unwrap().4 {
-                closest = Some((hit.point, *hit_entity, terrain_entity, uv, dist));
-            }
-        }
-    }
-
-    if let Some((hit_pos, chunk_entity, _terrain_entity, uv, _)) = closest {
+    if let Some(TerrainRayHit { point: hit_pos, chunk: chunk_entity, chunk_uv: uv, .. }) = hit {
         paint_state.hover_position = Some(hit_pos);
         paint_state.hover_uv = Some(uv);
         paint_state.active_entity = Some(chunk_entity);
@@ -524,20 +532,21 @@ pub fn terrain_paint_hover_system(
     }
 }
 
-/// Keep `SurfacePaintState.layers_preview` mirroring the target `Painter`'s
-/// layers every frame, so the panel's layer list shows live values even when
-/// no paint commands ran this frame. Prefers the selected terrain's painter,
-/// falling back to the first one (same targeting as `painter_command_system`).
+/// Keep `SurfacePaintState.layers_preview` mirroring the target terrain's
+/// landscape layers, so the panel's layer list shows the material's layers.
+/// Prefers the selected terrain, falling back to the first one (the same
+/// targeting as `landscape_paint::paint_target`). Every row carries the
+/// terrain's material path, which the panel shows on the selected row.
 pub fn sync_layer_preview_system(
     mut paint_state: ResMut<paint::SurfacePaintState>,
     selection: Res<EditorSelection>,
-    painters: Query<&Painter>,
+    landscapes: Query<(&TerrainLandscape, Option<&renzora_terrain::landscape::TerrainMaterial>)>,
 ) {
-    let painter = selection
+    let found = selection
         .get()
-        .and_then(|e| painters.get(e).ok())
-        .or_else(|| painters.iter().next());
-    let Some(painter) = painter else {
+        .and_then(|e| landscapes.get(e).ok())
+        .or_else(|| landscapes.iter().next());
+    let Some((landscape, material)) = found else {
         // Last terrain gone: empty the list rather than showing stale rows.
         if paint_state.layer_count != 0 || !paint_state.layers_preview.is_empty() {
             paint_state.layers_preview.clear();
@@ -545,28 +554,25 @@ pub fn sync_layer_preview_system(
         }
         return;
     };
-    let new_preview: Vec<paint::LayerPreview> = painter
+    let path = material.map(|m| m.path.clone()).filter(|p| !p.is_empty());
+    let new_preview: Vec<paint::LayerPreview> = landscape
         .layers
         .iter()
         .map(|l| paint::LayerPreview {
             name: l.name.clone(),
-            material_source: l.material_path.clone(),
+            material_source: path.clone(),
             carve_depth: 0.0,
-            enabled: l.enabled,
+            enabled: true,
         })
         .collect();
     if new_preview.len() != paint_state.layers_preview.len()
         || new_preview
             .iter()
             .zip(paint_state.layers_preview.iter())
-            .any(|(a, b)| {
-                a.name != b.name
-                    || a.material_source != b.material_source
-                    || a.enabled != b.enabled
-            })
+            .any(|(a, b)| a.name != b.name || a.material_source != b.material_source)
     {
+        paint_state.layer_count = new_preview.len();
         paint_state.layers_preview = new_preview;
-        paint_state.layer_count = painter.layers.len();
     }
 }
 
@@ -574,33 +580,28 @@ pub fn sync_layer_preview_system(
 
 use renzora_terrain::undo::TerrainStrokeSnapshot;
 
-/// Snapshot chunk heightmaps + painter layer masks when a sculpt/paint stroke
-/// begins.
+/// Snapshot chunk heightmaps when a sculpt stroke begins, and open the
+/// weight stroke when a paint stroke does. Paint records its own "before"
+/// lazily, chunk by chunk as the brush first touches each
+/// (`LandscapeStroke::record`), so a paint stroke copies no heights at all.
 pub fn terrain_stroke_begin_system(
     sculpt_state: Res<TerrainSculptState>,
     paint_state: Res<SurfacePaintState>,
     mut snapshot: ResMut<TerrainStrokeSnapshot>,
+    mut weights: ResMut<LandscapeStroke>,
     chunk_query: Query<(Entity, &TerrainChunkData)>,
-    painter_query: Query<(Entity, &Painter)>,
 ) {
     let sculpting = sculpt_state.is_sculpting;
     let painting = paint_state.is_painting;
 
     if (sculpting || painting) && !snapshot.active {
-        // Capture before-state
         snapshot.active = true;
         snapshot.chunk_snapshots.clear();
-        snapshot.layer_snapshots.clear();
-
-        for (_, chunk) in chunk_query.iter() {
-            snapshot.chunk_snapshots.push((
-                chunk.chunk_x,
-                chunk.chunk_z,
-                chunk.base_heights.clone(),
-            ));
-        }
-        for (entity, painter) in painter_query.iter() {
-            snapshot.layer_snapshots.push((entity, painter.layers.clone()));
+        weights.before.clear();
+        if sculpting {
+            for (_, chunk) in chunk_query.iter() {
+                snapshot.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
+            }
         }
     }
 }
@@ -618,37 +619,40 @@ pub fn terrain_stroke_end_system(world: &mut World) {
         return;
     }
 
-    // Snapshot the post-stroke ("after") state.
-    let mut after = TerrainUndoEntry {
-        chunk_snapshots: Vec::new(),
-        layer_snapshots: Vec::new(),
-    };
-    {
-        let mut cq = world.query::<&TerrainChunkData>();
-        for chunk in cq.iter(world) {
-            after
-                .chunk_snapshots
-                .push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
-        }
-        let mut sq = world.query::<(Entity, &Painter)>();
-        for (entity, painter) in sq.iter(world) {
-            after.layer_snapshots.push((entity, painter.layers.clone()));
-        }
-    }
-
-    // Take the "before" snapshot captured at stroke begin and end the stroke.
-    let before = {
+    // Take the "before" captured during the stroke and end the stroke. The
+    // weight stroke's end is what lets the changed chunks be saved again.
+    let mut before = {
         let mut snapshot = world.resource_mut::<TerrainStrokeSnapshot>();
         snapshot.active = false;
         TerrainUndoEntry {
             chunk_snapshots: std::mem::take(&mut snapshot.chunk_snapshots),
-            layer_snapshots: std::mem::take(&mut snapshot.layer_snapshots),
+            weight_snapshots: Vec::new(),
         }
     };
+    {
+        let mut stroke = world.resource_mut::<LandscapeStroke>();
+        stroke.active = false;
+        before.weight_snapshots =
+            stroke.before.drain().map(|(entity, (res, texels))| (entity, res, texels)).collect();
+    }
 
-    // Only record if the stroke actually changed heights or paint masks — a
-    // click that painted nothing shouldn't create an empty undo step. (The old
-    // code always pushed for paint; here we compare masks properly.)
+    // The "after" of exactly what the "before" holds: heights only for a
+    // sculpt stroke, weights only for the chunks the brush touched.
+    let mut after = TerrainUndoEntry::default();
+    if !before.chunk_snapshots.is_empty() {
+        let mut cq = world.query::<&TerrainChunkData>();
+        for chunk in cq.iter(world) {
+            after.chunk_snapshots.push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
+        }
+    }
+    for (entity, _, _) in &before.weight_snapshots {
+        if let Some(w) = world.get::<TerrainChunkWeights>(*entity) {
+            after.weight_snapshots.push((*entity, w.resolution, w.texels.clone()));
+        }
+    }
+
+    // Only record if the stroke actually changed something: a click that
+    // painted nothing (all outside a mask, say) makes no undo step.
     let heights_changed = after.chunk_snapshots.iter().any(|(cx, cz, h)| {
         before
             .chunk_snapshots
@@ -657,23 +661,30 @@ pub fn terrain_stroke_end_system(world: &mut World) {
             .map(|(_, _, bh)| bh != h)
             .unwrap_or(true)
     });
-    let layers_changed = after.layer_snapshots.iter().any(|(e, layers)| {
+    let weights_changed = after.weight_snapshots.iter().any(|(e, _, texels)| {
         before
-            .layer_snapshots
+            .weight_snapshots
             .iter()
-            .find(|(be, _)| be == e)
-            .map(|(_, bl)| !painter_layers_equal(bl, layers))
-            .unwrap_or(true)
+            .find(|(be, _, _)| be == e)
+            .is_none_or(|(_, _, bt)| bt != texels)
     });
-    if !heights_changed && !layers_changed {
+    if !heights_changed && !weights_changed {
         return;
     }
 
+    // Named for what the stroke was, so the History panel and an undo reply
+    // say "Sculpt: Flatten" rather than a row of identical "Terrain" entries.
+    let label = if heights_changed {
+        let brush = world.resource::<TerrainSettings>().brush_type;
+        format!("Sculpt: {}", brush.display_name())
+    } else {
+        "Paint Terrain".to_string()
+    };
     renzora_undo::record(
         world,
         renzora_undo::UndoContext::Scene,
         Box::new(renzora_undo::SnapshotCmd {
-            label: "Terrain".to_string(),
+            label,
             before,
             after,
             restore: restore_terrain,
@@ -687,9 +698,9 @@ pub fn terrain_stroke_end_system(world: &mut World) {
 }
 
 /// Restore a captured terrain snapshot into the world — the `restore` fn for the
-/// terrain `SnapshotCmd`. Writes chunk heightmaps and painter layer masks back
-/// and flags them dirty so the chunk + layer meshes rebuild. Undo passes the
-/// "before" blob, redo passes "after".
+/// terrain `SnapshotCmd`. Writes chunk heightmaps and layer weights back and
+/// flags them dirty so the meshes rebuild and the weights reach the GPU. Undo
+/// passes the "before" blob, redo passes "after".
 fn restore_terrain(world: &mut World, entry: &TerrainUndoEntry) {
     {
         let mut cq = world.query::<&mut TerrainChunkData>();
@@ -704,35 +715,17 @@ fn restore_terrain(world: &mut World, entry: &TerrainUndoEntry) {
             }
         }
     }
-    for (entity, layers) in &entry.layer_snapshots {
-        if let Some(mut painter) = world.get_mut::<Painter>(*entity) {
-            // Replace the whole stack: a stroke can have CREATED a layer
-            // (first-paint auto-create), so undo must be able to remove it and
-            // redo to bring it back. The `Changed<Painter>` sync system
-            // despawns/spawns the child mesh entities to match.
-            painter.layers = layers.clone();
-            painter.active_layer = painter
-                .active_layer
-                .filter(|_| !layers.is_empty())
-                .map(|a| a.min(layers.len().saturating_sub(1)));
-            for layer in painter.layers.iter_mut() {
-                layer.mesh_dirty = true;
-                layer.material_dirty = true;
-            }
+    for (entity, resolution, texels) in &entry.weight_snapshots {
+        if let Some(mut weights) = world.get_mut::<TerrainChunkWeights>(*entity) {
+            // Never-painted chunks come back as a full grid of the base
+            // channel, so the GPU copy is overwritten rather than left as is.
+            let res = (*resolution).max(weights.resolution).max(1);
+            let restored = if texels.is_empty() {
+                vec![renzora_terrain::landscape::weights::solid(0); (res * res) as usize]
+            } else {
+                texels.clone()
+            };
+            weights.set_texels(if texels.is_empty() { res } else { *resolution }, restored);
         }
     }
-}
-
-/// Field-wise layer-stack comparison that ignores the transient dirty flags
-/// (they'd otherwise flag every rebuilt-but-unchanged stroke as an edit).
-fn painter_layers_equal(a: &[PaintLayer], b: &[PaintLayer]) -> bool {
-    a.len() == b.len()
-        && a.iter().zip(b.iter()).all(|(x, y)| {
-            x.name == y.name
-                && x.material_path == y.material_path
-                && x.mask == y.mask
-                && x.coverage_threshold == y.coverage_threshold
-                && x.height_offset == y.height_offset
-                && x.enabled == y.enabled
-        })
 }

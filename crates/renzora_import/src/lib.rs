@@ -61,6 +61,7 @@ pub use inspect::{inspect_glb, GlbStats};
 pub use optimize::{optimize_glb, MeshOptSettings};
 mod model_file;
 pub use model_file::model_file;
+pub mod remote;
 pub mod pipeline;
 pub use pipeline::{import_tree_in_place, run_import_pipeline};
 pub use prune::{prune_glb, PruneSpec, Pruned};

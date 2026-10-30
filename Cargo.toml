@@ -97,7 +97,8 @@ members = [
 #   trace_chrome, detailed_trace, track_location, dev/CI only — OFF (they tax every
 #     trace_tracy_memory, bevy_dev_tools,           frame and would skew a profile);
 #     bevy_ci_testing, bevy_debug_stepping,         all OFF — `trace_tracy` too
-#     bevy_ui_debug, debug, *glam_assert,           (see `plugins/tracy`).
+#     bevy_ui_debug, debug, *glam_assert,           (see `plugins/tracy`). Plain
+#                                                   `trace` is ON, below.
 #     embedded_watcher, hotpatching, schedule_data
 #   zstd_c, reflect_auto_register_static,         superseded by the chosen
 #     default_no_std / critical-section / libm / web   std + zstd_rust variants
@@ -247,6 +248,13 @@ bevy = { version = "0.20", default-features = false, features = [
     # a scene saved by an editor that had it would carry `soft_shadow_size` and
     # friends, and a game built without it has no such fields to read them into.
     "experimental_pbr_pcss",
+    # `trace` is ON: it wraps every system and render system in a span, which is
+    # what the companion's profiler records (`renzora::profiling`). Measured
+    # 2026-10-28 on 2000 systems: no difference within noise while nothing records
+    # (a system's span is created once at setup; a run only enters and exits it),
+    # and about 10 ns per span enter or exit while recording. This is plain
+    # `trace`, NOT `trace_tracy`: see the note on that below.
+    "trace",
     # The four optional PBR texture sets are NOT here — they live in
     # `renzora_app`'s `cfg(not(target_arch = "wasm32"))` block, because together
     # they blow WebGPU's per-stage sampler limit. See the note there.
@@ -417,19 +425,19 @@ static_plugins = ["dep:renzora_static_plugins"]
 # `script!` and leaving every script dylib the editor builds with no findable
 # entry point.
 static_scripts = ["renzora_runtime?/static_scripts"]
-# Throwaway PROFILING build — re-adds Bevy's Tracy instrumentation for a full
-# flame graph + per-system Statistics in Tracy. `bevy/trace` turns on the
-# per-system and render-node CPU spans (bevy_ecs gates system zones behind it, so
-# WITHOUT this the 200-plugin system breakdown is invisible); `bevy/trace_tracy`
-# installs the Tracy layer (CPU zones + one frame mark/frame) and the GPU-timestamp
-# zones in bevy_render; `renzora_runtime`'s matching feature adds
-# `RenderDiagnosticsPlugin` so those GPU zones actually record. Build+run it with
+# Throwaway PROFILING build for Tracy: adds Bevy's Tracy layer for a full flame
+# graph + per-system Statistics in Tracy. The per-system CPU spans themselves come
+# from `bevy/trace`, which every build now has (see the feature list above), so
+# the companion's profiler needs none of this; `bevy/trace_tracy` installs the
+# Tracy layer (CPU zones + one frame mark/frame) and the GPU-timestamp zones in
+# bevy_render; `renzora_runtime`'s matching feature adds `RenderDiagnosticsPlugin`
+# so those GPU zones actually record. Build+run it with
 # `cargo renzora --features profiling` (native) or `renzora run -- --features profiling`.
 #
-# DELIBERATELY out of `default`: compiling `trace_tracy` recompiles `bevy_dylib`
-# and MOVES the plugin ABI (CLAUDE.md §3), so prebuilt community plugins in
-# `plugins/` won't load against a profiling binary — everything built from source
-# in the same invocation (the editor bundle + all workspace plugins) still matches.
+# Deliberately out of `default`: compiling `trace_tracy` recompiles `bevy_dylib`,
+# which changes the SDK every installed plugin is built against, so each one
+# rebuilds itself once on the next launch (plugins ship as source; their stamp
+# is a content hash).
 # Keep the in-app "Tracy Profiler" toggle (Settings → Plugins) OFF in this build:
 # Bevy already frame-marks, and the `plugins/tracy` bridge marking too would
 # double-count every frame.

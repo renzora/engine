@@ -1,61 +1,76 @@
-// Terrain Checkerboard Material: procedural world-space checkerboard with PBR lighting.
-//
-// Uses world position (not UVs) for infinite-resolution tiling.
+// Terrain blockout grid: the engine's shape grid, projected from world
+// position (see `renzora_terrain::material`).
 
 import bevy_pbr::render::{
     forward_io::VertexOutput,
     pbr_functions,
-    pbr_types::{PbrInput, pbr_input_new},
+    pbr_types::{PbrInput, pbr_input_new, STANDARD_MATERIAL_FLAGS_FOG_ENABLED_BIT},
 };
 
-struct TerrainCheckerboardUniform {
-    color_a: vec4<f32>,
-    color_b: vec4<f32>,
-    // x = scale (squares per world unit), y = metallic, z = roughness
+struct TerrainGridUniform {
+    tint: vec4<f32>,
+    // x = tiles per metre, y = metallic, z = roughness, w = 1 with the grid bound
     properties: vec4<f32>,
 };
 
-@group(3) @binding(0) var<uniform> material: TerrainCheckerboardUniform;
+@group(3) @binding(0) var<uniform> material: TerrainGridUniform;
+@group(3) @binding(1) var grid_color: texture_2d<f32>;
+@group(3) @binding(2) var grid_sampler: sampler;
+@group(3) @binding(3) var grid_normal: texture_2d<f32>;
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let scale = material.properties.x;
-
-    // Dominant-axis triplanar projection so the perimeter walls and floor
-    // also show the checker. world.xz alone collapses to a single stripe on
-    // any vertical face, so pick whichever pair of world axes is parallel to
-    // the face by looking at the largest component of the world normal.
     let world_pos = in.world_position.xyz;
-    let an = abs(normalize(in.world_normal));
-    var proj: vec2<f32>;
+    let n = normalize(in.world_normal);
+    let an = abs(n);
+
+    // Project along the axis the face points most along, so walls are ruled
+    // as well as the top. `t` and `b` are the world directions the image's u
+    // and v run along on that face, for orienting the groove normals.
+    var uv: vec2<f32>;
+    var t: vec3<f32>;
+    var b: vec3<f32>;
     if an.y >= an.x && an.y >= an.z {
-        proj = world_pos.xz;
+        uv = world_pos.xz;
+        t = vec3<f32>(1.0, 0.0, 0.0);
+        b = vec3<f32>(0.0, 0.0, 1.0);
     } else if an.x >= an.z {
-        proj = world_pos.yz;
+        uv = vec2<f32>(world_pos.z, -world_pos.y);
+        t = vec3<f32>(0.0, 0.0, 1.0);
+        b = vec3<f32>(0.0, -1.0, 0.0);
     } else {
-        proj = world_pos.xy;
+        uv = vec2<f32>(world_pos.x, -world_pos.y);
+        t = vec3<f32>(1.0, 0.0, 0.0);
+        b = vec3<f32>(0.0, -1.0, 0.0);
+    }
+    uv = uv * scale;
+
+    var base = material.tint.rgb;
+    var normal = n;
+    if material.properties.w > 0.5 {
+        base = base * textureSample(grid_color, grid_sampler, uv).rgb;
+        // OpenGL-style tangent-space normal, bent onto the face's own frame.
+        let ts = textureSample(grid_normal, grid_sampler, uv).xyz * 2.0 - 1.0;
+        normal = normalize(t * ts.x + b * ts.y + n * ts.z);
     }
 
-    // Checkerboard pattern from the projected coords
-    let checker = floor(proj.x * scale) + floor(proj.y * scale);
-    let t = fract(checker * 0.5) * 2.0;
-
-    let base_color = vec4<f32>(mix(material.color_a.rgb, material.color_b.rgb, t), 1.0);
-
-    let N = normalize(in.world_normal);
-    let V = pbr_functions::calculate_view(in.world_position, false);
-
-    // PBR lighting
     var pbr_input: PbrInput = pbr_input_new();
-    pbr_input.material.base_color = base_color;
+    pbr_input.material.base_color = vec4<f32>(base, 1.0);
     pbr_input.material.metallic = material.properties.y;
     pbr_input.material.perceptual_roughness = material.properties.z;
-    pbr_input.world_normal = N;
+    // Fog is drawn only on materials that ask for it; a fresh input asks for
+    // nothing, where a StandardMaterial asks by default.
+    pbr_input.material.flags |= STANDARD_MATERIAL_FLAGS_FOG_ENABLED_BIT;
+    pbr_input.world_normal = n;
     pbr_input.world_position = in.world_position;
-    pbr_input.N = N;
-    pbr_input.V = V;
+    pbr_input.N = normal;
+    pbr_input.V = pbr_functions::calculate_view(in.world_position, false);
 
     var color = pbr_functions::apply_pbr_lighting(pbr_input);
     color.a = 1.0;
-    return color;
+    // Fog is applied here, after lighting, not by the lighting itself: returning
+    // the lit colour straight left every terrain on the grid unfogged while
+    // everything around it faded into the distance.
+    return pbr_functions::main_pass_post_lighting_processing(pbr_input, color);
 }

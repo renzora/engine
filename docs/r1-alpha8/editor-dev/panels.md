@@ -75,10 +75,12 @@ pub struct ShellStatusItem {
 
 impl ShellStatusSegment {
     pub fn new(icon: impl Into<String>, text: impl Into<String>, color: [u8; 3]) -> Self;
+    pub fn bar(self, bar: ShellStatusBar) -> Self;      // progress after the text
+    pub fn action(self, id: &'static str) -> Self;      // click sends ShellActionInvoked(id)
 }
 ```
 
-`render` runs **every frame** with `&World`, so live metrics update without re-registering. Each `ShellStatusSegment` is an optional Phosphor icon name + text + an RGB color.
+`render` runs **every frame** with `&World`, so live metrics update without re-registering. Each `ShellStatusSegment` is an optional Phosphor icon name + text + an RGB color, optionally a progress bar, and optionally a shell action a click invokes.
 
 ## A complete panel
 

@@ -144,7 +144,6 @@ Every material has a domain that decides what it is for. Pick this when you crea
 | Domain | Use it for |
 |---|---|
 | Surface | Props, walls, characters. Standard PBR, and the default. |
-| Terrain Layer | A paintable layer on terrain |
 | Vegetation | Surfaces that sway in the wind |
 | Unlit | Flat colour with no lighting |
 | Sprite | A 2D sprite. Made with **Add ▸ Sprite Material**; see [Sprite materials](/docs/r1-alpha8/api/material#sprite-materials) |

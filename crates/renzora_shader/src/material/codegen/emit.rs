@@ -15,6 +15,7 @@ mod color;
 mod control;
 mod functions;
 mod inputs;
+mod landscape;
 mod math;
 mod procedural;
 mod scene;

@@ -15,7 +15,7 @@ use super::super::graph::{
 };
 use super::super::nodes;
 use super::{safe_fn_ident, FunctionRegistry, MaterialParam, ParamKind, TextureBinding,
-    MAX_PARAMETER_SLOTS};
+    TextureKind, MAX_PARAMETER_SLOTS};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) struct Ctx<'a> {
@@ -57,6 +57,11 @@ pub(crate) struct Ctx<'a> {
     pub(crate) uses_cube_0: bool,
     pub(crate) uses_array_0: bool,
     pub(crate) uses_volume_0: bool,
+    /// A Landscape node is in the graph: the shader declares the terrain's
+    /// weight maps and bounds (bindings 122 and 123) and the
+    /// `landscape_layer_weights` helper. Off for every other graph, whose
+    /// shader stays exactly what it was.
+    pub(crate) uses_landscape: bool,
     /// Set once the graph's `displacement` pin has been compiled into a
     /// `graph_displacement` helper — the signal for `build_pbr_shader` to
     /// emit the parallax march that rebinds `mat_uv`.
@@ -147,6 +152,7 @@ impl<'a> Ctx<'a> {
             uses_cube_0: false,
             uses_array_0: false,
             uses_volume_0: false,
+            uses_landscape: false,
             uses_parallax: false,
             uses_particle: false,
             in_displacement_fn: false,
@@ -206,6 +212,63 @@ impl<'a> Ctx<'a> {
         let name = format!("{}_{}", prefix, self.var_counter);
         self.var_counter += 1;
         name
+    }
+
+    /// The 2D texture slot for `path`, allocating one the first time the path
+    /// is seen.
+    ///
+    /// Two sample nodes reading the same image share one slot. A landscape
+    /// samples each layer's maps from several places (colour, normal and
+    /// roughness blends, a triplanar read beside a planar one), and with a slot
+    /// per node the four-layer default material alone needed more than the
+    /// extension has. Sharing is exact, not an approximation: a slot is an
+    /// image plus the one shared sampler, and both are the same.
+    ///
+    /// A graph past [`super::MAX_D2_TEXTURES`] distinct images is an error, so
+    /// it is refused at compile time instead of failing as a pipeline that
+    /// never builds.
+    pub(crate) fn alloc_d2_texture(&mut self, path: String) -> String {
+        if let Some(existing) = self
+            .texture_bindings
+            .iter()
+            .find(|t| t.kind == TextureKind::D2 && t.asset_path == path)
+        {
+            return existing.name.clone();
+        }
+        let slot = self.next_texture_binding;
+        self.next_texture_binding += 1;
+        if slot as usize == super::MAX_D2_TEXTURES {
+            self.errors.push(format!(
+                "the graph samples more than {} different textures; reuse a texture or pack maps together",
+                super::MAX_D2_TEXTURES
+            ));
+        }
+        let name = format!("texture_{slot}");
+        self.texture_bindings.push(TextureBinding {
+            name: name.clone(),
+            binding: slot,
+            asset_path: path,
+            kind: TextureKind::D2,
+        });
+        name
+    }
+
+    /// The variable holding this body's landscape weights, emitting the read
+    /// on first use.
+    ///
+    /// Memoised in `output_vars` under node id 0, which no real node has, so
+    /// it follows the same body scoping as every node output: the parallax
+    /// helper and the main body each read the weights once, in their own scope.
+    pub(crate) fn landscape_weights_var(&mut self) -> String {
+        self.uses_landscape = true;
+        let key = (0, "__landscape_weights".to_string());
+        if let Some(v) = self.output_vars.get(&key) {
+            return v.clone();
+        }
+        let v = self.next_var("land_w");
+        self.emit(format!("    let {v} = landscape_layer_weights(in.world_position.xyz);"));
+        self.output_vars.insert(key, v.clone());
+        v
     }
 
     pub(crate) fn set_out(&mut self, node: NodeId, pin: &str, expr: String) {
@@ -550,6 +613,7 @@ impl<'a> Ctx<'a> {
             "custom" => self.gen_custom_node(node, id),
             "control" => self.gen_control_node(node, id),
             "scene" => self.gen_scene_node(node, id),
+            "landscape" => self.gen_landscape_node(node, id),
             "function" => self.gen_function_node(node, id),
             // Output nodes are handled in compile(), not here
             "output" => {}

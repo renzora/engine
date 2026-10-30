@@ -197,6 +197,9 @@ pub fn finish_mesh_instance_rehydrate(
             .clone()
             .or_else(|| gltf.scenes.first().cloned());
 
+        commands
+            .entity(entity)
+            .remove::<PendingMeshInstanceRehydrate>();
         if let Some(scene) = scene_handle {
             commands.spawn((
                 Name::new("SceneRoot"),
@@ -207,10 +210,20 @@ pub fn finish_mesh_instance_rehydrate(
                 Visibility::default(),
                 ChildOf(entity),
             ));
+        } else {
+            // Loaded, but nothing to place: the `.rvg` kept beside a `.glb`
+            // holds only that model's virtual geometry and loads as an empty
+            // model, and a glTF may have no scene at all. No scene root ever
+            // fills, so the loading overlay waited on it forever; counted as
+            // failed, it is done.
+            warn!(
+                "[scene] model has no scene to place, skipping: {}",
+                asset_server
+                    .get_path(pending.0.id())
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| "<unknown>".into())
+            );
+            commands.entity(entity).insert(MeshInstanceLoadFailed);
         }
-
-        commands
-            .entity(entity)
-            .remove::<PendingMeshInstanceRehydrate>();
     }
 }

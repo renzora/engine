@@ -15,8 +15,21 @@ use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, AsyncComputeTaskPool, Task};
 use renzora::core::project_files::{is_ignored, FileChange, ProjectFileChanged};
 use renzora::core::CurrentProject;
+use renzora::job_args::{RvgBake, RvgBakeOutcome};
 use renzora_rvg::bake::{ensure_current, find_models, Ensured};
 use renzora_virtual_geometry::RvgUpdated;
+
+/// A build in flight: on this process's compute pool, or in the companion.
+///
+/// The companion when there is one. A build holds a model's whole vertex data
+/// and cluster hierarchy, a few times the GLB's size, for seconds; in the
+/// companion that memory and CPU are another process's, scheduled below the
+/// editor's frame.
+enum Pending {
+    Local(Task<Result<Ensured, String>>),
+    /// The job id, and its answer once it arrives.
+    Remote(renzora::CompanionJobId, Option<Result<String, String>>),
+}
 
 #[derive(Resource, Default)]
 pub struct Converter {
@@ -24,8 +37,25 @@ pub struct Converter {
     scan: Option<Task<Vec<PathBuf>>>,
     queue: VecDeque<PathBuf>,
     queued: HashSet<PathBuf>,
-    running: Option<(PathBuf, Task<Result<Ensured, String>>)>,
+    running: Option<(PathBuf, Pending)>,
     built_this_batch: usize,
+}
+
+/// What a bake did, the same shape whichever process ran it.
+pub(crate) fn outcome_of(ensured: Ensured) -> RvgBakeOutcome {
+    match ensured {
+        Ensured::Built { primitives, skipped, bytes, seconds } => RvgBakeOutcome {
+            built: true,
+            primitives,
+            bytes,
+            seconds,
+            skipped: skipped
+                .into_iter()
+                .map(|s| format!("mesh {} primitive {} stays ordinary geometry ({})", s.mesh_index, s.primitive_index, s.reason))
+                .collect(),
+        },
+        Ensured::UpToDate | Ensured::NothingToConvert { .. } | Ensured::Model => RvgBakeOutcome::default(),
+    }
 }
 
 impl Converter {
@@ -55,7 +85,19 @@ pub(crate) fn build(app: &mut App) {
     // still works in a build that leaves the renderer out.
     app.add_message::<RvgUpdated>()
         .init_resource::<Converter>()
-        .add_systems(Update, (follow_project, watch, finish_scan, pump).chain());
+        .add_message::<renzora::CompanionJobDone>()
+        .add_systems(Update, (follow_project, watch, finish_scan, collect_answer, pump).chain());
+}
+
+/// The companion's answer for the build handed to it.
+fn collect_answer(mut answers: MessageReader<renzora::CompanionJobDone>, mut converter: ResMut<Converter>) {
+    for answer in answers.read() {
+        if let Some((_, Pending::Remote(id, slot))) = converter.running.as_mut() {
+            if *id == answer.id {
+                *slot = Some(answer.result.clone());
+            }
+        }
+    }
 }
 
 fn enabled(project: &CurrentProject) -> bool {
@@ -117,9 +159,16 @@ fn pump(
     mut converter: ResMut<Converter>,
     migration: Res<crate::migrate::Migration>,
     mut updated: MessageWriter<RvgUpdated>,
+    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
 ) {
-    if let Some((model, task)) = converter.running.as_mut() {
-        let Some(result) = block_on(future::poll_once(task)) else {
+    if let Some((model, pending)) = converter.running.as_mut() {
+        let result: Option<Result<RvgBakeOutcome, String>> = match pending {
+            Pending::Local(task) => block_on(future::poll_once(task)).map(|r| r.map(outcome_of)),
+            Pending::Remote(_, answer) => answer.take().map(|r| {
+                r.and_then(|json| serde_json::from_str(&json).map_err(|e| format!("unreadable answer: {e}")))
+            }),
+        };
+        let Some(result) = result else {
             return;
         };
         let model = model.clone();
@@ -131,23 +180,16 @@ fn pump(
             .map(|p| p.to_string_lossy().replace('\\', "/"));
         let name = relative.clone().unwrap_or_else(|| model.display().to_string());
         match result {
-            Ok(Ensured::UpToDate) => {}
-            Ok(Ensured::Built {
-                primitives,
-                skipped,
-                bytes,
-                seconds,
-            }) => {
+            Ok(done) if done.built => {
                 converter.built_this_batch += 1;
                 info!(
-                    "[virtual geometry] built {name}: {primitives} mesh(es), {:.1} MB, {seconds:.1}s",
-                    bytes as f64 / 1e6
+                    "[virtual geometry] built {name}: {} mesh(es), {:.1} MB, {:.1}s",
+                    done.primitives,
+                    done.bytes as f64 / 1e6,
+                    done.seconds
                 );
-                for s in skipped {
-                    info!(
-                        "[virtual geometry] {name}: mesh {} primitive {} stays ordinary geometry ({})",
-                        s.mesh_index, s.primitive_index, s.reason
-                    );
+                for line in done.skipped {
+                    info!("[virtual geometry] {name}: {line}");
                 }
                 if let Some(relative) = relative {
                     updated.write(RvgUpdated {
@@ -155,7 +197,7 @@ fn pump(
                     });
                 }
             }
-            Ok(Ensured::NothingToConvert { .. }) | Ok(Ensured::Model) => {}
+            Ok(_) => {}
             Err(e) => warn!("[virtual geometry] could not convert {name}: {e}"),
         }
     }
@@ -174,7 +216,15 @@ fn pump(
         return;
     };
     converter.queued.remove(&next);
+    let target = next.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    if let Some(id) = jobs
+        .as_deref_mut()
+        .and_then(|jobs| jobs.submit("rvg_bake", target, &RvgBake { model: next.clone() }))
+    {
+        converter.running = Some((next, Pending::Remote(id, None)));
+        return;
+    }
     let path = next.clone();
     let task = AsyncComputeTaskPool::get().spawn(async move { ensure_current(&path) });
-    converter.running = Some((next, task));
+    converter.running = Some((next, Pending::Local(task)));
 }

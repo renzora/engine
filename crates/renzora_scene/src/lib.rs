@@ -809,17 +809,7 @@ fn tick_texture_progress(
         for m in &graph_q {
             if let Some(mat) = graph_mats.get(&m.0) {
                 tab_asset_cache::collect_standard_material_images(&mat.base, &mut images);
-                for slot in [
-                    mat.extension.texture_0.as_ref(),
-                    mat.extension.texture_1.as_ref(),
-                    mat.extension.texture_2.as_ref(),
-                    mat.extension.texture_3.as_ref(),
-                    mat.extension.texture_4.as_ref(),
-                    mat.extension.texture_5.as_ref(),
-                ]
-                .into_iter()
-                .flatten()
-                {
+                for slot in mat.extension.d2_slots().into_iter().flatten() {
                     images.push(slot.clone());
                 }
             }
@@ -1629,22 +1619,22 @@ impl Plugin for ScenePlugin {
             .init_resource::<EditorLoadProgress>()
             .init_resource::<TabAssetCache>()
             .init_resource::<tab_asset_cache::SceneDiagSnapshot>()
-            // Refresh the Scene Diagnostics panel's input snapshot. Exclusive
-            // system (uses a dozen queries internally via SystemState); panels
-            // only have `&World` so we cache the data in a resource they read.
+            // Refresh the Scene Diagnostics probe's input snapshot. Exclusive
+            // system (uses a dozen queries internally via SystemState), cached
+            // in a resource so the probe's report is a cheap read.
             //
             // It does several full-scene passes + clones every StandardMaterial
             // handle, so its cost scales with the scene (O(entities+materials)).
-            // That's fine for a debug panel but ruinous on a 100k+ entity scene
-            // if it runs every frame regardless of visibility — so gate it on the
-            // Scene Diagnostics panel actually being the active tab, and throttle
-            // to 4 Hz while it is. When the panel is hidden it costs nothing; the
+            // That's fine for a debug readout but ruinous on a 100k+ entity
+            // scene if it runs every frame regardless of whether anyone looks,
+            // so gate it on a companion actually watching the probe, and
+            // throttle to 4 Hz while one is. Unwatched it costs nothing; the
             // snapshot it feeds is read by nothing else (see `diagnostics`).
             .add_systems(
                 Update,
                 tab_asset_cache::update_scene_diag_snapshot
                     .run_if(in_state(SplashState::Editor))
-                    .run_if(renzora_ember::dock::panel_active("scene_diagnostics"))
+                    .run_if(renzora::probes::probe_watched(diagnostics::PROBE_ID))
                     .run_if(bevy::time::common_conditions::on_timer(
                         std::time::Duration::from_millis(250),
                     )),

@@ -211,10 +211,36 @@ fn collider_for(shape: &ResolvedShape) -> Option<Collider> {
             Collider::cylinder(*radius, half_height * 2.0)
         }
         ResolvedShape::TriMesh(mesh) => Collider::trimesh(mesh.vertices.clone(), mesh.indices.clone()),
+        ResolvedShape::Heightfield(field) => heightfield_collider(field)?,
         ResolvedShape::Rectangle { .. } | ResolvedShape::Circle { .. } | ResolvedShape::Capsule2d { .. } => {
             return None
         }
     })
+}
+
+/// avian's heightfield for a grid that spans `0..size` from the entity's
+/// origin.
+///
+/// Two conventions meet here. parry's heightfield is centred on its origin,
+/// with rows along Z and columns along X, stored column-major; avian's
+/// constructor flattens its `Vec<Vec<_>>` one inner vec after another into
+/// that column-major store, which only lines up when the grid is square and
+/// the OUTER index is X. Every terrain chunk is square; a grid that is not
+/// falls back to triangles rather than come out transposed.
+fn heightfield_collider(field: &renzora::physics::HeightfieldData) -> Option<Collider> {
+    if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
+        return None;
+    }
+    if field.columns != field.rows {
+        let mesh = field.triangles();
+        return Some(Collider::trimesh(mesh.vertices, mesh.indices));
+    }
+    let by_x: Vec<Vec<f32>> = (0..field.columns)
+        .map(|x| (0..field.rows).map(|z| field.heights[z * field.columns + x]).collect())
+        .collect();
+    let shape = Collider::heightfield(by_x, Vec3::new(field.size.x, 1.0, field.size.y));
+    let centre = Vec3::new(field.size.x * 0.5, 0.0, field.size.y * 0.5);
+    Some(Collider::compound(vec![(centre, Quat::IDENTITY, shape)]))
 }
 
 /// The entity's collider with its offset and turn baked in.
@@ -676,5 +702,38 @@ fn overlap(q: Queries, batch: &mut OverlapBatch) {
             }
             true
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora::physics::HeightfieldData;
+
+    /// A slope rising along X only, so a transposed grid (rows and columns
+    /// swapped between the engine's layout and avian's) would put the slope
+    /// along Z and the rays below would land at the wrong heights.
+    #[test]
+    fn a_heightfield_rises_the_way_its_grid_does() {
+        let n = 9;
+        let mut heights = vec![0.0; n * n];
+        for z in 0..n {
+            for x in 0..n {
+                heights[z * n + x] = x as f32;
+            }
+        }
+        let field = HeightfieldData { heights, columns: n, rows: n, size: Vec2::new(16.0, 16.0) };
+        let collider = heightfield_collider(&field).expect("a square grid builds");
+        let ground = |x: f32, z: f32| {
+            let (toi, _) = collider
+                .cast_ray(Vec3::ZERO, Quat::IDENTITY, Vec3::new(x, 100.0, z), Vec3::NEG_Y, 1000.0, true)
+                .expect("the ray hits the ground");
+            100.0 - toi
+        };
+        // Sample spacing is 2 m and height is the column index, so 4 m along X
+        // is height 2 whatever Z is.
+        assert!((ground(4.0, 1.0) - 2.0).abs() < 1e-3, "{}", ground(4.0, 1.0));
+        assert!((ground(4.0, 13.0) - 2.0).abs() < 1e-3, "{}", ground(4.0, 13.0));
+        assert!((ground(12.0, 6.0) - 6.0).abs() < 1e-3, "{}", ground(12.0, 6.0));
     }
 }

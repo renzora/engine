@@ -45,7 +45,7 @@ Defaults are `focus = Vec3::ZERO`, `distance = 4.5`, `yaw = 0.3`, `pitch = 0.4`,
 
 > In **Edit** (mesh-edit) mode, E/Q are surrendered to the extrude tool, so vertical fly is unavailable — use scroll-dolly or Shift+Right pan instead.
 
-When `distance_relative_speed` is on (the default), move and zoom speed scale with the orbit distance, so navigation stays comfortable whether you're framing a whole level or a single vertex.
+When `distance_relative_speed` is on (the default), move and zoom speed scale with distance, so navigation stays comfortable whether you're framing a whole level or a single vertex. Zoom and orbit scale with the orbit distance. Flying with right mouse and WASD scales with the nearest surface below or ahead of the camera, so it slows as you come down to the ground or up to a wall; over empty space it falls back to the orbit distance.
 
 ### Keyboard shortcuts
 
@@ -55,7 +55,7 @@ These are `EditorAction`s with the default bindings below — all rebindable in 
 |-------------|--------|
 | **F** | Focus Selected — frame the selected entity (engages pivot lock) |
 | **A** | Frame All — fit every mesh in the scene |
-| **End** | Camera to Cursor — move the pivot to the point under the cursor |
+| **End** | Camera to Cursor — move the pivot to the surface under the cursor (the ground plane where there is none) |
 | **Home** | Reset Camera (back to default orbit) |
 | **L** | Toggle Pivot Lock |
 | **Numpad 5** | Toggle Orthographic / Perspective |
@@ -67,6 +67,10 @@ These are `EditorAction`s with the default bindings below — all rebindable in 
 ### Pivot lock
 
 Pivot lock (`PivotLock`) keeps the orbit centered on whatever you focused. While it's on, zoom becomes a true dolly (it changes `distance` only, leaving `focus` anchored) and Shift+Right pan is suppressed. It engages automatically on **Focus Selected (F)**, **Frame All (A)**, and **Camera to Cursor (End)**, breaks when you fly with WASD, and toggles with **L**.
+
+### Pivot marker
+
+While you orbit, pan or zoom, and for a moment after **F**, **End**, **A** or **Home** moves it, the pivot shows as a small ring with its distance beside it ("128 m", "1.1 km"). Orbit and zoom speed follow that distance, so the label explains a zoom that lurches. The ring is white, or amber while pivot lock is on, and dims when a surface stands between it and the camera (a pivot left underground reads as one). Flying and mouse-look carry the pivot along with the camera, so they do not show it. Turn it off with **Gizmos → Camera Pivot** in the viewport toolbar or **Settings → Viewport → Camera Pivot** (`ViewportSettings::show_pivot`).
 
 ### Camera settings
 
@@ -80,7 +84,7 @@ The controller reads tuning from the `CameraSettings` resource, which the viewpo
 | `pan_sensitivity` | 1.0 | Pan speed |
 | `zoom_sensitivity` | 1.0 | Scroll dolly speed |
 | `invert_y` | false | Invert vertical look |
-| `distance_relative_speed` | true | Scale move/zoom by distance from focus |
+| `distance_relative_speed` | true | Scale move/zoom by distance: flying by the nearest surface, zoom by distance from focus |
 
 ## Projection
 

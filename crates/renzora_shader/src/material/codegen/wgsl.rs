@@ -381,6 +381,9 @@ fn mat_blend(base: vec4<f32>, blnd: vec4<f32>, opacity: f32, mode: i32) -> vec4<
 "#,
         );
     }
+    if ctx.uses_landscape {
+        s.push_str(LANDSCAPE_HELPER_WGSL);
+    }
     s
 }
 
@@ -498,6 +501,77 @@ pub(crate) fn particle_input_aliases() -> String {
     .to_string()
 }
 
+/// Binding offsets of the 2D texture slots, from the material's base. The
+/// first six predate the rest (see [`texture_bindings_at`]); slots 6..15 sit at
+/// base + 24..33, past the landscape bindings, so none of them can land on the
+/// particle extension's own bindings at 119..121.
+pub(crate) const D2_OFFSETS: [u32; 16] = [0, 2, 4, 6, 14, 16, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33];
+
+/// The landscape uniform's offset from the material's base (binding 122).
+pub(crate) const LANDSCAPE_PARAMS_OFFSET: u32 = 22;
+/// The landscape weight array's offset from the material's base (binding 123).
+pub(crate) const LANDSCAPE_WEIGHTS_OFFSET: u32 = 23;
+
+/// Mirrors `surface_ext::LandscapeParams` field for field.
+const LANDSCAPE_PARAMS_WGSL: &str = "struct LandscapeParams { bounds: vec4<f32>, info: vec4<f32>, channels_a: vec4<u32>, channels_b: vec4<u32>, }\n";
+
+/// The Landscape nodes' one helper: the painted weight of every material
+/// layer at a world position.
+///
+/// The weight map is an RGBA8 array of two slices, eight channels over the
+/// whole terrain. It is read with four `textureLoad`s per slice and filtered
+/// here rather than through the shared sampler: that sampler belongs to
+/// texture 0, whose wrapping and filtering are whatever that image asked for,
+/// and Metal's sampler limit leaves no room for a second one. Loads also take
+/// no derivatives, so the read is the same in every pass, including the
+/// virtual geometry one.
+///
+/// `channels_a` / `channels_b` map material layer `i` to the terrain channel
+/// that holds it, which is how a terrain keeps its painting when the material's
+/// layers are reordered. Off a terrain (`info.x` 0) the first layer is one and
+/// the rest zero.
+///
+/// Not named `read` or `write`: those are access modes in
+/// `var<storage, read>`, and a function of either name made the virtual
+/// geometry pass fail to build with nothing in the Console.
+pub(crate) const LANDSCAPE_HELPER_WGSL: &str = r#"
+struct LandscapeLayerWeights { w: array<f32, 8>, }
+
+fn landscape_layer_weights(world: vec3<f32>) -> LandscapeLayerWeights {
+    let dims = vec2<i32>(textureDimensions(landscape_weights));
+    let size = max(landscape.bounds.zw, vec2<f32>(0.001));
+    let p = (world.xz - landscape.bounds.xy) / size * vec2<f32>(dims) - 0.5;
+    let cell = floor(p);
+    let f = p - cell;
+    let hi = max(dims - vec2<i32>(1), vec2<i32>(0));
+    let i0 = clamp(vec2<i32>(cell), vec2<i32>(0), hi);
+    let i1 = clamp(vec2<i32>(cell) + vec2<i32>(1), vec2<i32>(0), hi);
+    let a = mix(
+        mix(textureLoad(landscape_weights, i0, 0, 0), textureLoad(landscape_weights, vec2<i32>(i1.x, i0.y), 0, 0), f.x),
+        mix(textureLoad(landscape_weights, vec2<i32>(i0.x, i1.y), 0, 0), textureLoad(landscape_weights, i1, 0, 0), f.x),
+        f.y,
+    );
+    let b = mix(
+        mix(textureLoad(landscape_weights, i0, 1, 0), textureLoad(landscape_weights, vec2<i32>(i1.x, i0.y), 1, 0), f.x),
+        mix(textureLoad(landscape_weights, vec2<i32>(i0.x, i1.y), 1, 0), textureLoad(landscape_weights, i1, 1, 0), f.x),
+        f.y,
+    );
+    // Both `var`: indexing by a loop counter needs a reference, not a value.
+    var raw = array<f32, 8>(a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w);
+    var channels = array<u32, 8>(
+        landscape.channels_a.x, landscape.channels_a.y, landscape.channels_a.z, landscape.channels_a.w,
+        landscape.channels_b.x, landscape.channels_b.y, landscape.channels_b.z, landscape.channels_b.w,
+    );
+    let on = landscape.info.x > 0.5;
+    var out: LandscapeLayerWeights;
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let painted = raw[min(channels[i], 7u)];
+        out.w[i] = select(select(0.0, 1.0, i == 0u), painted, on);
+    }
+    return out;
+}
+"#;
+
 pub(crate) fn texture_bindings_wgsl(ctx: &Ctx) -> String {
     // Extension-material texture slots live at bindings 100..118 in group 3,
     // alongside StandardMaterial's own bindings (which occupy 0..~30). The
@@ -527,9 +601,11 @@ pub(crate) fn texture_bindings_at(ctx: &Ctx, group: &str, base: u32) -> String {
     s.push_str(&format!("@group({group}) @binding({}) var texture_sampler: sampler;\n", base + 1));
     // Slots 0..3 sit on base + 0..6 (even). Slots 4..5 sit on base + 14 and
     // 16: the cubemap/array/3D slots are between them at base + 8..12, so the
-    // linear `base + slot*2` stops after slot 3.
-    const D2_OFFSETS: [u32; 6] = [0, 2, 4, 6, 14, 16];
-    for (slot, offset) in D2_OFFSETS.iter().enumerate() {
+    // linear `base + slot*2` stops after slot 3. The first six are always
+    // declared, as they always were; slots 6..15 only when the graph uses
+    // them, so every shader written before they existed stays the same text.
+    let used = (ctx.next_texture_binding as usize).clamp(6, D2_OFFSETS.len());
+    for (slot, offset) in D2_OFFSETS.iter().enumerate().take(used) {
         s.push_str(&format!(
             "@group({group}) @binding({}) var texture_{slot}: texture_2d<f32>;\n",
             base + offset,
@@ -550,6 +626,19 @@ pub(crate) fn texture_bindings_at(ctx: &Ctx, group: &str, base: u32) -> String {
     }
     if ctx.uses_volume_0 {
         s.push_str(&format!("@group({group}) @binding({}) var volume_0: texture_3d<f32>;\n", base + 12));
+    }
+    // The terrain's bounds and painted weights, for the Landscape nodes. See
+    // `surface_ext::LandscapeParams` for the layout.
+    if ctx.uses_landscape {
+        s.push_str(LANDSCAPE_PARAMS_WGSL);
+        s.push_str(&format!(
+            "@group({group}) @binding({}) var<uniform> landscape: LandscapeParams;\n",
+            base + LANDSCAPE_PARAMS_OFFSET
+        ));
+        s.push_str(&format!(
+            "@group({group}) @binding({}) var landscape_weights: texture_2d_array<f32>;\n",
+            base + LANDSCAPE_WEIGHTS_OFFSET
+        ));
     }
     // Always declare the parameter UBO (base + 18): the `AsBindGroup` derive
     // requires this slot to be bound regardless of whether the graph reads

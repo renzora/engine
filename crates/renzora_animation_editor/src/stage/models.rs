@@ -41,65 +41,50 @@ fn file_name(rel: &str) -> &str {
 #[derive(Resource, Default)]
 pub(crate) struct ProjectModels {
     pub(crate) files: Vec<String>,
-    scanned: Option<std::time::Instant>,
-    root: Option<std::path::PathBuf>,
+    /// The project index's revision these were read at.
+    revision: Option<u64>,
 }
 
 pub(super) fn register(app: &mut App) {
     app.init_resource::<ProjectModels>().add_systems(
         Update,
-        scan_project.run_if(in_state(renzora_editor_framework::SplashState::Editor)).run_if(super::stage_mounted),
+        read_models.run_if(in_state(renzora_editor_framework::SplashState::Editor)).run_if(super::stage_mounted),
     );
 }
 
-/// Folders that hold build output or editor state, never a model to animate.
-const SKIP: [&str; 6] = ["target", "dist", "node_modules", "build", "exports", ".renzora"];
+/// Folders that hold build output, never a model to animate. The index leaves
+/// out what the watcher ignores already (`target`, `.renzora`, hidden folders);
+/// these are copies of models, not models.
+const SKIP: [&str; 3] = ["dist", "build", "exports"];
 
-/// Re-read the project's model files every few seconds, so a model imported
+/// The project's model files, from the project index (see
+/// `renzora::core::project_index`), whenever it changes: a model imported
 /// while the workspace is open shows up without anything to press.
-fn scan_project(mut models: ResMut<ProjectModels>, project: Option<Res<renzora::core::CurrentProject>>) {
-    let Some(project) = project else { return };
-    let fresh = models.root.as_deref() == Some(project.path.as_path()) && models.scanned.is_some_and(|t| t.elapsed().as_secs_f32() < 4.0);
-    if fresh {
+///
+/// This walked the project itself every four seconds, on the main thread:
+/// 79 ms in a project with a model library, the worst frame a profile of the
+/// editor showed. The index is kept current by the watcher, so reading it is
+/// a filter over a map and nobody walks a folder.
+fn read_models(mut models: ResMut<ProjectModels>, index: Option<Res<renzora::core::ProjectIndex>>) {
+    let Some(index) = index else { return };
+    if models.revision == Some(index.revision()) {
         return;
     }
-    let mut files = Vec::new();
-    let mut stack = vec![project.path.clone()];
-    // Bounded, so a project folder with a huge tree in it never stalls a frame.
-    let mut visited = 0;
-    while let Some(dir) = stack.pop() {
-        visited += 1;
-        if visited > 4000 {
-            break;
-        }
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-            if path.is_dir() {
-                if !name.starts_with('.') && !SKIP.contains(&name.as_str()) {
-                    stack.push(path);
-                }
-                continue;
-            }
-            let lower = name.to_lowercase();
-            // The original a rig was built from is kept beside the model;
-            // it is the way back, not a second model.
-            let model = lower.ends_with(".rvg") || lower.ends_with(".glb") || lower.ends_with(".gltf");
-            let original = [".unrigged.glb", ".unrigged.rvg", ".unshaped.glb", ".unshaped.rvg"]
-                .iter()
-                .any(|s| lower.ends_with(s));
-            if model && !original {
-                if let Ok(rel) = path.strip_prefix(&project.path) {
-                    files.push(rel.to_string_lossy().replace('\\', "/"));
-                }
-            }
-        }
-    }
+    let mut files: Vec<String> = index
+        .with_extensions(&["rvg", "glb", "gltf"])
+        .map(|f| f.path.as_str())
+        .filter(|p| !p.split('/').any(|part| SKIP.contains(&part)))
+        // The original a rig was built from is kept beside the model; it is
+        // the way back, not a second model.
+        .filter(|p| {
+            let lower = p.to_lowercase();
+            ![".unrigged.glb", ".unrigged.rvg", ".unshaped.glb", ".unshaped.rvg"].iter().any(|s| lower.ends_with(s))
+        })
+        .map(str::to_string)
+        .collect();
     files.sort_by_key(|f| file_name(f).to_lowercase());
     models.files = files;
-    models.scanned = Some(std::time::Instant::now());
-    models.root = Some(project.path.clone());
+    models.revision = Some(index.revision());
 }
 
 /// Every model in the scene, then every model file with no copy in it.

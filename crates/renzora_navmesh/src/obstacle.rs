@@ -109,6 +109,11 @@ fn tessellate(collider: &ResolvedCollider) -> Option<(Vec<Vec3>, Vec<[u32; 3]>, 
             let place = |v: &Vec3| collider.offset + collider.rotation * *v;
             return Some((mesh.vertices.iter().map(place).collect(), mesh.indices.clone(), false));
         }
+        ResolvedShape::Heightfield(field) => {
+            let mesh = field.triangles();
+            let place = |v: &Vec3| collider.offset + collider.rotation * *v;
+            return Some((mesh.vertices.iter().map(place).collect(), mesh.indices, false));
+        }
         ResolvedShape::Rectangle { .. } | ResolvedShape::Circle { .. } | ResolvedShape::Capsule2d { .. } => {
             return None
         }

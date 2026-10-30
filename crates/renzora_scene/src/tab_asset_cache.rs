@@ -291,20 +291,12 @@ pub fn pin_live_tab_handles(world: &mut World, tab_id: u64) {
             // Wrapped StandardMaterial base also owns image fields.
             collect_standard_material_images(&mat.base, &mut image_handles);
             // Custom extension texture slots.
-            for slot in [
-                mat.extension.texture_0.as_ref(),
-                mat.extension.texture_1.as_ref(),
-                mat.extension.texture_2.as_ref(),
-                mat.extension.texture_3.as_ref(),
-                mat.extension.texture_4.as_ref(),
-                mat.extension.texture_5.as_ref(),
-                mat.extension.cube_0.as_ref(),
-                mat.extension.array_0.as_ref(),
-                mat.extension.volume_0.as_ref(),
-            ]
-            .into_iter()
-            .flatten()
-            {
+            let slots = mat.extension.d2_slots().into_iter().chain([
+                &mat.extension.cube_0,
+                &mat.extension.array_0,
+                &mat.extension.volume_0,
+            ]);
+            for slot in slots.flatten() {
                 image_handles.push(slot.clone());
             }
         }
@@ -380,7 +372,7 @@ pub fn evict_closed_tab(trigger: On<TabClosed>, mut cache: ResMut<TabAssetCache>
 }
 
 // ============================================================================
-// Scene Diagnostics — snapshot for the panel
+// Scene Diagnostics: snapshot for the probe
 // ============================================================================
 
 /// Material / texture asset health. `images_missing > 0` is the red
@@ -513,8 +505,8 @@ impl CameraRenderTarget {
     }
 }
 
-/// The whole panel's input data, refreshed every Update by
-/// [`update_scene_diag_snapshot`].
+/// The Scene Diagnostics probe's input data, refreshed by
+/// [`update_scene_diag_snapshot`] at 4 Hz while a companion watches it.
 #[derive(Resource, Default)]
 pub struct SceneDiagSnapshot {
     pub material: MaterialDiagnostics,
@@ -715,9 +707,9 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
                 .map(|n| n.as_str().to_string())
                 .unwrap_or_else(|| format!("<unnamed {entity}>"));
             sample.push(match mat_ref {
-                Some(m) if resolved => format!("{label} — MaterialRef {} (resolved)", m.0),
-                Some(m) => format!("{label} — MaterialRef {} (pending)", m.0),
-                None => format!("{label} — no MaterialRef"),
+                Some(m) if resolved => format!("{label}: MaterialRef {} (resolved)", m.0),
+                Some(m) => format!("{label}: MaterialRef {} (pending)", m.0),
+                None => format!("{label}: no MaterialRef"),
             });
         }
 

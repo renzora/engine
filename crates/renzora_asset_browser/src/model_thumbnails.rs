@@ -189,20 +189,74 @@ pub struct ModelThumbnailPlugin;
 
 impl Plugin for ModelThumbnailPlugin {
     fn build(&self, app: &mut App) {
+        renzora::init_companion_jobs(app);
         app.init_resource::<PendingCaptures>()
             .init_resource::<PendingDiskLoads>()
             .init_resource::<CaptureCells>()
+            .init_resource::<CompanionCaptures>()
             .add_observer(on_scene_instance_ready)
             .add_systems(
                 Update,
                 (
                     intake_model_requests,
+                    collect_companion_captures,
                     tick_capture_lifecycle,
                     tick_warmup_and_dispatch,
                     resolve_model_disk_loads,
                 )
                     .chain(),
             );
+    }
+}
+
+/// Captures handed to the companion process, and the models it failed on.
+///
+/// A capture renders the model: its meshes and textures in GPU memory, a
+/// camera, a dozen frames. Done here it competes with the scene being edited;
+/// the companion renders the same thing with this same code (it installs this
+/// plugin) into the same cache file, and the editor only loads the PNG. When
+/// no companion is connected, or it could not render a model, the capture
+/// happens here as it always did.
+#[derive(Resource, Default)]
+struct CompanionCaptures {
+    /// Job id to the model and its cache file.
+    jobs: std::collections::HashMap<renzora::CompanionJobId, (PathBuf, PathBuf)>,
+    /// Models the companion failed on: captured here from now on.
+    local_only: std::collections::HashSet<PathBuf>,
+}
+
+/// Turn finished companion captures into cache loads, and failed ones back
+/// into requests the editor captures itself.
+fn collect_companion_captures(
+    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut captures: ResMut<CompanionCaptures>,
+    mut registry: ResMut<ModelThumbnailRegistry>,
+    mut disk_loads: ResMut<PendingDiskLoads>,
+    asset_server: Res<AssetServer>,
+    project: Option<Res<CurrentProject>>,
+) {
+    for answer in done.read() {
+        let Some((model_path, thumb_path)) = captures.jobs.remove(&answer.id) else {
+            continue;
+        };
+        let loaded = answer.result.is_ok()
+            && project.as_ref().is_some_and(|project| {
+                match try_load_cached_thumb(&thumb_path, &asset_server, project) {
+                    Some(handle) => {
+                        disk_loads.entries.push(PendingDiskLoad { model_path: model_path.clone(), handle });
+                        true
+                    }
+                    None => false,
+                }
+            });
+        if !loaded {
+            if let Err(why) = &answer.result {
+                warn!("[thumbnails] the companion could not render {}: {why}; rendering it here", model_path.display());
+            }
+            captures.local_only.insert(model_path.clone());
+            // Still in flight in the registry, so straight back to intake.
+            registry.incoming_requests.push_back(model_path);
+        }
     }
 }
 
@@ -215,13 +269,16 @@ fn intake_model_requests(
     mut cells: ResMut<CaptureCells>,
     asset_server: Res<AssetServer>,
     project: Option<Res<CurrentProject>>,
+    jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut companion: ResMut<CompanionCaptures>,
 ) {
     let Some(project) = project else {
-        // No project — drop the queue. Each request can be retried
+        // No project: drop the queue. Each request can be retried
         // after the user opens a project.
         registry.incoming_requests.clear();
         return;
     };
+    let mut jobs = jobs;
 
     for _ in 0..MAX_INTAKE_PER_FRAME {
         let Some(model_path) = registry.incoming_requests.pop_front() else {
@@ -241,8 +298,19 @@ fn intake_model_requests(
             }
         }
 
-        // Cache miss / stale: kick a GLB load. The capture lifecycle
-        // system will spawn the scene once the asset arrives.
+        // Cache miss / stale: the companion renders it when one is
+        // connected (see `CompanionCaptures`).
+        if !companion.local_only.contains(&model_path) {
+            let args = renzora::job_args::ModelThumbnail { project: project.path.clone(), model: model_path.clone() };
+            let target = model_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if let Some(id) = jobs.as_mut().and_then(|j| j.submit("model_thumbnail", target, &args)) {
+                companion.jobs.insert(id, (model_path, thumb_path));
+                continue;
+            }
+        }
+
+        // Here: kick a GLB load. The capture lifecycle system will spawn
+        // the scene once the asset arrives.
         let asset_path = project.make_asset_relative(&model_path);
         if std::path::Path::new(&asset_path).is_absolute() {
             // Path isn't under the project root — can't load via the

@@ -298,6 +298,12 @@ fn find_change(
     {
         return Some("editor settings or selection".into());
     }
+    // The orbit pivot's ring fades out after the camera stops, and the
+    // viewport has to keep rendering until it is gone, or the last frame holds
+    // a half-faded ring on screen.
+    if changed(world.get_resource_change_ticks::<renzora::core::viewport_types::PivotMarkerState>()) {
+        return Some("camera pivot marker".into());
+    }
 
     // Viewport panels resizing or docking. `Viewports` itself is written every
     // frame (hover, screen position), so hash only what the render depends on.

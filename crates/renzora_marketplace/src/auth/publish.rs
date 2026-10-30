@@ -23,7 +23,7 @@ use super::session::AuthSession;
 /// update rather than a first publish — and `download_filename` is derived from
 /// the title. `skip_serializing_if` omits the optional halves entirely rather
 /// than sending nulls.
-#[derive(Serialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct PublishMeta {
     pub name: String,
     pub description: String,
@@ -49,7 +49,7 @@ pub struct PublishMeta {
 /// The slice of an upload response we act on: the new item's id (to attach media
 /// to) and slug (to link to). The server returns the full `AssetDetail`; serde
 /// ignores the rest.
-#[derive(Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct UploadedItem {
     #[serde(default)]
     pub id: String,

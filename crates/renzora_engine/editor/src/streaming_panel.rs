@@ -446,7 +446,7 @@ pub fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let hint = note(
         commands,
         fonts,
-        "Streaming runs in Play / Simulate and in exported games. Edit mode keeps everything resident.",
+        "Streaming runs in Play / Simulate and in exported games. Edit mode keeps everything resident except terrain chunks, which stream around the viewport camera.",
         IDLE,
     );
     commands.entity(s_body).add_child(hint);

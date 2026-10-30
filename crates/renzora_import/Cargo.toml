@@ -57,6 +57,9 @@ quick-xml = "0.37"
 thiserror = "2"
 log = "0.4"
 serde_json = { version = "1", features = ["raw_value"] }
+# The settings and the result travel to the companion, which runs the
+# conversion when it is there (`job_args` in the contract crate).
+serde = { version = "1", features = ["derive"] }
 
 # `.rmip` baker — pulls in the `image` crate transitively for decode +
 # downsample. Loader-only consumers (editor, runtime) skip this feature

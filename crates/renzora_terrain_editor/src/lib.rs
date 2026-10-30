@@ -1,28 +1,29 @@
-//! Terrain Editor — sculpting, painting, and brush gizmo systems.
+//! Terrain Editor: the Terrain component's inspector body (Manage, Sculpt,
+//! Paint, Foliage), and the sculpting, painting and brush gizmo systems behind
+//! it.
 
-mod bar_widgets;
 mod brush_gizmo;
-mod brush_layer_paint;
-mod generate_bar;
+mod cluster_bake;
 mod generate_tool;
+mod landscape_ops;
+mod landscape_paint;
+mod operations;
 mod panel;
 mod plane_terrain;
-mod region_tool;
-mod settings_overlay;
 mod spline_gizmos;
+mod surface_ui;
 mod systems;
 mod terrain_inspector;
-mod terrain_layers_ui;
 
 use bevy::prelude::*;
 use renzora_editor_framework::{
-    ActiveTool, AppEditorExt, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue,
-    InspectorEntry, ToolEntry, ToolSection,
+    ActiveTool, AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry, ToolEntry,
+    ToolSection,
 };
 use renzora::SplinePath;
 use renzora_terrain::data::TerrainData;
 
-use terrain_inspector::{sync_active_tool_system, TerrainInspectorTab};
+use terrain_inspector::{follow_armed_tool_system, sync_active_tool_system, ShownTerrainTab, TerrainInspectorTab};
 
 #[derive(Default)]
 pub struct TerrainEditorPlugin;
@@ -32,10 +33,15 @@ impl Plugin for TerrainEditorPlugin {
         info!("[editor] TerrainEditorPlugin");
         // The terrain tools, as the Terrain component's inspector body.
         app.add_plugins(panel::TerrainToolsPanel);
+        operations::install(app);
+        cluster_bake::install(app);
+        // The material slot, the generator and every other control live in
+        // the component body (`panel`); the old Landscape Material section
+        // and the Generate / Resize / Edit Terrain entry points are folded in.
         app.register_inspector(terrain_data_entry())
-            .register_inspector(terrain_layers_ui::terrain_layers_entry())
             .init_resource::<TerrainInspectorTab>()
-            .init_resource::<terrain_layers_ui::ActiveBrushLayer>();
+            .init_resource::<ShownTerrainTab>()
+            .init_resource::<systems::HeightPick>();
 
         // **The terrain modes are not on the viewport shelf.** They were buttons
         // there next to the gizmos, until the brushes moved into this component:
@@ -44,89 +50,71 @@ impl Plugin for TerrainEditorPlugin {
         // second click for what the first one had already done.
         //
         // **Make Terrain is the exception, and stays.** It is the one entry here
-        // that acts on something that is *not* a terrain — it converts a
-        // selected plane into one — so there is no Terrain component for it to
+        // that acts on something that is *not* a terrain (it converts a
+        // selected plane into one), so there is no Terrain component for it to
         // live in. Without a shelf button it would have nowhere at all.
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_from_plane",
                 plane_terrain::TOOL_ICON,
-                "Make Terrain — sculpt this plane as terrain",
+                "Make Terrain: sculpt this plane as terrain",
                 ToolSection::Shelf("terrain.0-make"),
             )
             .visible_if(plane_terrain::plane_selected)
             .on_activate(plane_terrain::convert_selected),
         );
-        generate_bar::register(app);
-
-        // Terrain Settings overlay — the deferred-apply editor for grid size,
-        // resolution and height range.
-        settings_overlay::register(app);
-
-        // Generate tool — drag a region gizmo, preview the result, commit it
-        // with the bar's Generate button. Chained: the gizmo draws the
-        // rectangle the hover system has just moved, so running them the other
-        // way round would draw one frame behind the cursor.
-        app.init_resource::<generate_tool::GenerateHover>().add_systems(
-            Update,
-            (
-                generate_tool::generate_hover_system,
-                generate_tool::generate_gizmo_system,
-            )
-                .chain()
-                .run_if(generate_tool::generate_tool_active)
-                .run_if(renzora::core::not_in_play_mode),
-        );
-
-        // Region tool — grow/shrink the chunk grid by clicking ghost tiles.
-        app.init_resource::<region_tool::RegionHover>().add_systems(
-            Update,
-            (
-                region_tool::region_hover_system,
-                region_tool::region_gizmo_system,
-                region_tool::region_click_system,
-            )
-                .chain()
-                .run_if(region_tool::region_tool_active)
-                .run_if(renzora::core::not_in_play_mode),
-        );
-
         app
-            // ActiveTool follows the terrain inspector's active tab + selection.
-            .add_systems(Update, sync_active_tool_system)
-            // Sculpt systems — active when ActiveTool is TerrainSculpt
+            // ActiveTool follows the terrain inspector's armed tab + selection,
+            // and the shown pane follows a brush being armed.
+            .add_systems(Update, (sync_active_tool_system, follow_armed_tool_system).chain())
+            // Before the runtime reads a terrain's material and the resolver
+            // compiles it, so a new terrain finds Alpine Landscape and its
+            // textures already in the project.
+            .init_resource::<surface_ui::DefaultTextureBakes>()
+            .add_systems(
+                PreUpdate,
+                (surface_ui::provide_default_textures, surface_ui::finish_default_texture_bakes).chain(),
+            )
+            // Sculpt systems: active when ActiveTool is TerrainSculpt.
             .add_systems(
                 Update,
                 (
                     systems::terrain_sculpt_hover_system,
+                    // Between the two: an armed Pick turns the click that
+                    // the hover system just sampled into a target height.
+                    systems::height_pick_system
+                        .after(systems::terrain_sculpt_hover_system)
+                        .before(systems::terrain_sculpt_system),
                     systems::terrain_sculpt_system,
                     systems::terrain_brush_scroll_system,
                 )
                     .run_if(active_tool_is(ActiveTool::TerrainSculpt))
                     .run_if(renzora::core::not_in_play_mode),
             )
-            // Paint mode: hover raycast + brush-layer paint write. The
-            // `Painter` component is the single source of truth; the legacy
-            // splatmap paint systems were deleted when it landed.
+            // Paint mode: hover raycast + the landscape weight brush. The
+            // brush runs after the stroke opens, which clears the previous
+            // stroke's undo record, so its first dab is recorded too.
             .add_systems(
                 Update,
                 (
                     systems::terrain_paint_hover_system,
-                    brush_layer_paint::brush_layer_paint_system,
-                    brush_layer_paint::brush_layer_scroll_system,
+                    landscape_paint::landscape_paint_system
+                        .after(systems::terrain_paint_hover_system)
+                        .after(systems::terrain_stroke_begin_system)
+                        .before(systems::terrain_stroke_end_system),
+                    landscape_paint::landscape_brush_scroll_system,
                 )
                     .run_if(active_tool_is(ActiveTool::TerrainPaint))
                     .run_if(renzora::core::not_in_play_mode),
             )
-            // Layer commands from the panel (Add Layer, material drop/clear)
-            // apply even while another tool is active, so the panel is never
-            // a dead UI.
+            // Commands from the panel (a material dropped or cleared) apply
+            // even while another tool is active, so the panel is never a dead
+            // UI.
             .add_systems(
                 Update,
-                brush_layer_paint::painter_command_system
-                    .run_if(renzora::core::not_in_play_mode),
+                landscape_paint::landscape_command_system.run_if(renzora::core::not_in_play_mode),
             )
-            // Undo capture — active when any terrain tool is on. Undo/redo
+            // Undo capture: active when any terrain tool is on. Undo/redo
             // *replay* is handled by the central `renzora_undo` shortcut router
             // (Ctrl+Z/Ctrl+Y); strokes record onto the Scene stack here.
             .add_systems(
@@ -144,7 +132,7 @@ impl Plugin for TerrainEditorPlugin {
                 Update,
                 systems::sync_layer_preview_system.run_if(renzora::core::not_in_play_mode),
             )
-            // Spline gizmos — always drawn in the editor (not in play mode).
+            // Spline gizmos: always drawn in the editor (not in play mode).
             .add_systems(
                 Update,
                 spline_gizmos::draw_spline_gizmos_system.run_if(renzora::core::not_in_play_mode),
@@ -186,72 +174,18 @@ fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -
     move |tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| *t == expected)
 }
 
-fn first_terrain_entity(world: &World) -> Option<Entity> {
-    // `&World` can't build cached queries, so walk archetypes directly.
-    let terrain_id = world
-        .components()
-        .get_id(std::any::TypeId::of::<TerrainData>())?;
-    for archetype in world.archetypes().iter() {
-        if archetype.contains(terrain_id) {
-            if let Some(entity) = archetype.entities().iter().next() {
-                return Some(entity.id());
-            }
-        }
-    }
-    None
-}
-
-/// Activator for the terrain toolbar buttons. If the tool is already active,
-/// toggles back to Select; otherwise selects the first terrain entity, switches
-/// the inspector tab, and activates the brush tool.
-fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: ActiveTool) {
-    let cur = world
-        .get_resource::<ActiveTool>()
-        .copied()
-        .unwrap_or_default();
-    if cur == tool {
-        world.insert_resource(ActiveTool::Select);
-        // Park the tab too: `sync_active_tool_system` re-arms the tab's tool
-        // every frame while a terrain is selected, so leaving the tab on
-        // Sculpt/Paint would undo this toggle-off on the next frame.
-        world.insert_resource(TerrainInspectorTab::Size);
-        return;
-    }
-
-    // Act on the selected terrain when there is one, and only fall back to
-    // "whichever terrain the archetypes list first" when there isn't. Scenes
-    // used to hold a single terrain, so the fallback was the whole story; now
-    // that any plane can be converted into one (see [`plane_terrain`]), taking
-    // it unconditionally would drag the selection off the terrain you just
-    // clicked and onto an unrelated one.
-    let terrain_selected = world
-        .get_resource::<EditorSelection>()
-        .and_then(|s| s.get())
-        .is_some_and(|e| world.get::<TerrainData>(e).is_some());
-    if !terrain_selected {
-        if let Some(entity) = first_terrain_entity(world) {
-            if let Some(sel) = world.get_resource::<EditorSelection>() {
-                sel.set(Some(entity));
-            }
-        }
-    }
-    world.insert_resource(tab);
-    world.insert_resource(tool);
-}
-
 fn terrain_data_entry() -> InspectorEntry {
-    // Every real `TerrainData` change triggers a chunk rebuild pass, so all
-    // set_fns compare through `Deref` first and only write when the value
-    // actually moved — a no-op drag tick must not flag the component.
+    // The inspector draws the component body (`panel`) in place of these
+    // fields; they stay because scripted callers (the MCP's
+    // set_component_field) read and write the terrain through them. Every set
+    // compares first and only writes when the value moved: every real
+    // `TerrainData` change runs the chunk rebuild check.
     //
-    // The *structural* fields — grid size, chunk size and resolution — are
-    // deliberately not here. A scrubbable field writes on every tick of the
-    // drag, and each of those writes despawns and respawns every chunk with a
-    // fresh trimesh collider; dragging the grid from 1 to 8 built every size in
-    // between and hung the editor. They live in the Terrain Settings overlay
-    // instead (see `settings_overlay`), which stages the edit and applies it
-    // once. What's left below is the set that `terrain_data_changed_system`
-    // handles on its cheap in-place path, where a live drag is fine.
+    // The *structural* fields (grid size, chunk size, resolution) are
+    // deliberately not here. Each write of one rebuilds every chunk with a
+    // fresh collider, so they go through the Manage tab, which stages them
+    // until Apply (`panel::manage::ManageDraft`) or resizes one row at a time
+    // (`panel::chunk_map`).
     InspectorEntry {
         type_id: "terrain_data",
         display_name: "Terrain",
@@ -278,41 +212,6 @@ fn terrain_data_entry() -> InspectorEntry {
                     })
                 },
                 set_fn: |_, _, _| {},
-            },
-            // The three whole-terrain operations. They were a group on the
-            // viewport shelf, which put them a column away from the terrain they
-            // act on and left that column with a ragged three-button block.
-            // Here they sit under the terrain they will act on, which is the
-            // only terrain they could have meant.
-            FieldDef {
-                name: "Edit Terrain…",
-                field_type: FieldType::Button { icon: "resize" },
-                get_fn: |_, _| None,
-                set_fn: |w, e, _| settings_overlay::open(w, e),
-            },
-            FieldDef {
-                name: "Generate",
-                field_type: FieldType::Button { icon: generate_tool::TOOL_ICON },
-                get_fn: |_, _| None,
-                set_fn: |w, _, _| {
-                    activate_terrain_tool(
-                        w,
-                        TerrainInspectorTab::Generate,
-                        ActiveTool::TerrainGenerate,
-                    )
-                },
-            },
-            FieldDef {
-                name: "Resize",
-                field_type: FieldType::Button { icon: "selection-plus" },
-                get_fn: |_, _| None,
-                set_fn: |w, _, _| {
-                    activate_terrain_tool(
-                        w,
-                        TerrainInspectorTab::Region,
-                        ActiveTool::TerrainRegion,
-                    )
-                },
             },
             FieldDef {
                 name: "Min Height",

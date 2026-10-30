@@ -658,7 +658,30 @@ pub fn update_thumbnail_cache(
     mut cache: ResMut<ThumbnailCache>,
     images: Res<Assets<Image>>,
     project: Option<Res<CurrentProject>>,
+    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
 ) {
+    // The resize and encode is the slow part, tens of ms for a big texture,
+    // and it ran on the main thread. A plain image file goes to the companion
+    // instead, which reads it from disk itself; anything it cannot decode
+    // (HDR, EXR, DDS, KTX2, `.rmip`) is still saved here from the loaded image.
+    let mut save = |image: &Image, source: &Path, cache_path: &Path| {
+        let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        let plain = matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp");
+        if plain {
+            if let Some(jobs) = jobs.as_deref_mut() {
+                let args = renzora::job_args::TextureThumbnail {
+                    source: source.to_path_buf(),
+                    cache: cache_path.to_path_buf(),
+                    size: CACHE_THUMB_SIZE,
+                };
+                let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                if jobs.submit("texture_thumbnail", name, &args).is_some() {
+                    return;
+                }
+            }
+        }
+        save_thumbnail_to_disk(image, cache_path);
+    };
     // Collect paths that are still in the loading set and check their state.
     let loading: Vec<PathBuf> = cache.loading.iter().cloned().collect();
 
@@ -677,7 +700,7 @@ pub fn update_thumbnail_cache(
                     if cache.pending_disk_save.remove(&path) {
                         if let Some(p) = project.as_deref() {
                             if let Some(cache_path) = texture_thumb_path(&path, p) {
-                                save_thumbnail_to_disk(image, &cache_path);
+                                save(image, &path, &cache_path);
                             }
                         }
                     }
@@ -708,7 +731,7 @@ pub fn update_thumbnail_cache(
                 cache.pending_disk_save.remove(&path);
                 if let Some(p) = project.as_deref() {
                     if let Some(cache_path) = texture_thumb_path(&path, p) {
-                        save_thumbnail_to_disk(image, &cache_path);
+                        save(image, &path, &cache_path);
                     }
                 }
             }

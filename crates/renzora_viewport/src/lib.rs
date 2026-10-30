@@ -31,9 +31,11 @@ mod nav;
 mod shading;
 mod overlay_2d;
 mod panel;
+mod pivot_label;
 mod stats_overlay;
 pub mod toolbar;
 mod tool_shelf;
+mod work_card;
 pub mod particle_drop;
 pub mod persistence;
 pub mod play_mode;
@@ -101,6 +103,9 @@ impl Plugin for ViewportPlugin {
             .init_resource::<renzora::core::EnvironmentSuppressed>()
             .init_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
             .init_resource::<CameraOrbitSnapshot>()
+            // Filled in by whatever is filling the scene in (a new terrain);
+            // shown by `work_card`.
+            .init_resource::<renzora::core::viewport_types::ViewportWork>()
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
             .init_resource::<external_runtime::ExternalRuntime>()
@@ -111,8 +116,6 @@ impl Plugin for ViewportPlugin {
             // Per-material-type viz-swap state (one of each per registered type).
             .init_resource::<render_systems::LastVizState<StandardMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<StandardMaterial>>()
-            .init_resource::<render_systems::LastVizState<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
-            .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
             .init_resource::<render_systems::LastVizState<renzora_terrain::material::TerrainCheckerboardMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::material::TerrainCheckerboardMaterial>>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
@@ -145,7 +148,6 @@ impl Plugin for ViewportPlugin {
                 render_systems::update_render_toggles,
                 (
                     render_systems::apply_visualization_mode_for::<StandardMaterial>,
-                    render_systems::apply_visualization_mode_for_custom::<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>,
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::material::TerrainCheckerboardMaterial>,
                     // Grass is not here: it draws through its own instanced
                     // pipeline rather than a `Material`, so there is no material
@@ -295,6 +297,7 @@ impl Plugin for ViewportPlugin {
         game_panel::register(app);
         camera_preview_panel::register(app);
         modal_hud::register(app);
+        pivot_label::register(app);
         load_overlay::register(app);
         overlay_2d::register(app);
         stats_overlay::register(app);

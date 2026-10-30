@@ -83,10 +83,18 @@ contact on a start), so those mean the same on every backend.
 ### Collider shapes, layers and rotation
 
 `ResolvedShape` is one of `Cuboid`, `Sphere`, `Capsule` (upright, by radius and
-half height), `Cylinder` and `TriMesh` in 3D, and `Rectangle`, `Circle` and
-`Capsule2d` in 2D. A backend builds it at the entity's world scale, placed at
-`offset` and turned by `rotation` relative to the entity (2D reads only the turn
-about Z).
+half height), `Cylinder`, `TriMesh` and `Heightfield` in 3D, and `Rectangle`,
+`Circle` and `Capsule2d` in 2D. A backend builds it at the entity's world scale,
+placed at `offset` and turned by `rotation` relative to the entity (2D reads only
+the turn about Z).
+
+`Heightfield` is a grid of heights (`HeightfieldData`: `columns` samples along X
+by `rows` along Z, stored row by row, spanning `0..size` from the entity's
+origin). Terrain chunks collide as one: it builds and queries far faster than the
+same ground as a trimesh. A backend without a native heightfield can build
+`HeightfieldData::triangles()` instead, which is the same surface. A mesh
+collider whose entity carries a `HeightfieldSource` is resolved from it rather
+than from the entity's `Mesh3d`.
 
 `layers` is a `CollisionLayers` pair: the layers a collider is on
 (`memberships`) and the ones it collides with (`filters`). Two colliders touch
