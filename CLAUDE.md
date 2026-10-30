@@ -584,6 +584,32 @@ Several may be registered, and two languages coexist in one project. See
 
 ## 8. Code conventions
 
+- **NEVER edit anything in the `bevy/` directory.** It is Bevy's own source,
+  pulled from bevyengine/bevy's `main` as a git subtree, and only the project
+  maintainer changes it: they decide when Bevy is updated and which patches it
+  carries. No edits, no reformatting, no "small fixes", no moved or deleted
+  files, no running scripts or tools that write into it. If a task seems to need
+  a change in Bevy (a bug, a missing hook, an API that is in the way), stop and
+  tell the user what the change would be and why; do not make it. Work around it
+  from Renzora's side, or wait for the maintainer.
+- **Everything built on Bevy comes from this repo, never from crates.io.** Bevy
+  is `bevy/`; every third-party crate that depends on Bevy (avian, gaussian
+  splatting, the XR crates, navigation, ...) lives in `vendor/` and points at
+  `bevy/` **by path**. Never add a crates.io dependency on a Bevy crate, or on
+  any crate that itself pulls one in: Cargo would build a second Bevy beside
+  ours, and two Bevys in one program corrupt the `World`. crates.io is still
+  right for everything not built on Bevy (serde, wgpu, image, glam, ...).
+  - **Adding a Bevy-based crate:** copy it into `vendor/<name>/`, change its
+    Bevy dependency (and any `bevy_*` sub-crate dependency) to the path in
+    `bevy/`, add it to the workspace members, then fix whatever does not compile
+    against Bevy `main`.
+  - **Updating one:** bring in the new upstream version, re-point its Bevy
+    dependency if the update changed that line, and fix what breaks.
+  - **`crates/` is Renzora's crates only**; third-party code never goes there.
+  - A check in `cargo renzora` and CI fails the build if `Cargo.lock` ever holds
+    a Bevy crate from crates.io, naming the crate that pulled it in. That means a
+    dependency needs vendoring, not that the check needs loosening.
+
 - **Edit source files with the Edit/Write tools — never through the shell.**
   No `python - <<'EOF'` heredocs, no `sed -i`, no `perl -pi`, no "write a patch
   script and run it". Those rewrites are **invisible**: the transcript shows a
@@ -684,7 +710,8 @@ Several may be registered, and two languages coexist in one project. See
 | `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
 | `crates/renzora_scripting/` | Scripting system: hooks, the `ScriptCommand` vocabulary, context, declarative `ScriptExtension`, and the `ScriptBackend` trait a language plugin implements |
 | `plugins/` | **Bundled plugins** (`plugins/avian_physics`): `plugin!` crates compiled into the binary; delete a folder to drop one |
-| `vendor/` | **Third-party crates carried in the tree**, each because we had to change it (a port to our Bevy, a fix). `crates/` is Renzora's own crates only; a third-party crate that builds unchanged stays an ordinary crates.io dependency |
+| `bevy/` | **Bevy's own source**, a git subtree of bevyengine/bevy `main`. **Never edit anything in it** (see §8); only the maintainer updates or patches it |
+| `vendor/` | **Every third-party crate built on Bevy**, each pointing at `bevy/` by path (see §8). `crates/` is Renzora's own crates only; crates.io supplies only crates that are not built on Bevy |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
 | `crates/renzora_cloth`, `crates/renzora_oit` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |

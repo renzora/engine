@@ -69,7 +69,7 @@ members = [
 ]
 ```
 
-`crates/` holds only Renzora's own crates. Third-party crates the engine has had to change (a port to its Bevy, a fix of ours) live under `vendor/`; any that build unchanged come from crates.io as ordinary dependencies.
+`crates/` holds only Renzora's own crates. Bevy itself is `bevy/`, a git subtree of Bevy's `main` that only the maintainer changes, and every third-party crate built on Bevy lives under `vendor/`, pointing at `bevy/` by path. Nothing built on Bevy comes from crates.io, so the build only ever contains one Bevy; crates.io supplies the ordinary libraries that are not built on Bevy.
 
 A few consequences worth knowing:
 
