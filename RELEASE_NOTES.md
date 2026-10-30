@@ -1,10 +1,15 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 16:57
+- fix(clouds): volumetric clouds render again, with their shaders ported to WESL
+- feat(export): a game export leaves clouds out when no scene uses them
+- refactor(physics): avian is the engine crate `renzora_avian_physics`, and the engine checkout no longer has a `plugins/` folder
+
 ## 2026-10-30 16:15
 - fix(scene): scenes saved before the move to Bevy main load with their hierarchy intact instead of flattened
 
 ## 2026-10-30 16:06
-- feat(clouds): volumetric clouds ship with the engine as a bundled plugin instead of a marketplace install
+- feat(clouds): volumetric clouds ship with the engine instead of as a marketplace install
 
 ## 2026-10-30 16:03
 - docs(physics): the physics docs no longer point to the Rapier plugin, which has been retired; avian is the physics engine

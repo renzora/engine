@@ -1,0 +1,17 @@
+[package]
+name = "renzora_clouds"
+version = "0.1.0"
+edition = "2021"
+description = "Volumetric clouds raymarched through a spherical deck that follows the camera."
+
+# No `editor` feature: lean runtime crate. The Clouds inspector entry is in the
+# nested renzora_clouds_editor crate (crates/renzora_clouds/editor), linked only
+# by the editor bundle.
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

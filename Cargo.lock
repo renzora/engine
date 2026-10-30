@@ -647,18 +647,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "avian_physics"
-version = "0.1.0"
-dependencies = [
- "avian2d",
- "avian3d",
- "bevy",
- "renzora",
- "renzora_parkour",
- "renzora_physics",
-]
-
-[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7204,6 +7192,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_avian_physics"
+version = "0.1.0"
+dependencies = [
+ "avian2d",
+ "avian3d",
+ "bevy",
+ "renzora",
+ "renzora_parkour",
+ "renzora_physics",
+]
+
+[[package]]
 name = "renzora_bloom_effect"
 version = "0.1.0"
 dependencies = [
@@ -7249,6 +7249,24 @@ dependencies = [
  "bevy",
  "bevy_silk",
  "renzora",
+]
+
+[[package]]
+name = "renzora_clouds"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "serde",
+]
+
+[[package]]
+name = "renzora_clouds_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_clouds",
 ]
 
 [[package]]
@@ -7380,6 +7398,7 @@ dependencies = [
  "renzora_bloom_effect",
  "renzora_bloom_effect_editor",
  "renzora_camera",
+ "renzora_clouds_editor",
  "renzora_code_editor",
  "renzora_command_palette",
  "renzora_companion",
@@ -8308,7 +8327,6 @@ dependencies = [
 name = "renzora_runtime"
 version = "0.1.0"
 dependencies = [
- "avian_physics",
  "bevy",
  "image",
  "libloading 0.8.9",
@@ -8318,8 +8336,10 @@ dependencies = [
  "renzora_atmosphere",
  "renzora_audio",
  "renzora_audio_backend",
+ "renzora_avian_physics",
  "renzora_bloom_effect",
  "renzora_cloth",
+ "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
  "renzora_dylib",

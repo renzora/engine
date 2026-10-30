@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -128,13 +128,12 @@ physics = [
     "renzora_engine/physics",
     "renzora_navmesh?/physics",
 ]
-# The physics engine the checkout bundles, `plugins/avian_physics`: a plugin like
-# any installed one (Rapier is one too), compiled in so a fresh build simulates.
-# Its own feature rather than part of `physics` so an export can keep the physics
-# API and ship another engine instead. It turns `physics` on because simulating
-# nothing is all it could do without it; the exporter turns it off along with
-# both physics capabilities.
-avian = ["dep:avian_physics", "physics"]
+# The engine's physics backend, `renzora_avian_physics`, compiled in so a fresh
+# build simulates. Its own feature rather than part of `physics` so an export
+# can keep the physics API and ship another engine instead. It turns `physics`
+# on because simulating nothing is all it could do without it; the exporter
+# turns it off along with both physics capabilities.
+avian = ["dep:renzora_avian_physics", "physics"]
 # Kept as two names because the exporter's capability list and saved export
 # settings use them. Each once chose an avian crate; with the engine in one
 # plugin, both mean the same thing.
@@ -263,6 +262,7 @@ antialiasing = ["dep:renzora_antialiasing", "renzora/antialiasing"]
 atmosphere = ["dep:renzora_atmosphere"]
 environment_map = ["dep:renzora_environment_map"]
 skybox = ["dep:renzora_skybox"]
+clouds = ["dep:renzora_clouds"]
 
 [dependencies]
 # Feature crates that used to be loaded from `plugins/`, now statically linked.
@@ -346,12 +346,7 @@ renzora_input = { path = "../renzora_input" }
 # OpenXR/VR boot mode — desktop only, behind the `xr` feature (see [features]).
 renzora_xr = { path = "../renzora_xr", optional = true }
 renzora_physics = { path = "../renzora_physics", optional = true }
-# A bundled plugin (see `xtask/src/sync.rs`), moved out of the generated block so
-# the `avian` feature can strip it. `bundled` drops its installed-plugin entry
-# point. Deleting `plugins/avian_physics` is enough to remove it: the next
-# `cargo renzora` prunes this line and the `dep:` in `avian`, leaving that
-# feature an alias of `physics` so saved export settings naming it still build.
-avian_physics = { path = "../../plugins/avian_physics", features = ["bundled"], optional = true }
+renzora_avian_physics = { path = "../renzora_avian_physics", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_animation = { path = "../renzora_animation", optional = true }
@@ -412,6 +407,7 @@ renzora_volumetric_fog = { path = "../renzora_volumetric_fog", optional = true }
 renzora_atmosphere = { path = "../renzora_atmosphere", optional = true }
 renzora_environment_map = { path = "../renzora_environment_map", optional = true }
 renzora_skybox = { path = "../renzora_skybox", optional = true }
+renzora_clouds = { path = "../renzora_clouds", optional = true }
 
 # The plugin loader. NOT a generated entry: it is added by hand at the end of
 # each binary's assembly, so an installed plugin's systems land where a
@@ -430,7 +426,6 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
-clouds = { path = "../../plugins/clouds", features = ["bundled"] }
 renzora_live_link = { path = "../renzora_live_link" }
 renzora_net = { path = "../renzora_net" }
 renzora_profiler = { path = "../renzora_profiler" }

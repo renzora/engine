@@ -466,8 +466,12 @@ mod tests {
             "a 5deg sun should be well down on noon: {:?}",
             transfer.sun,
         );
+        // A third, not the quarter this once was: Bevy's Earth medium had its
+        // Mie absorption and scattering swapped, absorbing nine times too much
+        // haze, and a low sun came out redder than a real one. With them the
+        // right way round a 5deg sun keeps about 30% blue to its red.
         assert!(
-            transfer.sun.z < 0.25 * transfer.sun.x,
+            transfer.sun.z < 0.35 * transfer.sun.x,
             "...and strongly red by then: {:?}",
             transfer.sun,
         );

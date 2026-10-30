@@ -1,0 +1,28 @@
+[package]
+name = "renzora_avian_physics"
+version = "0.1.0"
+edition = "2021"
+description = "Avian as a physics backend: simulates the 3D world, the 2D world or both. The default engine, since it is installed before any other backend."
+
+# Linked into the runtime behind its `avian` feature (see `renzora_runtime`'s
+# Cargo.toml), so a lean export with no physics, or one whose Project Settings
+# pick another engine for every world, leaves it out.
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+# `xpbd_joints` is avian's joint SOLVER. Without it a joint component is
+# accepted, kept and silently ignored: bodies move as if unjoined.
+avian3d = { workspace = true, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
+avian2d = { workspace = true, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
+
+[dev-dependencies]
+# The tests drive the backend through the engine's own physics plugin, and the
+# parkour traversal tests need real colliders to probe, which is why they live
+# here rather than in `renzora_parkour`.
+bevy = { workspace = true, features = ["debug"] }
+renzora_physics = { path = "../renzora_physics" }
+renzora_parkour = { path = "../renzora_parkour" }
+
+[lints]
+workspace = true

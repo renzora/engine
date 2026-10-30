@@ -1,10 +1,11 @@
 //! Avian as a physics backend, for both worlds: `avian3d` and `avian2d`.
 //!
-//! Avian is a Bevy plugin itself, built on Bevy's ECS. It reaches this plugin as
-//! an ordinary crates.io dependency, and it shares the engine's World because
-//! the plugin build takes every Bevy crate avian needs from the SDK instead of
-//! compiling its own: avian is compiled against the engine's Bevy, and its code
-//! calls into the engine's shared Bevy image like the plugin's own does.
+//! An engine crate, statically linked like the rest, behind `renzora_runtime`'s
+//! `avian` feature so a game with no physics, or one whose Project Settings
+//! pick another engine for every world, leaves it out. Avian is built on Bevy,
+//! so it comes from `vendor/avian`, compiled against the engine's own `bevy/`;
+//! that is also why this cannot be an installed plugin, which would compile a
+//! second avian, and with it a second Bevy, of its own.
 //!
 //! Two backends, not one, because avian is two crates. `avian3d` and `avian2d`
 //! are compiled from the same source but every type in them is distinct, so the
@@ -28,6 +29,7 @@ use bevy::prelude::*;
 pub mod backend_2d;
 pub mod backend_3d;
 
+#[derive(Default)]
 pub struct AvianPhysicsPlugin;
 
 impl Plugin for AvianPhysicsPlugin {
@@ -44,7 +46,7 @@ impl Plugin for AvianPhysicsPlugin {
     }
 }
 
-renzora::plugin!(AvianPhysicsPlugin, Runtime);
+renzora::add!(AvianPhysicsPlugin, Runtime);
 
 /// True if any ANCESTOR of `entity` carries `PhysicsBodyData`, i.e. this
 /// entity's collider should attach to that body rather than get a body of

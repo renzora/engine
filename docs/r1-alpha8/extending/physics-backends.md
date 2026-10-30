@@ -5,20 +5,17 @@ behind a Rust trait, the way a mixer or a scripting language is. See
 [Audio backends](./audio-backends.md) and [Script backends](./script-backends.md),
 whose shape this mirrors.
 
-The bundled backend is the `avian_physics` plugin: an ordinary plugin, written
-the way any installed one is, that the engine ships in `plugins/avian_physics`
-and **links into the binary** (see
-[Bundled plugins](./native-plugins.md#bundled-plugins)). It registers one backend
-per avian crate, `avian3d` for the 3D world and `avian2d` for the 2D one, and is
-present whenever the engine is built with `physics_3d` or `physics_2d`. The trait
-they register through is public, so another plugin can bring a different engine.
+The engine's own backend is the `renzora_avian_physics` crate, linked into the
+binary. It registers one backend per avian crate, `avian3d` for the 3D world
+and `avian2d` for the 2D one, and is present whenever the engine is built with
+`physics_3d` or `physics_2d`. The trait they register through is public, so a
+plugin can bring a different engine.
 
 Physics stays removable. A lean export of a project with no physics leaves avian
 out, and so does one whose Project Settings pick another engine for every world
 with physics (the export's **Avian physics engine** toggle, the runtime's
-`avian` feature). A checkout that wants no avian at all deletes `plugins/avian_physics`
-(or runs `cargo renzora remove avian_physics`). The next build then has the API
-and no engine, and the Console says that no physics engine is installed.
+`avian` feature). A build without that feature has the API and no engine, and
+the Console says that no physics engine is installed.
 
 Everything in the engine that uses physics goes through this API, and nothing
 else: ragdolls, parkour, the navmesh's collider obstacles, `move_controller`,
@@ -231,8 +228,8 @@ backend_3d = "my_engine"   # leave it out for the default
 backend_2d = "avian2d"
 ```
 
-The default is the first backend registered for that world, which is the
-bundled avian on any build that has it. A name whose plugin is not installed
+The default is the first backend registered for that world, which is avian on
+any build that has it. A name whose plugin is not installed
 logs a warning and keeps the default, so a project opened on a machine without
 the plugin still has physics. Once the project's choice is applied, the log
 says which engine runs each world: `[Physics] running 3D on `my_engine`, 2D on
@@ -251,9 +248,9 @@ A backend's `detach` must leave nothing running. Avian strips its parts from
 every entity and pauses its own clock; the engine marks `PhysicsSettings`
 changed on every switch, which is how a re-selected backend learns to unpause.
 
-## The bundled backend
+## The engine's backend
 
-`plugins/avian_physics` maps the contract onto avian: `PhysicsBodyData`
+`renzora_avian_physics` maps the contract onto avian: `PhysicsBodyData`
 onto `RigidBody`, `Mass`, `SweptCcd` and the rest, `ResolvedCollider` onto
 `Collider`, `Friction`, `Restitution`, `Sensor` and `CollisionLayers`,
 `PhysicsJoint` onto avian's joint of the same kind, commands onto

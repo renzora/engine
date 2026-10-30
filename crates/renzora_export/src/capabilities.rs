@@ -249,6 +249,16 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
+        id: "clouds",
+        section: "sky",
+        label: "Clouds",
+        help: "Volumetric clouds over the scene.",
+        bevy_features: &[],
+        runtime_features: &["clouds"],
+        default_on: true,
+        group: None,
+    },
+    Capability {
         id: "networking",
         section: "systems",
         label: "Multiplayer (networking)",
@@ -495,9 +505,9 @@ pub const CAPABILITIES: &[Capability] = &[
     // Physics is two capabilities because scenes are detected per world, and
     // because saved export settings name both. Turning both off strips
     // `renzora_physics` outright: the shared `physics` feature is enabled only
-    // by these, never listed in `default` on its own. The physics ENGINE is a
-    // plugin: avian is bundled (the `avian` capability below), any other ships
-    // like every installed plugin.
+    // by these, never listed in `default` on its own. The physics ENGINE is
+    // separate: avian is an engine crate (the `avian` capability below), any
+    // other ships like every installed plugin.
     Capability {
         id: "physics_3d",
         section: "simulation",
@@ -523,7 +533,7 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: true,
         group: None,
     },
-    // The bundled engine (`plugins/avian_physics`), as its own switch so a game
+    // The engine's own backend (`renzora_avian_physics`), as its own switch so a game
     // set to another backend in Project Settings > Physics keeps the physics API
     // and leaves avian behind. Two parents rather than a `group`, which takes
     // one: [`enforce_dependencies`] turns it off when both physics toggles are.
@@ -965,6 +975,9 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "atmosphere" => &["renzora_atmosphere::", "set_sun_angles"],
         "environment_map" => &["renzora_environment_map::", "ReflectionProbeSource"],
         "skybox" => &["renzora_skybox::"],
+        // Scenes saved before the type moved into its crate store it under the
+        // contract crate's path, which the scene loader still maps onto it.
+        "clouds" => &["renzora_clouds::", "renzora::clouds::CloudsData"],
 
         // ── Post-processing ──────────────────────────────────────────────────
         //
@@ -1180,7 +1193,7 @@ pub struct ProjectScan {
     /// Settings picked for each world, `None` for the default.
     ///
     /// The scenes cannot answer this, since every backend reads the same
-    /// components, and it is what decides whether the bundled avian ships.
+    /// components, and it is what decides whether avian ships.
     physics_backends: [Option<String>; 2],
 }
 
@@ -1385,7 +1398,7 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
                 "physics_2d" => scan.saw("avian2d::") || (physics && two_d),
                 // Avian ships when a world that keeps physics simulates with it:
                 // its own name, or no name, since the default is the first
-                // backend registered and that is the bundled one.
+                // backend registered and that is avian.
                 "avian" => {
                     let [b3, b2] = &scan.physics_backends;
                     let uses = |b: &Option<String>, own: &str| b.as_deref().is_none_or(|n| n == own);
@@ -1501,6 +1514,7 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "atmosphere",
     "environment_map",
     "skybox",
+    "clouds",
     // the post-process stack, parent included: bevy's own post-process pipeline
     // is part of what goes.
     "postfx",
@@ -1810,7 +1824,7 @@ mod tests {
         assert!(!s["avian"], "no physics means no physics engine either");
     }
 
-    /// The bundled avian ships by default, and stays behind when Project
+    /// Avian ships by default, and stays behind when Project
     /// Settings picks another engine for every world that has physics.
     #[test]
     fn avian_follows_the_selected_backend() {

@@ -39,14 +39,7 @@ pub use gi::*;
 pub mod world_environment;
 pub use world_environment::*;
 
-// The cloud deck's authored settings. Here rather than in the `clouds` plugin
-// because `renzora_level_presets` builds a sky by inserting `CloudsData` and is
-// compiled into the editor binary, while the renderer is a plugin loaded at
-// runtime — a binary cannot name a type that lives in a plugin.
-pub mod clouds;
-pub use clouds::*;
-
-// Auto-exposure settings. Same boundary reason as `clouds`: `level_presets`
+// Auto-exposure settings. Here because `level_presets`
 // inserts and queries it, and the `debugger` plugin reads it for the live EV
 // readout — both compiled into the binary, while the metering is a plugin.
 pub mod auto_exposure;

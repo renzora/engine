@@ -1,16 +1,13 @@
-//! `CloudsData` — the authored volumetric-cloud settings.
+//! `CloudsData`: the authored volumetric-cloud settings.
 //!
-//! The renderer lives in the `clouds` **native plugin**; only the settings type
-//! is here. That split is the rule this crate exists for: `renzora_level_presets`
-//! builds a sky by inserting `CloudsData`, and it is compiled into the editor
-//! binary while the cloud renderer is a library loaded at runtime. A binary
-//! cannot name a type that lives in a plugin, so the type has to sit where both
-//! can reach it — and it must be *one* definition, or the `TypeId` the preset
-//! inserts is not the one the plugin queries for and the sky silently never
-//! appears.
+//! Defined here, with the renderer, so the engine core knows nothing about
+//! clouds. A World Environment gets its clouds from this crate's observer on
+//! `renzora::WorldEnvironmentSpawned`, not from the preset naming this type;
+//! a build without this crate gets the same sky with no clouds.
 //!
-//! Same reasoning as [`crate::gi`] and [`crate::wind`], and the same as the note
-//! at the top of [`crate::world_environment`].
+//! A scene saved while the type lived in the contract crate stored it as
+//! `renzora::clouds::CloudsData`. The scene loader matches a moved type by its
+//! short name, so those scenes load into this one.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -40,7 +37,7 @@ pub struct CloudsData {
     pub coverage: f32,
     /// How opaque the cloud material is, 0..1.
     pub density: f32,
-    /// Size of the cloud formations — smaller means larger, broader systems.
+    /// Size of the cloud formations: smaller means larger, broader systems.
     pub scale: f32,
     /// Frequency of the erosion detail relative to the base shape.
     pub detail_scale: f32,
@@ -54,18 +51,18 @@ pub struct CloudsData {
 
     // ── Wind ──
     /// Wind speed in metres per second. Cloud features are kilometres across, so
-    /// this has to be weather-system fast — a literal 2 m/s breeze moves the
+    /// this has to be weather-system fast: a literal 2 m/s breeze moves the
     /// deck by a thousandth of a cloud per second and reads as a still image.
     pub speed: f32,
-    /// Wind direction in degrees (0–360). Ignored while
+    /// Wind direction in degrees (0 to 360). Ignored while
     /// [`follow_world_wind`](Self::follow_world_wind) is set.
     pub wind_direction: f32,
-    /// Take heading and drift from the world wind (`crate::WindState`) instead
-    /// of the two fields above.
+    /// Take heading and drift from the world wind (`renzora::WindState`)
+    /// instead of the two fields above.
     ///
     /// On by default, because a deck sliding one way over grass leaning the
     /// other is the single most obvious way a sky reads as fake. `speed` still
-    /// matters when this is on — it is the drift the deck reaches at reference
+    /// matters when this is on: it is the drift the deck reaches at reference
     /// wind, so the authored value keeps its meaning and the world wind scales
     /// it. Turn this off for a deliberately decoupled sky (a stylised level, or
     /// a cutscene where the ground wind is scripted and the sky must not be).
@@ -92,7 +89,7 @@ pub struct CloudsData {
     /// Skylight filling the top of the deck.
     pub ambient_color: (f32, f32, f32),
     /// Skylight filling the base of the deck. This is what actually lights a
-    /// real cloud's underside — scattered blue sky, not darkness.
+    /// real cloud's underside: scattered blue sky, not darkness.
     ///
     /// Keep it *saturated*, not merely dark. Grey cloud is almost never a
     /// brightness problem: a warm direct term summed with a near-neutral fill
@@ -104,7 +101,7 @@ pub struct CloudsData {
     /// Extinction multiplier: how fast light is absorbed inside the cloud, and
     /// therefore how hard the sun-facing/shadowed contrast is.
     pub absorption: f32,
-    /// Eccentricity of the forward scattering lobe — the silver lining.
+    /// Eccentricity of the forward scattering lobe: the silver lining.
     pub forward_scattering: f32,
     /// Eccentricity of the backward lobe, which lights clouds seen against the
     /// sun. Negative by convention.

@@ -120,7 +120,7 @@ impl FromWorld for CloudNoisePipelines {
         let shader: Handle<Shader> = world
             .resource::<AssetServer>()
             // Crate name in the path — `clouds`, not `renzora_clouds`.
-            .load("embedded://clouds/clouds_bake.wgsl");
+            .load("embedded://renzora_clouds/clouds_bake.wesl");
 
         let layout = BindGroupLayoutDescriptor::new(
             "cloud_noise_layout",

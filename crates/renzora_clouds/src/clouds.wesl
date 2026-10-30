@@ -20,8 +20,8 @@
 // loses the whole 1.15 km deck to f32 rounding; kilometres plus the analytic
 // height expansion in `height_at` keeps every intermediate small.
 
-#import bevy_pbr::forward_io::VertexOutput
-#import bevy_pbr::mesh_view_bindings::view
+import bevy_pbr::render::forward_io::VertexOutput;
+import bevy_pbr::render::mesh_view_bindings::view;
 
 struct CloudsUniform {
     // xyz = unit vector toward the sun, w unused.

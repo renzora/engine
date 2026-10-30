@@ -66,7 +66,7 @@ impl Sun {
 
 /// Night stars — procedural starfield rendered on a sky dome.
 ///
-/// Same boundary reason as [`Sun`] and [`crate::clouds::CloudsData`]:
+/// Same boundary reason as [`Sun`]:
 /// `renzora_level_presets` builds a night sky by constructing one of these while
 /// compiled into the editor binary, and the renderer is a plugin.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]

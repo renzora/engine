@@ -13,7 +13,7 @@ use renzora_physics::{
     CollisionShapeData, CollisionShapeType, Physics2d, PhysicsBodyData, PhysicsBodyType,
     PhysicsPlugin,
 };
-use avian_physics::AvianPhysicsPlugin;
+use renzora_avian_physics::AvianPhysicsPlugin;
 
 /// Build the same app shape the runtime has (minus render): fixed manual time
 /// so the fixed-timestep physics schedule actually runs during `app.update()`.

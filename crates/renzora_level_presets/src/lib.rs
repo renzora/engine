@@ -1428,11 +1428,9 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // ── Lighting ─────────────────────────────────────────────
             (renzora_environment_map::EnvironmentMapComponentSettings::default(),),
             // ── Atmosphere / sky ─────────────────────────────────────
-            (
-                renzora_atmosphere::AtmosphereComponentSettings::default(),
-                renzora::CloudsData::default(),
-                night_stars,
-            ),
+            // Clouds are a plugin's, added by its observer on
+            // `WorldEnvironmentSpawned` (see `environment_spawned`).
+            (renzora_atmosphere::AtmosphereComponentSettings::default(), night_stars),
             // ── Screen-space reflections (still a WorldEnvironment effect) ──
             // The camera image-quality set — auto-exposure, tonemapping, bloom,
             // TAA — migrated to the CAMERA bucket (seeded onto each `SceneCamera`
@@ -1464,8 +1462,8 @@ fn spawn_world_environment(world: &mut World) -> Entity {
 ///   sun nearly black, which is not what the eye sees outdoors.
 /// - The ground under the air is a pale, sunlit field (0.67), which brightens
 ///   the low sky; the air itself 60 km deep.
-/// - Broken cloud, a little under half the sky: at half, the sky over the
-///   hills read grey rather than blue.
+/// - Clouds, if the clouds plugin is present, are its to set: it gives this
+///   look broken cloud over a little under half the sky.
 /// - Exponential haze thin enough that the floor stays clear and the hills at
 ///   700 m are about half hidden. The fog has no height falloff, so a camera
 ///   high above the land sees more of it than one standing on the floor.
@@ -1490,9 +1488,6 @@ fn outdoor_daylight(world: &mut World, environment: Entity) {
         atmosphere.ground_albedo = 0.67;
         atmosphere.top_radius = atmosphere.bottom_radius + 60_000.0;
     }
-    if let Some(mut clouds) = entity.get_mut::<renzora::CloudsData>() {
-        clouds.coverage = 0.4;
-    }
     if let Some(mut env) = entity.get_mut::<renzora::WorldEnvironment>() {
         env.fog.enabled = true;
         env.fog.mode = 1;
@@ -1500,6 +1495,14 @@ fn outdoor_daylight(world: &mut World, environment: Entity) {
         // Haze lit by the sky alone, without a glow gathered toward the sun.
         env.fog.directional_light_color = [0.0, 0.0, 0.0];
     }
+}
+
+/// Lets plugins add their part of a freshly spawned sky (clouds, from the
+/// clouds plugin), then applies what they queued, so the entity is complete by
+/// the time the preset or starter returns and its spawn is recorded for undo.
+fn environment_spawned(world: &mut World, entity: Entity, outdoor_daylight: bool) {
+    world.trigger(renzora::WorldEnvironmentSpawned { entity, outdoor_daylight });
+    world.flush();
 }
 
 /// The New Environment camera's lens and picture: a 90 degree view across a
@@ -1543,7 +1546,11 @@ fn register_lighting_presets(app: &mut App) {
         display_name: "World Environment",
         icon: "globe",
         category: "general",
-        spawn_fn: spawn_world_environment,
+        spawn_fn: |world: &mut World| {
+            let environment = spawn_world_environment(world);
+            environment_spawned(world, environment, false);
+            environment
+        },
     });
 
     // "New Environment" scene starter: the environment entity (sun +
@@ -1559,6 +1566,7 @@ fn register_lighting_presets(app: &mut App) {
         spawn_fn: |world: &mut World| {
             let environment = spawn_world_environment(world);
             outdoor_daylight(world, environment);
+            environment_spawned(world, environment, true);
             renzora_terrain::starter::spawn_starter_terrain(world);
             // On the floor at eye height, looking across it at the hills.
             let (eye, target) = renzora_terrain::starter::starter_view();

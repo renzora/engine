@@ -326,9 +326,8 @@ bevy_reflect = { path = "bevy/crates/bevy_reflect", default-features = false }
 bevy_light = { path = "bevy/crates/bevy_light", default-features = false }
 bevy_picking = { path = "bevy/crates/bevy_picking", default-features = false }
 # Avian, vendored at its 0.8.0 release (`vendor/avian`, a git subtree) and
-# pointed at `bevy/`. The engine itself does not link avian (it is the bundled
-# `avian_physics` plugin); the vendored `bevy_silk`'s optional collision feature
-# names it too. Keeping the entry here also keeps avian in Cargo.lock, which the
+# pointed at `bevy/`. Linked by `renzora_avian_physics`; the vendored
+# `bevy_silk`'s optional collision feature names it too. Keeping the entry here also keeps avian in Cargo.lock, which the
 # SDK ships so a plugin depending on avian resolves the same graph.
 avian3d = { path = "vendor/avian/crates/avian3d", default-features = false }
 avian2d = { path = "vendor/avian/crates/avian2d", default-features = false }

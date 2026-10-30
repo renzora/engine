@@ -175,6 +175,18 @@ app.register_scene_starter(SceneStarter {
 
 `spawn_fn` may spawn any number of entities, insert resources, or switch workspace. Re-registering an existing id is ignored rather than replacing.
 
+### Adding to a new World Environment
+
+When the editor spawns a World Environment (the preset, or the New Environment starter), it triggers `renzora::WorldEnvironmentSpawned` on the new entity. Observe it to put your part of the sky on the entity; this is how the engine's clouds get there without the preset naming them:
+
+```rust
+app.add_observer(|spawned: On<renzora::WorldEnvironmentSpawned>, mut commands: Commands| {
+    commands.entity(spawned.entity).insert(MyHaze::default());
+});
+```
+
+`outdoor_daylight` is set for the New Environment starter's clear mid-morning look, so a component with a look of its own can match it. A scene being loaded does not fire it; it already carries what it was saved with.
+
 ### Hierarchy icons
 
 So the tree shows your component with its own glyph instead of the generic one:

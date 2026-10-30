@@ -23,6 +23,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_autosave::AutoSavePlugin::default());
     app.add_plugins(renzora_bloom_effect_editor::BloomEditorPlugin::default());
     app.add_plugins(renzora_camera::CameraPlugin::default());
+    app.add_plugins(renzora_clouds_editor::CloudsEditorPlugin::default());
     app.add_plugins(renzora_code_editor::CodeEditorPlugin::default());
     app.add_plugins(renzora_command_palette::CommandPalettePlugin::default());
     app.add_plugins(renzora_companion::CompanionHostPlugin::default());

@@ -5,9 +5,8 @@
 //! 2D/3D routing, script actions, read-back state, collide-and-slide) and no
 //! solver. A physics engine implements [`PhysicsBackend`], adds its systems to
 //! the [`PhysicsSet`]s, and hands itself to
-//! [`AppPhysicsBackendExt::add_physics_backend`]. Avian is the bundled
-//! `avian_physics` plugin, written like any installed one, and anyone can write
-//! another.
+//! [`AppPhysicsBackendExt::add_physics_backend`]. Avian is the engine's own
+//! (`renzora_avian_physics`), and anyone can write another as a plugin.
 //!
 //! Here rather than in `renzora_physics` because a backend plugin must name
 //! these types without linking the physics crate, and a boundary type has

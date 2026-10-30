@@ -4,12 +4,12 @@ Add rigid bodies, colliders, joints and forces to your game through the `renzora
 
 ## Physics engines
 
-Renzora's physics API lives in `renzora_physics`, and the simulation is a backend behind it. The bundled backend, the `avian_physics` plugin compiled into the engine, runs **[Avian](https://github.com/Jondolf/avian)**: the `avian3d` crate for the 3D world and `avian2d` for the 2D one. `PhysicsPlugin` is part of the engine's foundation (installed by `add_engine_plugins`), so physics is available in the editor, in a shipped game, and on the headless server. A build that leaves avian out (see [Physics backends](../extending/physics-backends.md)) keeps the API and simulates nothing until another engine is installed. The two worlds coexist in one app and never touch each other's bodies.
+Renzora's physics API lives in `renzora_physics`, and the simulation is a backend behind it. The engine's own backend, `renzora_avian_physics`, runs **[Avian](https://github.com/Jondolf/avian)**: the `avian3d` crate for the 3D world and `avian2d` for the 2D one. `PhysicsPlugin` is part of the engine's foundation (installed by `add_engine_plugins`), so physics is available in the editor, in a shipped game, and on the headless server. A build that leaves avian out (see [Physics backends](../extending/physics-backends.md)) keeps the API and simulates nothing until another engine is installed. The two worlds coexist in one app and never touch each other's bodies.
 
 - In the **editor**, the companion `renzora_physics_editor` pauses the simulation at startup so your scene sits still until you press play (both worlds pause and resume together).
 - In a **shipped game** the simulation runs immediately.
 
-The bundled engine is avian. Another engine can install as a plugin; pick one for each world in **Project Settings > Physics**. Everything on this page works the same on any engine, and the console says which one runs each world once the project has loaded (`3D physics: avian3d, 2D physics: avian2d`). Writing your own engine's backend is covered in [Physics backends](../extending/physics-backends.md).
+The engine's own physics engine is avian. Another engine can install as a plugin; pick one for each world in **Project Settings > Physics**. Everything on this page works the same on any engine, and the console says which one runs each world once the project has loaded (`3D physics: avian3d, 2D physics: avian2d`). Writing your own engine's backend is covered in [Physics backends](../extending/physics-backends.md).
 
 ### Which world does an entity go to?
 

@@ -41,6 +41,26 @@ pub struct WorldEnvironment {
     //   pub gi: GiSection,
 }
 
+/// Triggered when the editor spawns a World Environment (the preset, or the New
+/// Environment starter), after the engine's own sky components are on it.
+///
+/// This is how a plugin puts its part of the sky on the entity without the
+/// engine naming it: the clouds plugin observes this and adds its clouds, so
+/// with no clouds plugin installed the same preset builds a sky without them.
+/// Only a freshly spawned environment fires it; a scene being loaded already
+/// carries whatever it was saved with.
+///
+/// Observers run before the preset returns, but their `Commands` apply at the
+/// preset's own flush, so read the entity back after that, not inside them.
+#[derive(EntityEvent, Clone, Copy, Debug)]
+pub struct WorldEnvironmentSpawned {
+    pub entity: Entity,
+    /// The New Environment starter's look: a clear mid-morning over open land,
+    /// rather than the preset's neutral defaults. A plugin with a look of its
+    /// own (thinner cloud, say) picks it from this.
+    pub outdoor_daylight: bool,
+}
+
 /// Distance-fog sub-section.
 ///
 /// `enabled` defaults to `false` so a freshly-spawned `WorldEnvironment` matches

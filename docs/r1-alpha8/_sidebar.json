@@ -168,6 +168,7 @@
             { "slug": "rendering/shadows", "title": "Shadows" },
             { "slug": "rendering/water", "title": "Water & Oceans" },
             { "slug": "rendering/wind", "title": "Wind" },
+            { "slug": "rendering/clouds", "title": "Clouds" },
             { "slug": "rendering/particle-system", "title": "Particle System (.vfx)" },
             { "slug": "rendering/2d-lighting", "title": "2D Lighting" },
             { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" },

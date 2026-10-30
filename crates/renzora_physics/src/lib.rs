@@ -5,8 +5,8 @@
 //! world, resolving colliders, script actions, the read-back state scripts
 //! see, world settings, collide-and-slide, and the scene queries
 //! particles use. What actually simulates is a backend behind
-//! `renzora::physics::PhysicsBackend`, registered by a plugin: the bundled
-//! `avian_physics`, or one installed beside the engine.
+//! `renzora::physics::PhysicsBackend`, registered by `renzora_avian_physics`
+//! or by a plugin installed beside the engine.
 //!
 //! Without any backend this crate still builds and runs: entities are routed
 //! and colliders resolved, and nothing moves (the console says so, see

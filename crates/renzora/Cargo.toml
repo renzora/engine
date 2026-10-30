@@ -123,14 +123,13 @@ ron = "0.8"
 # `wgsl-in` is the real one: `wgsl.rs` parses and validates self-contained
 # shaders here so no other crate re-rolls it.
 naga = { version = "30", features = ["termcolor", "wgsl-in"] }
-# NOT real dependencies either: feature pins, like `naga` above. Avian (the
-# bundled `plugins/avian_physics`, or one a user installs) needs `approx` on
-# these two Bevy math crates, and nothing else in the engine asks for it. Left to
-# avian, the bundled plugin decides how Bevy itself is compiled: deleting it
+# NOT real dependencies either: feature pins, like `naga` above. Avian
+# (`renzora_avian_physics`) needs `approx` on these two Bevy math crates, and
+# nothing else in the engine asks for it. Left to avian, the physics crate
+# decides how Bevy itself is compiled: leaving it out of a build
 # flips the feature off, every Bevy crate above them gets a new build hash, and
 # the next build recompiles about 1150 crates (and restamps every installed
-# plugin) for the sake of one physics plugin. An installed avian would be refused
-# outright, since the SDK's Bevy would lack the feature. Pinned here, Bevy
+# plugin) for the sake of one crate. Pinned here, Bevy
 # compiles the same with or without it.
 bevy_curve = { path = "../../bevy/crates/bevy_curve", default-features = false, features = ["approx"] }
 bevy_shape = { path = "../../bevy/crates/bevy_shape", default-features = false, features = ["approx"] }

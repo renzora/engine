@@ -716,13 +716,13 @@ fn sync_export_workspace(
     // `renzora/`). `target` also covers `target/export-src` itself, so the sync
     // can't recurse into its own destination.
     //
-    // `plugins` is not here but has its own pass, `sync_bundled_plugins`: the
-    // checkout's bundled plugins are part of the engine build, while anything
-    // else in there is an installed plugin that only the linked-in plugin path
-    // needs, and that path stages and patches its own copy.
+    // `plugins` holds installed plugins, never part of the engine build: the
+    // ones an export links in are staged, with a patched manifest, by
+    // `stage_static_plugins`, and a blanket copy here would keep undoing that.
     const TOP_SKIP: &[&str] = &[
         "target", ".git", ".github", ".vscode", ".idea", "dist", "docs",
         "node_modules", "templates", "disabled", "docker", ".claude", ".devcontainer",
+        "plugins",
     ];
     // Root FILES `stage_branding` owns outright. Copying the engine's own
     // `icon.ico` in would put the Renzora logo back on the game's executable
@@ -747,8 +747,6 @@ fn sync_export_workspace(
             std::fs::create_dir_all(&d).map_err(|e| format!("mkdir {}: {e}", d.display()))?;
             if name.to_string_lossy() == "crates" {
                 sync_crates(&s, &d, &drop_plugins, &mut copied)?;
-            } else if name.to_string_lossy() == "plugins" {
-                sync_bundled_plugins(&s, &d, &mut copied)?;
             } else {
                 sync_dir(&s, &d, &mut copied)?;
             }
@@ -810,29 +808,6 @@ fn sync_crates(
             std::fs::copy(&s, &d).map_err(|e| format!("copy {}: {e}", s.display()))?;
             *copied += 1;
         }
-    }
-    Ok(())
-}
-
-/// Sync the checkout's **bundled** plugins: the `plugins/<dir>/` crates the
-/// engine compiles into its binary (`renzora_runtime` depends on them by path,
-/// so the copy does not resolve without them). A `dylib` one is an installed
-/// plugin instead, and is left to `stage_static_plugins`, which copies the
-/// plugins an export links in with a patched manifest that a blanket
-/// copy-if-newer here would keep undoing.
-fn sync_bundled_plugins(src: &Path, dest: &Path, copied: &mut usize) -> Result<(), String> {
-    for entry in std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let s = entry.path();
-        let Ok(manifest) = std::fs::read_to_string(s.join("Cargo.toml")) else {
-            continue;
-        };
-        if declares_dylib(&manifest) {
-            continue;
-        }
-        let d = dest.join(entry.file_name());
-        std::fs::create_dir_all(&d).map_err(|e| format!("mkdir {}: {e}", d.display()))?;
-        sync_dir(&s, &d, copied)?;
     }
     Ok(())
 }

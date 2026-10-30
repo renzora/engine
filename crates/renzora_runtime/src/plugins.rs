@@ -18,9 +18,6 @@ use bevy::app::App;
 pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "localization")]
     app.add_plugins(renzora_lang::LangPlugin::default());
-    #[cfg(feature = "avian")]
-    app.add_plugins(avian_physics::AvianPhysicsPlugin);
-    app.add_plugins(clouds::CloudsPlugin);
     #[cfg(feature = "animation")]
     app.add_plugins(renzora_animation::AnimationPlugin::default());
     #[cfg(feature = "antialiasing")]
@@ -31,10 +28,14 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_audio::AudioPlugin::default());
     #[cfg(feature = "audio")]
     app.add_plugins(renzora_audio_backend::RenzoraAudioPlugin::default());
+    #[cfg(feature = "avian")]
+    app.add_plugins(renzora_avian_physics::AvianPhysicsPlugin::default());
     #[cfg(feature = "bloom")]
     app.add_plugins(renzora_bloom_effect::BloomEffectPlugin::default());
     #[cfg(feature = "cloth")]
     app.add_plugins(renzora_cloth::ClothPlugin::default());
+    #[cfg(feature = "clouds")]
+    app.add_plugins(renzora_clouds::CloudsPlugin::default());
     #[cfg(feature = "distance_fog")]
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin::default());
     #[cfg(feature = "dof")]

@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use renzora::scene_query::{SceneQueries, SceneQueryBatch, SceneRay};
 use renzora_physics::{CollisionShapeData, CollisionShapeType, PhysicsPlugin};
-use avian_physics::AvianPhysicsPlugin;
+use renzora_avian_physics::AvianPhysicsPlugin;
 
 /// The app shape `avian2d_collision.rs` uses: manual fixed time so the physics
 /// schedule (and with it the collider trees) runs on `app.update()`.

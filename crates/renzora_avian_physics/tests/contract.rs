@@ -21,7 +21,7 @@ use renzora_physics::read_state::CollisionReadState;
 use renzora_physics::{
     CollisionShapeData, Physics2d, PhysicsBodyData, PhysicsPlugin, PhysicsReadState,
 };
-use avian_physics::AvianPhysicsPlugin;
+use renzora_avian_physics::AvianPhysicsPlugin;
 
 fn physics_app() -> App {
     let mut app = App::new();

@@ -235,34 +235,21 @@ engine or installed beside it.
 
 | | Crate type | Compiled | Ships in |
 |---|---|---|---|
-| **In-workspace** | `rlib` + `add!` | with the engine, statically | the engine binary |
-| **Bundled** | `rlib` + `plugin!` in the checkout's `plugins/<name>/` | with the engine, statically | the engine binary |
+| **In-workspace** | `rlib` + `add!` in `crates/` | with the engine, statically | the engine binary |
 | **Native** | `dylib` in `<exe dir>/plugins/<name>/` | on the installing machine, against the staged SDK | the editor, as source |
 
 An in-workspace plugin is an engine feature; a native plugin is something a user
 installs. A native plugin reaches a shipped **game** two ways: copied beside the
 binary, or compiled into it by a lean export (§ `renzora_export::build`).
 
-### Bundled plugins: a native plugin's source, linked in
-
-A **bundled** plugin is written exactly like a native one (`renzora::plugin!`,
-only `bevy` + `renzora`) but lives in the engine checkout's `plugins/` and is
-compiled into the binary, so the engine ships with it and a checkout drops it by
-deleting the folder (`cargo renzora remove <name>`). `plugins/avian_physics` is
-the engine's physics. `xtask/src/sync.rs` (`scan_bundled`) finds the one
-`plugin!` line and wires the crate into `renzora_runtime` (Runtime) or
-`renzora_editor` (Editor) like an `add!` crate; avian is hand-moved out of the
-generated block and gated on its own `avian` feature (which turns `physics`
-on), and the exporter's `avian` capability drops it when the project has no
-physics or `project.toml` picks another backend for every world. The manifest has no `[workspace]` and no `crate-type`, declares
-`[features] bundled = []` (the dependency turns it on so `plugin!` drops its
-`#[no_mangle]` loader symbols, which two linked-in plugins would both define;
-the `renzora/static_plugins` switch cannot be used because it would also strip
-them from every installed plugin built against the SDK), and takes
-`bevy = { version = "0.20", default-features = false }`, since a bare
-`bevy = "0.20"` would unify Bevy's default features onto the whole engine. It is
-a workspace member by being a path dependency, so `cargo test --profile dist -p
-avian_physics` works and CI runs it.
+**There is no third kind.** Something that ships with the engine is a crate in
+`crates/`, made strippable from game exports by an optional dependency behind a
+`renzora_runtime` feature and an export capability (`renzora_clouds` and
+`renzora_avian_physics` are both done this way). Something standalone is a
+native plugin, installed beside the editor. The engine checkout has no
+`plugins/` folder: a "bundled plugin" linked in from there was tried and
+removed on 2026-10-30, because it was a crate in all but name and made the
+engine name the plugin anyway.
 
 ### In-workspace plugins are statically linked, via a build-time generator
 
@@ -331,8 +318,7 @@ stable id rather than its contents, so nothing downstream caught it either.
 
 Never run `cargo build` inside an installed native plugin's directory. The
 editor's `plugins/` is outside the workspace, so cargo resolves it a fresh Bevy
-from crates.io; the result builds, loads, and corrupts the World. (The
-checkout's own `plugins/` holds bundled plugins, which are workspace members.)
+from crates.io; the result builds, loads, and corrupts the World.
 
 A native plugin's third-party dependencies are ordinary crates it compiles
 for itself (`rapier3d`, `sysinfo`, `mlua`). It must not depend on a crate built
@@ -341,7 +327,7 @@ the World. A `RUSTC_WRAPPER` shim that substituted the engine's own copies of
 such crates was tried and removed on 2026-10-24: no plugin needed it, it broke
 six that use plain crates, and the `shared.tsv` it read made every SDK staging
 walk all of cargo's fingerprints, minutes per build. Bevy-based functionality
-belongs in a bundled plugin (`plugins/`) or in the engine.
+belongs in the engine, as a crate.
 
 Rust **scripts** (`crates/renzora_rust_script`) are the same mechanism with a
 per-entity convention on top — same driver, same SDK, same loading. See §7.
@@ -725,7 +711,6 @@ Several may be registered, and two languages coexist in one project. See
 | `xtask/src/sdk.rs` | Stages the plugin SDK. (`xtask/src/native_plugin.rs` is gone: the first-party plugins left for the marketplace and everything that existed only to build them went with them) |
 | `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
 | `crates/renzora_scripting/` | Scripting system: hooks, the `ScriptCommand` vocabulary, context, declarative `ScriptExtension`, and the `ScriptBackend` trait a language plugin implements |
-| `plugins/` | **Bundled plugins** (`plugins/avian_physics`, `plugins/clouds`): `plugin!` crates compiled into the binary; delete a folder to drop one |
 | `bevy/` | **Bevy's own source**, a git subtree of bevyengine/bevy `main`. **Never edit anything in it** (see §8); only the maintainer updates or patches it |
 | `vendor/` | **Every third-party crate built on Bevy**, each pointing at `bevy/` by path (see §8). `crates/` is Renzora's own crates only; crates.io supplies only crates that are not built on Bevy |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |

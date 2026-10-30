@@ -34,7 +34,7 @@ fn parkour_app() -> App {
     app.init_asset::<Mesh>();
     app.add_plugins((
         PhysicsPlugin,
-        avian_physics::AvianPhysicsPlugin,
+        renzora_avian_physics::AvianPhysicsPlugin,
         ParkourPlugin,
     ));
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(

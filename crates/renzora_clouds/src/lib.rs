@@ -1,4 +1,4 @@
-//! Renzora Clouds — volumetric clouds raymarched through a spherical deck.
+//! Renzora Clouds: volumetric clouds raymarched through a spherical deck.
 //!
 //! The model is the Horizon Zero Dawn one (Schneider/Vos) with Frostbite's
 //! scattering integration (Hillaire): a tileable Perlin-Worley base map defines
@@ -13,40 +13,29 @@
 //! * [`material`] carries them plus one uniform block to the shader.
 //! * `sync_clouds` here keeps a camera-centred dome alive and packs the uniform.
 //!
-//! The dome is *only* a way to get one fragment per sky pixel; `clouds.wgsl`
+//! The dome is *only* a way to get one fragment per sky pixel; `clouds.wesl`
 //! marches from the camera against real shell geometry and never touches the
 //! dome surface. That is what lets the deck curve down to the horizon by itself
 //! and what lets a camera climb up through it.
+//!
+//! The engine core names no cloud type: a World Environment gets its clouds
+//! from `add_to_world_environment`, an observer on
+//! `renzora::WorldEnvironmentSpawned`, and the Inspector section is the nested
+//! `renzora_clouds_editor` crate, linked only by the editor bundle.
 
 use bevy::light::atmosphere::ScatteringMedium;
 use bevy::light::Atmosphere;
 use bevy::prelude::*;
 
-pub mod inspector;
+pub mod data;
 pub mod material;
 pub mod noise;
 pub mod sky;
 
+pub use data::CloudsData;
 pub use material::{CloudMaterial, CloudsUniform};
 pub use noise::CloudNoiseTextures;
 pub use sky::SkyTransfer;
-
-// ============================================================================
-// Data
-// ============================================================================
-
-/// The authored settings now live in the **contract crate**, not here.
-///
-/// `renzora_level_presets` builds a sky by inserting `CloudsData`, and it is
-/// compiled into the editor binary while this renderer is a plugin loaded at
-/// runtime — a binary cannot name a type that lives in a plugin. Moving it to
-/// `renzora` gives both sides one definition and therefore one `TypeId`; two
-/// definitions would mean the preset inserts a component this plugin's queries
-/// never match, and the sky silently never appears.
-///
-/// Re-exported so the rest of this crate (and anything that used
-/// `renzora_clouds::CloudsData`) keeps its old path.
-pub use renzora::CloudsData;
 
 // ============================================================================
 // Tuning constants
@@ -96,7 +85,7 @@ const FALLBACK_INNER_RADIUS: f32 = 6_360_000.0;
 const FALLBACK_OUTER_RADIUS: f32 = 6_460_000.0;
 
 /// How far the warp field runs relative to the base silhouette. **Must match
-/// `WARP_SPREAD` in `clouds.wgsl`** — it is only here so the scroll can be
+/// `WARP_SPREAD` in `clouds.wesl`**: it is only here so the scroll can be
 /// wrapped at the field's own period.
 const WARP_SPREAD: f32 = 3.0;
 
@@ -714,6 +703,17 @@ fn sync_clouds(
     }
 }
 
+/// Puts clouds in a World Environment the editor has just spawned. The engine
+/// names no cloud type, so this is the only way a fresh sky gets them, and a
+/// build without this crate builds the same sky with none.
+///
+/// The New Environment look is broken cloud a little under half the sky: at
+/// half, the sky over its hills read grey rather than blue.
+fn add_to_world_environment(spawned: On<renzora::WorldEnvironmentSpawned>, mut commands: Commands) {
+    let coverage = if spawned.outdoor_daylight { 0.4 } else { CloudsData::default().coverage };
+    commands.entity(spawned.entity).insert(CloudsData { coverage, ..default() });
+}
+
 // ============================================================================
 // Plugin
 // ============================================================================
@@ -723,24 +723,21 @@ pub struct CloudsPlugin;
 
 impl Plugin for CloudsPlugin {
     fn build(&self, app: &mut App) {
-        info!("[clouds] native plugin");
-        bevy::asset::embedded_asset!(app, "clouds.wgsl");
-        bevy::asset::embedded_asset!(app, "clouds_bake.wgsl");
+        info!("[runtime] CloudsPlugin");
+        bevy::asset::embedded_asset!(app, "clouds.wesl");
+        bevy::asset::embedded_asset!(app, "clouds_bake.wesl");
         app.register_type::<CloudsData>()
             .add_plugins((
                 MaterialPlugin::<CloudMaterial>::default(),
                 noise::CloudNoisePlugin,
             ))
             .init_resource::<CloudsState>()
-            .add_systems(Update, sync_clouds);
-
-        inspector::register(app);
+            .add_systems(Update, sync_clouds)
+            .add_observer(add_to_world_environment);
     }
 }
 
-// `Runtime`, explicitly: `plugin!` defaults to `Editor` where `add!` defaulted
-// to `Runtime`, so omitting it would stop shipping clouds to games.
-renzora::plugin!(CloudsPlugin, Runtime);
+renzora::add!(CloudsPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -836,7 +833,7 @@ mod tests {
         let line = source
             .lines()
             .find(|line| line.trim_start().starts_with(&prefix))
-            .unwrap_or_else(|| panic!("`{name}` is not declared in clouds.wgsl"));
+            .unwrap_or_else(|| panic!("`{name}` is not declared in clouds.wesl"));
         let value = line.split('=').nth(1).unwrap().trim().trim_end_matches(';');
         match value.split_once('/') {
             Some((numerator, denominator)) => {
@@ -862,7 +859,7 @@ mod tests {
     /// number, so tuning one side cannot silently invalidate the other.
     #[test]
     fn the_default_detail_stays_inside_what_the_default_march_resolves() {
-        let shader = include_str!("clouds.wgsl");
+        let shader = include_str!("clouds.wesl");
         let fine_fraction = wgsl_const(shader, "FINE_STEP_FRACTION");
         let safe = wgsl_const(shader, "DETAIL_NYQUIST_SAFE");
 
@@ -885,7 +882,7 @@ mod tests {
 
     #[test]
     fn bake_shader_compiles() {
-        validate("clouds_bake", include_str!("clouds_bake.wgsl"));
+        validate("clouds_bake", include_str!("clouds_bake.wesl"));
     }
 
     /// The dome shader imports two Bevy modules that naga cannot resolve on its
@@ -904,9 +901,9 @@ mod tests {
         ";
         let source: String = std::iter::once(STUB.to_string())
             .chain(
-                include_str!("clouds.wgsl")
+                include_str!("clouds.wesl")
                     .lines()
-                    .filter(|line| !line.trim_start().starts_with("#import"))
+                    .filter(|line| !line.trim_start().starts_with("import "))
                     .map(|line| line.to_string()),
             )
             .collect::<Vec<_>>()
