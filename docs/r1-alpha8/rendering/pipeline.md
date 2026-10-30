@@ -135,12 +135,19 @@ changing, and freezes it otherwise. A map filters for a few frames after:
 - the component is added or edited (new source, new intensity),
 - its source image asset loads or changes,
 - the camera carrying it turns active,
-- for the sky probe, the sun, the atmosphere or the environment settings change.
+- for the sky probe, the sun, the atmosphere or the environment settings change,
+- the images it filters into are new or were re-uploaded.
 
-A map on an inactive camera, or at zero intensity, never filters. A frozen map
-keeps its last result, which for an unchanged input is the correct one. The
-freeze happens in the render world, so the component itself stays on the camera
-and nothing that reads or writes it needs to know.
+A map on an inactive camera, or at zero intensity, otherwise never filters. A
+frozen map keeps its last result, which for an unchanged input is the correct
+one. The freeze happens in the render world, so the component itself stays on
+the camera and nothing that reads or writes it needs to know.
+
+The last rule is the one exception to the inactive-camera freeze. Bevy creates
+the radiance and irradiance images empty, and only the filter writes into them,
+so a new pair always gets a full filter first, whatever its camera is doing.
+Freezing a new pair left it empty, and every rough surface lit by it reflected
+garbage instead of the sky.
 
 ## Planar reflections: `renzora_planar_reflection`
 

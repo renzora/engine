@@ -7,9 +7,11 @@
 //! bevyengine/bevy#24517). The GPU work is small; the CPU side is not. Each
 //! filter rebuilds a uniform buffer, a dozen texture views, 1x1 placeholder
 //! textures and every bind group, all on the render thread, all holding the
-//! device's locks. A profile of an idle editor measured it at 7.2 ms of render
-//! thread per frame, and the lock traffic stretched unrelated 16-byte uniform
-//! writes elsewhere in the prepare phase to milliseconds.
+//! device's locks. A profile of an idle editor on Bevy 0.19 measured it at
+//! 7.2 ms of render thread per frame, and the lock traffic stretched unrelated
+//! 16-byte uniform writes elsewhere in the prepare phase to milliseconds. On
+//! Bevy main it is cheaper but not free: on the Bistro scene, about 1 ms of GPU
+//! and 1 to 1.5 ms of render thread per idle frame.
 //!
 //! The editor carries several of these at once: the primary camera's sky bake,
 //! the material preview's HDRI (present from startup, inactive while its panel
@@ -59,6 +61,16 @@ pub(crate) struct EnvMapFilterGate {
     was_active: EntityHashMap<bool>,
     /// What last re-armed each map, for the log line.
     armed_by: EntityHashMap<&'static str>,
+    /// The diffuse and specular images each map was last filled into. Bevy
+    /// creates them empty (the specular one with no data at all) and only the
+    /// filter puts anything in them, so a pair the gate has not filled yet must
+    /// be filled whatever else is true. Freezing a new pair because its camera
+    /// was inactive or idle at that moment left it empty for good, and every
+    /// rough surface then mirrored garbage: blue and beige blotches in the
+    /// viewport, a black shadow side in the import preview.
+    filled: EntityHashMap<(AssetId<Image>, AssetId<Image>)>,
+    /// Frames left of a fill that no freeze condition may cut short.
+    fill_left: EntityHashMap<u32>,
     /// How many maps filtered last frame, so the log line below fires only when
     /// that changes.
     filtering_logged: Option<usize>,
@@ -83,7 +95,9 @@ type FilterGateData = (
 /// filter writes into, when the source image asset changes, when the camera
 /// holding it turns active, and, for an atmosphere probe, while the sky is
 /// settling after a change. A map on an inactive camera or at zero intensity is
-/// frozen regardless, since nothing is looking at it.
+/// otherwise frozen, since nothing is looking at it, with one exception: images
+/// it has never been filled into get a full window first, because a frozen map
+/// keeps only what is already in them.
 pub(crate) fn update_env_map_filter_gate(
     mut gate: ResMut<EnvMapFilterGate>,
     sky: Res<SkyBakeDirty>,
@@ -92,10 +106,10 @@ pub(crate) fn update_env_map_filter_gate(
 ) {
     let changed_images: Vec<AssetId<Image>> = image_events
         .read()
-        .filter_map(|event| match event {
+        .filter_map(|event| match *event {
             AssetEvent::Added { id }
             | AssetEvent::Modified { id }
-            | AssetEvent::LoadedWithDependencies { id } => Some(*id),
+            | AssetEvent::LoadedWithDependencies { id } => Some(id),
             _ => None,
         })
         .collect();
@@ -115,7 +129,28 @@ pub(crate) fn update_env_map_filter_gate(
         let became_active = !redraw_idle
             && camera_active
             && !gate.was_active.insert(entity, camera_active).unwrap_or(false);
-        let rearm = if generated.is_changed() {
+        // Images the filter has never written into, or that were re-uploaded
+        // (which puts their empty starting data back).
+        let targets = env_light.as_ref().map(|e| (e.diffuse_map.id(), e.specular_map.id()));
+        let needs_fill = targets.is_some_and(|(diffuse, specular)| {
+            gate.filled.get(&entity) != Some(&(diffuse, specular))
+                || changed_images.contains(&diffuse)
+                || changed_images.contains(&specular)
+        });
+        if needs_fill {
+            if let Some(targets) = targets {
+                gate.filled.insert(entity, targets);
+            }
+            gate.fill_left.insert(entity, FILTER_FRAMES);
+        }
+        let filling = gate.fill_left.get_mut(&entity).is_some_and(|left| {
+            *left = left.saturating_sub(1);
+            *left > 0
+        });
+
+        let rearm = if needs_fill {
+            Some("filtered maps empty")
+        } else if generated.is_changed() {
             Some("component changed")
         } else if env_light.as_ref().is_some_and(|e| e.is_added()) {
             Some("environment light added")
@@ -140,11 +175,13 @@ pub(crate) fn update_env_map_filter_gate(
         // The sky probe's strength lives on the atmosphere component; the
         // generator's own copy is only set once, when Bevy creates it.
         let intensity = atmosphere.map_or(generated.intensity, |a| a.intensity);
-        if *window == 0 || !camera_active || intensity <= ACTIVE_EPS {
+        if !filling && (*window == 0 || !camera_active || intensity <= ACTIVE_EPS) {
             gate.frozen.insert(entity);
         }
     }
 
+    gate.filled.retain(|entity, _| seen.contains(entity));
+    gate.fill_left.retain(|entity, _| seen.contains(entity));
     gate.windows.retain(|entity, _| seen.contains(entity));
     gate.was_active.retain(|entity, _| seen.contains(entity));
     gate.armed_by.retain(|entity, _| seen.contains(entity));
@@ -199,5 +236,68 @@ pub(crate) fn register_render(app: &mut App) {
             ExtractSchedule,
             freeze_env_map_filters.after(extract_generated_environment_map_entities),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::asset::uuid::Uuid;
+    use bevy::ecs::system::RunSystemOnce;
+
+    use super::*;
+
+    fn image(n: u128) -> Handle<Image> {
+        Handle::Uuid(Uuid::from_u128(n), std::marker::PhantomData)
+    }
+
+    /// A map on an inactive camera, already holding the images Bevy made for it.
+    fn world() -> (World, Entity) {
+        let mut world = World::new();
+        world.init_resource::<EnvMapFilterGate>();
+        world.init_resource::<SkyBakeDirty>();
+        world.init_resource::<Messages<AssetEvent<Image>>>();
+        let map = world
+            .spawn((
+                GeneratedEnvironmentMapLight { intensity: 1000.0, ..default() },
+                EnvironmentMapLight {
+                    diffuse_map: image(1),
+                    specular_map: image(2),
+                    ..default()
+                },
+                Camera { is_active: false, ..default() },
+            ))
+            .id();
+        (world, map)
+    }
+
+    fn frozen_after(world: &mut World, map: Entity, frames: u32) -> bool {
+        for _ in 0..frames {
+            world.run_system_once(update_env_map_filter_gate).unwrap();
+            world.clear_trackers();
+        }
+        world.resource::<EnvMapFilterGate>().frozen.contains(&map)
+    }
+
+    /// The regression: the preview cameras are inactive when Bevy hands them
+    /// their images, and freezing them then left them empty for good.
+    #[test]
+    fn new_images_are_filled_even_on_an_inactive_camera() {
+        let (mut world, map) = world();
+        assert!(!frozen_after(&mut world, map, 1), "a first fill must not be frozen");
+    }
+
+    #[test]
+    fn a_filled_map_on_an_inactive_camera_freezes() {
+        let (mut world, map) = world();
+        assert!(frozen_after(&mut world, map, FILTER_FRAMES + 1));
+    }
+
+    /// Bevy re-creating the images (a new pair) is a new fill, not a frozen map.
+    #[test]
+    fn replaced_images_are_filled_again() {
+        let (mut world, map) = world();
+        assert!(frozen_after(&mut world, map, FILTER_FRAMES + 1));
+        world.get_mut::<EnvironmentMapLight>(map).unwrap().specular_map = image(3);
+        assert!(!frozen_after(&mut world, map, 1));
     }
 }
