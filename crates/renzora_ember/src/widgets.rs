@@ -20,6 +20,8 @@ mod segmented;
 mod slider;
 mod stepper;
 mod popup;
+// Arrow keys, Enter and Escape for menus and dropdowns.
+mod menu_nav;
 mod text_input;
 mod toggle;
 mod toggle_switch;
@@ -271,6 +273,7 @@ impl Plugin for WidgetsPlugin {
         // Component front-ends for the builder widgets, so BSN and scenes can
         // name a widget rather than having to call a function.
         scene::register_types(app);
+        menu_nav::plugin(app);
         app.init_resource::<popup::PointerOverOverlay>();
         app.init_resource::<drag_value::WheelOverDragValue>();
         app.init_resource::<drag_value::WheelGesture>();

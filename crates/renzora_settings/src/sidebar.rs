@@ -359,6 +359,10 @@ fn sidebar_plugin_tab(
 /// Live-filter the sidebar categories by the search box text. Pure visibility
 /// toggling (no rebuild), so the search input keeps focus while typing. A group
 /// header hides when the query hides every category under it.
+///
+/// Runs every frame, so it writes `display` only when it differs: an
+/// unconditional write marks every row's `Node` changed and makes the whole UI
+/// lay itself out again on every frame the overlay is open.
 pub(crate) fn filter_sidebar(
     search: Query<&EmberTextInput, With<SettingsSearchBox>>,
     mut rows: Query<(&SettingsCatRow, &mut Node), Without<SettingsGroupTag>>,
@@ -373,14 +377,21 @@ pub(crate) fn filter_sidebar(
         let show = q.is_empty()
             || row.label.to_lowercase().contains(&q)
             || row.group.to_lowercase().contains(&q);
-        node.display = if show { Display::Flex } else { Display::None };
+        set_display(&mut node, show);
         if show {
             visible_groups.insert(row.group.clone());
         }
     }
     for (tag, mut node) in &mut headers {
         let show = q.is_empty() || visible_groups.contains(&tag.0);
-        node.display = if show { Display::Flex } else { Display::None };
+        set_display(&mut node, show);
+    }
+}
+
+fn set_display(node: &mut Mut<Node>, show: bool) {
+    let display = if show { Display::Flex } else { Display::None };
+    if node.display != display {
+        node.display = display;
     }
 }
 
@@ -516,6 +527,17 @@ mod tests {
         let (w, theme, camera, _, _) = sidebar("  THEME  ");
         assert!(shown(&w, theme));
         assert!(!shown(&w, camera));
+    }
+
+    /// The filter runs every frame; rewriting an unchanged `display` marks the
+    /// node changed and re-lays out the whole UI each frame the overlay is open.
+    #[test]
+    fn an_unchanged_filter_leaves_the_nodes_untouched() {
+        let (mut w, theme, _, appearance, _) = sidebar("theme");
+        w.clear_trackers();
+        w.run_system_once(filter_sidebar).unwrap();
+        assert!(!w.entity(theme).get_ref::<Node>().unwrap().is_changed());
+        assert!(!w.entity(appearance).get_ref::<Node>().unwrap().is_changed());
     }
 
     #[test]

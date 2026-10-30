@@ -145,6 +145,20 @@ Press the key, move the mouse, click to confirm or `Esc` to cancel.
 |---|---|
 | Command palette | `Ctrl+P` |
 
+## Menus and dropdowns
+
+While a menu (the main menu, a right-click menu) or a dropdown is open, the keyboard drives it:
+
+| Action | Key |
+|---|---|
+| Next / previous item | `Down` / `Up` |
+| Open a submenu | `Right` or `Enter` |
+| Back out of a submenu | `Left` |
+| Pick the item | `Enter` |
+| Close (one level at a time) | `Esc` |
+
+`Up` from nothing starts at the bottom, and both wrap around. The pointer and the keys share one highlight, so hovering an item moves the keyboard to it. While a menu is open these keys go to the menu only, so `Esc` closes it without also clearing your selection. These are fixed, not rebindable.
+
 ## Rebinding
 
 **Settings > Shortcuts** lists every action, grouped the same way as the tables above. Click a binding and press the keys you want.

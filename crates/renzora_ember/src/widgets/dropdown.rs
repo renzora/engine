@@ -34,6 +34,22 @@ pub(crate) struct EmberDropdown {
     box_icon: Option<Entity>,
 }
 
+impl EmberDropdown {
+    /// The option list's node while the dropdown is open: what keyboard
+    /// navigation moves through (see `menu_nav`).
+    pub(crate) fn open_menu(&self) -> Option<Entity> {
+        self.open.then_some(self.menu)
+    }
+
+    /// Close the option list, as an outside click does.
+    pub(crate) fn close(&mut self, nodes: &mut Query<&mut Node>) {
+        self.open = false;
+        if let Ok(mut n) = nodes.get_mut(self.menu) {
+            n.display = Display::None;
+        }
+    }
+}
+
 /// Phosphor glyph used when an icon name doesn't resolve (matches `icon_text`).
 const ICON_FALLBACK: char = '\u{E4C6}';
 
@@ -528,17 +544,20 @@ pub(crate) fn dropdown_box_hover(mut q: Query<(&UiInteraction, &EmberDropdown, &
     }
 }
 
+/// Tint an option while it is hovered or holds the keyboard focus (see
+/// `menu_nav`). Only options whose state or the focus changed are visited.
 pub(crate) fn dropdown_option_hover(
-    mut options: Query<
-        (&UiInteraction, &mut BackgroundColor),
-        (Changed<UiInteraction>, With<EmberDropdownOption>),
-    >,
+    focus: Res<super::menu_nav::MenuKeyFocus>,
+    mut options: Query<(Entity, Ref<UiInteraction>, &mut BackgroundColor), With<EmberDropdownOption>>,
 ) {
-    for (interaction, mut bg) in &mut options {
-        bg.0 = match *interaction {
-            UiInteraction::Hovered | UiInteraction::Pressed => rgb(tab_hover()),
-            UiInteraction::None => Color::NONE,
-        };
+    let focus_changed = focus.is_changed();
+    for (entity, interaction, mut bg) in &mut options {
+        if !focus_changed && !interaction.is_changed() {
+            continue;
+        }
+        let lit = matches!(*interaction, UiInteraction::Hovered | UiInteraction::Pressed)
+            || focus.0 == Some(entity);
+        bg.set_if_neq(BackgroundColor(if lit { rgb(tab_hover()) } else { Color::NONE }));
     }
 }
 

@@ -350,10 +350,7 @@ pub(crate) fn menu_row_visual(
             Name::new("menu-item"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => menu_hover_bg(),
-        _ => Color::NONE,
-    });
+    bind_bg(commands, row, move |w| if row_lit(w, row) { menu_hover_bg() } else { Color::NONE });
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
     let t = commands
         .spawn((
@@ -379,12 +376,22 @@ pub(crate) fn menu_row_hover_text(
     text: Entity,
     rest: (u8, u8, u8),
 ) {
-    bind_text_color(commands, text, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) if rest == text_muted() => {
+    bind_text_color(commands, text, move |w| {
+        if rest == text_muted() && row_lit(w, row) {
             rgb(text_primary())
+        } else {
+            rgb(rest)
         }
-        _ => rgb(rest),
     });
+}
+
+/// Whether a menu row is drawn highlighted: hovered, pressed, or holding the
+/// keyboard focus (see [`menu_nav`](super::menu_nav)). One test for every row
+/// kind, so a row reached with the arrow keys looks exactly like one under the
+/// pointer.
+pub(crate) fn row_lit(w: &crate::reactive::Rx, row: Entity) -> bool {
+    matches!(w.get::<UiInteraction>(row), Some(UiInteraction::Hovered | UiInteraction::Pressed))
+        || w.get_resource::<super::menu_nav::MenuKeyFocus>().is_some_and(|f| f.0 == Some(row))
 }
 
 /// A rich menu row for picking a *kind* of thing: the type's icon in a rounded
@@ -426,10 +433,7 @@ where
             Name::new("menu-card"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
-        _ => Color::NONE,
-    });
+    bind_bg(commands, row, move |w| if row_lit(w, row) { rgb(hover_bg()) } else { Color::NONE });
 
     // The icon tile: the type's colour as a faint wash behind the glyph in
     // full colour, so the row reads as its type at a glance.

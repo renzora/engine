@@ -72,6 +72,20 @@ pub(crate) struct SubmenuRow {
     panel: Entity,
 }
 
+impl SubmenuRow {
+    /// The floating panel this row opens.
+    pub(crate) fn panel(&self) -> Entity {
+        self.panel
+    }
+}
+
+impl SubPanel {
+    /// The row that opens this panel.
+    pub(crate) fn owner(&self) -> Entity {
+        self.owner
+    }
+}
+
 /// The panel half of a [`SubmenuRow`], tagged with the row that owns it so the
 /// reveal pass can walk a nested chain back up to its root row.
 #[derive(Component)]
@@ -149,10 +163,7 @@ pub fn menu_submenu_parts(
             Name::new("menu-submenu"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => menu_hover_bg(),
-        _ => Color::NONE,
-    });
+    bind_bg(commands, row, move |w| if super::popup::row_lit(w, row) { menu_hover_bg() } else { Color::NONE });
 
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
     let text = commands
@@ -238,6 +249,7 @@ pub(crate) fn cursor_over_submenu(
 }
 
 /// Show/hide + position every submenu panel each frame.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn submenu_reveal(
     windows: Query<&Window, With<PrimaryWindow>>,
     rows: Query<(Entity, &UiInteraction, &SubmenuRow)>,
@@ -249,6 +261,7 @@ pub(crate) fn submenu_reveal(
     geom: Query<(&UiGlobalTransform, &ComputedNode)>,
     mut nodes: Query<&mut Node>,
     mut depths: Query<&mut GlobalZIndex>,
+    key_open: Res<super::menu_nav::KeyOpenSubmenus>,
 ) {
     if rows.is_empty() {
         return;
@@ -273,7 +286,9 @@ pub(crate) fn submenu_reveal(
                         .is_some_and(|(c, rect)| rect.contains(c))
             })
             .unwrap_or(false);
-        if *interaction != UiInteraction::None || over_panel {
+        // Opened with the Right arrow: stays open until Left or Escape closes
+        // it, wherever the pointer is.
+        if *interaction != UiInteraction::None || over_panel || key_open.0.contains(&row) {
             open.insert(row);
         }
     }

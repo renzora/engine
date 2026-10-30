@@ -964,22 +964,25 @@ pub(crate) fn text_input_highlight(
     }
 }
 
+/// Show the caret while its input is focused, blinking.
+///
+/// `Display` follows focus only; the blink itself is `Visibility`. `Display` is
+/// a layout input, so blinking through it made Bevy lay out the input's path to
+/// the window root again about three times a second for as long as any box had
+/// focus. Visibility is drawn, not laid out.
 pub(crate) fn caret_blink(
     time: Res<Time>,
     inputs: Query<&EmberTextInput>,
-    mut nodes: Query<&mut Node>,
+    mut nodes: Query<(&mut Node, &mut Visibility)>,
 ) {
     let on = (time.elapsed_secs() * 1.6).fract() < 0.5;
     for inp in &inputs {
-        if let Ok(mut n) = nodes.get_mut(inp.caret) {
-            let display = if inp.focused && on {
-                Display::Flex
-            } else {
-                Display::None
-            };
+        if let Ok((mut n, mut visibility)) = nodes.get_mut(inp.caret) {
+            let display = if inp.focused { Display::Flex } else { Display::None };
             if n.display != display {
                 n.display = display;
             }
+            visibility.set_if_neq(if on { Visibility::Inherited } else { Visibility::Hidden });
         }
     }
 }

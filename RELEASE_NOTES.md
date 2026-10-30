@@ -1,5 +1,12 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 19:41
+- fix(rendering): rough surfaces no longer show blue and beige blotches, and the import preview lights the shadow side of a model again
+- feat(editor): menus and dropdowns can be driven with the arrow keys, Enter and Escape
+- fix(editor): the arrow keys no longer scroll the page behind an open dropdown
+- fix(editor): the Settings window no longer lays out the whole UI every frame while it is open
+- fix(editor): a focused text field's blinking caret no longer makes the UI lay itself out again
+
 ## 2026-10-30 18:22
 - fix(editor): scrolling the hierarchy and other long lists no longer drops the frame rate
 - fix(editor): status bar items no longer rebuild when their colour or icon changes
