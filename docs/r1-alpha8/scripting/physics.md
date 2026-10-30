@@ -9,7 +9,7 @@ Renzora's physics API lives in `renzora_physics`, and the simulation is a backen
 - In the **editor**, the companion `renzora_physics_editor` pauses the simulation at startup so your scene sits still until you press play (both worlds pause and resume together).
 - In a **shipped game** the simulation runs immediately.
 
-Another engine installs as a plugin. The **Rapier Physics** plugin adds `rapier3d` and `rapier2d`; pick one for each world in **Project Settings > Physics**. Everything on this page works the same on either engine, and the console says which one runs each world once the project has loaded (`3D physics: rapier3d, 2D physics: avian2d`). Writing your own engine's backend is covered in [Physics backends](../extending/physics-backends.md).
+The bundled engine is avian. Another engine can install as a plugin; pick one for each world in **Project Settings > Physics**. Everything on this page works the same on any engine, and the console says which one runs each world once the project has loaded (`3D physics: avian3d, 2D physics: avian2d`). Writing your own engine's backend is covered in [Physics backends](../extending/physics-backends.md).
 
 ### Which world does an entity go to?
 

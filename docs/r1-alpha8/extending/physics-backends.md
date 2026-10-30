@@ -12,7 +12,6 @@ and **links into the binary** (see
 per avian crate, `avian3d` for the 3D world and `avian2d` for the 2D one, and is
 present whenever the engine is built with `physics_3d` or `physics_2d`. The trait
 they register through is public, so another plugin can bring a different engine.
-The `rapier_physics` plugin does, for both worlds.
 
 Physics stays removable. A lean export of a project with no physics leaves avian
 out, and so does one whose Project Settings pick another engine for every world
@@ -228,15 +227,15 @@ only if both run. The 3D and 2D worlds are chosen independently, in
 
 ```toml
 [physics]
-backend_3d = "rapier3d"   # leave it out for the default
-backend_2d = "rapier2d"
+backend_3d = "my_engine"   # leave it out for the default
+backend_2d = "avian2d"
 ```
 
 The default is the first backend registered for that world, which is the
 bundled avian on any build that has it. A name whose plugin is not installed
 logs a warning and keeps the default, so a project opened on a machine without
 the plugin still has physics. Once the project's choice is applied, the log
-says which engine runs each world: `[Physics] running 3D on `rapier3d`, 2D on
+says which engine runs each world: `[Physics] running 3D on `my_engine`, 2D on
 `avian2d``.
 
 **Switching a live world** is `renzora_physics::switch_backend`, and the editor
@@ -272,21 +271,16 @@ Things worth knowing about it:
 - **Avian is built with `xpbd_joints`**, its joint solver. Without it avian
   accepts joints and ignores them.
 
-## A second backend: Rapier
+## A backend with a world of its own
 
-The `rapier_physics` plugin (in the marketplace, source in
-`github.com/renzora/plugins`) is the worked example of a backend with a world of
-its own, and registers two: `rapier3d` and `rapier2d`. Each keeps rapier's
-`PhysicsWorld` in a resource and maps from `Entity` to body, collider and joint
-handles, steps on the fixed clock as avian does, and writes dynamic bodies'
-poses back into their `Transform`s. Read it beside `plugins/avian_physics` to see
-the same contract met two very different ways.
+An engine that keeps its state outside the ECS holds its world in a resource,
+maps from `Entity` to body, collider and joint handles, steps on the fixed clock
+as avian does, and writes dynamic bodies' poses back into their `Transform`s.
+Such a backend needs to get three things right:
 
-Details from it that any such backend needs:
-
-- **Teleports are told apart from its own writes.** It records the transform it
-  last wrote to each body; a `Transform` that changed and does not match was
-  moved by the editor or a script, and the body is placed there.
+- **Teleports are told apart from its own writes.** Record the transform last
+  written to each body; a `Transform` that changed and does not match was moved
+  by the editor or a script, and the body is placed there.
 - **New entities are placed from their local transforms**, composed up the
   hierarchy, not from `GlobalTransform`, which is only propagated in
   `PostUpdate` and still reads identity for a scene spawned this frame.
@@ -294,8 +288,3 @@ Details from it that any such backend needs:
   bones are each other's children; composing a bone against its parent's
   `GlobalTransform`, which is a step old, would leave every bone a step behind
   the one above it.
-
-Where Rapier and avian differ, by how the engines work rather than by anything
-missing: Rapier joints are rigid (it softens joints with springs, not
-compliance), a distance joint keeps only its maximum, and a ball joint's swing
-limit is a box rather than a cone.
