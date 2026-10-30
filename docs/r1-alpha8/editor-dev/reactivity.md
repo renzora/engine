@@ -405,6 +405,50 @@ Worth stating plainly, because it bounds the ambition:
 | **S4** | Inspector sectioning: make `collect_sections` a `keyed_list`, turning a ~4000-entity burst into ~40. This is the visible 5–15 ms hitch on every entity selection | contained |
 | **S5** | Parallel polling. Probably not worth it | — |
 
+## Layout churn: the cost the bindings do not see
+
+Bevy's UI layout is incremental. A node is laid out again only when one of its
+inputs changed (its `Node`, its measured text, `ScrollPosition`, `UiTransform`,
+its children), and each such change dirties the whole path to the window root.
+Any **spawn, despawn or reparent** anywhere is worse: it makes layout walk
+every UI node in the editor. So the bindings can be perfectly quiet and the
+editor still lose most of a frame to layout, because something outside them
+writes a node every frame or rebuilds a list.
+
+Three rules follow, each from a real frame drop:
+
+- **Never assign a UI component unconditionally in a per-frame system.**
+  Writing through `Mut` marks it changed even with the same value. Use
+  `set_if_neq`. The viewport's axis gizmo rewrote 13 nodes a frame with the
+  camera still, and with the Inspector beside the viewport that was 6 ms of
+  layout every frame.
+- **Do not hash a live value into a `keyed_list` row's identity.** Bind it
+  instead. The status bar hashed the FPS and memory text into each segment, so
+  every new number respawned the segment, and the full walk that followed was
+  an 8 to 10 ms spike several times a second.
+- **Do not animate what is hidden.** A `Display::None` subtree is not laid out
+  again, but writing to it still dirties layout. Check the hierarchy for a
+  hidden ancestor; a hidden node keeps reporting its last computed size.
+
+### Finding it: `RENZORA_UI_CHURN`
+
+Launch with `RENZORA_UI_CHURN=1` and once a second the Console (category `UI`)
+lists every kind of change that made layout run, per panel, with a rate and an
+example node:
+
+```
+[ui-churn]   inspector: Node written, 42.0/frame, e.g. 4093v0 "Coverage"
+[ui-churn]   chrome: text re-measured, 0.1/frame, e.g. 812v0 "54 FPS (18.4ms)"
+```
+
+`chrome` is everything outside a dock panel (menus, toolbars, the status bar).
+An idle editor should show only the status bar's text a few times a second;
+anything at `1.0/frame` or more while nothing moves is a bug of the kinds
+above. A workspace switch shows its build as one burst, which is how a list
+building every item instead of a window shows up. The probe only reads change
+ticks, so it never adds a change of its own, and it costs nothing when the
+variable is unset. Source: `crates/renzora_ember/src/ui_churn.rs`.
+
 ## Bugs to check before measuring anything
 
 These came out of the 2026-07 audit and will distort any profile taken before

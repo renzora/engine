@@ -1,5 +1,12 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-30 18:09
+- fix(editor): the editor no longer lays out its whole UI every frame while nothing moves, so it runs much faster with the Inspector open
+- fix(editor): the status bar's FPS and memory readouts update in place instead of rebuilding
+- fix(editor): switching workspace no longer builds every row of a long list before showing a screenful
+- fix(animation): the character picker no longer lists the terrain's generated chunks, and builds only the rows on screen
+- feat(editor): `RENZORA_UI_CHURN=1` reports, per panel, what makes the UI lay itself out again
+
 ## 2026-10-30 16:57
 - fix(clouds): volumetric clouds render again, with their shaders ported to WESL
 - feat(export): a game export leaves clouds out when no scene uses them

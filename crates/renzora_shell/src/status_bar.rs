@@ -433,8 +433,29 @@ fn status_rows(world: &Rx, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
     rows
 }
 
-/// Build a keyed snapshot from a row list.
-fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot {
+/// The current text of segment `index` on one side: what a segment's text node
+/// is bound to, so a live metric updates in place.
+fn segment_text(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
+    match status_rows(world, align).into_iter().nth(index) {
+        Some(StatusRow::Seg(s)) => s.text,
+        _ => String::new(),
+    }
+}
+
+/// Build a keyed snapshot from a row list. `align` is the side the rows come
+/// from, for segments; the Ready label passes `None`.
+///
+/// A segment's text is NOT part of its row hash. An FPS or memory readout
+/// changes several times a second, and with the text hashed every change
+/// despawned and respawned the whole segment: new nodes, a new font, the bar's
+/// children changed. Each of those dirtied the layout up to the window root, and
+/// the full re-layout that followed, of every panel, was most of the editor's
+/// layout time. The text node is bound to [`segment_text`] instead, so a new
+/// number re-measures one piece of text and nothing else.
+fn rows_snapshot(
+    rows: Vec<StatusRow>,
+    align: Option<renzora::ShellStatusAlign>,
+) -> renzora_ember::reactive::KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = rows
         .iter()
@@ -459,7 +480,7 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
                             (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
                         }
                     };
-                    (1u8, &s.icon, &s.text, s.color, bar, s.action).hash(&mut h)
+                    (1u8, &s.icon, s.color, bar, s.action).hash(&mut h)
                 }
             }
             (k.finish(), h.finish())
@@ -467,7 +488,7 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
         .collect();
     renzora_ember::reactive::KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| status_row(c, f, &rows[i])),
+        build: Box::new(move |c, f, i| status_row(c, f, &rows[i], align.map(|a| (a, i)))),
     }
 }
 
@@ -479,17 +500,17 @@ fn status_snapshot_ready(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         .and_then(|r| r.label.clone().map(|t| (t, r.color)))
         .map(|(t, c)| (t, c.map(|c| (c[0], c[1], c[2])).unwrap_or_else(text_muted)))
         .unwrap_or_else(|| (renzora::lang::t_or("status.ready", "Ready"), text_muted()));
-    rows_snapshot(vec![StatusRow::Label(label, color)])
+    rows_snapshot(vec![StatusRow::Label(label, color)], None)
 }
 
 /// Left side after Ready and the saved badge: the left-aligned plugin items.
 fn status_snapshot_left(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
-    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Left))
+    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Left), Some(renzora::ShellStatusAlign::Left))
 }
 
 /// Right side: the right-aligned metrics.
 fn status_snapshot_right(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
-    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right))
+    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right), Some(renzora::ShellStatusAlign::Right))
 }
 
 /// WCAG contrast a status segment's text must reach against the bar.
@@ -532,7 +553,14 @@ fn legible(color: (u8, u8, u8), bg: (u8, u8, u8)) -> (u8, u8, u8) {
     out
 }
 
-fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> Entity {
+/// One row of the bar. `source` is where a segment's text lives (its side and
+/// index), so the text node can be bound to it rather than rebuilt with it.
+fn status_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    row: &StatusRow,
+    source: Option<(renzora::ShellStatusAlign, usize)>,
+) -> Entity {
     match row {
         StatusRow::Label(text, color) => commands
             .spawn((
@@ -576,15 +604,19 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                         .id(),
                 );
             }
-            kids.push(
-                commands
-                    .spawn((
-                        Text::new(s.text.clone()),
-                        ui_font(&fonts.ui, 11.0),
-                        TextColor(rgb(color)),
-                    ))
-                    .id(),
-            );
+            let text = commands
+                .spawn((
+                    Text::new(s.text.clone()),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(color)),
+                ))
+                .id();
+            if let Some((align, index)) = source {
+                renzora_ember::reactive::tracked::bind_text(commands, text, move |w| {
+                    segment_text(w, align, index)
+                });
+            }
+            kids.push(text);
             // Sized for a 22px-tall bar: wide enough to read as progress,
             // narrow enough that a background job doesn't push the rest of the
             // status bar around.

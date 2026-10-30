@@ -55,6 +55,7 @@ pub mod stacking;
 pub mod style;
 pub mod theme;
 pub mod toolbar;
+mod ui_churn;
 pub mod virtual_scroll;
 pub mod widgets;
 /// Workspace registration, for a plugin contributing a whole editor mode rather
@@ -89,6 +90,8 @@ impl Plugin for EmberPlugin {
         app.add_systems(PreUpdate, correct_pointer_state.after(UiSystems::Focus));
         // Then the "a resize gesture is in flight" flag, off the corrected state.
         resize::plugin(app);
+        // Off unless `RENZORA_UI_CHURN` is set: see `ui_churn`.
+        ui_churn::plugin(app);
     }
 }
 

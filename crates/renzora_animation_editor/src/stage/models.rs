@@ -54,8 +54,10 @@ pub(super) fn register(app: &mut App) {
 
 /// Folders that hold build output, never a model to animate. The index leaves
 /// out what the watcher ignores already (`target`, `.renzora`, hidden folders);
-/// these are copies of models, not models.
-const SKIP: [&str; 3] = ["dist", "build", "exports"];
+/// these are copies of models, not models. `terrain_clusters` is the virtual
+/// geometry the editor builds for terrain chunks, one `.rvg` per chunk (the
+/// asset browser hides it too): a terrain put thousands of them in this list.
+const SKIP: [&str; 4] = ["dist", "build", "exports", "terrain_clusters"];
 
 /// The project's model files, from the project index (see
 /// `renzora::core::project_index`), whenever it changes: a model imported

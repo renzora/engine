@@ -610,11 +610,15 @@ fn build_empty(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { margin: UiRect::bottom(Val::Px(4.0)), ..default() },
         ))
         .id();
+    // Virtualized: a project's models can run to hundreds, and the card was
+    // building a row for every one each time the Animation workspace opened,
+    // ~7,700 nodes for a switch that shows nine of them.
     let list = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), max_height: Val::Px(360.0), overflow: Overflow::scroll_y(), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() })
         .id();
-    keyed_list(commands, list, choice_list_snapshot);
-    commands.entity(card).add_children(&[title, sub, list]);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, list, 4, choice_list_snapshot);
+    let scroll = renzora_ember::widgets::scroll_area(commands, list, 360.0);
+    commands.entity(card).add_children(&[title, sub, scroll]);
     commands.entity(overlay).add_child(card);
     bind_display(commands, overlay, |w| !has_model(w) && !mode_is(w, StageMode::Logic));
     overlay
