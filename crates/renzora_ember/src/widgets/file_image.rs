@@ -23,9 +23,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use crate::interaction::PASS_THROUGH;
@@ -214,7 +212,11 @@ pub fn request_file_images(mut cache: ResMut<FileImages>, q: Query<&FileImageWan
 }
 
 /// Drain finished decodes and register them as `Image` assets.
-pub fn poll_file_images(mut cache: ResMut<FileImages>, mut images: ResMut<Assets<Image>>) {
+pub fn poll_file_images(
+    mut cache: ResMut<FileImages>,
+    mut images: ResMut<Assets<Image>>,
+    mut sizes: ResMut<super::GpuImageSizes>,
+) {
     let mut done = Vec::new();
     while let Ok(res) = cache.rx.try_recv() {
         done.push(res);
@@ -223,18 +225,7 @@ pub fn poll_file_images(mut cache: ResMut<FileImages>, mut images: ResMut<Assets
         match res {
             Ok(d) => {
                 cache.in_flight.remove(&d.path);
-                let image = Image::new(
-                    Extent3d { width: d.width, height: d.height, depth_or_array_layers: 1 },
-                    TextureDimension::D2,
-                    d.rgba,
-                    TextureFormat::Rgba8UnormSrgb,
-                    // Only the UI draws these, from the GPU, and every caller
-                    // gives the node its own size, so nothing needs the pixels
-                    // or the image's size in the main world. The cache keeps
-                    // each for the whole session, so a CPU copy is held for good.
-                    RenderAssetUsages::RENDER_WORLD,
-                );
-                let handle = images.add(image);
+                let handle = super::add_gpu_image(&mut images, &mut sizes, d.rgba, d.width, d.height);
                 cache.handles.insert(d.path, handle);
             }
             Err(path) => {

@@ -5,8 +5,8 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use renzora_ember::widgets::{add_gpu_image, GpuImageSizes};
 
 struct Downloaded {
     url: String,
@@ -111,7 +111,11 @@ fn start_download(url: String, tx: Sender<Result<Downloaded, String>>) {
 fn start_download(_url: String, _tx: Sender<Result<Downloaded, String>>) {}
 
 /// Drain finished downloads, register them as `Image` assets.
-pub(crate) fn poll_thumbs(mut thumbs: ResMut<HubThumbs>, mut images: ResMut<Assets<Image>>) {
+pub(crate) fn poll_thumbs(
+    mut thumbs: ResMut<HubThumbs>,
+    mut images: ResMut<Assets<Image>>,
+    mut sizes: ResMut<GpuImageSizes>,
+) {
     let mut done = Vec::new();
     while let Ok(res) = thumbs.rx.try_recv() {
         done.push(res);
@@ -120,22 +124,9 @@ pub(crate) fn poll_thumbs(mut thumbs: ResMut<HubThumbs>, mut images: ResMut<Asse
         match res {
             Ok(d) => {
                 thumbs.in_flight.remove(&d.url);
-                let image = Image::new(
-                    Extent3d { width: d.width, height: d.height, depth_or_array_layers: 1 },
-                    TextureDimension::D2,
-                    d.rgba,
-                    TextureFormat::Rgba8UnormSrgb,
-                    default(),
-                );
-                let handle = images.add(image);
-                let blur = Image::new(
-                    Extent3d { width: d.blur_width, height: d.blur_height, depth_or_array_layers: 1 },
-                    TextureDimension::D2,
-                    d.blur_rgba,
-                    TextureFormat::Rgba8UnormSrgb,
-                    default(),
-                );
-                let blur_handle = images.add(blur);
+                let handle = add_gpu_image(&mut images, &mut sizes, d.rgba, d.width, d.height);
+                let blur_handle =
+                    add_gpu_image(&mut images, &mut sizes, d.blur_rgba, d.blur_width, d.blur_height);
                 thumbs.handles.insert(d.url.clone(), handle);
                 thumbs.blurred.insert(d.url, blur_handle);
             }

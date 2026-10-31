@@ -88,6 +88,7 @@ mod avatar;
 mod chip;
 pub mod clipboard;
 mod file_image;
+mod gpu_image;
 mod web_image;
 mod folder_picker;
 mod grid;
@@ -205,6 +206,7 @@ pub use pagination::*;
 pub use avatar::*;
 pub use chip::*;
 pub use file_image::*;
+pub use gpu_image::{add_gpu_image, GpuImageSizes};
 pub use web_image::*;
 pub use folder_picker::*;
 pub use grid::*;
@@ -281,6 +283,13 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::AnyDragValueEditing>();
         app.init_resource::<file_image::FileImages>();
         app.init_resource::<web_image::WebImages>();
+        app.init_resource::<gpu_image::GpuImageSizes>();
+        // Before Bevy measures image nodes, so a GPU-only image is laid out at
+        // its own size in the frame its node gets it.
+        app.add_systems(
+            PostUpdate,
+            gpu_image::size_gpu_images.before(bevy::ui::UiSystems::Content),
+        );
         app.init_resource::<markdown::MarkdownBaseUrl>();
         app.init_resource::<scroll_area::ScrollMemory>();
         app.init_resource::<scroll_area::DraggedThumb>();
