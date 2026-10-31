@@ -418,7 +418,9 @@ fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
         TextureDimension::D2,
         cubemap_data,
         equirect.texture_descriptor.format,
-        equirect.asset_usage,
+        // Only the GPU samples the sky. A 4K panorama's cube is about 100 MB
+        // of floats, so a CPU copy beside it is memory held for nothing.
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
     );
 
     cubemap.texture_view_descriptor = Some(TextureViewDescriptor {
@@ -485,6 +487,11 @@ fn sync_skybox(
                         let cubemap_handle = images.add(cubemap);
                         skybox_state.cubemap_handle = Some(cubemap_handle);
                         skybox_state.conversion_pending = false;
+                        // The panorama was only the conversion's input. Held,
+                        // a 4K one is 128 MB on the CPU and again on the GPU;
+                        // `current_path` still says which file the cube came
+                        // from, so it is not loaded again.
+                        skybox_state.equirect_handle = None;
                         info!("Converted HDR to cubemap successfully");
                     }
                     Err(e) => {

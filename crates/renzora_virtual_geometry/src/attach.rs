@@ -154,7 +154,18 @@ fn rvg_path(model: &AssetPath<'static>) -> AssetPath<'static> {
 pub(crate) fn poll_files(
     mut files: ResMut<VgFiles>,
     asset_server: Res<AssetServer>,
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
 ) {
+    // A model is drawn as ordinary geometry until its clusters are ready, so a
+    // late file is a slow, heavy first stretch of a load. Recorded once every
+    // file seen so far has settled.
+    if let Some(mut timeline) = timeline.filter(|t| t.is_running()) {
+        let settled = |s: &FileState| matches!(s, FileState::Ready(_) | FileState::Missing);
+        if !files.by_model.is_empty() && files.by_model.values().all(settled) {
+            let ready = files.by_model.values().filter(|s| matches!(s, FileState::Ready(_))).count();
+            timeline.mark("virtual geometry ready", format!("{ready} of {} model(s)", files.by_model.len()));
+        }
+    }
     for (model, state) in files.by_model.iter_mut() {
         match state {
             FileState::Probing(task) => {

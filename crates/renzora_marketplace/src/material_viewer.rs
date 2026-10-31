@@ -253,8 +253,10 @@ fn setup_material_viewer(
         height: RTT_H,
         depth_or_array_layers: 1,
     };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;

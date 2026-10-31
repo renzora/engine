@@ -172,7 +172,10 @@ fn fit_canvases(
         if size == canvas.size && (scale - canvas.scale).abs() < f32::EPSILON && canvas.image.is_some() {
             continue;
         }
-        let image = Image::new_target_texture(size.x, size.y, TextureFormat::Bgra8UnormSrgb, None);
+        let mut image = Image::new_target_texture(size.x, size.y, TextureFormat::Bgra8UnormSrgb, None);
+        // No CPU copy: only the GPU draws into or samples a render target, and
+        // wgpu zero-fills one created without data.
+        image.data = None;
         let handle = images.add(image);
         if let Some(old) = canvas.image.replace(handle.clone()) {
             images.remove(&old);

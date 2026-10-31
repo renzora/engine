@@ -41,6 +41,27 @@ const RESOLVE_MODULE_PATH: &str = "embedded://bevy_pbr/meshlet/visibility_buffer
 #[derive(Resource)]
 struct ResolveModule(#[allow(dead_code)] Handle<Shader>);
 
+/// Report what the loaded `.rvg` files hold to the editor's asset memory
+/// breakdown, twice a second. Each file is the whole of a model's geometry at
+/// every level of detail, so on a large scene it is one of the bigger rows.
+fn report_memory(
+    files: Res<Assets<RvgFile>>,
+    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    mut frames: Local<u32>,
+) {
+    *frames = frames.wrapping_add(1);
+    let Some(mut memory) = memory.filter(|_| *frames % 30 == 1) else {
+        return;
+    };
+    memory.set(renzora::load_timeline::AssetMemoryRow {
+        kind: "virtual geometry (.rvg files)",
+        count: files.len(),
+        bytes: files.iter().map(|(_, file)| file.heap_bytes()).sum(),
+        in_process: true,
+        note: String::new(),
+    });
+}
+
 #[derive(Default)]
 pub struct VirtualGeometryPlugin;
 
@@ -59,7 +80,8 @@ impl Plugin for VirtualGeometryPlugin {
             .register_type::<StandardGeometry>()
             .init_resource::<VirtualGeometrySettings>()
             .init_resource::<attach::VgFiles>()
-            .add_message::<RvgUpdated>();
+            .add_message::<RvgUpdated>()
+            .add_systems(Update, report_memory);
 
         // Below this point the renderer is installed, and only then are meshes
         // ever converted: a mesh taken out of Bevy's passes with nothing to

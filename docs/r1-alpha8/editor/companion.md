@@ -57,7 +57,7 @@ While recording, the timeline follows the newest frame, stepping to it twice a s
 
 ### Asking from an AI assistant
 
-With the MCP Server plugin installed, an assistant connected to the editor can profile it: `profiler_record` starts a recording (of the editor, or of any game the Games screen lists), `profiler_summary` reports frame times and the slowest systems and GPU passes, and `profiler_spikes` explains the slowest frames by what took longer than usual in each.
+With the MCP Server plugin installed, an assistant connected to the editor can profile it: `profiler_record` starts a recording (of the editor, or of any game the Games screen lists), `profiler_summary` reports frame times and the slowest systems and GPU passes, and `profiler_spikes` explains the slowest frames by what took longer than usual in each. For a slow project load, `project_load` reports how long each stage of opening the project took (see [How long a project took to open](./scenes#how-long-a-project-took-to-open)).
 
 ### The Render screen
 

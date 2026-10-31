@@ -89,10 +89,11 @@ pub(crate) fn register(app: &mut App) {
 /// the splash state.
 fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let size = Extent3d { width: INIT_W, height: INIT_H, depth_or_array_layers: 1 };
-    let mut image = Image::new_fill(
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
+    let mut image = Image::new_uninit(
         size,
         TextureDimension::D2,
-        &[0u8; 4],
         TextureFormat::Bgra8UnormSrgb,
         RenderAssetUsages::default(),
     );

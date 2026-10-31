@@ -190,7 +190,7 @@ impl AssetLoader for RmipAssetLoader {
             // the "Godot-quality" look on oblique surfaces.
             sampler: ImageSampler::Default,
             texture_view_descriptor: None,
-            asset_usage: RenderAssetUsages::default(),
+            asset_usage: full_tier_usage(format),
             copy_on_resize: false,
         };
 
@@ -199,6 +199,22 @@ impl AssetLoader for RmipAssetLoader {
 
     fn extensions(&self) -> &[&str] {
         &["rmip"]
+    }
+}
+
+/// Where a full-tier texture's pixels are kept once it reaches the GPU.
+///
+/// Every CPU reader of image pixels in the engine (terrain texture arrays,
+/// sprite alpha picking, atlas baking, thumbnails) works on uncompressed
+/// pixels and refuses a block-compressed format, so a BC texture's main-world
+/// copy is memory nothing can use: on a model with 85 BC textures it was
+/// about 260 MB held for the whole session. An uncompressed `.rmip` keeps its
+/// copy, because a terrain layer can point at one and builds its array from it.
+fn full_tier_usage(format: TextureFormat) -> RenderAssetUsages {
+    if format.is_compressed() {
+        RenderAssetUsages::RENDER_WORLD
+    } else {
+        RenderAssetUsages::default()
     }
 }
 

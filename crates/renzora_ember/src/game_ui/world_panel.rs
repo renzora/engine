@@ -453,6 +453,9 @@ fn sync_world_ui_canvases(
                     | TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             },
+            // No CPU copy: only the GPU draws into or samples a render
+            // target, and wgpu zero-fills one created without data.
+            data: None,
             ..default()
         };
         image.resize(extent);

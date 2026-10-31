@@ -130,6 +130,11 @@ the drawn and the traced surface showed as black patches and gaps in curtain
 folds and at grazing edges. Clusters still stream and cull per view, so this
 costs triangles drawn, not memory.
 
+When a model arrives, its skinned meshes upload whole and every one of its
+coarsest groups uploads at once. The GPU buffers that hold them grow once to
+fit that whole batch, rather than step by step for each piece, so a model
+appearing never briefly holds several superseded copies of the pool.
+
 The budget caps memory; it is not a target. A scene that fits uses what its
 views need and no more, so most projects never reach it. Lower it for
 low-memory hardware: the cost is detail that stays coarse up close, never a

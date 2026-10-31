@@ -501,8 +501,11 @@ fn arm_one_capture(
         height: THUMB_SIZE,
         depth_or_array_layers: 1,
     };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data. The screenshot reads the
+    // pixels back from the GPU, never from this buffer.
     let mut render_image = Image {
-        data: Some(vec![0u8; (extent.width * extent.height * 4) as usize]),
+        data: None,
         ..default()
     };
     render_image.texture_descriptor.size = extent;

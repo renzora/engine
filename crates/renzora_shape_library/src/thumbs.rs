@@ -79,8 +79,10 @@ fn allocate_thumbs(
             continue;
         }
         let extent = Extent3d { width: THUMB_PX, height: THUMB_PX, depth_or_array_layers: 1 };
+        // No CPU copy: only the GPU draws into or samples a render target,
+        // and wgpu zero-fills one created without data.
         let mut image = Image {
-            data: Some(vec![0u8; (THUMB_PX * THUMB_PX * 4) as usize]),
+            data: None,
             ..default()
         };
         image.texture_descriptor.size = extent;

@@ -224,8 +224,10 @@ fn setup_material_preview(
         depth_or_array_layers: 1,
     };
 
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -445,7 +447,7 @@ fn sample_equirect_bilinear(src: &Image, u: f32, v: f32, sw: u32, sh: u32) -> Op
 /// Allocate an empty 6-face `Rgba16Float` cube of `face`² — the format
 /// `GeneratedEnvironmentMapLight`'s filter requires (POT + GPU-filterable) and
 /// that `Skybox` samples cleanly.
-fn empty_cube(face: u32) -> Image {
+fn empty_cube(face: u32, usage: RenderAssetUsages) -> Image {
     Image::new_fill(
         Extent3d {
             width: face,
@@ -457,7 +459,7 @@ fn empty_cube(face: u32) -> Image {
         // loop below overwrites each, with `set_color_at_3d` handling f32→f16.
         &[0, 0, 0, 0, 0, 0, 0, 0],
         TextureFormat::Rgba16Float,
-        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+        usage,
     )
 }
 
@@ -487,8 +489,12 @@ fn build_backdrop_cubes(src: &Image) -> Option<(Image, Image)> {
     // sky texels read as a hard grid of squares, so we lean toward full detail.
     let face = prev_pot(sh).clamp(256, 1024);
 
-    let mut sky = empty_cube(face);
-    let mut env = empty_cube(face);
+    // Only the GPU samples the sky, so it keeps no CPU copy (12 MB at a 512
+    // face). The env cube has to keep its copy: Bevy's environment map filter
+    // reads its size from the main world before it will build anything, and
+    // a GPU-only image is gone from there after its first upload.
+    let mut sky = empty_cube(face, RenderAssetUsages::RENDER_WORLD);
+    let mut env = empty_cube(face, RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
 
     // +X, -X, +Y, -Y, +Z, -Z face bases (forward, up, right).
     let faces: [(Vec3, Vec3, Vec3); 6] = [

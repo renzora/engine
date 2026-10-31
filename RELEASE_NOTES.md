@@ -1,5 +1,34 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-10-31 08:23
+- fix(editor): plugin and project thumbnails are kept at tile size on the GPU only, instead of full size in memory twice
+- feat(editor): the memory breakdown names the font atlases text has drawn into
+
+## 2026-10-31 08:11
+- feat(editor): each stage of a project load records what the GPU allocator holds beside the editor's memory
+- feat(editor): the memory breakdown groups engine-made images by label, size and format, and marks render targets
+- fix(editor): the material preview's sky no longer keeps a CPU copy beside its GPU texture
+
+## 2026-10-31 06:39
+- fix(rendering): render targets (viewports, previews, thumbnails) no longer hold a CPU buffer of zeros beside their GPU texture
+- fix(rendering): virtual geometry makes room for a newly arrived model in one step instead of growing its GPU buffers repeatedly
+- feat(editor): the memory breakdown includes what the GPU allocator holds, by label
+
+## 2026-10-31 06:10
+- fix(rendering): compressed textures no longer keep a second copy of their pixels in memory after reaching the GPU
+- fix(rendering): a panorama sky lets go of its source image once it has built the sky
+- fix(editor): the asset browser shows an image's small cached thumbnail instead of holding the whole image, and HDR images get thumbnails cached too
+- feat(editor): the memory breakdown names the largest images and says how much of their memory comes from files
+
+## 2026-10-30 21:53
+- feat(editor): a project load also logs the memory each stage allocated and what each kind of asset holds
+
+## 2026-10-30 21:05
+- fix(rendering): a project whose models share material layouts finishes drawing much sooner after it opens
+
+## 2026-10-30 20:33
+- feat(editor): every project load is timed stage by stage and logged to the terminal
+
 ## 2026-10-30 19:41
 - fix(rendering): rough surfaces no longer show blue and beige blotches, and the import preview lights the shadow side of a model again
 - feat(editor): menus and dropdowns can be driven with the arrow keys, Enter and Escape

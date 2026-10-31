@@ -221,11 +221,14 @@ fn pause_physics(mut commands: Commands) {
 
 /// A `Bgra8UnormSrgb` render target the readback can copy from: the same
 /// format as the editor's viewport images, so frames cross unconverted.
+///
+/// No CPU copy: only the GPU draws into or reads back from a render target, and
+/// wgpu zero-fills one created without data. The readback copies from the GPU
+/// texture, never from `data`.
 fn make_target(size: UVec2) -> Image {
-    let mut image = Image::new_fill(
+    let mut image = Image::new_uninit(
         Extent3d { width: size.x, height: size.y, depth_or_array_layers: 1 },
         TextureDimension::D2,
-        &[0, 0, 0, 255],
         TextureFormat::Bgra8UnormSrgb,
         RenderAssetUsages::default(),
     );

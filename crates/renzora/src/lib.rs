@@ -168,6 +168,7 @@ pub mod lang;
 // every Rust script must share one store. Not glob-re-exported: callers write
 // `renzora::save::write("slot1")`, which reads as what it does.
 pub mod save;
+pub mod load_timeline;
 
 // Copies of the editor it starts (Play's game, the companion): tied to the
 // editor's lifetime and heard in its Console. Here because more than one crate
@@ -433,6 +434,16 @@ pub struct RequestOpenProject;
 /// point of the list undone.
 #[derive(bevy::prelude::Resource)]
 pub struct RequestOpenProjectPath(pub std::path::PathBuf);
+
+/// Request: switch to the project rooted at this path, the way File > Recent
+/// Projects does, unsaved-changes prompt included.
+///
+/// [`RequestOpenProjectPath`] opens straight away and is what that prompt
+/// inserts once it has been answered. This is the request for anything that
+/// cannot see the document tabs, a plugin above all: it goes through the same
+/// check the menu does, so it can never throw away an unsaved scene.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestSwitchProject(pub std::path::PathBuf);
 
 /// The recently-opened project roots, most recent first.
 ///

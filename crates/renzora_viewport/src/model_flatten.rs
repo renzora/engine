@@ -447,6 +447,7 @@ pub fn rearm_wrapper_hiding_on_ready(
     mut commands: Commands,
     parents: Query<&ChildOf>,
     mesh_instances: Query<(), With<renzora::MeshInstanceData>>,
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
 ) {
     let mut cursor = trigger.event().entity;
     if cursor == Entity::PLACEHOLDER {
@@ -457,6 +458,11 @@ pub fn rearm_wrapper_hiding_on_ready(
     // pass-through nodes and re-parented the subtree.
     loop {
         if mesh_instances.contains(cursor) {
+            // Splits a load's "models spawned" in two: the time Bevy took to
+            // instantiate the model, and what the editor did after it.
+            if let Some(mut timeline) = timeline {
+                timeline.mark("model instantiated by Bevy", "");
+            }
             commands
                 .entity(cursor)
                 .remove::<WrappersHidden>()

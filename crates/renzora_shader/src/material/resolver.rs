@@ -278,6 +278,30 @@ fn authored_sources() -> std::sync::MutexGuard<'static, HashMap<Uuid, String>> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+/// A graph material's shader id, derived from the shader's source.
+///
+/// Materials made by the same graph, which is most of an imported model's,
+/// differ only in the textures they bind, so their shaders are the same text.
+/// A fresh random id for each made Bevy compile every one of them separately,
+/// several render pipelines apiece: the Bistro's 132 materials queued 520
+/// pipelines and drew black for twelve seconds after the project opened. The
+/// same source now gets the same id, so a shader and its pipelines are compiled
+/// once and shared. A changed graph gives a changed source and so a new id,
+/// which is still what makes an edited material recompile.
+///
+/// Two differently keyed hashes make up the 128 bits, which only have to agree
+/// within one run of the editor.
+fn shader_uuid_for(source: &str) -> Uuid {
+    use std::hash::{Hash, Hasher};
+    let half = |salt: &str| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        salt.hash(&mut hasher);
+        source.hash(&mut hasher);
+        hasher.finish()
+    };
+    Uuid::from_u64_pair(half("renzora graph shader, high"), half("renzora graph shader, low"))
+}
+
 /// How many material validations are still running in the background.
 ///
 /// Zero means every material the editor holds has its verdict in
@@ -339,6 +363,14 @@ fn report_material_problems(
             .and_then(|handle| graph_materials.get(handle))
             .and_then(|m| m.extension.shader_uuid)
     };
+    // Materials with the same source share one shader id (see
+    // `shader_uuid_for`), so an id leaving one material may still be another's.
+    let in_use = |uuid: Uuid| {
+        cache
+            .graph_materials
+            .values()
+            .any(|handle| graph_materials.get(handle).and_then(|m| m.extension.shader_uuid) == Some(uuid))
+    };
 
     // Collect finished compiles. A verdict for a shader that has since been
     // replaced, or a material that left the cache, describes nothing on
@@ -374,7 +406,7 @@ fn report_material_problems(
     // assets" would delete another app's entries.
     checked.retain(|path, (uuid, _)| {
         let keep = cache.graph_materials.contains_key(path);
-        if !keep {
+        if !keep && !in_use(*uuid) {
             authored_sources().remove(uuid);
         }
         keep
@@ -404,7 +436,7 @@ fn report_material_problems(
             continue;
         }
         // A recompile replaced this path's shader; its old source is dead.
-        if let Some((old, _)) = checked.get(path).filter(|(old, _)| *old != uuid) {
+        if let Some((old, _)) = checked.get(path).filter(|(old, _)| *old != uuid && !in_use(*old)) {
             authored_sources().remove(old);
         }
         // Wait for the shader itself, which lands with the material.
@@ -1394,12 +1426,12 @@ fn assemble_graph_material(
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
 ) -> (Handle<GraphMaterial>, Vec<MaterialParam>) {
-    // Each material gets its own compiled shader, inserted at a unique
-    // `Handle::Uuid`. The UUID lives in the extension's pipeline key so
-    // `specialize()` can reconstruct the handle and swap it into the
-    // fragment stage. See `surface_ext.rs` for why we can't store the
-    // `Handle<Shader>` directly (packed-struct + non-Copy).
-    let shader_uuid = Uuid::new_v4();
+    // The compiled shader lives at a `Handle::Uuid` derived from its source.
+    // The UUID lives in the extension's pipeline key so `specialize()` can
+    // reconstruct the handle and swap it into the fragment stage. See
+    // `surface_ext.rs` for why we can't store the `Handle<Shader>` directly
+    // (packed-struct + non-Copy).
+    let shader_uuid = shader_uuid_for(&fragment_shader);
     let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
     // Codegen writes WESL. A `.material` saved before Bevy 0.20 embeds the
     // old naga_oil dialect, which `shader_source` recognises and translates,
@@ -1408,11 +1440,16 @@ fn assemble_graph_material(
     authored_sources().insert(shader_uuid, fragment_shader.clone());
     let writes_gbuffer = super::codegen::supports_deferred(&fragment_shader);
     let virtual_geometry = super::codegen::supports_virtual_geometry(&fragment_shader);
-    let shader = renzora::shader_source::shader(
-        fragment_shader,
-        format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
-    );
-    let _ = shaders.insert(&shader_handle, shader);
+    // Inserted once. Inserting again over the same handle reports the shader
+    // as changed, and Bevy then rebuilds every pipeline that uses it: each
+    // further material with this source would recompile all the earlier ones.
+    if !shaders.contains(&shader_handle) {
+        let shader = renzora::shader_source::shader(
+            fragment_shader,
+            format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
+        );
+        let _ = shaders.insert(&shader_handle, shader);
+    }
 
     let mut mat = if let Some(fb) = fallback_texture {
         new_graph_material(fb)
@@ -1490,5 +1527,23 @@ fn publish_cache_counts(
     };
     if *counts != current {
         *counts = current;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shader_uuid_for;
+
+    /// The point of the id: materials whose shaders are the same text share
+    /// one shader, and so one set of pipelines.
+    #[test]
+    fn the_same_source_gets_the_same_shader_id() {
+        assert_eq!(shader_uuid_for("fn a() {}"), shader_uuid_for("fn a() {}"));
+    }
+
+    /// And an edit must still recompile: a different source, a different id.
+    #[test]
+    fn a_different_source_gets_a_different_shader_id() {
+        assert_ne!(shader_uuid_for("fn a() {}"), shader_uuid_for("fn b() {}"));
     }
 }

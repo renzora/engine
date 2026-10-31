@@ -376,6 +376,35 @@ pub struct RvgFile {
 }
 
 impl RvgFile {
+    /// The bytes this file holds in memory: every mesh's vertex arrays and
+    /// clusters, and the embedded scene. Capacities, not lengths, since that
+    /// is what is allocated.
+    pub fn heap_bytes(&self) -> u64 {
+        fn of<T>(v: &Vec<T>) -> u64 {
+            (v.capacity() * std::mem::size_of::<T>()) as u64
+        }
+        let meshes: u64 = self
+            .meshes
+            .iter()
+            .map(|m| {
+                of(&m.positions)
+                    + of(&m.normals)
+                    + of(&m.uv0)
+                    + of(&m.tangents)
+                    + of(&m.uv1)
+                    + of(&m.colors)
+                    + of(&m.joints)
+                    + of(&m.weights)
+                    + of(&m.clusters)
+                    + of(&m.cluster_vertices)
+                    + of(&m.cluster_triangles)
+                    + of(&m.groups)
+                    + of(&m.nodes)
+            })
+            .sum();
+        meshes + self.scene.as_ref().map_or(0, |s| s.capacity() as u64)
+    }
+
     /// Whether this file was built from `source` by the current builder.
     pub fn is_current(&self, source: &[u8]) -> bool {
         self.builder_version == BUILDER_VERSION && self.source_hash == source_hash(source)

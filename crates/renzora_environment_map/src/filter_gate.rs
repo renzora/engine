@@ -103,6 +103,7 @@ pub(crate) fn update_env_map_filter_gate(
     sky: Res<SkyBakeDirty>,
     mut image_events: MessageReader<AssetEvent<Image>>,
     maps: Query<FilterGateData>,
+    mut timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
 ) {
     let changed_images: Vec<AssetId<Image>> = image_events
         .read()
@@ -118,7 +119,7 @@ pub(crate) fn update_env_map_filter_gate(
     let mut seen = EntityHashSet::default();
     gate.frozen.clear();
 
-    for (entity, generated, env_light, atmosphere, camera, _, redraw_idle) in &maps {
+    for (entity, generated, env_light, atmosphere, camera, name, redraw_idle) in &maps {
         seen.insert(entity);
 
         let camera_active = camera.as_ref().is_none_or(|c| c.is_active);
@@ -147,6 +148,14 @@ pub(crate) fn update_env_map_filter_gate(
             *left = left.saturating_sub(1);
             *left > 0
         });
+        // Until a visible camera's map is filled, everything it lights shows
+        // no sky light at all, which reads as a black or flat scene.
+        if !filling && camera_active && gate.fill_left.get(&entity) == Some(&0) {
+            if let Some(timeline) = timeline.as_mut().filter(|t| t.is_running()) {
+                let label = name.map_or_else(|| format!("{entity}"), |n| n.to_string());
+                timeline.mark("environment lighting filled", label);
+            }
+        }
 
         let rearm = if needs_fill {
             Some("filtered maps empty")

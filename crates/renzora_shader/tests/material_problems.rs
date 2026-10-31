@@ -414,10 +414,9 @@ fn repairing_a_material_clears_its_report() {    let mut f = Fixture::new("repai
 
 /// A material nobody touched must not be recompiled.
 ///
-/// Every compile mints a fresh `shader_uuid`, which is part of the pipeline
-/// key, so a material that recompiles on a timer gets a fresh pipeline on a
-/// timer — which is what a flickering surface looks like. This measures the
-/// resolver's half of that: whether the compile itself repeats.
+/// A material that recompiles on a timer rebuilds its pipelines on a timer,
+/// which is what a flickering surface looks like. This measures the resolver's
+/// half of that: whether the compile itself repeats.
 #[test]
 fn an_untouched_material_is_compiled_once() {
     let mut f = Fixture::new("stable");

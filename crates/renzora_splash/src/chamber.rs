@@ -262,7 +262,9 @@ fn manage_chamber(
 
 fn make_target(size: UVec2) -> Image {
     let extent = Extent3d { width: size.x, height: size.y, depth_or_array_layers: 1 };
-    let mut img = Image { data: Some(vec![0u8; (extent.width * extent.height * 4) as usize]), ..default() };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
+    let mut img = Image { data: None, ..default() };
     img.texture_descriptor.size = extent;
     img.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
     img.texture_descriptor.usage =

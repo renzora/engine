@@ -62,7 +62,9 @@ Every `.rmip` texture is published twice: the full asset and a `#low` subasset h
 - farther than `low_distance` (default 90 m) → `#low` textures; the full-resolution images unload entirely,
 - in between → unchanged (hysteresis).
 
-Re-approaching reloads the full texture from disk/rpak; until it lands the material keeps rendering its previous state, so the transition is a brief sharpness pop-in, never a hole. Tune or disable via the `TextureStreamingSettings` resource (`renzora_engine::texture_stream`):
+Re-approaching reloads the full texture from disk/rpak; until it lands the material keeps rendering its previous state, so the transition is a brief sharpness pop-in, never a hole.
+
+A block-compressed (BC) `.rmip` lives only on the GPU once uploaded: its pixels are not kept in the editor's or the game's memory, because nothing on the CPU can read a compressed format. An uncompressed (`Rgba8`) `.rmip` keeps its CPU copy, since a terrain layer builds its texture array from those pixels. Tune or disable via the `TextureStreamingSettings` resource (`renzora_engine::texture_stream`):
 
 ```rust
 app.insert_resource(TextureStreamingSettings {
