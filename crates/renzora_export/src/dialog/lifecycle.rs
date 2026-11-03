@@ -294,10 +294,18 @@ fn scan_plugins(world: &mut World) {
         })
         .collect();
     let extra: Vec<String> = needles.iter().map(|(_, n)| n.clone()).collect();
-    let scan = project_root
+    // The walk itself, kept whole for the Files tab: its file list is a
+    // directory listing, and is right whether or not a scene could be read. A
+    // project whose only scene is past `MAX_SCANNED_FILE` (a terrain stored
+    // inline makes a scene hundreds of megabytes) has `saw_scene` false, and
+    // filtering the walk away showed it an empty tree: "2 of 0 files".
+    let walk = project_root
         .as_deref()
-        .map(|root| crate::capabilities::scan_project(root, &extra))
-        .filter(|s| s.saw_scene);
+        .map(|root| crate::capabilities::scan_project(root, &extra));
+    let project_files = walk.as_ref().map(|w| w.files.clone()).unwrap_or_default();
+    // Detection still needs evidence: with no scene read, `None` keeps both
+    // halves on their safe fallbacks (everything ticked, plain defaults).
+    let scan = walk.filter(|s| s.saw_scene);
 
     let mut s = world.resource_mut::<ExportOverlayState>();
     // Both halves are skipped when a preset is driving the dialog: a preset is a
@@ -306,7 +314,7 @@ fn scan_plugins(world: &mut World) {
     // The project's file list, for the Files tab. Cleared with the rest when the
     // scan finds no project, so a stale list cannot outlive the project it came
     // from.
-    s.project_files = scan.as_ref().map(|sc| sc.files.clone()).unwrap_or_default();
+    s.project_files = project_files;
     // Kept even when a preset pins the working copy: it is the reference the
     // Features tab marks changes against, and that is still the project's own
     // answer whoever chose the current values.

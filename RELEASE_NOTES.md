@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-01 14:10
+- fix(export): the Files tab lists the project's files when its only scene is too large to scan
+
 ## 2026-10-31 21:04
 - fix(editor): store thumbnails, avatars and images shown in markdown no longer keep a CPU copy beside their GPU texture
 
