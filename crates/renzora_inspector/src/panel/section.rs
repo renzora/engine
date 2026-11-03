@@ -70,6 +70,12 @@ pub(super) struct ResetBtn {
     pub(super) set_fn: SetFn,
     pub(super) entity: Entity,
     pub(super) field_name: &'static str,
+    /// The section the field is in, for its Add Component default (see
+    /// `reset::default_value`).
+    pub(super) type_id: &'static str,
+    /// The section's component, tried first when looking for the field's
+    /// default.
+    pub(super) cid: Option<bevy::ecs::component::ComponentId>,
 }
 
 /// Marks a per-field "add keyframe" button. Carries the reflection path the

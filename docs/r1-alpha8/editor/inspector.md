@@ -125,7 +125,7 @@ Each setting gets the control that fits it.
 
 A number with a range fills as it rises, so the field is empty at the minimum and full at the maximum. A column of them reads at a glance without comparing digits.
 
-Every editable field has a small **reset** button to its right, which snaps it back to its default.
+Every editable field has a small **reset** button to its right, which snaps it back to its default: the value the component starts with when it is added, not zero (a camera's FOV goes back to 45, not 0). It is one undo step like any other edit. A field whose default the editor cannot find is left as it is.
 
 Edits apply live. There is no Apply button.
 

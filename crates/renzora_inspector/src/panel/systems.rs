@@ -210,9 +210,9 @@ pub(super) fn field_button_click(
     }
 }
 
-/// Reset a field to its default when its reset button is pressed. We read the
-/// current value first only to recover the `FieldValue` variant, then write the
-/// matching `type_default()` back through the field's own `set_fn`.
+/// Reset a field to the value its component starts with when its reset button
+/// is pressed, through the field's own `set_fn` so it records an undo step.
+/// See [`super::reset`] for how that value is found, and why it is not zero.
 pub(super) fn reset_click(
     q: Query<(&UiInteraction, &ResetBtn), Changed<UiInteraction>>,
     cmds: Option<Res<EditorCommands>>,
@@ -223,9 +223,13 @@ pub(super) fn reset_click(
             continue;
         }
         let (get_fn, set_fn, entity, name) = (btn.get_fn.clone(), btn.set_fn.clone(), btn.entity, btn.field_name);
+        let (type_id, cid) = (btn.type_id, btn.cid);
         cmds.push(move |w: &mut World| {
-            if let Some(cur) = get_fn(w, entity) {
-                record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), cur.type_default());
+            let Some(default) = super::reset::default_value(w, entity, &get_fn, type_id, cid) else {
+                return;
+            };
+            if get_fn(w, entity).as_ref() != Some(&default) {
+                record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), default);
             }
         });
     }

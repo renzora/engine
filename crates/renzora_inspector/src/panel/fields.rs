@@ -16,7 +16,7 @@ use renzora_ember::UiInteraction;
 use super::assets::build_asset_field;
 use super::section::{AddKeyframeBtn, FieldButton, ResetBtn};
 use super::spec::{field_label_loc, format_value, tracked_read, FieldInit, FieldKind, FieldSpec};
-use super::{c, phosphor_glyph, record_field_change, GetFn, SetFn};
+use super::{c, phosphor_glyph, record_field_change};
 
 pub(super) fn build_field_row(
     commands: &mut Commands,
@@ -68,7 +68,15 @@ pub(super) fn build_field_row(
     // Skipped for kinds that have no value to reset (action buttons, read-only
     // text) — resetting those would be meaningless.
     if field_is_resettable(field.kind) {
-        let reset = build_reset_button(commands, fonts, field.name, field.get_fn.clone(), field.set_fn.clone(), entity);
+        let btn = ResetBtn {
+            get_fn: field.get_fn.clone(),
+            set_fn: field.set_fn.clone(),
+            entity,
+            field_name: field.name,
+            type_id,
+            cid: field.cid,
+        };
+        let reset = build_reset_button(commands, fonts, btn);
         commands.entity(value).add_child(reset);
     }
     // An action button already says what it does, and the label column beside
@@ -113,18 +121,10 @@ fn field_is_resettable(kind: FieldKind) -> bool {
     !matches!(kind, FieldKind::Button { .. } | FieldKind::ReadOnly | FieldKind::Asset)
 }
 
-/// A small icon button that resets a field to its type-appropriate default
-/// (via [`FieldValue::type_default`]). Reads the field's current value only to
-/// learn its `FieldValue` variant, then writes the matching default back; the
-/// field's two-way binding refreshes the widget on the next frame.
-fn build_reset_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    field_name: &'static str,
-    get_fn: GetFn,
-    set_fn: SetFn,
-    entity: Entity,
-) -> Entity {
+/// A small icon button that resets a field to the value its component starts
+/// with (see `reset::default_value`); the field's two-way binding refreshes
+/// the widget on the next frame.
+fn build_reset_button(commands: &mut Commands, fonts: &EmberFonts, btn: ResetBtn) -> Entity {
     let btn = commands
         .spawn((
             Node {
@@ -139,7 +139,7 @@ fn build_reset_button(
             UiInteraction::default(),
             BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            ResetBtn { get_fn, set_fn, entity, field_name },
+            btn,
             Name::new("field-reset"),
         ))
         .id();

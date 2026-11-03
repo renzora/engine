@@ -55,6 +55,7 @@ pub(crate) mod order;
 pub(crate) mod pages;
 pub(crate) mod rebuild;
 pub(crate) mod reorder;
+pub(crate) mod reset;
 pub(crate) mod reveal;
 pub(crate) mod scene_page;
 pub(crate) mod section;

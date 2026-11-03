@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-03 16:32
+- fix(editor): an inspector field's reset button restores the component's default value instead of setting it to zero
+
 ## 2026-11-03 15:06
 - fix(editor): an open dropdown is at least as wide as its box and has a border and shadow, so it no longer blends into the controls beneath it
 - feat(editor): an open dropdown highlights the option currently selected

@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 /// A value that can be read from or written to a component field.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldValue {
     Float(f32),
     Vec3([f32; 3]),
