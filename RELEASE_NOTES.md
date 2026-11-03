@@ -1,5 +1,24 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-03 15:06
+- fix(editor): an open dropdown is at least as wide as its box and has a border and shadow, so it no longer blends into the controls beneath it
+- feat(editor): an open dropdown highlights the option currently selected
+- feat(editor): Settings is a narrower window with labels on the left, fixed-width controls on the right and divider lines instead of striped rows
+
+## 2026-11-03 14:27
+- feat(editor): anti-aliasing (with an Off option) and tonemapping are set in the camera's Camera section instead of sections of their own
+- feat(editor): a plugin can add rows to another crate's inspector section with `extend_inspector`
+
+## 2026-11-03 13:47
+- fix(editor): a panel rebuilding its rows no longer logs an "Entity despawned" error from the hover cursor
+
+## 2026-11-03 13:32
+- feat(rendering): one Anti-Aliasing component on a camera picks MSAA, FXAA, SMAA, TAA or DLSS, and replaces the separate TAA, FXAA and SMAA components
+- feat(editor): the Anti-Aliasing method dropdown puts a warning icon on each method that cannot run on the camera, with the reason in its tooltip
+- feat(rendering): DLSS Super Resolution works as an anti-aliasing method without Solari
+- fix(rendering): turning TAA off, or the Low graphics tier doing it, no longer leaves the camera offset by a fraction of a pixel with over-sharp textures
+- fix(rendering): removing a camera's anti-aliasing takes it off the viewport cameras too
+
 ## 2026-11-01 18:05
 - perf(atmosphere): turning the sky off removes the atmosphere completely, from the planet and every camera, so none of its passes, bindings or bakes run; turning it on restores what each camera had
 - fix(environment): sky lighting resyncs to the sun when the sky is turned back on

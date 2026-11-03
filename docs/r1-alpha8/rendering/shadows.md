@@ -47,7 +47,7 @@ A real shadow is sharp where an object touches the ground and grows blurrier the
 | Point, Spot | **Soft Shadows** | Turns them on. |
 | Point, Spot | **Radius** | The size of the bulb. Sets how blurry the shadows get, and also how large the light's reflections look on shiny surfaces. |
 
-Soft shadows cost noticeably more than hard ones, and each frame of them is grainy on its own. **Add TAA** (in the camera's or the world environment's anti-aliasing settings) to average the grain into a smooth blur over a few frames. While any light has soft shadows on, the engine switches cameras to temporal shadow filtering, the mode TAA needs to smooth them; you do not set that yourself.
+Soft shadows cost noticeably more than hard ones, and each frame of them is grainy on its own. **Use TAA** (the **Anti-Aliasing** row of the camera's Camera section, which new cameras start on TAA) to average the grain into a smooth blur over a few frames. While any light has soft shadows on, the engine switches cameras to temporal shadow filtering, the mode TAA needs to smooth them; you do not set that yourself.
 
 ## Resolution and filtering
 

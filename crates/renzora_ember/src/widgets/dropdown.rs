@@ -32,6 +32,20 @@ pub(crate) struct EmberDropdown {
     icons: Vec<String>,
     /// The box's leading icon glyph, kept in sync with the selection.
     box_icon: Option<Entity>,
+    /// Each option row's label, index for index with `options`, so the
+    /// selected one can be marked (see [`mark_selected`]).
+    row_labels: Vec<Entity>,
+}
+
+/// Colour the selected option's label with the accent and the rest plainly, so
+/// an open list says which one is current. Before, every row looked the same,
+/// and the only way to tell was to look back at the box.
+fn mark_selected(labels: &[Entity], selected: usize, colors: &mut Query<&mut TextColor>) {
+    for (i, &label) in labels.iter().enumerate() {
+        if let Ok(mut c) = colors.get_mut(label) {
+            c.set_if_neq(TextColor(rgb(if i == selected { accent() } else { text_primary() })));
+        }
+    }
 }
 
 impl EmberDropdown {
@@ -80,7 +94,26 @@ pub fn dropdown(
     options: &[&str],
     selected: usize,
 ) -> Entity {
-    build_dropdown(commands, fonts, options, &[], selected, None)
+    build_dropdown(commands, fonts, options, &[], &[], selected, None)
+}
+
+/// A [`dropdown`] whose options can each carry a warning: `warnings` is one
+/// entry per option, and an option with `Some(reason)` gets an amber warning
+/// icon at the end of its row, with `reason` as the icon's tooltip. The option
+/// stays selectable; the icon says it will not work as things stand, not that
+/// it cannot be chosen.
+///
+/// The box itself shows no icon. What sits beside the box depends on the
+/// caller's layout (an inspector row puts the selected option's warning there),
+/// so it is the caller's to add.
+pub fn dropdown_with_warnings(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    options: &[&str],
+    warnings: &[Option<String>],
+    selected: usize,
+) -> Entity {
+    build_dropdown(commands, fonts, options, &[], warnings, selected, None)
 }
 
 /// A [`dropdown`] sized for a toolbar strip: a fixed `width`, tighter padding,
@@ -97,7 +130,7 @@ pub fn dropdown_compact(
     selected: usize,
     width: f32,
 ) -> Entity {
-    build_dropdown(commands, fonts, options, &[], selected, Some(width))
+    build_dropdown(commands, fonts, options, &[], &[], selected, Some(width))
 }
 
 /// A dropdown whose options (and the selected box) carry a leading Phosphor
@@ -110,17 +143,20 @@ pub fn dropdown_with_icons(
 ) -> Entity {
     let labels: Vec<&str> = options.iter().map(|(_, l)| *l).collect();
     let icons: Vec<&str> = options.iter().map(|(i, _)| *i).collect();
-    build_dropdown(commands, fonts, &labels, &icons, selected, None)
+    build_dropdown(commands, fonts, &labels, &icons, &[], selected, None)
 }
 
 /// Shared builder for [`dropdown`] / [`dropdown_compact`] /
-/// [`dropdown_with_icons`]. `icons` is either empty (no icons) or one Phosphor
-/// name per option; `compact` is `Some(width)` for the toolbar size.
+/// [`dropdown_with_icons`] / [`dropdown_with_warnings`]. `icons` is either
+/// empty (no icons) or one Phosphor name per option; `warnings` is either empty
+/// or one optional reason per option; `compact` is `Some(width)` for the
+/// toolbar size.
 fn build_dropdown(
     commands: &mut Commands,
     fonts: &EmberFonts,
     options: &[&str],
     icons: &[&str],
+    warnings: &[Option<String>],
     selected: usize,
     compact: Option<f32>,
 ) -> Entity {
@@ -197,18 +233,27 @@ fn build_dropdown(
                 position_type: PositionType::Absolute,
                 top: Val::Percent(100.0),
                 left: Val::Px(0.0),
-                // A compact box can be narrower than its own option labels, so
-                // the menu keeps a readable floor of its own.
-                min_width: Val::Px(compact.map_or(140.0, |w| w.max(120.0))),
+                // At least as wide as the box it opens from. A fixed floor
+                // (140 px) let a wide inspector or settings box stick out past
+                // the menu on the right, so the menu read as a loose list of
+                // words over the rows beneath it rather than as the box's own
+                // list. Wider than the box when a label needs it.
+                min_width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(2.0)),
-                margin: UiRect::top(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                padding: UiRect::all(Val::Px(3.0)),
+                margin: UiRect::top(Val::Px(3.0)),
+                // Border and shadow, as the context menus have: the panel and
+                // the popup share near-identical colours in most themes, and
+                // without an edge the open menu blended into the controls under it.
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 overflow: Overflow::clip(),
                 display: Display::None,
                 ..default()
             },
             BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            super::decor::elevation(4.0, 12.0),
             // Replaced on open by `dropdown_toggle` with a depth relative to
             // this menu's own ancestors — see `floating_z`.
             GlobalZIndex(DROPDOWN_Z),
@@ -223,12 +268,13 @@ fn build_dropdown(
         ))
         .id();
     let mut rows = Vec::new();
+    let mut row_labels = Vec::new();
     for (i, opt) in options.iter().enumerate() {
         let row = commands
             .spawn((
                 Node {
                     width: Val::Percent(100.0),
-                    padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                     align_items: AlignItems::Center,
                     column_gap: Val::Px(8.0),
                     border_radius: BorderRadius::all(Val::Px(3.0)),
@@ -258,10 +304,31 @@ fn build_dropdown(
             .spawn((
                 Text::new(*opt),
                 ui_font(&fonts.ui, 12.0),
-                TextColor(rgb(text_primary())),
+                TextColor(rgb(if i == sel { accent() } else { text_primary() })),
+                // One line per option: the menu sizes itself to its longest
+                // label instead of wrapping one onto two rows.
+                bevy::text::TextLayout::no_wrap(),
             ))
             .id();
         commands.entity(row).add_child(txt);
+        row_labels.push(txt);
+        if let Some(Some(reason)) = warnings.get(i) {
+            // A growing spacer rather than an auto margin on the glyph: an auto
+            // margin takes the free space from shrinkable siblings first, and
+            // the label is one.
+            let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+            let warn = icon_text(commands, &fonts.phosphor, "warning", warn_amber(), 13.0);
+            commands.entity(warn).insert((
+                Node { flex_shrink: 0.0, ..default() },
+                // The tooltip is driven off the glyph's own interaction, so it
+                // needs one. The press still selects the row: the glyph is part
+                // of the option, not a control of its own.
+                UiInteraction::default(),
+                super::HoverTooltip::new(reason.clone()),
+                crate::interaction::PASS_THROUGH,
+            ));
+            commands.entity(row).add_children(&[spacer, warn]);
+        }
         rows.push(row);
     }
     // Wrap the options in a height-capped scroll area so long lists scroll
@@ -281,6 +348,7 @@ fn build_dropdown(
             options: options.iter().map(|s| s.to_string()).collect(),
             icons: icons.iter().map(|s| s.to_string()).collect(),
             box_icon,
+            row_labels,
         },
         // Carry the selection as `Bound<usize>` so `bind_2way` can drive it both
         // ways (read the model on select, push external changes to the label).
@@ -434,6 +502,7 @@ pub(crate) fn dropdown_select(
     mut dropdowns: Query<(&mut EmberDropdown, &mut Bound<usize>)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
+    mut colors: Query<&mut TextColor>,
 ) {
     for (interaction, opt) in &options {
         if *interaction != UiInteraction::Pressed {
@@ -442,6 +511,7 @@ pub(crate) fn dropdown_select(
         if let Ok((mut dd, mut bound)) = dropdowns.get_mut(opt.dropdown) {
             dd.selected = opt.value;
             dd.open = false;
+            mark_selected(&dd.row_labels, opt.value, &mut colors);
             if bound.0 != opt.value {
                 bound.0 = opt.value;
             }
@@ -468,12 +538,14 @@ pub(crate) fn dropdown_select(
 pub(crate) fn dropdown_apply(
     mut dropdowns: Query<(&mut EmberDropdown, &Bound<usize>), Changed<Bound<usize>>>,
     mut texts: Query<&mut Text>,
+    mut colors: Query<&mut TextColor>,
 ) {
     for (mut dd, bound) in &mut dropdowns {
         if dd.selected == bound.0 {
             continue;
         }
         dd.selected = bound.0;
+        mark_selected(&dd.row_labels, bound.0, &mut colors);
         let (label, text) = (dd.label, dd.options.get(bound.0).cloned().unwrap_or_default());
         let box_icon = dd.box_icon;
         let icon = dd.icons.get(bound.0).cloned();

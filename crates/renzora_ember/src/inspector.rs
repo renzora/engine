@@ -231,7 +231,7 @@ pub(crate) fn fit_label_columns(
 /// Checking here fixes every drawer at once. It runs as a queued command
 /// because the widget's components are only in the world once the builder's
 /// commands apply.
-fn fill_if_growable(commands: &mut Commands, control: Entity) {
+pub fn fill_if_growable(commands: &mut Commands, control: Entity) {
     commands.queue(move |w: &mut World| {
         let Ok(mut e) = w.get_entity_mut(control) else { return };
         let grows = e.contains::<crate::widgets::EmberDragValue>()

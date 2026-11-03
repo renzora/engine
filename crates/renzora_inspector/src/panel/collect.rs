@@ -174,6 +174,13 @@ pub(crate) fn collect_sections(
                 (FieldType::Enum { options }, Some(FieldValue::Enum(s))) => {
                     (FieldKind::Enum { options }, FieldInit::Text(s.clone()))
                 }
+                (FieldType::CheckedEnum { options, warning }, Some(FieldValue::Enum(s))) => (
+                    FieldKind::CheckedEnum { options },
+                    FieldInit::Checked(
+                        s.clone(),
+                        (0..options.len()).map(|i| warning(world.untracked(), entity, i)).collect(),
+                    ),
+                ),
                 // Options are computed from the world here (mapping has `world`);
                 // stored in the init so `FieldKind` stays `Copy`.
                 (FieldType::DynamicEnum { options }, Some(FieldValue::Float(v))) => (

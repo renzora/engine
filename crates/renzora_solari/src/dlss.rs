@@ -30,41 +30,60 @@ pub(crate) type DlssAttached = With<NoDlss>;
 pub(crate) struct NoDlss;
 
 pub(crate) fn register(app: &mut App) {
+    register_support(app, true);
     #[cfg(feature = "dlss")]
-    {
-        app.add_systems(Startup, report_support)
-            .add_systems(Update, imp::sync_dlss_cameras.after(crate::sync_solari_cameras));
-    }
-    #[cfg(not(feature = "dlss"))]
-    app.insert_resource(DlssSupport::default());
+    app.add_systems(Update, imp::sync_dlss_cameras.after(crate::sync_solari_cameras));
 }
+
+/// Publish [`DlssSupport`] and nothing else. `solari_runs` is false on a GPU
+/// without ray tracing, where Ray Reconstruction has no Solari image to work on
+/// but Super Resolution (anti-aliasing's DLSS method) still can.
+pub(crate) fn register_support(app: &mut App, solari_runs: bool) {
+    #[cfg(feature = "dlss")]
+    app.add_systems(Startup, move |commands: Commands, rr: RrSupported, sr: SrSupported| {
+        report_support(commands, rr, sr, solari_runs)
+    });
+    #[cfg(not(feature = "dlss"))]
+    {
+        let _ = solari_runs;
+        app.insert_resource(DlssSupport::default());
+    }
+}
+
+#[cfg(feature = "dlss")]
+type RrSupported<'w> = Option<Res<'w, bevy::anti_alias::dlss::DlssRayReconstructionSupported>>;
+#[cfg(feature = "dlss")]
+type SrSupported<'w> = Option<Res<'w, bevy::anti_alias::dlss::DlssSuperResolutionSupported>>;
 
 /// Publish what DLSS can do on this run. Startup rather than `build`, because
 /// Bevy's DLSS plugin decides support in its own `finish`, after every plugin
 /// has built.
 #[cfg(feature = "dlss")]
-fn report_support(
-    mut commands: Commands,
-    rr: Option<Res<bevy::anti_alias::dlss::DlssRayReconstructionSupported>>,
-) {
+fn report_support(mut commands: Commands, rr: RrSupported, sr: SrSupported, solari_runs: bool) {
     let support = DlssSupport {
         compiled: true,
-        ray_reconstruction: rr.is_some(),
+        ray_reconstruction: solari_runs && rr.is_some(),
+        super_resolution: sr.is_some(),
     };
     if support.ray_reconstruction {
         info!("[solari] DLSS Ray Reconstruction is available");
-    } else {
+    } else if solari_runs {
         info!(
             "[solari] DLSS Ray Reconstruction is not available on this GPU, driver or \
              renderer; Solari uses its built-in denoiser"
         );
+    }
+    if !support.super_resolution {
+        info!("[solari] DLSS Super Resolution is not available on this GPU, driver or renderer");
     }
     commands.insert_resource(support);
 }
 
 #[cfg(feature = "dlss")]
 mod imp {
-    use bevy::anti_alias::dlss::{Dlss, DlssPerfQualityMode, DlssRayReconstructionFeature};
+    use bevy::anti_alias::dlss::{
+        Dlss, DlssPerfQualityMode, DlssRayReconstructionFeature, DlssSuperResolutionFeature,
+    };
     use bevy::anti_alias::taa::TemporalAntiAliasing;
     use bevy::prelude::*;
     use bevy::render::camera::{MipBias, TemporalJitter};
@@ -72,6 +91,7 @@ mod imp {
     use renzora::{DlssMode, DlssSupport, EffectRouting, SolariGi};
 
     type RayReconstruction = Dlss<DlssRayReconstructionFeature>;
+    type SuperResolution = Dlss<DlssSuperResolutionFeature>;
 
     /// The smallest output, in pixels on its shorter side, DLSS is attached
     /// to. Well under any real viewport, and big enough that every quality
@@ -103,11 +123,14 @@ mod imp {
     /// Give each routed Solari camera DLSS Ray Reconstruction while it is
     /// wanted and supported, and take it away otherwise.
     ///
-    /// TAA is removed from a camera while DLSS is on it: DLSS anti-aliases
-    /// the image itself, and two passes resolving one jitter fight each
-    /// other. The anti-aliasing plugin only re-applies TAA when its settings
-    /// or the routing change, so taking DLSS away marks the routing changed,
-    /// which puts TAA back where it is configured.
+    /// TAA, and anti-aliasing's own DLSS (Super Resolution), are removed from
+    /// a camera while Ray Reconstruction is on it: it anti-aliases the image
+    /// itself, and two passes resolving one jitter fight each other. Removing
+    /// them here, in the frame Ray Reconstruction arrives, keeps the two from
+    /// ever rendering together; the anti-aliasing plugin sees Ray
+    /// Reconstruction and holds them off from then on, and puts them back by
+    /// itself once it goes. Taking DLSS away still marks the routing changed,
+    /// for the routers that only re-apply on a change.
     #[allow(clippy::type_complexity)]
     pub(crate) fn sync_dlss_cameras(
         mut commands: Commands,
@@ -185,6 +208,7 @@ mod imp {
                     if taa {
                         ec.try_remove::<TemporalAntiAliasing>();
                     }
+                    ec.try_remove::<SuperResolution>();
                 }
                 (false, Some(_)) => {
                     // Only DLSS this plugin attached; one put there by hand

@@ -6,6 +6,12 @@ edition = "2021"
 # No `editor` feature: lean runtime crate. The inspector moved to the nested
 # renzora_antialiasing_editor crate (crates/renzora_antialiasing/editor).
 
+[features]
+# The DLSS method (Bevy's DLSS Super Resolution). Set by the runtime's own
+# `dlss` feature, which needs the DLSS SDK to build; without it the method is
+# still listed, and the inspector says this build has no DLSS.
+dlss = ["bevy/dlss"]
+
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }

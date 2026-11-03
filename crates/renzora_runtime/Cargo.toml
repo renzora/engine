@@ -184,7 +184,7 @@ virtual_geometry = ["dep:renzora_virtual_geometry"]
 # the DLSS SDK, the Vulkan SDK and clang to build, which `cargo renzora` checks
 # for before turning it on. Also inserts the `DlssProjectId` Bevy's DLSS plugin
 # requires before `DefaultPlugins`.
-dlss = ["solari", "renzora_solari/dlss", "bevy/dlss", "renzora_xr?/dlss"]
+dlss = ["solari", "renzora_solari/dlss", "bevy/dlss", "renzora_xr?/dlss", "renzora_antialiasing?/dlss"]
 cloth = ["dep:renzora_cloth"]
 gaussian_splatting = ["dep:renzora_gaussian_splatting"]
 ragdoll = ["dep:renzora_ragdoll"]

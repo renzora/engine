@@ -18,6 +18,14 @@ pub trait AppEditorExt {
     /// Register an `InspectorEntry` directly.
     fn register_inspector(&mut self, entry: InspectorEntry) -> &mut Self;
 
+    /// Add rows to another crate's inspector section. See
+    /// [`InspectorRegistry::extend`].
+    fn extend_inspector(
+        &mut self,
+        type_id: &'static str,
+        fields: Vec<super::inspector_registry::FieldDef>,
+    ) -> &mut Self;
+
     /// Register a component that implements `InspectableComponent` (from derive macro).
     /// Also registers the type for Bevy reflection so scripts can access it.
     fn register_inspectable<T: InspectableComponent + bevy::reflect::GetTypeRegistration>(
@@ -68,6 +76,18 @@ impl AppEditorExt for App {
         self.world_mut()
             .resource_mut::<InspectorRegistry>()
             .register(entry);
+        self
+    }
+
+    fn extend_inspector(
+        &mut self,
+        type_id: &'static str,
+        fields: Vec<super::inspector_registry::FieldDef>,
+    ) -> &mut Self {
+        self.init_resource::<InspectorRegistry>();
+        self.world_mut()
+            .resource_mut::<InspectorRegistry>()
+            .extend(type_id, fields);
         self
     }
 

@@ -119,11 +119,12 @@ fn seed_camera_effects(
             CameraEffectsSeeded,
             // The default-ON camera image-quality set (matches what the stock
             // scene used to carry on the World Environment). DOF / motion blur /
-            // FXAA / SMAA / CAS / deband stay OFF by default — added per-camera.
+            // CAS and deband stay OFF by default, added per camera. Anti-aliasing
+            // starts on TAA; its other methods are picked on the same component.
             renzora_bloom_effect::BloomSettings::default(),
             renzora::AutoExposureSettings::default(),
             renzora_tonemapping::TonemappingSettings::default(),
-            renzora_antialiasing::TaaSettings::default(),
+            renzora_antialiasing::AntiAliasing::default(),
             // Manual exposure (lens attribute, edited in the Camera section). The
             // tuned 9.7 preserves the stock look; Auto Exposure overrides it when on.
             bevy::camera::Exposure { ev100: 9.7 },
@@ -147,6 +148,9 @@ fn strip_camera_effects_from_2d(
                 With<renzora_bloom_effect::BloomSettings>,
                 With<renzora::AutoExposureSettings>,
                 With<renzora_tonemapping::TonemappingSettings>,
+                // The old seeded component only. `AntiAliasing` is not
+                // stripped: the seeder never puts one on a 2D camera, so one
+                // there was added by hand.
                 With<renzora_antialiasing::TaaSettings>,
             )>,
         ),
@@ -1533,7 +1537,7 @@ fn outdoor_camera() -> impl Bundle {
             range_max: 16.0,
             ..default()
         },
-        renzora_antialiasing::TaaSettings::default(),
+        renzora_antialiasing::AntiAliasing::default(),
         bevy::camera::Exposure { ev100: 9.7 },
     )
 }

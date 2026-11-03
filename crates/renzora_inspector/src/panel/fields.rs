@@ -9,7 +9,7 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown, text_input, toggle_switch, DragRange,
+    bind_text_input, drag_value, dropdown, dropdown_with_warnings, text_input, toggle_switch, DragRange,
 };
 use renzora_ember::UiInteraction;
 
@@ -439,6 +439,58 @@ fn build_field_value(
             );
             renzora_ember::inspector::fill_control(commands, dd);
             commands.entity(value_parent).add_child(dd);
+        }
+        FieldKind::CheckedEnum { options } => {
+            let (cur, warnings) = match field.init {
+                FieldInit::Checked(ref s, ref w) => (s.clone(), w.clone()),
+                _ => (String::new(), Vec::new()),
+            };
+            let refs: Vec<&str> = options.to_vec();
+            let sel = options.iter().position(|o| *o == cur).unwrap_or(0);
+            let dd = dropdown_with_warnings(commands, fonts, &refs, &warnings, sel);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
+            bind_2way(
+                commands,
+                dd,
+                move |w| {
+                    let cur = match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
+                        Some(FieldValue::Enum(s)) => s,
+                        _ => String::new(),
+                    };
+                    options.iter().position(|o| *o == cur).unwrap_or(0)
+                },
+                move |w, i: &usize| {
+                    if let Some(opt) = options.get(*i) {
+                        record_field_change(
+                            w,
+                            entity,
+                            name,
+                            get_fn.clone(),
+                            set_fn.clone(),
+                            FieldValue::Enum((*opt).to_string()),
+                        );
+                    }
+                },
+            );
+            renzora_ember::inspector::fill_control(commands, dd);
+            commands.entity(value_parent).add_child(dd);
+            // The selected option's warning, beside the box, so a choice that
+            // is not taking effect says so without opening the menu. Built
+            // from the snapshot: picking another option changes the section's
+            // signature (see `rebuild`), which rebuilds the row with the new one.
+            if let Some(Some(reason)) = warnings.get(sel) {
+                let warn = phosphor_glyph(commands, fonts, "warning", renzora_ember::theme::warn_amber(), 13.0);
+                commands.entity(warn).insert((
+                    Node { flex_shrink: 0.0, ..default() },
+                    // Tracked only for the tooltip; it is not a control, so it
+                    // keeps the plain arrow rather than the hand.
+                    UiInteraction::default(),
+                    renzora_ember::cursor_icon::NoAutoCursor,
+                    renzora_ember::widgets::HoverTooltip::new(reason.clone()),
+                ));
+                commands.entity(value_parent).add_child(warn);
+            }
         }
         FieldKind::DynamicEnum => {
             let (options, selected) = if let FieldInit::DynEnum(ref o, s) = field.init {

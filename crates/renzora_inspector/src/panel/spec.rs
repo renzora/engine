@@ -30,6 +30,9 @@ pub(crate) enum FieldKind {
     /// Dynamic dropdown; options + selected index live in [`FieldInit::DynEnum`]
     /// (so this stays `Copy`). Value is the selected index (`FieldValue::Float`).
     DynamicEnum,
+    /// Fixed dropdown whose options may carry warnings; the per-option
+    /// reasons live in [`FieldInit::Checked`]. Value is the label, as `Enum`.
+    CheckedEnum { options: &'static [&'static str] },
     Button { icon: &'static str },
     ReadOnly,
 }
@@ -42,6 +45,8 @@ pub(crate) enum FieldInit {
     Text(String),
     /// Dynamic-dropdown options (computed from the world) + the selected index.
     DynEnum(Vec<String>, usize),
+    /// A checked dropdown's selected label and each option's warning, if any.
+    Checked(String, Vec<Option<String>>),
 }
 
 #[derive(Clone)]

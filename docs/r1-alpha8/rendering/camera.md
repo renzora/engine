@@ -166,6 +166,45 @@ How routing works:
 
 See [Post-Processing Effects](../extending/post-processing.md) for how the 53 shipped effects are authored, and [Render Pipeline](./pipeline.md) for how they compose.
 
+## Anti-aliasing
+
+Anti-aliasing is set in the camera's **Camera** section, on two rows: **Anti-Aliasing** (**Off**, or one of the methods below) and **AA Quality**, whose choices follow the method and which is hidden while anti-aliasing is Off. New scene cameras start on TAA. One method runs at a time: they all attack the same jagged edges, and two at once only blur twice (TAA under FXAA) or fight over one camera jitter (TAA and DLSS).
+
+The setting is stored in its own component, `renzora_antialiasing::AntiAliasing`; the Camera section only draws it. Off switches the component's `enabled` off rather than removing it, so the method and each method's quality are still there when it is turned back on. A camera without the component reads as Off, and choosing a method adds one.
+
+| Method | Quality | What it is |
+|---|---|---|
+| **MSAA** | 2x, 4x, 8x | Several samples per pixel at triangle edges. Sharp and stable, but smooths only geometry edges, and only works where the render path allows it (below). |
+| **FXAA** | Low to Extreme | A cheap full-screen pass that blurs along detected edges. Softens the whole image a little. |
+| **SMAA** | Low to Ultra | Edge detection like FXAA with a sharper result. Does not fix shimmer in motion. |
+| **TAA** | (none) | Jitters the camera and blends frames. The best on thin detail and shimmer (foliage, specular, soft shadows), and what most of the rendering is tuned for. Can ghost on fast motion. |
+| **DLSS** | Auto, DLAA, Quality, Balanced, Performance, Ultra Performance | NVIDIA DLSS Super Resolution: upscaling and anti-aliasing in one. See [DLSS](./dlss.md#dlss-without-solari). |
+
+Sharpening (**Sharpening (CAS)**) is a separate component that sits on top of any method, mostly to give back the detail TAA and DLSS soften.
+
+### When a method cannot run
+
+Not every method works on every camera. The **Anti-Aliasing** dropdown puts an amber warning icon on each option that cannot run on this camera right now, and beside the box while that option is the selected one; hover it for the reason and what to change.
+
+| Method | Cannot run when |
+|---|---|
+| MSAA | the camera renders **Deferred** (Project Settings > Rendering, or Solari forcing it), or has **SSAO**, the **sky** (atmosphere) or **order-independent transparency** on |
+| TAA | the viewport's Graphics Quality is **Low**, or Solari's DLSS Ray Reconstruction is anti-aliasing the camera already |
+| DLSS | the build has no DLSS SDK, the GPU or renderer cannot run it (an NVIDIA RTX GPU on Vulkan), or Ray Reconstruction is already on the camera |
+| FXAA, SMAA | always run |
+
+A method that cannot run is held off, not forced: the camera renders with no anti-aliasing until whatever is in the way goes, and then the method takes effect by itself. The choice stays on the component. Several of these combinations crash the renderer rather than failing quietly, which is why the engine refuses them.
+
+What decides it is the cameras that actually render: in the editor, the viewport cameras the scene camera's settings are routed onto. The rules live in one place (`renzora_antialiasing::compat`), read by both the inspector's warnings and the system that applies the method, so the warning and the viewport always agree.
+
+Scenes saved with the old per-method components (`TaaSettings`, `FxaaSettings`, `SmaaSettings`) still load: each camera's old components are folded into one Anti-Aliasing as the scene loads, keeping the method that was on (TAA first, then SMAA, then FXAA) and each method's quality.
+
+## Tonemapping
+
+The camera's tonemapping curve is the **Tonemapping** row of its **Camera** section: **None** (no curve), Reinhard, Reinhard Luminance, ACES Fitted, AgX, Somewhat Boring, Tony McMapface (the default) or Blender Filmic. It is stored in `renzora_tonemapping::TonemappingSettings`, which the section only draws; exposure is the section's **EV100**, not part of tonemapping.
+
+Older scenes that carry `TonemappingSettings` on a non-camera entity (the World Environment) still show it there as its own Tonemapping section.
+
 ## Auto Exposure (keeping night dark)
 
 `AutoExposureSettings` wraps Bevy's histogram auto-exposure: it meters the scene and animates the camera's exposure so the average pixel lands on middle gray (eye adaptation). Because it *always* targets middle gray, a genuinely dark night scene gets **brightened** — physically faithful, but usually not the night look you want.

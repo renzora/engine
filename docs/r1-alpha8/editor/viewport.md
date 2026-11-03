@@ -281,7 +281,7 @@ A gated effect keeps its component, its enable toggle and its settings, and simp
 
 <!-- screenshot: inspector_quality_gate.png - a Clouds component header showing the amber gate warning and its tooltip -->
 
-The components that can carry it are Clouds, Bloom, TAA, Auto Exposure, SSAO and Atmosphere. So if clouds are not drawing and the Clouds header has the triangle, nothing is broken: raise the tier.
+The components that can carry it are Clouds, Bloom, Auto Exposure, SSAO and Atmosphere. So if clouds are not drawing and the Clouds header has the triangle, nothing is broken: raise the tier. Anti-aliasing is the exception: Low stops only its TAA method, so the warning sits on **TAA** in the Camera section's Anti-Aliasing dropdown instead (see [Anti-aliasing](/docs/r1-alpha8/rendering/camera#anti-aliasing)).
 
 ## Related pages
 

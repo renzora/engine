@@ -682,17 +682,18 @@ impl GraphicsQuality {
     ///
     /// The mapping is a table here rather than a field on `InspectorEntry`
     /// because a component does not get to decide this: the gates are already one
-    /// central list on this enum (`bloom`, `taa`, `ssao`, `clouds`,
+    /// central list on this enum (`bloom`, `ssao`, `clouds`,
     /// `auto_exposure`, `atmosphere_raymarched`), and a second copy spread across
     /// 180-odd registration sites would drift from it the first time a tier moved.
     /// Anything not listed is ungated and returns `None`.
     pub fn inspector_gate(&self, type_id: &str) -> Option<QualityGate> {
         // Not in the list below, and deliberately: Solari reads no tier at all,
-        // so its section must not claim to be gated.
+        // so its section must not claim to be gated. Nor is anti-aliasing: the
+        // tier stops only one of its methods (TAA), so the header must not say
+        // the whole section is off; its Method dropdown warns on TAA instead.
         let on = match type_id {
             "clouds" => self.clouds(),
             "bloom" => self.bloom(),
-            "taa" => self.taa(),
             "auto_exposure" => self.auto_exposure(),
             "world_env_ssao" => self.ssao(),
             // The one that survives in reduced form rather than going away.

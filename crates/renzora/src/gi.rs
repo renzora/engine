@@ -280,18 +280,21 @@ impl DlssMode {
 }
 
 /// What this build and this GPU can do with DLSS, written at startup by the
-/// Solari plugin and read by the inspector to say which denoiser is running.
-/// The inspector cannot see Bevy's own DLSS types: they exist only in a build
-/// compiled with the DLSS SDK.
+/// Solari plugin and read by the inspector to say which denoiser is running,
+/// and by anti-aliasing to say whether its DLSS method can run. Neither can see
+/// Bevy's own DLSS types: they exist only in a build compiled with the DLSS SDK.
 ///
 /// Absent means the Solari plugin is not in the build at all.
-#[derive(Resource, Clone, Copy, Debug, Default)]
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DlssSupport {
     /// The binary was built with the DLSS SDK.
     pub compiled: bool,
     /// The GPU, driver and renderer support DLSS Ray Reconstruction on this
     /// run.
     pub ray_reconstruction: bool,
+    /// The GPU, driver and renderer support DLSS Super Resolution (upscaling
+    /// and anti-aliasing, without Solari) on this run.
+    pub super_resolution: bool,
 }
 
 /// Solari's cost/noise preset, mapped by the Solari plugin onto the sample

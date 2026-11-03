@@ -92,10 +92,9 @@ impl Plugin for SolariPlugin {
                  Solari is inert. (Needs an RT-capable GPU on the Vulkan/DX12/Metal \
                  backend; see renzora::GpuRaytracing.)"
             );
-            app.insert_resource(renzora::DlssSupport {
-                compiled: cfg!(feature = "dlss"),
-                ray_reconstruction: false,
-            });
+            // Still report DLSS: Super Resolution, the anti-aliasing method,
+            // needs no ray tracing, so it can run where Solari cannot.
+            dlss::register_support(app, false);
             return;
         }
 

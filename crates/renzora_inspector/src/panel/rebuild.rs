@@ -7,7 +7,8 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
 use renzora_editor_framework::{
-    EditorSelection, EditorSettings, FieldType, InspectorRegistry, NativeInspectorDrawer,
+    EditorSelection, EditorSettings, FieldType, FieldValue, InspectorRegistry,
+    NativeInspectorDrawer,
 };
 use renzora_ember::font::EmberFonts;
 use renzora_ember::interaction::BLOCK;
@@ -497,6 +498,20 @@ fn hash_entity(world: &Rx, e: Entity, h: &mut impl Hasher) {
                     if let FieldType::DynamicEnum { options } = field.field_type {
                         for opt in options(world.untracked(), e) {
                             opt.hash(h);
+                        }
+                    }
+                    // A `CheckedEnum`'s warnings come from the rest of the
+                    // world (the rendering mode, other effects on the camera),
+                    // so they change without this entity changing. The
+                    // selection is folded in too: the warning beside the box
+                    // belongs to the selected option, and picking a different
+                    // one has to rebuild the row for it to follow.
+                    if let FieldType::CheckedEnum { options, warning } = field.field_type {
+                        for i in 0..options.len() {
+                            warning(world.untracked(), e, i).hash(h);
+                        }
+                        if let Some(FieldValue::Enum(s)) = (field.get_fn)(world.untracked(), e) {
+                            s.hash(h);
                         }
                     }
                 }
