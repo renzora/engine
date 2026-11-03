@@ -375,6 +375,9 @@ impl Sdk {
             self.manifest.link_search.dependency.iter().map(|d| self.root.join(d)).collect();
         let native: Vec<PathBuf> =
             self.manifest.link_search.native.iter().map(|n| self.root.join(n)).collect();
+        // Computed once and returned at the end, so the stamp recorded beside
+        // the library and the one written into it cannot disagree.
+        let stamp = self.stamp();
 
         let target = native_build::Target {
             triple: &self.manifest.triple,
@@ -395,6 +398,7 @@ impl Sdk {
             build_dir: out.parent().unwrap_or(dir),
             src: &src,
             out,
+            abi: &stamp,
         };
         let args = native_build::rustc::args(&target).map_err(Error::Deps)?;
 
@@ -460,7 +464,7 @@ impl Sdk {
         // Before the stamp is recorded, so a plugin is never marked built until
         // it points at the images the host actually has mapped.
         native_build::rustc::fixup_install_names(out);
-        Ok(self.stamp())
+        Ok(stamp)
     }
 }
 

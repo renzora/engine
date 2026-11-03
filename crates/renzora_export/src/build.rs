@@ -1687,8 +1687,18 @@ pub fn stage_runtime_native_plugins(
     // no switch at all.
     let disabled = renzora::load_disabled_plugins();
 
+    // The build this editor is, so the game can refuse a plugin built for any
+    // other — it has no SDK of its own to ask. Absent only when this editor has
+    // no SDK either, in which case no plugin was built here and the game is
+    // left as it was: loading what it finds on trust.
+    let engine_stamp =
+        renzora_plugin_build::Sdk::load(renzora_plugin_build::install::sdk_dir(editor_dir))
+            .ok()
+            .map(|sdk| sdk.stamp());
+
     let mut shipped: Vec<String> = Vec::new();
     let mut skipped_editor: Vec<String> = Vec::new();
+    let mut skipped_foreign: Vec<String> = Vec::new();
     for plugin in renzora_native_plugin::installed_for(editor_dir, lib_ext) {
         let name = plugin.id;
         if disabled.iter().any(|d| d == &name) {
@@ -1704,6 +1714,19 @@ pub fn stage_runtime_native_plugins(
             skipped_editor.push(name);
             continue;
         }
+        // Built for another engine than the one being shipped. The game would
+        // refuse it at startup anyway; refusing it here puts the message in
+        // front of the person who can fix it, rather than in a player's log.
+        if let Some(want) = &engine_stamp {
+            let matches = std::fs::read(&plugin.lib).is_ok_and(|bytes| {
+                renzora_native_plugin::image_abi(&bytes)
+                    == renzora_native_plugin::ImageAbi::Stamped(want.clone())
+            });
+            if !matches {
+                skipped_foreign.push(name);
+                continue;
+            }
+        }
 
         let dest = output_dir.join("plugins").join(&name).join("build");
         std::fs::create_dir_all(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
@@ -1713,11 +1736,30 @@ pub fn stage_runtime_native_plugins(
         shipped.push(name);
     }
 
+    // Written whether or not anything shipped: a player may add a plugin
+    // later, and the game needs to know its own build to check that one too.
+    if let Some(stamp) = &engine_stamp {
+        let plugins = output_dir.join("plugins");
+        std::fs::create_dir_all(&plugins)
+            .map_err(|e| format!("create {}: {e}", plugins.display()))?;
+        let path = plugins.join(renzora_native_plugin::ENGINE_STAMP_FILE);
+        std::fs::write(&path, format!("{stamp}\n"))
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+
     if !shipped.is_empty() {
         progress(format!(
             "Shipped {} runtime native plugin(s): {}",
             shipped.len(),
             shipped.join(", ")
+        ));
+    }
+    if !skipped_foreign.is_empty() {
+        progress(format!(
+            "WARN: {} native plugin(s) were built for a different engine build and were not \
+             shipped ({}). Rebuild them in this editor and export again.",
+            skipped_foreign.len(),
+            skipped_foreign.join(", ")
         ));
     }
     // Said out loud, because "my plugin is missing from the build" is otherwise

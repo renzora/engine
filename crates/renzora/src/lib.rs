@@ -187,6 +187,12 @@ mod plugin_meta;
 /// Where a native plugin may load — see [`plugin!`]. Re-exported because both
 /// the macro's expansion and the loader that reads the symbol name it.
 pub use plugin_meta::NativePluginScope;
+/// The ABI record a native plugin carries — see [`plugin!`]. The marker and the
+/// record builder are shared by the macro's expansion, which writes it, and the
+/// loader, which reads it off the file.
+pub use plugin_meta::{
+    native_plugin_abi_record, NATIVE_PLUGIN_ABI_MARKER, NATIVE_PLUGIN_ABI_RECORD_LEN,
+};
 /// What a Rust script is handed — see [`script_ctx::ScriptCtx`].
 pub mod script_ctx;
 pub use script_ctx::ScriptCtx;
