@@ -86,7 +86,7 @@ pub fn stream_terrain_chunks(world: &mut World) {
     };
 
     let mut to_stream_in: Vec<Entity> = Vec::new();
-    let mut to_stream_out: Vec<Entity> = Vec::new();
+    let mut to_stream_out: Vec<(Entity, bool)> = Vec::new();
     {
         let mut q = world.query::<(
             Entity,
@@ -94,8 +94,9 @@ pub fn stream_terrain_chunks(world: &mut World) {
             &GlobalTransform,
             Has<TerrainChunkStreamedOut>,
             Has<Mesh3d>,
+            Has<renzora::physics::HeightfieldSource>,
         )>();
-        for (entity, chunk_of, transform, streamed_out, has_mesh) in q.iter(world) {
+        for (entity, chunk_of, transform, streamed_out, has_mesh, has_field) in q.iter(world) {
             let Some(&(stream, radius, chunk_size)) = configs.get(&chunk_of.0) else {
                 continue;
             };
@@ -125,7 +126,7 @@ pub fn stream_terrain_chunks(world: &mut World) {
                 // full detail this frame. Marked out here, it never is: a
                 // grid grown to 64 x 64 used to build all 4096 full meshes
                 // (about 5 GB) in one frame and ran the GPU out of memory.
-                to_stream_out.push(entity);
+                to_stream_out.push((entity, has_field));
             }
         }
     }
@@ -135,7 +136,22 @@ pub fn stream_terrain_chunks(world: &mut World) {
     }
     if !to_stream_out.is_empty() {
         let mut commands = world.commands();
-        for entity in to_stream_out {
+        for (entity, has_field) in to_stream_out {
+            // A chunk with physics and no mesh of its own is what an imported
+            // model's root looks like, and physics gives one a trimesh merged
+            // from the meshes under it (`resolve_model_colliders`): here, the
+            // stand-in. What tells it apart is `HeightfieldSource`, which a
+            // chunk streamed out before it was ever built (every far chunk of
+            // a scene just loaded) never had, so each of those got a collider
+            // after all. An empty field marks it without holding its heights;
+            // streaming in hands over the real ones (`rehydrate_terrain_chunks`).
+            if !has_field {
+                // Empty is safe wherever a heightfield is read: the backend
+                // builds no collider from it and its bounds are a point.
+                commands.entity(entity).try_insert(renzora::physics::HeightfieldSource(std::sync::Arc::new(
+                    renzora::physics::HeightfieldData::default(),
+                )));
+            }
             // Collider first (both backends' component sets), then the mesh —
             // dropping `Mesh3d` releases the only strong handle to the chunk
             // mesh asset, which is the actual memory win.

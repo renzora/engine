@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-01 16:40
+- perf(terrain): chunk heights are saved as a compressed 16-bit heightmap instead of a list of floats, so a 2 km terrain loads in a fraction of the time and size
+- fix(terrain): a chunk loaded from a scene always gets a heightfield collider, never a 32 thousand triangle trimesh
+- fix(terrain): far chunks no longer get a collider built from their low detail stand-in
+
 ## 2026-11-01 14:10
 - fix(export): the Files tab lists the project's files when its only scene is too large to scan
 

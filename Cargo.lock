@@ -8680,8 +8680,10 @@ dependencies = [
 name = "renzora_terrain"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bevy",
  "bytemuck",
+ "flate2",
  "png 0.17.16",
  "renzora",
  "renzora_physics",

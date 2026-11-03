@@ -8,6 +8,10 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 png = "0.17"
+# A chunk's heights are saved as a deflated 16-bit heightmap in base64
+# (`data::packed_heights`): text floats made a 2 km terrain 180 MB.
+base64 = "0.22"
+flate2 = "1"
 # `render_3d`: the ray tracer's stand-in material contract (`TracedStandIn`),
 # which is how terrain reaches Solari (see `surface`).
 renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }

@@ -569,14 +569,22 @@ pub fn rehydrate_terrain_chunks(
             Some((entity, parent, terrain, chunk, neighbours))
         })
         .collect();
-    let built: Vec<(Entity, Entity, Mesh)> = bevy::tasks::ComputeTaskPool::get().scope(|scope| {
-        for (entity, parent, terrain, chunk, neighbours) in &jobs {
-            scope.spawn(async move { (*entity, *parent, generate_chunk_lod_mesh_beside(terrain, chunk, 1, *neighbours)) });
-        }
-    });
+    let built: Vec<(Entity, Entity, Mesh, Option<renzora::physics::HeightfieldData>)> =
+        bevy::tasks::ComputeTaskPool::get().scope(|scope| {
+            for (entity, parent, terrain, chunk, neighbours) in &jobs {
+                scope.spawn(async move {
+                    (
+                        *entity,
+                        *parent,
+                        generate_chunk_lod_mesh_beside(terrain, chunk, 1, *neighbours),
+                        chunk_heightfield(terrain, chunk),
+                    )
+                });
+            }
+        });
 
     let mut material: Option<Handle<TerrainCheckerboardMaterial>> = None;
-    for (entity, parent_entity, mesh) in built {
+    for (entity, parent_entity, mesh, field) in built {
         let Ok((_, _, chunk_of, _, mat_ref)) = chunk_query.get(entity) else {
             continue;
         };
@@ -598,6 +606,15 @@ pub fn rehydrate_terrain_chunks(
             PhysicsBodyData::static_body(),
             CollisionShapeData::mesh(),
         ));
+        // The heights for the collider, in the same command as the mesh. A
+        // chunk loaded from a scene has been waiting on a mesh collider since
+        // its first frame, and physics builds one the moment a `Mesh3d`
+        // appears; left to `sync_chunk_heightfields`, which is not ordered
+        // against this system, it often came a frame late and the chunk got a
+        // 32 thousand triangle trimesh instead, about 20 ms each on load.
+        if let Some(field) = field {
+            ec.insert(renzora::physics::HeightfieldSource(std::sync::Arc::new(field)));
+        }
 
         // Only apply default checkerboard if chunk has no custom material assigned
         if mat_ref.is_none() {
