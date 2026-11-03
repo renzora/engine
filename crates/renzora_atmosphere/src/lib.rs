@@ -1,7 +1,7 @@
 // Bevy 0.19: `Atmosphere`/`ScatteringMedium` moved to `bevy::light`;
 // `AtmosphereMode`/`AtmosphereSettings` stay in `bevy::pbr`.
 use bevy::light::atmosphere::ScatteringMedium;
-use bevy::light::Atmosphere;
+use bevy::light::{Atmosphere, AtmosphereEnvironmentMapLight};
 use bevy::pbr::{AtmosphereMode, AtmosphereSettings};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -55,24 +55,56 @@ fn planet_transform(inner_radius: f32) -> GlobalTransform {
     GlobalTransform::from(Transform::from_translation(Vec3::NEG_Y * inner_radius))
 }
 
+/// A camera's atmosphere components, held while the sky is off.
+///
+/// Turning the sky off takes the atmosphere out of the renderer entirely: the
+/// planet's `Atmosphere`, and each camera's `AtmosphereSettings` and sky probe
+/// (`AtmosphereEnvironmentMapLight`, whose removal also drops the environment
+/// lighting Bevy derived from it). What the camera had is kept here and put
+/// back when the sky comes on, so a camera's probe size and settings survive
+/// the round trip. A camera that gains them while the sky is off (spawned, or
+/// rehydrated with a scene) is parked the next frame.
+#[derive(Component)]
+pub struct ParkedSky {
+    settings: Option<AtmosphereSettings>,
+    probe: Option<AtmosphereEnvironmentMapLight>,
+}
+
+/// Every camera that has, or is holding, atmosphere components.
+type SkyCamera = (
+    Entity,
+    Option<&'static mut AtmosphereSettings>,
+    Option<&'static AtmosphereEnvironmentMapLight>,
+    Option<&'static ParkedSky>,
+);
+type SkyCameraFilter = (
+    With<Camera>,
+    Or<(With<AtmosphereSettings>, With<AtmosphereEnvironmentMapLight>, With<ParkedSky>)>,
+);
+
 /// Drives the sky from the World Environment entity carrying
 /// `AtmosphereComponentSettings`: maintains one hidden [`AtmospherePlanet`]
 /// entity that holds the real `Atmosphere`, and mirrors the render mode onto the
 /// routed cameras' `AtmosphereSettings`.
 ///
-/// `enabled = false` genuinely turns the sky OFF — 0.19 re-extracts `Atmosphere`
-/// every frame and the render node `ViewQuery`-skips cameras without it (no
-/// bind-group-layout lock like 0.18), so we just strip `Atmosphere` from the
-/// planet.
+/// Turning the sky off removes the atmosphere completely: `Atmosphere` from the
+/// planet, and the cameras' atmosphere components (see [`ParkedSky`]), so none
+/// of its passes, bindings or bakes exist. It used to stay on with a
+/// zero-density medium, because removing it crashed under Bevy 0.18 and 0.19
+/// (the camera's bind-group layout was locked to the atmosphere bindings it
+/// started with). Bevy 0.20 drops a camera's atmosphere state the frame its
+/// `Atmosphere` goes (`extract_atmosphere`), and removing all three, then
+/// adding them back, runs clean. Until then the lookup tables, the sky draw and
+/// the sky bake ran every frame for a sky nobody could see.
 fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
-    // Two persistent `ScatteringMedium`s — `(real, transparent)` — created ONCE
-    // and reused for the app's life. Holding them here (not as components on the
-    // source) keeps the assets alive so toggling never recreates a buffer (the
-    // old flicker + `create_buffer_with_data` "buffer invalid" crash). The
-    // transparent one is the sky's "off" (see the selection below).
-    mut media: Local<Option<(Handle<ScatteringMedium>, Handle<ScatteringMedium>)>>,
+    // The one `ScatteringMedium`, created once and held for the app's life, so
+    // it outlives every `Atmosphere` that points at it. The render world runs a
+    // frame behind: a medium freed with the component it was on was still being
+    // read there ("ScatteringMedium missing"), and recreating it on each toggle
+    // was the old flicker and `create_buffer_with_data` "buffer invalid" crash.
+    mut media: Local<Option<Handle<ScatteringMedium>>>,
     // The `(source entity, enabled)` last applied to the resident planet. Lets us
     // re-apply the correct medium when the source *reappears* (World Environment
     // removed then re-added) — its `is_changed()` flag has lapsed by the time the
@@ -80,7 +112,7 @@ fn sync_atmosphere(
     mut applied: Local<Option<(Entity, bool)>>,
     sources: Query<(Entity, Ref<AtmosphereComponentSettings>)>,
     planet: Query<(Entity, Has<Atmosphere>), With<AtmospherePlanet>>,
-    mut cam_settings: Query<&mut AtmosphereSettings>,
+    mut cameras: Query<SkyCamera, SkyCameraFilter>,
     routing: Res<renzora::EffectRouting>,
     suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
 ) {
@@ -90,11 +122,10 @@ fn sync_atmosphere(
     // still-existing, ENABLED source?". This makes removing the source entity,
     // removing the `AtmosphereComponentSettings` component, AND toggling
     // `enabled` all tear the sky down uniformly — no event bookkeeping that can
-    // miss a despawn. The first such source drives the sky; collect every camera
-    // routed to it so they share its render mode.
-    // First routed source carrying `AtmosphereComponentSettings` wins —
-    // regardless of `enabled`. A *disabled* source still drives the resident
-    // atmosphere (to the transparent medium); it is never removed.
+    // miss a despawn. The first routed source carrying
+    // `AtmosphereComponentSettings` wins, enabled or not (a disabled one is what
+    // turns the sky off); collect every camera routed to it so they share its
+    // render mode.
     let mut active_src: Option<Entity> = None;
     let mut src_enabled = false;
     let mut targets: Vec<Entity> = Vec::new();
@@ -114,10 +145,8 @@ fn sync_atmosphere(
         }
     }
 
-    // A shading mode that shows no environment (wireframe, solid) forces the
-    // transparent medium — the same route a *disabled* source takes, and the
-    // only way this crate turns the sky off at all: removing `Atmosphere`
-    // crashes, which is why nothing here ever does. Folding it into
+    // A shading mode that shows no environment (wireframe, solid) turns the
+    // sky off the same way a *disabled* source does. Folding it into
     // `src_enabled` also means it flows through `key`, so flipping the flag
     // reconciles like any other change to the source.
     if suppressed.as_deref().is_some_and(|s| s.active) {
@@ -126,68 +155,80 @@ fn sync_atmosphere(
 
     let planet_entity = planet.iter().next();
     let have_sky = planet_entity.is_some_and(|(_, has)| has);
+    let medium = media.get_or_insert_with(|| mediums.add(ScatteringMedium::default())).clone();
 
-    // Two persistent mediums (created once). `render_sky` composites
-    // `framebuffer * transmittance + inscattering`, so the transparent medium
-    // (zero density → transmittance 1, inscattering 0) makes the resident
-    // atmosphere show whatever's behind it (clear color / skybox) = the sky
-    // "off", with NO component removal → no crash.
-    //
-    // The medium is only half of "off", because the atmosphere draws a **ground
-    // disc** below the horizon as well as sky above it, and that disc is
-    // `ground_albedo` lit by the sun rather than anything the medium scatters.
-    // Zeroing the density makes it *brighter*, not dimmer: transmittance goes to
-    // 1, so the lit ground reaches the camera unattenuated. The symptom was a
-    // cream lower half in wireframe shading that changed hue with the sun. So
-    // turning the sky off zeroes `ground_albedo` too (below).
-    let (real, transparent) = media
-        .get_or_insert_with(|| {
-            (
-                mediums.add(ScatteringMedium::default()),
-                mediums.add(ScatteringMedium::default().with_density_multiplier(0.0)),
-            )
-        })
-        .clone();
-
-    // Resolve the desired sky from the source. A *disabled* source AND **no
-    // source at all** (the whole World Environment was deleted) both map to the
-    // transparent medium — so deleting the entity turns the sky off exactly like
-    // the toggle does, and `Atmosphere` is still never removed (which would
-    // crash). `key` is the applied state we reconcile against.
+    // A *disabled* source and **no source at all** (the whole World Environment
+    // was deleted) both turn the sky off. `key` is the applied state we
+    // reconcile against.
     let source = active_src.and_then(|s| sources.get(s).ok());
-    let (handle, inner, outer, ground, mode, settings_changed, key) = match &source {
-        Some((e, settings)) => (
-            if src_enabled { real } else { transparent },
+    let (inner, outer, ground, mode, settings_changed, key) = match &source {
+        Some((e, settings)) if src_enabled => (
             settings.bottom_radius,
             settings.top_radius,
-            // Off means off all the way down: an unlit ground as well as an
-            // unscattering sky. The authored albedo is untouched, so turning the
-            // sky back on restores it.
-            if src_enabled { settings.ground_albedo } else { 0.0 },
+            settings.ground_albedo,
             settings.mode,
             settings.is_changed(),
-            Some((*e, src_enabled)),
+            Some((*e, true)),
         ),
-        // No source: only act if a planet already exists — don't spawn one just
-        // to hide it. Default radii are fine; a transparent atmosphere shows the
-        // background regardless of geometry.
-        None if have_sky => (transparent, 6_360_000.0, 6_460_000.0, 0.0, 0, false, None),
-        None => return,
+        // Off: take the `Atmosphere` away and keep the (now empty) planet, so
+        // turning the sky back on is a component insert, not a respawn. Park
+        // every camera's atmosphere components, including any that gained them
+        // since (a camera spawned while the sky is off).
+        _ => {
+            if have_sky {
+                if let Some((planet_e, _)) = planet_entity {
+                    commands.entity(planet_e).remove::<Atmosphere>();
+                }
+            }
+            for (entity, settings, probe, parked) in &cameras {
+                if parked.is_some() {
+                    continue;
+                }
+                commands
+                    .entity(entity)
+                    .remove::<(AtmosphereSettings, AtmosphereEnvironmentMapLight)>()
+                    .insert(ParkedSky {
+                        settings: settings.map(|s| s.clone()),
+                        probe: probe.cloned(),
+                    });
+            }
+            *applied = source.as_ref().map(|(e, _)| (*e, false));
+            return;
+        }
     };
+    let rendering_method = match mode {
+        1 => AtmosphereMode::Raymarched,
+        _ => AtmosphereMode::LookupTexture,
+    };
+
+    // On: give parked cameras back what they had, in the current render mode.
+    for (entity, _, _, parked) in &cameras {
+        let Some(parked) = parked else { continue };
+        let mut e = commands.entity(entity);
+        e.remove::<ParkedSky>();
+        if let Some(mut settings) = parked.settings.clone() {
+            settings.rendering_method = rendering_method;
+            e.insert(settings);
+        }
+        if let Some(probe) = parked.probe.clone() {
+            e.insert(probe);
+        }
+    }
 
     // Rebuild the planet's `Atmosphere` on first build, a real value change, OR
     // when the applied `(source, enabled)` key differs — the last catches the
     // source reappearing (remove/re-add, whose `is_changed()` lapses before
-    // routing re-includes it) AND disappearing (→ transparent/off). NOT gated on
+    // routing re-includes it) and the sky coming back on. NOT gated on
     // `routing_changed` alone: camera-set churn shouldn't re-fire the on-add hook.
-    if !have_sky || settings_changed || *applied != key {
+    let rebuilt = !have_sky || settings_changed || *applied != key;
+    if rebuilt {
         *applied = key;
         let atmosphere = Atmosphere {
             // 0.18 `bottom_radius`/`top_radius` → 0.19 `inner_radius`/`outer_radius`.
             inner_radius: inner,
             outer_radius: outer,
             ground_albedo: Vec3::splat(ground),
-            medium: handle,
+            medium,
         };
         // Explicit planet-center transform. No `Transform`, so propagation never
         // overwrites it.
@@ -206,14 +247,12 @@ fn sync_atmosphere(
         }
     }
 
-    // Mirror the render mode onto routed cameras — only when a source drives it.
-    if source.is_some() && (routing_changed || settings_changed) {
-        let rendering_method = match mode {
-            1 => AtmosphereMode::Raymarched,
-            _ => AtmosphereMode::LookupTexture,
-        };
+    // Mirror the render mode onto routed cameras. Also on `rebuilt`: a mode
+    // changed while the sky was off was skipped then, and has to land when it
+    // comes back on.
+    if routing_changed || rebuilt {
         for &target in &targets {
-            if let Ok(mut s) = cam_settings.get_mut(target) {
+            if let Ok((_, Some(mut s), _, _)) = cameras.get_mut(target) {
                 // `AtmosphereMode` isn't `PartialEq`; just assign.
                 s.rendering_method = rendering_method;
             }

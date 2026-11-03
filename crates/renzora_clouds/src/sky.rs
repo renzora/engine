@@ -74,9 +74,10 @@ pub struct SkyReference {
 impl SkyReference {
     /// Whether this medium scatters enough to divide by.
     ///
-    /// A zero-density one does not — which is exactly how `renzora_atmosphere`
-    /// represents a switched-off sky, so this is the signal that a scene is
-    /// getting its sky from somewhere else and its clouds need a stand-in.
+    /// A zero-density one does not, so this is the signal that a scene's medium
+    /// cannot light its clouds and they need a stand-in. (`renzora_atmosphere`
+    /// once switched the sky off this way; it now removes the `Atmosphere`,
+    /// which reaches the same stand-in by having no medium at all.)
     pub fn is_usable(&self) -> bool {
         self.sun.max_element() >= MIN_REFERENCE
             && self.zenith.max_element() >= MIN_REFERENCE
@@ -477,11 +478,10 @@ mod tests {
         );
     }
 
-    /// `renzora_atmosphere` turns the sky off with a zero-density medium. That
-    /// must report itself unmeasurable rather than divide by zero — it is the
-    /// signal `atmosphere_transfer` reads to swap in the fallback medium, so a
-    /// scene using a skybox instead of the procedural sky still gets clouds that
-    /// follow the sun down.
+    /// A zero-density medium must report itself unmeasurable rather than divide
+    /// by zero — it is the signal `atmosphere_transfer` reads to swap in the
+    /// fallback medium, so a scene whose medium does not scatter still gets
+    /// clouds that follow the sun down.
     #[test]
     fn zero_density_medium_is_reported_unmeasurable() {
         let medium = earth().with_density_multiplier(0.0);

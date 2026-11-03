@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-01 18:05
+- perf(atmosphere): turning the sky off removes the atmosphere completely, from the planet and every camera, so none of its passes, bindings or bakes run; turning it on restores what each camera had
+- fix(environment): sky lighting resyncs to the sun when the sky is turned back on
+
 ## 2026-11-01 16:40
 - perf(terrain): chunk heights are saved as a compressed 16-bit heightmap instead of a list of floats, so a 2 km terrain loads in a fraction of the time and size
 - fix(terrain): a chunk loaded from a scene always gets a heightfield collider, never a 32 thousand triangle trimesh

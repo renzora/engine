@@ -240,7 +240,7 @@ fn dome_radius(projection: Option<&Projection>) -> f32 {
 /// Two situations look like "no atmosphere" and are deliberately *not* treated
 /// as one: a scene that never spawned an `Atmosphere` because it is lit by a
 /// skybox or an HDRI, and a scene that switched its sky off (which
-/// `renzora_atmosphere` represents with a zero-density medium). Both still have
+/// `renzora_atmosphere` does by removing the `Atmosphere`). Both still have
 /// a sun in them, and their clouds still have to know what time of day it is — a
 /// deck that stays noon-white while everything underneath it goes to dusk is the
 /// single most conspicuous way for a sky to look wrong. Both measure Earth's
@@ -491,7 +491,7 @@ fn sync_clouds(
     // Every authored colour below is a *noon* value; the transfer says what the
     // sky is doing to it right now. Identity when the coupling is off, when there
     // is no atmosphere in the scene, or when the sky has been switched off (which
-    // `renzora_atmosphere` does with a zero-density medium).
+    // `renzora_atmosphere` does by removing the `Atmosphere`).
     let transfer = atmosphere_transfer(
         &mut clouds_state,
         &atmosphere_query,

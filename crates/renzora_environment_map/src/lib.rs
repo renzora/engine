@@ -11,15 +11,16 @@
 //! the same component (see `EnvironmentMapKind` placeholder for where
 //! that would live).
 //!
-//! ## Bevy 0.18 caveat
+//! ## The probe's lifetime
 //!
-//! Bevy locks the camera's bind group layout the first frame it renders,
-//! with IBL slots present iff `AtmosphereEnvironmentMapLight` existed at
-//! that moment. Adding/removing it later crashes wgpu. The camera spawn
-//! site (in `renzora_engine`) attaches the component at low intensity so
-//! the layout is stable; this plugin updates `intensity` in-place via
-//! `EffectRouting`. `enabled = false` collapses intensity to 0 — visually
-//! "off" without touching the bindings.
+//! The camera spawn site (in `renzora_engine`) attaches the probe at low
+//! intensity, and this plugin updates `intensity` in place via
+//! `EffectRouting`; `enabled = false` collapses it to 0. Bevy 0.18 locked a
+//! camera's bind group layout to the IBL slots it first rendered with, so
+//! adding or removing the probe crashed wgpu, and nothing here does. The one
+//! place that removes it is `renzora_atmosphere`, when the sky is turned off
+//! (a probe with no atmosphere bakes nothing); it puts it back when the sky
+//! comes on. Bevy 0.20 handles both.
 
 use bevy::light::{
     Atmosphere, AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
@@ -113,8 +114,18 @@ fn sync_environment_map(
     mut probe_holders: Query<ProbeHolder>,
     routing: Res<renzora::EffectRouting>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    atmospheres: Query<(), With<Atmosphere>>,
+    added_atmosphere: Query<(), Added<Atmosphere>>,
+    mut removed_atmosphere: RemovedComponents<Atmosphere>,
 ) {
-    let routing_changed = routing.is_changed();
+    // Turning the sky off takes the probe off the cameras with it
+    // (`renzora_atmosphere::ParkedSky`), and turning it on puts back the probe
+    // they had, at the intensity it had then. The sun may have moved since, so
+    // the sky coming or going is a reason to resync like any routing change.
+    // With no atmosphere there is nothing to bake, so the intensity is zero.
+    let sky_present = !atmospheres.is_empty();
+    let sky_toggled = !added_atmosphere.is_empty() || removed_atmosphere.read().next().is_some();
+    let routing_changed = routing.is_changed() || sky_toggled;
     // The probe face size MUST match what `renzora_engine::scene_io::rehydrate_cameras`
     // (and the editor camera spawn) attached, or re-inserting this component here
     // re-allocates the cubemap. Both derive it from the same tier. See the field's
@@ -148,7 +159,7 @@ fn sync_environment_map(
                 .as_ref()
                 .map(|s| renzora_lighting::sun_horizon_factor(s.elevation))
                 .unwrap_or(1.0);
-            let intensity = if settings.enabled {
+            let intensity = if settings.enabled && sky_present {
                 settings.intensity * sun_factor
             } else {
                 0.0

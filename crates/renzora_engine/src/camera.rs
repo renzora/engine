@@ -50,7 +50,9 @@ use renzora::viewport_types::EditorCameraMatrix;
 /// these components in-place from a `WorldEnvironment` source entity (or
 /// any entity with `AtmosphereComponentSettings`), giving us one logical
 /// source of truth that drives both editor and play cameras identically.
-/// The plugin replaces, never removes — see its file for the why.
+/// Turning the sky off removes the atmosphere completely, these camera
+/// components included, and turning it on puts back what the camera had
+/// (`renzora_atmosphere::ParkedSky`), which Bevy 0.20 handles; see its file.
 pub fn spawn_editor_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
