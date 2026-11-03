@@ -265,6 +265,7 @@ fn scan_plugins(world: &mut World) {
         // bundle, and a picker that could not see them would offer no way to
         // ship them.
         plugins = renzora_native_plugin::installed_for(&editor_dir, lib_ext)
+            .plugins
             .into_iter()
             .filter(|p| p.scope == renzora::NativePluginScope::Runtime)
             .collect();

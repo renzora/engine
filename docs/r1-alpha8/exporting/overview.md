@@ -257,9 +257,13 @@ own build — every library it finds in `plugins/` carries the stamp it was
 compiled against, and one that names any other build is refused at startup
 rather than loaded into memory it would corrupt (see
 [Staleness and rebuilds](../extending/native-plugins.md#staleness-and-rebuilds)).
-The export applies the same test on the way out: a plugin whose library was
-built for a different engine than the one being shipped is left out with a
-warning, since the game would only refuse it later with less context.
+The export applies the same test on the way out, from the file and without
+opening it: a plugin whose library was built for a different engine than the
+one being shipped is left out with a warning, since the game would only refuse
+it later with less context. Patch a shipped game as a whole, not just its
+executable: the stamp file describes the binaries it was written beside, and a
+game whose executable and shared images were replaced without it would check
+every plugin against the wrong build.
 
 Neither is more capable than the other: a linked-in plugin registers exactly the
 same components, systems, panels and render passes as a loaded one. A plugin is

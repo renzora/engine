@@ -2,7 +2,7 @@
 
 ## 2026-11-02 21:45
 - feat(plugin): a native plugin records the engine build it was compiled against inside its library, and the loader refuses one built for any other engine before mapping it, instead of trusting the stamp file beside it
-- feat(export): a copy-based export writes `plugins/engine-stamp.txt` so a shipped game, which has no SDK, can make the same check, and leaves out a plugin built for a different engine with a warning
+- feat(export): a copy-based export writes `plugins/engine-stamp.txt` so a shipped game, which has no SDK, can make the same check, and leaves out a plugin built for a different engine with a warning; the export and its plugin picker now settle that from the file instead of opening the library first
 
 ## 2026-10-28 17:12
 - fix(lighting): soft shadows render smooth under TAA instead of staying grainy

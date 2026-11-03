@@ -159,21 +159,6 @@ pub const SCOPE_SYMBOL: &[u8] = b"renzora_native_plugin_scope\0";
 /// `dlopen` boundary, where a `#[repr(Rust)]` enum has no guaranteed layout.
 type ScopeFn = extern "C" fn() -> u8;
 
-/// Read a built plugin library's declared scope, without keeping it loaded.
-///
-/// For the exporter, which has to decide whether a plugin belongs in a shipped
-/// game before copying it. The alternative — parsing the source for a
-/// `plugin!(.., Runtime)` — would answer a question about the *source* when what
-/// ships is the *library*, and the two can disagree if one was not rebuilt.
-///
-/// Returns `None` when the file is not a native plugin at all (no constructor),
-/// so a caller can tell "not ours" from "ours, and editor-only".
-///
-/// The image is deliberately leaked rather than dropped, for the reason the
-/// loader documents at length: `Library::new` has already run the image's static
-/// initializers, and unmapping a warmed Rust dylib runs `FreeLibrary` inside the
-/// loader lock. In the editor this is usually a second handle on an image
-/// already mapped, so the cost is a refcount.
 /// One native plugin that has been built and can be loaded or shipped.
 #[derive(Clone, Debug)]
 pub struct InstalledNativePlugin {
@@ -183,6 +168,59 @@ pub struct InstalledNativePlugin {
     /// Read from the built library, not the source. See [`installed`].
     pub scope: renzora::NativePluginScope,
     pub lib: PathBuf,
+}
+
+/// A built plugin whose library was not compiled against this engine, by its
+/// own record. Never mapped, so its scope is unknown: reading the scope means
+/// running the image's initialisers, against a contract crate that is not the
+/// one it was built for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForeignNativePlugin {
+    pub id: String,
+    pub lib: PathBuf,
+    /// What the library says it was built for — another stamp, or nothing.
+    pub abi: ImageAbi,
+}
+
+/// What [`installed`] found: the plugins this engine can load, and the ones it
+/// must not.
+#[derive(Clone, Debug, Default)]
+pub struct Installed {
+    pub plugins: Vec<InstalledNativePlugin>,
+    pub foreign: Vec<ForeignNativePlugin>,
+}
+
+/// Every plugin installed for the engine at `root`, across all its plugin
+/// roots.
+///
+/// [`installed`] answers for one directory. This is the question callers
+/// actually have — "what does this install have" — and an install can keep
+/// plugins in two places: inside a macOS `.app` the bundled ones are sealed by
+/// the code signature, so anything the user installs lives in Application
+/// Support instead.
+///
+/// Deduplicated by id with the writable root winning, matching the precedence
+/// the loader applies, so an export ships the same plugin the editor is running.
+/// Compared against [`expected_stamp`] of `root`, which is also what the loader
+/// compares against.
+pub fn installed_for(root: &Path, lib_ext: &str) -> Installed {
+    let expected = expected_stamp(root);
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Installed::default();
+    for dir in renzora_plugin_build::install::plugin_dirs(root) {
+        let found = installed(&dir, lib_ext, expected.as_deref());
+        for plugin in found.plugins {
+            if seen.insert(plugin.id.clone()) {
+                out.plugins.push(plugin);
+            }
+        }
+        for plugin in found.foreign {
+            if seen.insert(plugin.id.clone()) {
+                out.foreign.push(plugin);
+            }
+        }
+    }
+    out
 }
 
 /// Every built native plugin under `plugins_dir`, with its scope.
@@ -197,37 +235,24 @@ pub struct InstalledNativePlugin {
 /// in `src/lib.rs` says what the source *would* build to; what ships is the
 /// artefact, and the two disagree whenever one was edited without rebuilding.
 ///
+/// **The record is checked before the library is mapped.** Reading the scope
+/// is a `dlopen`, and an image built for another engine is unsafe from that
+/// moment — the loader's reason for reading the file bytes first (see
+/// [`image_abi`]) applies here unchanged. So when `expected` is known, a
+/// library whose record names any other build, or none, is reported as
+/// foreign and never opened; only one that matches is asked for its scope.
+/// With `expected` unknown there is nothing to compare against and every
+/// library is mapped, as before.
+///
 /// A directory with no built library is skipped: it is a plugin that has not
-/// been compiled yet, and there is nothing to read a scope from or copy.
-/// Every plugin installed for the engine at `root`, across all its plugin
-/// roots.
-///
-/// [`installed`] answers for one directory. This is the question callers
-/// actually have — "what does this install have" — and an install can keep
-/// plugins in two places: inside a macOS `.app` the bundled ones are sealed by
-/// the code signature, so anything the user installs lives in Application
-/// Support instead.
-///
-/// Deduplicated by id with the writable root winning, matching the precedence
-/// the loader applies, so an export ships the same plugin the editor is running.
-pub fn installed_for(root: &Path, lib_ext: &str) -> Vec<InstalledNativePlugin> {
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    for dir in renzora_plugin_build::install::plugin_dirs(root) {
-        for plugin in installed(&dir, lib_ext) {
-            if seen.insert(plugin.id.clone()) {
-                out.push(plugin);
-            }
-        }
-    }
-    out
-}
-
-pub fn installed(plugins_dir: &Path, lib_ext: &str) -> Vec<InstalledNativePlugin> {
+/// been compiled yet, and there is nothing to read a scope from or copy. So is
+/// a library that cannot be read or has no constructor — it is not ours — as
+/// one that failed to map always was.
+pub fn installed(plugins_dir: &Path, lib_ext: &str, expected: Option<&str>) -> Installed {
     let Ok(entries) = std::fs::read_dir(plugins_dir) else {
-        return Vec::new();
+        return Installed::default();
     };
-    let mut out = Vec::new();
+    let mut out = Installed::default();
     for entry in entries.flatten() {
         let dir = entry.path();
         if !dir.is_dir() {
@@ -240,15 +265,49 @@ pub fn installed(plugins_dir: &Path, lib_ext: &str) -> Vec<InstalledNativePlugin
         if !lib.is_file() {
             continue;
         }
+        let Ok(bytes) = std::fs::read(&lib) else {
+            continue;
+        };
+        if !exports_ctor_in(&bytes) {
+            continue;
+        }
+        if let Some(want) = expected {
+            let abi = image_abi(&bytes);
+            if abi != ImageAbi::Stamped(want.to_string()) {
+                out.foreign.push(ForeignNativePlugin { id, lib, abi });
+                continue;
+            }
+        }
         let Some(scope) = read_scope(&lib) else {
             continue;
         };
-        out.push(InstalledNativePlugin { id, scope, lib });
+        out.plugins.push(InstalledNativePlugin { id, scope, lib });
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.plugins.sort_by(|a, b| a.id.cmp(&b.id));
+    out.foreign.sort_by(|a, b| a.id.cmp(&b.id));
     out
 }
 
+/// Read a built plugin library's declared scope, without keeping it loaded.
+///
+/// For the exporter, which has to decide whether a plugin belongs in a shipped
+/// game before copying it. The alternative — parsing the source for a
+/// `plugin!(.., Runtime)` — would answer a question about the *source* when what
+/// ships is the *library*, and the two can disagree if one was not rebuilt.
+///
+/// This maps the image, which is only sound for a library built against this
+/// engine. [`installed`] settles that from the file bytes first and calls this
+/// only for a library that passed; a caller reaching for this directly owes the
+/// same check.
+///
+/// Returns `None` when the file is not a native plugin at all (no constructor),
+/// so a caller can tell "not ours" from "ours, and editor-only".
+///
+/// The image is deliberately leaked rather than dropped, for the reason the
+/// loader documents at length: `Library::new` has already run the image's static
+/// initializers, and unmapping a warmed Rust dylib runs `FreeLibrary` inside the
+/// loader lock. In the editor this is usually a second handle on an image
+/// already mapped, so the cost is a refcount.
 pub fn read_scope(lib_path: &Path) -> Option<renzora::NativePluginScope> {
     // SAFETY: loading native code, which runs its static initializers. Same
     // exposure the loader accepts, and here the library is one the editor
@@ -387,10 +446,7 @@ impl Plugin for NativePluginLoader {
         // nothing to compare against, and an existing artefact is loaded on
         // trust, as it always was.
         let sdk = Sdk::load(sdk_dir(&root)).ok();
-        let expected = sdk
-            .as_ref()
-            .map(Sdk::stamp)
-            .or_else(|| shipped_engine_stamp(&root));
+        let expected = expected_stamp_with(sdk.as_ref(), &root);
 
         // Read once, off disk, because this runs during `App` assembly — there
         // is no settings resource yet, and there will not be one until long
@@ -574,6 +630,10 @@ struct Layout {
 /// `expected` is None when neither an SDK nor a shipped engine stamp says what
 /// this engine is: there is nothing to compare against, so an existing
 /// artifact is the best available.
+///
+/// [`prebuild`] passes the SDK's stamp alone, without the shipped-stamp
+/// fallback the loader has: it only asks when an SDK is present, since without
+/// one there is nothing to build with, so the two cannot disagree.
 ///
 /// The stamp catches "the engine moved" — a native plugin's case, where the
 /// source has not changed at all but the artifacts it was built against have.
@@ -987,6 +1047,22 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// because it describes what may load from there, and because that folder is
 /// the one thing a player editing their install is sure to see.
 pub const ENGINE_STAMP_FILE: &str = "engine-stamp.txt";
+
+/// The build the engine at `root` is, as far as it can tell: its SDK's stamp,
+/// else the one a copy-based export wrote beside the plugins it shipped, else
+/// nothing.
+///
+/// One function because three places compare a library against it — the
+/// loader, the exporter and the export dialog's picker — and a plugin the
+/// loader would refuse is not one the picker should offer.
+pub fn expected_stamp(root: &Path) -> Option<String> {
+    expected_stamp_with(Sdk::load(sdk_dir(root)).ok().as_ref(), root)
+}
+
+/// [`expected_stamp`] for a caller that has already loaded the SDK.
+fn expected_stamp_with(sdk: Option<&Sdk>, root: &Path) -> Option<String> {
+    sdk.map(Sdk::stamp).or_else(|| shipped_engine_stamp(root))
+}
 
 /// The build an export recorded in [`ENGINE_STAMP_FILE`], if it recorded one.
 pub fn shipped_engine_stamp(root: &Path) -> Option<String> {
@@ -1423,6 +1499,50 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&dir2);
+    }
+
+    /// The exporter's list is built from the file bytes before anything is
+    /// mapped. The fake libraries here are not loadable at all, so a plugin
+    /// can only appear in `foreign` if its record was read and judged first;
+    /// had `installed` mapped it to read the scope, it would have been dropped
+    /// as "not ours" instead.
+    #[test]
+    fn a_foreign_library_is_listed_from_its_bytes_and_never_mapped() {
+        let root = std::env::temp_dir().join("renzora_native_plugin_installed_foreign");
+        let _ = std::fs::remove_dir_all(&root);
+        let plugins = root.join("plugins");
+        for (name, stamp) in [("other_build", Some("stamp-b")), ("unrecorded", None)] {
+            install_library(&plugins.join(name), stamp, "stamp-a");
+        }
+        // Not a plugin: no constructor. Skipped, not reported.
+        let stray = plugins.join("stray").join("build");
+        std::fs::create_dir_all(&stray).unwrap();
+        let stray_lib = stray.join(format!("stray.{}", default_lib_ext()));
+        std::fs::write(stray_lib, b"\x7fELF...").unwrap();
+
+        let found = installed(&plugins, &default_lib_ext(), Some("stamp-a"));
+        assert!(found.plugins.is_empty(), "{:?}", found.plugins);
+        let foreign: Vec<(&str, &ImageAbi)> =
+            found.foreign.iter().map(|p| (p.id.as_str(), &p.abi)).collect();
+        assert_eq!(
+            foreign,
+            [
+                ("other_build", &ImageAbi::Stamped("stamp-b".into())),
+                ("unrecorded", &ImageAbi::Absent),
+            ]
+        );
+
+        // With nothing to compare against, nothing is foreign — and the fakes,
+        // now mapped, fail to open and are dropped as before.
+        let found = installed(&plugins, &default_lib_ext(), None);
+        assert!(found.foreign.is_empty());
+        assert!(found.plugins.is_empty());
+
+        // The engine's own view, with a shipped stamp and no SDK: same answer.
+        std::fs::write(plugins.join(ENGINE_STAMP_FILE), "stamp-a\n").unwrap();
+        assert_eq!(installed_for(&root, &default_lib_ext()).foreign.len(), 2);
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The exported game's stamp file is how an engine with no SDK knows its own
