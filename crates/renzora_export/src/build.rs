@@ -1704,8 +1704,19 @@ pub fn stage_runtime_native_plugins(
     let skipped_foreign: Vec<String> = installed
         .foreign
         .into_iter()
-        .map(|p| p.id)
-        .filter(|id| !disabled.iter().any(|d| d == id))
+        .filter(|p| !disabled.iter().any(|d| d == &p.id))
+        .map(|p| {
+            // Same distinctions the loader draws in the Console, so the two
+            // logs describe one plugin the same way.
+            let why = match &p.abi {
+                renzora_native_plugin::ImageAbi::Stamped(have) if have.is_empty() => {
+                    "built without the plugin SDK driver".to_string()
+                }
+                renzora_native_plugin::ImageAbi::Stamped(have) => format!("built for {have}"),
+                renzora_native_plugin::ImageAbi::Absent => "no engine build recorded".to_string(),
+            };
+            format!("{} ({why})", p.id)
+        })
         .collect();
 
     let mut shipped: Vec<String> = Vec::new();
@@ -1753,11 +1764,11 @@ pub fn stage_runtime_native_plugins(
     }
     if !skipped_foreign.is_empty() {
         progress(format!(
-            "WARN: {} native plugin(s) were built for a different engine build, or by an SDK \
-             that recorded none, and were not shipped ({}). Rebuild them in this editor and \
-             export again.",
+            "WARN: {} native plugin(s) were not built for this engine build ({engine}) and were \
+             not shipped: {}. Rebuild them in this editor and export again.",
             skipped_foreign.len(),
-            skipped_foreign.join(", ")
+            skipped_foreign.join(", "),
+            engine = engine_stamp.as_deref().unwrap_or("unknown"),
         ));
     }
     // Said out loud, because "my plugin is missing from the build" is otherwise

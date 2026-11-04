@@ -1010,7 +1010,9 @@ pub enum ImageAbi {
     /// a bare `rustc` rather than the SDK driver — which no engine matches.
     Stamped(String),
     /// No record at all: built by an SDK from before the record existed. It
-    /// might match; nothing can say, so it is treated as not matching.
+    /// might match; nothing can say, so it is treated as not matching. Also
+    /// the answer when the marker appears but nothing after it is shaped like
+    /// a record.
     Absent,
 }
 
@@ -1025,19 +1027,23 @@ pub enum ImageAbi {
 /// the editor shipping it.
 pub fn image_abi(bytes: &[u8]) -> ImageAbi {
     let marker = renzora::NATIVE_PLUGIN_ABI_MARKER;
-    let Some(at) = find(bytes, marker) else {
-        return ImageAbi::Absent;
-    };
-    let rest = &bytes[at + marker.len()..];
-    // The record is padded to a fixed length, so a well-formed one always
-    // ends in NUL within it. Anything else is a truncated or corrupt record;
-    // reading it up to the bound yields a stamp no engine has, which is the
-    // right answer for a record that cannot be trusted.
-    let bound = rest
-        .len()
-        .min(renzora::NATIVE_PLUGIN_ABI_RECORD_LEN - marker.len());
-    let end = rest[..bound].iter().position(|&b| b == 0).unwrap_or(bound);
-    ImageAbi::Stamped(String::from_utf8_lossy(&rest[..end]).into_owned())
+    let max = renzora::NATIVE_PLUGIN_ABI_RECORD_LEN - marker.len();
+    let mut from = 0;
+    while let Some(at) = find(&bytes[from..], marker) {
+        let start = from + at + marker.len();
+        let rest = &bytes[start..];
+        // The record is padded to a fixed length, so a well-formed one always
+        // ends in NUL within it. A marker with no NUL in range is not a record
+        // — the marker constant spelled out in a plugin's own code, or a
+        // damaged image — so the search moves on rather than reading garbage
+        // as a stamp and reporting a mismatch against it.
+        let bound = rest.len().min(max);
+        if let Some(end) = rest[..bound].iter().position(|&b| b == 0) {
+            return ImageAbi::Stamped(String::from_utf8_lossy(&rest[..end]).into_owned());
+        }
+        from = start;
+    }
+    ImageAbi::Absent
 }
 
 /// Offset of the first occurrence of `needle` in `haystack`.
@@ -1422,17 +1428,20 @@ mod tests {
         assert_eq!(image_abi(&fake_library(None)), ImageAbi::Absent);
     }
 
-    /// A record with no terminator is a record that cannot be trusted. It must
-    /// not read past the record's length into whatever follows, and whatever
-    /// it reads must not equal a real stamp.
+    /// A marker with no terminator within the record's length is not a record.
+    /// The parser must not read past that length into whatever follows, and
+    /// must not report the bytes it finds there as a stamp: a real record
+    /// later in the file still counts, and with none the image is unrecorded.
     #[test]
     fn a_truncated_abi_record_is_bounded() {
         let mut bytes = renzora::NATIVE_PLUGIN_ABI_MARKER.to_vec();
         bytes.extend(std::iter::repeat_n(b'x', 4096));
-        let ImageAbi::Stamped(read) = image_abi(&bytes) else {
-            panic!("a marker is a record, even a broken one");
-        };
-        assert!(read.len() < renzora::NATIVE_PLUGIN_ABI_RECORD_LEN);
+        assert_eq!(image_abi(&bytes), ImageAbi::Absent, "garbage after a marker is not a stamp");
+
+        // The marker spelled out in the plugin's own code, ahead of the record
+        // `plugin!` wrote: the record is the one that is read.
+        bytes.extend_from_slice(&renzora::native_plugin_abi_record("real-stamp"));
+        assert_eq!(image_abi(&bytes), ImageAbi::Stamped("real-stamp".into()));
     }
 
     /// `stamp.txt` agreeing is not enough: the library beside it may have been
