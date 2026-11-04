@@ -1687,9 +1687,41 @@ pub fn stage_runtime_native_plugins(
     // no switch at all.
     let disabled = renzora::load_disabled_plugins();
 
+    // The build this editor is, so the game can refuse a plugin built for any
+    // other — it has no SDK of its own to ask. The same answer the loader and
+    // `installed_for` compare against. Absent only when this editor does not
+    // know its own build either, in which case nothing was checked against it
+    // and the game is left as it was: loading what it finds on trust.
+    let engine_stamp = renzora_native_plugin::expected_stamp(editor_dir);
+
+    let installed = renzora_native_plugin::installed_for(editor_dir, lib_ext);
+    // Built for another engine than the one being shipped, by their own record,
+    // and never mapped to learn more. The game would refuse one at startup
+    // anyway; saying so here puts the message in front of the person who can
+    // fix it, rather than in a player's log. Not filtered by the picker, which
+    // never listed them: a plugin that silently vanishes from a build is the
+    // thing this warning exists to prevent.
+    let skipped_foreign: Vec<String> = installed
+        .foreign
+        .into_iter()
+        .filter(|p| !disabled.iter().any(|d| d == &p.id))
+        .map(|p| {
+            // Same distinctions the loader draws in the Console, so the two
+            // logs describe one plugin the same way.
+            let why = match &p.abi {
+                renzora_native_plugin::ImageAbi::Stamped(have) if have.is_empty() => {
+                    "built without the plugin SDK driver".to_string()
+                }
+                renzora_native_plugin::ImageAbi::Stamped(have) => format!("built for {have}"),
+                renzora_native_plugin::ImageAbi::Absent => "no engine build recorded".to_string(),
+            };
+            format!("{} ({why})", p.id)
+        })
+        .collect();
+
     let mut shipped: Vec<String> = Vec::new();
     let mut skipped_editor: Vec<String> = Vec::new();
-    for plugin in renzora_native_plugin::installed_for(editor_dir, lib_ext) {
+    for plugin in installed.plugins {
         let name = plugin.id;
         if disabled.iter().any(|d| d == &name) {
             continue;
@@ -1704,7 +1736,6 @@ pub fn stage_runtime_native_plugins(
             skipped_editor.push(name);
             continue;
         }
-
         let dest = output_dir.join("plugins").join(&name).join("build");
         std::fs::create_dir_all(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
         let dest_lib = dest.join(format!("{}.{lib_ext}", name.replace('-', "_")));
@@ -1713,11 +1744,31 @@ pub fn stage_runtime_native_plugins(
         shipped.push(name);
     }
 
+    // Written whether or not anything shipped: a player may add a plugin
+    // later, and the game needs to know its own build to check that one too.
+    if let Some(stamp) = &engine_stamp {
+        let plugins = output_dir.join("plugins");
+        std::fs::create_dir_all(&plugins)
+            .map_err(|e| format!("create {}: {e}", plugins.display()))?;
+        let path = plugins.join(renzora_native_plugin::ENGINE_STAMP_FILE);
+        std::fs::write(&path, format!("{stamp}\n"))
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
+    }
+
     if !shipped.is_empty() {
         progress(format!(
             "Shipped {} runtime native plugin(s): {}",
             shipped.len(),
             shipped.join(", ")
+        ));
+    }
+    if !skipped_foreign.is_empty() {
+        progress(format!(
+            "WARN: {} native plugin(s) were not built for this engine build ({engine}) and were \
+             not shipped: {}. Rebuild them in this editor and export again.",
+            skipped_foreign.len(),
+            skipped_foreign.join(", "),
+            engine = engine_stamp.as_deref().unwrap_or("unknown"),
         ));
     }
     // Said out loud, because "my plugin is missing from the build" is otherwise

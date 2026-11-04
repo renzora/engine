@@ -251,6 +251,20 @@ scan can't see.
 | **Ship as files** (default) | A `plugins/` folder beside the executable, one library per plugin, loaded at startup | every packaging mode |
 | **Link into the binary** | Nothing — the plugins are compiled into the executable | **Lean single binary** only; forced on the web |
 
+A **Ship as files** export also writes `plugins/engine-stamp.txt`: the build
+stamp of the engine it ships. A game has no SDK, so this is how it knows its
+own build — every library it finds in `plugins/` carries the stamp it was
+compiled against, and one that names any other build is refused at startup
+rather than loaded into memory it would corrupt (see
+[Staleness and rebuilds](../extending/native-plugins.md#staleness-and-rebuilds)).
+The export applies the same test on the way out, from the file and without
+opening it: a plugin whose library was built for a different engine than the
+one being shipped is left out with a warning, since the game would only refuse
+it later with less context. Patch a shipped game as a whole, not just its
+executable: the stamp file describes the binaries it was written beside, and a
+game whose executable and shared images were replaced without it would check
+every plugin against the wrong build.
+
 Neither is more capable than the other: a linked-in plugin registers exactly the
 same components, systems, panels and render passes as a loaded one. A plugin is
 an ordinary Bevy plugin either way, and the only difference is whether the

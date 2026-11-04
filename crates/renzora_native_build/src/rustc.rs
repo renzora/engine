@@ -64,6 +64,14 @@ pub struct Target<'a> {
     pub src: &'a Path,
     /// The library to write.
     pub out: &'a Path,
+    /// The SDK stamp the plugin is being compiled against — what the loader
+    /// will compare its engine to before mapping the result.
+    ///
+    /// Reaches the plugin as `RENZORA_PLUGIN_ABI`, which `renzora::plugin!`
+    /// writes into the image. Not optional: a plugin whose record says nothing
+    /// is refused by every engine, and the one caller that has an SDK has its
+    /// stamp.
+    pub abi: &'a str,
 }
 
 /// Environment both callers must set before running the returned arguments.
@@ -75,11 +83,17 @@ pub struct Target<'a> {
 /// the missing variable — reached by anything using `#[derive(Component)]` or
 /// `bsn!`, which is most plugins.
 ///
-/// Returns `(CARGO_MANIFEST_DIR, CARGO_PKG_NAME)`.
-pub fn env_vars(t: &Target) -> [(&'static str, String); 2] {
+/// `RENZORA_PLUGIN_ABI` carries [`Target::abi`] into the plugin's source, where
+/// `renzora::plugin!` embeds it. Left unset, the plugin builds and then no
+/// engine will load it, so a caller that forgets this finds out on the first
+/// launch rather than never.
+///
+/// Returns `(CARGO_MANIFEST_DIR, CARGO_PKG_NAME, RENZORA_PLUGIN_ABI)`.
+pub fn env_vars(t: &Target) -> [(&'static str, String); 3] {
     [
         ("CARGO_MANIFEST_DIR", t.plugin_dir.display().to_string()),
         ("CARGO_PKG_NAME", t.crate_name.to_string()),
+        ("RENZORA_PLUGIN_ABI", t.abi.to_string()),
     ]
 }
 
