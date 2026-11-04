@@ -849,6 +849,16 @@ fn load_one(
     if let Some(want) = expected {
         match image_abi(&bytes) {
             ImageAbi::Stamped(have) if have == want => {}
+            // The record is there but empty: `renzora::plugin!` was expanded
+            // with `RENZORA_PLUGIN_ABI` unset, which the SDK driver never does.
+            ImageAbi::Stamped(have) if have.is_empty() => {
+                return Err(
+                    "was compiled without the plugin SDK driver, so it does not \
+                     say which engine build it was built against. Rebuild it \
+                     against this engine."
+                        .to_string(),
+                );
+            }
             ImageAbi::Stamped(have) => {
                 return Err(format!(
                     "was built for a different engine build ({have}; this engine is \
@@ -1497,8 +1507,21 @@ mod tests {
         };
         assert!(err.contains("recorded no engine build"), "{err}");
 
+        // A record with an empty stamp: `plugin!` expanded outside the SDK
+        // driver. Named as such, not as a mismatch against a blank build.
+        let dir3 = plugin("undriven_prebuilt");
+        std::fs::remove_file(dir3.join("src").join("lib.rs")).unwrap();
+        install_library(&dir3, Some(""), "stamp-a");
+        let err = match load_one(&dir3, None, Some("stamp-a"), false) {
+            Err(e) => e,
+            Ok(_) => panic!("a library with an empty record must not load"),
+        };
+        assert!(err.contains("without the plugin SDK driver"), "{err}");
+        assert!(!err.contains("(;"), "no blank build in the message: {err}");
+
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&dir2);
+        let _ = std::fs::remove_dir_all(&dir3);
     }
 
     /// The exporter's list is built from the file bytes before anything is
