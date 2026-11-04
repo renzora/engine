@@ -43,7 +43,9 @@
 //! The one rule is the corollary: **do not call it from a system.** A system
 //! runs inside the frame that the pump needs in order to make progress. Blocking
 //! there waits for something that cannot happen until you return, and you get
-//! [`Error::NoPump`] after two seconds rather than a hang.
+//! [`Error::NoPump`] after two seconds rather than a hang. A thread of your own
+//! may wait through long frames (the editor's first ones take seconds), and only
+//! gives up after thirty seconds with no frame at all.
 
 mod pump;
 

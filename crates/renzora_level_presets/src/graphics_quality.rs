@@ -1,5 +1,11 @@
-//! Graphics-quality enforcement — turns the user-selected [`GraphicsQuality`]
-//! tier (Settings → Viewport → Performance) into actual render cost.
+//! Graphics-quality enforcement — turns the project's [`GraphicsQuality`]
+//! tier (`[rendering] graphics_quality`, Settings > Project > Rendering) into
+//! actual render cost in the editor viewport.
+//!
+//! The tier is the game's, not a separate editor one. The editor is the game
+//! with chrome on top, so the viewport runs the passes the shipped game will
+//! run; an editor tier of its own let the two disagree, and a scene that looked
+//! right in the editor came out different (or slower) when played.
 //!
 //! Why this exists: on an empty scene the editor still spends ~30 ms of GPU per
 //! frame, because the cost is **fullscreen, resolution-bound** passes on the
@@ -43,21 +49,26 @@ use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportSettings;
+use renzora::core::viewport_types::GraphicsQuality;
 use renzora::core::ViewportCamera;
-use renzora::{EffectRouting, ResolvedGraphicsQuality, SplashState};
+use renzora::{CurrentProject, EffectRouting, ResolvedGraphicsQuality, SplashState};
+
+/// The open project's tier, or `None` with no project open.
+fn project_tier(project: Option<&CurrentProject>) -> Option<GraphicsQuality> {
+    project.map(|p| p.config.rendering.graphics_quality)
+}
 
 /// Remembers the last tier so we can re-poke `EffectRouting` exactly once per
 /// change rather than every frame.
 #[derive(Resource, Default)]
 struct GraphicsQualityState {
-    last: Option<renzora::core::viewport_types::GraphicsQuality>,
+    last: Option<GraphicsQuality>,
 }
 
 /// Suggest the `Low` tier once per session when running on an integrated GPU.
 ///
 /// The tier defaults to `Medium`, and the users who most need `Low` are exactly
-/// the ones least likely to go looking for Settings → Viewport → Performance —
+/// the ones least likely to go looking for Settings > Project > Rendering:
 /// the editor just feels slow and they have no reason to suspect a setting.
 ///
 /// Deliberately a *hint*, not an action: nothing changes the user's tier for
@@ -71,21 +82,23 @@ struct GraphicsQualityState {
 /// which is the right pressure for a hint the user hasn't acted on.
 fn suggest_low_tier_on_integrated_gpu(
     integrated: Option<Res<renzora::GpuIsIntegrated>>,
-    settings: Option<Res<ViewportSettings>>,
+    project: Option<Res<CurrentProject>>,
     toasts: Option<ResMut<renzora_ui::Toasts>>,
     mut done: Local<bool>,
 ) {
     if *done {
         return;
     }
-    let (Some(integrated), Some(settings), Some(mut toasts)) = (integrated, settings, toasts) else {
+    let (Some(integrated), Some(tier), Some(mut toasts)) =
+        (integrated, project_tier(project.as_deref()), toasts)
+    else {
         return;
     };
     if !integrated.yes {
         *done = true;
         return;
     }
-    if settings.graphics_quality == renzora::core::viewport_types::GraphicsQuality::Low {
+    if tier == GraphicsQuality::Low {
         *done = true;
         return;
     }
@@ -109,7 +122,7 @@ pub(crate) fn register(app: &mut App) {
 
 #[allow(clippy::too_many_arguments)]
 fn enforce_graphics_quality(
-    settings: Option<Res<ViewportSettings>>,
+    project: Option<Res<CurrentProject>>,
     mut state: ResMut<GraphicsQualityState>,
     mut resolved: ResMut<ResolvedGraphicsQuality>,
     routing: Option<ResMut<EffectRouting>>,
@@ -121,10 +134,9 @@ fn enforce_graphics_quality(
     mut atmo: Query<&mut AtmosphereSettings, With<ViewportCamera>>,
     shadow_map: Option<ResMut<DirectionalLightShadowMap>>,
 ) {
-    let Some(settings) = settings else {
+    let Some(q) = project_tier(project.as_deref()) else {
         return;
     };
-    let q = settings.graphics_quality;
 
     // Publish the live tier as the shared resource so downstream renderer crates
     // (clouds, environment-map IBL) apply the same tier in the editor viewport
@@ -211,7 +223,19 @@ fn enforce_graphics_quality(
 mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
-    use renzora::core::viewport_types::GraphicsQuality;
+
+    fn project_at(quality: GraphicsQuality) -> CurrentProject {
+        let mut config = renzora::ProjectConfig::default();
+        config.rendering.graphics_quality = quality;
+        CurrentProject {
+            path: Default::default(),
+            config,
+        }
+    }
+
+    fn set_tier(world: &mut World, quality: GraphicsQuality) {
+        world.resource_mut::<CurrentProject>().config.rendering.graphics_quality = quality;
+    }
 
     /// A world holding one viewport camera carrying the full effect stack, plus
     /// every resource the system reads.
@@ -223,10 +247,7 @@ mod tests {
     fn world_at(quality: GraphicsQuality) -> (World, Entity) {
         let mut world = World::new();
 
-        world.insert_resource(ViewportSettings {
-            graphics_quality: quality,
-            ..default()
-        });
+        world.insert_resource(project_at(quality));
         world.init_resource::<GraphicsQualityState>();
         world.init_resource::<ResolvedGraphicsQuality>();
         world.insert_resource(DirectionalLightShadowMap { size: 4096 });
@@ -334,8 +355,8 @@ mod tests {
     }
 
     /// Downstream renderer crates (clouds, environment-map IBL) read the tier
-    /// from this resource rather than from `ViewportSettings`, so that a shipped
-    /// game applying it from project config and the editor viewport agree.
+    /// from this resource, which the editor and a shipped game both fill from
+    /// the same project setting.
     #[test]
     fn the_live_tier_is_published_for_other_crates() {
         let (mut world, _) = world_at(GraphicsQuality::Low);
@@ -369,7 +390,7 @@ mod tests {
 
         // Raising the tier is a change again.
         world.clear_trackers();
-        world.resource_mut::<ViewportSettings>().graphics_quality = GraphicsQuality::High;
+        set_tier(&mut world, GraphicsQuality::High);
         enforce(&mut world);
         assert!(world.resource_ref::<EffectRouting>().is_changed());
     }
@@ -392,9 +413,9 @@ mod tests {
     }
 
     #[test]
-    fn with_no_viewport_settings_nothing_is_touched() {
+    fn with_no_project_open_nothing_is_touched() {
         let (mut world, cam) = world_at(GraphicsQuality::Low);
-        world.remove_resource::<ViewportSettings>();
+        world.remove_resource::<CurrentProject>();
         enforce(&mut world);
         assert!(world.entity(cam).get::<Bloom>().is_some());
     }

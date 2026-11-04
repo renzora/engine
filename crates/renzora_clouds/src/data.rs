@@ -140,11 +140,14 @@ impl Default for CloudsData {
             planet_radius: 6_371_000.0,
 
             coverage: 0.5,
-            density: 0.2,
+            // Dense enough, with hard enough edges, that a cloud has a
+            // silhouette. At 0.2 and 0.2 the deck read as one soft haze with
+            // no shapes in it.
+            density: 0.32,
             scale: 1.5,
             detail_scale: 30.5,
             detail_strength: 0.27,
-            edge_softness: 0.2,
+            edge_softness: 0.1,
             base_softness: 0.3,
 
             speed: 40.0,
@@ -152,15 +155,29 @@ impl Default for CloudsData {
             follow_world_wind: true,
             morph_speed: 50.0,
 
-            color: (1.0, 0.93, 0.80),
-            brightness: 3.2,
-            ambient_color: (0.58, 0.72, 0.96),
-            shadow_color: (0.28, 0.44, 0.74),
-            ambient_brightness: 1.1,
+            // Near white: the atmosphere already warms the light as the sun
+            // gets low, and a warm tint on top of it made noon cloud beige.
+            color: (1.0, 0.96, 0.90),
+            // Fair-weather cumulus is white, and auto exposure meters on the
+            // clouds, so they need this much light to come out white rather
+            // than the grey they were at 3.2.
+            brightness: 5.5,
+            // Both fills lean cyan rather than violet: mixed with the warm
+            // sunlight, a purple-blue fill turned every cloud shadow lavender.
+            ambient_color: (0.55, 0.76, 0.96),
+            // Undersides a light blue-grey rather than slate: real cloud bases
+            // are lit by the sky and the ground as well as through the cloud.
+            shadow_color: (0.55, 0.66, 0.80),
+            ambient_brightness: 2.5,
             absorption: 1.0,
             forward_scattering: 0.85,
-            backward_scattering: -0.2,
-            scattering_blend: 0.3,
+            // A stronger back lobe, given more of the blend, so the side of a
+            // cloud facing the sun is white. With -0.2 at 0.3 the sunlight
+            // scattered back toward a viewer with the sun behind them came to
+            // a third of the skylight, and every cloud seen from that side
+            // was a grey-mauve.
+            backward_scattering: -0.35,
+            scattering_blend: 0.5,
             powder_strength: 0.3,
 
             raymarch_steps: 42,

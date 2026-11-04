@@ -38,6 +38,28 @@ pub struct Sun {
     pub angular_diameter: f32,
     /// Brightness multiplier for the sun disk (0 = no disk, 1 = physical, >1 = overexposed).
     pub sun_disk_intensity: f32,
+    /// Strength of the glare around the sun: the haze a camera sees spreading
+    /// from it when it is in view. 0 turns it off; the default is 1.5.
+    ///
+    /// Bloom cannot make this. It caps how much any one pixel adds to the glow,
+    /// so a disc a hundred thousand times brighter than the sky blooms exactly
+    /// as much as a bright cloud. The glare is drawn on its own, by
+    /// `renzora_atmosphere`, and fades as clouds or scenery cover the disc.
+    #[serde(default = "default_glare_intensity")]
+    #[reflect(default = "default_glare_intensity")]
+    pub glare_intensity: f32,
+    /// How far the glare spreads, in degrees from the sun's centre.
+    #[serde(default = "default_glare_size")]
+    #[reflect(default = "default_glare_size")]
+    pub glare_size: f32,
+}
+
+fn default_glare_intensity() -> f32 {
+    1.5
+}
+
+fn default_glare_size() -> f32 {
+    6.0
 }
 
 impl Default for Sun {
@@ -51,6 +73,8 @@ impl Default for Sun {
             contact_shadows: false,
             angular_diameter: 0.53,
             sun_disk_intensity: 1.0,
+            glare_intensity: default_glare_intensity(),
+            glare_size: default_glare_size(),
         }
     }
 }
@@ -104,5 +128,34 @@ impl Default for NightStarsData {
             color: (1.0, 0.97, 0.9),
             enabled: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scene saved before the glare existed reconstructs, with the glare
+    /// at its defaults. Without `#[reflect(default)]` on the new fields the
+    /// whole `Sun` fails to load, and the error names `Sun`, not the field.
+    #[test]
+    fn a_sun_saved_before_the_glare_still_loads() {
+        use bevy::reflect::structs::DynamicStruct;
+        use bevy::reflect::FromReflect;
+
+        let mut old = DynamicStruct::default();
+        old.insert("azimuth", 120.0f32);
+        old.insert("elevation", 30.0f32);
+        old.insert("color", Vec3::ONE);
+        old.insert("illuminance", 40_000.0f32);
+        old.insert("shadows_enabled", true);
+        old.insert("contact_shadows", false);
+        old.insert("angular_diameter", 0.53f32);
+        old.insert("sun_disk_intensity", 1.0f32);
+
+        let sun = Sun::from_reflect(&old).expect("an old sun must load, not fail the scene");
+        assert_eq!(sun.azimuth, 120.0);
+        assert_eq!(sun.glare_intensity, default_glare_intensity());
+        assert_eq!(sun.glare_size, default_glare_size());
     }
 }

@@ -1249,12 +1249,11 @@ impl ResolvedRenderingMode {
 /// The graphics-quality tier in force **this session**, as a resource every
 /// renderer crate can read (clouds, atmosphere, IBL, the enforcement systems).
 ///
-/// One source of truth for two callers:
-/// - **Runtime:** `renzora_engine` seeds it from
-///   [`RenderingConfig::graphics_quality`] at boot.
-/// - **Editor:** `renzora_level_presets::graphics_quality` mirrors the live
-///   `ViewportSettings.graphics_quality` (Settings → Viewport → Performance)
-///   onto it every time the user changes tier.
+/// Both callers seed it from the same [`RenderingConfig::graphics_quality`]:
+/// - **Runtime:** `renzora_engine`, at boot.
+/// - **Editor:** `renzora_level_presets::graphics_quality`, every time the
+///   user changes tier in Settings > Project > Rendering. The editor has no
+///   tier of its own, so the viewport shows the cost the game will have.
 ///
 /// Defaults to `GraphicsQuality::Medium` so a crate that reads it before either
 /// seeder has run gets the safe, lighter tier rather than the full stack.

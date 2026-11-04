@@ -24,10 +24,8 @@ use super::undo::EnableToggleCmd;
 use super::{empty_label, phosphor_glyph, GetFn, InspectorSectionHeader, Mutate, SetFn};
 
 /// The tooltip behind a header's amber gate glyph: which tier is in force, what
-/// it did to this effect, and where to change it. It names the *viewport* tier
-/// specifically, because the project's `[rendering] graphics_quality` is a
-/// separate setting for the shipped game and a user who finds that one set to
-/// High has every reason to read an empty viewport as a bug.
+/// it did to this effect, and where to change it. The tier is the project's
+/// `[rendering] graphics_quality`, which the viewport and the game share.
 fn quality_gate_tooltip(
     tier: renzora::core::viewport_types::GraphicsQuality,
     gate: renzora::core::viewport_types::QualityGate,

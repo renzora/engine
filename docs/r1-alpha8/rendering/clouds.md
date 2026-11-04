@@ -21,8 +21,13 @@ section header switches the deck off without losing its settings.
 The **Low** graphics quality tier switches clouds off entirely: the two
 per-pixel marches are the largest fixed raster cost on a weak GPU. If the sky
 is empty and the Clouds header shows an amber warning, that is the tier, not a
-fault (**Settings > Viewport > Performance**). Below **High**, the march takes
+fault (**Settings > Project > Rendering**). Below **High**, the march takes
 fewer steps.
+
+The clouds follow the camera's exposure (**EV100** in its Camera section)
+the same way the sky does, so changing the exposure brightens or dims both
+together. Their colours are tuned at EV100 9.7, a new camera's default, and
+look exactly the same there.
 
 ## The controls
 

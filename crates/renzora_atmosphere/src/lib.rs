@@ -1,3 +1,5 @@
+pub mod glare;
+
 // Bevy 0.19: `Atmosphere`/`ScatteringMedium` moved to `bevy::light`;
 // `AtmosphereMode`/`AtmosphereSettings` stay in `bevy::pbr`.
 use bevy::light::atmosphere::ScatteringMedium;
@@ -188,7 +190,7 @@ fn sync_atmosphere(
                     .entity(entity)
                     .remove::<(AtmosphereSettings, AtmosphereEnvironmentMapLight)>()
                     .insert(ParkedSky {
-                        settings: settings.map(|s| s.clone()),
+                        settings: settings.cloned(),
                         probe: probe.cloned(),
                     });
             }
@@ -316,6 +318,7 @@ impl Plugin for AtmospherePlugin {
         info!("[runtime] AtmospherePlugin");
         app.register_type::<AtmosphereComponentSettings>();
         app.add_systems(Update, (sync_atmosphere, sync_space_backdrop));
+        glare::build(app);
     }
 }
 

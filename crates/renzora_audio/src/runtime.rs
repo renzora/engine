@@ -243,38 +243,75 @@ pub fn mark_emitting_entities(
 /// Separate from the loader because registration and readiness are different
 /// moments: the host records the descriptor during plugin init, when there is no
 /// good place to open a sound card and nothing to report a failure to.
+///
+/// A device that will not open is retried every [`REOPEN_AFTER`] seconds rather
+/// than given up on. It is usually transient: Windows reports the default device
+/// as "no longer available" for a moment while it switches to another one (a
+/// headset connecting, a monitor waking), and dropping the backend on that made
+/// the whole session silent until a restart.
 pub fn adopt_backend(
     registered: Option<ResMut<AudioBackend>>,
     mut link: ResMut<AudioLink>,
     mut mixer: ResMut<MixerState>,
+    time: Res<Time<Real>>,
+    mut retry: Local<DeviceRetry>,
 ) {
     if link.is_active() {
         return;
     }
-    // Moved out of the resource rather than borrowed from it. Nothing hands it
-    // back: a linked-in mixer is part of the binary and cannot be unloaded,
-    // which is the one case the plugin version had to keep watching for.
     let Some(mut registered) = registered else { return };
+    if registered.0.is_none() {
+        return;
+    }
+    let now = time.elapsed_secs_f64();
+    if now < retry.next_attempt {
+        return;
+    }
+    // Moved out of the resource rather than borrowed from it, and only put back
+    // when its device would not open. A linked-in mixer is part of the binary
+    // and cannot be unloaded, so nothing else ever hands it back.
     let Some(backend) = registered.0.take() else { return };
 
     link.adopt(backend);
     let name = link.name().unwrap_or_else(|| "?".to_string());
     match link.init() {
         Ok(Some(info)) => {
+            if retry.failures > 0 {
+                info!("[audio] the output device opened after {} retries", retry.failures);
+            }
             info!(
                 "[audio] backend `{name}` on `{}` at {} Hz",
                 info.device, info.sample_rate
             );
+            *retry = DeviceRetry::default();
             // Touch the mixer so the board is pushed to the fresh backend on the
             // same frame, rather than whenever someone next moves a fader.
             mixer.set_changed();
         }
         Ok(None) => warn!("[audio] backend `{name}` did not answer init"),
         Err(e) => {
-            error!("[audio] {e}");
-            link.release();
+            // Said once. A device that stays away (none plugged in at all) would
+            // otherwise put a line in the Console every two seconds.
+            if retry.failures == 0 {
+                warn!("[audio] {e}. Sound is off until an output device opens; retrying.");
+            } else {
+                debug!("[audio] retry {}: {e}", retry.failures);
+            }
+            retry.failures += 1;
+            retry.next_attempt = now + REOPEN_AFTER;
+            registered.0 = link.detach();
         }
     }
+}
+
+/// Seconds between attempts to open an output device that would not open.
+const REOPEN_AFTER: f64 = 2.0;
+
+/// [`adopt_backend`]'s memory of failed attempts to open the device.
+#[derive(Default)]
+pub struct DeviceRetry {
+    next_attempt: f64,
+    failures: u32,
 }
 
 /// Push the mixer's board to the backend when it actually differs.
@@ -566,6 +603,80 @@ mod tests {
         assert_eq!(voices.forget(e), [VoiceId(1), VoiceId(2)]);
         assert!(voices.is_empty());
         assert_eq!(voices.len(), 0);
+    }
+
+    /// A device that will not open for its first `fails` attempts.
+    struct FlakyDevice {
+        fails: u32,
+    }
+
+    impl renzora::audio_backend::Backend for FlakyDevice {
+        fn name(&self) -> &str {
+            "flaky"
+        }
+        fn init(&mut self) -> Result<renzora::audio_backend::BackendInfo, String> {
+            if self.fails > 0 {
+                self.fails -= 1;
+                return Err("could not open the output stream: device unplugged".into());
+            }
+            Ok(renzora::audio_backend::BackendInfo {
+                sample_rate: 48_000,
+                caps: renzora::audio_backend::Caps::SPATIAL,
+                device: "flaky".into(),
+            })
+        }
+        fn load_clip(
+            &mut self,
+            _: u64,
+            _: &str,
+            _: &[u8],
+        ) -> Result<renzora::audio_backend::ClipInfo, String> {
+            Err("unused".into())
+        }
+        fn play(&mut self, _: &renzora::audio_backend::PlayRequest) -> Result<(), String> {
+            Ok(())
+        }
+        fn update(
+            &mut self,
+            _: &renzora::audio_backend::UpdateRequest,
+        ) -> renzora::audio_backend::UpdateReply {
+            Default::default()
+        }
+    }
+
+    /// The device being away at startup used to drop the backend for good, so
+    /// the session had no sound until a restart. It is kept and tried again,
+    /// on a timer rather than every frame.
+    #[test]
+    fn a_device_that_would_not_open_is_retried_until_it_does() {
+        let mut world = World::new();
+        world.insert_resource(AudioBackend(Some(std::sync::Mutex::new(Box::new(
+            FlakyDevice { fails: 1 },
+        )))));
+        world.init_resource::<AudioLink>();
+        world.init_resource::<MixerState>();
+        let start = std::time::Instant::now();
+        world.insert_resource(Time::<Real>::new(start));
+        let system = world.register_system(adopt_backend);
+        let at = |world: &mut World, secs: f64| {
+            world
+                .resource_mut::<Time<Real>>()
+                .update_with_instant(start + std::time::Duration::from_secs_f64(secs));
+        };
+
+        at(&mut world, 0.1);
+        world.run_system(system).unwrap();
+        assert!(!world.resource::<AudioLink>().is_active(), "the first open fails");
+        assert!(world.resource::<AudioBackend>().0.is_some(), "the backend was kept");
+
+        // Too soon: not tried again yet.
+        at(&mut world, 1.0);
+        world.run_system(system).unwrap();
+        assert!(!world.resource::<AudioLink>().is_active());
+
+        at(&mut world, 0.1 + REOPEN_AFTER);
+        world.run_system(system).unwrap();
+        assert!(world.resource::<AudioLink>().is_active(), "the retry opens the device");
     }
 
     #[test]

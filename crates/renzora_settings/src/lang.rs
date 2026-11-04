@@ -68,6 +68,7 @@ pub(crate) fn tr_cat(label: &str) -> String {
         "Interface" => "settings.category.interface",
         "Theme" => "settings.tab.theme",
         "General" => "settings.tab.general",
+        "Renderer" => "settings.cat.renderer",
         "Auto-Save" => "settings.cat.autosave",
         "Viewport" => "settings.tab.viewport",
         "Camera" => "settings.category.camera",

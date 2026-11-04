@@ -93,6 +93,25 @@ impl DockTree {
         }
     }
 
+    /// The direction and ratio of the split at `path`, or `None` if there is no
+    /// split there.
+    pub fn split_ratio_at(&self, path: &[bool]) -> Option<(SplitDirection, f32)> {
+        let DockTree::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } = self
+        else {
+            return None;
+        };
+        match path.split_first() {
+            Some((&true, rest)) => second.split_ratio_at(rest),
+            Some((&false, rest)) => first.split_ratio_at(rest),
+            None => Some((*direction, *ratio)),
+        }
+    }
+
     /// The leaf that contains `panel`, if any.
     pub fn find_leaf_mut(&mut self, panel: &str) -> Option<&mut DockTree> {
         match self {
@@ -636,6 +655,21 @@ pub enum DropZone {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The panel-size hold reads each divider's split through this; a path
+    /// that ends on a leaf, or runs past one, has no split.
+    #[test]
+    fn split_ratio_at_finds_the_split_a_path_names() {
+        let tree = DockTree::horizontal(
+            DockTree::leaf("viewport"),
+            DockTree::vertical(DockTree::leaf("hierarchy"), DockTree::leaf("inspector"), 0.4),
+            0.78,
+        );
+        assert_eq!(tree.split_ratio_at(&[]), Some((SplitDirection::Horizontal, 0.78)));
+        assert_eq!(tree.split_ratio_at(&[true]), Some((SplitDirection::Vertical, 0.4)));
+        assert_eq!(tree.split_ratio_at(&[false]), None);
+        assert_eq!(tree.split_ratio_at(&[true, true, false]), None);
+    }
 
     /// The editor's bottom-panel toggle round-trips the bottom region through
     /// detach + attach; the stash must come back bit-identical (tabs, active

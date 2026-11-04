@@ -1,5 +1,35 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-04 04:10
+- fix(clouds): clouds no longer show aliased patches or stacked copies of the same shape
+- fix(clouds): cloud bases are shaded by the cloud above them instead of one flat fill
+- fix(clouds): cloud undersides are frayed and uneven instead of flat, with no vertical streaks hanging from them
+- fix(clouds): clouds no longer appear as a floating half-sphere while the editor starts up
+- feat(clouds): new clouds default to white, well-defined shapes with light blue-grey bases, and the sun's glare defaults to 1.5
+
+## 2026-11-04 04:00
+- fix(rendering): bloom no longer flashes every few frames when the sun is in view
+
+## 2026-11-04 03:48
+- fix(rendering): HDR render passes run after DLSS, so DLSS no longer reprocesses them and makes them flicker
+
+## 2026-11-04 03:39
+- feat(rendering): the sun has a glare around it that fades when clouds or scenery cover it, set by the Sun's Glare and Glare Size
+- fix(clouds): clouds follow the camera's exposure like the sky, instead of turning white on a black sky at any EV but the default
+
+## 2026-11-03 20:19
+- feat(editor): docked panels keep their size when the window is resized, and the viewport takes up the difference
+
+## 2026-11-03 19:19
+- feat(settings): Renderer has its own page under Editor, and the Viewport page's Performance section is gone (Realtime stays in the viewport's Display menu)
+
+## 2026-11-03 19:04
+- fix(net): sign-in and other startup requests no longer fail with "no frame loop running" while the editor is still loading
+- fix(audio): sound comes back once an output device opens, instead of staying off all session when the device was missing at startup
+
+## 2026-11-03 18:52
+- feat(editor): the editor follows the game's VSync and Graphics Quality from Settings > Project, and its separate copies under Settings > Viewport are gone
+
 ## 2026-11-03 16:32
 - fix(editor): an inspector field's reset button restores the component's default value instead of setting it to zero
 

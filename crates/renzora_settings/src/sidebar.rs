@@ -49,7 +49,7 @@ pub(crate) struct SettingsGroupTag(String);
 ///
 /// A category is a *page*, not a single section: several sections may share one
 /// `focus` key and so appear stacked under one sidebar row. Window holds both
-/// Window and Render Resolution; General holds Developer, Renderer and Import.
+/// Window and Render Resolution; General holds Developer, Import and Scenes.
 /// That is the whole point of the key — before, every section had its own key
 /// and therefore its own sidebar row, which put twenty rows in the sidebar for
 /// sixty-eight actual settings, six of them a lone checkbox.
@@ -77,6 +77,11 @@ const CATS: &[(&str, &[Cat])] = &[
         "EDITOR",
         &[
             (SettingsTab::Editor, Some("general"), "wrench", "General"),
+            // Its own page, not a section of General: the graphics backend and
+            // the launcher's effects are both about what this machine renders
+            // with, which has nothing to do with the developer switches and
+            // import behaviour General holds.
+            (SettingsTab::Editor, Some("renderer"), "monitor", "Renderer"),
             (SettingsTab::Editor, Some("autosave"), "floppy-disk", "Auto-Save"),
             // Deliberately here rather than under PLUGINS. That group is one
             // entry per plugin's OWN settings, contributed by the plugin — a

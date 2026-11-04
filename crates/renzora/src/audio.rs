@@ -118,6 +118,17 @@ impl AudioLink {
         self.info = None;
     }
 
+    /// Hand the backend back, unused, so it can be adopted again later.
+    ///
+    /// For a backend whose `init` failed because no output device would open:
+    /// the device can come back (headphones plugged in again, Windows finishing a
+    /// default-device switch), and [`Self::release`] would drop the only mixer
+    /// there is, leaving the session silent until a restart.
+    pub fn detach(&mut self) -> Option<std::sync::Mutex<Box<dyn Backend>>> {
+        self.info = None;
+        self.backend.take()
+    }
+
     /// Allocate the next sound handle.
     pub fn next_sound(&mut self) -> SoundId {
         self.next_sound += 1;

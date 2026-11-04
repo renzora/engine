@@ -101,8 +101,13 @@ boundaries. `renzora_ai_chat` is the worked example.
 
 A system runs inside the frame the pump needs in order to make progress, so
 blocking there waits for something that cannot happen until you return. You get
-`Error::NoPump` after two seconds rather than a hang — but the fix is to spawn a
+`Error::NoPump` after two seconds rather than a hang, but the fix is to spawn a
 thread, or use the `HttpInbox` pattern in `renzora_scripting`.
+
+The two-second limit applies only on the threads systems run on: the main thread
+and Bevy's `Compute Task Pool`. A thread you spawned yourself waits through slow
+frames (the editor's first frames can take several seconds while plugins load),
+and gives up only after thirty seconds with no frame at all.
 
 ## Writing one
 

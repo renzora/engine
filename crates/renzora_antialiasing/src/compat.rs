@@ -83,7 +83,7 @@ impl Blocker {
             Self::MsaaSky => "MSAA cannot run while the sky (atmosphere) is on for this camera.",
             Self::MsaaOit => "MSAA cannot run with order-independent transparency on.",
             Self::TaaQualityTier => {
-                "Graphics Quality Low turns TAA off. Raise it in Settings > Viewport > Performance."
+                "Graphics Quality Low turns TAA off. Raise it in Settings > Project > Rendering."
             }
             Self::RayReconstruction => {
                 "Solari's DLSS Ray Reconstruction already anti-aliases this camera."

@@ -507,19 +507,20 @@ fn sync_splash_effects(
     }
 }
 
-/// Apply the `ViewportSettings.vsync` toggle to the primary window's
-/// `present_mode`. Lives on `ViewportSettings` (not `EditorSettings`) so
-/// it persists alongside the rest of the per-project viewport prefs in
-/// `project.toml`. Runs every frame but only writes when the mode
-/// differs, so it's effectively free.
+/// Apply the game's VSync, `[window] vsync` in `project.toml`, to the editor's
+/// window. The editor is the game with chrome on top, so it runs at the frame
+/// rate the game will: there is no separate editor VSync to disagree with it.
+/// With no project open (the splash) it stays on. Runs every frame but only
+/// writes when the mode differs, so it's effectively free.
 fn apply_vsync_setting(
-    viewport: Res<renzora::core::viewport_types::ViewportSettings>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let Ok(mut window) = windows.single_mut() else {
         return;
     };
-    let desired = if viewport.vsync {
+    let vsync = project.is_none_or(|p| p.config.window.vsync);
+    let desired = if vsync {
         bevy::window::PresentMode::AutoVsync
     } else {
         bevy::window::PresentMode::AutoNoVsync

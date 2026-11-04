@@ -56,6 +56,12 @@ Every tab bar has a grip handle at its far left. Drag that to move the whole gro
 
 When a group holds more tabs than fit, hover the tabs and scroll to slide the rest into view.
 
+### Resizing the window
+
+Panels keep their size when you resize the editor window; the viewport, or whatever large panel sits beside them, takes up the difference. Make the window narrower and the Hierarchy and Inspector stay as wide as you set them while the viewport shrinks. The same goes for height and the bottom panel.
+
+On either side of a divider, the smaller panel is the one that keeps its size. It only shrinks once the window is so small that the two sides are equal; past that, both shrink together. Make the window bigger again and the panel goes back to the size you gave it. Dragging a divider sets that size.
+
 ## The scene switcher
 
 The left of the top bar names your project and the document you are in, with an icon in its type's colour: `test / main` for a scene, `test / gold.material` for a material. Whether that document is **Saved** or **Unsaved** shows in the status bar, beside **Ready**. Click the switcher for a menu of:

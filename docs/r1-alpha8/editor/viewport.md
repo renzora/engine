@@ -149,7 +149,7 @@ What wakes it:
 - Changing the selection or a viewport setting
 - Resizing or docking a viewport
 
-Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. The same switch is **Settings > Viewport > Performance > Realtime Viewport**, and it is saved with the project.
+Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. It is saved with the project.
 
 ### Visualization modes
 
@@ -261,7 +261,7 @@ Most of the cost of a frame is fullscreen image effects, and that cost grows wit
 
 If the whole editor drags, check **Display > Render > Realtime** is off, so the viewport only renders when something changes (see [Realtime](#realtime)).
 
-Open **Settings > Viewport > Performance > Graphics Quality** and drop it a notch.
+Open **Settings > Project > Rendering > Graphics Quality** and drop it a notch. This is the game's own setting, so the game you export runs on the same tier as the viewport you see.
 
 | Tier | What it does |
 |---|---|

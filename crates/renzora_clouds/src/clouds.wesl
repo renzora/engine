@@ -22,6 +22,7 @@
 
 import bevy_pbr::render::forward_io::VertexOutput;
 import bevy_pbr::render::mesh_view_bindings::view;
+import bevy_pbr::render::mesh_view_bindings::globals;
 
 struct CloudsUniform {
     // xyz = unit vector toward the sun, w unused.
@@ -72,6 +73,27 @@ struct CloudsUniform {
 @group(3) @binding(2) var base_sampler: sampler;
 @group(3) @binding(3) var detail_texture: texture_3d<f32>;
 @group(3) @binding(4) var detail_sampler: sampler;
+
+// The camera exposure the authored cloud colours were tuned against: EV100 9.7,
+// a new scene camera's default, as `1 / (1.2 * 2^ev100)`. Cloud radiance is
+// scaled by the camera's exposure over this, so the deck dims and brightens
+// with the sky behind it.
+const REFERENCE_EXPOSURE: f32 = 0.0010020;
+
+// Skylight under deep cloud, as a fraction of the open-sky value, and how fast
+// it falls to that with optical depth toward the sun. See the skylight term in
+// the march: never to zero, because light still arrives sideways and from the
+// ground.
+// The column warp in `cloud_base`: how often the 3D noise varies (tiles of the
+// detail volume per km, so features about 2 km across), how far it displaces
+// the silhouette map in km, and how many radians its direction turns from the
+// base of the deck to the top.
+const COLUMN_WARP_FREQUENCY: f32 = 0.45;
+const COLUMN_WARP_KM: f32 = 0.9;
+const COLUMN_WARP_TURN: f32 = 3.0;
+
+const SKY_OCCLUDED: f32 = 0.55;
+const SKY_OCCLUSION_RATE: f32 = 0.2;
 
 // Ceiling on the span a view ray is considered to cover: it bounds the step size
 // below, and stands in as the distance for haze on a ray that met no cloud at
@@ -278,7 +300,17 @@ fn height_at(a: f32, mu: f32, r0: f32, t: f32) -> f32 {
 // Both textures tile, so the wind offset can grow without ever leaving them and
 // the sample coordinates never need wrapping by hand.
 fn cloud_base(p: vec3<f32>, h: f32, warp: vec2<f32>) -> f32 {
-    let uv = (p.xz + warp + clouds.wind_offset.xz) * (0.05 * clouds.base_scale);
+    // The silhouette map is 2D, so without this every column through the deck
+    // read the same texel from base to top, and the side of a cloud was the
+    // map's grain stretched vertically: curtains of streaks hanging from every
+    // underside. A slow 3D noise displaces where the map is read, in a
+    // direction that turns with height, so a column wanders through the map as
+    // it rises and its sides break up the way a real cloud's do.
+    let q = (p + clouds.wind_offset.xyz) * COLUMN_WARP_FREQUENCY;
+    let n = textureSampleLevel(detail_texture, detail_sampler, q, 0.0).r - 0.5;
+    let turn = h * COLUMN_WARP_TURN;
+    let column = vec2<f32>(cos(turn), sin(turn)) * (n * COLUMN_WARP_KM);
+    let uv = (p.xz + warp + column + clouds.wind_offset.xz) * (0.05 * clouds.base_scale);
     let c = textureSampleLevel(base_texture, base_sampler, uv, 0.0).rgb;
 
     // Guerrilla's height-remap: subtracting a profile that is small in the
@@ -382,7 +414,15 @@ fn cloud_density(
     detail_fade: f32,
     step_km: f32,
 ) -> f32 {
-    var m = cloud_base(p, h, warp) * deck_gradient(h);
+    // The fade in from the base goes in before the erosion and the coverage
+    // threshold, so it moves where each column's base *is* rather than
+    // dimming every column the same way. Applied last, it multiplied the
+    // finished density by one smooth vertical ramp: no noise reached it, so
+    // every column faded toward the deck's floor identically, and seen at a
+    // shallow angle a row of them was a curtain of vertical streaks over a
+    // dead-flat underside. Here a thick column dips lower than a thin one,
+    // and the erosion frays the result.
+    var m = cloud_base(p, h, warp) * deck_gradient(h) * min(h / clouds.base_softness, 1.0);
 
     // Erode only where the base shape is thin. Detail carved into a dense core
     // would punch holes through the middle of a cloud rather than fray its rim.
@@ -404,7 +444,6 @@ fn cloud_density(
     // look without falling off a cliff.
     let softness = max(clouds.edge_softness, step_km / thickness_km());
     m = smoothstep(0.0, softness, m + coverage - 1.0);
-    m *= min(h / clouds.base_softness, 1.0);
     return clamp(m, 0.0, 1.0);
 }
 
@@ -488,9 +527,20 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let coarse_km = fine_km * COARSE_STEP_RATIO;
 
     // Dither the ray start so the step boundaries do not read as concentric
-    // bands. The hash is of the view direction, not of time or screen position,
-    // so the pattern is pinned to the sky: it neither crawls as the camera turns
-    // nor flickers frame to frame, which leaves it in a form TAA can resolve.
+    // bands, and move the dither every frame so the temporal AA averages the
+    // steps away.
+    //
+    // It used to hash the view direction alone, pinning one pattern to the sky
+    // on the reasoning that a still pattern is one TAA can resolve. It is the
+    // opposite: TAA averages what changes from frame to frame, and a pattern
+    // that never changes is passed straight through. The steps stayed on screen
+    // as a fixed grain, read as aliased patches on every cloud, and at grazing
+    // angles as the same cloud shape stacked over itself once per step.
+    // Interleaved gradient noise over the pixel, shifted by the frame number,
+    // spreads each pixel's start across the whole step within a few frames.
+    let frame = f32(globals.frame_count % 64u);
+    let pixel = in.position.xy + frame * 5.588238;
+    let dither = fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
     var dt = coarse_km;
     var empty_run = 0u;
     // Dithered by the *fine* step, not the stride. The stride only decides where
@@ -498,7 +548,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // the entry point by a whole stride instead just puts a stride's worth of
     // per-pixel disagreement along every cloud edge, which is where the salt-
     // and-pepper speckle on the rims comes from.
-    var t = span.x + fine_km * hash13(dir * 4096.0);
+    var t = span.x + fine_km * dither;
 
     // Frostbite's dual-lobe phase, once per multiple-scattering octave. The
     // phase depends only on the angle to the sun, so all of it is hoisted out of
@@ -593,7 +643,27 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         let powder = 1.0 - exp(-sigma * thickness * 0.1);
         let sunlight =
             clouds.sun_color.rgb * direct * mix(1.0, powder, clouds.powder_strength);
-        let skylight = mix(clouds.ambient_bottom.rgb, clouds.ambient_top.rgb, h);
+        // Skylight is occluded by the cloud above a point as well as lit by
+        // the sky around it. The sun march has just measured how much cloud
+        // lies toward the sun, which by day is mostly the cloud overhead, so
+        // it doubles as that occlusion for free. Without it every underside
+        // got the same flat fill whatever towered above it, and the bases read
+        // as one painted sheet; with it a thick column has a darker base than
+        // a thin wisp, which is most of what makes a base look like a base.
+        //
+        // Weighted toward the base. Applied evenly it greyed whole clouds:
+        // the depth toward the sun is large anywhere inside a cloud a few
+        // hundred metres thick, so every body sat at the floor, sunlit sides
+        // included. The sky still reaches a cloud's sides and top; it is the
+        // underside that has the column standing on it.
+        let base_weight = (1.0 - h) * (1.0 - h);
+        let sky_occlusion = mix(
+            1.0,
+            mix(SKY_OCCLUDED, 1.0, exp(-sun_depth * SKY_OCCLUSION_RATE)),
+            base_weight,
+        );
+        let skylight =
+            mix(clouds.ambient_bottom.rgb, clouds.ambient_top.rgb, h) * sky_occlusion;
 
         // Hillaire's energy-conserving integration: integrate the source
         // term across the whole segment analytically instead of sampling it
@@ -645,6 +715,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // The colours are premultiplied, so the haze is scaled by alpha to stay in
     // that space, and the night fade scales the whole result.
-    let color = mix(scattered, haze_color * alpha, haze);
-    return vec4<f32>(color, alpha) * clouds.day_factor;
+    //
+    // The camera's exposure applies here as it does to the sky behind. The
+    // authored colours were tuned at `REFERENCE_EXPOSURE`, so only the ratio
+    // is applied: at that exposure nothing changes. Without it the clouds
+    // ignored exposure and the sky did not, so any EV but the one they were
+    // tuned at put white clouds on a black sky (or grey ones on a white sky).
+    let exposed = view.exposure / REFERENCE_EXPOSURE;
+    let color = mix(scattered, haze_color * alpha, haze) * exposed;
+    return vec4<f32>(color * clouds.day_factor, alpha * clouds.day_factor);
 }

@@ -565,7 +565,7 @@ pub enum GraphicsQuality {
     /// The shipping default: it sheds the heaviest fullscreen passes while
     /// keeping the tonemapped look, so the engine runs acceptably on the kind of older /
     /// integrated GPUs where the full stack drops to single-digit FPS. Capable
-    /// machines can raise it to `High` in Settings → Viewport → Performance.
+    /// machines can raise it to `High` in Settings > Project > Rendering.
     #[default]
     Medium,
     High,
@@ -1228,10 +1228,11 @@ pub struct ViewportSettings {
     /// a home is also a re-focus on the origin and a reset of the zoom.
     /// Transient, so it is never persisted.
     pub pending_camera_home: bool,
-    /// Cap the framerate at the monitor refresh rate. Off lets the FPS
-    /// counter reflect actual render capacity at the cost of possible
-    /// screen tearing.
-    pub vsync: bool,
+    // VSync and the graphics-quality tier are not here. The editor is the game
+    // with chrome on top, so it runs on the game's own `[window] vsync` and
+    // `[rendering] graphics_quality`. Each used to have an editor copy as well,
+    // and the two disagreeing made a game look frame-limited (or slower) than
+    // the editor had shown it.
     /// Render the viewport every frame (`true`), or only when the scene has
     /// changed (`false`, the default).
     ///
@@ -1248,11 +1249,6 @@ pub struct ViewportSettings {
     /// whatever you're moving; fading them lets the object stay visible during
     /// the drag. `1.0` keeps the gizmo fully opaque (no fade).
     pub gizmo_drag_opacity: f32,
-    /// Overall graphics-quality tier — gates the expensive fullscreen passes
-    /// (SSAO / auto-exposure / bloom / TAA). Enforced by
-    /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
-    /// editor stays responsive on weak / high-DPI hardware out of the box.
-    pub graphics_quality: GraphicsQuality,
     /// Show the transform gizmo + selection outline/handles in **every** open
     /// viewport at once. Off by default — the gizmo follows the viewport your
     /// cursor is in, so the other views stay clean — matching most DCCs. Turn it
@@ -1312,10 +1308,8 @@ impl Default for ViewportSettings {
             snap: SnapSettings::default(),
             pending_view_angle: None,
             pending_camera_home: false,
-            vsync: true,
             realtime: false,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
-            graphics_quality: GraphicsQuality::default(),
             gizmos_all_viewports: false,
             gizmo_pivot_bottom: true,
         }
@@ -1456,19 +1450,15 @@ pub struct PersistedViewportSettings {
     pub object_snap_distance: f32,
     pub floor_snap_enabled: bool,
     pub floor_y: f32,
-    #[serde(default = "default_true")]
-    pub vsync: bool,
+    // `vsync` and `graphics_quality` were saved here until the editor started
+    // following the game's own settings. A project that still has them loads
+    // fine: serde skips keys the struct no longer names.
     /// Defaults off, the same as a fresh project: rendering on change is what
     /// every project gets from now on.
     #[serde(default)]
     pub realtime: bool,
     #[serde(default = "default_gizmo_drag_opacity")]
     pub gizmo_drag_opacity: f32,
-    /// Graphics-quality tier label (`"Low"` / `"Medium"` / `"High"`). Missing in
-    /// configs written before this field existed → `default_graphics_quality()`
-    /// (`"Medium"`), so upgrading projects pick up the lighter default.
-    #[serde(default = "default_graphics_quality")]
-    pub graphics_quality: String,
     /// Missing in configs written before this field existed → `false`.
     #[serde(default)]
     pub gizmos_all_viewports: bool,
@@ -1539,10 +1529,8 @@ impl PersistedViewportSettings {
             object_snap_distance: sn.object_snap_distance,
             floor_snap_enabled: sn.floor_snap_enabled,
             floor_y: sn.floor_y,
-            vsync: s.vsync,
             realtime: s.realtime,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
-            graphics_quality: s.graphics_quality.label().to_string(),
             gizmos_all_viewports: s.gizmos_all_viewports,
         }
     }
@@ -1630,10 +1618,8 @@ impl PersistedViewportSettings {
             floor_snap_enabled: self.floor_snap_enabled,
             floor_y: self.floor_y,
         };
-        s.vsync = self.vsync;
         s.realtime = self.realtime;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
-        s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
         s.gizmos_all_viewports = self.gizmos_all_viewports;
     }
 }
@@ -1648,10 +1634,6 @@ fn default_grid_divisions() -> u32 {
 
 fn default_grid_size_2d() -> f32 {
     16.0
-}
-
-fn default_graphics_quality() -> String {
-    GraphicsQuality::default().label().to_string()
 }
 
 fn default_grid_color_2d() -> [u8; 4] {
@@ -1778,12 +1760,9 @@ mod tests {
             },
             pending_view_angle: None,
             pending_camera_home: false,
-            vsync: false,
             // Non-default (default is false) so the round-trip exercises it.
             realtime: true,
             gizmo_drag_opacity: 0.6,
-            // Non-default tier (default is Medium) so the round-trip exercises it.
-            graphics_quality: GraphicsQuality::High,
             // Non-default (default is false) so the round-trip exercises it.
             gizmos_all_viewports: true,
         }
@@ -1835,26 +1814,24 @@ mod tests {
         ));
         assert_eq!(original.camera, restored.camera);
         assert_eq!(original.snap, restored.snap);
-        assert_eq!(original.vsync, restored.vsync);
         assert_eq!(original.realtime, restored.realtime);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
-        assert_eq!(original.graphics_quality, restored.graphics_quality);
         assert_eq!(
             original.gizmos_all_viewports,
             restored.gizmos_all_viewports
         );
     }
 
+    /// A project saved while the editor had its own VSync and quality tier
+    /// still carries both keys under `[editor.viewport]`. They must not stop
+    /// the rest of the viewport prefs loading.
     #[test]
-    fn vsync_round_trips() {
-        // The whole point of the recent vsync setting is that it survives
-        // a save/load. Lock that in.
-        let mut s = ViewportSettings::default();
-        s.vsync = false;
-        let persisted = PersistedViewportSettings::from_settings(&s);
-        let mut restored = ViewportSettings::default();
-        persisted.apply(&mut restored);
-        assert!(!restored.vsync);
+    fn retired_vsync_and_quality_keys_still_load() {
+        let parsed: PersistedViewportSettings = toml::from_str(
+            "vsync = false\ngraphics_quality = \"High\"\nshow_grid = false",
+        )
+        .expect("parse");
+        assert!(!parsed.show_grid);
     }
 
     #[test]
@@ -1953,10 +1930,8 @@ mod tests {
             object_snap_distance = 1.0
             floor_snap_enabled = false
             floor_y = 0.0
-            vsync = true
         "#;
         let parsed: PersistedViewportSettings = toml::from_str(s).expect("parse");
-        assert!(parsed.vsync);
         assert!(parsed.mesh);
     }
 }

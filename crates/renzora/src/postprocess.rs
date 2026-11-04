@@ -253,7 +253,14 @@ impl Plugin for PostProcessCorePlugin {
         #[cfg(feature = "antialiasing")]
         let gi = gi.before(temporal_anti_alias);
 
-        let hdr_post = RenderPhase::HdrPost.in_set(EarlyPostProcess);
+        // `PostProcess`, not `EarlyPostProcess`: DLSS (Super Resolution and
+        // Ray Reconstruction) runs in `EarlyPostProcess` with no set of its
+        // own to order against, so an HDR pass there could land before it.
+        // DLSS then took that pass's output as part of its noisy input and
+        // rebuilt it differently every frame: the sun glare flickered with
+        // Solari on and was steady with it off. `PostProcess` runs after all of
+        // `EarlyPostProcess`, so every upscaler has finished by now.
+        let hdr_post = RenderPhase::HdrPost.in_set(PostProcess).before(tonemapping);
         #[cfg(feature = "antialiasing")]
         let hdr_post = hdr_post.after(temporal_anti_alias);
 

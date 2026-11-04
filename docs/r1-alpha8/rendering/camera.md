@@ -189,7 +189,7 @@ Not every method works on every camera. The **Anti-Aliasing** dropdown puts an a
 | Method | Cannot run when |
 |---|---|
 | MSAA | the camera renders **Deferred** (Project Settings > Rendering, or Solari forcing it), or has **SSAO**, the **sky** (atmosphere) or **order-independent transparency** on |
-| TAA | the viewport's Graphics Quality is **Low**, or Solari's DLSS Ray Reconstruction is anti-aliasing the camera already |
+| TAA | the project's Graphics Quality is **Low**, or Solari's DLSS Ray Reconstruction is anti-aliasing the camera already |
 | DLSS | the build has no DLSS SDK, the GPU or renderer cannot run it (an NVIDIA RTX GPU on Vulkan), or Ray Reconstruction is already on the camera |
 | FXAA, SMAA | always run |
 

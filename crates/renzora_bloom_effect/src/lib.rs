@@ -93,6 +93,19 @@ impl Plugin for BloomEffectPlugin {
         info!("[runtime] BloomEffectPlugin");
         app.register_type::<BloomSettings>();
         app.add_systems(Update, (sync_bloom, cleanup_bloom));
+
+        // HDR render passes run before bloom, not in whatever order the
+        // schedule happens to pick: both sit before tonemapping in
+        // `PostProcess`. The sun glare pass is what needs it. It hands bloom a
+        // frame with the sun disc's overflowing pixels brought back into
+        // range, and bloom that ran first read those infinities, turned them
+        // into NaN and flashed every few frames.
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render_app.configure_sets(
+                bevy::core_pipeline::Core3d,
+                renzora::RenderPhase::HdrPost.before(bevy::post_process::bloom::bloom),
+            );
+        }
     }
 }
 

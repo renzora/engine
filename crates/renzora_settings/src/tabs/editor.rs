@@ -1,8 +1,8 @@
 //! The Editor page — developer switches, auto-save, the graphics backend, and
 //! import behaviour, plus the plugin grid it ends with.
 //!
-//! Three sidebar categories share this page (`general`, `autosave`, `plugins`)
-//! and its sections are keyed to them via `focus_hide`.
+//! Four sidebar categories share this page (`general`, `renderer`, `autosave`,
+//! `plugins`) and its sections are keyed to them via `focus_hide`.
 
 use bevy::prelude::*;
 
@@ -88,7 +88,7 @@ pub(crate) fn tab_editor(
 
     let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.renderer"), A_BLUE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "general");
+    focus_hide(commands, sec, focus, "renderer");
     let avail: Vec<renzora::RendererBackend> = renzora::RendererBackend::available().to_vec();
     let label_strs: Vec<String> = avail.iter().map(|b| loc_opt(b.label())).collect();
     let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
@@ -139,7 +139,7 @@ pub(crate) fn tab_editor(
             }
         },
     );
-    settings_row(commands, fonts, body, 0, &tr("settings.row.splash_effects"), dd);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.splash_effects"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.splash_effects"));
 
     // Import — the former Assets tab, a single toggle. Folded in here so it

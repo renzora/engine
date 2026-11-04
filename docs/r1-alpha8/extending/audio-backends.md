@@ -65,6 +65,15 @@ Claiming honestly matters. A backend that says it captures and then does nothing
 produces a game that is silently wrong, which is worse than one that reports a
 missing feature.
 
+### A device that will not open
+
+If `init` returns an error, the engine keeps the backend and calls `init` again
+every two seconds until it succeeds. An output device is often briefly missing,
+for example while Windows switches the default device to a headset that has just
+connected, and dropping the backend then would leave the whole session silent.
+So `init` must be safe to call again after it fails: open the device first, and
+change nothing else until that has worked.
+
 ## Writing one
 
 ```rust

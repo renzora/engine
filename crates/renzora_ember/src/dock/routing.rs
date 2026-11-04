@@ -37,6 +37,24 @@ pub(crate) fn area_tree_mut<'a>(
     }
 }
 
+/// [`area_tree_mut`] for a reader. Separate so a per-frame check can look at a
+/// tree without `ResMut` marking the resource changed, which would have the
+/// shell re-serialise the layout every frame.
+pub(crate) fn area_tree<'a>(
+    area: Entity,
+    dock: &'a Dock,
+    fixed: &'a FixedDock,
+    wins: &'a DockWindows,
+) -> &'a DockTree {
+    if fixed.area == Some(area) {
+        return &fixed.tree;
+    }
+    match wins.0.iter().find(|s| s.area == area) {
+        Some(st) => &st.tree,
+        None => &dock.tree,
+    }
+}
+
 /// Flag `area`'s tree for rebuild — [`DockDirty`] for the primary dock,
 /// [`FixedDock::dirty`] for the fixed area, the per-window flag for a floating
 /// one.

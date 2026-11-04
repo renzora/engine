@@ -208,6 +208,9 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 /// This exists because the editor keeps several preview rigs alive in the same
 /// World, each with its own key and fill lights on its own layer. See the call
 /// site for what that cost us.
+///
+/// The same test picks the camera the dome follows: a camera on no shared layer
+/// cannot see the dome either, so it must not be the one to place it.
 fn lights_the_scene(layers: Option<&bevy::camera::visibility::RenderLayers>) -> bool {
     let scene = bevy::camera::visibility::RenderLayers::default();
     layers.is_none_or(|layers| layers.intersects(&scene))
@@ -320,7 +323,16 @@ fn sync_clouds(
     // `Entity` on both purely so the diagnostics can say *which* source and
     // *which* camera were picked — an alternating id is the whole signal.
     clouds_query: Query<(Entity, &CloudsData)>,
-    camera_query: Query<(Entity, &GlobalTransform, &Camera, Option<&Projection>), With<Camera3d>>,
+    camera_query: Query<
+        (
+            Entity,
+            &GlobalTransform,
+            &Camera,
+            Option<&Projection>,
+            Option<&bevy::camera::visibility::RenderLayers>,
+        ),
+        With<Camera3d>,
+    >,
     sun_query: Query<(
         &GlobalTransform,
         &DirectionalLight,
@@ -378,10 +390,17 @@ fn sync_clouds(
         return;
     };
 
-    let Some((camera_entity, camera_transform, _, projection)) = camera_query
+    // Only a camera that can see the dome may place it: one on the default
+    // layer, like the sun below. The editor keeps offscreen rigs on their own
+    // layers, and while the Shape Library rendered its thumbnails at startup
+    // ten of them were active `Camera3d`s that `find` met first. The dome went
+    // to one of those, 400 units off, and sat in the viewport as a floating
+    // half-sphere of cloud until the thumbnails finished and it jumped to the
+    // editor camera.
+    let Some((camera_entity, camera_transform, _, projection, _)) = camera_query
         .iter()
-        .find(|(_, _, cam, _)| cam.is_active)
-        .or_else(|| camera_query.iter().next())
+        .find(|(_, _, cam, _, layers)| cam.is_active && lights_the_scene(*layers))
+        .or_else(|| camera_query.iter().find(|(_, _, _, _, layers)| lights_the_scene(*layers)))
     else {
         return;
     };
@@ -389,7 +408,10 @@ fn sync_clouds(
     // An id that alternates frame to frame means two active `Camera3d` and an
     // unordered `find` — the dome would be re-centred on a different eye each
     // frame, which reads exactly as flicker.
-    let active_cameras = camera_query.iter().filter(|(_, _, c, _)| c.is_active).count();
+    let active_cameras = camera_query
+        .iter()
+        .filter(|(_, _, c, _, layers)| c.is_active && lights_the_scene(*layers))
+        .count();
     Diag::track(
         &mut clouds_state.diag.camera,
         if active_cameras > 1 { "camera (MULTIPLE active!)" } else { "camera" },
@@ -892,8 +914,10 @@ mod tests {
     #[test]
     fn dome_shader_compiles() {
         const STUB: &str = "
-            struct View { world_position: vec3<f32> }
+            struct View { world_position: vec3<f32>, exposure: f32 }
             @group(0) @binding(0) var<uniform> view: View;
+            struct Globals { time: f32, delta_time: f32, frame_count: u32 }
+            @group(0) @binding(1) var<uniform> globals: Globals;
             struct VertexOutput {
                 @builtin(position) position: vec4<f32>,
                 @location(0) world_position: vec4<f32>,
