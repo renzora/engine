@@ -57,22 +57,22 @@ pub(crate) struct PendingInstall {
 #[derive(Default)]
 pub(crate) struct InstallShared {
     /// Bytes downloaded so far. Meaningful only in [`Phase::Downloading`].
-    bytes: AtomicU64,
+    pub(crate) bytes: AtomicU64,
     /// Bytes expected in total, or 0 when unknown — a free asset fetched
     /// through the public proxy never resolves a file list, so its bar sweeps
     /// instead of filling.
-    total: AtomicU64,
+    pub(crate) total: AtomicU64,
     /// The current [`Phase`], as its `u8`.
-    phase: AtomicU8,
+    pub(crate) phase: AtomicU8,
     /// Where the asset landed, once it has. Carried back so the main thread can
     /// finish work the worker cannot: a downloaded model still has to go through
     /// the import pipeline, and that fires events, which needs a `World`.
-    installed: std::sync::Mutex<Option<std::path::PathBuf>>,
+    pub(crate) installed: std::sync::Mutex<Option<std::path::PathBuf>>,
 }
 
 /// Where an install has got to.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Phase {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Phase {
     /// Asking the server for a download URL (an authenticated round trip).
     Resolving = 0,
     Downloading = 1,
@@ -83,7 +83,7 @@ enum Phase {
 }
 
 impl Phase {
-    fn from_u8(v: u8) -> Self {
+    pub(crate) fn from_u8(v: u8) -> Self {
         match v {
             1 => Phase::Downloading,
             2 => Phase::Writing,
@@ -461,6 +461,7 @@ fn install_buttons(
     pending: Option<Res<PendingInstall>>,
     pick: Res<FolderPick>,
     mut jobs: ResMut<InstallJobs>,
+    companion: Option<Res<renzora::CompanionJobs>>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
@@ -507,7 +508,7 @@ fn install_buttons(
         offer_restart: install::is_plugin_category(&asset.category),
     });
 
-    spawn_install(session, asset, dest, tx, shared);
+    spawn_install(session, asset, dest, tx, shared, companion.map(|c| c.remote()));
 }
 
 /// Raise the completion notice when a background install finishes.
@@ -544,12 +545,14 @@ fn poll_install_result(
         // the one way into a project that skipped it, and the result was a file
         // the engine could not read, or read without its materials.
         //
-        // Queued rather than run here: the pipeline fires an event per material
-        // so `.material` files get written, and that needs a `World`.
+        // Handed to the import queue rather than run here: its drain converts
+        // on a thread of its own (in the companion when there is one) and only
+        // comes back to the `World` to write each `.material`. Run here, it
+        // froze the editor for the whole conversion.
         if outcome.is_ok() && install::install_dir_for_category(&category) == "models" {
             if let Some(root) = installed {
                 commands.queue(move |world: &mut World| {
-                    renzora_import::import_tree_in_place(world, &root)
+                    world.get_resource_or_insert_with(renzora::core::ImportInPlaceQueue::default).0.push(root);
                 });
             }
         }
@@ -614,6 +617,8 @@ fn restart_button(q: Query<&UiInteraction, (With<InstallRestartBtn>, Changed<UiI
     }
 }
 
+/// Run the install on a thread: in the companion when one is connected (see
+/// `install_remote`), here otherwise.
 #[cfg(not(target_arch = "wasm32"))]
 fn spawn_install(
     session: Option<AuthSession>,
@@ -621,9 +626,18 @@ fn spawn_install(
     dest: PathBuf,
     tx: crossbeam_channel::Sender<Result<String, String>>,
     shared: Arc<InstallShared>,
+    remote: Option<renzora::CompanionRemote>,
 ) {
     std::thread::spawn(move || {
-        let _ = tx.send(run_install(session.as_ref(), &asset, &dest, &shared));
+        let signed_in = session.as_ref().filter(|s| s.is_signed_in());
+        if let Some(remote) = remote {
+            let token = signed_in.and_then(|s| s.access_token.clone());
+            if let Some(result) = crate::install_remote::run(&remote, token, &asset, &dest, &shared) {
+                let _ = tx.send(result);
+                return;
+            }
+        }
+        let _ = tx.send(run_install(signed_in, &asset, &dest, &shared));
     });
 }
 
@@ -634,22 +648,24 @@ fn spawn_install(
     _dest: PathBuf,
     tx: crossbeam_channel::Sender<Result<String, String>>,
     _shared: Arc<InstallShared>,
+    _remote: Option<renzora::CompanionRemote>,
 ) {
     let _ = tx.send(Err("Downloads aren't supported in the browser yet".into()));
 }
 
-/// Fetch the asset bytes (authenticated download when signed in, otherwise the
-/// public preview proxy for free assets) and install into `dest`.
+/// Fetch the asset bytes (authenticated download with `signed_in`, a session
+/// that is signed in, otherwise the public preview proxy for free assets) and
+/// install into `dest`.
 #[cfg(not(target_arch = "wasm32"))]
-fn run_install(
-    session: Option<&AuthSession>,
+pub(crate) fn run_install(
+    signed_in: Option<&AuthSession>,
     asset: &AssetSummary,
     dest: &Path,
     shared: &InstallShared,
 ) -> Result<String, String> {
     use crate::auth::marketplace as mk;
     let mut on_bytes = |n: u64| shared.bytes.store(n, Ordering::Relaxed);
-    let (bytes, filename, url) = if let Some(s) = session.filter(|s| s.is_signed_in()) {
+    let (bytes, filename, url) = if let Some(s) = signed_in {
         // Resolving is a round trip of its own, and on a slow link it is a
         // second or two of a status bar that would otherwise claim to be
         // downloading nothing.

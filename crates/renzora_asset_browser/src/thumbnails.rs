@@ -329,6 +329,20 @@ pub struct ThumbnailCache {
     /// the source was loaded only to make the thumbnail, and a 4K HDR held
     /// as a thumbnail was 128 MB in the editor and as much again on the GPU.
     swap_to_cache: HashMap<PathBuf, u32>,
+    /// Sources the companion is making a thumbnail of, by job. The editor
+    /// loads nothing of these: the tile shows its icon until the small PNG is
+    /// written, and a source the companion could not read is loaded here
+    /// after all (see `update_thumbnail_cache`).
+    companion: HashMap<renzora::CompanionJobId, PathBuf>,
+    /// The same sources, for de-duplicating requests.
+    asked: HashSet<PathBuf>,
+}
+
+/// Whether the companion's texture thumbnailer reads files with this
+/// extension (`renzora_companion::app::work::texture_thumbnail`).
+fn companion_decodes(path: &Path) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz")
 }
 
 impl ThumbnailCache {
@@ -348,15 +362,22 @@ impl ThumbnailCache {
     /// multi-megabyte) source. On a miss or stale cache, the source
     /// loads as before, and `update_thumbnail_cache` writes a fresh
     /// downscaled PNG so the next session can hit the cache.
+    ///
+    /// On a miss with a companion connected, a file it can read goes to it
+    /// instead, and the editor loads nothing: loading the source here only to
+    /// shrink it meant decoding the whole file and uploading it to the GPU,
+    /// 128 MB each way for a 4K HDR, for a 256 px tile.
     pub fn request(
         &mut self,
         path: PathBuf,
         asset_server: &AssetServer,
         project: Option<&CurrentProject>,
+        jobs: Option<&mut renzora::CompanionJobs>,
     ) -> bool {
         if self.handles.contains_key(&path)
             || self.loading.contains(&path)
             || self.failed.contains(&path)
+            || self.asked.contains(&path)
         {
             return false;
         }
@@ -377,6 +398,19 @@ impl ThumbnailCache {
                         self.handles.insert(path, handle);
                         // No `pending_disk_save` insert — the cache is
                         // already on disk for this asset.
+                        return true;
+                    }
+                }
+                if companion_decodes(&path) {
+                    let args = renzora::job_args::TextureThumbnail {
+                        source: path.clone(),
+                        cache: cache_path,
+                        size: CACHE_THUMB_SIZE,
+                    };
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    if let Some(id) = jobs.and_then(|j| j.submit("texture_thumbnail", name, &args)) {
+                        self.companion.insert(id, path.clone());
+                        self.asked.insert(path);
                         return true;
                     }
                 }
@@ -705,8 +739,34 @@ pub fn update_thumbnail_cache(
     images: Res<Assets<Image>>,
     project: Option<Res<CurrentProject>>,
     mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut done: MessageReader<renzora::CompanionJobDone>,
     mut frames: Local<u32>,
 ) {
+    // Thumbnails the companion was asked for in `request`: show the written
+    // PNG, or load the source here when it could not make one.
+    for answer in done.read() {
+        let Some(path) = cache.companion.remove(&answer.id) else { continue };
+        cache.asked.remove(&path);
+        let written = answer.result.is_ok()
+            && project.as_deref().is_some_and(|p| {
+                let Some(cache_path) = texture_thumb_path(&path, p) else { return false };
+                let rel = p.make_asset_relative(&cache_path);
+                if Path::new(&rel).is_absolute() || !cache_path.is_file() {
+                    return false;
+                }
+                let handle: Handle<Image> = asset_server.load(rel);
+                cache.loading.insert(path.clone());
+                cache.handles.insert(path.clone(), handle);
+                true
+            });
+        if !written {
+            if let Err(why) = &answer.result {
+                debug!("[thumbnails] the companion could not make a thumbnail of {}: {why}", path.display());
+            }
+            cache.request(path, &asset_server, project.as_deref(), None);
+        }
+    }
+
     // The resize and encode is the slow part, tens of ms for a big texture,
     // and it ran on the main thread. A plain image file goes to the companion
     // instead, which reads it from disk itself; anything it cannot decode

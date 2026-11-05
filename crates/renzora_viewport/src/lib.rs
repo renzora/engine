@@ -97,6 +97,10 @@ impl Plugin for ViewportPlugin {
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
             .init_resource::<redraw::ViewportRedraw>()
+            .init_resource::<render_systems::ShadowBudget>()
+            .add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
+                render_systems::ShadowBudget,
+            >::default())
             // Owned here because the shading modes are what set it; the sky
             // crates only read it, and take it as absent when nothing does.
             .register_type::<renzora::core::EnvironmentSuppressed>()
@@ -291,6 +295,16 @@ impl Plugin for ViewportPlugin {
             external_runtime::kill_on_app_exit
                 .after(renzora_ui::window_chrome::WindowActionSet),
         );
+
+        // The shadow budget's render-world half: see `ShadowBudget`.
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render_app.add_systems(
+                bevy::render::Render,
+                render_systems::apply_shadow_budget
+                    .in_set(bevy::render::RenderSystems::CreateViews)
+                    .before(bevy::pbr::prepare_lights),
+            );
+        }
 
         panel::register(app);
         game_view::register(app);

@@ -271,13 +271,14 @@ mod tests {
 
     #[test]
     fn default_sun_matches_documented_values() {
-        // Defaults committed in 420b457 — locking these so a future tweak
-        // either updates the test or notices it changed the contract.
+        // Locked so a future tweak either updates the test or notices it
+        // changed the contract. Mid-morning since 2026-11-04 (was 90/25).
         let sun = Sun::default();
-        assert_eq!(sun.azimuth, 90.0);
-        assert_eq!(sun.elevation, 25.0);
+        assert_eq!(sun.azimuth, 245.5);
+        assert_eq!(sun.elevation, 38.5);
         assert_eq!(sun.illuminance, 40_000.0);
         assert!(sun.shadows_enabled);
+        assert!(sun.contact_shadows);
         assert_eq!(sun.angular_diameter, 0.53);
     }
 

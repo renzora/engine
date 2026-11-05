@@ -26,6 +26,7 @@ pub mod save_location;
 pub mod scene_io;
 pub mod scene_stream;
 mod shapes;
+pub use shapes::builtin_shapes;
 #[cfg(feature = "render_3d")]
 pub mod texture_stream;
 pub mod vfs;

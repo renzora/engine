@@ -192,6 +192,36 @@ pub fn to_image(raster: Raster, srgb: bool, image_settings: &ImageLoaderSettings
     }
 }
 
+/// Render the `.svg` or `.svgz` file at `path` with its longest side `size`
+/// pixels, as straight-alpha RGBA8: `(width, height, pixels)`.
+///
+/// For a thumbnail, made away from the asset server (the companion makes the
+/// Assets panel's): the file's own `<image>` references are not fetched and
+/// only the bundled fonts are used, so a picture that depends on either draws
+/// without it. A tile is a glance at the file, not its final look.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn thumbnail(path: &std::path::Path, size: u32) -> Result<(u32, u32, Vec<u8>), String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+    let bytes = if bytes.starts_with(&[0x1f, 0x8b]) {
+        usvg::decompress_svgz(&bytes).map_err(|e| format!("could not unpack {}: {e}", path.display()))?
+    } else {
+        bytes
+    };
+    let text = String::from_utf8(bytes).map_err(|_| format!("{} is not text", path.display()))?;
+    let tree = parse(&text, &FetchedImages::new(), crate::fonts::base_database()).map_err(|e| e.to_string())?;
+    let intrinsic = tree.size();
+    let longest = intrinsic.width().max(intrinsic.height());
+    let settings = SvgRasterSettings {
+        // Up or down to `size`: an icon authored at 24 px should fill its tile.
+        scale: (longest > 0.0).then(|| size as f32 / longest),
+        max_size: size,
+        ..SvgRasterSettings::default()
+    };
+    let (w, h) = target_size((intrinsic.width(), intrinsic.height()), &settings).map_err(|e| e.to_string())?;
+    let raster = render(&tree, w, h, &settings).map_err(|e| e.to_string())?;
+    Ok((raster.width, raster.height, raster.data))
+}
+
 /// Everything after the fetches, in one call: parse, size, render, wrap.
 pub fn rasterize(
     text: &str,

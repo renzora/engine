@@ -40,6 +40,11 @@ pub struct CompanionJobRequest {
 pub struct CompanionJobs {
     /// Set by the companion's host while one is connected.
     pub available: bool,
+    /// Set by the host while a companion has been started and has not
+    /// connected yet. Work that can wait a few seconds (thumbnails nobody has
+    /// asked to see) waits for it rather than doing the job in the editor
+    /// during the very frames a project is loading.
+    pub starting: bool,
     next: CompanionJobId,
     pending: Vec<CompanionJobRequest>,
     remote: CompanionRemote,
@@ -70,6 +75,12 @@ impl CompanionJobs {
         let mut all = std::mem::take(&mut self.pending);
         all.extend(self.remote.take_requests());
         all
+    }
+
+    /// Jobs whose submitter wants them stopped. The companion's host calls
+    /// this and passes each on.
+    pub fn take_cancels(&mut self) -> Vec<CompanionJobId> {
+        self.remote.take_cancels()
     }
 
     /// A handle for a worker thread to run jobs through; see
@@ -122,6 +133,8 @@ struct RemoteState {
     requests: Vec<CompanionJobRequest>,
     /// Jobs a thread is waiting on, with what arrived for them.
     waiting: HashMap<CompanionJobId, RemoteSlot>,
+    /// Jobs a thread gave up on, for the host to cancel in the companion.
+    cancels: Vec<CompanionJobId>,
 }
 
 #[derive(Default)]
@@ -151,6 +164,20 @@ impl CompanionRemote {
         args: &impl Serialize,
         on_progress: &mut dyn FnMut(Option<f32>, &str),
     ) -> Option<Result<String, String>> {
+        self.run_cancellable(kind, target, args, on_progress, &AtomicBool::new(false))
+    }
+
+    /// [`CompanionRemote::run`], cancelled in the companion when `cancel` is
+    /// set. The answer still arrives (as `Err("cancelled")`, or as whatever
+    /// the job finished with first), so the caller hears back exactly once.
+    pub fn run_cancellable(
+        &self,
+        kind: &str,
+        target: impl Into<String>,
+        args: &impl Serialize,
+        on_progress: &mut dyn FnMut(Option<f32>, &str),
+        cancel: &AtomicBool,
+    ) -> Option<Result<String, String>> {
         if !self.available() {
             return None;
         }
@@ -160,7 +187,12 @@ impl CompanionRemote {
         let id = REMOTE_BIT | state.next;
         state.requests.push(CompanionJobRequest { id, kind: kind.to_string(), payload, target: target.into() });
         state.waiting.insert(id, RemoteSlot::default());
+        let mut cancel_sent = false;
         loop {
+            if !cancel_sent && cancel.load(Ordering::Relaxed) {
+                cancel_sent = true;
+                state.cancels.push(id);
+            }
             let slot = state.waiting.get_mut(&id)?;
             let progress = std::mem::take(&mut slot.progress);
             let result = slot.result.take();
@@ -168,7 +200,13 @@ impl CompanionRemote {
                 state.waiting.remove(&id);
             }
             if progress.is_empty() && result.is_none() {
-                state = self.0.changed.wait(state).unwrap_or_else(|e| e.into_inner());
+                // Woken by news, or every quarter second to look at `cancel`.
+                state = self
+                    .0
+                    .changed
+                    .wait_timeout(state, std::time::Duration::from_millis(250))
+                    .map(|(s, _)| s)
+                    .unwrap_or_else(|e| e.into_inner().0);
                 continue;
             }
             // Reported without the lock held: the callback may take a while.
@@ -181,6 +219,10 @@ impl CompanionRemote {
             }
             state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
         }
+    }
+
+    fn take_cancels(&self) -> Vec<CompanionJobId> {
+        std::mem::take(&mut self.0.state.lock().unwrap_or_else(|e| e.into_inner()).cancels)
     }
 
     fn take_requests(&self) -> Vec<CompanionJobRequest> {
@@ -264,6 +306,34 @@ pub mod job_args {
         pub model: PathBuf,
     }
 
+    /// `"texture_bake"`: bake the image file `source` into a mipmapped,
+    /// block-compressed `.rmip` at `target` (`renzora_rmip::bake::bake_image`
+    /// with its default settings). `role` is `"color"`, `"normal"` or
+    /// `"linear"`. Answers with `target`.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub struct TextureBake {
+        pub source: PathBuf,
+        pub target: PathBuf,
+        pub role: String,
+    }
+
+    /// `"rvg_migrate"`: turn the `.glb` model `glb` into an `.rvg` model of
+    /// the same name (`renzora_rvg::bake::convert_to_model`). Answers with an
+    /// [`RvgMigrateOutcome`] as JSON. The `.glb` is left for the editor to
+    /// delete, once every reference to it is rewritten.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub struct RvgMigrate {
+        pub glb: PathBuf,
+    }
+
+    /// What an `"rvg_migrate"` did; mirrors `renzora_rvg::bake::Converted`.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub enum RvgMigrateOutcome {
+        Written { rvg: PathBuf, bytes: u64, before: u64 },
+        AlreadyConverted { rvg: PathBuf },
+        NameTaken { rvg: PathBuf },
+    }
+
     /// `"model_thumbnail"`: render `model` (a `.glb`, `.gltf` or `.rvg` in
     /// `project`) to its cached thumbnail PNG, with the editor's own capture
     /// code. Answers with the PNG's path; the editor then loads it as it
@@ -281,6 +351,17 @@ pub mod job_args {
     pub struct MaterialThumbnail {
         pub project: PathBuf,
         pub material: PathBuf,
+    }
+
+    /// `"shape_thumbnail"`: render the built-in shape `id` on a background of
+    /// `clear` (linear RGBA) and write it as a PNG to `path`. Answers with the
+    /// path. The editor names the file, from a hash of the shape's mesh, so a
+    /// changed shape gets a new file rather than a stale picture.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+    pub struct ShapeThumbnail {
+        pub id: String,
+        pub path: PathBuf,
+        pub clear: [f32; 4],
     }
 
     /// `"project_index"`: walk `root` and answer with its files as JSON

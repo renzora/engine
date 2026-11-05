@@ -31,11 +31,17 @@ renzora_rmip = { path = "../renzora_rmip" }
 # the material editor's capture code (`file_thumbnails`).
 renzora_shader = { path = "../renzora_shader" }
 renzora_material_editor = { path = "../renzora_material_editor" }
+# SVG texture thumbnails, drawn by the engine's own rasterizer.
+renzora_svg = { path = "../renzora_svg" }
+# Exports: the exporter's own worker (`renzora_export::remote`).
+renzora_export = { path = "../renzora_export" }
+# Shape Library thumbnails: its capture code (`capture`).
+renzora_shape_library = { path = "../renzora_shape_library" }
 # The channel Bevy's file watcher reports into (see `app::cache`). Bevy does
 # not re-export it; the version is the one `bevy_asset` resolves.
 async-channel = "2"
 # Texture thumbnails: the same decoders and resize the asset browser used.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp", "hdr"] }
 serde_json = "1"
 
 # `FileWatcher`, for watching the open project (`app::cache`), is behind Bevy's

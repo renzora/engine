@@ -987,7 +987,7 @@ fn trim_bevy_features(table: Option<&mut toml_edit::Item>, disabled: &[String]) 
 /// All three are size-for-something trades that the dev tree deliberately does
 /// NOT take (see the profile's notes in the root `Cargo.toml`), so they live
 /// here as per-export choices rather than as edits to the checked-in profile.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LeanProfile {
     /// `panic = "abort"` — trades fault isolation for ~24% off the binary.
     pub panic_abort: bool,

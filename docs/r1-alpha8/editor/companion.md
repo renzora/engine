@@ -87,20 +87,29 @@ These run in the companion while it is connected:
 
 | Job | What it does |
 |---|---|
+| Exports | The whole export: packing assets, compressing the archive, and for a lean build compiling the engine. The Export window looks and works the same, with its log and progress following the companion, and **Cancel** stops it there |
 | Model imports | Converts the model, bakes its textures and optimizes its meshes; the import window's progress bar follows it |
+| Models installed in place | Converts a model the marketplace installed (or a plugin asked to import) into the project; only writing its `.material` files happens in the editor |
 | Model files | Builds the `.rvg` an accepted import is stored as |
+| Models to RVG | Each model "Convert Models to RVG" (command palette) turns from `.glb` into `.rvg` |
 | Model thumbnails | Renders a model's thumbnail for the Assets panel, with the editor's own capture, into the same cache |
 | Material thumbnails | Compiles a `.material` and renders its sphere (or sprite) for the Assets panel, with the material editor's own capture, into the same cache |
-| Texture thumbnails | Decodes and shrinks an image for the Assets panel |
+| Texture thumbnails | Decodes and shrinks an image (PNG, JPEG, BMP, TGA, WebP, HDR or SVG) for the Assets panel. The editor does not load the image itself at all: its tile shows the file's icon until the thumbnail is written |
+| Shape thumbnails | Renders the Shape Library's pictures of the built-in shapes, once per machine, into `~/.renzora/cache/thumbnails/shapes` |
 | Rust scripts | Compiles a `.rs` script after you save it |
 | Virtual geometry | Builds the `.rvg` beside a `.glb` added to the project some other way |
+| Terrain textures | Bakes the default terrain textures a landscape material needs into the project |
+| Marketplace installs | Downloads an asset, unpacks it into the project, and for a plugin compiles it; the install window's bar follows it. Installs from the Library tab and the launcher's plugin list go the same way |
+| Marketplace images | Downloads each store image once, shrinks it and keeps it in `~/.renzora/cache/hub`, with the blurred copy behind cards; later sessions read the small file |
 | Marketplace uploads | Sends a publish to renzora.com |
 
-If the companion is not connected, the editor does the same work itself, as it always has; a material the companion cannot render is rendered by the editor too. Exports and plugin builds stay in the editor.
+If the companion is not connected, the editor does the same work itself, as it always has; a material the companion cannot render is rendered by the editor too, and so is a shape a plugin added, which the companion does not have. While the companion is still starting, the Shape Library waits for it (up to 30 seconds) rather than rendering in the editor while a project loads.
+
+The companion runs at a lower priority than the editor, so an export or a plugin compile there takes a little longer when the editor is busy, and the editor stays responsive while it runs.
 
 ### Jobs never run while you profile
 
-While a recording runs, every job waits, so the profile measures only the game: an import or a compile would otherwise compete with it for the machine. Jobs that render (model and material thumbnails) also wait while **Play** runs. The Jobs screen says what each job is waiting for, and **Run anyway** starts one now. Frames recorded while a job runs are greyed in the frame graph with a strip across the top, and `profiler_summary` counts them, so a hitch the companion caused is never mistaken for one in your game.
+While a recording runs, every job waits, so the profile measures only the game: an import or a compile would otherwise compete with it for the machine. Jobs that render (model, material and shape thumbnails) also wait while **Play** runs. The Jobs screen says what each job is waiting for, and **Run anyway** starts one now. Frames recorded while a job runs are greyed in the frame graph with a strip across the top, and `profiler_summary` counts them, so a hitch the companion caused is never mistaken for one in your game.
 
 ## The Cache screen
 
@@ -119,7 +128,7 @@ The companion also lists the project for the editor when it opens, so panels tha
 
 The companion is the same `renzora` executable, started by the editor with `--companion`. Because both come from the same build they always agree with each other; there is nothing to install or keep in step.
 
-- It never renders your scene. The editor keeps the viewport and the scene. It renders one model or material at a time for a thumbnail, and frees it when the thumbnail is done.
+- It never renders your scene. The editor keeps the viewport and the scene. It renders one model or material at a time for a thumbnail (shapes, which are tiny, ten at a time), and frees each when its thumbnail is done.
 - It talks to the editor over a local connection only the editor's own companion can join.
 - It redraws only a few times a second, and not at all while you are not looking at it.
 - If it stops unexpectedly, the editor starts it again, up to three times per session.

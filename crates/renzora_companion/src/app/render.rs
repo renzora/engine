@@ -7,7 +7,8 @@
 //! code unchanged (`renzora_asset_browser::model_thumbnails`,
 //! `renzora_material_editor::file_thumbnails`), with the loaders and material
 //! plugins they need, so a thumbnail looks the same wherever it was made and
-//! lands in the same cache file.
+//! lands in the same cache file. Shape Library thumbnails render the same way,
+//! with `renzora_shape_library::capture`.
 //!
 //! Projects: the asset reader resolves project-relative paths against
 //! `ProjectAssetPath`, so each job points it at its project before asking,
@@ -80,8 +81,53 @@ pub(crate) fn build(app: &mut App) {
         // a material capture compiles and renders with.
         .add_plugins(renzora_shader::material::MaterialPlugin)
         .add_plugins(renzora_material_editor::file_thumbnails::MaterialFileThumbnailPlugin)
+        // Shape Library thumbnails: the engine's built-in shapes, and the
+        // shape library's own capture code. A shape a plugin registers in the
+        // editor is not here; the editor renders that one itself.
+        .insert_resource(renzora_engine::builtin_shapes())
+        .add_plugins(renzora_shape_library::capture::ShapeCapturePlugin)
         .init_resource::<Rendering>()
-        .add_systems(Update, (take_jobs, finish_jobs, pace_frames).chain());
+        .init_resource::<ShapeJobs>()
+        .add_systems(Update, (take_jobs, finish_jobs, finish_shape_jobs, pace_frames).chain());
+}
+
+/// Shape thumbnails being rendered, by shape id. Kept apart from [`Rendering`]
+/// because a shape belongs to no project: it needs no project opened, and
+/// waits behind none.
+#[derive(Resource, Default)]
+struct ShapeJobs {
+    jobs: Vec<(String, JobCtx, f32)>,
+}
+
+/// Answer each shape thumbnail the capture code finished, or that ran out of
+/// time or was cancelled.
+fn finish_shape_jobs(
+    mut shapes: ResMut<ShapeJobs>,
+    mut captures: ResMut<renzora_shape_library::capture::ShapeCaptures>,
+    time: Res<Time<Real>>,
+) {
+    let finished = captures.take_finished();
+    let now = time.elapsed_secs();
+    shapes.jobs.retain(|(id, ctx, started)| {
+        let result = if let Some((_, result)) = finished.iter().find(|(done, _)| done == id) {
+            Some(result.clone().map(|path| path.display().to_string()))
+        } else if ctx.cancelled() {
+            captures.cancel(id);
+            Some(Err("cancelled".into()))
+        } else if now - started > CAPTURE_TIMEOUT_SECS {
+            captures.cancel(id);
+            Some(Err(format!("{id} took over {CAPTURE_TIMEOUT_SECS:.0} s to render")))
+        } else {
+            None
+        };
+        match result {
+            Some(result) => {
+                ctx.finish(result);
+                false
+            }
+            None => true,
+        }
+    });
 }
 
 /// Read a rendering job's arguments.
@@ -107,6 +153,10 @@ fn take_jobs(world: &mut World) {
             ctx.finish(Err("not a rendering job".into()));
             continue;
         };
+        if kind == "shape_thumbnail" {
+            start_shape(world, &payload, ctx);
+            continue;
+        }
         match parse(&kind, &payload) {
             Ok(capture) => rendering.waiting.push((capture, ctx)),
             Err(why) => ctx.finish(Err(why)),
@@ -154,6 +204,36 @@ fn take_jobs(world: &mut World) {
         rendering.jobs.push(Active { kind: capture.kind, path: capture.path, ctx, started: now });
     }
     world.insert_resource(rendering);
+}
+
+/// Hand a shape thumbnail to the shape library's capture code.
+fn start_shape(world: &mut World, payload: &str, ctx: JobCtx) {
+    let args = match serde_json::from_str::<renzora::job_args::ShapeThumbnail>(payload) {
+        Ok(args) => args,
+        Err(e) => {
+            ctx.finish(Err(format!("could not read the job's arguments: {e}")));
+            return;
+        }
+    };
+    // Not a shape this companion has (a plugin registered it in the editor):
+    // said straight away, so the editor renders it without waiting.
+    let known = world
+        .get_resource::<renzora::core::ShapeRegistry>()
+        .is_some_and(|r| r.get(&args.id).is_some());
+    if !known {
+        ctx.finish(Err(format!("the companion has no shape called {}", args.id)));
+        return;
+    }
+    let [r, g, b, a] = args.clear;
+    world
+        .resource_mut::<renzora_shape_library::capture::ShapeCaptures>()
+        .request(renzora_shape_library::capture::ShapeCaptureRequest {
+            id: args.id.clone(),
+            path: args.path,
+            clear: Color::linear_rgba(r, g, b, a),
+        });
+    let now = world.resource::<Time<Real>>().elapsed_secs();
+    world.resource_mut::<ShapeJobs>().jobs.push((args.id, ctx, now));
 }
 
 /// Point the asset reader and the capture code at `project`.
@@ -219,8 +299,13 @@ fn finish_jobs(
 }
 
 /// Run continuously while rendering, idle otherwise.
-fn pace_frames(rendering: Res<Rendering>, mut winit: ResMut<WinitSettings>, mut busy: Local<bool>) {
-    let now = !rendering.jobs.is_empty() || !rendering.waiting.is_empty();
+fn pace_frames(
+    rendering: Res<Rendering>,
+    shapes: Res<ShapeJobs>,
+    mut winit: ResMut<WinitSettings>,
+    mut busy: Local<bool>,
+) {
+    let now = !rendering.jobs.is_empty() || !rendering.waiting.is_empty() || !shapes.jobs.is_empty();
     if now == *busy {
         return;
     }

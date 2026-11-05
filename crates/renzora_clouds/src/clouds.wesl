@@ -502,7 +502,39 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // would shear the whole sky once the camera leaves the world origin.
     let dir = normalize(in.world_position.xyz - view.world_position);
 
-    let camera_km = view.world_position * 0.001;
+    // Dither the ray start so the step boundaries do not read as concentric
+    // bands, and move the dither every frame so the temporal AA averages the
+    // steps away.
+    //
+    // It used to hash the view direction alone, pinning one pattern to the sky
+    // on the reasoning that a still pattern is one TAA can resolve. It is the
+    // opposite: TAA averages what changes from frame to frame, and a pattern
+    // that never changes is passed straight through. The steps stayed on screen
+    // as a fixed grain, read as aliased patches on every cloud, and at grazing
+    // angles as the same cloud shape stacked over itself once per step.
+    // Interleaved gradient noise over the pixel, shifted by the frame number,
+    // spreads each pixel's start across the whole step within a few frames.
+    let frame = f32(globals.frame_count % 64u);
+    let pixel = in.position.xy + frame * 5.588238;
+    let dither = fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
+
+    // The camera's exposure applies here as it does to the sky behind. The
+    // authored colours were tuned at `REFERENCE_EXPOSURE`, so only the ratio
+    // is applied: at that exposure nothing changes. Without it the clouds
+    // ignored exposure and the sky did not, so any EV but the one they were
+    // tuned at put white clouds on a black sky (or grey ones on a white sky).
+    let c = march_clouds(view.world_position, dir, dither);
+    return vec4<f32>(c.rgb * (view.exposure / REFERENCE_EXPOSURE), c.a);
+}
+
+/// The cloud deck along one view ray: premultiplied colour in the authored
+/// (reference-exposure) scale, and coverage. `eye` is in world metres,
+/// `dither` in [0, 1) places the first sample within a fine step.
+///
+/// Shared by the dome and by the sky probe (`probe.rs`), which marches the
+/// same deck into the environment cubemap so reflections and sky light see it.
+fn march_clouds(eye: vec3<f32>, dir: vec3<f32>, dither: f32) -> vec4<f32> {
+    let camera_km = eye * 0.001;
     let altitude = camera_km.y;
     let r0 = clouds.planet_radius + altitude;
     let mu = dir.y;
@@ -526,21 +558,6 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let fine_km = thickness * FINE_STEP_FRACTION;
     let coarse_km = fine_km * COARSE_STEP_RATIO;
 
-    // Dither the ray start so the step boundaries do not read as concentric
-    // bands, and move the dither every frame so the temporal AA averages the
-    // steps away.
-    //
-    // It used to hash the view direction alone, pinning one pattern to the sky
-    // on the reasoning that a still pattern is one TAA can resolve. It is the
-    // opposite: TAA averages what changes from frame to frame, and a pattern
-    // that never changes is passed straight through. The steps stayed on screen
-    // as a fixed grain, read as aliased patches on every cloud, and at grazing
-    // angles as the same cloud shape stacked over itself once per step.
-    // Interleaved gradient noise over the pixel, shifted by the frame number,
-    // spreads each pixel's start across the whole step within a few frames.
-    let frame = f32(globals.frame_count % 64u);
-    let pixel = in.position.xy + frame * 5.588238;
-    let dither = fract(52.9829189 * fract(dot(pixel, vec2<f32>(0.06711056, 0.00583715))));
     var dt = coarse_km;
     var empty_run = 0u;
     // Dithered by the *fine* step, not the stride. The stride only decides where
@@ -715,13 +732,6 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // The colours are premultiplied, so the haze is scaled by alpha to stay in
     // that space, and the night fade scales the whole result.
-    //
-    // The camera's exposure applies here as it does to the sky behind. The
-    // authored colours were tuned at `REFERENCE_EXPOSURE`, so only the ratio
-    // is applied: at that exposure nothing changes. Without it the clouds
-    // ignored exposure and the sky did not, so any EV but the one they were
-    // tuned at put white clouds on a black sky (or grey ones on a white sky).
-    let exposed = view.exposure / REFERENCE_EXPOSURE;
-    let color = mix(scattered, haze_color * alpha, haze) * exposed;
+    let color = mix(scattered, haze_color * alpha, haze);
     return vec4<f32>(color * clouds.day_factor, alpha * clouds.day_factor);
 }

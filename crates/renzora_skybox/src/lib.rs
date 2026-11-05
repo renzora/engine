@@ -151,6 +151,8 @@ pub struct SkyboxState {
     pub equirect_handle: Option<Handle<Image>>,
     pub cubemap_handle: Option<Handle<Image>>,
     pub conversion_pending: bool,
+    /// The running panorama-to-cube conversion, once its panorama has loaded.
+    pub conversion: Option<bevy::tasks::Task<Result<Image, String>>>,
     pub procedural_cubemap_handle: Option<Handle<Image>>,
     pub procedural_params_hash: u64,
     pub tiled_cubemap_handle: Option<Handle<Image>>,
@@ -478,28 +480,34 @@ fn sync_skybox(
         return;
     }
 
-    // Check pending cubemap conversion
+    // Check pending cubemap conversion. It runs on a worker thread: a 4K
+    // panorama is six million texels to reproject, and done here it stalled
+    // the frame the sky changed, in the editor and in a game alike.
     if skybox_state.conversion_pending {
-        if let Some(ref equirect_handle) = skybox_state.equirect_handle {
-            if let Some(equirect_image) = images.get(equirect_handle) {
-                match equirectangular_to_cubemap(equirect_image) {
+        if let Some(task) = skybox_state.conversion.as_mut() {
+            if let Some(result) = bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) {
+                skybox_state.conversion = None;
+                skybox_state.conversion_pending = false;
+            skybox_state.conversion = None;
+                match result {
                     Ok(cubemap) => {
-                        let cubemap_handle = images.add(cubemap);
-                        skybox_state.cubemap_handle = Some(cubemap_handle);
-                        skybox_state.conversion_pending = false;
-                        // The panorama was only the conversion's input. Held,
-                        // a 4K one is 128 MB on the CPU and again on the GPU;
-                        // `current_path` still says which file the cube came
-                        // from, so it is not loaded again.
-                        skybox_state.equirect_handle = None;
+                        skybox_state.cubemap_handle = Some(images.add(cubemap));
                         info!("Converted HDR to cubemap successfully");
                     }
-                    Err(e) => {
-                        error!("Failed to convert HDR to cubemap: {}", e);
-                        skybox_state.conversion_pending = false;
-                    }
+                    Err(e) => error!("Failed to convert HDR to cubemap: {}", e),
                 }
             }
+        } else if let Some(equirect_image) = skybox_state.equirect_handle.as_ref().and_then(|h| images.get(h)) {
+            // A copy goes to the task: the asset may be shared (the asset
+            // browser's tile of the same file), so it cannot be taken out.
+            let source = equirect_image.clone();
+            skybox_state.conversion = Some(
+                bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { equirectangular_to_cubemap(&source) }),
+            );
+            // The panorama was only the conversion's input. Held, a 4K one is
+            // 128 MB on the CPU and again on the GPU; `current_path` still says
+            // which file the cube came from, so it is not loaded again.
+            skybox_state.equirect_handle = None;
         }
     }
 
@@ -523,6 +531,7 @@ fn sync_skybox(
             skybox_state.equirect_handle = None;
             skybox_state.cubemap_handle = None;
             skybox_state.conversion_pending = false;
+            skybox_state.conversion = None;
             skybox_state.procedural_cubemap_handle = None;
             skybox_state.procedural_params_hash = 0;
             skybox_state.tiled_cubemap_handle = None;
@@ -536,6 +545,7 @@ fn sync_skybox(
             skybox_state.equirect_handle = None;
             skybox_state.cubemap_handle = None;
             skybox_state.conversion_pending = false;
+            skybox_state.conversion = None;
 
             if skybox_state.procedural_params_hash != new_hash
                 || skybox_state.procedural_cubemap_handle.is_none()
@@ -571,6 +581,9 @@ fn sync_skybox(
                     skybox_state.equirect_handle = Some(equirect_handle);
                     skybox_state.current_path = Some(pano.panorama_path.clone());
                     skybox_state.conversion_pending = true;
+                    // Dropping a running task cancels it: the old panorama's
+                    // cube is not wanted any more.
+                    skybox_state.conversion = None;
                     skybox_state.cubemap_handle = None;
                     info!("Loading HDR panorama for skybox: {}", pano.panorama_path);
                 }
@@ -609,6 +622,7 @@ fn sync_skybox(
             skybox_state.equirect_handle = None;
             skybox_state.cubemap_handle = None;
             skybox_state.conversion_pending = false;
+            skybox_state.conversion = None;
             skybox_state.procedural_cubemap_handle = None;
             skybox_state.procedural_params_hash = 0;
 

@@ -65,12 +65,18 @@ fn default_glare_size() -> f32 {
 impl Default for Sun {
     fn default() -> Self {
         Self {
-            azimuth: 90.0,
-            elevation: 25.0,
+            // Mid-morning: high enough to light a street between buildings,
+            // low enough that walls are modelled and shadows fall long. At 25
+            // degrees a street was in shade end to end; nearer noon the light
+            // went flat.
+            azimuth: 245.5,
+            elevation: 38.5,
             color: Vec3::new(1.0, 0.95, 0.88),
             illuminance: 40_000.0,
             shadows_enabled: true,
-            contact_shadows: false,
+            // On: it is what seats small things on the ground (a bollard, a
+            // chair leg) where the shadow map is too coarse to reach.
+            contact_shadows: true,
             angular_diameter: 0.53,
             sun_disk_intensity: 1.0,
             glare_intensity: default_glare_intensity(),

@@ -29,6 +29,22 @@ the same way the sky does, so changing the exposure brightens or dims both
 together. Their colours are tuned at EV100 9.7, a new camera's default, and
 look exactly the same there.
 
+## Reflections and sky light
+
+The deck is also drawn into the camera's environment map, the picture of the
+sky that reflections and sky lighting read. Shiny surfaces reflect the clouds,
+and an overcast sky lights the scene less than a clear one. With
+[Solari](./solari.md) on, its traced reflections and bounced light see the
+clouds the same way.
+
+With Solari on, that copy is refreshed one cube face per frame, so it trails
+the sky by a few frames, which reflections and soft sky light never show. With
+Solari off it is rewritten whole every frame, and the filtered sky lighting
+made from it follows the overall cloud cover: it is refreshed when the sky
+changes, not as each cloud drifts.
+
+Clouds do not cast shadows on the ground.
+
 ## The controls
 
 | Group | Field | What it does |

@@ -30,6 +30,7 @@ use bevy::prelude::*;
 pub mod data;
 pub mod material;
 pub mod noise;
+pub mod probe;
 pub mod sky;
 
 pub use data::CloudsData;
@@ -756,6 +757,11 @@ impl Plugin for CloudsPlugin {
             .init_resource::<CloudsState>()
             .add_systems(Update, sync_clouds)
             .add_observer(add_to_world_environment);
+        probe::build(app);
+    }
+
+    fn finish(&self, app: &mut App) {
+        probe::finish(app);
     }
 }
 

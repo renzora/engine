@@ -14,6 +14,9 @@ emissive meshes and directional lights, with no baking.
 
 ## How to enable
 
+A World Environment added from **+ Add Entity** already carries the Solari
+section, switched off: turn on its header toggle to enable it.
+
 1. **Build the engine.** `renzora_solari` is an in-workspace plugin, compiled
    into the binary by any ordinary `cargo renzora dist`. It sits behind
    `renzora_runtime`'s `solari` feature, so the lean exporter can leave it out
@@ -248,12 +251,20 @@ scene comes out darker than the raster pipeline. `bevy_solari` 0.20 samples
 | `SpotLight` | Not natively. Same, but the cone is lost. |
 | `AmbientLight` | **No**, and there is no workaround |
 
+Only lights on the scene layer (render layer 0, the default) light the traced
+scene, as only they light the viewport without Solari. A light on a layer of
+its own, such as the editor's thumbnail and preview rigs, is left out. Before
+this, those preview lights lit the level too, so a night scene stayed lit as if
+by day under Solari.
+
 ### Sky light
 
 A ray that leaves the scene samples the camera's environment map, so the sky
 lights everything the sun doesn't reach. In Renzora that is the **Environment
 Map** section of the World Environment, which bakes the atmosphere into a
-cubemap.
+cubemap. When the scene has [clouds](./clouds.md), they are drawn into that
+cubemap too, so reflections show them and an overcast sky gives less light.
+Clouds are not traced against, so they cast no shadows.
 
 Two settings decide how much sky Solari gets:
 

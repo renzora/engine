@@ -423,6 +423,11 @@ fn bridge_jobs(
     if jobs.available != connected {
         jobs.set_available(connected);
     }
+    // Launched and not linked yet, or about to be started again.
+    let starting = companion.state == LinkState::Starting || companion.restart_in.is_some();
+    if jobs.starting != starting {
+        jobs.starting = starting;
+    }
     for request in jobs.drain() {
         let id = companion.submit(Job::Run {
             kind: request.kind.clone(),
@@ -430,6 +435,12 @@ fn bridge_jobs(
             target: request.target,
         });
         companion.external.insert(id, (request.id, request.kind));
+    }
+    for cancelled in jobs.take_cancels() {
+        let ours = companion.external.iter().find(|(_, (theirs, _))| *theirs == cancelled).map(|(id, _)| *id);
+        if let Some(id) = ours {
+            companion.send(Message::Cancel { id });
+        }
     }
     // A worker thread's job is answered through its handle; a system's
     // through the messages.

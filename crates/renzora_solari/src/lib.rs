@@ -43,6 +43,7 @@
 //! shadow casters standing in the middle of the level. See
 //! [`in_raytraced_scene`].
 
+use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::prelude::*;
 use bevy::camera::visibility::{InheritedVisibility, RenderLayers, VisibilitySystems};
 use bevy::camera::CameraMainTextureUsages;
@@ -122,6 +123,7 @@ impl Plugin for SolariPlugin {
         // without a deferred prepass (or without the STORAGE_BINDING texture)
         // before a lagging system could fix it, and Bevy crashes hard on that.
         app.add_observer(on_solari_lighting_inserted);
+        app.add_observer(on_solari_lighting_removed);
         app.add_observer(on_camera3d_inserted);
         app.add_systems(
             Update,
@@ -197,7 +199,39 @@ fn on_solari_lighting_inserted(trigger: On<Insert<SolariLighting>>, mut commands
     commands.entity(trigger.entity).try_insert((
         Msaa::Off,
         CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING),
+        // Tells crates that stand aside for Solari (SSAO) that this camera is
+        // ray traced, however `SolariLighting` got here.
+        renzora::SolariLit,
     ));
+}
+
+/// Undo what Solari did to a camera when it stops lighting it: the
+/// [`renzora::SolariLit`] marker goes, and the sky probe is filtered again.
+///
+/// Bevy's Solari switches a camera's `AtmosphereEnvironmentMapLight` to
+/// unfiltered while it runs (it reads the raw cube) and never switches it back.
+/// Left that way, the ordinary renderer took the raw sky cube as both its
+/// specular and its diffuse map once Solari was off: every rough wall mirrored
+/// a sharp sky and looked wet, and the sky light skipped the irradiance
+/// convolution it is meant to have. Re-inserting with `filtered: true` makes
+/// Bevy's observer rebuild the filtered maps, the way the camera started.
+fn on_solari_lighting_removed(
+    trigger: On<Remove<SolariLighting>>,
+    probes: Query<&AtmosphereEnvironmentMapLight>,
+    mut commands: Commands,
+) {
+    let Ok(mut ec) = commands.get_entity(trigger.entity) else {
+        return;
+    };
+    ec.try_remove::<renzora::SolariLit>();
+    if let Ok(probe) = probes.get(trigger.entity) {
+        if !probe.filtered {
+            ec.try_insert(AtmosphereEnvironmentMapLight {
+                filtered: true,
+                ..probe.clone()
+            });
+        }
+    }
 }
 
 /// While Solari is active, give any newly-inserted `Camera3d` (play camera,
@@ -1143,10 +1177,19 @@ struct SuppressShadowMaps(bool);
 /// Suppression needs *both* halves to be true. Solari being active isn't enough
 /// on its own, because the toggle exists precisely so you can keep raster
 /// shadows and compare.
+///
+/// When suppression ends, every light is marked changed (its value untouched).
+/// Bevy re-extracts a light only when one of its components changes, and the
+/// extracted copy keeps the `false` [`suppress_shadow_maps`] wrote, so turning
+/// Solari off used to leave every light without shadows until it was edited.
+/// Marking them re-extracts each with its own setting.
 fn sync_shadow_map_suppression(
     active: Query<(), With<SolariLighting>>,
     sources: Query<&SolariGi>,
     mut suppress: ResMut<SuppressShadowMaps>,
+    mut directional: Query<&mut DirectionalLight>,
+    mut point: Query<&mut PointLight>,
+    mut spot: Query<&mut SpotLight>,
 ) {
     let want = !active.is_empty()
         && sources
@@ -1156,6 +1199,11 @@ fn sync_shadow_map_suppression(
     // needless write would mark it changed for every consumer.
     if suppress.0 != want {
         suppress.0 = want;
+        if !want {
+            directional.iter_mut().for_each(|mut l| l.set_changed());
+            point.iter_mut().for_each(|mut l| l.set_changed());
+            spot.iter_mut().for_each(|mut l| l.set_changed());
+        }
     }
 }
 
@@ -1174,8 +1222,11 @@ fn sync_shadow_map_suppression(
 /// per-light mesh culling, which is a bigger saving, but those components are
 /// serialized, so a scene saved while Solari happened to be on would silently
 /// persist shadows-off and stay broken after Solari was turned back off. The
-/// extracted copies are rebuilt from scratch every frame and never written to
-/// disk, so acting on them is free of that whole class of problem.
+/// extracted copies are never written to disk, so acting on them is free of
+/// that whole class of problem. They are kept between frames, though, and
+/// re-extracted only when a light changes, which is why
+/// [`sync_shadow_map_suppression`] marks every light changed when suppression
+/// ends.
 ///
 /// Solari's own lighting is unaffected: its binder reads colour, illuminance,
 /// transform and sun-disk size from `ExtractedDirectionalLight`, never
@@ -1543,6 +1594,10 @@ fn warn_unsupported_lights(
 /// to give, so the baked map is black by design, and telling the user to turn
 /// on an environment map that is already on sent them looking for a fault
 /// every time a day/night cycle reached dusk.
+/// How long the sky must stay missing before [`warn_missing_sky_light`] says so:
+/// half a second at 60 FPS, longer than any environment swap takes.
+const SKY_MISSING_FRAMES: u32 = 30;
+
 fn warn_missing_sky_light(
     sky: Query<
         (
@@ -1555,10 +1610,16 @@ fn warn_missing_sky_light(
     suns: Query<&renzora::Sun>,
     mut warned_sky: Local<bool>,
     mut warned_ambient: Local<bool>,
+    // Frames in a row the sky has been missing. Deleting or replacing the
+    // World Environment takes the sky light away a frame or two before Solari
+    // leaves the camera, and warning on that passing moment told the user to
+    // turn on an environment map that was about to stop mattering.
+    mut missing_for: Local<u32>,
 ) {
     if sky.is_empty() {
         *warned_sky = false;
         *warned_ambient = false;
+        *missing_for = 0;
         return;
     }
     let night = !suns.is_empty() && suns.iter().all(|sun| sun.elevation <= 0.0);
@@ -1568,10 +1629,11 @@ fn warn_missing_sky_light(
         (None, Some(map)) => map.intensity > 0.0,
         (None, None) => false,
     });
+    *missing_for = if has_sky { 0 } else { missing_for.saturating_add(1) };
     if has_sky {
         // Re-arm, so switching the sky off again later warns again.
         *warned_sky = false;
-    } else if !night && !*warned_sky {
+    } else if !night && !*warned_sky && *missing_for >= SKY_MISSING_FRAMES {
         *warned_sky = true;
         warn!(
             "[solari] no sky light: Solari lights the sky from the environment map, and this \

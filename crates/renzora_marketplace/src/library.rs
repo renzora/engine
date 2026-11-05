@@ -31,7 +31,8 @@ const LIB_PER_PAGE: usize = 8;
 
 enum LibraryResult {
     Assets(Result<Vec<AssetSummary>, String>),
-    Install(Result<String, String>),
+    /// The result, and for a model the folder it landed in, to be imported.
+    Install(Result<String, String>, Option<std::path::PathBuf>),
 }
 
 #[derive(Resource)]
@@ -418,7 +419,8 @@ fn library_next_click(q: Query<&UiInteraction, (With<LibNextBtn>, Changed<UiInte
     }
 }
 
-fn poll_library(mut data: ResMut<HubLibraryData>) {
+fn poll_library(mut data: ResMut<HubLibraryData>, imports: Option<ResMut<renzora::core::ImportInPlaceQueue>>) {
+    let mut imports = imports;
     let Some(rx) = data.rx.as_ref() else { return };
     let mut got = Vec::new();
     while let Ok(res) = rx.try_recv() {
@@ -434,11 +436,16 @@ fn poll_library(mut data: ResMut<HubLibraryData>) {
                 data.error = Some(e);
                 data.loading = false;
             }
-            LibraryResult::Install(Ok(msg)) => {
+            LibraryResult::Install(Ok(msg), model) => {
+                // A model goes through the import pipeline, as one installed
+                // from the store does; see `install_overlay::poll_install_result`.
+                if let (Some(root), Some(queue)) = (model, imports.as_mut()) {
+                    queue.0.push(root);
+                }
                 data.status = Some(msg);
                 data.installing_id = None;
             }
-            LibraryResult::Install(Err(e)) => {
+            LibraryResult::Install(Err(e), _) => {
                 data.error = Some(e);
                 data.installing_id = None;
             }
@@ -492,6 +499,7 @@ fn library_install_click(
     mut data: ResMut<HubLibraryData>,
     session: Option<Res<AuthSession>>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    companion: Option<Res<renzora::CompanionJobs>>,
 ) {
     let (Some(session), Some(project)) = (session, project) else { return };
     if data.installing_id.is_some() {
@@ -502,33 +510,54 @@ fn library_install_click(
             continue;
         }
         let Some(asset) = data.assets.iter().find(|a| a.id == btn.0).cloned() else { continue };
-        install_asset(&mut data, &session, &asset, project.path.clone());
+        install_asset(&mut data, &session, &asset, project.path.clone(), companion.as_ref().map(|c| c.remote()));
         break;
     }
 }
 
+/// Install `asset` into its category's folder of the project, with the store's
+/// own install (`install_overlay::run_install`): in the companion when one is
+/// connected, on a thread here otherwise.
+///
+/// This used to be a copy of its own that fetched only an asset's first file,
+/// so a model of several files arrived as a mesh without its textures, and a
+/// plugin was written into the project where nothing loads it.
 #[cfg(not(target_arch = "wasm32"))]
-fn install_asset(data: &mut HubLibraryData, session: &AuthSession, asset: &AssetSummary, project_path: std::path::PathBuf) {
+fn install_asset(
+    data: &mut HubLibraryData,
+    session: &AuthSession,
+    asset: &AssetSummary,
+    project_path: std::path::PathBuf,
+    remote: Option<renzora::CompanionRemote>,
+) {
     let session = clone_session(session);
-    let asset_id = asset.id.clone();
-    let asset_name = asset.name.clone();
-    let category = asset.category.clone();
-    data.installing_id = Some(asset_id.clone());
+    let asset = asset.clone();
+    data.installing_id = Some(asset.id.clone());
     let (tx, rx) = unbounded();
     data.rx = Some(rx);
+    let dest = project_path.join(install::install_dir_for_category(&asset.category));
+    let is_model = install::install_dir_for_category(&asset.category) == "models";
     std::thread::spawn(move || {
-        let result = (|| {
-            let dl = crate::auth::marketplace::download_asset(&session, &asset_id)?;
-            let bytes = crate::auth::marketplace::download_file(&dl.download_url)?;
-            install::install_asset_with_filename(&project_path, &category, &asset_name, &dl.download_url, &dl.download_filename, &bytes)?;
-            Ok(format!("Installed \"{asset_name}\""))
-        })();
-        let _ = tx.send(LibraryResult::Install(result));
+        let shared = crate::install_overlay::InstallShared::default();
+        let signed_in = Some(&session).filter(|s| s.is_signed_in());
+        let token = signed_in.and_then(|s| s.access_token.clone());
+        let result = remote
+            .and_then(|remote| crate::install_remote::run(&remote, token, &asset, &dest, &shared))
+            .unwrap_or_else(|| crate::install_overlay::run_install(signed_in, &asset, &dest, &shared));
+        let model = if is_model && result.is_ok() { shared.installed.lock().ok().and_then(|p| p.clone()) } else { None };
+        let _ = tx.send(LibraryResult::Install(result, model));
     });
 }
 
 #[cfg(target_arch = "wasm32")]
-fn install_asset(_d: &mut HubLibraryData, _s: &AuthSession, _a: &AssetSummary, _p: std::path::PathBuf) {}
+fn install_asset(
+    _d: &mut HubLibraryData,
+    _s: &AuthSession,
+    _a: &AssetSummary,
+    _p: std::path::PathBuf,
+    _r: Option<renzora::CompanionRemote>,
+) {
+}
 
 fn clone_session(s: &AuthSession) -> AuthSession {
     AuthSession {

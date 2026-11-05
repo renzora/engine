@@ -64,10 +64,49 @@ fn default_textures() -> [(String, &'static [u8], TextureRole); 16] {
     [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p]
 }
 
-/// Default textures being baked: the project path each will be written to,
-/// with the bake running on the compute pool.
+/// Default textures being baked: the project path each is written to, with the
+/// bake (which writes it) running on the compute pool.
 #[derive(Resource, Default)]
-pub(crate) struct DefaultTextureBakes(Vec<(String, PathBuf, Task<Result<Vec<u8>, String>>)>);
+pub(crate) struct DefaultTextureBakes(Vec<(String, Task<Result<(), String>>)>);
+
+/// Bake one default texture into `target`: in the companion when one is
+/// connected (job kind `"texture_bake"`), here otherwise. Sixteen 2K textures
+/// mipmapped and block-compressed is seconds of every core, which a new
+/// terrain used to take out of the editor's frame.
+fn bake_default(bytes: &'static [u8], role: TextureRole, target: PathBuf, remote: Option<renzora::CompanionRemote>) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(remote) = remote.filter(|r| r.available()) {
+        // The source travels as a file: it is compiled into the editor, and
+        // the companion is a separate process.
+        let source = std::env::temp_dir().join(format!(
+            "renzora-default-texture-{}-{:016x}.jpg",
+            std::process::id(),
+            renzora::SceneEntityId::new_random().0
+        ));
+        std::fs::write(&source, bytes).map_err(|e| e.to_string())?;
+        let role = match role {
+            TextureRole::Color => "color",
+            TextureRole::NormalMap => "normal",
+            TextureRole::LinearData => "linear",
+        };
+        let args = renzora::job_args::TextureBake { source: source.clone(), target: target.clone(), role: role.into() };
+        let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let answer = remote.run("texture_bake", name, &args, &mut |_, _| {});
+        let _ = std::fs::remove_file(&source);
+        if let Some(answer) = answer {
+            return answer.map(|_| ());
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = remote;
+    // The web build has no block compressor; it still gets the mips.
+    let params = BakeParams { role, compress: cfg!(not(target_arch = "wasm32")), ..default() };
+    let baked = bake_image(bytes, params)?;
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&target, baked).map_err(|e| e.to_string())
+}
 
 /// Give the project what a terrain's material needs from the engine: Alpine
 /// Landscape itself when that is the material, and any default texture the
@@ -81,6 +120,7 @@ pub(crate) fn provide_default_textures(
     project: Option<Res<CurrentProject>>,
     asset_server: Res<AssetServer>,
     mut bakes: ResMut<DefaultTextureBakes>,
+    companion: Option<Res<renzora::CompanionJobs>>,
 ) {
     let Some(project) = project else { return };
     if materials.is_empty() {
@@ -111,31 +151,24 @@ pub(crate) fn provide_default_textures(
         // quoted path, so a substring test finds them without parsing a graph.
         for (path, bytes, role) in &defaults {
             let target = project.path.join(path);
-            if !text.contains(path.as_str()) || target.exists() || bakes.0.iter().any(|(p, ..)| p == path) {
+            if !text.contains(path.as_str()) || target.exists() || bakes.0.iter().any(|(p, _)| p == path) {
                 continue;
             }
             let (bytes, role) = (*bytes, *role);
-            // The web build has no block compressor; it still gets the mips.
-            let params = BakeParams { role, compress: cfg!(not(target_arch = "wasm32")), ..default() };
-            let task = AsyncComputeTaskPool::get().spawn(async move { bake_image(bytes, params) });
-            bakes.0.push((path.clone(), target, task));
+            let remote = companion.as_ref().map(|c| c.remote());
+            let task = AsyncComputeTaskPool::get().spawn(async move { bake_default(bytes, role, target, remote) });
+            bakes.0.push((path.clone(), task));
         }
     }
 }
 
-/// Write each finished bake into the project and reload it.
+/// Reload each texture whose bake has written it into the project.
 pub(crate) fn finish_default_texture_bakes(mut bakes: ResMut<DefaultTextureBakes>, asset_server: Res<AssetServer>) {
     if bakes.0.is_empty() {
         return;
     }
-    bakes.0.retain_mut(|(path, target, task)| {
-        let Some(result) = block_on(future::poll_once(task)) else { return true };
-        let written = result.and_then(|bytes| {
-            if let Some(dir) = target.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-            }
-            std::fs::write(&*target, bytes).map_err(|e| e.to_string())
-        });
+    bakes.0.retain_mut(|(path, task)| {
+        let Some(written) = block_on(future::poll_once(task)) else { return true };
         match written {
             Ok(()) => {
                 info!("[terrain] added the default texture {path} to the project");

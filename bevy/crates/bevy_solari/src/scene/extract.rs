@@ -2,7 +2,10 @@ use core::f32::consts::PI;
 
 use super::{RaytracingMesh3d, RaytracingSceneBindings};
 use bevy_asset::{AssetEvent, AssetId, Assets, Handle};
-use bevy_camera::{visibility::InheritedVisibility, Camera};
+use bevy_camera::{
+    visibility::{InheritedVisibility, RenderLayers},
+    Camera,
+};
 use bevy_color::{ColorToComponents, LinearRgba};
 use bevy_ecs::{
     component::Component,
@@ -216,10 +219,13 @@ pub struct ExtractedEnvironmentMapLight {
 }
 
 /// Lights whose extracted data needs updating.
+// RENZORA PATCH: `Changed<RenderLayers>` too, so a light moved onto or off the
+// scene layer is re-extracted (see `lights_the_traced_scene`).
 type ChangedLightFilter<L> = Or<(
     Changed<L>,
     Changed<GlobalTransform>,
     Changed<InheritedVisibility>,
+    Changed<RenderLayers>,
 )>;
 
 type ChangedLightQuery<'w, 's, L> = Query<
@@ -230,9 +236,25 @@ type ChangedLightQuery<'w, 's, L> = Query<
         &'static L,
         &'static GlobalTransform,
         &'static InheritedVisibility,
+        Option<&'static RenderLayers>,
     ),
     ChangedLightFilter<L>,
 >;
+
+/// RENZORA PATCH: whether a light belongs in the ray-traced scene.
+///
+/// Raster lighting honours `RenderLayers`: a light only lights the views that
+/// share a layer with it. Solari had no such check, so every light in the World
+/// lit the traced scene, including the ones an application keeps on a layer of
+/// its own for an offscreen view. Renzora's editor keeps several such preview
+/// rigs alive (thumbnail and material-preview key, fill and rim lights, up to
+/// 12000 lux each), and under Solari they lit the level itself: a night scene
+/// stayed lit like day with hard shadows, and the sky light looked weak beside
+/// them. The traced scene is layer 0, the default; Renzora gates meshes into it
+/// by the same rule (`renzora_solari::in_raytraced_scene`).
+fn lights_the_traced_scene(visibility: &InheritedVisibility, layers: Option<&RenderLayers>) -> bool {
+    visibility.get() && layers.is_none_or(|layers| layers.intersects(&RenderLayers::default()))
+}
 
 /// Keeps the render world's directional lights up to date.
 pub fn extract_raytracing_directional_lights(
@@ -244,6 +266,7 @@ pub fn extract_raytracing_directional_lights(
                 &GlobalTransform,
                 &InheritedVisibility,
                 Option<&SunDisk>,
+                Option<&RenderLayers>,
             ),
             Or<(ChangedLightFilter<DirectionalLight>, Changed<SunDisk>)>,
         >,
@@ -255,6 +278,7 @@ pub fn extract_raytracing_directional_lights(
             &GlobalTransform,
             &InheritedVisibility,
             Option<&SunDisk>,
+            Option<&RenderLayers>,
         )>,
     >,
     mut removed_directional_lights: Extract<RemovedComponents<DirectionalLight>>,
@@ -277,11 +301,11 @@ pub fn extract_raytracing_directional_lights(
         .read()
         .filter_map(|main_entity| directional_lights.get(main_entity).ok());
 
-    for (render_entity, directional_light, transform, visibility, sun_disk) in
+    for (render_entity, directional_light, transform, visibility, sun_disk, layers) in
         changed_directional_lights.iter().chain(sun_disk_removed)
     {
         let mut entity_commands = commands.entity(render_entity);
-        if !visibility.get() {
+        if !lights_the_traced_scene(visibility, layers) {
             entity_commands.remove::<ExtractedRaytracingDirectionalLight>();
             continue;
         }
@@ -311,9 +335,9 @@ pub fn extract_raytracing_point_lights(
         }
     }
 
-    for (render_entity, point_light, transform, visibility) in &changed_point_lights {
+    for (render_entity, point_light, transform, visibility, layers) in &changed_point_lights {
         let mut entity_commands = commands.entity(render_entity);
-        if !visibility.get() {
+        if !lights_the_traced_scene(visibility, layers) {
             entity_commands.remove::<ExtractedRaytracingPointLight>();
             continue;
         }
@@ -344,9 +368,9 @@ pub fn extract_raytracing_spot_lights(
         }
     }
 
-    for (render_entity, spot_light, transform, visibility) in &changed_spot_lights {
+    for (render_entity, spot_light, transform, visibility, layers) in &changed_spot_lights {
         let mut entity_commands = commands.entity(render_entity);
-        if !visibility.get() {
+        if !lights_the_traced_scene(visibility, layers) {
             entity_commands.remove::<ExtractedRaytracingSpotLight>();
             continue;
         }
@@ -382,14 +406,14 @@ pub fn extract_raytracing_rect_lights(
         }
     }
 
-    for (render_entity, rect_light, transform, visibility) in &changed_rect_lights {
+    for (render_entity, rect_light, transform, visibility, layers) in &changed_rect_lights {
         let affine = transform.affine();
         let edge_x = Vec3::from(affine.matrix3.x_axis) * rect_light.width;
         let edge_y = Vec3::from(affine.matrix3.y_axis) * rect_light.height;
         let area = edge_x.cross(edge_y).length();
 
         let mut entity_commands = commands.entity(render_entity);
-        if !visibility.get() || !area.is_finite() || area <= 0.0 {
+        if !lights_the_traced_scene(visibility, layers) || !area.is_finite() || area <= 0.0 {
             entity_commands.remove::<ExtractedRaytracingRectLight>();
             continue;
         }

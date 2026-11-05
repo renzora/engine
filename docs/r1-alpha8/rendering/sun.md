@@ -13,6 +13,11 @@ it looks in the sky.
 | **Glare Size** | How far the glare spreads from the sun, in degrees. |
 | **Shadows**, **Contact Shadows** | Whether the sun casts shadow maps and screen-space contact shadows. |
 
+A new World Environment starts with the sun at mid-morning, azimuth 245.5°
+and 38.5° up, with contact shadows on and screen-space reflections enabled:
+high enough to light a street between buildings, low enough that walls are
+modelled and shadows fall long.
+
 ## Glare
 
 Looking toward the sun, the glare is what makes it blinding: a hot core around

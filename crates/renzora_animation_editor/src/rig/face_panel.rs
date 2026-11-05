@@ -52,8 +52,20 @@ impl Default for Performance {
 }
 
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<Performance>();
+    app.init_resource::<Performance>().add_systems(Update, finish_lip_sync);
 }
+
+/// A voice recording being read for lip sync, on a worker thread: decoding a
+/// minute of speech and measuring its loudness used to run inside the button's
+/// click, freezing the editor until it finished.
+#[derive(Resource)]
+struct LipSyncTask {
+    task: bevy::tasks::Task<Result<Vec<f32>, String>>,
+    path: std::path::PathBuf,
+}
+
+/// Lip sync's frame rate: one loudness value, and at most one key, per frame.
+const LIP_SYNC_FPS: f32 = 30.0;
 
 const FACE_BONES: &[&str] = &[
     names::HEAD, names::JAW, names::LIP_UPPER, names::LIP_LOWER, names::CORNER_L, names::CORNER_R, names::EYE_L, names::EYE_R,
@@ -493,7 +505,13 @@ fn choose_voice(world: &mut World) {
 }
 
 fn generate_lip_sync(world: &mut World) {
-    let Some(rig) = face_rig(world) else { return };
+    if world.contains_resource::<LipSyncTask>() {
+        tell(world, false, "Still reading the last recording");
+        return;
+    }
+    if face_rig(world).is_none() {
+        return;
+    }
     if clip_length(world).is_none() {
         tell(world, false, "No clip open to key into: create or pick one in the timeline");
         return;
@@ -501,22 +519,40 @@ fn generate_lip_sync(world: &mut World) {
     if world.resource::<Performance>().voice.is_none() {
         choose_voice(world);
     }
-    let (Some(path), strength, smoothing) = ({
-        let p = world.resource::<Performance>();
-        (p.voice.clone(), p.strength, p.smoothing)
-    }) else {
+    let Some(path) = world.resource::<Performance>().voice.clone() else {
         return;
     };
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
-    let decoded = match std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| renzora_audio::decode::decode(b, &ext)) {
-        Ok(d) => d,
+    let file = path.clone();
+    let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+        let decoded = std::fs::read(&file).map_err(|e| e.to_string()).and_then(|b| renzora_audio::decode::decode(b, &ext))?;
+        Ok(super::lipsync::envelope(&decoded.samples, decoded.sample_rate, 2, LIP_SYNC_FPS))
+    });
+    world.insert_resource(LipSyncTask { task, path });
+}
+
+/// Key the mouth once the recording has been read. The rig and the settings are
+/// read now rather than when the button was pressed, so they are current.
+fn finish_lip_sync(world: &mut World) {
+    let Some(mut pending) = world.get_resource_mut::<LipSyncTask>() else { return };
+    let Some(result) = bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut pending.task)) else {
+        return;
+    };
+    let path = pending.path.clone();
+    world.remove_resource::<LipSyncTask>();
+    let env = match result {
+        Ok(env) => env,
         Err(e) => {
             tell(world, false, format!("Could not read {}: {e}", path.display()));
             return;
         }
     };
-    const FPS: f32 = 30.0;
-    let env = super::lipsync::envelope(&decoded.samples, decoded.sample_rate, 2, FPS);
+    let Some(rig) = face_rig(world) else { return };
+    let (strength, smoothing) = {
+        let p = world.resource::<Performance>();
+        (p.strength, p.smoothing)
+    };
+    const FPS: f32 = LIP_SYNC_FPS;
     let keep = super::lipsync::thin(&env, smoothing.max(0.005));
     let length = env.len() as f32 / FPS;
     if clip_length(world).is_some_and(|d| d < length) {

@@ -7303,6 +7303,7 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
+ "renzora_export",
  "renzora_import",
  "renzora_marketplace",
  "renzora_material_editor",
@@ -7312,6 +7313,8 @@ dependencies = [
  "renzora_rust_script",
  "renzora_rvg",
  "renzora_shader",
+ "renzora_shape_library",
+ "renzora_svg",
  "serde",
  "serde_json",
 ]

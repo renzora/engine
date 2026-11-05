@@ -124,7 +124,7 @@ These are presets over the same switches the Display menu holds, so change one b
 
 **Display**, in the options menu, holds mesh, textures, lighting, shadows, the grid and the overlays.
 
-With **Shadows** on, only the lights nearest the viewport camera cast shadows: the brightest directional light, the 4 nearest point lights and the 8 nearest spot lights. The rest still light the scene, without shadows, and the choice follows the camera as it moves. Each shadow-casting light draws the whole scene again every frame, so a street with dozens of lamps would otherwise run at a few frames a second. With Solari on, shadows come from ray tracing and none of these limits apply.
+With **Shadows** on, only lights whose own **Shadows** is on cast shadows, and of those only the ones nearest the viewport camera: the brightest directional light, the 4 nearest point lights and the 8 nearest spot lights. The rest still light the scene, without shadows, and the choice follows the camera as it moves. The limit never changes a light's own setting, so what you set in the Inspector is what is saved. Each shadow-casting light draws the whole scene again every frame, so a street with dozens of lamps would otherwise run at a few frames a second. With Solari on, shadows come from ray tracing and none of these limits apply.
 
 Turning **Textures** off does not unlight the scene. Surfaces keep their real lighting and shadows and swap their maps for the blockout grid, so the scene reads as untextured geometry rather than geometry in the dark.
 

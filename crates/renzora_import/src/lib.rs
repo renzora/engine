@@ -63,7 +63,10 @@ mod model_file;
 pub use model_file::model_file;
 pub mod remote;
 pub mod pipeline;
-pub use pipeline::{import_tree_in_place, run_import_pipeline};
+pub use pipeline::{
+    announce_materials, convert_in_place, import_tree_in_background, import_tree_in_place, run_import_pipeline,
+    ConvertedInPlace,
+};
 pub use prune::{prune_glb, PruneSpec, Pruned};
 pub use settings::{ImportSettings, SceneStructure, UpAxis};
 pub use usd::extract_animations_from_usd;

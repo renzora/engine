@@ -75,12 +75,19 @@ impl Job {
             Job::Run { kind, .. } => match kind.as_str() {
                 "texture_thumbnail" => "Texture thumbnail",
                 "model_thumbnail" => "Model thumbnail",
+                "material_thumbnail" => "Material thumbnail",
+                "shape_thumbnail" => "Shape thumbnail",
                 "rust_script" => "Rust script",
                 "rvg_bake" => "Virtual geometry",
+                "rvg_migrate" => "Model to RVG",
+                "texture_bake" => "Texture bake",
                 "import" | "model_convert" => "Import",
                 "model_build" => "Model file",
                 "export" => "Export",
                 "upload" => "Upload",
+                "marketplace_install" => "Marketplace install",
+                "hub_thumbnail" => "Marketplace image",
+                "plugin_build" => "Plugin build",
                 "plugin_build" => "Plugin build",
                 _ => "Job",
             },
@@ -103,9 +110,9 @@ impl Job {
             Job::Run { kind, .. } => match kind.as_str() {
                 // Someone just saved and is waiting to run it.
                 "rust_script" => 90,
-                "export" | "upload" | "import" | "model_convert" | "model_build" => 70,
+                "export" | "upload" | "marketplace_install" | "import" | "model_convert" | "model_build" => 70,
                 "plugin_build" => 60,
-                "texture_thumbnail" | "model_thumbnail" => 40,
+                "texture_thumbnail" | "model_thumbnail" | "shape_thumbnail" => 40,
                 "rvg_bake" => 30,
                 _ => 50,
             },
@@ -115,7 +122,10 @@ impl Job {
     /// Whether it renders, and so waits while a game is playing as well as
     /// while a profile records.
     pub fn uses_gpu(&self) -> bool {
-        matches!(self, Job::Run { kind, .. } if kind == "model_thumbnail" || kind == "material_thumbnail")
+        matches!(
+            self,
+            Job::Run { kind, .. } if kind == "model_thumbnail" || kind == "material_thumbnail" || kind == "shape_thumbnail"
+        )
     }
 
     /// Whether it runs on the companion's main thread rather than a worker:

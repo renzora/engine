@@ -242,10 +242,17 @@ fn setup_material_preview(
         size: (PREVIEW_RESOLUTION, PREVIEW_RESOLUTION),
     });
 
-    // Decode the embedded HDRI and reproject it into two power-of-two cubes once,
-    // up front (one crisp for the skybox, one clamped for IBL). CPU work, but it's
-    // a single startup reprojection and lets us attach IBL to the camera from spawn.
-    let (sky_cube, env_cube) = decode_backdrop_cubes(&mut images);
+    // Decode the embedded HDRI and reproject it into two power-of-two cubes (one
+    // crisp for the skybox, one clamped for IBL), on a worker thread. It is
+    // about 280 ms of CPU and used to run right here, on the main thread, at
+    // every launch, for a preview most sessions never open. The handles are
+    // reserved now so the camera carries its IBL from spawn, as it must (see
+    // below); the cubes are filled in when the task ends (`finish_backdrop`),
+    // long before anyone can open the panel.
+    let (sky_cube, env_cube) = (images.reserve_handle(), images.reserve_handle());
+    let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async { decode_backdrop_cubes() });
+    commands.insert_resource(BackdropTask { task, sky: sky_cube.clone(), env: env_cube.clone() });
+    let (sky_cube, env_cube) = (Some(sky_cube), Some(env_cube));
     commands.insert_resource(MaterialPreviewEnv {
         sky: sky_cube.clone(),
         env: env_cube.clone(),
@@ -369,12 +376,34 @@ fn setup_material_preview(
 
 // ── Backdrop (HDRI) ───────────────────────────────────────────────────────────
 
+/// The backdrop cubes being built off the main thread, and the handles they go
+/// into.
+#[derive(Resource)]
+struct BackdropTask {
+    task: bevy::tasks::Task<Option<(Image, Image)>>,
+    sky: Handle<Image>,
+    env: Handle<Image>,
+}
+
+/// Put the backdrop cubes in place once their task ends.
+fn finish_backdrop(mut commands: Commands, task: Option<ResMut<BackdropTask>>, mut images: ResMut<Assets<Image>>) {
+    let Some(mut task) = task else { return };
+    let Some(cubes) = bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.task)) else {
+        return;
+    };
+    // On failure the handles stay empty: the preview renders with no backdrop
+    // or IBL, as it did before the backdrop existed.
+    if let Some((sky, env)) = cubes {
+        let _ = images.insert(&task.sky, sky);
+        let _ = images.insert(&task.env, env);
+    }
+    commands.remove_resource::<BackdropTask>();
+}
+
 /// Decode the embedded equirectangular HDR and reproject it into the (sky, env)
-/// cube pair. Returns `(None, None)` if decode/convert fails (the preview then
-/// renders with no backdrop/IBL, exactly as before this feature).
-fn decode_backdrop_cubes(
-    images: &mut Assets<Image>,
-) -> (Option<Handle<Image>>, Option<Handle<Image>>) {
+/// cube pair. `None` if decode/convert fails (the preview then renders with no
+/// backdrop/IBL, exactly as before this feature).
+fn decode_backdrop_cubes() -> Option<(Image, Image)> {
     // Linear (`is_srgb = false`): HDR radiance is already linear light.
     let equirect = match Image::from_buffer(
         BACKDROP_HDR,
@@ -387,13 +416,10 @@ fn decode_backdrop_cubes(
         Ok(img) => img,
         Err(e) => {
             warn!("[material_preview] failed to decode embedded backdrop HDR: {e}");
-            return (None, None);
+            return None;
         }
     };
-    match build_backdrop_cubes(&equirect) {
-        Some((sky, env)) => (Some(images.add(sky)), Some(images.add(env))),
-        None => (None, None),
-    }
+    build_backdrop_cubes(&equirect)
 }
 
 /// Largest power of two `<= n`. Keeps the cube faces filter-friendly regardless
@@ -1205,6 +1231,7 @@ impl Plugin for MaterialPreviewPlugin {
             .add_systems(
                 Update,
                 (
+                    finish_backdrop,
                     sync_preview_camera_active,
                     update_preview_camera_orbit,
                     // Ordered: the swap reads the source the tracker just wrote,
@@ -1216,4 +1243,3 @@ impl Plugin for MaterialPreviewPlugin {
             );
     }
 }
-

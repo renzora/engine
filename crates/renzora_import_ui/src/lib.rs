@@ -53,17 +53,33 @@ impl Plugin for ImportPlugin {
     }
 }
 
+/// Models converted in the background, waiting for their materials to be
+/// announced on the main thread.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Resource)]
+struct InPlaceImports {
+    tx: std::sync::mpsc::Sender<(renzora_import::ConvertedInPlace, std::path::PathBuf)>,
+    rx: std::sync::Mutex<std::sync::mpsc::Receiver<(renzora_import::ConvertedInPlace, std::path::PathBuf)>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Default for InPlaceImports {
+    fn default() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel();
+        Self { tx, rx: std::sync::Mutex::new(rx) }
+    }
+}
+
 /// Service [`renzora::core::ImportInPlaceQueue`]: run the import pipeline over
 /// every folder something asked to have imported.
 ///
-/// An **exclusive** system, because `import_tree_in_place` takes `&mut World` —
-/// it writes `.material` assets and fires `PbrMaterialExtracted` per material,
-/// neither of which a parameterised system can express.
-///
-/// The queue is drained before the walk rather than after, so a pipeline that
-/// panics on one bad model does not leave that model queued to be retried on
-/// every subsequent frame. Empty is the overwhelmingly common case and costs one
-/// resource lookup.
+/// The conversion and file writes run on a thread of their own, and in the
+/// companion when one is connected (`renzora_import::import_tree_in_background`).
+/// Only announcing each material, which writes its `.material` through an
+/// observer, needs the `World`; that happens as each model finishes, in an
+/// exclusive system. The whole pipeline used to run right here, and a
+/// marketplace model install froze the editor for as long as its conversion
+/// took.
 ///
 /// This is the seam a crate that cannot link `renzora_import` uses — a native
 /// plugin links only `bevy`, `renzora` and `renzora_ember`, so pushing a path is
@@ -75,14 +91,32 @@ fn drain_import_in_place_queue(world: &mut World) {
         let Some(mut queue) = world.get_resource_mut::<renzora::core::ImportInPlaceQueue>() else {
             return;
         };
-        if queue.0.is_empty() {
-            return;
-        }
         std::mem::take(&mut queue.0)
     };
-    for root in roots {
-        info!("[import] importing {} in place", root.display());
-        renzora_import::import_tree_in_place(world, &root);
+    if !roots.is_empty() {
+        let Some(project) = world.get_resource::<renzora::CurrentProject>().map(|p| p.path.clone()) else {
+            warn!("[import] no project open, so {} folder(s) cannot be imported", roots.len());
+            return;
+        };
+        let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
+        let tx = world.get_resource_or_insert_with(InPlaceImports::default).tx.clone();
+        for root in roots {
+            info!("[import] importing {} in place", root.display());
+            let (tx, remote, project) = (tx.clone(), remote.clone(), project.clone());
+            std::thread::spawn(move || {
+                renzora_import::import_tree_in_background(&root, remote.as_ref(), &mut |done| {
+                    let _ = tx.send((done, project.clone()));
+                });
+            });
+        }
+    }
+
+    let finished: Vec<_> = match world.get_resource::<InPlaceImports>().and_then(|i| i.rx.lock().ok()) {
+        Some(rx) => rx.try_iter().collect(),
+        None => return,
+    };
+    for (done, project) in finished {
+        renzora_import::announce_materials(world, &done, &project);
     }
 }
 

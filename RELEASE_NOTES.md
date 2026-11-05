@@ -1,5 +1,51 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-04 18:00
+- perf(export): exports run in the companion, away from the editor
+- perf(marketplace): installs, plugin compiles and store images run in the companion, and store images are kept on disk between sessions
+- fix(marketplace): installing from the Library tab brings every file of the asset, and imports a model as the store does
+- perf(marketplace): an installed model is converted in the background instead of freezing the editor
+- perf(marketplace): a store audio preview is decoded in the background
+- feat(companion): texture thumbnails for SVG images
+- perf(editor): Convert Models to RVG and default terrain textures run in the companion
+- perf(animation): lip sync reads its recording in the background
+
+## 2026-11-04 17:00
+- perf(editor): the Shape Library's thumbnails are rendered by the companion and kept on disk, so the editor no longer renders them every time it starts
+- perf(editor): the Assets panel no longer loads a whole image to make its thumbnail when the companion is there to make it
+- feat(companion): texture thumbnails for HDR images
+- perf(editor): the material preview's backdrop is prepared in the background instead of holding up startup
+- perf(rendering): a panorama skybox or reflection probe image is converted in the background instead of stalling the frame it is set
+
+## 2026-11-04 16:23
+- perf(virtual-geometry): thumbnail and preview cameras no longer run the virtual geometry pass over the whole scene, so the editor stays at full speed while the Shape Library thumbnails render after a project loads
+
+## 2026-11-04 14:58
+- fix(viewport): a light with Shadows on gets its shadows back when the camera returns to it
+- fix(solari): lights get their shadows back when Solari is turned off
+
+## 2026-11-04 11:13
+- fix(viewport): a light's own Shadows setting is respected and no longer switched back by the shadow limit, so scenes full of shadowless lamps stay fast
+
+## 2026-11-04 10:51
+- fix(solari): the editor's preview lights no longer light the scene under Solari, so night scenes go dark
+
+## 2026-11-04 10:30
+- fix(solari): turning Solari off gives the camera its filtered sky lighting back, so walls no longer look wet
+- fix(clouds): without Solari the sky lighting follows the sun down instead of staying lit at the horizon
+- feat(solari): a new World Environment includes Solari, switched off
+- fix(solari): replacing the World Environment no longer logs a false "no sky light" warning
+
+## 2026-11-04 05:24
+- perf(solari): new scenes start on DLSS Balanced instead of Auto, which rendered close to native resolution
+- fix(solari): SSAO switches itself off on cameras Solari is lighting, and comes back when Solari stops
+
+## 2026-11-04 05:16
+- feat(rendering): a new World Environment starts at mid-morning with contact shadows and screen-space reflections on
+
+## 2026-11-04 04:46
+- feat(clouds): reflections and sky light include the clouds, with Solari or without
+
 ## 2026-11-04 04:10
 - fix(clouds): clouds no longer show aliased patches or stacked copies of the same shape
 - fix(clouds): cloud bases are shaded by the cloud above them instead of one flat fill

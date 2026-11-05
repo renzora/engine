@@ -206,6 +206,8 @@ if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
 
 SSAO is not a component you add. It is a **section of the one `WorldEnvironment`**, alongside Fog — select the World Environment entity and the Inspector shows an **SSAO** section whose header toggle is the effect's on/off switch. There is no trash button, because the section is intrinsic to the environment.
 
+While [Solari](./solari.md) is lighting a camera, that camera gets no SSAO, whatever the section says: Solari traces its own ambient occlusion, and SSAO on top would darken every corner twice. The section keeps its setting, so SSAO returns when Solari is switched off or the GPU cannot ray trace.
+
 Turning it off removes `ScreenSpaceAmbientOcclusion` from the routed cameras outright, so "off" costs nothing (SSAO's pipeline key reads the component directly, in sync with its bind group, so unlike the resident-and-neutral effects this one is safe to toggle by presence).
 
 The section's fields:

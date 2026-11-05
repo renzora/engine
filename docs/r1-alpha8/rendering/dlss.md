@@ -12,7 +12,7 @@ On the **World Environment**, the **Solari Ray-Traced GI** component has:
 | Setting | What it does |
 |---|---|
 | **Denoiser** | **DLSS**, the default, uses DLSS Ray Reconstruction wherever it can run and the built-in denoiser everywhere else. **Built-in** always uses the built-in denoiser. **Off (raw)** shows Solari's undenoised image. |
-| **DLSS Mode** | Shown only while DLSS is running, so its absence with **DLSS** chosen means this machine fell back to the built-in denoiser (see below). How far below the output resolution Solari renders before DLSS reconstructs it: **Auto**, **DLAA** (native resolution, no upscaling), **Quality** (about 67%), **Balanced** (about 58%), **Performance** (50%) or **Ultra Performance** (about 33%). |
+| **DLSS Mode** | Shown only while DLSS is running, so its absence with **DLSS** chosen means this machine fell back to the built-in denoiser (see below). How far below the output resolution Solari renders before DLSS reconstructs it: **Auto**, **DLAA** (native resolution, no upscaling), **Quality** (about 67%), **Balanced** (about 58%), **Performance** (50%) or **Ultra Performance** (about 33%). New scenes start on **Balanced**: at an editor viewport's size **Auto** renders close to native, which on a mid-range GPU more than halves the frame rate for no visible gain. |
 
 Choosing **Built-in**, or running where DLSS is unavailable, hands the image
 back to the built-in denoiser on the next frame. The camera's own anti-aliasing

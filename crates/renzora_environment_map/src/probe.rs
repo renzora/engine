@@ -32,6 +32,10 @@ pub struct ProbeSourceState {
     requested: String,
     /// Handle of the raw source image (equirect or cube) currently loading.
     pending: Option<Handle<Image>>,
+    /// The equirect-to-cube reprojection, on a worker thread. A 4K HDRI is six
+    /// million texels converted one at a time, about a second, and it used to
+    /// run inside this system, stalling the frame the probe got its image.
+    converting: Option<bevy::tasks::Task<Option<Image>>>,
 }
 
 /// Drive each probe's [`ReflectionProbeSource`] onto a `GeneratedEnvironmentMapLight`,
@@ -83,13 +87,35 @@ pub fn apply_reflection_probe_source(
             }
             st.requested.clear();
             st.pending = None;
+            st.converting = None;
             continue;
         }
 
-        // Path changed → start a fresh load.
+        // Path changed → start a fresh load. Dropping a running conversion
+        // cancels it; its cube is for the old image.
         if st.requested != path {
             st.requested = path.clone();
             st.pending = Some(asset_server.load::<Image>(path.clone()));
+            st.converting = None;
+            continue;
+        }
+
+        // A conversion that has finished: attach its cube.
+        if let Some(task) = st.converting.as_mut() {
+            let Some(cube) = bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task)) else {
+                continue;
+            };
+            st.converting = None;
+            match cube {
+                Some(cube) => {
+                    commands.entity(entity).insert(GeneratedEnvironmentMapLight {
+                        environment_map: images.add(cube),
+                        intensity: source.intensity,
+                        ..default()
+                    });
+                }
+                None => warn!("reflection probe: couldn't convert '{path}' to a cubemap"),
+            }
             continue;
         }
 
@@ -107,8 +133,14 @@ pub fn apply_reflection_probe_source(
                 let cube_handle = if is_cube {
                     // A real cube container (.ktx2/.dds) — feed it straight in.
                     Some(pending.clone())
-                } else if let Some(cube) = images.get(&pending).and_then(equirect_to_pot_cube) {
-                    Some(images.add(cube))
+                } else if let Some(src) = images.get(&pending) {
+                    // A copy goes to the worker: the asset may be shared
+                    // (the skybox can use the same file).
+                    let src = src.clone();
+                    st.converting = Some(
+                        bevy::tasks::AsyncComputeTaskPool::get().spawn(async move { equirect_to_pot_cube(&src) }),
+                    );
+                    None
                 } else {
                     warn!("reflection probe: couldn't convert '{path}' to a cubemap");
                     None

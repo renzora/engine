@@ -244,7 +244,20 @@ fn extension_of(url: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Kick off a background download of the clip bytes for `url`.
+/// A clip downloaded and looked at, ready to play.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) struct FetchedClip {
+    bytes: Vec<u8>,
+    duration: f32,
+    spectrum: Vec<Vec<f32>>,
+}
+
+/// Kick off a background download of the clip for `url`, decoded on the same
+/// thread to draw its spectrogram.
+///
+/// The decode used to happen in `sync_audio`, on the main thread, the frame
+/// the download landed: a whole song decoded and filtered in one frame, tens
+/// to hundreds of milliseconds of frozen editor before the music started.
 #[cfg(not(target_arch = "wasm32"))]
 fn spawn_audio_download(audio: &mut AudioPlayback, url: &str) {
     let (tx, rx) = unbounded();
@@ -252,7 +265,21 @@ fn spawn_audio_download(audio: &mut AudioPlayback, url: &str) {
     audio.loading = true;
     let url = url.to_string();
     std::thread::spawn(move || {
-        let _ = tx.send(crate::auth::marketplace::download_file(&url));
+        let fetched = crate::auth::marketplace::download_file(&url).and_then(|bytes| {
+            // Decoded twice, on purpose: once here to draw the spectrogram,
+            // and once by the backend to play it. The alternative is shipping
+            // whole decoded files back across the plugin boundary so the
+            // editor can look at them.
+            let data = renzora_audio::decode::decode(bytes.clone(), &extension_of(&url))
+                .map_err(|e| format!("Audio decode failed: {e}"))?;
+            Ok(FetchedClip {
+                // Capped at the preview length: that is all that plays.
+                duration: (data.duration() as f32).min(PREVIEW_SECS),
+                spectrum: compute_spectrogram(&data),
+                bytes,
+            })
+        });
+        let _ = tx.send(fetched);
     });
 }
 
@@ -369,43 +396,34 @@ pub(super) fn sync_audio(
         ap.seek_to = None;
     }
 
-    // A finished download → decode, publish peaks/duration, and play it.
+    // A finished download → publish peaks/duration, and play it.
     if let Some(rx) = state.audio.rx.take() {
         match rx.try_recv() {
-            Ok(Ok(bytes)) => {
+            Ok(Ok(clip)) => {
                 state.audio.loading = false;
-                // Decoded twice, on purpose: once here to draw the spectrogram,
-                // and once by the backend to play it. The alternative is shipping
-                // whole decoded files back across the plugin boundary so the
-                // editor can look at them.
                 let extension = extension_of(&cur_url);
-                match renzora_audio::decode::decode(bytes.clone(), &extension) {
-                    Ok(data) => {
-                        // Cap the shown/scrubbable duration at the preview length.
-                        state.audio.duration = (data.duration() as f32).min(PREVIEW_SECS);
-                        state.audio.spectrum = compute_spectrogram(&data);
-                        state.audio.levels = vec![0.0; EQ_BANDS];
-                        state.audio.position = 0.0;
-                        match link.load_bytes(&extension, &bytes) {
-                            Some(sound) => {
-                                state.audio.sound = sound.0;
-                                let voice = link.next_voice();
-                                let request = play_request(voice, sound, 0.0);
-                                if let Err(e) = link.play(&request) {
-                                    state.error = Some(format!("Audio play failed: {e}"));
-                                } else {
-                                    state.audio.voice = Some(voice);
-                                    state.audio.track = Some(sel);
-                                    // Honour a pause requested while it loaded.
-                                    if !ap.playing {
-                                        link.set_paused(voice, true);
-                                    }
-                                }
+                let FetchedClip { bytes, duration, spectrum } = clip;
+                state.audio.duration = duration;
+                state.audio.spectrum = spectrum;
+                state.audio.levels = vec![0.0; EQ_BANDS];
+                state.audio.position = 0.0;
+                match link.load_bytes(&extension, &bytes) {
+                    Some(sound) => {
+                        state.audio.sound = sound.0;
+                        let voice = link.next_voice();
+                        let request = play_request(voice, sound, 0.0);
+                        if let Err(e) = link.play(&request) {
+                            state.error = Some(format!("Audio play failed: {e}"));
+                        } else {
+                            state.audio.voice = Some(voice);
+                            state.audio.track = Some(sel);
+                            // Honour a pause requested while it loaded.
+                            if !ap.playing {
+                                link.set_paused(voice, true);
                             }
-                            None => state.error = Some(String::from("Audio decode failed")),
                         }
                     }
-                    Err(e) => state.error = Some(format!("Audio decode failed: {e}")),
+                    None => state.error = Some(String::from("Audio decode failed")),
                 }
             }
             Ok(Err(e)) => {

@@ -145,8 +145,9 @@ struct AudioPlayback {
     spectrum: Vec<Vec<f32>>,
     /// Current (smoothed) EQ bar levels pushed to the waveform each frame.
     levels: Vec<f32>,
-    /// The clip's byte download in flight, and whether one is outstanding.
-    rx: Option<Receiver<Result<Vec<u8>, String>>>,
+    /// The clip's download (and decode) in flight, and whether one is
+    /// outstanding.
+    rx: Option<Receiver<Result<audio::FetchedClip, String>>>,
     loading: bool,
 }
 

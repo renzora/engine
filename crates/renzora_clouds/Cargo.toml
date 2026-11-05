@@ -10,7 +10,8 @@ description = "Volumetric clouds raymarched through a spherical deck that follow
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# `postprocess` for the sky probe's render pass (`probe.rs`).
+renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
 serde = { version = "1", features = ["derive"] }
 
 [lints]

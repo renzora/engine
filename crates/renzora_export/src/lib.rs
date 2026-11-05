@@ -32,6 +32,9 @@ mod dialog;
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod presets;
+/// Running an export in the companion process.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod remote;
 #[cfg(not(target_arch = "wasm32"))]
 mod templates;
 #[cfg(not(target_arch = "wasm32"))]

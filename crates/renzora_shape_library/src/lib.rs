@@ -15,6 +15,7 @@
 use bevy::prelude::*;
 use renzora::core::ShapeRegistry;
 
+pub mod capture;
 mod groups;
 mod panel;
 mod thumbs;
@@ -125,7 +126,7 @@ impl Plugin for ShapeLibraryPlugin {
         // Add icons to the shapes already registered by the engine
         add_shape_icons(&mut app.world_mut().resource_mut::<ShapeRegistry>());
 
-        app.add_plugins(panel::ShapeLibraryPanel);
+        app.add_plugins((capture::ShapeCapturePlugin, panel::ShapeLibraryPanel));
     }
 }
 

@@ -1374,10 +1374,8 @@ fn spawn_terrain(
 /// are still attached so the inspector lists them for a quick toggle.
 ///
 /// Conflict notes:
-/// - `SsrSettings` is included disabled because Bevy 0.18's
-///   `ScreenSpaceReflections` requires `DeferredPrepass`; the editor
-///   camera uses forward rendering. Toggling SSR on currently does
-///   nothing — left visible in the inspector pending a deferred path.
+/// - `SsrSettings` is included enabled: Bevy's `ScreenSpaceReflections`
+///   needs `DeferredPrepass`, which the viewport cameras now carry.
 /// - `AutoExposureSettings` and `TonemappingSettings` both write the
 ///   camera's `Exposure.ev100`. AE wins per-frame; Tonemapping's value
 ///   is just the at-spawn baseline.
@@ -1389,13 +1387,10 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     let sun = renzora_lighting::Sun::default();
     let dir = sun.direction();
 
-    // SSR disabled — requires DeferredPrepass which we don't currently
-    // attach to the editor camera. Inspector shows it; toggling on
-    // simply has no effect until the deferred path lands.
-    let ssr = renzora_ssr::SsrSettings {
-        enabled: false,
-        ..default()
-    };
+    // On: the viewport cameras render deferred now, which is what Bevy's SSR
+    // needs, so wet cobbles and glass reflect the street around them. It was
+    // off while the editor camera was forward-rendered and SSR did nothing.
+    let ssr = renzora_ssr::SsrSettings::default();
 
     // Motion blur + depth-of-field are omitted from the default spawn (add via
     // the inspector if wanted). Vignette omitted from the spawn -- it's a cdylib distribution
@@ -1441,6 +1436,15 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // by `seed_camera_effects`), no longer on the environment. SSAO went
             // to `WorldEnvironment.ssao` (slice 2). Only SSR remains here.
             (ssr,),
+            // ── Ray-traced GI ────────────────────────────────────────
+            // Present but off, so Solari is one toggle away in the Inspector
+            // rather than an Add Component hunt. Off because it is the most
+            // expensive thing in the frame and needs a ray-tracing GPU; on a
+            // GPU without one the component is inert either way.
+            (renzora::SolariGi {
+                enabled: false,
+                ..default()
+            },),
             // ── Unified environment (slice 1: fog) ───────────────────
             // The `WorldEnvironment` reconcile owns the resident camera-side
             // env state. It currently drives only fog (disabled by default —

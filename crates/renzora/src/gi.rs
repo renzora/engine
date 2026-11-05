@@ -130,8 +130,15 @@ pub struct SolariGi {
     #[reflect(default = "legacy_toggle_default")]
     pub dlss: bool,
     /// DLSS's render scale while it is the denoiser in use.
-    #[serde(default)]
-    #[reflect(default)]
+    ///
+    /// Balanced by default, not Auto. Auto let DLSS pick from the output
+    /// resolution, and at an editor viewport's size it picked close to native,
+    /// so every Solari ray pass ran at full resolution: the Bistro on an RTX
+    /// 3060 took 57 ms of GPU a frame (13 FPS) at Auto and 24 ms (29 FPS) at
+    /// Balanced, with no difference to see. Ray Reconstruction is built to
+    /// rebuild detail from a lower-resolution trace.
+    #[serde(default = "default_solari_dlss_mode")]
+    #[reflect(default = "default_solari_dlss_mode")]
     pub dlss_mode: DlssMode,
     /// Ray trace see-through materials (alpha mode Blend: glass, clear coats,
     /// lenses), so they reflect the scene around them and show what is behind
@@ -231,6 +238,21 @@ impl SolariDenoiser {
 /// `true`, which leaves [`SolariGi::denoiser`] in charge.
 fn legacy_toggle_default() -> bool {
     true
+}
+
+/// On a camera Solari is lighting right now: added and removed by the Solari
+/// plugin with Bevy's `SolariLighting`, so it is never on a camera where ray
+/// tracing is unavailable and Solari fell back.
+///
+/// Here so crates that must stand aside for Solari can see it without linking
+/// the Solari plugin. SSAO is one: Solari traces its own ambient occlusion, and
+/// screen-space AO on top only darkens corners a second time.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct SolariLit;
+
+/// [`SolariGi::dlss_mode`]'s default. See the field for why it is not Auto.
+fn default_solari_dlss_mode() -> DlssMode {
+    DlssMode::Balanced
 }
 
 /// DLSS's quality modes: how far below the output resolution the frame is
@@ -361,7 +383,7 @@ impl Default for SolariGi {
             denoiser: SolariDenoiser::default(),
             denoise: legacy_toggle_default(),
             dlss: legacy_toggle_default(),
-            dlss_mode: DlssMode::default(),
+            dlss_mode: default_solari_dlss_mode(),
             glass_reflections: true,
         }
     }

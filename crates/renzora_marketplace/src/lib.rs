@@ -78,6 +78,9 @@ pub mod installed;
 mod plugin_updates;
 #[cfg(not(target_arch = "wasm32"))]
 mod install_overlay;
+/// Installing in the companion process.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod install_remote;
 #[cfg(not(target_arch = "wasm32"))]
 mod item_overlay;
 #[cfg(not(target_arch = "wasm32"))]
@@ -98,8 +101,9 @@ mod store;
 mod store_overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod onboarding;
+/// Hub images, cached on disk; the companion fetches them (`thumbs::KIND`).
 #[cfg(not(target_arch = "wasm32"))]
-mod thumbs;
+pub mod thumbs;
 #[cfg(not(target_arch = "wasm32"))]
 mod toasts;
 #[cfg(not(target_arch = "wasm32"))]

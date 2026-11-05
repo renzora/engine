@@ -1,235 +1,215 @@
 //! Lit 3D thumbnails for the Shape Library.
 //!
-//! Each registered shape is rendered once, by an offscreen camera into an image
-//! the panel then shows. The phosphor icons the grid used before were shared
-//! between unrelated shapes (Sphere and Hemisphere were the same globe; Cone,
-//! Wedge, Ramp and Funnel were all a triangle), so the label was often the only
-//! way to tell two tiles apart. A render of the actual mesh needs no label.
+//! Each registered shape has a rendered picture of its actual mesh. The
+//! phosphor icons the grid used before were shared between unrelated shapes
+//! (Sphere and Hemisphere were the same globe; Cone, Wedge, Ramp and Funnel
+//! were all a triangle), so the label was often the only way to tell two tiles
+//! apart.
 //!
-//! The renders are one-off: a camera lives for [`WARMUP_FRAMES`] and is then
-//! despawned with its mesh, and the image keeps the last frame it drew. So the
-//! steady-state cost is thirty small textures and nothing per frame. Cameras run
-//! in batches of [`BATCH`] so opening the panel the first time doesn't put
-//! thirty extra render passes on one frame.
+//! The pictures are PNGs in the machine-wide cache (see `capture`), so after
+//! the first session the editor only loads thirty small files. A shape with no
+//! picture yet is rendered by the companion when there is one, and only
+//! otherwise here; until it arrives its tile shows the shape's icon. While the
+//! companion is still starting the editor waits for it rather than rendering
+//! in the frames a project is loading, which is exactly when ten extra cameras
+//! hurt most.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
-use bevy::camera::visibility::RenderLayers;
-use bevy::camera::{Hdr, RenderTarget};
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
-use renzora::core::viewport_types::SHAPE_THUMBNAIL_LAYER;
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, ShapeRegistry};
+use renzora::core::ShapeRegistry;
 use renzora_ember::theme::{card_bg, rgb};
 
-/// Thumbnail resolution. Above the largest tile the size slider allows, so the
-/// image is only ever scaled down.
-const THUMB_PX: u32 = 192;
-/// Cameras alive at once.
-const BATCH: usize = 10;
-/// Frames a camera renders before it is retired. Generous on purpose: the mesh
-/// draws nothing until its pipeline has compiled, and a camera retired before
-/// then leaves a blank thumbnail for the rest of the session.
-const WARMUP_FRAMES: u32 = 45;
-/// Distance between shapes on the thumbnail layer, so one camera never frames a
-/// neighbour. The largest built-in shape is a few metres across.
-const SPACING: f32 = 40.0;
+use crate::capture::{load_png, shape_thumb_path, ShapeCaptureRequest, ShapeCaptures};
 
-/// One image per shape id, filled in over the first second or so.
+/// Longest the editor waits for a companion that is starting before it renders
+/// the missing pictures itself.
+const COMPANION_WAIT_SECS: f32 = 30.0;
+/// Cached pictures decoded per frame. Each is a 192 px PNG, well under a
+/// millisecond, but thirty at once on the first frame is a visible hitch.
+const LOADS_PER_FRAME: usize = 6;
+
+/// One image per shape id, filled in as pictures load.
 #[derive(Resource, Default)]
 pub(crate) struct ShapeThumbs {
     pub(crate) images: HashMap<&'static str, Handle<Image>>,
-    queue: Vec<&'static str>,
-    active: Vec<Active>,
-    material: Option<Handle<StandardMaterial>>,
-    lights: bool,
-    slot: usize,
+    /// What is being done about each shape's picture.
+    state: HashMap<&'static str, Want>,
+    /// Companion jobs out, by id.
+    jobs: HashMap<renzora::CompanionJobId, &'static str>,
+    /// Shapes the companion could not render, which this editor renders.
+    local_only: HashSet<&'static str>,
+    /// The tile colour the pictures were made for; a theme with another one
+    /// starts over, since the colour is baked into each picture.
+    clear: Option<Color>,
+    /// Seconds spent waiting for a starting companion.
+    waited: f32,
 }
 
-struct Active {
-    camera: Entity,
-    mesh: Entity,
-    frames: u32,
+#[derive(Clone, Debug, PartialEq)]
+enum Want {
+    /// On disk: decode it.
+    Load(PathBuf),
+    /// Not on disk: have it rendered.
+    Render(PathBuf),
+    /// The companion or this editor is rendering it.
+    Rendering,
+    /// Loaded, or given up on (the icon stays).
+    Settled,
 }
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<ShapeThumbs>().add_systems(
         Update,
-        (allocate_thumbs, render_thumbs)
+        (plan_thumbs, load_thumbs, render_thumbs, collect_thumbs)
             .chain()
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
 }
 
-/// Give every registered shape an image (blank until rendered) and queue it.
-/// Runs every frame but does work only when the registry has grown, which is
-/// what picks up a shape a plugin registers after startup.
-fn allocate_thumbs(
-    registry: Option<Res<ShapeRegistry>>,
-    mut thumbs: ResMut<ShapeThumbs>,
-    mut images: ResMut<Assets<Image>>,
-) {
+/// Work out where every registered shape's picture lives and whether it is
+/// there. Does work only when the registry has grown (a plugin registered a
+/// shape after startup) or the theme's tile colour changed.
+fn plan_thumbs(registry: Option<Res<ShapeRegistry>>, mut thumbs: ResMut<ShapeThumbs>, mut meshes: ResMut<Assets<Mesh>>) {
     let Some(registry) = registry else { return };
-    if registry.iter().count() == thumbs.images.len() {
+    let clear = rgb(card_bg());
+    if thumbs.clear != Some(clear) {
+        let first = thumbs.clear.is_none();
+        thumbs.clear = Some(clear);
+        if !first {
+            thumbs.state.clear();
+            thumbs.images.clear();
+            thumbs.jobs.clear();
+        }
+    }
+    if registry.iter().count() == thumbs.state.len() {
         return;
     }
     for shape in registry.iter() {
-        if thumbs.images.contains_key(shape.id) {
+        if thumbs.state.contains_key(shape.id) {
             continue;
         }
-        let extent = Extent3d { width: THUMB_PX, height: THUMB_PX, depth_or_array_layers: 1 };
-        // No CPU copy: only the GPU draws into or samples a render target,
-        // and wgpu zero-fills one created without data.
-        let mut image = Image {
-            data: None,
-            ..default()
+        // Built only to name its file. The handle is dropped at the end of the
+        // loop, which frees the mesh again.
+        let handle = (shape.create_mesh)(&mut meshes);
+        let path = meshes.get(&handle).and_then(|mesh| shape_thumb_path(shape.id, mesh, clear));
+        let want = match path {
+            Some(path) if path.is_file() => Want::Load(path),
+            Some(path) => Want::Render(path),
+            // No home directory to cache in: nothing to load or render into.
+            None => Want::Settled,
         };
-        image.texture_descriptor.size = extent;
-        image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-        image.texture_descriptor.usage =
-            TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
-        let handle = images.add(image);
-        thumbs.images.insert(shape.id, handle);
-        thumbs.queue.push(shape.id);
+        thumbs.state.insert(shape.id, want);
     }
 }
 
-/// The centre and bounding-sphere radius of a mesh's vertex positions.
-/// Bevy 0.20 keeps its own AABB helper private, and the positions are all a
-/// framing needs.
-fn bounds(mesh: &Mesh) -> Option<(Vec3, f32)> {
-    let positions = mesh.attribute(Mesh::ATTRIBUTE_POSITION)?.as_float3()?;
-    let (mut min, mut max) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
-    for p in positions {
-        let p = Vec3::from(*p);
-        min = min.min(p);
-        max = max.max(p);
+/// Decode a few cached pictures. A file that will not decode is deleted and
+/// rendered again.
+fn load_thumbs(mut thumbs: ResMut<ShapeThumbs>, mut images: ResMut<Assets<Image>>) {
+    let thumbs = &mut *thumbs;
+    let ready: Vec<(&'static str, PathBuf)> = thumbs
+        .state
+        .iter()
+        .filter_map(|(id, w)| match w {
+            Want::Load(path) => Some((*id, path.clone())),
+            _ => None,
+        })
+        .take(LOADS_PER_FRAME)
+        .collect();
+    for (id, path) in ready {
+        match load_png(&path) {
+            Ok(image) => {
+                thumbs.images.insert(id, images.add(image));
+                thumbs.state.insert(id, Want::Settled);
+            }
+            Err(why) => {
+                warn!("[shapes] the cached thumbnail {} did not load ({why}); rendering it again", path.display());
+                let _ = std::fs::remove_file(&path);
+                thumbs.state.insert(id, Want::Render(path));
+            }
+        }
     }
-    (min.x <= max.x).then(|| ((min + max) * 0.5, ((max - min) * 0.5).length().max(0.1)))
 }
 
-/// Start queued renders while there is room in the batch, and retire cameras
-/// that have rendered long enough.
+/// Have the missing pictures rendered: by the companion when it is connected,
+/// by waiting when it is on its way, and here otherwise.
 fn render_thumbs(
-    mut commands: Commands,
-    registry: Option<Res<ShapeRegistry>>,
     mut thumbs: ResMut<ShapeThumbs>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut captures: ResMut<ShapeCaptures>,
+    time: Res<Time<Real>>,
 ) {
     let thumbs = &mut *thumbs;
-    for a in &mut thumbs.active {
-        a.frames += 1;
-    }
-    thumbs.active.retain(|a| {
-        if a.frames < WARMUP_FRAMES {
-            return true;
-        }
-        commands.entity(a.camera).try_despawn();
-        commands.entity(a.mesh).try_despawn();
-        false
-    });
-    if thumbs.queue.is_empty() {
+    let missing: Vec<(&'static str, PathBuf)> = thumbs
+        .state
+        .iter()
+        .filter_map(|(id, w)| match w {
+            Want::Render(path) => Some((*id, path.clone())),
+            _ => None,
+        })
+        .collect();
+    if missing.is_empty() {
         return;
     }
-    let Some(registry) = registry else { return };
-    let layer = RenderLayers::layer(SHAPE_THUMBNAIL_LAYER);
+    let Some(clear) = thumbs.clear else { return };
+    let mut jobs = jobs;
+    let starting = jobs.as_ref().is_some_and(|j| j.starting && !j.available);
+    if starting && thumbs.waited < COMPANION_WAIT_SECS {
+        thumbs.waited += time.delta_secs();
+        return;
+    }
+    for (id, path) in missing {
+        let args = renzora::job_args::ShapeThumbnail {
+            id: id.to_string(),
+            path: path.clone(),
+            clear: clear.to_linear().to_f32_array(),
+        };
+        let to_companion = !thumbs.local_only.contains(id);
+        if let Some(job) = jobs.as_mut().filter(|_| to_companion).and_then(|j| j.submit("shape_thumbnail", id, &args)) {
+            thumbs.jobs.insert(job, id);
+        } else {
+            captures.request(ShapeCaptureRequest { id: id.to_string(), path, clear });
+        }
+        thumbs.state.insert(id, Want::Rendering);
+    }
+}
 
-    if !thumbs.lights {
-        thumbs.lights = true;
-        // Three-point lighting placed against the camera (which looks from
-        // +X+Y+Z): a strong key from above and to the left, so the top, front
-        // and side faces the camera sees land on three clearly different
-        // values; a weak cool fill from the right so the shadow side keeps its
-        // shape; and a rim from behind to pull the silhouette off the tile.
-        // The first rig lit from roughly the camera's own side, every visible
-        // face caught about the same light, and the renders read as flat
-        // silhouettes.
-        let lights: [(Vec3, Color, f32, &str); 3] = [
-            (Vec3::new(-0.45, 1.0, 0.65), Color::srgb(1.0, 0.97, 0.92), 9000.0, "Key"),
-            (Vec3::new(1.0, 0.25, 0.1), Color::srgb(0.62, 0.72, 0.95), 1800.0, "Fill"),
-            (Vec3::new(-0.3, 0.5, -1.0), Color::srgb(0.9, 0.93, 1.0), 4500.0, "Rim"),
-        ];
-        for (from, color, illuminance, label) in lights {
-            commands.spawn((
-                DirectionalLight { color, illuminance, shadow_maps_enabled: false, ..default() },
-                // A directional light shines along its forward (-Z), so face
-                // it from `from` toward the origin.
-                Transform::default().looking_to(-from.normalize(), Vec3::Y),
-                layer.clone(),
-                HideInHierarchy,
-                EditorLocked,
-                Name::new(format!("Shape Thumbnail {label} Light")),
-            ));
+/// Take finished pictures from the companion and from this editor's own
+/// renders. A companion that could not render one (a shape a plugin registered
+/// here, which the companion does not have) hands it to this editor.
+fn collect_thumbs(
+    mut thumbs: ResMut<ShapeThumbs>,
+    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut captures: ResMut<ShapeCaptures>,
+) {
+    let thumbs = &mut *thumbs;
+    for answer in done.read() {
+        let Some(id) = thumbs.jobs.remove(&answer.id) else { continue };
+        match &answer.result {
+            Ok(path) => {
+                thumbs.state.insert(id, Want::Load(PathBuf::from(path)));
+            }
+            Err(why) => {
+                debug!("[shapes] the companion did not render {id} ({why}); rendering it here");
+                // Forgotten, so `plan_thumbs` names its file again, and marked
+                // so `render_thumbs` does not hand it straight back.
+                thumbs.local_only.insert(id);
+                thumbs.state.remove(id);
+            }
         }
     }
-    // One neutral clay for every thumbnail, rather than each shape's spawn
-    // colour: the grid is for comparing forms, and thirty different tints
-    // made it read as a palette.
-    let material = thumbs
-        .material
-        .get_or_insert_with(|| {
-            materials.add(StandardMaterial {
-                // A mid value, not near-white: a light clay clipped toward
-                // white on the key side and flattened the faces into one tone.
-                base_color: Color::srgb(0.55, 0.6, 0.7),
-                perceptual_roughness: 0.55,
-                ..default()
-            })
-        })
-        .clone();
-
-    while thumbs.active.len() < BATCH {
-        let Some(id) = thumbs.queue.pop() else { break };
-        let (Some(target), Some(mesh)) = (thumbs.images.get(id).cloned(), registry.create_mesh(id, &mut meshes)) else {
-            continue;
-        };
-        // Frame the mesh by its bounding sphere so a 4 m wall and a 1 m cube
-        // both fill the tile.
-        let (center, radius) = meshes.get(&mesh).and_then(bounds).unwrap_or((Vec3::ZERO, 1.0));
-        let origin = Vec3::new(thumbs.slot as f32 * SPACING, 0.0, 0.0);
-        let fov = std::f32::consts::FRAC_PI_4;
-        let dist = radius / (fov * 0.5).sin() * 1.05;
-        let dir = Vec3::new(1.0, 0.75, 1.3).normalize();
-        let focus = origin + center;
-
-        let mesh_e = commands
-            .spawn((
-                Mesh3d(mesh),
-                MeshMaterial3d(material.clone()),
-                Transform::from_translation(origin),
-                layer.clone(),
-                HideInHierarchy,
-                EditorLocked,
-                Name::new(format!("Shape Thumbnail ({id})")),
-            ))
-            .id();
-        let camera = commands
-            .spawn((
-                Camera3d::default(),
-                // HDR like every other editor camera: Bevy keys the mesh
-                // pipeline on a coarse hdr bit, and an LDR offscreen camera
-                // can leave the viewport pass with a pipeline built for the
-                // wrong target format (see the material thumbnails).
-                Hdr,
-                Msaa::Sample4,
-                Projection::Perspective(PerspectiveProjection { fov, ..default() }),
-                Camera {
-                    clear_color: ClearColorConfig::Custom(rgb(card_bg())),
-                    order: -2000 - thumbs.slot as isize,
-                    ..default()
-                },
-                RenderTarget::Image(target.into()),
-                Transform::from_translation(focus + dir * dist).looking_at(focus, Vec3::Y),
-                layer.clone(),
-                IsolatedCamera,
-                HideInHierarchy,
-                EditorLocked,
-                Name::new("Shape Thumbnail Camera"),
-            ))
-            .id();
-        thumbs.slot += 1;
-        thumbs.active.push(Active { camera, mesh: mesh_e, frames: 0 });
+    for (id, result) in captures.take_finished() {
+        let Some((&id, _)) = thumbs.state.get_key_value(id.as_str()) else { continue };
+        match result {
+            Ok(path) => {
+                thumbs.state.insert(id, Want::Load(path));
+            }
+            Err(why) => {
+                warn!("[shapes] could not render the thumbnail of {id}: {why}");
+                thumbs.state.insert(id, Want::Settled);
+            }
+        }
     }
 }

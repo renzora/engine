@@ -233,10 +233,31 @@ fn pump(world: &mut World, root: &Path) {
     if world.resource::<Converter>().is_running() {
         return;
     }
+    let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
     let mut m = world.resource_mut::<Migration>();
     let Some(next) = m.queue.pop_front() else { return };
     let path = next.clone();
-    m.running = Some((next, AsyncComputeTaskPool::get().spawn(async move { convert_to_model(&path) })));
+    m.running = Some((next, AsyncComputeTaskPool::get().spawn(async move { convert(&path, remote) })));
+}
+
+/// Build one model: in the companion when one is connected (job kind
+/// `"rvg_migrate"`), here otherwise. A large model takes seconds of every
+/// core, which here came out of the editor's frame.
+fn convert(glb: &Path, remote: Option<renzora::CompanionRemote>) -> Result<Converted, String> {
+    use renzora::job_args::{RvgMigrate, RvgMigrateOutcome as Out};
+    let name = glb.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let answer = remote.and_then(|r| r.run("rvg_migrate", name, &RvgMigrate { glb: glb.to_path_buf() }, &mut |_, _| {}));
+    match answer {
+        Some(answer) => {
+            let outcome: Out = serde_json::from_str(&answer?).map_err(|e| e.to_string())?;
+            Ok(match outcome {
+                Out::Written { rvg, bytes, before } => Converted::Written { rvg, bytes, before },
+                Out::AlreadyConverted { rvg } => Converted::AlreadyConverted { rvg },
+                Out::NameTaken { rvg } => Converted::NameTaken { rvg },
+            })
+        }
+        None => convert_to_model(glb),
+    }
 }
 
 fn finish(world: &mut World, root: &Path, glb: &Path, result: Result<Converted, String>) {

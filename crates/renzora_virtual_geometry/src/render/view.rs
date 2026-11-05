@@ -90,7 +90,12 @@ pub(crate) fn prepare(
         // game camera runs without MSAA; one that does not gets ordinary
         // rendering only, and converted meshes are not drawn in it.
         let size = camera.physical_target_size.filter(|s| s.x > 0 && s.y > 0);
-        let (true, Some(size)) = (gpu.ready() && *msaa == Msaa::Off, size) else {
+        // A view on no layer any converted mesh is on (a thumbnail or preview
+        // camera with a render layer of its own) has nothing to draw here; see
+        // `GpuScene::layers`.
+        let view_layers = layer_words(layers);
+        let sees_any = (view_layers[0] & gpu.layers[0]) | (view_layers[1] & gpu.layers[1]) != 0;
+        let (true, Some(size)) = (gpu.ready() && *msaa == Msaa::Off && sees_any, size) else {
             commands.entity(entity).remove::<(VgView, VgViewBindGroups)>();
             continue;
         };
@@ -202,7 +207,7 @@ pub(crate) fn prepare(
             instance_count: gpu.instance_count,
             visible_capacity: entry.capacity,
             lod_threshold,
-            view_layers: layer_words(layers),
+            view_layers,
             masked_offset: entry.capacity,
             _pad: 0,
         };

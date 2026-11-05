@@ -66,7 +66,7 @@ pub enum ExportProgress {
 }
 
 /// Messages sent from the background export thread.
-enum ExportMsg {
+pub(crate) enum ExportMsg {
     Progress(String),
     Done(String),
     Error(String),
@@ -1018,44 +1018,44 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         });
     }
 
-    // Spawn background thread
-    std::thread::spawn(move || {
-        export_worker(
-            tx,
-            project,
-            project_name,
-            platform,
-            packaging_mode,
-            compression_level,
-            output_dir,
-            window_mode,
-            window_width,
-            window_height,
-            console_logging,
-            allow_profiling,
-            icon_path,
-            binary_name_override,
-            include_server,
-            bundle_app,
-            enable_modding,
-            mesh_simplify,
-            mesh_simplify_ratio,
-            mesh_quantize,
-            mesh_generate_lods,
-            mesh_lod_levels,
-            template_path,
-            selected_plugins,
-            link_plugins_in,
-            runtime_dir,
-            disabled_bevy_features,
-            disabled_runtime_features,
-            lean_profile,
-            upx_compress,
-            included_files,
-            dlss,
-            cancel,
-        );
-    });
+    // In the companion when one is connected, on a thread here otherwise; see
+    // `remote`.
+    let job = crate::remote::ExportJob {
+        project_path: project.path,
+        project_config: project.config,
+        project_name,
+        platform,
+        packaging_mode,
+        compression_level,
+        output_dir,
+        window_mode,
+        window_width,
+        window_height,
+        console_logging,
+        allow_profiling,
+        icon_path,
+        binary_name_override,
+        include_server,
+        bundle_app,
+        enable_modding,
+        mesh_simplify,
+        mesh_simplify_ratio,
+        mesh_quantize,
+        mesh_generate_lods,
+        mesh_lod_levels,
+        template_path,
+        selected_plugins: selected_plugins.iter().map(Into::into).collect(),
+        link_plugins_in,
+        runtime_dir,
+        disabled_bevy_features,
+        disabled_runtime_features,
+        lean_profile,
+        upx_compress,
+        included_files,
+        dlss,
+    };
+    let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
+    crate::remote::start(job, tx, cancel, remote);
 }
 
 /// Build or refresh the `.rvg` beside every model in the project. A model that
@@ -1083,7 +1083,7 @@ fn ensure_virtual_geometry(root: &std::path::Path, tx: &mpsc::Sender<ExportMsg>)
 
 /// Background export worker: runs on a separate thread.
 #[allow(clippy::too_many_arguments)]
-fn export_worker(
+pub(crate) fn export_worker(
     tx: mpsc::Sender<ExportMsg>,
     project: CurrentProject,
     project_name: String,
