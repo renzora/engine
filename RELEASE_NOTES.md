@@ -1,5 +1,14 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-15 23:34
+- fix(viewport): the viewport stops rendering when nothing changes again, instead of redrawing the whole scene every frame
+
+## 2026-11-15 23:22
+- feat(viewport): the Console names the component that keeps the viewport from idling when it renders on change
+
+## 2026-11-15 23:08
+- fix(rendering): SSR turns off while Solari lights the camera, ending the flicker, and comes back when Solari is off
+
 ## 2026-11-15 22:41
 - perf(animation): selecting an entity with an Animator no longer costs several milliseconds every frame
 - perf(rendering): particle effects no longer cost an empty ray-tracing submission every frame

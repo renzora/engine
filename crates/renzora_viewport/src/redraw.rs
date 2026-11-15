@@ -129,6 +129,7 @@ pub(crate) struct DetectState {
 type SceneFilter = (
     With<GlobalTransform>,
     Without<Node>,
+    Without<renzora::core::ViewportRedrawExempt>,
     Without<ViewportCamera>,
     Without<ViewportCamera2d>,
     Without<IsolatedCamera>,
@@ -139,8 +140,12 @@ type CameraFilter = Or<(With<ViewportCamera>, With<ViewportCamera2d>)>;
 /// Components Bevy (or the editor) writes every frame whether or not anything
 /// changed. A missing entry here does no harm beyond the viewport never
 /// idling, and [`NEVER_IDLE_FRAMES`] says which entity is doing it.
-fn ignored_components() -> [TypeId; 14] {
+fn ignored_components() -> [TypeId; 15] {
     [
+        // Re-inserted every frame on every 3D camera (`update_previous_view_data`),
+        // so a camera in the scene, such as the game's own, kept the viewport
+        // awake forever.
+        TypeId::of::<bevy::core_pipeline::prepass::PreviousViewData>(),
         TypeId::of::<ViewVisibility>(),
         TypeId::of::<InheritedVisibility>(),
         TypeId::of::<VisibleEntities>(),
@@ -222,9 +227,15 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         redraw.awake_for += 1;
         if redraw.awake_for >= NEVER_IDLE_FRAMES && !redraw.reported && !playing && demand.continuous.is_none() {
             redraw.reported = true;
-            info!(
-                "[viewport] rendering on change, but something has changed every frame for {NEVER_IDLE_FRAMES} frames, so the viewport never idles. Last change: {}",
-                redraw.last_reason
+            // To the Console panel, not only the log: a viewport that never
+            // idles renders the whole scene every frame for nothing, and the
+            // log is a terminal nobody is watching.
+            renzora::console_log::console_info(
+                "Viewport",
+                format!(
+                    "The viewport renders on change, but something has changed every frame for {NEVER_IDLE_FRAMES} frames, so it never stops. Last change: {}",
+                    redraw.last_reason
+                ),
             );
         }
     }
@@ -354,7 +365,10 @@ fn find_change(
         .scene
         .get_or_insert_with(|| world.query_filtered::<EntityRef, SceneFilter>());
     let mut signature = 0u64;
-    let mut found = None;
+    // Up to `MAX_NAMED` changes, so the report lists every per-frame writer at
+    // once rather than one a session: fixing the first only revealed the next.
+    const MAX_NAMED: usize = 5;
+    let mut found: Vec<String> = Vec::new();
     for entity in scene.iter(world) {
         let layers = entity.get::<RenderLayers>().cloned().unwrap_or_default();
         if !layers.intersects(&view_layers) {
@@ -364,19 +378,25 @@ fn find_change(
             entity.id().to_bits(),
             entity.archetype().id().index() as u64,
         ));
-        if found.is_some() {
+        if found.len() >= MAX_NAMED {
             continue;
         }
-        let hit = entity.archetype().components().iter().any(|id| {
+        let hit = entity.archetype().components().iter().copied().find(|id| {
             !ignored.contains(id) && changed(entity.get_change_ticks_by_id(*id))
         });
-        if hit {
+        if let Some(id) = hit {
             let name = entity
                 .get::<Name>()
                 .map_or_else(|| format!("{}", entity.id()), |n| n.to_string());
-            found = Some(format!("a component on '{name}'"));
+            // Which component, so the report names the system to look at.
+            let component = world
+                .components()
+                .get_info(id)
+                .map_or_else(|| "a component".to_string(), |c| c.name().to_string());
+            found.push(format!("{component} on '{name}'"));
         }
     }
+    let found = (!found.is_empty()).then(|| found.join(", "));
     if signature != state.signature {
         state.signature = signature;
         return Some(found.unwrap_or_else(|| "an entity was added, removed or changed shape".into()));

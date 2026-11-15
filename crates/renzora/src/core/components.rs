@@ -99,6 +99,17 @@ pub struct ViewportRedrawDemand {
     pub settle_frames: u32,
 }
 
+/// On a scene entity whose changes do not wake the viewport's redraw gate
+/// (`renzora_viewport::redraw`).
+///
+/// For things that animate on their own every frame, which the gate promises to
+/// hold still while the viewport is idle: the cloud dome's material moves with
+/// the wind every frame, and without this it kept the viewport rendering the
+/// whole scene forever. What drives them (the World Environment's settings)
+/// still wakes it, since that is a separate entity.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ViewportRedrawExempt;
+
 /// Marker component tagging an entity as a 2D scene node.
 ///
 /// Currently semantically equivalent to a plain `Transform` parent, but

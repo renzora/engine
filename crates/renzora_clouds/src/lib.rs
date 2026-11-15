@@ -676,6 +676,9 @@ fn sync_clouds(
                 MeshMaterial3d(material_handle.clone()),
                 transform,
                 CloudDomeMarker,
+                // Its material moves with the wind every frame; the viewport's
+                // render-on-change holds animated clouds still while idle.
+                renzora::core::ViewportRedrawExempt,
                 // REQUIRED, not cosmetic. `reject_unnamed_entities` despawns
                 // anything with a `Transform` and no `Name`, and it enforces
                 // **always** in a shipped game (and in the editor's play mode) —

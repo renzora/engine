@@ -65,6 +65,12 @@ decision, which is the half no plugin can make.
   deferred/depth/motion-vector prepasses — and forces **`Msaa::Off`** (Solari
   mandates no MSAA). Disabling it removes `SolariLighting` and restores the
   default MSAA.
+- **Screen-space effects stand down.** A camera Solari lights gets no SSR and
+  no SSAO, whatever their settings say. Solari traces its own reflections and
+  occlusion; SSR composited over them flickered, and SSAO darkened every corner
+  a second time. The SSR section's switch reads off and cannot be turned on
+  while Solari is on, with a note saying why. Both keep their settings, so
+  they come back when Solari is switched off or the GPU cannot ray trace.
 - **Meshes.** While Solari is active, eligible meshes are mirrored into the
   ray-tracing scene with `RaytracingMesh3d` (it coexists with the rasterized
   `Mesh3d`). Solari's BLAS builder demands `TriangleList` topology, 32-bit

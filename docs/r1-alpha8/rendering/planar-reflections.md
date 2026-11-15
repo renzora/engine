@@ -41,7 +41,8 @@ strength, tint and fresnel you set.
 Use a planar reflection where the reflection is the point: mirrors, windows you
 look at head on, a marble floor in a hall, a calm water surface. Use SSR for the
 general sheen on many surfaces at once (wet streets, glossy props), where
-missing off-screen content goes unnoticed.
+missing off-screen content goes unnoticed. SSR is off on any camera Solari
+lights, since Solari traces its own reflections.
 
 Solari's ray-traced GI does not reflect particles or transparent objects
 either: they are not in its ray-tracing scene. A planar reflection does, so a

@@ -455,22 +455,37 @@ fn sync_viewport_settings(
     mut settings: ResMut<CameraSettings>,
     mut vp: ResMut<ViewportSettings>,
 ) {
-    // Sync projection mode
+    // Sync projection mode. Written only when it differs: this runs every
+    // frame, and an unconditional write marked `OrbitCameraState` changed every
+    // frame, so `apply_orbit_on_change` rewrote the camera every frame and the
+    // viewport, seeing the camera "move", never idled.
     let proj = match vp.projection_mode {
         VpProjectionMode::Perspective => ProjectionMode::Perspective,
         VpProjectionMode::Orthographic => ProjectionMode::Orthographic,
     };
-    orbit.projection_mode = proj;
+    if orbit.projection_mode != proj {
+        orbit.projection_mode = proj;
+    }
 
-    // Sync camera settings
+    // Sync camera settings, likewise only when something differs.
     let c = &vp.camera;
-    settings.move_speed = c.move_speed;
-    settings.look_sensitivity = c.look_sensitivity;
-    settings.orbit_sensitivity = c.orbit_sensitivity;
-    settings.pan_sensitivity = c.pan_sensitivity;
-    settings.zoom_sensitivity = c.zoom_sensitivity;
-    settings.invert_y = c.invert_y;
-    settings.distance_relative_speed = c.distance_relative_speed;
+    let current = &*settings;
+    if current.move_speed != c.move_speed
+        || current.look_sensitivity != c.look_sensitivity
+        || current.orbit_sensitivity != c.orbit_sensitivity
+        || current.pan_sensitivity != c.pan_sensitivity
+        || current.zoom_sensitivity != c.zoom_sensitivity
+        || current.invert_y != c.invert_y
+        || current.distance_relative_speed != c.distance_relative_speed
+    {
+        settings.move_speed = c.move_speed;
+        settings.look_sensitivity = c.look_sensitivity;
+        settings.orbit_sensitivity = c.orbit_sensitivity;
+        settings.pan_sensitivity = c.pan_sensitivity;
+        settings.zoom_sensitivity = c.zoom_sensitivity;
+        settings.invert_y = c.invert_y;
+        settings.distance_relative_speed = c.distance_relative_speed;
+    }
 
     // Apply pending view angle — guard so DerefMut only fires when we
     // actually have a command to consume. Otherwise the blind `.take()`
@@ -1554,6 +1569,36 @@ fn goto_selected_camera(
 /// plane this close costs no visible depth precision.
 const EDITOR_NEAR_CLIP: f32 = 0.01;
 
+/// Whether `projection` already is what [`apply_projection`] would make it.
+///
+/// Callers check this before taking the projection mutably. Writing it
+/// through a mutable reference marks it changed even when every value is the
+/// same, and the viewport reads a changed projection as the camera moving: it
+/// was written every frame for every viewport camera, so the viewport never
+/// idled and rendered the whole scene each frame with nothing moving.
+fn projection_matches(
+    projection: &Projection,
+    mode: ProjectionMode,
+    distance: f32,
+    aspect: f32,
+    fov: f32,
+) -> bool {
+    match (mode, projection) {
+        (ProjectionMode::Perspective, Projection::Perspective(p)) => {
+            p.aspect_ratio == aspect && p.near == EDITOR_NEAR_CLIP && p.far == 100_000.0 && p.fov == fov
+        }
+        (ProjectionMode::Orthographic, Projection::Orthographic(o)) => {
+            let viewport_height = 2.0 * distance * (fov * 0.5).tan();
+            o.scale == 1.0
+                && matches!(
+                    o.scaling_mode,
+                    bevy::camera::ScalingMode::FixedVertical { viewport_height: h } if h == viewport_height
+                )
+        }
+        _ => false,
+    }
+}
+
 fn apply_projection(
     projection: &mut Projection,
     mode: ProjectionMode,
@@ -1623,7 +1668,9 @@ fn update_camera_projection(
         .map(|v| v.screen_size.x / v.screen_size.y)
         .unwrap_or(16.0 / 9.0);
 
-    apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect, fov.0);
+    if !projection_matches(&projection, orbit.projection_mode, orbit.distance, aspect, fov.0) {
+        apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect, fov.0);
+    }
 }
 
 // ── Multi-viewport plumbing ─────────────────────────────────────────────────
@@ -1805,8 +1852,14 @@ fn apply_secondary_viewport_cameras(
         // controller via `mirror_focused_orbit_out`, so the focused camera
         // still tracks live input — but no camera ever reads a shared value,
         // which makes it structurally impossible for the views to converge.
-        *transform = orbit.calculate_transform();
-        apply_projection(&mut projection, mode, slot.distance, slot.aspect(), fov.0);
+        //
+        // Written only when different: this runs every frame, and an
+        // unconditional write marked every viewport camera as moved, which
+        // kept render-on-change from ever idling.
+        transform.set_if_neq(orbit.calculate_transform());
+        if !projection_matches(&projection, mode, slot.distance, slot.aspect(), fov.0) {
+            apply_projection(&mut projection, mode, slot.distance, slot.aspect(), fov.0);
+        }
     }
 }
 
@@ -1819,7 +1872,7 @@ fn apply_orbit_on_change(
         return;
     }
     for mut transform in &mut cameras {
-        *transform = orbit.calculate_transform();
+        transform.set_if_neq(orbit.calculate_transform());
     }
 }
 
@@ -2216,6 +2269,23 @@ mod tests {
                 panic!("a perspective projection");
             };
             assert!(perspective.near <= 0.02, "near plane at {} m", perspective.near);
+        }
+    }
+
+    /// Once applied, the projection matches, so the per-frame systems leave it
+    /// alone and the viewport can idle. If `projection_matches` drifted from
+    /// what `apply_projection` writes, every frame would rewrite the camera.
+    #[test]
+    fn an_applied_projection_matches_so_it_is_not_rewritten() {
+        for mode in [ProjectionMode::Perspective, ProjectionMode::Orthographic] {
+            let mut projection = Projection::Perspective(PerspectiveProjection::default());
+            assert!(!projection_matches(&projection, mode, 4.0, 1.5, FRAC_PI_4));
+            apply_projection(&mut projection, mode, 4.0, 1.5, FRAC_PI_4);
+            assert!(projection_matches(&projection, mode, 4.0, 1.5, FRAC_PI_4), "{mode:?}");
+            assert!(
+                !projection_matches(&projection, mode, 4.0, 1.8, std::f32::consts::FRAC_PI_3),
+                "{mode:?}"
+            );
         }
     }
 }
