@@ -18,19 +18,15 @@ pub fn extract_dlss<F: DlssFeature>(
         let mut entity_commands = commands
             .get_entity(entity)
             .expect("Camera entity wasn't synced.");
-        // Renzora patch: an inactive camera keeps its DLSS context. Removing it
-        // here meant every camera that idled and woke again (a viewport hidden
-        // and shown, render-on-change) rebuilt the context, 35 to 40 ms each
-        // time. While inactive the camera has no `ExtractedView`, so nothing
-        // prepares or runs DLSS for it; on waking, `reset` drops the history
-        // it built before it went idle.
-        if !camera.is_active {
+        // Renzora patch: keep the context while inactive, since rebuilding it on
+        // reactivation is slow. `reset` discards the stale history on waking.
+        if !camera.is_active && dlss.is_some() {
             if let Some(dlss) = dlss.as_mut().filter(|d| !d.reset) {
                 dlss.reset = true;
             }
             continue;
         }
-        if dlss.is_some() && camera_projection.is_perspective() {
+        if dlss.is_some() && camera.is_active && camera_projection.is_perspective() {
             entity_commands.insert(dlss.as_deref().unwrap().clone());
             dlss.as_mut().unwrap().reset = false;
         } else if cleanup_query.get(entity) == Ok(true) {
