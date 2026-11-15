@@ -266,9 +266,19 @@ pub fn update_render_toggles(
         || last_state.viz != Some(viz)
         || last_state.editing != Some(editing);
 
-    let new_materials = material_events
-        .read()
-        .any(|e| matches!(e, AssetEvent::Added { .. }));
+    // A saved state holds the material's texture handles, so it has to go when
+    // the material does. Kept, it is the only thing left holding a closed
+    // scene's textures, every one of them, for as long as the editor runs.
+    let mut new_materials = false;
+    for event in material_events.read() {
+        match event {
+            AssetEvent::Added { .. } => new_materials = true,
+            AssetEvent::Removed { id } => {
+                original_states.states.remove(id);
+            }
+            _ => {}
+        }
+    }
 
     // When the viz-swap path is active, StandardMaterial is handled by the debug
     // shader — don't mutate it here. Only the visualization modes swap now;
@@ -453,6 +463,23 @@ fn apply_swap_generic<M: Material>(
             .insert(ViewportDebugBackup::<M>(src_handle))
             .insert(MeshMaterial3d(dbg_handle))
             .remove::<MeshMaterial3d<M>>();
+    }
+}
+
+/// Drop the cached debug material of each source material that has been
+/// removed.
+///
+/// The cache is keyed by the source material and its debug material holds
+/// that material's metallic/roughness texture, so an entry outliving its
+/// material keeps the texture of a scene that has since closed.
+pub fn forget_removed_materials<M: Material>(
+    mut cache: ResMut<DebugMaterialCache<M>>,
+    mut events: MessageReader<AssetEvent<M>>,
+) {
+    for event in events.read() {
+        if let AssetEvent::Removed { id } = event {
+            cache.map.remove(id);
+        }
     }
 }
 

@@ -11,6 +11,7 @@
 //! a crate that cannot see them, is given them by [`fill_grid_textures`]; until
 //! then it draws as the plain tint.
 
+use bevy::material::OpaqueRendererMethod;
 use bevy::pbr::{Material, MaterialPlugin};
 use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
@@ -23,7 +24,24 @@ impl Plugin for TerrainMaterialPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "shaders/terrain_checkerboard.wesl");
         app.add_plugins(MaterialPlugin::<TerrainCheckerboardMaterial>::default())
-            .add_systems(PostUpdate, fill_grid_textures);
+            .add_systems(PostUpdate, (fill_grid_textures, follow_render_method));
+    }
+}
+
+/// Re-prepare every grid material when the project's default render method
+/// changes.
+///
+/// Bevy settles a material's forward or deferred choice once, when it is
+/// first prepared, and never looks at the default again. Turning Solari on
+/// flips the default to deferred, but the grid stayed forward, out of the
+/// G-buffer Solari shades from, and the terrain was still a mirror. Solari
+/// refreshes `StandardMaterial`s itself; it cannot see this type.
+fn follow_render_method(
+    method: Option<Res<bevy::pbr::DefaultOpaqueRendererMethod>>,
+    mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
+) {
+    if method.is_some_and(|m| m.is_changed() && !m.is_added()) {
+        for _ in materials.iter_mut() {}
     }
 }
 
@@ -64,8 +82,22 @@ impl Material for TerrainCheckerboardMaterial {
         "embedded://renzora_terrain/shaders/terrain_checkerboard.wesl".into()
     }
 
+    /// The same shader writes the G-buffer under deferred rendering.
+    fn deferred_fragment_shader() -> ShaderRef {
+        "embedded://renzora_terrain/shaders/terrain_checkerboard.wesl".into()
+    }
+
     fn alpha_mode(&self) -> AlphaMode {
         AlphaMode::Opaque
+    }
+
+    /// Deferred wherever the view is, as a `StandardMaterial` shape beside it
+    /// is. A custom material is forward unless it says otherwise, which left
+    /// the grid out of the G-buffer: Solari, which shades only from the
+    /// G-buffer, saw no roughness there and drew the terrain as a mirror of
+    /// the sky.
+    fn opaque_render_method(&self) -> OpaqueRendererMethod {
+        OpaqueRendererMethod::Auto
     }
 }
 

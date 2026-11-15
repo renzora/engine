@@ -367,8 +367,19 @@ pub(crate) fn collect_standard_material_images(mat: &StandardMaterial, out: &mut
 /// `TabClosed`. Bevy's per-handle refcount handles cross-tab sharing —
 /// if another tab still references the same path, its own handle keeps
 /// the asset alive and only the closed tab's claim is released.
-pub fn evict_closed_tab(trigger: On<TabClosed>, mut cache: ResMut<TabAssetCache>) {
-    cache.drop_tab(trigger.event().tab_id);
+pub fn evict_closed_tab(
+    trigger: On<TabClosed>,
+    mut cache: ResMut<TabAssetCache>,
+    buffers: Option<ResMut<renzora::core::SceneTabBuffers>>,
+) {
+    let tab_id = trigger.event().tab_id;
+    cache.drop_tab(tab_id);
+    // A background tab's whole scene, serialized, waiting to be switched back
+    // to. Taken out only when its tab becomes active again, so a tab closed
+    // from the background kept it for the rest of the session.
+    if let Some(mut buffers) = buffers {
+        buffers.buffers.remove(&tab_id);
+    }
 }
 
 // ============================================================================

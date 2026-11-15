@@ -15,12 +15,19 @@
 
 use std::io::{self, Read, Write};
 
-use crate::{Counter, GpuPass, ProfileFrame, Span};
+use crate::frame::{Counter, GpuPass, ProfileFrame, Span};
 
 /// Bumped whenever a packet's layout changes. 2 added probes.
 pub const VERSION: u16 = 2;
 
-/// A probe as the game lists it; see `renzora::probes`.
+/// Where companions listen for the beacons games send once a second (see
+/// `renzora_profiler::server`, which re-exports this).
+pub const BEACON_PORT: u16 = 47_810;
+
+/// The first line of every beacon, so a stray packet on the port is ignored.
+pub const BEACON_MAGIC: &str = "RZPROF1";
+
+/// A probe as the game lists it; see `renzora::probes` and [`crate::probes`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeInfo {
     pub id: String,

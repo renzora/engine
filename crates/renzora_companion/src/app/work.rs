@@ -12,6 +12,23 @@ use serde::de::DeserializeOwned;
 use super::jobs::JobCtx;
 use crate::protocol::Job;
 
+/// The kinds [`run`] handles, announced to the editor in the hello. Kept
+/// beside the match so a kind added there is added here in the same place;
+/// one missing here is never sent and quietly runs in the editor instead.
+pub(crate) const KINDS: &[&str] = &[
+    "texture_thumbnail",
+    "rust_script",
+    "rvg_bake",
+    "texture_bake",
+    "rvg_migrate",
+    renzora_import::remote::CONVERT_KIND,
+    renzora_import::remote::BUILD_KIND,
+    renzora_export::remote::KIND,
+    renzora_marketplace::install_remote::KIND,
+    renzora_marketplace::thumbs::KIND,
+    "upload",
+];
+
 /// Do `job`. `Ok` carries a short result the editor may use (a path, a
 /// summary); `Err` says why it failed, in words for the Console.
 pub(crate) fn run(job: Job, ctx: &JobCtx) -> Result<String, String> {

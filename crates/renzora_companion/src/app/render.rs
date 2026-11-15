@@ -130,6 +130,10 @@ fn finish_shape_jobs(
     });
 }
 
+/// The kinds rendered here, announced to the editor in the hello. These are
+/// also the kinds `Job::uses_gpu` names, which is what routes them here.
+pub(crate) const KINDS: &[&str] = &["model_thumbnail", "material_thumbnail", "shape_thumbnail"];
+
 /// Read a rendering job's arguments.
 fn parse(kind: &str, payload: &str) -> Result<Capture, String> {
     let bad = |e: serde_json::Error| format!("could not read the job's arguments: {e}");
@@ -288,13 +292,19 @@ fn finish_jobs(
         } else {
             None
         };
-        match result {
-            Some(result) => {
-                job.ctx.finish(result);
-                false
+        let Some(result) = result else { return true };
+        job.ctx.finish(result);
+        // The thumbnail is on disk; nothing here shows it. The registry keeps
+        // the image for an editor's Assets panel, and kept here every one
+        // stayed in memory: 1.5 MB a thumbnail, gigabytes over a project's
+        // backlog.
+        if done {
+            match job.kind {
+                Kind::Model => models.invalidate(&job.path),
+                Kind::Material => materials.invalidate(&job.path),
             }
-            None => true,
         }
+        false
     });
 }
 

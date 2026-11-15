@@ -61,11 +61,20 @@
 //!
 //! - the spec: [`RvgFile`], [`RvgMesh`] and friends, [`RvgFile::to_bytes`] and
 //!   [`RvgFile::from_bytes`];
-//! - [`RvgLoader`], the Bevy `AssetLoader`;
+//! - [`RvgLoader`], the Bevy `AssetLoader` (feature `bevy`, on by default);
 //! - [`bake`] (feature `bake`), the builder the importer and the converter call.
+//!
+//! With `bevy` off, the format and the builder are plain Rust and
+//! [`RvgFile`] is not an asset: what the standalone companion links to bake
+//! `.rvg` files without linking the engine.
 
+mod error;
+pub use error::RvgLoadError;
+
+#[cfg(feature = "bevy")]
 mod loader;
-pub use loader::{RvgLoadError, RvgLoader};
+#[cfg(feature = "bevy")]
+pub use loader::RvgLoader;
 
 mod residency;
 pub use residency::GroupGraph;
@@ -98,7 +107,9 @@ pub mod bake;
 
 use std::sync::Arc;
 
+#[cfg(feature = "bevy")]
 use bevy::asset::Asset;
+#[cfg(feature = "bevy")]
 use bevy::reflect::TypePath;
 
 pub const MAGIC: [u8; 4] = *b"RVG1";
@@ -360,7 +371,8 @@ pub fn octahedral_decode(word: u32) -> [f32; 3] {
 /// that could be converted, and (for a model imported as `.rvg`) the model's
 /// scene. A primitive that is missing from `meshes` renders as ordinary
 /// geometry.
-#[derive(Asset, TypePath, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "bevy", derive(Asset, TypePath))]
 pub struct RvgFile {
     pub builder_version: u32,
     pub source_hash: u64,

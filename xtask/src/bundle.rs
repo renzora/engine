@@ -113,12 +113,14 @@ fn move_matching(dir: &Path, suffix: &str, into: &Path) -> std::io::Result<()> {
 
 /// Move the binaries the bundle carries. `renzora` is required — it is the
 /// runtime, and the export template downstream reads *it* rather than the
-/// editor. The other two are optional: a runtime-only tree is a valid thing to
+/// editor. The others are optional: a runtime-only tree is a valid thing to
 /// wrap, which is what keeps the container's template lanes working.
+/// `renzora-companion` goes beside `renzora` because that is where the editor
+/// looks for it.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn move_binaries(out: &Path, into: &Path) -> std::io::Result<()> {
     move_file(&out.join("renzora"), &into.join("renzora"))?;
-    for name in ["renzora-editor", "renzora-update"] {
+    for name in ["renzora-editor", "renzora-update", "renzora-companion"] {
         let src = out.join(name);
         if src.is_file() {
             move_file(&src, &into.join(name))?;

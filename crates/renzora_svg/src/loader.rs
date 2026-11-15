@@ -33,7 +33,6 @@ use bevy::log::warn;
 use bevy::reflect::TypePath;
 use renzora::core::console_log::{console_error, console_warn};
 use resvg::usvg;
-use thiserror::Error;
 
 use crate::fonts;
 use crate::raster::{self, FetchedImages};
@@ -52,18 +51,7 @@ const CATEGORY: &str = "SVG";
 #[derive(Default, TypePath)]
 pub struct SvgAssetLoader;
 
-/// Why an SVG failed to load.
-#[derive(Debug, Error)]
-pub enum SvgLoadError {
-    #[error("could not read the file: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("not a valid SVG: {0}")]
-    Parse(String),
-    #[error("invalid settings: {0}")]
-    Settings(String),
-    #[error("the SVG renderer panicked: {0}")]
-    Panicked(String),
-}
+pub use crate::error::SvgLoadError;
 
 impl AssetLoader for SvgAssetLoader {
     type Asset = Image;

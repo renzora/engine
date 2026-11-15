@@ -108,6 +108,15 @@ impl AudioLink {
         self.poisoned = false;
     }
 
+    /// Adopt a backend whose device is already open, with what its `init`
+    /// reported. For a device opened off the main thread: opening one can
+    /// take tens of milliseconds, and a frame should not wait for it.
+    pub fn adopt_opened(&mut self, backend: std::sync::Mutex<Box<dyn Backend>>, info: BackendInfo) {
+        self.backend = Some(backend);
+        self.info = Some(info);
+        self.poisoned = false;
+    }
+
     /// Forget the backend.
     ///
     /// Nothing calls this in a normal build any more — a linked-in mixer cannot

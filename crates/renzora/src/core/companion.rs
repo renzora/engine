@@ -8,13 +8,14 @@
 //! result, and [`CompanionJobProgress`] while it runs.
 //!
 //! The companion may be absent (switched off, still starting, or crashed and
-//! given up on). `submit` then returns `None`, and the caller does the work
-//! itself the way it always did: moving a job to the companion must never
-//! make it impossible.
+//! given up on), or present but unable to run the kind asked for: it says
+//! which kinds it runs when it connects. Either way `submit` returns `None`,
+//! and the caller does the work itself the way it always did: moving a job to
+//! the companion must never make it impossible.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 
 use bevy::prelude::*;
 use serde::Serialize;
@@ -52,9 +53,9 @@ pub struct CompanionJobs {
 
 impl CompanionJobs {
     /// Queue `kind` with `args` for the companion. `None` when no companion is
-    /// connected: do the work yourself.
+    /// connected, or the one connected cannot run `kind`: do the work yourself.
     pub fn submit(&mut self, kind: &str, target: impl Into<String>, args: &impl Serialize) -> Option<CompanionJobId> {
-        if !self.available {
+        if !self.can_run(kind) {
             return None;
         }
         let payload = serde_json::to_string(args).ok()?;
@@ -95,6 +96,17 @@ impl CompanionJobs {
         self.remote.0.available.store(available, Ordering::Relaxed);
     }
 
+    /// The host: the job kinds the connected companion said it runs. Any
+    /// other kind is refused by `submit` and `run`, so its caller does it.
+    pub fn set_kinds(&mut self, kinds: impl IntoIterator<Item = String>) {
+        *self.remote.0.kinds.write().unwrap_or_else(|e| e.into_inner()) = kinds.into_iter().collect();
+    }
+
+    /// Whether the connected companion runs `kind`; false with none connected.
+    pub fn can_run(&self, kind: &str) -> bool {
+        self.available && self.remote.lists(kind)
+    }
+
     /// The host: a job finished. True when it was a worker thread's, which is
     /// then woken with the result; false when it belongs to a system, which
     /// hears through [`CompanionJobDone`] instead.
@@ -123,6 +135,8 @@ pub struct CompanionRemote(Arc<RemoteShared>);
 #[derive(Default)]
 struct RemoteShared {
     available: AtomicBool,
+    /// The kinds the connected companion runs; see [`CompanionJobs::set_kinds`].
+    kinds: RwLock<HashSet<String>>,
     state: Mutex<RemoteState>,
     changed: Condvar,
 }
@@ -151,10 +165,20 @@ impl CompanionRemote {
         self.0.available.load(Ordering::Relaxed)
     }
 
+    /// Whether a companion is connected and runs `kind`.
+    pub fn can_run(&self, kind: &str) -> bool {
+        self.available() && self.lists(kind)
+    }
+
+    /// Whether the companion's hello listed `kind`, connected or not.
+    fn lists(&self, kind: &str) -> bool {
+        self.0.kinds.read().unwrap_or_else(|e| e.into_inner()).contains(kind)
+    }
+
     /// Run `kind` with `args` in the companion and wait for its answer,
     /// passing each progress report to `on_progress` meanwhile. `None` when
-    /// no companion is connected: do the work yourself. A companion that
-    /// stops mid-job answers `Err`.
+    /// no companion is connected, or it cannot run `kind`: do the work
+    /// yourself. A companion that stops mid-job answers `Err`.
     ///
     /// Blocks the calling thread. Never call it from a system.
     pub fn run(
@@ -178,7 +202,7 @@ impl CompanionRemote {
         on_progress: &mut dyn FnMut(Option<f32>, &str),
         cancel: &AtomicBool,
     ) -> Option<Result<String, String>> {
-        if !self.available() {
+        if !self.can_run(kind) {
             return None;
         }
         let payload = serde_json::to_string(args).ok()?;
@@ -274,144 +298,9 @@ pub struct CompanionJobProgress {
 }
 
 /// The arguments of each job kind. Both ends need one definition: the crate
-/// that submits builds one, the companion's handler reads it back.
-pub mod job_args {
-    use serde::{Deserialize, Serialize};
-    use std::path::PathBuf;
-
-    /// `"texture_thumbnail"`: decode `source`, shrink it to fit `size` square
-    /// (Lanczos3), write it as a PNG to `cache`.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct TextureThumbnail {
-        pub source: PathBuf,
-        pub cache: PathBuf,
-        pub size: u32,
-    }
-
-    /// `"rust_script"`: compile the script `source` of `project` against the
-    /// SDK in `sdk_dir`. Answers with the built library's path, which the
-    /// editor then loads itself (a library is loaded by the process that runs
-    /// it).
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct RustScriptBuild {
-        pub sdk_dir: PathBuf,
-        pub project: PathBuf,
-        pub source: PathBuf,
-    }
-
-    /// `"rvg_bake"`: bring the virtual geometry beside the GLB `model` up to
-    /// date. Answers with an [`RvgBakeOutcome`] as JSON.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct RvgBake {
-        pub model: PathBuf,
-    }
-
-    /// `"texture_bake"`: bake the image file `source` into a mipmapped,
-    /// block-compressed `.rmip` at `target` (`renzora_rmip::bake::bake_image`
-    /// with its default settings). `role` is `"color"`, `"normal"` or
-    /// `"linear"`. Answers with `target`.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct TextureBake {
-        pub source: PathBuf,
-        pub target: PathBuf,
-        pub role: String,
-    }
-
-    /// `"rvg_migrate"`: turn the `.glb` model `glb` into an `.rvg` model of
-    /// the same name (`renzora_rvg::bake::convert_to_model`). Answers with an
-    /// [`RvgMigrateOutcome`] as JSON. The `.glb` is left for the editor to
-    /// delete, once every reference to it is rewritten.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct RvgMigrate {
-        pub glb: PathBuf,
-    }
-
-    /// What an `"rvg_migrate"` did; mirrors `renzora_rvg::bake::Converted`.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub enum RvgMigrateOutcome {
-        Written { rvg: PathBuf, bytes: u64, before: u64 },
-        AlreadyConverted { rvg: PathBuf },
-        NameTaken { rvg: PathBuf },
-    }
-
-    /// `"model_thumbnail"`: render `model` (a `.glb`, `.gltf` or `.rvg` in
-    /// `project`) to its cached thumbnail PNG, with the editor's own capture
-    /// code. Answers with the PNG's path; the editor then loads it as it
-    /// loads any cached thumbnail.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct ModelThumbnail {
-        pub project: PathBuf,
-        pub model: PathBuf,
-    }
-
-    /// `"material_thumbnail"`: render `material` (a `.material` in `project`)
-    /// to its cached thumbnail PNG, with the material editor's own capture
-    /// code. Answers with the PNG's path.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct MaterialThumbnail {
-        pub project: PathBuf,
-        pub material: PathBuf,
-    }
-
-    /// `"shape_thumbnail"`: render the built-in shape `id` on a background of
-    /// `clear` (linear RGBA) and write it as a PNG to `path`. Answers with the
-    /// path. The editor names the file, from a hash of the shape's mesh, so a
-    /// changed shape gets a new file rather than a stale picture.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct ShapeThumbnail {
-        pub id: String,
-        pub path: PathBuf,
-        pub clear: [f32; 4],
-    }
-
-    /// `"project_index"`: walk `root` and answer with its files as JSON
-    /// (`Vec<IndexedFile>`, see `renzora::core::project_index`). Also tells the
-    /// companion which project is open, so it can watch it and keep its
-    /// caches (thumbnails) in step with it.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-    pub struct ProjectIndexWalk {
-        pub root: PathBuf,
-    }
-
-    /// `"profiler.record"`: start or stop recording. With `game`, connect to
-    /// the game whose name contains it first (the editor itself is "Editor").
-    /// Answers in words.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-    pub struct ProfilerRecord {
-        pub on: bool,
-        #[serde(default)]
-        pub game: Option<String>,
-    }
-
-    /// `"profiler.status"`, `"profiler.summary"` and `"profiler.spikes"`: a
-    /// question about the last `seconds` of the companion's capture. Answers
-    /// with JSON.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-    pub struct ProfilerQuery {
-        #[serde(default)]
-        pub seconds: Option<f32>,
-        /// How many rows to list.
-        #[serde(default)]
-        pub limit: Option<usize>,
-        /// `"profiler.spikes"` only: frames slower than this. Without it, the
-        /// slowest frames in the window.
-        #[serde(default)]
-        pub over_ms: Option<f32>,
-    }
-
-    /// What an `"rvg_bake"` did.
-    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-    pub struct RvgBakeOutcome {
-        /// A new `.rvg` was written; false when it was already current or
-        /// there was nothing to convert.
-        pub built: bool,
-        pub primitives: usize,
-        pub bytes: usize,
-        pub seconds: f32,
-        /// Why each primitive that stayed ordinary geometry did, one line each.
-        pub skipped: Vec<String>,
-    }
-}
+/// that submits builds one, the companion's handler reads it back. Defined in
+/// `renzora_companion_proto`, which the companion links without Bevy.
+pub use renzora_companion_proto::job_args;
 
 /// Registers the queue and the messages. Every crate that submits jobs adds
 /// it; adding it twice is harmless.
@@ -428,6 +317,7 @@ mod tests {
     #[test]
     fn nothing_is_queued_without_a_companion() {
         let mut jobs = CompanionJobs::default();
+        jobs.set_kinds(["texture_thumbnail".to_string()]);
         assert_eq!(jobs.submit("texture_thumbnail", "a.png", &("a.png", 256)), None);
         jobs.available = true;
         let id = jobs.submit("texture_thumbnail", "a.png", &("a.png", 256)).unwrap();
@@ -444,12 +334,27 @@ mod tests {
         assert_eq!(jobs.remote().run("model_convert", "a.fbx", &1, &mut |_, _| {}), None);
     }
 
+    /// A connected companion that did not list a kind is not sent it, from a
+    /// system or a thread: the caller does that kind itself.
+    #[test]
+    fn a_kind_the_companion_did_not_list_stays_in_the_editor() {
+        let mut jobs = CompanionJobs::default();
+        jobs.set_available(true);
+        jobs.set_kinds(["texture_thumbnail".to_string()]);
+        assert!(jobs.can_run("texture_thumbnail"));
+        assert!(!jobs.can_run("model_thumbnail"));
+        assert_eq!(jobs.submit("model_thumbnail", "a.glb", &1), None);
+        assert_eq!(jobs.remote().run("model_convert", "a.fbx", &1, &mut |_, _| {}), None);
+        assert!(jobs.drain().is_empty());
+    }
+
     /// A worker thread submits and waits; the host drains it with the
     /// systems' jobs and answers it by id, progress first.
     #[test]
     fn a_thread_waits_for_its_answer_and_hears_progress() {
         let mut jobs = CompanionJobs::default();
         jobs.set_available(true);
+        jobs.set_kinds(["model_convert".to_string()]);
         let remote = jobs.remote();
         let worker = std::thread::spawn(move || {
             let mut notes = Vec::new();

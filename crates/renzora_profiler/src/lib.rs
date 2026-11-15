@@ -18,12 +18,15 @@ use bevy::ecs::entity::Entities;
 use bevy::prelude::*;
 use renzora::profiling;
 
-mod frame;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
-pub mod wire;
 
-pub use frame::{Counter, GpuPass, ProfileFrame, Span, SpanBuilder};
+// The stream format and the frame types live in `renzora_companion_proto`, so
+// the companion can read a profile without linking Bevy. Re-exported here so
+// every `renzora_profiler::wire` and `renzora_profiler::ProfileFrame` still
+// resolves.
+pub use renzora_companion_proto::frame::{Counter, GpuPass, ProfileFrame, Span, SpanBuilder};
+pub use renzora_companion_proto::wire;
 
 /// Frames kept for whoever reads them. About two seconds at 60 fps.
 ///

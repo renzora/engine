@@ -136,8 +136,10 @@ mod imp {
         mut commands: Commands,
         support: Option<Res<DlssSupport>>,
         sources: Query<&SolariGi>,
+        viewport: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
         mut cameras: Query<(
             Has<SolariLighting>,
+            Has<renzora::EditorCamera>,
             Option<&mut RayReconstruction>,
             Option<&DlssByRenzora>,
             Has<TemporalAntiAliasing>,
@@ -156,6 +158,18 @@ mod imp {
         // ghost of it over the sky after switching to a scene with nothing in
         // it. It steps aside, and comes back with a fresh history.
         let scene_has_instances = !traced.is_empty();
+        // The virtual geometry debug views paint their colours into the frame
+        // before DLSS sees it, on editor cameras. Ray Reconstruction takes
+        // that frame for noisy lighting and rebuilds it from its own guide
+        // images, which turned the colours into textured grey wherever its
+        // history was trusted, more of it the more the camera moved.
+        let vg_debug_view = viewport.is_some_and(|v| {
+            use renzora::core::viewport_types::VisualizationMode as Mode;
+            matches!(
+                v.visualization_mode,
+                Mode::VgClusters | Mode::VgTriangles | Mode::VgLod | Mode::VgInstances | Mode::VgResidency
+            )
+        });
         let mut dropped = false;
         let targets: Vec<(Entity, Option<(bool, DlssMode)>)> = routing
             .iter()
@@ -165,14 +179,17 @@ mod imp {
             })
             .collect();
         for (target, wanted) in targets {
-            let Ok((solari, dlss, ours, taa, jitter, mip_bias, camera, debug)) = cameras.get_mut(target)
+            let Ok((solari, editor_camera, dlss, ours, taa, jitter, mip_bias, camera, debug)) =
+                cameras.get_mut(target)
             else {
                 continue;
             };
             // A diagnostics view draws into the lighting's own output, which
             // DLSS would then take for the image and denoise, so DLSS steps
-            // aside while one is shown and the built-in denoiser runs.
-            let showing_debug_view = debug.is_some_and(|d| d.view != SolariDebugView::None);
+            // aside while one is shown and the built-in denoiser runs. The
+            // same goes for the virtual geometry debug views (see above).
+            let showing_debug_view = debug.is_some_and(|d| d.view != SolariDebugView::None)
+                || (editor_camera && vg_debug_view);
             let (want, mode) = wanted.unwrap_or((false, DlssMode::Auto));
             // DLSS takes its render size from the camera's output size, and an
             // output a few pixels across leaves it next to nothing to render

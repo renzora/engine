@@ -104,9 +104,12 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(Update, (finish_walk, follow_changes, handle_requests, drain_backlog, finish_measure).chain());
 }
 
+/// The kind answered here, announced to the editor in the hello.
+pub(crate) const KINDS: &[&str] = &["project_index"];
+
 /// Whether a job kind is the project listing, which this module answers.
 pub(crate) fn is_listing(kind: &str) -> bool {
-    kind == "project_index"
+    KINDS.contains(&kind)
 }
 
 impl ProjectCache {

@@ -177,6 +177,15 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         WgpuSettings {
             backends: Some(backends),
             features,
+            // wgpu's default (`Performance`) carves GPU memory out of 128 to
+            // 256 MB blocks and keeps a block while anything at all is left in
+            // it. With the Bistro open the editor had 3.46 GB of blocks
+            // reserved for 1.78 GB of allocations, and Windows charges every
+            // reserved block to the process: half its VRAM was empty space.
+            // `MemoryUsage` uses 8 to 64 MB blocks, which empty and return far
+            // sooner; allocating more often costs nothing anyone can see next
+            // to a frame.
+            memory_hints: bevy::render::settings::MemoryHints::MemoryUsage,
             ..default()
         }
     }

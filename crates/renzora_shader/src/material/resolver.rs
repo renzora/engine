@@ -1,9 +1,10 @@
 //! Material resolver — watches entities with `MaterialRef` and resolves them
 //! to the appropriate `GraphMaterial` or `CodeShaderMaterial`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::path::Path;
+use std::sync::Arc;
 
 use bevy::prelude::*;
 use uuid::Uuid;
@@ -88,6 +89,16 @@ pub struct MaterialCache {
     /// Tracks which paths have been loaded (for future hot-reload).
     #[allow(dead_code)]
     loaded_paths: HashMap<String, u64>,
+    /// Paths whose compiled material nothing but this cache held at the last
+    /// [`MaterialCache::prune_unused`]. Dropped on the next one if still so.
+    unused: HashSet<String>,
+}
+
+/// Whether this cache's handle is the only strong one left. The asset server
+/// tracks assets through weak references, so no other holder means no entity,
+/// panel or per-tab pin is using the asset.
+fn held_only_here<A: Asset>(handle: &Handle<A>) -> bool {
+    matches!(handle, Handle::Strong(arc) if Arc::strong_count(arc) == 1)
 }
 
 /// Compile-time metadata about a master `.material` file that material
@@ -109,6 +120,41 @@ impl MaterialCache {
         self.node_line_maps.remove(path);
         self.sprite_materials.remove(path);
         self.loaded_paths.remove(path);
+        self.unused.remove(path);
+    }
+
+    /// Let go of compiled materials nothing else uses any more. Each held its
+    /// textures, so without this a closed scene's materials, and every texture
+    /// they sample, stayed in memory for the rest of the session.
+    ///
+    /// A path is dropped only once it has been unused on two calls in a row,
+    /// so a material cached for an entity whose commands have not landed yet
+    /// is never mistaken for an unused one. The
+    /// parameter metadata stays, since it is small and material instances
+    /// read it. A dropped material is compiled again when next asked for.
+    pub fn prune_unused(&mut self) -> usize {
+        let idle: HashSet<String> = self
+            .standard_materials
+            .iter()
+            .filter(|(_, h)| held_only_here(h))
+            .map(|(p, _)| p)
+            .chain(self.graph_materials.iter().filter(|(_, h)| held_only_here(h)).map(|(p, _)| p))
+            .chain(self.code_materials.iter().filter(|(_, h)| held_only_here(h)).map(|(p, _)| p))
+            .chain(self.sprite_materials.iter().filter(|(_, h)| held_only_here(h)).map(|(p, _)| p))
+            .cloned()
+            .collect();
+        let stale: Vec<String> = idle.intersection(&self.unused).cloned().collect();
+        for path in &stale {
+            self.standard_materials.remove(path);
+            self.graph_materials.remove(path);
+            self.code_materials.remove(path);
+            self.sprite_materials.remove(path);
+        }
+        self.unused = idle;
+        for path in &stale {
+            self.unused.remove(path);
+        }
+        stale.len()
     }
 
     pub(super) fn sprite_material(
@@ -148,6 +194,21 @@ impl MaterialCache {
     /// for derived material instances.
     pub fn master_meta_count(&self) -> usize {
         self.master_meta.len()
+    }
+}
+
+/// Every two seconds, drop the cached materials nothing uses any more (see
+/// [`MaterialCache::prune_unused`]). In `Last`, after every command of the
+/// frame has landed, so a handle just handed to an entity is already counted.
+fn prune_material_cache(time: Res<Time<Real>>, mut cache: ResMut<MaterialCache>, mut next: Local<f32>) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 2.0;
+    let dropped = cache.bypass_change_detection().prune_unused();
+    if dropped > 0 {
+        debug!("[material cache] released {dropped} unused material(s)");
     }
 }
 
@@ -196,6 +257,7 @@ impl Plugin for MaterialResolverPlugin {
             .init_resource::<renzora::diagnostics::MaterialCacheCounts>()
             .init_resource::<super::alpha_override::AlphaVariantCache>()
             .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain())
+            .add_systems(Last, prune_material_cache)
             // Overlays (terrain paint layers) wear a shared material at their
             // own alpha mode; deriving the variant has to see the handle the
             // resolver just attached, hence the explicit `after` (which is

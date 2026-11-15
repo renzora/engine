@@ -54,6 +54,8 @@ use serde::Deserialize;
 /// could log anyway: there is no `rustc` there to fail.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod log;
+/// Building a Rust script, for the editor and the companion alike.
+pub mod script;
 pub mod toolchain;
 /// Unpacking the shipped `sdk.tar.zst`.
 ///

@@ -11,11 +11,16 @@ description = "SVG / SVGZ asset loader: rasterizes vector files to a standard Be
 crate-type = ["rlib"]
 
 [features]
-default = []
+default = ["bevy"]
+# The asset loader and the plugin. On by default; the standalone companion
+# turns it off and keeps the rasterizer, which is plain Rust, so drawing an SVG
+# thumbnail there links no engine. `renzora` goes with it: only the loader
+# (its Console lines and panic guard) and the plugin declaration use it.
+bevy = ["dep:bevy", "dep:renzora"]
 
 [dependencies]
-bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+bevy = { workspace = true, optional = true }
+renzora = { path = "../renzora", default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 # Pure-Rust SVG renderer (usvg parser + tiny-skia rasterizer), so it builds for

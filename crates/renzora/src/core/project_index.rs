@@ -20,47 +20,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
 
-use super::project_files::{is_ignored, is_transient};
-
-/// One file: where, how big, when it last changed.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct IndexedFile {
-    /// Project-relative, forward-slashed: the key every other producer in
-    /// the engine uses (see `ProjectFileChanged::relative`).
-    pub path: String,
-    pub size: u64,
-    /// Seconds since the Unix epoch.
-    pub modified: u64,
-}
-
-impl IndexedFile {
-    /// The file's extension, lower-case, without the dot.
-    pub fn extension(&self) -> String {
-        self.path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
-    }
-
-    /// The file name, without its folder.
-    pub fn file_name(&self) -> &str {
-        self.path.rsplit('/').next().unwrap_or(&self.path)
-    }
-
-    /// Read `absolute`'s size and modification time. `None` for a folder or
-    /// a file that is gone.
-    pub fn stat(relative: String, absolute: &Path) -> Option<Self> {
-        let meta = std::fs::metadata(absolute).ok()?;
-        if !meta.is_file() {
-            return None;
-        }
-        let modified = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map_or(0, |d| d.as_secs());
-        Some(Self { path: relative, size: meta.len(), modified })
-    }
-}
+// The file record and the walk, shared with the standalone companion, which
+// answers the walk when it is connected and links no Bevy.
+pub use renzora_companion_proto::project_files::{walk_project, IndexedFile};
 
 /// The open project's files. Empty and not [`ready`](Self::ready) until the
 /// first walk lands.
@@ -167,54 +130,12 @@ impl ProjectIndex {
     }
 }
 
-/// Walk `root` and index every project file, by the watcher's rules. Slow for
-/// a big project: run it on a thread, never in a system.
-pub fn walk_project(root: &Path) -> Vec<IndexedFile> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(relative) = path.strip_prefix(root) else { continue };
-            let relative = relative.to_string_lossy().replace('\\', "/");
-            if is_ignored(&relative) {
-                continue;
-            }
-            let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_dir() {
-                stack.push(path);
-            } else if !is_transient(&relative) {
-                if let Some(file) = IndexedFile::stat(relative, &path) {
-                    files.push(file);
-                }
-            }
-        }
-    }
-    files.sort_by(|a, b| a.path.cmp(&b.path));
-    files
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn file(path: &str) -> IndexedFile {
         IndexedFile { path: path.into(), size: 1, modified: 1 }
-    }
-
-    #[test]
-    fn a_walk_skips_what_the_watcher_ignores() {
-        let dir = std::env::temp_dir().join(format!("rz-index-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        for p in ["models/car.rvg", "scripts/a.rs", "target/debug/x.rlib", ".renzora/cache.bin", "scenes/main.bsn.tmp"] {
-            let path = dir.join(p);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(&path, b"x").unwrap();
-        }
-        let files: Vec<String> = walk_project(&dir).into_iter().map(|f| f.path).collect();
-        assert_eq!(files, ["models/car.rvg", "scripts/a.rs"]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// A change that arrives while the walk is out survives the walk landing.

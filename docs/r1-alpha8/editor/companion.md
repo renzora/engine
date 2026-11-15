@@ -10,7 +10,7 @@ The companion starts with the editor and stays hidden until you want it:
 - Closing its window only hides it. The companion runs as long as the editor does, and ends when the editor ends, including when the editor crashes.
 - The Console shows its log lines under the `Companion` category, and `Companion ready (round trip … ms)` each time it connects.
 
-Its window has five screens on the left: **Profiler**, **Render**, **Debug**, **Jobs** and **Games**.
+Its window has six screens on the left: **Profiler**, **Render**, **Debug**, **Jobs**, **Cache** and **Games**.
 
 ## Profiling a game
 
@@ -61,15 +61,15 @@ With the MCP Server plugin installed, an assistant connected to the editor can p
 
 ### The Render screen
 
-The render graph's passes as nodes, numbered in the order they ran in the selected frame, each coloured by its time: GPU time where the GPU measured the pass, CPU time otherwise. The graph reads top to bottom: each row is a group of passes that ran at the same time, and the wires join each group's longest pass to the next row, so they trace the frame's critical path. It opens at the top, as wide as the widest row allows; scroll down to follow the frame. Click a node to see its times under the header. A scene with several cameras runs the graph once per camera; **Next camera** steps between them.
+The render graph's passes as nodes, numbered in the order they ran in the selected frame, each coloured by its time: GPU time where the GPU measured the pass, CPU time otherwise. The graph reads top to bottom: each row is a group of passes that ran at the same time, and the wires join each group's longest pass to the next row, so they trace the frame's critical path. It opens at the top, centred on the graph; scroll down to follow the frame, and sideways when a row is wider than the window. Click a node to see its times under the header. A scene with several cameras runs the graph once per camera; **Next camera** steps between them.
 
 A pass's system runs on whichever worker thread is free, so the screen finds a camera's passes by time: a system that, over the last two seconds, only ever ran inside that camera's render schedule. Recording for a second or two before looking gives it enough frames to tell them from the game's own systems.
 
 ## The Debug screen
 
-The editor's debug readouts live here, not in the editor's window: Performance, System, Render Stats, Memory, ECS Stats, Camera Debug, Culling, Material Diag, Scripting Diag, Scene Diagnostics, UI Reactivity, UI Layout and Render Toggles. Tick the ones you want in the list on the left; each shows as a card, updated a few times a second, and the switches and buttons on a card (Render Toggles, camera selection, culling distances) act on the editor or game you are connected to.
+The editor's debug readouts live here, not in the editor's window: Performance, System, Render Stats, Memory, ECS Stats, Camera Debug, Culling, Material Diag, Scripting Diag, Scene Diagnostics, UI Reactivity, UI Layout and Render Toggles. Tick the ones you want in the list on the left; each shows as a card, in as many columns as the window has room for, each card under the shortest column so they pack without gaps, scrolling down, updated a few times a second, and the switches and buttons on a card (Render Toggles, camera selection, culling distances) act on the editor or game you are connected to.
 
-They moved because a panel that changes every frame makes the editor lay out its whole window again every frame: with the old Debug workspace open, that alone took 30 ms a frame. A readout is gathered only while its card is showing, so one you have not ticked costs nothing.
+They moved because a panel that changes every frame makes the editor lay out its whole window again every frame: with the old Debug workspace open, that alone took 30 ms a frame. A readout is gathered only while its card is showing, so one you have not ticked costs nothing. The ones you tick are remembered, in `~/.renzora/companion_window.json`, for the next time the companion's window opens.
 
 Plugins add their own; see [Debug Probes](../extending/probes).
 
@@ -115,7 +115,7 @@ While a recording runs, every job waits, so the profile measures only the game: 
 
 The companion watches the open project and keeps its caches in step with it:
 
-- Once a project has opened, every model and material without a current thumbnail gets one. The loading screen no longer waits for material thumbnails: the project opens straight away and they fill in afterwards.
+- Once a project has opened, every model and material without a current thumbnail gets one. The project opens straight away and they fill in afterwards.
 - A model or material added to the project, or changed, gets its thumbnail rendered straight away, so the Assets panel already has it when you open the folder.
 - A model or material you delete takes its thumbnail with it.
 - The screen shows the project's files and the thumbnail cache's size, with **Render missing thumbnails** to fill it and **Clear thumbnail cache** to empty it.
@@ -126,14 +126,22 @@ The companion also lists the project for the editor when it opens, so panels tha
 
 ## How it works
 
-The companion is the same `renzora` executable, started by the editor with `--companion`. Because both come from the same build they always agree with each other; there is nothing to install or keep in step.
+The companion is `renzora-companion`, a small program that ships beside the editor. It does not contain the engine, so it holds a few megabytes and no graphics card at all while it waits. Because it comes from the same build as the editor they always agree with each other; there is nothing to install or keep in step.
 
-- It never renders your scene. The editor keeps the viewport and the scene. It renders one model or material at a time for a thumbnail (shapes, which are tiny, ten at a time), and frees each when its thumbnail is done.
+- It never renders your scene. The editor keeps the viewport and the scene.
+- Model, material and shape thumbnails need the engine's renderer, which the companion does not have. When there is one to render it starts a **render worker**: the engine, with no window, rendering one model or material at a time with the editor's own capture code. The worker holds the engine's memory and a graphics device while it runs, and stops after 30 seconds with nothing to render. The Jobs screen says whether it is running.
+- Its window is a program of its own, started by the spanner: closing it frees all of the window's memory, so the companion holds only a few megabytes while you are not looking at it.
+- While it records a profile it keeps the recording, which for a busy game (the editor itself is one) is about 10 to 15 MB a second, up to two minutes. Its window keeps the last six seconds of that to draw from.
 - It talks to the editor over a local connection only the editor's own companion can join.
-- It redraws only a few times a second, and not at all while you are not looking at it.
 - If it stops unexpectedly, the editor starts it again, up to three times per session.
 
 Its code ships only with the editor. An exported game carries none of it; a game exported with profiling allowed carries only the small part that sends data.
+
+### Work still done by the editor
+
+Model imports, marketplace installs, images and uploads, and exports are not in this companion yet: the editor does them itself, as it did before there was a companion. Of the table above, the companion runs texture, model, material and shape thumbnails, Rust scripts, virtual geometry and the project's file list.
+
+The earlier companion, a second copy of the engine, still runs all of those. Set the environment variable `RENZORA_COMPANION_SERVER=0` before starting the editor to use it instead; it holds about a gigabyte of memory and a graphics device the whole time.
 
 ## Turning it off
 

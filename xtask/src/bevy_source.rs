@@ -27,6 +27,8 @@ pub fn check(repo: &Path) -> Result<(), String> {
         return Err("found no packages under bevy/, so the check cannot run".into());
     }
 
+    check_engine_free(repo, &bevy_packages)?;
+
     let tree = cargo_tree(repo, &["--workspace"])?;
     let mut foreign: BTreeSet<String> = BTreeSet::new();
     for line in tree.lines() {
@@ -56,6 +58,52 @@ pub fn check(repo: &Path) -> Result<(), String> {
         }
     }
     Err(message)
+}
+
+/// Packages that must link no Bevy at all, from anywhere.
+///
+/// The standalone companion exists because the engine's companion carried the
+/// whole engine for work that needed none of it. Its graph stays Bevy-free only
+/// while nobody adds a `bevy` line, or a `renzora_*` crate that has one, and
+/// the first log macro someone reaches for is exactly that. Nothing else would
+/// notice: it would build, run, and quietly weigh a gigabyte again.
+const ENGINE_FREE: &[&str] = &["renzora_companion_server"];
+
+/// Fails, naming each Bevy crate and what pulled it in, if a package in
+/// [`ENGINE_FREE`] links any Bevy crate.
+///
+/// Read with `-p` alone, which resolves features the way building that package
+/// on its own does (`xtask::build` builds it in an invocation of its own for
+/// this reason): in a `--workspace` resolve the engine turns the optional
+/// `bevy` feature of the crates it shares with the companion back on.
+fn check_engine_free(repo: &Path, bevy_packages: &BTreeSet<String>) -> Result<(), String> {
+    for package in ENGINE_FREE {
+        let tree = cargo_tree(repo, &["-p", package])?;
+        let found: BTreeSet<String> = tree
+            .lines()
+            .filter_map(|line| {
+                let (name, rest) = line.trim().split_once(' ')?;
+                bevy_packages.contains(name).then(|| {
+                    let version = rest.split_whitespace().next().unwrap_or("").trim_start_matches('v');
+                    format!("{name}@{version}")
+                })
+            })
+            .collect();
+        let Some(first) = found.iter().next() else { continue };
+        let mut message = format!(
+            "{package} must link no Bevy (it is the companion without the engine), \
+             but its graph holds {} Bevy crate(s). Use the crate that pulled it in \
+             with `default-features = false`, or move what it needs into a crate with no Bevy.\n\n  {first}, pulled in by:\n",
+            found.len()
+        );
+        let inverted = cargo_tree(repo, &["-p", package, "-i", first])
+            .unwrap_or_else(|e| format!("    (could not trace it: {e})\n"));
+        for path in inverted.lines().take(12) {
+            message.push_str(&format!("    {path}\n"));
+        }
+        return Err(message);
+    }
+    Ok(())
 }
 
 /// `cargo tree` over every target platform, normal and build edges, one package

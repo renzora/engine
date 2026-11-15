@@ -338,11 +338,18 @@ mod tests {
             _ => 0,
         };
         let full = generate_chunk_lod_mesh(&inner, &interior, 1);
-        assert_eq!(count(&full), 129 * 129 + 4, "surface and floor only");
+        assert_eq!(count(&full), 129 * 129, "surface only");
+        // Nothing under the ground: a floor plate under every chunk showed
+        // from below as a staircase of slabs, one per chunk.
+        let min_y = |m: &Mesh| match m.attribute(Mesh::ATTRIBUTE_POSITION) {
+            Some(VertexAttributeValues::Float32x3(v)) => v.iter().map(|p| p[1]).fold(f32::MAX, f32::min),
+            _ => 0.0,
+        };
+        assert_eq!(min_y(&full), inner.min_height + 0.5 * inner.height_range());
         let coarse = generate_chunk_lod_mesh(&inner, &interior, 2);
-        // 65² surface, the 64 in-between border samples on each side, a
-        // centre for each of the 252 ring cells, and 4 floor corners.
-        assert_eq!(count(&coarse), 65 * 65 + 4 * 64 + 252 + 4);
+        // 65² surface, the 64 in-between border samples on each side, and a
+        // centre for each of the 252 ring cells.
+        assert_eq!(count(&coarse), 65 * 65 + 4 * 64 + 252);
         // Same footprint at any level.
         let max_x = |m: &Mesh| match m.attribute(Mesh::ATTRIBUTE_POSITION) {
             Some(VertexAttributeValues::Float32x3(v)) => v.iter().map(|p| p[0]).fold(f32::MIN, f32::max),
@@ -375,9 +382,9 @@ mod tests {
             else {
                 panic!("no positions or normals")
             };
-            // The surface: not the floor plate's corners below it, nor the
-            // outer walls' copies of the edge, which face sideways.
-            // The lowest ground is 0.45 of the range; the floor sits 0.5 m under it.
+            // The surface: not the outer walls' copies of the edge, which
+            // face sideways, nor their bottoms. The lowest ground is 0.45 of
+            // the range; the walls stop 0.5 m under it.
             let surface = t.min_height + 0.45 * t.height_range() - 0.25;
             let mut edge: Vec<_> = p
                 .iter()
@@ -421,8 +428,8 @@ mod tests {
         let full = generate_chunk_lod_mesh(&t, &chunk, 1);
         let full_border: std::collections::HashSet<_> =
             positions(&full).iter().filter(|p| border(p)).map(key).collect();
-        // 128 surface samples per side, plus the floor plate's 4 corners.
-        assert_eq!(full_border.len(), 4 * 128 + 4);
+        // 128 surface samples per side.
+        assert_eq!(full_border.len(), 4 * 128);
         for step in [2, 4, 8, 64] {
             let mesh = generate_chunk_lod_mesh(&t, &chunk, step);
             let verts = positions(&mesh);
@@ -430,8 +437,8 @@ mod tests {
             assert_eq!(level, full_border, "step {step}");
             let Some(Indices::U32(indices)) = mesh.indices() else { panic!("no indices") };
             for tri in indices.chunks(3) {
-                // An inner chunk has no walls, so every triangle is surface
-                // or the floor plate, and both face up.
+                // An inner chunk has no walls, so every triangle is surface,
+                // and it faces up.
                 let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| Vec3::from(verts[i as usize]));
                 assert!((b - a).cross(c - a).y > 0.0, "step {step}: a triangle faces down");
             }

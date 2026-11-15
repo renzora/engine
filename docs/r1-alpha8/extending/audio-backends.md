@@ -74,6 +74,12 @@ connected, and dropping the backend then would leave the whole session silent.
 So `init` must be safe to call again after it fails: open the device first, and
 change nothing else until that has worked.
 
+`init` runs on a thread of its own, not the main thread, and the backend is
+adopted on the first frame after it returns: opening a device can take tens of
+milliseconds, and with a missing device that was a hitch every two seconds. Your
+backend therefore moves between threads (it is `Send`, which the trait already
+requires); nothing else is called on it until `init` has returned.
+
 ## Writing one
 
 ```rust

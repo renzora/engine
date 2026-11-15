@@ -93,6 +93,16 @@ decision, which is the half no plugin can make.
   normals, UVs of zero), and tangents come from the normals where the UVs can't
   give any. Only geometry that is not an indexed triangle list is marked
   skipped, so it isn't re-checked every frame, rather than crashing the builder.
+
+  The tangents, wide indices and copies are made on worker threads, and the
+  finished mesh is swapped in on a later frame; a frame only copies meshes out
+  to them, at most 3 ms of that a frame for each of the two systems that do it
+  (`PREPARE_BUDGET`). Done on the main thread, turning Solari on in a large
+  scene froze the editor for seconds (one large mesh's tangents alone took
+  300 ms); now the scene fills into the ray-traced lighting over a few seconds
+  while the editor keeps running. A mesh that needs nothing done is never held
+  back, and a traced mesh whose source, material and geometry have not changed
+  is not looked at again.
 - **What counts as "eligible".** Bevy's ray-tracing scene is global and
   unfiltered: every entity carrying `RaytracingMesh3d` goes into the TLAS at full
   ray mask, with no regard for `Visibility` or `RenderLayers`. Renzora therefore

@@ -441,10 +441,14 @@ build_desktop() {
     #
     # `renzora-android` (cdylib) and `renzora-ios` (staticlib) are
     # workspace members but mobile-only; exclude them from desktop.
+    # `renzora_companion_server` is the editor's standalone companion: this
+    # lane ships no editor, so it has no use for it, and a `--workspace` build
+    # would link it against Bevy anyway (`xtask::build_companion` says why).
     echo "=== Building $PLATFORM ($FEATURE) ==="
     if [ "$FEATURE" = "editor" ]; then
         cargo build --profile "$PROFILE" --workspace \
             --exclude renzora-android --exclude renzora-ios \
+            --exclude renzora_companion_server \
             $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     else
         cargo build --profile "$PROFILE" --bin renzora --no-default-features \

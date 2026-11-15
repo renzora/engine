@@ -12,12 +12,20 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ember = { path = "../renzora_ember" }
 # The profiler's stream format and frame types; the companion is its reader.
 renzora_profiler = { path = "../renzora_profiler" }
+# The protocol with the editor, re-exported as `protocol`.
+renzora_companion_proto = { path = "../renzora_companion_proto" }
 serde = { version = "1", features = ["derive"] }
 # The job handlers call the same functions the editor used to call itself.
 renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_plugin_build = { path = "../renzora_plugin_build" }
 renzora_rvg = { path = "../renzora_rvg", features = ["bake"] }
 renzora_marketplace = { path = "../renzora_marketplace" }
+# The network pump and the HTTP client. Marketplace images, installs and
+# uploads all fetch through `renzora::net`, which only moves when a pump runs
+# in this process and a backend is registered in it; the editor's own copies
+# serve only the editor's process.
+renzora_net = { path = "../renzora_net" }
+renzora_http = { path = "../renzora_http" }
 # Model imports: the conversion, texture bakes and `.rvg` build.
 renzora_import = { path = "../renzora_import" }
 # Model thumbnails, rendered with the editor's own capture code

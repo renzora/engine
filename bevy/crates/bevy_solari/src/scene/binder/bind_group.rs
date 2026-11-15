@@ -274,6 +274,10 @@ pub fn prepare_raytracing_scene_bind_group(
     bindings.bind_group = None;
 
     if bindings.instances.live_count == 0 || bindings.lights.index.is_empty() {
+        // Nothing left to trace. The cached bind groups bind every texture
+        // the last traced scene used, so keeping them keeps all of those
+        // textures alive on the GPU after the scene is gone.
+        bindings.bind_groups.cached = [None, None];
         return;
     }
     if bindings.tlas.structures[bindings.tlas.current_index].is_none() {

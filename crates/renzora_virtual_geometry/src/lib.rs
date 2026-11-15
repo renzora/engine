@@ -81,7 +81,8 @@ impl Plugin for VirtualGeometryPlugin {
             .init_resource::<VirtualGeometrySettings>()
             .init_resource::<attach::VgFiles>()
             .add_message::<RvgUpdated>()
-            .add_systems(Update, report_memory);
+            .add_systems(Update, report_memory)
+            .add_systems(Last, (attach::prune_files, attach::forget_removed_files));
 
         // Below this point the renderer is installed, and only then are meshes
         // ever converted: a mesh taken out of Bevy's passes with nothing to

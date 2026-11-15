@@ -392,6 +392,10 @@ fn artifact_files(
         "renzora-android",
         "--exclude",
         "renzora-ios",
+        // Built in an invocation of its own (`crate::build_companion`), and no
+        // part of the SDK: it links neither Bevy nor the contract crate.
+        "--exclude",
+        crate::COMPANION_PACKAGE,
         "--message-format=json-render-diagnostics",
     ]);
     // Must match the build being staged EXACTLY. A different `--target-dir` or a

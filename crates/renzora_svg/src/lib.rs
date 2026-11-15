@@ -32,22 +32,36 @@
 //!   tests drive.
 //! - [`loader`]: the async `AssetLoader` that fetches everything through the
 //!   asset reader and registers it for hot reload.
+//! - [`error`]: [`SvgLoadError`], shared by the loader and the rasterizer.
+//!
+//! # The `bevy` feature
+//!
+//! On by default. Off, the crate is the rasterizer alone (no loader, no
+//! plugin, no `Image`): what the standalone companion links to draw SVG
+//! thumbnails without linking the engine.
 
+#[cfg(feature = "bevy")]
 use bevy::prelude::*;
 
+pub mod error;
 pub mod fonts;
+#[cfg(feature = "bevy")]
 pub mod loader;
 pub mod raster;
 pub mod refs;
 pub mod settings;
 
-pub use loader::{SvgAssetLoader, SvgLoadError};
+pub use error::SvgLoadError;
+#[cfg(feature = "bevy")]
+pub use loader::SvgAssetLoader;
 pub use settings::SvgRasterSettings;
 
 /// Registers [`SvgAssetLoader`] for `.svg` and `.svgz`.
+#[cfg(feature = "bevy")]
 #[derive(Default)]
 pub struct SvgPlugin;
 
+#[cfg(feature = "bevy")]
 impl Plugin for SvgPlugin {
     fn build(&self, app: &mut App) {
         // Unconditional, like the `.rmip` loader in `renzora_engine`: gating on
@@ -57,4 +71,5 @@ impl Plugin for SvgPlugin {
     }
 }
 
+#[cfg(feature = "bevy")]
 renzora::add!(SvgPlugin, Runtime);

@@ -153,6 +153,8 @@ impl Plugin for ViewportPlugin {
                 (
                     render_systems::apply_visualization_mode_for::<StandardMaterial>,
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::material::TerrainCheckerboardMaterial>,
+                    render_systems::forget_removed_materials::<StandardMaterial>,
+                    render_systems::forget_removed_materials::<renzora_terrain::material::TerrainCheckerboardMaterial>,
                     // Grass is not here: it draws through its own instanced
                     // pipeline rather than a `Material`, so there is no material
                     // asset to swap for a debug view.

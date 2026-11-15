@@ -1,8 +1,29 @@
 //! A frame's profile, and how the recorder's events become one.
+//!
+//! [`Edge`] and [`SpanEvent`] are what `renzora::profiling` records, and are
+//! re-exported from there. They are defined here because pairing them into
+//! [`Span`]s is plain data work the companion does too, and the companion
+//! links no Bevy.
 
 use std::collections::HashMap;
 
-use renzora::profiling::{Edge, SpanEvent};
+/// Whether a span started or ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    Enter,
+    Exit,
+}
+
+/// One span starting or ending.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpanEvent {
+    /// `renzora::profiling::now_ns` when it happened.
+    pub at_ns: u64,
+    /// The span's name, from `renzora::profiling::intern`;
+    /// `renzora::profiling::name` turns it back into text.
+    pub name: u32,
+    pub edge: Edge,
+}
 
 /// One span: a system run, or anything else the engine wrapped in a span.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

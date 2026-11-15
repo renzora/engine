@@ -1,5 +1,87 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-15 17:04
+- perf(ui): font atlases no text uses any more are freed, so changing the UI scale or font no longer leaves the old sizes in memory
+
+## 2026-11-15 16:55
+- fix(ui): a UI scale other than 100% no longer slows the editor and crashes it out of GPU memory
+- feat(editor): the memory report names text being laid out every frame and what the font atlases differ in
+
+## 2026-11-15 15:58
+- fix(rendering): turning Solari on in a large scene no longer freezes the editor for seconds; the scene fills into the ray-traced lighting over a few seconds instead
+- perf(rendering): Solari no longer spends about 13 ms a frame re-checking node-graph-material meshes that have not changed
+
+## 2026-11-15 15:27
+- fix(audio): a missing output device no longer makes the editor hitch every two seconds while it retries
+
+## 2026-11-15 14:50
+- feat(editor): the companion's Debug cards pack into columns that scroll down, and the probes ticked are remembered between openings
+
+## 2026-11-15 14:39
+- fix(editor): the companion no longer grows by a megabyte or two for every thumbnail it renders
+
+## 2026-11-15 14:27
+- feat(editor): the companion renders model, material and shape thumbnails in a render worker it starts only while there are thumbnails to render, and fills in missing ones ahead of time again
+
+## 2026-11-15 14:17
+- feat(editor): the lighter companion has the profiler, with the Profiler, Render, Debug and Games screens and the MCP `profiler_*` tools
+- feat(editor): the editor starts the lighter companion by default; `RENZORA_COMPANION_SERVER=0` starts the engine companion instead
+
+## 2026-11-15 13:31
+- fix(editor): closing the lighter companion's window gives back all the memory it used, and the window opens in front of the editor
+
+## 2026-11-15 00:30
+- feat(editor): a lighter companion without the engine in it, `renzora-companion`, runs the job queue and Cache screen when `RENZORA_COMPANION_SERVER=1` is set
+
+## 2026-11-14 19:11
+- fix(editor): right-click flying moves at exactly the camera speed set, however far the pivot is
+
+## 2026-11-14 18:59
+- fix(rendering): a closed ray-traced scene's textures are freed from video memory
+
+## 2026-11-14 18:54
+- fix(rendering): a closed virtual geometry scene's textures and cluster buffers are freed from video memory
+
+## 2026-11-14 18:46
+- fix(editor): closing the scene tab you are on frees its models, materials and textures
+- fix(rendering): a virtual geometry model's full-detail meshes are freed when the model is
+
+## 2026-11-14 17:04
+- fix(editor): a closed scene's textures are freed even after a render toggle or visualization mode was used
+- feat(editor): the memory report lists the file textures no material uses, by folder, with how many handles still hold them
+
+## 2026-11-14 11:55
+- feat(editor): the memory report names the images held only on the GPU, by the folder they came from
+- feat(editor): the memory report counts the materials no entity draws with, and the textures they hold
+
+## 2026-11-14 11:42
+- fix(rendering): materials, textures and virtual geometry files no longer used by any open scene are released from memory
+
+## 2026-11-14 09:38
+- perf(rendering): the GPU memory allocator reserves smaller blocks, cutting the editor's video memory use
+- fix(editor): closing a scene tab frees its models and saved snapshot
+
+## 2026-11-12 21:25
+- fix(solari): the virtual geometry debug views keep their colours with DLSS Ray Reconstruction on
+
+## 2026-11-12 21:17
+- fix(virtual-geometry): the virtual geometry debug views no longer grey out large surfaces close to the camera
+
+## 2026-11-12 15:51
+- fix(terrain): terrain no longer draws a staircase of flat slabs underneath the ground
+
+## 2026-11-12 15:28
+- fix(terrain): a terrain on the blockout grid receives shadows and is lit correctly by point and spot lights
+
+## 2026-11-12 13:48
+- fix(terrain): a terrain on the blockout grid is no longer a mirror of the sky with Solari on
+
+## 2026-11-12 13:29
+- fix(editor): flying the viewport camera scales its speed with the orbit distance again, as it did before
+
+## 2026-11-08 21:02
+- fix(companion): store images, installs and uploads run in the companion download again instead of failing
+
 ## 2026-11-04 18:00
 - perf(export): exports run in the companion, away from the editor
 - perf(marketplace): installs, plugin compiles and store images run in the companion, and store images are kept on disk between sessions

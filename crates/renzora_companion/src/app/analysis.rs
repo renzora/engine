@@ -37,6 +37,9 @@ pub(crate) fn build(app: &mut App) {
     app.init_resource::<Questions>().add_systems(Update, answer);
 }
 
+/// The questions answered here, announced to the editor in the hello.
+pub(crate) const KINDS: &[&str] = &["profiler.record", "profiler.status", "profiler.summary", "profiler.spikes"];
+
 /// Whether a job kind is a question for this module.
 pub(crate) fn is_question(kind: &str) -> bool {
     kind.starts_with("profiler.")

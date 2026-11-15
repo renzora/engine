@@ -14,7 +14,8 @@
 //! component swaps the class back, so falling back is one `remove`.
 
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use bevy::asset::io::AssetSourceId;
 use bevy::asset::AssetPath;
@@ -109,6 +110,8 @@ enum FileState {
 #[derive(Resource, Default)]
 pub(crate) struct VgFiles {
     by_model: HashMap<AssetPath<'static>, FileState>,
+    /// Models whose loaded file no mesh used at the last prune.
+    unused: HashSet<AssetPath<'static>>,
 }
 
 impl VgFiles {
@@ -116,6 +119,49 @@ impl VgFiles {
     /// converter calls this after writing a new one.
     pub fn forget(&mut self, model: &AssetPath<'static>) {
         self.by_model.remove(model);
+        self.unused.remove(model);
+    }
+
+    /// Let go of loaded files no mesh uses any more. Every converted mesh
+    /// holds its file through [`VirtualGeometry`], so a file only this table
+    /// holds belongs to a model nothing shows: without this, a closed scene's
+    /// whole cluster data stayed in memory until the editor quit.
+    ///
+    /// Dropped only once unused on two calls in a row, so a file that has
+    /// just become ready, and whose meshes convert on the next frame, is not
+    /// thrown away under them. A model shown again is looked for afresh.
+    fn prune_unused(&mut self) -> usize {
+        let idle: HashSet<AssetPath<'static>> = self
+            .by_model
+            .iter()
+            .filter(|(_, state)| {
+                matches!(state, FileState::Ready(Handle::Strong(arc)) if Arc::strong_count(arc) == 1)
+            })
+            .map(|(model, _)| model.clone())
+            .collect();
+        let stale: Vec<AssetPath<'static>> = idle.intersection(&self.unused).cloned().collect();
+        for model in &stale {
+            self.by_model.remove(model);
+        }
+        self.unused = idle;
+        for model in &stale {
+            self.unused.remove(model);
+        }
+        stale.len()
+    }
+}
+
+/// Every two seconds, drop the `.rvg` files nothing draws any more (see
+/// [`VgFiles::prune_unused`]).
+pub(crate) fn prune_files(time: Res<Time<Real>>, mut files: ResMut<VgFiles>, mut next: Local<f32>) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 2.0;
+    let dropped = files.bypass_change_detection().prune_unused();
+    if dropped > 0 {
+        debug!("[virtual geometry] released {dropped} unused file(s)");
     }
 }
 
@@ -532,6 +578,35 @@ pub(crate) fn full_detail(
             .or_insert_with(|| meshes.add(full_detail_mesh(&file.meshes[index])))
             .clone();
         commands.entity(entity).try_insert((FullDetail { proxy }, Mesh3d(full)));
+    }
+}
+
+/// Drop the full-detail meshes rebuilt from a clusters file once the file is
+/// gone.
+///
+/// Both caches are keyed by the file, and the file goes when the last scene
+/// using its model closes. Kept, every full-detail mesh of that model stayed
+/// in memory, CPU copy included, for the rest of the session: a model drawn
+/// once without virtual geometry (any debug view does that) left its whole
+/// detail behind.
+pub(crate) fn forget_removed_files(
+    mut events: MessageReader<AssetEvent<RvgFile>>,
+    mut full_detail: ResMut<FullDetailMeshes>,
+    traced: Option<ResMut<TracedMeshes>>,
+) {
+    let removed: Vec<AssetId<RvgFile>> = events
+        .read()
+        .filter_map(|event| match event {
+            AssetEvent::Removed { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    if removed.is_empty() {
+        return;
+    }
+    full_detail.0.retain(|(file, _), _| !removed.contains(file));
+    if let Some(mut traced) = traced {
+        traced.0.retain(|(file, _), _| !removed.contains(file));
     }
 }
 

@@ -5,7 +5,11 @@ edition = "2021"
 description = "Renzora Virtual Geometry (.rvg): clustered meshes in a LOD DAG. The format and loader are always available; the builder is gated behind the `bake` feature so runtime crates do not compile meshoptimizer."
 
 [features]
-default = []
+default = ["bevy"]
+# The asset loader, and `RvgFile` as an asset. On by default; the standalone
+# companion turns it off and keeps the format and the builder, which are plain
+# Rust, so baking there links no engine.
+bevy = ["dep:bevy"]
 # The builder: GLB in, `.rvg` out. Import-side and editor-side code turns this
 # on; the runtime only reads files and stays free of the C++ build.
 #
@@ -16,10 +20,10 @@ bake = ["dep:meshopt", "dep:gltf", "dep:serde_json"]
 # Loading an `.rvg` as a model (`model.rs`): its scene through Bevy's glTF
 # loader. Whatever loads models turns this on; the virtual geometry renderer
 # alone does not need it.
-model = ["bevy/bevy_gltf"]
+model = ["bevy", "bevy/bevy_gltf"]
 
 [dependencies]
-bevy = { workspace = true }
+bevy = { workspace = true, optional = true }
 thiserror = "2"
 # The body of an `.rvg` is zstd. Pure Rust both ways, so a game reading one
 # (on any platform, the web included) compiles no C, and it is the version

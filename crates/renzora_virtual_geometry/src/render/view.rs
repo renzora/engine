@@ -96,7 +96,17 @@ pub(crate) fn prepare(
         let view_layers = layer_words(layers);
         let sees_any = (view_layers[0] & gpu.layers[0]) | (view_layers[1] & gpu.layers[1]) != 0;
         let (true, Some(size)) = (gpu.ready() && *msaa == Msaa::Off && sees_any, size) else {
-            commands.entity(entity).remove::<(VgView, VgViewBindGroups)>();
+            // The material lists go too. Each entry holds a material's bind
+            // group, and a bind group keeps every texture it binds alive on
+            // the GPU: they are rebuilt only for views that keep `VgView`, so
+            // left here, the last scene's would stay on the camera with all
+            // its textures after the scene closed.
+            commands.entity(entity).remove::<(
+                VgView,
+                VgViewBindGroups,
+                super::materials::VgViewMaterials,
+                super::transparent::VgTransparentDraws,
+            )>();
             continue;
         };
         seen.push(entity);

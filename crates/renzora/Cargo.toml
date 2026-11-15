@@ -138,6 +138,11 @@ bevy_shape = { path = "../../bevy/crates/bevy_shape", default-features = false, 
 # too, and they can only reach the contract crate. A leaf with no dependencies
 # of its own, so it cannot introduce a cycle.
 renzora_legacy_shaders = { path = "../renzora_legacy_shaders" }
+# The companion's vocabulary: job arguments, the profiler's span events and
+# probe reports, re-exported as `job_args`, `profiling::{Edge, SpanEvent}` and
+# `probes::Probe*`. Its own crate so the standalone companion can link it
+# without Bevy. A leaf on serde alone, so it cannot introduce a cycle.
+renzora_companion_proto = { path = "../renzora_companion_proto" }
 # Editor-contract derive/attribute macros (`Inspectable`, `post_process`),
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).

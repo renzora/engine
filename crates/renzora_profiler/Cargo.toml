@@ -12,6 +12,8 @@ description = "Turns the recorder's span events into per-frame profiles (spans p
 # on its own, in its tests or a lean export.
 bevy = { workspace = true, features = ["debug"] }
 renzora = { path = "../renzora", default-features = false }
+# The stream format and frame types, re-exported as `wire` and at the root.
+renzora_companion_proto = { path = "../renzora_companion_proto" }
 # Probe reports travel as JSON (see `wire::GamePacket::ProbeReport`).
 serde_json = "1"
 

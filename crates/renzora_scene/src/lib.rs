@@ -229,6 +229,50 @@ fn tab_kind(world: &World, id: u64) -> Option<DocTabKind> {
         .and_then(|ts| ts.tabs.iter().find(|t| t.id == id).map(|t| t.kind))
 }
 
+/// Keep the live scene of tab `save_id` for when that tab is switched back to:
+/// its entities as a snapshot, the camera, and a pin on every asset they use.
+fn save_live_scene(world: &mut World, save_id: u64) {
+    // 1. Serialize current scene entities into buffer for the live scene tab
+    let scene_ron = scene_io::serialize_scene_to_string(world).unwrap_or_else(|e| {
+        warn!("Failed to serialize scene for tab {}: {}", save_id, e);
+        "(entities: {}, resources: {})".to_string()
+    });
+
+    // 2. Save camera state
+    let (focus, distance, yaw, pitch) =
+        if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
+            (
+                orbit.focus.to_array(),
+                orbit.distance,
+                orbit.yaw,
+                orbit.pitch,
+            )
+        } else {
+            let def = OrbitCameraState::default();
+            (def.focus.to_array(), def.distance, def.yaw, def.pitch)
+        };
+
+    let snapshot = TabSceneSnapshot {
+        scene_ron,
+        camera_focus: focus,
+        camera_distance: distance,
+        camera_yaw: yaw,
+        camera_pitch: pitch,
+    };
+
+    if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
+        buffers.buffers.insert(save_id, snapshot);
+    }
+
+    // Pin every asset the leaving tab's entities currently reference so
+    // that despawning them doesn't evict their textures / materials /
+    // meshes. Without this the tab-switch-back lands on the deserialized
+    // RON but its `MaterialResolver` / `asset_server.load` calls have to
+    // re-decode textures from disk (and worse, anything outside the
+    // resolver path renders blank). See `tab_asset_cache` module doc.
+    tab_asset_cache::pin_live_tab_handles(world, save_id);
+}
+
 /// React to a document-tab switch. Only **scene** tabs own a 3D scene; asset
 /// tabs (material / particle / script / shader) edit assets *on top
 /// of* the current scene, so switching to one must NOT despawn the scene — that
@@ -270,46 +314,15 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
     // may differ from `old_id` if we're arriving from an asset tab.
     let save_id = live_scene.unwrap_or(old_id);
 
-    // 1. Serialize current scene entities into buffer for the live scene tab
-    let scene_ron = scene_io::serialize_scene_to_string(world).unwrap_or_else(|e| {
-        warn!("Failed to serialize scene for tab {}: {}", save_id, e);
-        "(entities: {}, resources: {})".to_string()
-    });
-
-    // 2. Save camera state
-    let (focus, distance, yaw, pitch) =
-        if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
-            (
-                orbit.focus.to_array(),
-                orbit.distance,
-                orbit.yaw,
-                orbit.pitch,
-            )
-        } else {
-            let def = OrbitCameraState::default();
-            (def.focus.to_array(), def.distance, def.yaw, def.pitch)
-        };
-
-    let snapshot = TabSceneSnapshot {
-        scene_ron,
-        camera_focus: focus,
-        camera_distance: distance,
-        camera_yaw: yaw,
-        camera_pitch: pitch,
-    };
-
-    // Store snapshot
-    if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
-        buffers.buffers.insert(save_id, snapshot);
+    // Closing the active tab fires `TabClosed`, which releases the tab's
+    // pinned assets and snapshot, and only then asks for this switch with the
+    // closed tab as the old one. Saving it here would pin every model,
+    // material and texture of the scene just closed under an id no tab has
+    // any more, so nothing would ever release them: closing the active scene
+    // freed none of its memory.
+    if tab_kind(world, save_id).is_some() {
+        save_live_scene(world, save_id);
     }
-
-    // Pin every asset the leaving tab's entities currently reference so
-    // that despawning them doesn't evict their textures / materials /
-    // meshes. Without this the tab-switch-back lands on the deserialized
-    // RON but its `MaterialResolver` / `asset_server.load` calls have to
-    // re-decode textures from disk (and worse, anything outside the
-    // resolver path renders blank). See `tab_asset_cache` module doc.
-    tab_asset_cache::pin_live_tab_handles(world, save_id);
 
     // 3. Despawn all scene entities
     despawn_scene_entities(world);
@@ -923,6 +936,9 @@ fn measure_asset_memory(
     images: Res<Assets<Image>>,
     asset_server: Res<AssetServer>,
     font_atlases: Option<Res<bevy::text::FontAtlasSet>>,
+    text_nodes: Query<(Entity, &ComputedNode, &bevy::ui::ComputedUiRenderTargetInfo), With<bevy::ui::widget::Text>>,
+    ancestors: Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
+    layouts: Query<(Entity, &bevy::text::TextLayoutInfo, Option<&bevy::ui::ComputedUiRenderTargetInfo>)>,
     memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
     mut frames: Local<u32>,
 ) {
@@ -941,6 +957,15 @@ fn measure_asset_memory(
         .map(|set| set.values().flatten().map(|atlas| atlas.texture.id()).collect())
         .unwrap_or_default();
     let atlas_keys = font_atlases.as_deref().map_or(0, |set| set.len());
+    // What the atlas sets differ in. Thousands of sets once grew without end
+    // (a UI scale of 125% crashed the editor out of GPU memory), and a count
+    // alone could not say whether it was new sizes or the same sizes for new
+    // fonts or variations; this says which.
+    let mut atlas_spread = font_atlases.as_deref().map(|set| atlas_key_spread(set.keys())).unwrap_or_default();
+    atlas_spread.push_str(&stale_text_nodes(&text_nodes, &ancestors));
+    if let Some(set) = font_atlases.as_deref() {
+        atlas_spread.push_str(&atlas_holders(set, &layouts, &ancestors));
+    }
 
     let (mut cpu_meshes, mut cpu_mesh_bytes, mut gpu_only_meshes) = (0, 0u64, 0);
     for (_, mesh) in meshes.iter() {
@@ -965,16 +990,40 @@ fn measure_asset_memory(
     // total alone does not say whether it is the project's textures or the
     // editor's own environment maps and thumbnails.
     let mut largest: Vec<(u64, AssetId<Image>)> = Vec::new();
+    // The images with no CPU copy, by the folder they were loaded from. A
+    // model's textures land here once uploaded, so this is the line that says
+    // whose textures are still on the GPU after the scene using them closed.
+    let mut gpu_only_groups: std::collections::HashMap<String, (usize, u64)> = std::collections::HashMap::new();
     for (id, image) in images.iter() {
+        let on_gpu = image_gpu_bytes(image);
         match &image.data {
             Some(data) => {
                 cpu_images += 1;
                 cpu_image_bytes += data.capacity() as u64;
                 largest.push((data.capacity() as u64, id));
             }
-            None => gpu_only_images += 1,
+            None => {
+                gpu_only_images += 1;
+                let what = match asset_server.get_path(id) {
+                    Some(path) => {
+                        let folder = path.path().parent().map_or(String::new(), |p| p.display().to_string());
+                        let label = if path.label().is_some() { " (inside a model)" } else { "" };
+                        format!("{}/{label}", folder.replace('\\', "/"))
+                    }
+                    None => {
+                        let size = image.texture_descriptor.size;
+                        format!(
+                            "made at runtime, {}x{}x{} {:?}",
+                            size.width, size.height, size.depth_or_array_layers, image.texture_descriptor.format
+                        )
+                    }
+                };
+                let group = gpu_only_groups.entry(what).or_default();
+                group.0 += 1;
+                group.1 += on_gpu;
+            }
         }
-        gpu_bytes += image_gpu_bytes(image);
+        gpu_bytes += on_gpu;
     }
     largest.sort_unstable_by_key(|(bytes, _)| std::cmp::Reverse(*bytes));
     let from_files: u64 = largest
@@ -1041,7 +1090,7 @@ fn measure_asset_memory(
         in_process: true,
         note: format!(
             "{gpu_only_images} more held only on the GPU; {} from files, {} in {} font atlases for {atlas_keys} \
-             font sizes, the rest made at runtime; largest: {}",
+             font sizes{atlas_spread}, the rest made at runtime; largest: {}",
             megabytes(from_files),
             megabytes(atlas_bytes),
             atlas_ids.len(),
@@ -1053,8 +1102,193 @@ fn measure_asset_memory(
         count: cpu_images + gpu_only_images,
         bytes: gpu_bytes,
         in_process: false,
-        note: "from each image's size, format and mip count".to_string(),
+        note: {
+            let mut groups: Vec<(String, (usize, u64))> = gpu_only_groups.into_iter().collect();
+            groups.sort_unstable_by_key(|(_, (_, bytes))| std::cmp::Reverse(*bytes));
+            let named: Vec<String> = groups
+                .iter()
+                .take(8)
+                .map(|(what, (count, bytes))| format!("{} {what} x{count}", megabytes(*bytes)))
+                .collect();
+            format!(
+                "from each image's size, format and mip count; largest held only on the GPU: {}",
+                named.join(", ")
+            )
+        },
     });
+}
+
+/// Report the material assets alive, and how many of them no mesh uses, to
+/// the memory breakdown twice a second.
+///
+/// A material holds its textures, so a scene's textures outliving the scene
+/// come down to one question: is a material still holding them, and is that
+/// material one the resolver's cache knows about. This row answers both
+/// without a debugger: the count of materials no entity draws with, the
+/// texture folders those materials point into, and the cache's own counts.
+#[allow(clippy::too_many_arguments)]
+fn measure_material_memory(
+    std_mats: Res<Assets<StandardMaterial>>,
+    graph_mats: Option<Res<Assets<GraphMaterial>>>,
+    asset_server: Res<AssetServer>,
+    cache_counts: Option<Res<renzora::diagnostics::MaterialCacheCounts>>,
+    std_users: Query<&MeshMaterial3d<StandardMaterial>>,
+    graph_users: Query<&MeshMaterial3d<GraphMaterial>>,
+    images: Res<Assets<Image>>,
+    gltf_mats: Option<Res<Assets<bevy::gltf::GltfMaterial>>>,
+    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    mut frames: Local<u32>,
+) {
+    *frames = frames.wrapping_add(1);
+    let Some(mut memory) = memory.filter(|_| *frames % 30 == 1) else {
+        return;
+    };
+    memory.set(unreferenced_file_images(
+        &images,
+        &asset_server,
+        &std_mats,
+        graph_mats.as_deref(),
+        gltf_mats.as_deref(),
+    ));
+    let used_std: std::collections::HashSet<AssetId<StandardMaterial>> = std_users.iter().map(|m| m.0.id()).collect();
+    let used_graph: std::collections::HashSet<AssetId<GraphMaterial>> = graph_users.iter().map(|m| m.0.id()).collect();
+
+    // Unused materials by the folder of the first file texture they sample.
+    let mut unused_by_folder: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut note_unused = |base: &StandardMaterial, extra: &[&Option<Handle<Image>>]| {
+        let mut slots = Vec::new();
+        tab_asset_cache::collect_standard_material_images(base, &mut slots);
+        slots.extend(extra.iter().filter_map(|s| (*s).clone()));
+        let folder = slots
+            .iter()
+            .find_map(|h| asset_server.get_path(h.id()))
+            .and_then(|p| p.path().parent().map(|f| f.display().to_string().replace('\\', "/")))
+            .unwrap_or_else(|| "no file textures".to_string());
+        *unused_by_folder.entry(folder).or_default() += 1;
+    };
+
+    let mut unused_std = 0;
+    for (id, mat) in std_mats.iter() {
+        if !used_std.contains(&id) {
+            unused_std += 1;
+            note_unused(mat, &[]);
+        }
+    }
+    let (mut graph_total, mut unused_graph) = (0, 0);
+    if let Some(graph_mats) = graph_mats.as_deref() {
+        for (id, mat) in graph_mats.iter() {
+            graph_total += 1;
+            if !used_graph.contains(&id) {
+                unused_graph += 1;
+                note_unused(&mat.base, &mat.extension.d2_slots());
+            }
+        }
+    }
+
+    let mut folders: Vec<(String, usize)> = unused_by_folder.into_iter().collect();
+    folders.sort_unstable_by_key(|(_, n)| std::cmp::Reverse(*n));
+    let folders: Vec<String> = folders.iter().take(6).map(|(f, n)| format!("{f} x{n}")).collect();
+    let cache = cache_counts.as_deref().map_or_else(
+        || "no material cache".to_string(),
+        |c| format!("the material cache holds {} standard, {} graph", c.standard, c.graph),
+    );
+    memory.set(renzora::load_timeline::AssetMemoryRow {
+        kind: "materials",
+        count: std_mats.len() + graph_total,
+        bytes: 0,
+        in_process: true,
+        note: format!(
+            "{} standard, {graph_total} graph; drawn by no entity: {unused_std} standard, {unused_graph} graph, \
+             by texture folder: {}; {cache}",
+            std_mats.len(),
+            folders.join(", ")
+        ),
+    });
+}
+
+/// The images loaded from files that no material asset references, by folder,
+/// with how many handles hold them.
+///
+/// A model's textures are meant to live exactly as long as its materials. One
+/// that outlives every material is held by something else: a cache keyed by a
+/// material that kept a copy of its texture handles, a component, a resource.
+/// That is how a closed scene's textures stayed on the GPU after closing it
+/// (the viewport's render toggles kept every material's texture handles), and
+/// it read only as "the folder is still in the GPU breakdown". This row names
+/// the folder and the holder count, so the next one shows itself the moment a
+/// tab closes. UI icons and thumbnails land here too, legitimately; they are
+/// small, and a model's folder of textures stands out among them.
+fn unreferenced_file_images(
+    images: &Assets<Image>,
+    asset_server: &AssetServer,
+    std_mats: &Assets<StandardMaterial>,
+    graph_mats: Option<&Assets<GraphMaterial>>,
+    gltf_mats: Option<&Assets<bevy::gltf::GltfMaterial>>,
+) -> renzora::load_timeline::AssetMemoryRow {
+    let mut slots: Vec<Handle<Image>> = Vec::new();
+    for (_, mat) in std_mats.iter() {
+        tab_asset_cache::collect_standard_material_images(mat, &mut slots);
+    }
+    for (_, mat) in graph_mats.into_iter().flat_map(|m| m.iter()) {
+        tab_asset_cache::collect_standard_material_images(&mat.base, &mut slots);
+        slots.extend(mat.extension.d2_slots().into_iter().flatten().cloned());
+    }
+    // A glTF's own materials hold its textures for as long as the glTF is
+    // loaded, whether or not anything was built from them.
+    for (_, mat) in gltf_mats.into_iter().flat_map(|m| m.iter()) {
+        slots.extend(
+            [
+                &mat.base_color_texture,
+                &mat.emissive_texture,
+                &mat.metallic_roughness_texture,
+                &mat.normal_map_texture,
+                &mat.occlusion_texture,
+            ]
+            .into_iter()
+            .flatten()
+            .cloned(),
+        );
+    }
+    let referenced: std::collections::HashSet<AssetId<Image>> = slots.iter().map(|h| h.id()).collect();
+
+    let (mut count, mut bytes) = (0, 0u64);
+    // Folder -> (images, GPU bytes, handles holding them).
+    let mut folders: std::collections::HashMap<String, (usize, u64, usize)> = std::collections::HashMap::new();
+    for (id, image) in images.iter() {
+        if referenced.contains(&id) {
+            continue;
+        }
+        let Some(path) = asset_server.get_path(id) else { continue };
+        // The server keeps only a weak handle of its own, so the count of the
+        // strong one it hands back, less that one, is everything else holding
+        // the image.
+        let holders = match asset_server.get_id_handle(id) {
+            Some(Handle::Strong(strong)) => std::sync::Arc::strong_count(&strong).saturating_sub(1),
+            _ => 0,
+        };
+        let on_gpu = image_gpu_bytes(image);
+        count += 1;
+        bytes += on_gpu;
+        let folder = path.path().parent().map_or(String::new(), |p| p.display().to_string().replace('\\', "/"));
+        let entry = folders.entry(folder).or_default();
+        entry.0 += 1;
+        entry.1 += on_gpu;
+        entry.2 += holders;
+    }
+    let mut folders: Vec<(String, (usize, u64, usize))> = folders.into_iter().collect();
+    folders.sort_unstable_by_key(|(_, (_, bytes, _))| std::cmp::Reverse(*bytes));
+    let named: Vec<String> = folders
+        .iter()
+        .take(8)
+        .map(|(folder, (n, bytes, holders))| format!("{} {folder}/ x{n} ({holders} handles)", megabytes(*bytes)))
+        .collect();
+    renzora::load_timeline::AssetMemoryRow {
+        kind: "file images no material uses",
+        count,
+        bytes,
+        in_process: false,
+        note: format!("on the GPU, estimated; largest: {}", named.join(", ")),
+    }
 }
 
 /// Report what the GPU allocator holds to the memory breakdown, every two
@@ -1689,6 +1923,171 @@ fn megabytes(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
+/// UI text whose node scale disagrees with its window's, for the memory report.
+///
+/// Bevy measures a text node again every frame while those two differ, and
+/// layout resets the node's scale to 1.0 on any node it did not reach. At a UI
+/// scale other than 100% such text is laid out every frame, and the layouts it
+/// churns through filled the GPU with font atlases until the editor crashed.
+/// This names where that text sits so the cause can be found. Empty when none.
+fn stale_text_nodes(
+    text_nodes: &Query<(Entity, &ComputedNode, &bevy::ui::ComputedUiRenderTargetInfo), With<bevy::ui::widget::Text>>,
+    ancestors: &Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
+) -> String {
+    use std::collections::HashMap;
+    let mut places: HashMap<String, usize> = HashMap::new();
+    let mut stale = 0;
+    for (entity, node, target) in text_nodes.iter() {
+        if (target.scale_factor() - node.inverse_scale_factor.recip()).abs() <= 1e-5 {
+            continue;
+        }
+        stale += 1;
+        // The nearest named ancestor, the topmost one, and the first ancestor
+        // that is not a UI node (which layout would never reach through).
+        let (mut nearest, mut top, mut non_ui) = (None, entity, None);
+        let mut at = entity;
+        for _ in 0..64 {
+            let Ok((parent, name, is_node)) = ancestors.get(at) else { break };
+            if nearest.is_none() && at != entity {
+                nearest = name.map(|n| n.as_str().to_string());
+            }
+            if !is_node && non_ui.is_none() {
+                non_ui = Some(name.map_or_else(|| format!("{at}"), |n| n.as_str().to_string()));
+            }
+            top = at;
+            let Some(parent) = parent else { break };
+            at = parent.parent();
+        }
+        let top_name = ancestors.get(top).ok().and_then(|(_, n, _)| n.map(|n| n.as_str().to_string()));
+        let place = format!(
+            "under {} (root {}{})",
+            nearest.unwrap_or_else(|| "?".into()),
+            top_name.unwrap_or_else(|| format!("{top}")),
+            non_ui.map(|n| format!(", non-UI ancestor {n}")).unwrap_or_default(),
+        );
+        *places.entry(place).or_default() += 1;
+    }
+    if stale == 0 {
+        return String::new();
+    }
+    let mut places: Vec<(String, usize)> = places.into_iter().collect();
+    places.sort_by(|a, b| b.1.cmp(&a.1));
+    let list: Vec<String> = places.iter().take(6).map(|(p, n)| format!("{p} x{n}")).collect();
+    format!("; {stale} text nodes laid out every frame: {}", list.join(", "))
+}
+
+/// Which text keeps each atlas size alive, for the memory report.
+///
+/// Ember frees an atlas set once no laid-out text points into it, so a size
+/// that outlives the change that should have retired it (a UI scale or font
+/// switch) is held by some text. Per size: how many sets, how many of those are
+/// in use, by how many texts, and where one of those texts sits and at what
+/// scale it is drawn. Empty for no atlases.
+fn atlas_holders(
+    set: &bevy::text::FontAtlasSet,
+    layouts: &Query<(Entity, &bevy::text::TextLayoutInfo, Option<&bevy::ui::ComputedUiRenderTargetInfo>)>,
+    ancestors: &Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
+) -> String {
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    // Atlas image -> the size its set is for.
+    let mut size_of: HashMap<AssetId<Image>, u32> = HashMap::new();
+    // Size -> (sets, sets in use).
+    let mut sets: BTreeMap<u32, (usize, HashSet<bevy::text::FontAtlasKey>)> = BTreeMap::new();
+    for (key, atlases) in set.iter() {
+        sets.entry(key.font_size_bits).or_default().0 += 1;
+        for atlas in atlases {
+            size_of.insert(atlas.texture.id(), key.font_size_bits);
+        }
+    }
+    let key_of: HashMap<AssetId<Image>, bevy::text::FontAtlasKey> = set
+        .iter()
+        .flat_map(|(key, atlases)| atlases.iter().map(move |a| (a.texture.id(), *key)))
+        .collect();
+    // Size -> (texts using it, one example).
+    let mut users: BTreeMap<u32, (usize, Option<String>)> = BTreeMap::new();
+    for (entity, layout, target) in layouts.iter() {
+        let mut seen = HashSet::new();
+        for glyph in &layout.glyphs {
+            let Some(bits) = size_of.get(&glyph.atlas_info.texture) else { continue };
+            if let Some(key) = key_of.get(&glyph.atlas_info.texture) {
+                if let Some((_, in_use)) = sets.get_mut(bits) {
+                    in_use.insert(*key);
+                }
+            }
+            if !seen.insert(*bits) {
+                continue;
+            }
+            let entry = users.entry(*bits).or_default();
+            entry.0 += 1;
+            if entry.1.is_none() {
+                let (mut nearest, mut top, mut at) = (None, entity, entity);
+                for _ in 0..64 {
+                    let Ok((parent, name, _)) = ancestors.get(at) else { break };
+                    if nearest.is_none() {
+                        nearest = name.map(|n| n.as_str().to_string());
+                    }
+                    top = at;
+                    let Some(parent) = parent else { break };
+                    at = parent.parent();
+                }
+                let root = ancestors
+                    .get(top)
+                    .ok()
+                    .and_then(|(_, n, _)| n.map(|n| n.as_str().to_string()))
+                    .unwrap_or_else(|| format!("{top}"));
+                let scale = target.map_or("not UI".to_string(), |t| format!("scale {:.2}", t.scale_factor()));
+                entry.1 = Some(format!("{} in {root}, {scale}", nearest.unwrap_or_else(|| format!("{entity}"))));
+            }
+        }
+    }
+    if sets.is_empty() {
+        return String::new();
+    }
+    let rows: Vec<String> = sets
+        .iter()
+        .map(|(bits, (count, in_use))| {
+            let (texts, example) = users.get(bits).cloned().unwrap_or_default();
+            format!(
+                "{:.3} px: {count} sets, {} in use by {texts} texts{}",
+                f32::from_bits(*bits),
+                in_use.len(),
+                example.map(|e| format!(" (e.g. {e})")).unwrap_or_default()
+            )
+        })
+        .collect();
+    format!("; holders: {}", rows.join("; "))
+}
+
+/// What a set of font atlas keys differ in, for the memory report: how many
+/// fonts, sizes and variation settings they cover, the size range, and the
+/// most common sizes. Empty for no keys.
+fn atlas_key_spread<'a>(keys: impl Iterator<Item = &'a bevy::text::FontAtlasKey>) -> String {
+    use std::collections::{HashMap, HashSet};
+    let mut fonts = HashSet::new();
+    let mut variations = HashSet::new();
+    let mut sizes: HashMap<u32, usize> = HashMap::new();
+    for key in keys {
+        fonts.insert((key.id, key.index));
+        variations.insert(key.variations_hash);
+        *sizes.entry(key.font_size_bits).or_default() += 1;
+    }
+    if sizes.is_empty() {
+        return String::new();
+    }
+    let px = |bits: u32| f32::from_bits(bits);
+    let (min, max) = sizes.keys().map(|b| px(*b)).fold((f32::MAX, f32::MIN), |(lo, hi), s| (lo.min(s), hi.max(s)));
+    let mut common: Vec<(u32, usize)> = sizes.iter().map(|(b, n)| (*b, *n)).collect();
+    common.sort_by(|a, b| b.1.cmp(&a.1).then(px(a.0).total_cmp(&px(b.0))));
+    let common: Vec<String> = common.iter().take(8).map(|(b, n)| format!("{:.3} px x{n}", px(*b))).collect();
+    format!(
+        " ({} fonts, {} distinct sizes from {min:.3} to {max:.3} px, {} variation settings; most common: {})",
+        fonts.len(),
+        sizes.len(),
+        variations.len(),
+        common.join(", ")
+    )
+}
+
 // ============================================================================
 // In-editor loading overlay
 // ============================================================================
@@ -2173,6 +2572,7 @@ impl Plugin for ScenePlugin {
                     track_load_timeline,
                     track_model_asset_events,
                     measure_asset_memory,
+                    measure_material_memory,
                     measure_gpu_allocations,
                     install_gpu_probe,
                 ),

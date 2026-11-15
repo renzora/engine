@@ -12,9 +12,8 @@ use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
 use renzora::MaterialRef;
 
-/// Depth of the flat floor plate appended under each chunk, in chunk-local
-/// units below `min_height`. Small gap avoids Z-fighting with terrain that's
-/// been sculpted all the way down to `min_height`.
+/// How far below a chunk's lowest point its outer walls reach, so the bottom
+/// of a wall never meets the ground it hangs from exactly.
 const TERRAIN_FLOOR_GAP: f32 = 0.5;
 
 /// How far above y=0 a freshly added terrain is parked.
@@ -80,11 +79,11 @@ fn add_perimeter_wall(
 
 /// Generate a triangle mesh for a single terrain chunk from its heightmap.
 ///
-/// Output mesh is the heightmap surface on top, a flat floor plate underneath
-/// at `min_height - TERRAIN_FLOOR_GAP`, and vertical side walls on every
-/// edge that faces open space (no neighbouring chunk). Interior boundaries
-/// between adjacent chunks deliberately get no wall so the chunks meet flush.
-/// Closed solid means players can't fall through holes or off the edges.
+/// Output mesh is the heightmap surface, plus vertical side walls on every
+/// edge that faces open space (no neighbouring chunk), down to just under the
+/// chunk's lowest point. Interior boundaries between adjacent chunks
+/// deliberately get no wall so the chunks meet flush. Nothing closes the
+/// underside: from below, the ground is open.
 pub fn generate_chunk_mesh(terrain: &TerrainData, chunk: &TerrainChunkData) -> Mesh {
     generate_chunk_lod_mesh(terrain, chunk, 1)
 }
@@ -168,8 +167,8 @@ pub fn generate_chunk_lod_mesh_beside(
     };
 
     let surface_vert_count = (resolution * resolution) as usize;
-    // Hint: surface verts + border verts + ring centres + floor 4 + walls.
-    let total_vert_hint = surface_vert_count + 12 * full_resolution as usize + 4;
+    // Hint: surface verts + border verts + ring centres + walls.
+    let total_vert_hint = surface_vert_count + 12 * full_resolution as usize;
     let mut positions = Vec::with_capacity(total_vert_hint);
     let mut normals = Vec::with_capacity(total_vert_hint);
     let mut uvs = Vec::with_capacity(total_vert_hint);
@@ -218,8 +217,7 @@ pub fn generate_chunk_lod_mesh_beside(
 
     // Indices: two triangles per inner cell, a fan per border cell.
     let quad_count = ((resolution - 1) * (resolution - 1)) as usize;
-    // +6 indices for the floor plate (two triangles)
-    let mut indices = Vec::with_capacity(quad_count * 6 + 6);
+    let mut indices = Vec::with_capacity(quad_count * 6);
     let mut ring: Vec<u32> = Vec::with_capacity(4 * step as usize + 4);
 
     for z in 0..(resolution - 1) {
@@ -275,15 +273,17 @@ pub fn generate_chunk_lod_mesh_beside(
         }
     }
 
-    // Floor plate: 4 corner verts at the chunk's lowest sculpted height minus
-    // a small gap, facing up so anyone falling through a hole sees the
-    // basement floor rather than its back side. Tracking the chunk's actual
-    // minimum (rather than `terrain.min_height`) keeps the side walls thin on
-    // flat areas and only drops them where the user has carved down — saved
-    // scenes don't get a 10-unit slab hanging under default-flat terrain.
-    // `heights` is the composed buffer (base + layers). It's `#[serde(skip)]`,
-    // so on rehydrate it can briefly be empty before the composition system
-    // populates it — fall back to `base_heights` so the floor stays sane.
+    // Where the outer walls stop: the chunk's lowest sculpted height minus a
+    // small gap. Tracking the chunk's own minimum (rather than
+    // `terrain.min_height`) keeps the walls short on flat ground and only
+    // drops them where the ground has been carved down. `heights` is the
+    // composed buffer (base + layers). It's `#[serde(skip)]`, so on rehydrate
+    // it can briefly be empty before the composition system populates it,
+    // so fall back to `base_heights` then.
+    //
+    // There is no floor plate under the chunk. One used to close each chunk
+    // at that height, but every chunk's minimum differs, so seen from below
+    // the ground was a staircase of separate slabs with sky between them.
     let height_source = if chunk.heights.is_empty() {
         &chunk.base_heights
     } else {
@@ -296,27 +296,6 @@ pub fn generate_chunk_lod_mesh_beside(
         .clamp(0.0, 1.0);
     let chunk_min_world_y = terrain.min_height + chunk_min_h_norm * height_range;
     let floor_y = chunk_min_world_y - TERRAIN_FLOOR_GAP;
-    let chunk_extent = last as f32 * full_spacing;
-    let floor_base = positions.len() as u32;
-    let floor_corners = [
-        Vec3::new(0.0, floor_y, 0.0),
-        Vec3::new(chunk_extent, floor_y, 0.0),
-        Vec3::new(chunk_extent, floor_y, chunk_extent),
-        Vec3::new(0.0, floor_y, chunk_extent),
-    ];
-    let floor_uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-    for (corner, uv) in floor_corners.iter().zip(floor_uvs.iter()) {
-        positions.push(*corner);
-        normals.push(Vec3::Y);
-        uvs.push(*uv);
-    }
-    // Winding chosen so the surface normal points +Y (visible from above).
-    indices.push(floor_base);
-    indices.push(floor_base + 3);
-    indices.push(floor_base + 2);
-    indices.push(floor_base);
-    indices.push(floor_base + 2);
-    indices.push(floor_base + 1);
 
     // Side walls along external perimeter edges only. Internal edges between
     // neighbouring chunks would double-wall; suppress them. Each wall is

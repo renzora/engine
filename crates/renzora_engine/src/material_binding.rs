@@ -280,6 +280,10 @@ pub fn bind_material_refs(
         };
         let materials_dir_rel = materials_dir_for(model_path);
 
+        // Spans for the profiler: loading a large model (Bistro, a car with
+        // ninety materials) made this system take 600 to 800 ms in one frame,
+        // and these say whether that is the walk or the file checks.
+        let _walk = info_span!("material_binding: walk model").entered();
         // Walk descendants and bind any meshes not yet bound. The query
         // filter skips already-bound meshes, so once every descendant has
         // been processed this loop is effectively a no-op.
@@ -295,9 +299,10 @@ pub fn bind_material_refs(
                 // was never imported) mark it done so it is not retried.
                 let bound = mat_name.and_then(|name| {
                     bound_material_path(&materials_dir_rel, &name.0, |path| {
-                        *exists
-                            .entry(path.to_string())
-                            .or_insert_with(|| material_file_exists(path, project.as_deref(), reader))
+                        *exists.entry(path.to_string()).or_insert_with(|| {
+                            let _check = info_span!("material_binding: file check").entered();
+                            material_file_exists(path, project.as_deref(), reader)
+                        })
                     })
                 });
                 match bound {

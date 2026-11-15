@@ -25,14 +25,22 @@ const MAX_RESTARTS: u32 = 3;
 /// launch does not spin.
 const RESTART_DELAY_SECS: f32 = 2.0;
 
+/// A connection that passed the hello check, with the job kinds it runs.
+type Accepted = (TcpStream, Vec<String>);
+
 /// The companion as the editor sees it. Submit work with [`Companion::submit`].
 #[derive(Resource, Default)]
 pub struct Companion {
     state: LinkState,
     child: Option<Child>,
-    /// Connections that passed the hello check, handed over by the listener
-    /// thread. In a `Mutex` because a `Receiver` is not `Sync`.
-    accepted: Option<Mutex<Receiver<TcpStream>>>,
+    /// Connections that passed the hello check, with the job kinds each said
+    /// it runs, handed over by the listener thread. In a `Mutex` because a
+    /// `Receiver` is not `Sync`.
+    accepted: Option<Mutex<Receiver<Accepted>>>,
+    /// The job kinds the connected companion runs, from its hello. Changed
+    /// only on a new connection, which is when `bridge_jobs` passes them on.
+    kinds: Vec<String>,
+    kinds_changed: bool,
     incoming: Option<Mutex<Receiver<Incoming>>>,
     writer: Option<TcpStream>,
     /// Submitted and not yet done, in submission order.
@@ -144,7 +152,38 @@ fn start_on_launch(mut companion: ResMut<Companion>) {
     launch(&mut companion);
 }
 
-/// Listen, then start `renzora --companion` pointed at the port.
+/// The environment variable that turns the standalone companion off.
+const SERVER_ENV: &str = "RENZORA_COMPANION_SERVER";
+
+/// Which companion to start: the standalone `renzora-companion` beside this
+/// executable, or this executable again with `--companion` when
+/// [`SERVER_ENV`] is `0` or the file is not there.
+///
+/// The standalone one has the job queue, the project cache and the profiler
+/// (with the Render and Debug screens), at a fraction of the engine
+/// companion's memory. It does not yet render model, material or shape
+/// thumbnails, import, install from the marketplace or export; while it runs,
+/// the editor does those itself, as it did before there was a companion. Both
+/// speak the same protocol and each lists the job kinds it runs, so the
+/// editor never asks for one the companion cannot do (see
+/// `docs/r1-alpha8/editor-dev/standalone-companion.md`).
+fn companion_command(exe: &std::path::Path) -> std::process::Command {
+    let declined = std::env::var_os(SERVER_ENV).is_some_and(|v| v == "0");
+    let server = exe.with_file_name(format!("renzora-companion{}", std::env::consts::EXE_SUFFIX));
+    if !declined && server.is_file() {
+        return std::process::Command::new(server);
+    }
+    if declined {
+        info!("[companion] {SERVER_ENV}=0: starting the engine companion");
+    } else {
+        warn!("[companion] {} is not there; starting the engine companion", server.display());
+    }
+    let mut command = std::process::Command::new(exe);
+    command.arg("--companion");
+    command
+}
+
+/// Listen, then start the companion pointed at the port.
 fn launch(companion: &mut Companion) {
     let Some((port, token, accepted)) = listen() else {
         companion.state = LinkState::Stopped("could not open a port".into());
@@ -157,9 +196,8 @@ fn launch(companion: &mut Companion) {
             return;
         }
     };
-    let mut command = std::process::Command::new(exe);
+    let mut command = companion_command(&exe);
     command
-        .arg("--companion")
         .arg("--companion-port")
         .arg(port.to_string())
         .arg("--companion-token")
@@ -195,7 +233,7 @@ fn launch(companion: &mut Companion) {
 ///
 /// Port 0 lets the OS pick a free one. Only a connection whose first line is a
 /// hello with the right token and protocol version reaches the main thread.
-fn listen() -> Option<(u16, String, Receiver<TcpStream>)> {
+fn listen() -> Option<(u16, String, Receiver<Accepted>)> {
     let listener = match TcpListener::bind(("127.0.0.1", 0)) {
         Ok(l) => l,
         Err(e) => {
@@ -215,8 +253,10 @@ fn listen() -> Option<(u16, String, Receiver<TcpStream>)> {
         .name("companion-listen".into())
         .spawn(move || {
             for stream in listener.incoming().flatten() {
-                if accepts(&stream, &expected) && tx.send(stream).is_err() {
-                    break;
+                if let Some(kinds) = accepts(&stream, &expected) {
+                    if tx.send((stream, kinds)).is_err() {
+                        break;
+                    }
                 }
             }
         })
@@ -224,28 +264,26 @@ fn listen() -> Option<(u16, String, Receiver<TcpStream>)> {
     Some((port, token, rx))
 }
 
-/// Whether `stream`'s first line is a hello with the right token and version.
-/// Bounded by a timeout so a connection that never speaks cannot hold the
-/// listener.
-fn accepts(stream: &TcpStream, token: &str) -> bool {
+/// The job kinds a companion runs, when `stream`'s first line is a hello with
+/// the right token and version; `None` otherwise. Bounded by a timeout so a
+/// connection that never speaks cannot hold the listener.
+fn accepts(stream: &TcpStream, token: &str) -> Option<Vec<String>> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let Ok(reader) = stream.try_clone() else { return false };
+    let reader = stream.try_clone().ok()?;
     let mut line = String::new();
-    if BufReader::new(reader).read_line(&mut line).is_err() {
-        return false;
-    }
+    BufReader::new(reader).read_line(&mut line).ok()?;
     let _ = stream.set_read_timeout(None);
     match protocol::decode(&line) {
-        Some(Message::Hello { token: t, version }) if t == token => {
+        Some(Message::Hello { token: t, version, kinds }) if t == token => {
             if version != PROTOCOL_VERSION {
                 warn!(
                     "[companion] refused: it speaks protocol {version}, this editor {PROTOCOL_VERSION}"
                 );
-                return false;
+                return None;
             }
-            true
+            Some(kinds)
         }
-        _ => false,
+        _ => None,
     }
 }
 
@@ -275,7 +313,9 @@ fn pump(time: Res<Time>, mut companion: ResMut<Companion>) {
         .accepted
         .as_ref()
         .and_then(|rx| rx.lock().ok()?.try_recv().ok());
-    if let Some(stream) = stream {
+    if let Some((stream, kinds)) = stream {
+        companion.kinds = kinds;
+        companion.kinds_changed = true;
         connected(companion, stream);
     }
 
@@ -420,6 +460,9 @@ fn bridge_jobs(
     mut progress: MessageWriter<renzora::CompanionJobProgress>,
 ) {
     let connected = companion.is_connected();
+    if std::mem::take(&mut companion.kinds_changed) {
+        jobs.set_kinds(companion.kinds.iter().cloned());
+    }
     if jobs.available != connected {
         jobs.set_available(connected);
     }
@@ -480,6 +523,7 @@ fn show_on_action(mut actions: MessageReader<ShellActionInvoked>, mut companion:
     if !actions.read().any(|a| a.0 == ACTION_ID) {
         return;
     }
+    allow_companion_foreground();
     match companion.state {
         LinkState::Connected => companion.send(Message::Show),
         LinkState::Starting => companion.queued.push(Message::Show),
@@ -491,6 +535,27 @@ fn show_on_action(mut actions: MessageReader<ShellActionInvoked>, mut companion:
                 companion.queued.push(Message::Show);
             }
         }
+    }
+}
+
+/// Let the companion's window come to the front when it opens.
+///
+/// Windows keeps a background process from taking the foreground, and the
+/// companion (and the window process it starts) is always in the background:
+/// the click was the editor's. Only the process that got the click can lend
+/// that right, so the editor lends it here, just before asking. Elsewhere the
+/// window manager decides, and there is nothing to lend.
+fn allow_companion_foreground() {
+    #[cfg(target_os = "windows")]
+    {
+        /// Any process may take the foreground, until the next input event.
+        const ASFW_ANY: u32 = u32::MAX;
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn AllowSetForegroundWindow(process_id: u32) -> i32;
+        }
+        // SAFETY: a documented constant; failing only leaves the window behind.
+        unsafe { AllowSetForegroundWindow(ASFW_ANY) };
     }
 }
 
@@ -512,16 +577,20 @@ mod tests {
         protocol::encode(&Message::Hello {
             token: token.into(),
             version,
+            kinds: vec!["texture_thumbnail".into()],
         })
     }
 
     #[test]
     fn only_the_right_token_and_version_get_in() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        assert!(accepts(&dial(&listener, &hello("t0k", PROTOCOL_VERSION)), "t0k"));
-        assert!(!accepts(&dial(&listener, &hello("guess", PROTOCOL_VERSION)), "t0k"));
-        assert!(!accepts(&dial(&listener, &hello("t0k", PROTOCOL_VERSION + 1)), "t0k"));
-        assert!(!accepts(&dial(&listener, "GET / HTTP/1.1\n"), "t0k"));
+        assert_eq!(
+            accepts(&dial(&listener, &hello("t0k", PROTOCOL_VERSION)), "t0k"),
+            Some(vec!["texture_thumbnail".to_string()])
+        );
+        assert_eq!(accepts(&dial(&listener, &hello("guess", PROTOCOL_VERSION)), "t0k"), None);
+        assert_eq!(accepts(&dial(&listener, &hello("t0k", PROTOCOL_VERSION + 1)), "t0k"), None);
+        assert_eq!(accepts(&dial(&listener, "GET / HTTP/1.1\n"), "t0k"), None);
     }
 
     /// Work submitted before the companion connects waits, in order, and is not

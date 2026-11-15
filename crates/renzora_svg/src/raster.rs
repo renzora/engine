@@ -7,15 +7,19 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// Only wrapping the pixels in an `Image` needs Bevy; parsing and drawing do
+// not, which is what lets the standalone companion draw SVG thumbnails.
+#[cfg(feature = "bevy")]
 use bevy::image::{Image, ImageLoaderSettings};
+#[cfg(feature = "bevy")]
 use bevy::render::render_resource::{
     Extent3d, TextureDataOrder, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use resvg::tiny_skia;
 use resvg::usvg::{self, fontdb, ImageHrefResolver, ImageKind};
 
+use crate::error::SvgLoadError;
 use crate::fonts::DEFAULT_FAMILY;
-use crate::loader::SvgLoadError;
 use crate::settings::{SvgRasterSettings, HARD_MAX_SIZE};
 
 /// External files the loader fetched, keyed by the `href` exactly as the
@@ -159,6 +163,7 @@ pub fn render(tree: &usvg::Tree, width: u32, height: u32, s: &SvgRasterSettings)
 
 /// Wrap pixels in an `Image`, honouring the parts of `ImageLoaderSettings`
 /// that mean something for an RGBA8 raster.
+#[cfg(feature = "bevy")]
 pub fn to_image(raster: Raster, srgb: bool, image_settings: &ImageLoaderSettings) -> Image {
     let format = match image_settings.texture_format {
         // Only the two layouts the bytes actually are; anything else (`R8`,
@@ -223,6 +228,7 @@ pub fn thumbnail(path: &std::path::Path, size: u32) -> Result<(u32, u32, Vec<u8>
 }
 
 /// Everything after the fetches, in one call: parse, size, render, wrap.
+#[cfg(feature = "bevy")]
 pub fn rasterize(
     text: &str,
     images: &FetchedImages,

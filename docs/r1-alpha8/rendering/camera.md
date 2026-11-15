@@ -45,7 +45,7 @@ Defaults are `focus = Vec3::ZERO`, `distance = 4.5`, `yaw = 0.3`, `pitch = 0.4`,
 
 > In **Edit** (mesh-edit) mode, E/Q are surrendered to the extrude tool, so vertical fly is unavailable — use scroll-dolly or Shift+Right pan instead.
 
-When `distance_relative_speed` is on (the default), move and zoom speed scale with distance, so navigation stays comfortable whether you're framing a whole level or a single vertex. Zoom and orbit scale with the orbit distance. Flying with right mouse and WASD scales with the nearest surface below or ahead of the camera, so it slows as you come down to the ground or up to a wall; over empty space it falls back to the orbit distance.
+Flying moves at exactly the camera speed set in the viewport header, in units a second, however far the pivot is (Ctrl and the ground ease for Q/E aside). When `distance_relative_speed` is on (the default), scroll zoom scales with the orbit distance, so a scroll step stays useful whether you're framing a whole level or a single vertex.
 
 ### Keyboard shortcuts
 
@@ -78,13 +78,13 @@ The controller reads tuning from the `CameraSettings` resource, which the viewpo
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `move_speed` | 10.0 | WASD fly speed |
+| `move_speed` | 10.0 | WASD fly speed, in units a second |
 | `look_sensitivity` | 0.3 | Right-drag look speed |
 | `orbit_sensitivity` | 0.5 | Middle/Alt-drag orbit speed |
 | `pan_sensitivity` | 1.0 | Pan speed |
 | `zoom_sensitivity` | 1.0 | Scroll dolly speed |
 | `invert_y` | false | Invert vertical look |
-| `distance_relative_speed` | true | Scale move/zoom by distance: flying by the nearest surface, zoom by distance from focus |
+| `distance_relative_speed` | true | Scale scroll zoom by distance from focus (flying is never scaled) |
 
 ## Projection
 

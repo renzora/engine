@@ -63,11 +63,36 @@ fn lower_priority() {
 #[derive(Resource, Clone)]
 pub(crate) struct PairingKey(pub String);
 
+/// The argument that starts this app as the standalone companion's render
+/// worker rather than as a companion of its own.
+pub(crate) const RENDER_WORKER_FLAG: &str = "--render-worker";
+
+/// Whether this process is a render worker: started by the standalone
+/// companion (`renzora-companion`), which has no renderer, to render the
+/// thumbnails it is asked for, and stopped by it once there are none left.
+pub(crate) fn is_render_worker() -> bool {
+    std::env::args().any(|a| a == RENDER_WORKER_FLAG)
+}
+
 pub(crate) fn build(app: &mut App) {
-    if !link::build(app) {
+    let worker = is_render_worker();
+    if !link::build(app, worker) {
         return;
     }
     lower_priority();
+    if worker {
+        // Only what rendering needs: the link (to the standalone companion,
+        // which plays the editor's part), the queue and the capture code. No
+        // window to show, no profiler, no project watcher: the companion
+        // does those itself. `link::pump` and `jobs::held` read these three,
+        // so they exist, empty.
+        app.init_resource::<games::Connection>()
+            .init_resource::<analysis::Questions>()
+            .init_resource::<cache::ProjectCache>();
+        jobs::build(app);
+        render::build(app);
+        return;
+    }
     let key = renzora::profiling::ProfilingAccess::from_args("")
         .map(|a| a.key)
         .unwrap_or_else(renzora::profiling::machine_key);
@@ -76,6 +101,11 @@ pub(crate) fn build(app: &mut App) {
     // Ember's cursor system reads the markup layer's drag state, which the
     // engine's markup plugin normally creates; the companion has no markup.
     app.init_resource::<renzora_ember::markup::dnd::DragState>();
+    // The companion is booted from `add_companion_rendering`, not the engine's
+    // plugin list, so nothing else puts these in. Without them every job that
+    // fetches (marketplace images, installs, uploads) parked for thirty seconds
+    // and failed with "the frame loop is not running".
+    app.add_plugins((renzora_net::NetPlugin, renzora_http::RenzoraHttpPlugin));
     games::build(app);
     capture::build(app);
     jobs::build(app);

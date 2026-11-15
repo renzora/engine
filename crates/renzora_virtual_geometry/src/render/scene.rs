@@ -556,6 +556,18 @@ pub(crate) fn prepare(
     gpu.skin_params = None;
     if scene.instances.is_empty() {
         gpu.previous.clear();
+        // Nothing converted is left (its scene closed): let go of the cluster
+        // pool and every buffer built from it, which streaming only ever
+        // frees while some instance still keeps the scene running. The
+        // generation keeps counting, so bind groups made from the old
+        // buffers can never be taken for current ones.
+        if gpu.clusters.is_some() || gpu.positions.is_some() || !gpu.meshes_built.is_empty() {
+            let generation = gpu.generation + 1;
+            *gpu = GpuScene {
+                generation,
+                ..Default::default()
+            };
+        }
         return;
     }
     let budget = settings.map_or(DEFAULT_BUDGET, |s| s.budget_bytes);

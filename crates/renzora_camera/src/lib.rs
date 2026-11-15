@@ -175,7 +175,8 @@ pub struct CameraSettings {
     pub pan_sensitivity: f32,
     pub zoom_sensitivity: f32,
     pub invert_y: bool,
-    /// Scale movement speed by distance from focus.
+    /// Scale scroll zoom by distance from focus. Flying is never scaled: it
+    /// moves at exactly `move_speed`.
     pub distance_relative_speed: bool,
 }
 
@@ -1107,7 +1108,13 @@ fn camera_controller(
         * (settings.move_speed / CameraSettings::default().move_speed)
         * slow_mult
         * distance_mult;
-    let move_speed = settings.move_speed * slow_mult * distance_mult;
+    // Flying moves at exactly the camera speed set, in units a second, never
+    // scaled by the orbit distance. Scaled, the toolbar's number said nothing
+    // about how fast WASD would go: after framing a whole level the same
+    // setting flew dozens of times faster, with nothing on screen to say why.
+    // Scrolling keeps the distance scale, since a step proportional to how far
+    // away you are is what makes scrolling usable at every scale.
+    let move_speed = settings.move_speed * slow_mult;
     let delta = time.delta_secs();
 
     // --- WASD smoothed velocity ---
@@ -1159,24 +1166,6 @@ fn camera_controller(
         if keyboard.pressed(KeyCode::KeyQ) {
             vertical -= 1.0;
         }
-        // Flying keeps the orbit distance as it is (it moves the pivot along
-        // with the camera), so scaling by that distance never slowed the
-        // camera as it neared the ground: a pivot left a kilometre away flew
-        // at a kilometre a second right down to the grass. So while flying the
-        // speed follows the nearest scene surface below or ahead instead, and
-        // only falls back to the orbit distance over empty space.
-        let flying = move_delta.length_squared() > 0.0 || vertical != 0.0;
-        let move_speed = if settings.distance_relative_speed && flying {
-            let eye = orbit.calculate_position();
-            [Some(Dir3::NEG_Y), Dir3::new(-forward).ok()]
-                .into_iter()
-                .flatten()
-                .filter_map(|dir| surface_ahead.distance(Ray3d::new(eye, dir)))
-                .reduce(f32::min)
-                .map_or(move_speed, |clearance| settings.move_speed * slow_mult * (clearance / 10.0).max(0.1))
-        } else {
-            move_speed
-        };
         if move_delta.length_squared() > 0.0 {
             target_velocity = move_delta.normalize() * move_speed;
         }

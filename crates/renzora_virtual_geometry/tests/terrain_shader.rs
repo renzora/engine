@@ -103,17 +103,35 @@ fn the_terrain_surface_compiles_for_every_virtual_geometry_pass() {
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
-/// The blockout grid every new terrain wears, compiled for the forward pass it
-/// draws in, with and without fog and with tonemapping in the shader (a view
-/// without HDR). Fog is the define that matters: its call is compiled out
-/// without it, so a mistake there only shows on a camera that has fog.
+/// The blockout grid every new terrain wears, compiled for the forward pass,
+/// with and without fog and with tonemapping in the shader (a view without
+/// HDR), and for the deferred G-buffer pass it draws in under a deferred view.
+/// Fog is the define that matters forward: its call is compiled out without
+/// it, so a mistake there only shows on a camera that has fog. The G-buffer
+/// pass is the one Solari reads; the grid once had no branch for it at all.
 #[test]
 fn the_terrain_blockout_grid_compiles_with_and_without_fog() {
     let validator = validator();
     let source = read(crate_dir().join("../renzora_terrain/src/shaders/terrain_checkerboard.wesl"));
-    let mesh = ["VERTEX_POSITIONS", "VERTEX_NORMALS", "VERTEX_UVS"];
+    // Both mesh pipelines always define the instance index output; the grid
+    // reads the mesh's flags through it.
+    let mesh = ["VERTEX_POSITIONS", "VERTEX_NORMALS", "VERTEX_UVS", "VERTEX_OUTPUT_INSTANCE_INDEX"];
+    let deferred =["PREPASS_PIPELINE", "PREPASS_FRAGMENT", "DEFERRED_PREPASS", "NORMAL_PREPASS_OR_DEFERRED_PREPASS"];
+    let deferred_motion = [
+        "PREPASS_PIPELINE",
+        "PREPASS_FRAGMENT",
+        "DEFERRED_PREPASS",
+        "NORMAL_PREPASS_OR_DEFERRED_PREPASS",
+        "MOTION_VECTOR_PREPASS",
+    ];
     let mut failures = Vec::new();
-    for pass in [&[][..], &["DISTANCE_FOG"][..], &["DISTANCE_FOG", "TONEMAP_IN_SHADER"][..]] {
+    for pass in [
+        &[][..],
+        &["DISTANCE_FOG"][..],
+        &["DISTANCE_FOG", "TONEMAP_IN_SHADER"][..],
+        &deferred[..],
+        &deferred_motion[..],
+    ] {
         let flags: Vec<&str> = mesh.iter().chain(pass.iter()).copied().collect();
         if let Err(error) = validator.check_module("renzora_terrain::shaders::terrain_checkerboard", &source, &flags, &[]) {
             failures.push(format!("{pass:?}:\n{error}"));

@@ -62,6 +62,7 @@ use bevy::render::view::Msaa;
 use bevy::solari::realtime::SolariLighting;
 use bevy::solari::scene::RaytracingMesh3d;
 use bevy::solari::SolariPlugins;
+use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
 use renzora::{
     EffectRouting, GpuRaytracing, SolariGi, SolariShadedTransparent, SolariQuality, TracedGeometry, TracedGeometryWanted,
     TracedStandIn, TracedStandInsWanted,
@@ -654,6 +655,7 @@ fn mirror_raytracing_meshes(
     if active.is_empty() {
         return;
     }
+    let budget = PrepareBudget::start();
     for (entity, mesh3d, geometry, (material, visibility, layers)) in &candidates {
         // Anything but a definite yes is left alone WITHOUT `SolariMeshSkip`:
         // ineligible is re-checked every frame, and a still-loading material is
@@ -668,7 +670,7 @@ fn mirror_raytracing_meshes(
         let Some(source) = traced_source(mesh3d, geometry) else {
             continue;
         };
-        match traceable_mesh(source, kind, &mut meshes, &mut proxies) {
+        match traceable_mesh(source, kind, &mut meshes, &mut proxies, &budget) {
             // try_insert: the entity may despawn between this query and command
             // apply (scene reloads / asset streaming churn entities constantly
             // in the editor); a plain insert would panic on the dead entity.
@@ -727,8 +729,13 @@ struct SolariTracedTwin;
 /// One twin, and what it was built from, so a change to either respawns it.
 struct Twin {
     entity: Entity,
+    /// What it traces: the source's geometry, or a copy of it.
     mesh: AssetId<Mesh>,
     material: AssetId<StandardMaterial>,
+    /// The source's geometry and the BLAS its material wanted, for
+    /// [`sync_traced_twins`]'s check that nothing has changed.
+    source: AssetId<Mesh>,
+    kind: MeshRaytracingFlags,
 }
 
 /// Source mesh entity to its twin.
@@ -789,6 +796,7 @@ fn sync_traced_twins(
         return;
     }
 
+    let budget = PrepareBudget::start();
     let mut live: HashSet<Entity> = HashSet::new();
     for (source, mesh3d, geometry, stand_in, transform, visibility, layers) in &sources {
         if !in_raytraced_scene(visibility, layers) {
@@ -809,9 +817,29 @@ fn sync_traced_twins(
         }
         let source_mesh = traced_source(mesh3d, geometry);
         let kind = blas_kind(material);
-        let traced = match source_mesh.map(|m| traceable_mesh(m, kind, &mut trace.meshes, &mut trace.proxies)) {
+
+        // Nothing changed since its twin was made: follow it and move on.
+        // Asking `traceable_mesh` again for every source every frame cost
+        // 13 ms a frame with Bistro in the scene, for an answer that had not
+        // changed. Still checked here: the geometry (a stale copy is dropped
+        // from `copies`, so a twin tracing one is rebuilt) and the BLAS kind,
+        // which an edit to the stand-in's alpha mode changes.
+        if let (Some(twin), Some(src)) = (existing, source_mesh) {
+            let traces_current = twin.mesh == src.id()
+                || trace.proxies.copies.get(&src.id()).is_some_and(|copy| copy.as_ref().is_some_and(|h| h.id() == twin.mesh));
+            if twin.source == src.id() && twin.material == stand_in.0.id() && twin.kind == kind && traces_current {
+                live.insert(source);
+                if placed.get(twin.entity).is_ok_and(|at| at != transform) {
+                    commands.entity(twin.entity).try_insert((Transform::from(*transform), *transform));
+                }
+                continue;
+            }
+        }
+
+        let traced = match source_mesh.map(|m| traceable_mesh(m, kind, &mut trace.meshes, &mut trace.proxies, &budget)) {
             Some(Traceable::Ready(handle)) => handle,
-            // Waiting on full detail is like waiting on an asset.
+            // Waiting on full detail is like waiting on an asset, and so is
+            // waiting for a frame with budget left.
             None | Some(Traceable::Loading) => {
                 if existing.is_some() {
                     live.insert(source);
@@ -855,6 +883,9 @@ fn sync_traced_twins(
                 entity: twin,
                 mesh: traced.id(),
                 material: stand_in.0.id(),
+                // `traced` came from a source, so there is one.
+                source: source_mesh.map_or(traced.id(), Handle::id),
+                kind,
             },
         );
     }
@@ -870,11 +901,40 @@ fn sync_traced_twins(
     });
 }
 
+/// How long [`mirror_raytracing_meshes`] and [`sync_traced_twins`] may each
+/// spend in a frame changing meshes for the ray tracer.
+///
+/// Turning Solari on with Bistro Exterior in the scene froze the editor for
+/// 5.6 seconds: every mesh in the scene was given tangents, 32-bit indices or a
+/// stripped copy in the one frame, and each mesh changed then had to be
+/// uploaded again, which cost the next frame 136 ms more. Within a budget the
+/// same work spreads over a few seconds of smooth frames, and the scene fills
+/// into the ray tracer as it goes.
+const PREPARE_BUDGET: std::time::Duration = std::time::Duration::from_millis(3);
+
+/// One frame's share of [`PREPARE_BUDGET`].
+struct PrepareBudget {
+    until: bevy::platform::time::Instant,
+}
+
+impl PrepareBudget {
+    fn start() -> Self {
+        Self { until: bevy::platform::time::Instant::now() + PREPARE_BUDGET }
+    }
+
+    /// Whether this frame's time is used up. Checked before a mesh's work
+    /// starts, so each frame does at least one mesh however large.
+    fn spent(&self) -> bool {
+        bevy::platform::time::Instant::now() >= self.until
+    }
+}
+
 /// What [`traceable_mesh`] made of a mesh.
 enum Traceable {
     /// The geometry to hand Solari: the source itself, or a stripped copy.
     Ready(Handle<Mesh>),
-    /// The asset hasn't loaded; ask again next frame.
+    /// The asset hasn't loaded, or this frame's [`PrepareBudget`] is spent;
+    /// ask again next frame.
     Loading,
     /// The geometry can never be traced (see [`SolariMeshSkip`]).
     Never,
@@ -906,6 +966,7 @@ fn traceable_mesh(
     kind: MeshRaytracingFlags,
     meshes: &mut Assets<Mesh>,
     proxies: &mut RaytracingProxies,
+    budget: &PrepareBudget,
 ) -> Traceable {
     let Some(mesh) = meshes.get(handle) else {
         return Traceable::Loading;
@@ -921,31 +982,38 @@ fn traceable_mesh(
         let needs_u32 = matches!(mesh.indices(), Some(Indices::U16(_)));
         let needs_flag = !mesh.raytracing.contains(kind);
 
-        if needs_tangents || needs_u32 || needs_flag {
-            let Some(mut mesh) = meshes.get_mut(handle) else {
+        if needs_tangents || needs_u32 {
+            return conform_in_background(handle, kind, meshes, proxies, budget);
+        }
+        if needs_flag {
+            // Even a flag alone costs: the change uploads the mesh again.
+            if budget.spent() {
                 return Traceable::Loading;
-            };
-            if needs_u32 {
-                promote_indices_to_u32(&mut mesh);
             }
-            // Generate tangents from UV+normals (the base checks guarantee
-            // both, plus indexed TriangleList). Most imported GLBs lack
-            // tangents, and without them the ray-tracing scene is near-empty
-            // and the whole view renders almost black, so generate rather
-            // than skip. Where the UVs are degenerate, tangents come from the
-            // normals instead.
-            if needs_tangents && mesh.generate_tangents().is_err() {
-                let Some(tangents) = tangents_from_normals(&mesh) else {
-                    return Traceable::Never;
-                };
-                mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
+            if let Some(mut mesh) = meshes.get_mut(handle) {
+                mesh.raytracing |= kind;
             }
-            mesh.raytracing |= kind;
         }
         return Traceable::Ready(handle.clone());
     }
 
-    if let Some(cached) = proxies.0.get(&handle.id()).cloned() {
+    if let Some(task) = proxies.copying.get_mut(&handle.id()) {
+        let Some(done) = block_on(poll_once(task)) else {
+            return Traceable::Loading;
+        };
+        proxies.copying.remove(&handle.id());
+        let Some(mut proxy) = done else {
+            warn!("[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be built");
+            proxies.copies.insert(handle.id(), None);
+            return Traceable::Never;
+        };
+        proxy.raytracing = kind;
+        let proxy = meshes.add(proxy);
+        proxies.copies.insert(handle.id(), Some(proxy.clone()));
+        return Traceable::Ready(proxy);
+    }
+
+    if let Some(cached) = proxies.copies.get(&handle.id()).cloned() {
         // A cached `None` is a source we already failed to convert; don't
         // retry (and re-warn about) it every frame.
         let Some(proxy) = cached else {
@@ -955,23 +1023,82 @@ fn traceable_mesh(
         // material may need the other kind of BLAS as well. Checked before the
         // mutable borrow, which would re-extract the mesh every frame.
         if meshes.get(&proxy).is_some_and(|m| !m.raytracing.contains(kind)) {
+            if budget.spent() {
+                return Traceable::Loading;
+            }
             if let Some(mut m) = meshes.get_mut(&proxy) {
                 m.raytracing |= kind;
             }
         }
         return Traceable::Ready(proxy);
     }
-    // `build_raytracing_proxy` returns an owned mesh, which ends the immutable
-    // borrow of `meshes` that `mesh` holds, so the insert below is allowed.
-    let Some(mut proxy) = build_raytracing_proxy(mesh) else {
-        warn!("[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be built");
-        proxies.0.insert(handle.id(), None);
-        return Traceable::Never;
+    if budget.spent() {
+        return Traceable::Loading;
+    }
+    // The copy is built on a worker thread from a copy of the source, and
+    // picked up above on a later frame.
+    let source = mesh.clone();
+    let task = AsyncComputeTaskPool::get().spawn(async move { build_raytracing_proxy(&source) });
+    proxies.copying.insert(handle.id(), task);
+    Traceable::Loading
+}
+
+/// Give the mesh `handle` the tangents and 32-bit indices the BLAS builder
+/// needs, on a worker thread, and swap the result in when it is done.
+///
+/// On the main thread, a large mesh's tangents took about 300 ms, all in one
+/// frame however the frame was budgeted: Bistro's biggest meshes made a frame
+/// of 300 to 800 ms each when Solari came on. Here the frame only copies the
+/// mesh out (counted against the [`PrepareBudget`]) and later moves the
+/// finished one back in.
+///
+/// Generating the tangents from UVs and normals rather than skipping the mesh:
+/// most imported GLBs lack tangents, and without them the ray-traced scene is
+/// near empty and renders almost black. Where the UVs are degenerate, tangents
+/// come from the normals instead.
+fn conform_in_background(
+    handle: &Handle<Mesh>,
+    kind: MeshRaytracingFlags,
+    meshes: &mut Assets<Mesh>,
+    proxies: &mut RaytracingProxies,
+    budget: &PrepareBudget,
+) -> Traceable {
+    let id = handle.id();
+    if let Some(task) = proxies.conforming.get_mut(&id) {
+        let Some(done) = block_on(poll_once(task)) else {
+            return Traceable::Loading;
+        };
+        proxies.conforming.remove(&id);
+        let Some(mut conformed) = done else {
+            return Traceable::Never;
+        };
+        let Some(mut mesh) = meshes.get_mut(handle) else {
+            return Traceable::Loading;
+        };
+        conformed.raytracing |= mesh.raytracing | kind;
+        *mesh = conformed;
+        return Traceable::Ready(handle.clone());
+    }
+    if budget.spent() {
+        return Traceable::Loading;
+    }
+    let Some(source) = meshes.get(handle).cloned() else {
+        return Traceable::Loading;
     };
-    proxy.raytracing = kind;
-    let proxy = meshes.add(proxy);
-    proxies.0.insert(handle.id(), Some(proxy.clone()));
-    Traceable::Ready(proxy)
+    let task = AsyncComputeTaskPool::get().spawn(async move { conform(source) });
+    proxies.conforming.insert(id, task);
+    Traceable::Loading
+}
+
+/// `mesh` with 32-bit indices and tangents, or `None` when no tangents can be
+/// made for it at all.
+fn conform(mut mesh: Mesh) -> Option<Mesh> {
+    promote_indices_to_u32(&mut mesh);
+    if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
+        let tangents = tangents_from_normals(&mesh)?;
+        mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
+    }
+    Some(mesh)
 }
 
 /// Throw away a cached proxy when its source mesh changes, and un-mirror the
@@ -991,16 +1118,30 @@ fn invalidate_stale_proxies(
     mut proxies: ResMut<RaytracingProxies>,
     mirrored: Query<(Entity, &Mesh3d, Option<&TracedGeometry>), Decided>,
 ) {
-    let stale: Vec<AssetId<Mesh>> = events
+    let changed: Vec<(AssetId<Mesh>, bool)> = events
         .read()
         .filter_map(|event| match event {
-            AssetEvent::Modified { id } | AssetEvent::Removed { id } => Some(*id),
+            AssetEvent::Modified { id } => Some((*id, false)),
+            AssetEvent::Removed { id } => Some((*id, true)),
             _ => None,
         })
+        .collect();
+    let mut stale: Vec<AssetId<Mesh>> = Vec::new();
+    for (id, removed) in changed {
+        // A mesh gone has no use for work in progress on it. One only
+        // modified keeps its work: meshes are modified all the time (this
+        // crate's own repairs, streaming), and dropping the job on each
+        // would starve it.
+        if removed {
+            proxies.conforming.remove(&id);
+            proxies.copying.remove(&id);
+        }
         // Only meshes we actually made a copy of; everything else is either
         // repaired in place or was never traced.
-        .filter(|id| proxies.0.remove(id).is_some())
-        .collect();
+        if proxies.copies.remove(&id).is_some() {
+            stale.push(id);
+        }
+    }
     if stale.is_empty() {
         return;
     }
@@ -1054,9 +1195,12 @@ fn unmirror_when_idle(
         return;
     }
     // Dropping the handles frees the duplicated vertex buffers; they are rebuilt
-    // if Solari is switched back on.
-    if !proxies.0.is_empty() {
-        proxies.0.clear();
+    // if Solari is switched back on. Work still out on a worker thread is
+    // dropped too, which cancels it: nothing would collect it.
+    if !proxies.copies.is_empty() || !proxies.conforming.is_empty() || !proxies.copying.is_empty() {
+        proxies.copies.clear();
+        proxies.conforming.clear();
+        proxies.copying.clear();
     }
     for e in &mirrored {
         commands.entity(e).try_remove::<RaytracingMesh3d>();
@@ -1683,7 +1827,7 @@ fn log_solari_coverage(
         .count();
     let now = (
         mirrored.iter().count(),
-        proxies.0.values().flatten().count(),
+        proxies.copies.values().flatten().count(),
         skipped.iter().count(),
         excluded,
         twins.0.len(),
@@ -1857,13 +2001,23 @@ fn tangents_from_normals(mesh: &Mesh) -> Option<Vec<[f32; 4]>> {
     )
 }
 
-/// Ray-tracing-only copies of meshes that can't be repaired in place, keyed by
-/// the source asset so every instance of a mesh shares one copy.
-///
-/// A `None` entry records a source we already failed to convert, so a mesh with
-/// degenerate UVs isn't retried (and re-warned about) every single frame.
+/// What [`traceable_mesh`] keeps between frames: the copies it made, and the
+/// meshes being repaired on a worker thread.
 #[derive(Resource, Default)]
-struct RaytracingProxies(HashMap<AssetId<Mesh>, Option<Handle<Mesh>>>);
+struct RaytracingProxies {
+    /// Ray-tracing-only copies of meshes that can't be repaired in place,
+    /// keyed by the source asset so every instance of a mesh shares one copy.
+    ///
+    /// A `None` entry records a source we already failed to convert, so a mesh
+    /// with degenerate UVs isn't retried (and re-warned about) every frame.
+    copies: HashMap<AssetId<Mesh>, Option<Handle<Mesh>>>,
+    /// Meshes being given tangents and 32-bit indices on a worker thread, by
+    /// the asset they will replace. `None` from a task means the mesh can
+    /// never be traced.
+    conforming: HashMap<AssetId<Mesh>, Task<Option<Mesh>>>,
+    /// Copies being built on a worker thread, by their source asset.
+    copying: HashMap<AssetId<Mesh>, Task<Option<Mesh>>>,
+}
 
 
 #[cfg(test)]
@@ -2007,6 +2161,58 @@ mod tests {
                 .map(|(attribute, _)| attribute.id)
                 .eq(BLAS_ATTRIBUTES)
             && matches!(mesh.indices(), Some(Indices::U32(..)))
+    }
+
+    /// Frames calling `traceable_mesh` until it answers other than `Loading`,
+    /// as the systems do while a worker thread prepares the mesh.
+    fn frames_until_answered(
+        handle: &Handle<Mesh>,
+        meshes: &mut Assets<Mesh>,
+        proxies: &mut RaytracingProxies,
+    ) -> Traceable {
+        for _ in 0..500 {
+            let budget = PrepareBudget::start();
+            match traceable_mesh(handle, MeshRaytracingFlags::OPAQUE, meshes, proxies, &budget) {
+                Traceable::Loading => std::thread::sleep(std::time::Duration::from_millis(2)),
+                answer => return answer,
+            }
+        }
+        panic!("the mesh was never prepared");
+    }
+
+    /// Mesh work starts only in a frame with budget left and is done on a
+    /// worker thread, the mesh untouched until it is swapped in; a mesh that
+    /// needs nothing is ready even with the budget spent, so a scene already
+    /// prepared never waits.
+    #[test]
+    fn mesh_work_waits_for_budget_and_runs_off_the_frame() {
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let mut meshes = Assets::<Mesh>::default();
+        let mut proxies = RaytracingProxies::default();
+        let spent = PrepareBudget { until: bevy::platform::time::Instant::now() };
+        let kind = MeshRaytracingFlags::OPAQUE;
+
+        let needs_tangents = meshes.add(mesh_with(&["position", "normal", "uv0"]));
+        assert!(matches!(traceable_mesh(&needs_tangents, kind, &mut meshes, &mut proxies, &spent), Traceable::Loading));
+        assert!(proxies.conforming.is_empty(), "no budget, so no job started");
+        assert!(matches!(traceable_mesh(&needs_tangents, kind, &mut meshes, &mut proxies, &PrepareBudget::start()), Traceable::Loading));
+        assert!(meshes.get(&needs_tangents).unwrap().attribute(Mesh::ATTRIBUTE_TANGENT).is_none(), "untouched meanwhile");
+        assert!(matches!(frames_until_answered(&needs_tangents, &mut meshes, &mut proxies), Traceable::Ready(_)));
+        let prepared = meshes.get(&needs_tangents).unwrap();
+        assert!(prepared.attribute(Mesh::ATTRIBUTE_TANGENT).is_some() && prepared.raytracing.contains(kind));
+
+        // Prepared: nothing left to do, so no wait.
+        assert!(matches!(traceable_mesh(&needs_tangents, kind, &mut meshes, &mut proxies, &spent), Traceable::Ready(_)));
+
+        // A copy is building work too, and lands as a new asset.
+        let needs_copy = meshes.add(mesh_with(&["position", "normal", "uv0", "color"]));
+        assert!(matches!(traceable_mesh(&needs_copy, kind, &mut meshes, &mut proxies, &spent), Traceable::Loading));
+        assert!(proxies.copying.is_empty() && proxies.copies.is_empty());
+        match frames_until_answered(&needs_copy, &mut meshes, &mut proxies) {
+            Traceable::Ready(copy) => assert_ne!(copy.id(), needs_copy.id()),
+            _ => panic!("the copy should be ready"),
+        }
+        assert_eq!(proxies.copies.len(), 1);
     }
 
     #[test]
@@ -2292,6 +2498,16 @@ mod tests {
         assert_eq!(
             world.get::<GlobalTransform>(twin).map(|t| t.translation()),
             Some(Vec3::new(1.0, 2.0, 3.0))
+        );
+
+        // Unchanged but moved: the same twin follows, without being rebuilt.
+        app.world_mut().entity_mut(source).insert(GlobalTransform::from_xyz(4.0, 5.0, 6.0));
+        app.update();
+        app.update();
+        assert_eq!(app.world().resource::<TracedTwins>().0.get(&source).map(|t| t.entity), Some(twin));
+        assert_eq!(
+            app.world().get::<GlobalTransform>(twin).map(|t| t.translation()),
+            Some(Vec3::new(4.0, 5.0, 6.0))
         );
 
         app.world_mut().entity_mut(camera).remove::<SolariLighting>();

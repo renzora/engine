@@ -25,11 +25,9 @@ use renzora::profiling::{self, ProfilingAccess};
 use crate::wire::{self, ControlPacket, GamePacket};
 use crate::{ProfileFrame, Profiler};
 
-/// Where companions listen for beacons.
-pub const BEACON_PORT: u16 = 47_810;
-
-/// The first line of every beacon, so a stray packet on the port is ignored.
-pub const BEACON_MAGIC: &str = "RZPROF1";
+/// Where companions listen for beacons, and the first line of each. Defined
+/// with the stream, so the standalone companion hears the same ones.
+pub use crate::wire::{BEACON_MAGIC, BEACON_PORT};
 
 /// Packets waiting for a client's writer. About two seconds at 60 fps; past
 /// that the client is too slow and frames are dropped for it.

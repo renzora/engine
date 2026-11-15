@@ -27,6 +27,8 @@ pub mod cursor_icon;
 pub mod dock;
 pub mod file_kind;
 pub mod font;
+mod font_atlas_cleanup;
+mod hidden_text;
 pub mod icons;
 pub mod inspector;
 /// Hovered / pressed state from Bevy's picking: [`UiInteraction`].
@@ -83,6 +85,11 @@ impl Plugin for EmberPlugin {
         // module. (When markup IS present, it no longer installs them.)
         cursor_icon::plugin(app);
         icons::plugin(app);
+        // Hidden menus would otherwise lay their text out every frame at any UI
+        // scale but 100%: see `hidden_text`.
+        hidden_text::plugin(app);
+        // Bevy never frees a font atlas; free the ones no text uses any more.
+        font_atlas_cleanup::plugin(app);
         // Correct pointer state (clip + occlusion): see `correct_pointer_state`.
         // Runs right after `UiSystems::Focus` (where `UiInteraction` is derived
         // and `RelativeCursorPosition` written) so every consumer reads the

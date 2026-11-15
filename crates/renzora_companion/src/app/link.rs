@@ -41,13 +41,13 @@ pub(crate) struct EditorState {
 /// Connect to the editor and install the link. False when there is no editor
 /// to talk to, in which case an exit has been scheduled and nothing else
 /// should be built.
-pub(crate) fn build(app: &mut App) -> bool {
+pub(crate) fn build(app: &mut App, render_worker: bool) -> bool {
     let Some((port, token)) = args() else {
         error!("[companion] started without --companion-port and --companion-token; exiting");
         exit_at_startup(app, 2);
         return false;
     };
-    let writer = match connect(port, &token) {
+    let writer = match connect(port, &token, render_worker) {
         Ok(stream) => stream,
         Err(e) => {
             error!("[companion] could not reach the editor on port {port}: {e}; exiting");
@@ -93,12 +93,23 @@ fn args() -> Option<(u16, String)> {
 /// Connect and say hello. Done before the app runs: without the editor there is
 /// nothing for the companion to do, and failing here exits before a window or
 /// a GPU device is ever made.
-pub(crate) fn connect(port: u16, token: &str) -> std::io::Result<TcpStream> {
+pub(crate) fn connect(port: u16, token: &str, render_worker: bool) -> std::io::Result<TcpStream> {
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream = TcpStream::connect_timeout(&address, CONNECT_TIMEOUT)?;
+    // Every kind this companion runs; the editor does any other itself. A
+    // render worker runs only the kinds that render.
+    let kinds = if render_worker {
+        super::render::KINDS.to_vec()
+    } else {
+        [super::work::KINDS, super::render::KINDS, super::cache::KINDS, analysis::KINDS].concat()
+    }
+    .into_iter()
+    .map(str::to_string)
+    .collect();
     let hello = Message::Hello {
         token: token.to_string(),
         version: PROTOCOL_VERSION,
+        kinds,
     };
     stream.write_all(protocol::encode(&hello).as_bytes())?;
     Ok(stream)

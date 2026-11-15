@@ -74,22 +74,10 @@ pub fn now_ns() -> u64 {
     EPOCH.get_or_init(Instant::now).elapsed().as_nanos() as u64
 }
 
-/// Whether a span started or ended.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Edge {
-    Enter,
-    Exit,
-}
-
-/// One span starting or ending.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SpanEvent {
-    /// [`now_ns`] when it happened.
-    pub at_ns: u64,
-    /// The span's name, from [`intern`]; [`name`] turns it back into text.
-    pub name: u32,
-    pub edge: Edge,
-}
+/// Whether a span started or ended, and one span starting or ending: defined
+/// in `renzora_companion_proto`, where the companion pairs them into spans
+/// without linking Bevy.
+pub use renzora_companion_proto::frame::{Edge, SpanEvent};
 
 /// Everything one thread recorded since the last [`drain`], in order.
 #[derive(Debug)]

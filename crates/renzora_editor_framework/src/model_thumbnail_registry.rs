@@ -95,8 +95,7 @@ pub fn model_thumb_path(model_abs: &Path, project: &CurrentProject) -> PathBuf {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default()
     });
-    let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
-    let mut out = crate::thumbnail_cache_dir(project, "models").join(rel);
-    out.set_extension("png");
-    out
+    // The rule is shared with the companion, which deletes a model's thumbnail
+    // when the model goes.
+    renzora::core::project_files::cached_thumbnail(&project.path, &rel, "models")
 }
