@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-15 22:41
+- perf(animation): selecting an entity with an Animator no longer costs several milliseconds every frame
+- perf(rendering): particle effects no longer cost an empty ray-tracing submission every frame
+- fix(hierarchy): a row's icon updates when a component is added or removed, including by undo
+
 ## 2026-11-15 22:20
 - perf(viewport): showing a viewport again after a workspace switch no longer stalls while DLSS rebuilds itself
 

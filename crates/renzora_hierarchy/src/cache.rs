@@ -18,7 +18,9 @@ use renzora_editor_framework::{
     EditorLocked, EntityIcon, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
 };
 
-use std::collections::HashSet;
+use bevy::ecs::archetype::ArchetypeId;
+use bevy::ecs::entity::Entities;
+use std::collections::HashMap;
 
 use crate::state::{build_entity_tree, EntityNode, HierarchyCandidate, HierarchySpawnSeq};
 
@@ -29,10 +31,13 @@ pub struct HierarchyTreeCache {
     /// Monotonic counter; consumers can compare against a stored value to
     /// detect rebuilds without diffing the tree.
     pub version: u64,
-    /// Every entity in the tree, so a removal can be checked against it. A
-    /// removal names an entity that may already be gone, so there is nothing
-    /// left on it to filter by.
-    pub(crate) members: HashSet<Entity>,
+    /// Every entity in the tree, with the archetype it had when the tree was
+    /// built. A removal names an entity that may already be gone, so it is
+    /// checked against this rather than filtered. The archetype catches a
+    /// component added or removed: a row's icon comes from whichever registered
+    /// component it carries (a light, a camera, a mesh), and there are too many
+    /// of those to watch one by one.
+    pub(crate) members: HashMap<Entity, ArchetypeId>,
 }
 
 /// Dirty flag: set by `mark_hierarchy_dirty` whenever a component the tree
@@ -79,10 +84,11 @@ pub fn mark_hierarchy_dirty(
     // their add/change/remove must rebuild the tree too (grouped into one param
     // to stay under Bevy's per-system param-count cap).
     mut badges: AssetBadgeChanges,
+    entities: &Entities,
 ) {
     // Read every removal stream each frame, dirty or not: an unread stream
     // keeps its events, and the next frame would act on stale ones.
-    let in_tree = |hit: bool, e: Entity| hit | cache.members.contains(&e);
+    let in_tree = |hit: bool, e: Entity| hit | cache.members.contains_key(&e);
     let removed = removed_name.read().fold(false, in_tree)
         | removed_child_of.read().fold(false, in_tree)
         | removed_hide.read().fold(false, in_tree);
@@ -107,6 +113,18 @@ pub fn mark_hierarchy_dirty(
         || identity_dirty
         || badges_dirty
     {
+        dirty.0 = true;
+        return;
+    }
+
+    // A component added to or removed from a row's entity (adding a light
+    // changes its icon, undoing that changes it back) moves it to another
+    // archetype. Before the tree stopped rebuilding on unrelated UI churn, that
+    // churn happened to repaint such a row within a tenth of a second.
+    let moved = cache.members.iter().any(|(&e, &archetype)| {
+        entities.get_spawned(e).map(|l| l.archetype_id).ok() != Some(archetype)
+    });
+    if moved {
         dirty.0 = true;
     }
 }
@@ -180,10 +198,12 @@ pub fn update_hierarchy_cache(world: &mut World, mut last_build: Local<f32>) {
         build_entity_tree(world, &mut seq)
     });
     stamp_root_order(world, &nodes);
-    let mut members = HashSet::new();
+    let mut members = HashMap::new();
     let mut stack: Vec<&EntityNode> = nodes.iter().collect();
     while let Some(node) = stack.pop() {
-        members.insert(node.entity);
+        if let Ok(location) = world.entities().get_spawned(node.entity) {
+            members.insert(node.entity, location.archetype_id);
+        }
         stack.extend(node.children.iter());
     }
     let mut cache = world.resource_mut::<HierarchyTreeCache>();

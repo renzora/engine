@@ -222,6 +222,13 @@ pub fn prepare_raytracing_blas(
         })
         .collect::<Vec<_>>();
 
+    // Renzora patch: nothing to build, so record and submit nothing. A mesh
+    // rewritten every frame that can't be ray traced (CPU particles) used to
+    // cost an empty build in its own queue submission, about 1.4 ms a frame.
+    if blas_resources.is_empty() {
+        return;
+    }
+
     // Build geometry into each BLAS
     let build_entries = blas_resources
         .iter()
