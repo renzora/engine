@@ -552,6 +552,9 @@ fn ensure_shader_validator(
 /// System that finds entities with `MaterialRef` + `Mesh3d` that don't yet have a resolved material,
 /// loads the file, compiles it, and attaches the material handle.
 #[allow(clippy::too_many_arguments)]
+/// How long one frame may spend building materials the cache does not hold.
+const RESOLVE_BUDGET: std::time::Duration = std::time::Duration::from_millis(6);
+
 fn resolve_material_refs(
     mut commands: Commands,
     // Sprites wear a `SpriteMaterial`, resolved by `sprite_material`.
@@ -597,6 +600,15 @@ fn resolve_material_refs(
     };
     let default_reader = renzora::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
+    // Opening a scene with the Bistro in it asks for well over a hundred
+    // materials the cache has never seen, and reading and building every one
+    // in the same frame froze the editor for 600 ms. Work past the budget waits
+    // for the next frame: the entity keeps no `MaterialResolved`, so the query
+    // finds it again, and meanwhile it shows the material it was imported with.
+    // Cache hits are cheap and always run, and at least one miss runs per frame
+    // so a single slow material still makes progress.
+    let frame_start = Instant::now();
+    let mut built_one = false;
     for (entity, mat_ref) in query.iter() {
         let path = &mat_ref.0;
 
@@ -644,6 +656,11 @@ fn resolve_material_refs(
             perf.record_cache_hit(path, MaterialKind::Code);
             continue;
         }
+
+        if built_one && frame_start.elapsed() >= RESOLVE_BUDGET {
+            continue;
+        }
+        built_one = true;
 
         // Resolve asset-relative path to full filesystem path via CurrentProject.
         // Normalize to forward slashes and strip leading "./" for rpak compatibility.

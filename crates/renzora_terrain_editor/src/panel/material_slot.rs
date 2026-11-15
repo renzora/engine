@@ -65,8 +65,12 @@ pub(super) fn material_slot(commands: &mut Commands, fonts: &EmberFonts, terrain
             Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
+                // The buttons drop under the name when the panel is too narrow
+                // for both; see the text column's minimum width below.
+                flex_wrap: FlexWrap::Wrap,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(10.0),
+                row_gap: Val::Px(8.0),
                 padding: UiRect::all(Val::Px(8.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
@@ -104,7 +108,12 @@ pub(super) fn material_slot(commands: &mut Commands, fonts: &EmberFonts, terrain
     let text = commands
         .spawn(Node {
             flex_grow: 1.0,
-            min_width: Val::Px(0.0),
+            // Room for the name to read as words. At zero, the button column
+            // (which never shrinks; "Use Alpine Landscape" is wide) squeezed this
+            // to a few pixels in a narrow inspector and every label wrapped one
+            // letter to a line. Now the slot wraps the buttons instead.
+            min_width: Val::Px(120.0),
+            flex_basis: Val::Px(120.0),
             flex_direction: FlexDirection::Column,
             row_gap: Val::Px(1.0),
             // The path does not wrap, so a long one ran under the buttons.

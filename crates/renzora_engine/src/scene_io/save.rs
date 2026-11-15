@@ -35,23 +35,6 @@ pub(crate) fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
     false
 }
 
-/// Scene saves must serialize the *authored* visibility, not the viewport
-/// gate's override (the editor hides the whole scene while no viewport panel
-/// is visible — see `renzora_viewport::gate_scene_visibility`). Restores the
-/// stored values in place; while the gate condition still holds, its system
-/// re-hides everything on the next frame, so nothing flickers on screen.
-pub(crate) fn restore_viewport_gated_visibility(world: &mut World) {
-    let gated: Vec<(Entity, Visibility)> = {
-        let mut q = world.query::<(Entity, &renzora::core::ViewportGateHidden)>();
-        q.iter(world).map(|(e, g)| (e, g.0)).collect()
-    };
-    for (entity, vis) in gated {
-        if let Some(mut v) = world.get_mut::<Visibility>(entity) {
-            *v = vis;
-        }
-    }
-}
-
 /// Give every entity in `entities` a [`SceneEntityId`] of its own.
 ///
 /// An entity with no id, a zero id, or the same id as one already seen gets a
@@ -237,7 +220,6 @@ pub fn saveable_entities(world: &mut World) -> Vec<Entity> {
 
 /// Save specific entities to a RON file.
 pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    restore_viewport_gated_visibility(world);
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let entities = saveable_entities(world);
@@ -289,7 +271,6 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
 
 /// Serialize scene entities to a RON string (same logic as `save_scene` but returns a string).
 pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn std::error::Error>> {
-    restore_viewport_gated_visibility(world);
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let mut entities: Vec<Entity> = Vec::new();

@@ -366,20 +366,6 @@ pub enum RenderPhase {
     Overlay,
 }
 
-/// Editor viewport gate: this scene entity was force-hidden because no
-/// viewport panel is visible, and the stored value is its *authored*
-/// `Visibility` (the slot-0 editor camera must stay active for the
-/// atmosphere/IBL probe, so hiding the scene is how a viewport-less workspace
-/// stops paying for shadow maps, GI and mesh extraction — see
-/// `renzora_viewport::gate_scene_visibility`).
-///
-/// Deliberately NOT `Reflect`: it must never serialize into a scene file.
-/// Scene saves restore the stored value before extracting so the authored
-/// visibility is what lands on disk (see `renzora_engine::scene_io`); the
-/// hierarchy panel's eye icon reads it for the same reason.
-#[derive(Component, Clone, Copy)]
-pub struct ViewportGateHidden(pub Visibility);
-
 /// Marker component — entity persists across scene loads (e.g. loader UI root).
 /// `process_pending_scene_loads` and similar despawn-the-world logic must skip these.
 ///
@@ -460,6 +446,20 @@ pub struct EntityIcon(pub String);
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component)]
 pub struct EntityLabelColor(pub [u8; 3]);
+
+/// Sort order for root-level entities in the hierarchy panel. Lower values
+/// appear first.
+///
+/// Saved with the scene, which is why it is here and `Reflect`. It used to be
+/// an editor-only type that never reached the file, and the hierarchy fell
+/// back to the order it first saw each root in, which it took from the
+/// entity's index. A scene load recycles indices in no particular order, so
+/// the same scene came back in a different order every time it was opened,
+/// and an order made by dragging was lost on reload. The hierarchy now gives
+/// every root one as it appears, so the order on screen is the order saved.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[reflect(Component, Default)]
+pub struct HierarchyOrder(pub u32);
 
 /// Marker component — viewport picking stops at this entity instead of walking
 /// past it to a higher-up named ancestor. Apply to compound entities (terrains,

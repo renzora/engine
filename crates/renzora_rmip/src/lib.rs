@@ -43,7 +43,7 @@ pub mod dds;
 #[cfg(feature = "bevy")]
 mod loader;
 #[cfg(feature = "bevy")]
-pub use loader::{RmipAssetLoader, RmipLoadError};
+pub use loader::{preview_image, RmipAssetLoader, RmipLoadError};
 
 #[cfg(feature = "bake")]
 pub mod bake;

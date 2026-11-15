@@ -151,6 +151,8 @@ What wakes it:
 
 Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. It is saved with the project.
 
+While you drag a divider or window edge beside a viewport, it keeps rendering at its old size and stretches to fit, then renders at the new size when you let go. With no viewport on screen at all (a workspace without one, with no game running), the scene is not rendered until one comes back.
+
 ### Visualization modes
 
 The **Visualization** row replaces every material in the viewport with one that answers a single question: Normals, Roughness, Metallic, Depth, UV Checker or Matcap. **None** puts the real materials back.

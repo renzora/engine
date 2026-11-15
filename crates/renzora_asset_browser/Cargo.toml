@@ -17,6 +17,8 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # aren't handled by the default `image` set; HDR is read via Bevy's
 # loader so it's already in-memory by the time we cache it.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp"] }
+# `.rmip` thumbnails: reads only a texture's small mip levels for its tile.
+renzora_rmip = { path = "../renzora_rmip" }
 
 [lints]
 workspace = true

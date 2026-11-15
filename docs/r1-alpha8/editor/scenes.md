@@ -65,6 +65,8 @@ Drag a row to move it. Where you drop decides what happens:
 
 Children move with their parent. You cannot drop an object into one of its own children, and the whole move is one undo step.
 
+The order of the top-level objects is saved with the scene, so a scene reopens in the order you left it. A new top-level object goes to the bottom of the list.
+
 Right-click a row for **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **Attach**, label colours and **Delete**.
 
 A label colour shows as a thin line down the left edge of the entity's row and of every row under it, and tints the entity's own icon. The names keep their normal colour.

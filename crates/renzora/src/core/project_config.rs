@@ -19,12 +19,14 @@ use std::sync::Arc;
 #[derive(Resource, Clone)]
 pub struct VirtualFileReader {
     reader: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    disk: bool,
 }
 
 impl Default for VirtualFileReader {
     fn default() -> Self {
         Self {
             reader: Arc::new(|path| std::fs::read_to_string(path).ok()),
+            disk: true,
         }
     }
 }
@@ -34,7 +36,15 @@ impl VirtualFileReader {
     pub fn new(f: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
         Self {
             reader: Arc::new(f),
+            disk: false,
         }
+    }
+
+    /// Whether this is the plain disk reader, so a caller may list a folder
+    /// itself instead of opening each file through the reader. An archive or
+    /// web reader has no listing to offer.
+    pub fn is_disk(&self) -> bool {
+        self.disk
     }
 
     /// Read a file to string. Tries the backing store (archive or disk).

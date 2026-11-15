@@ -223,27 +223,18 @@ fn build_picker(
     // above. Carrying folds between two different overlays would mean opening
     // one and finding branches shut for a reason that happened somewhere else.
     let ext_owned: Vec<String> = exts.iter().map(|e| e.to_lowercase()).collect();
-    let collapsed: std::collections::HashSet<PathBuf> = if folded {
+    // One walk, shared by the fold set and the rows.
+    let entries = {
         let ext_refs: Vec<&str> = ext_owned.iter().map(String::as_str).collect();
-        folder_entries(root, max_depth, &ext_refs)
-            .into_iter()
-            .filter(|(p, _, _)| p.is_dir())
-            .map(|(p, _, _)| p)
-            .collect()
+        walk(root, max_depth, &ext_refs)
+    };
+    let collapsed: std::collections::HashSet<PathBuf> = if folded {
+        entries.iter().filter(|e| e.is_dir).map(|e| e.path.clone()).collect()
     } else {
         Default::default()
     };
     commands.insert_resource(FolderPickCollapsed(collapsed.clone()));
-    let rows = spawn_rows(
-        commands,
-        fonts,
-        boxed,
-        root,
-        max_depth,
-        None,
-        &ext_owned,
-        &collapsed,
-    );
+    let rows = spawn_rows(commands, fonts, boxed, root, &entries, None, &collapsed);
     commands.entity(tree).add_children(&rows);
 
     let scroll = scroll_view(commands, tree);
@@ -313,9 +304,8 @@ fn spawn_rows(
     fonts: &EmberFonts,
     picker: Entity,
     root: &Path,
-    max_depth: usize,
+    entries: &[Entry],
     editing: Option<&Path>,
-    exts: &[String],
     collapsed: &std::collections::HashSet<PathBuf>,
 ) -> Vec<Entity> {
     let root_name = root
@@ -323,37 +313,38 @@ fn spawn_rows(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.display().to_string());
     let mut rows = vec![folder_row(commands, fonts, picker, root.to_path_buf(), 0, &root_name, false, false)];
-    let ext_refs: Vec<&str> = exts.iter().map(String::as_str).collect();
-    let entries = folder_entries(root, max_depth, &ext_refs);
     // Which rows are hidden by a collapsed ancestor, and which folders have
     // anything under them at all.
     //
     // Both are answered from the flat walk rather than by re-reading the disk:
     // the walk is depth-first, so a row is inside `parent` exactly when it comes
     // after it and is deeper, and a folder has children exactly when the next
-    // entry is deeper than it is.
-    let collapsed_set: Vec<PathBuf> = collapsed.iter().cloned().collect();
-    let hidden = |path: &Path| {
-        collapsed_set
-            .iter()
-            .any(|c| path != c.as_path() && path.starts_with(c))
-    };
-    for (i, (path, depth, name)) in entries.iter().enumerate() {
-        if hidden(path) {
-            continue;
+    // entry is deeper than it is. Hidden-ness carries down the same order: a
+    // row is hidden while it is still inside the last collapsed folder seen,
+    // so no row is compared against every collapsed path.
+    let mut shut: Option<&Path> = None;
+    for (i, entry) in entries.iter().enumerate() {
+        if let Some(c) = shut {
+            if entry.path.starts_with(c) {
+                continue;
+            }
+            shut = None;
         }
-        let has_children = path.is_dir()
+        if entry.is_dir && collapsed.contains(&entry.path) {
+            shut = Some(entry.path.as_path());
+        }
+        let has_children = entry.is_dir
             && entries
                 .get(i + 1)
-                .is_some_and(|(next, next_depth, _)| *next_depth > *depth && next.starts_with(path));
-        let edit = editing == Some(path.as_path());
+                .is_some_and(|next| next.depth > entry.depth && next.path.starts_with(&entry.path));
+        let edit = editing == Some(entry.path.as_path());
         rows.push(folder_row(
             commands,
             fonts,
             picker,
-            path.clone(),
-            depth + 1,
-            name,
+            entry.path.clone(),
+            entry.depth + 1,
+            &entry.name,
             edit,
             has_children,
         ));
@@ -380,16 +371,9 @@ fn refresh_rows(
             commands.entity(kid).try_despawn();
         }
     }
-    let rows = spawn_rows(
-        commands,
-        fonts,
-        picker,
-        &spec.root,
-        spec.max_depth,
-        editing,
-        &spec.exts,
-        collapsed,
-    );
+    let ext_refs: Vec<&str> = spec.exts.iter().map(String::as_str).collect();
+    let entries = walk(&spec.root, spec.max_depth, &ext_refs);
+    let rows = spawn_rows(commands, fonts, picker, &spec.root, &entries, editing, collapsed);
     commands.entity(spec.rows).replace_children(&rows);
 }
 
@@ -430,58 +414,67 @@ pub fn folder_entries(
     max_depth: usize,
     exts: &[&str],
 ) -> Vec<(PathBuf, usize, String)> {
-    fn rec(
-        dir: &Path,
-        depth: usize,
-        max: usize,
-        exts: &[&str],
-        out: &mut Vec<(PathBuf, usize, String)>,
-    ) {
+    walk(root, max_depth, exts)
+        .into_iter()
+        .map(|e| (e.path, e.depth, e.name))
+        .collect()
+}
+
+/// One entry of the walk, with whether it is a folder already known.
+struct Entry {
+    path: PathBuf,
+    depth: usize,
+    name: String,
+    is_dir: bool,
+}
+
+/// The walk behind [`folder_entries`].
+///
+/// Each entry's kind comes from the directory listing itself
+/// (`DirEntry::file_type`), never from a `Path::is_dir` per entry. That was a
+/// separate filesystem call for every file in every folder walked, and a
+/// project's model folders hold hundreds of textures each: opening the import
+/// window spent 358 ms on the main thread in those calls, and the New Material
+/// dialog 57 ms. The listing already carries the answer, so this asks nothing
+/// beyond one `read_dir` per folder.
+fn walk(root: &Path, max_depth: usize, exts: &[&str]) -> Vec<Entry> {
+    fn rec(dir: &Path, depth: usize, max: usize, exts: &[&str], out: &mut Vec<Entry>) {
         if depth > max || out.len() > MAX_ROWS {
             return;
         }
         let Ok(read) = std::fs::read_dir(dir) else {
             return;
         };
-        let all: Vec<PathBuf> = read.flatten().map(|e| e.path()).collect();
-        let mut dirs: Vec<PathBuf> = all.iter().filter(|p| p.is_dir()).cloned().collect();
-        dirs.sort();
-        let mut files: Vec<PathBuf> = if exts.is_empty() {
-            Vec::new()
-        } else {
-            all.into_iter()
-                .filter(|p| {
-                    p.is_file()
-                        && p.extension()
-                            .and_then(|e| e.to_str())
-                            .is_some_and(|e| exts.contains(&e.to_lowercase().as_str()))
-                })
-                .collect()
-        };
-        files.sort();
-        for path in dirs {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            // Hidden dotfolders, cargo's build dir and npm's dependency dir are
-            // never asset destinations, and `target/` alone would blow the row
-            // cap on its own.
-            if name.starts_with('.') || name == "target" || name == "node_modules" {
-                continue;
+        let mut dirs: Vec<(PathBuf, String)> = Vec::new();
+        let mut files: Vec<(PathBuf, String)> = Vec::new();
+        for entry in read.flatten() {
+            let Ok(kind) = entry.file_type() else { continue };
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if kind.is_dir() {
+                // Hidden dotfolders, cargo's build dir and npm's dependency dir
+                // are never asset destinations, and `target/` alone would blow
+                // the row cap on its own.
+                if name.starts_with('.') || name == "target" || name == "node_modules" {
+                    continue;
+                }
+                dirs.push((entry.path(), name));
+            } else if !exts.is_empty()
+                && !name.starts_with('.')
+                && name
+                    .rsplit_once('.')
+                    .is_some_and(|(_, e)| exts.contains(&e.to_lowercase().as_str()))
+            {
+                files.push((entry.path(), name));
             }
-            out.push((path.clone(), depth, name));
+        }
+        dirs.sort();
+        files.sort();
+        for (path, name) in dirs {
+            out.push(Entry { path: path.clone(), depth, name, is_dir: true });
             rec(&path, depth + 1, max, exts, out);
         }
-        for path in files {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if name.starts_with('.') {
-                continue;
-            }
-            out.push((path, depth, name));
+        for (path, name) in files {
+            out.push(Entry { path, depth, name, is_dir: false });
         }
     }
     let mut out = Vec::new();

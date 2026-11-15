@@ -38,7 +38,17 @@ impl Default for ProjectAssetPath {
 }
 
 impl ProjectAssetPath {
+    /// Point the asset reader at `path`. Nothing is taken when it already
+    /// points there.
+    ///
+    /// The write lock waits for every asset read in flight to let go of the
+    /// read side, and a scene switch touches `CurrentProject` while dozens of
+    /// loads are running: the main thread sat here for 67 ms to store the path
+    /// it already had.
     pub fn set(&self, path: PathBuf) {
+        if self.0.read().is_ok_and(|current| current.as_deref() == Some(path.as_path())) {
+            return;
+        }
         if let Ok(mut lock) = self.0.write() {
             *lock = Some(path);
         }

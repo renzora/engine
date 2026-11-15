@@ -313,6 +313,9 @@ impl Plugin for RuntimePlugin {
             // editor, so a scene carrying them still loads in the shipped game.
             .register_type::<renzora::EntityIcon>()
             .register_type::<renzora::EntityLabelColor>()
+            // The hierarchy's root order, saved so a scene reopens in the
+            // order it was left in.
+            .register_type::<renzora::HierarchyOrder>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::YSort>()
@@ -1043,6 +1046,15 @@ fn sync_project_asset_path(
         return;
     };
     if !project.is_changed() {
+        return;
+    }
+    // `CurrentProject` also changes for edits to its config (a scene switch
+    // records the open scene there), which do not move the project.
+    let unchanged = asset_path
+        .0
+        .read()
+        .is_ok_and(|current| current.as_deref() == Some(project.path.as_path()));
+    if unchanged {
         return;
     }
     info!(

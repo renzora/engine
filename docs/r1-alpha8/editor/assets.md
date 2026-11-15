@@ -100,6 +100,8 @@ Dragging out of the panel is how most things get used.
 - A **script** dropped on an entity attaches to it.
 - An **image**, SVG included, dropped on a texture slot (a material, a particle emitter's Texture, a UI image's Source, a sprite's Add Sheet) uses it there, and dropped in the 2D viewport makes a sprite.
 
+A baked texture (`.rmip`, which is what imported models' textures are stored as) shows a thumbnail too, drawn from the small sizes stored inside the file.
+
 An SVG shows in the panel with the image icon and a thumbnail, labelled **Vector Image**. Edit it in another program and save, and every place it is used updates while the editor runs. Its optional settings file (`name.svg.toml`, for the output size and so on) sits beside it.
 
 While you are mid-drag, hover over another panel's tab for a moment and that tab springs to the front, so you can reveal a drop target hidden behind another tab without letting go.

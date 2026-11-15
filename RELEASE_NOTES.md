@@ -1,5 +1,29 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-15 22:20
+- perf(viewport): showing a viewport again after a workspace switch no longer stalls while DLSS rebuilds itself
+
+## 2026-11-15 22:18
+- perf(materials): a scene with many materials fills them in over a few frames instead of freezing while it builds them all at once
+
+## 2026-11-15 22:09
+- perf(scene): material binding lists each model's materials folder once in the editor too, so the scene-open freeze is actually gone
+
+## 2026-11-15 17:47
+- perf(scene): opening a scene with large imported models no longer freezes the editor for most of a second while their materials are bound
+- perf(viewport): adding, closing or moving a panel no longer stalls the viewport for two frames
+- perf(viewport): dragging a divider beside the viewport stays smooth; the viewport takes its new size when you let go
+- perf(viewport): switching to and from a workspace without a viewport no longer stalls for a tenth of a second, and the scene stops rendering while no viewport shows it
+- perf(import): the import window opens without freezing the editor, and its preview no longer builds ray-tracing data for the model
+- fix(import): a model imported right after using another folder picker lands in the folder the import window shows, not the other picker's folder
+- perf(editor): folder pickers, such as the New Material dialog's, open faster in projects with large model folders
+- perf(hierarchy): the hierarchy no longer rebuilds itself while nothing in the scene changes
+- fix(hierarchy): the order of top-level objects is saved with the scene, so a scene reopens in the order it was left in
+- feat(assets): baked `.rmip` textures show thumbnails in the asset browser
+- fix(terrain): the terrain's material slot no longer squeezes its text into a narrow column in a narrow inspector
+- perf(text): 3D text builds its glyphs many times faster
+- perf(scene): switching scenes no longer waits on the asset reader to set the project folder it already has
+
 ## 2026-11-15 17:04
 - perf(ui): font atlases no text uses any more are freed, so changing the UI scale or font no longer leaves the old sizes in memory
 

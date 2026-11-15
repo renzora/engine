@@ -18,7 +18,9 @@ use renzora_editor_framework::{
     EditorLocked, EntityIcon, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
 };
 
-use crate::state::{build_entity_tree, EntityNode, HierarchySpawnSeq};
+use std::collections::HashSet;
+
+use crate::state::{build_entity_tree, EntityNode, HierarchyCandidate, HierarchySpawnSeq};
 
 /// Cached entity tree, produced by `update_hierarchy_cache`.
 #[derive(Resource, Default)]
@@ -27,6 +29,10 @@ pub struct HierarchyTreeCache {
     /// Monotonic counter; consumers can compare against a stored value to
     /// detect rebuilds without diffing the tree.
     pub version: u64,
+    /// Every entity in the tree, so a removal can be checked against it. A
+    /// removal names an entity that may already be gone, so there is nothing
+    /// left on it to filter by.
+    pub(crate) members: HashSet<Entity>,
 }
 
 /// Dirty flag: set by `mark_hierarchy_dirty` whenever a component the tree
@@ -44,12 +50,21 @@ impl Default for HierarchyDirty {
 
 /// Observe ECS changes that affect the hierarchy tree and flip the dirty
 /// flag. Cheap — just iterates filtered queries, doesn't build anything.
+///
+/// Only changes that could show in the tree count. The editor spawns,
+/// renames and despawns its own named UI every frame (status-bar readouts,
+/// reactive rows, tooltips), and when any `Name` or `ChildOf` anywhere counted,
+/// the tree was rebuilt ten times a second with nothing in the scene changing.
+/// Changes are filtered to the tree's own candidates, and removals, whose
+/// entity may be gone, to the entities the tree last held.
+#[allow(clippy::too_many_arguments)]
 pub fn mark_hierarchy_dirty(
     mut dirty: ResMut<HierarchyDirty>,
     filter: Option<Res<HierarchyFilter>>,
-    changed_name: Query<(), Or<(Added<Name>, Changed<Name>)>>,
-    changed_child_of: Query<(), Changed<ChildOf>>,
-    changed_visibility: Query<(), Changed<Visibility>>,
+    cache: Res<HierarchyTreeCache>,
+    changed_name: Query<(), (Or<(Added<Name>, Changed<Name>)>, HierarchyCandidate)>,
+    changed_child_of: Query<(), (Changed<ChildOf>, HierarchyCandidate)>,
+    changed_visibility: Query<(), (Changed<Visibility>, HierarchyCandidate)>,
     changed_locked: Query<(), Changed<EditorLocked>>,
     changed_hide: Query<(), Changed<HideInHierarchy>>,
     changed_order: Query<(), Changed<HierarchyOrder>>,
@@ -65,6 +80,14 @@ pub fn mark_hierarchy_dirty(
     // to stay under Bevy's per-system param-count cap).
     mut badges: AssetBadgeChanges,
 ) {
+    // Read every removal stream each frame, dirty or not: an unread stream
+    // keeps its events, and the next frame would act on stale ones.
+    let in_tree = |hit: bool, e: Entity| hit | cache.members.contains(&e);
+    let removed = removed_name.read().fold(false, in_tree)
+        | removed_child_of.read().fold(false, in_tree)
+        | removed_hide.read().fold(false, in_tree);
+    let identity_dirty = identity.dirty();
+    let badges_dirty = badges.dirty();
     if dirty.0 {
         return;
     }
@@ -80,11 +103,9 @@ pub fn mark_hierarchy_dirty(
         || !changed_locked.is_empty()
         || !changed_hide.is_empty()
         || !changed_order.is_empty()
-        || removed_name.read().next().is_some()
-        || removed_child_of.read().next().is_some()
-        || removed_hide.read().next().is_some()
-        || identity.dirty()
-        || badges.dirty()
+        || removed
+        || identity_dirty
+        || badges_dirty
     {
         dirty.0 = true;
     }
@@ -158,8 +179,45 @@ pub fn update_hierarchy_cache(world: &mut World, mut last_build: Local<f32>) {
     let nodes = world.resource_scope(|world, mut seq: Mut<HierarchySpawnSeq>| {
         build_entity_tree(world, &mut seq)
     });
+    stamp_root_order(world, &nodes);
+    let mut members = HashSet::new();
+    let mut stack: Vec<&EntityNode> = nodes.iter().collect();
+    while let Some(node) = stack.pop() {
+        members.insert(node.entity);
+        stack.extend(node.children.iter());
+    }
     let mut cache = world.resource_mut::<HierarchyTreeCache>();
     cache.nodes = nodes;
+    cache.members = members;
     cache.version = cache.version.wrapping_add(1);
     world.resource_mut::<HierarchyDirty>().0 = false;
+}
+
+/// Give every scene root that has no [`HierarchyOrder`] the next one after
+/// those that do, in the order the tree shows them, so that order is what the
+/// scene saves and what it reopens in. See [`HierarchyOrder`] for why the
+/// fallback order could not be trusted across a load.
+///
+/// Only true roots: an entity shown at the top because its real parent is
+/// hidden keeps whatever its parent's order gives it.
+fn stamp_root_order(world: &mut World, nodes: &[EntityNode]) {
+    let is_root = |world: &World, e: Entity| world.get::<ChildOf>(e).is_none();
+    let missing: Vec<Entity> = nodes
+        .iter()
+        .map(|n| n.entity)
+        .filter(|&e| is_root(world, e) && world.get::<HierarchyOrder>(e).is_none())
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    let mut next = nodes
+        .iter()
+        .filter_map(|n| world.get::<HierarchyOrder>(n.entity))
+        .map(|h| h.0.saturating_add(1))
+        .max()
+        .unwrap_or(0);
+    for e in missing {
+        world.entity_mut(e).insert(HierarchyOrder(next));
+        next = next.saturating_add(1);
+    }
 }

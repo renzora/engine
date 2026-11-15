@@ -336,6 +336,15 @@ pub struct ThumbnailCache {
     companion: HashMap<renzora::CompanionJobId, PathBuf>,
     /// The same sources, for de-duplicating requests.
     asked: HashSet<PathBuf>,
+    /// `.rmip` textures whose small mip levels are being read off the main
+    /// thread. See [`renzora_rmip::preview_image`] for why these skip the
+    /// decode-and-cache path every other image takes.
+    rmip: HashMap<PathBuf, bevy::tasks::Task<Option<Image>>>,
+}
+
+/// Whether `path` is a baked `.rmip` texture.
+fn is_rmip(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("rmip"))
 }
 
 /// Whether the companion's texture thumbnailer reads files with this
@@ -378,11 +387,23 @@ impl ThumbnailCache {
             || self.loading.contains(&path)
             || self.failed.contains(&path)
             || self.asked.contains(&path)
+            || self.rmip.contains_key(&path)
         {
             return false;
         }
-        if self.handles.len() + self.loading.len() >= MAX_LOADED {
+        if self.handles.len() + self.loading.len() + self.rmip.len() >= MAX_LOADED {
             return false;
+        }
+        // A baked texture shows its own small mip levels, read straight from
+        // the file; no decode, no cached PNG (reading them is no slower than
+        // reading a PNG would be).
+        if is_rmip(&path) {
+            let source = path.clone();
+            let task = bevy::tasks::IoTaskPool::get().spawn(async move {
+                renzora_rmip::preview_image(&source, CACHE_THUMB_SIZE).ok()
+            });
+            self.rmip.insert(path, task);
+            return true;
         }
         // Persistent cache hit: load the cached PNG instead of the
         // source. The handle this session ends up publishing points at
@@ -694,14 +715,16 @@ fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
 /// or single-channel layouts, which causes errors on common PBR texture sets.
 ///
 /// SVG is included: it loads through the same `AssetServer` path as a PNG and
-/// lands as RGBA8, so the cache encodes it like any other source. Not the
+/// lands as RGBA8, so the cache encodes it like any other source. So is
+/// `.rmip`, which takes its own path: its small mip levels are read straight
+/// from the file and shown as they are (see `ThumbnailCache::request`). Not the
 /// shared `renzora::IMAGE_EXTENSIONS`, because this list is deliberately
-/// narrower (no EXR, KTX2, DDS or `.rmip`, for the reasons above).
+/// narrower (no EXR, KTX2 or DDS, for the reasons above).
 pub fn supports_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(
         ext.as_str(),
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz"
+        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz" | "rmip"
     )
 }
 
@@ -736,12 +759,37 @@ pub fn supports_model_thumbnail(filename: &str) -> bool {
 pub fn update_thumbnail_cache(
     asset_server: Res<AssetServer>,
     mut cache: ResMut<ThumbnailCache>,
-    images: Res<Assets<Image>>,
+    mut images: ResMut<Assets<Image>>,
     project: Option<Res<CurrentProject>>,
     mut jobs: Option<ResMut<renzora::CompanionJobs>>,
     mut done: MessageReader<renzora::CompanionJobDone>,
     mut frames: Local<u32>,
 ) {
+    // `.rmip` previews read off the main thread: publish each as it lands. One
+    // that could not be read keeps its icon, like any other failed load.
+    if !cache.rmip.is_empty() {
+        let finished: Vec<(PathBuf, Option<Image>)> = cache
+            .rmip
+            .iter_mut()
+            .filter_map(|(path, task)| {
+                bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task))
+                    .map(|image| (path.clone(), image))
+            })
+            .collect();
+        for (path, image) in finished {
+            cache.rmip.remove(&path);
+            match image {
+                Some(image) => {
+                    let handle = images.add(image);
+                    cache.handles.insert(path, handle);
+                }
+                None => {
+                    cache.failed.insert(path);
+                }
+            }
+        }
+    }
+
     // Thumbnails the companion was asked for in `request`: show the written
     // PNG, or load the source here when it could not make one.
     for answer in done.read() {

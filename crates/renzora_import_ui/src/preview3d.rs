@@ -826,12 +826,18 @@ fn poll_gltf(
     // un-rotated model; the spin only starts once framing is done.
     commands.entity(rig.turntable).insert(Transform::default());
 
+    // Hidden until `on_scene_ready` has moved every descendant onto the preview
+    // layer. A large model spawns over several frames, and until that pass its
+    // meshes sit on layer 0, the scene's: they drew in the viewport, and Solari
+    // mirrored them into the ray-traced scene and built acceleration structures
+    // for all of them, 560 ms in one frame for a car of 650k triangles. Hidden,
+    // nothing under the root is drawn or traced until it is on its own layer.
     let child = commands
         .spawn((
             WorldAssetRoot(scene),
             Transform::default(),
-            Visibility::Visible,
-            InheritedVisibility::VISIBLE,
+            Visibility::Hidden,
+            InheritedVisibility::HIDDEN,
             ViewVisibility::default(),
             ChildOf(rig.turntable),
             RenderLayers::layer(PREVIEW_LAYER),
@@ -865,6 +871,9 @@ fn on_scene_ready(
             stack.extend(kids.iter());
         }
     }
+    // Every descendant is on the preview layer now (the inserts above apply
+    // before this one), so the model can be seen. See where the root spawns.
+    commands.entity(root).try_insert(Visibility::Visible);
     preview.scene_ready = true;
 }
 

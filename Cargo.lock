@@ -7418,6 +7418,7 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_rmip",
  "renzora_scripting",
  "renzora_webfs",
  "zip",

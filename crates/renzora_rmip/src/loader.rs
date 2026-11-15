@@ -202,6 +202,80 @@ impl AssetLoader for RmipAssetLoader {
     }
 }
 
+/// A small version of the `.rmip` at `path` for a thumbnail: the levels of its
+/// mip chain from the first one no bigger than `max` on its longest side down,
+/// read straight from the file, so nothing above that size is read at all.
+///
+/// The asset browser showed every `.rmip` as a blank tile: its thumbnails were
+/// made by decoding pixels on the CPU, and these are mostly block-compressed,
+/// which nothing there can decode. They do not need decoding to be shown: the
+/// GPU samples a block-compressed texture as it is, and the file already holds
+/// every smaller size. A 2048 px BC7 texture's preview is about 87 KB read
+/// from a 5.6 MB file. Blocking, so call it off the main thread.
+pub fn preview_image(path: &std::path::Path, max: u32) -> Result<Image, RmipLoadError> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path)?;
+    let mut header = [0u8; HEADER_LEN];
+    file.read_exact(&mut header)?;
+    if header[0..4] != MAGIC {
+        return Err(RmipLoadError::BadMagic);
+    }
+    let version = u32_le(&header, 4);
+    if version != 1 && version != VERSION {
+        return Err(RmipLoadError::UnsupportedVersion(version, VERSION));
+    }
+    let width = u32_le(&header, 8);
+    let height = u32_le(&header, 12);
+    let mip_count = u32_le(&header, 16);
+    let format_code = u32_le(&header, 20);
+    if width == 0 || height == 0 || mip_count == 0 {
+        return Err(RmipLoadError::ZeroSize);
+    }
+    let rmip_format =
+        RmipFormat::from_code(format_code).ok_or(RmipLoadError::UnknownFormat(format_code))?;
+
+    // Same level choice as the `#low` tier above, against `max` instead.
+    let (_, _, usable_mips, _) = aligned_upload(rmip_format, width, height, mip_count);
+    let mut skip = 0u32;
+    while skip + 1 < usable_mips && (width >> skip).max(1).max((height >> skip).max(1)) > max {
+        skip += 1;
+    }
+    let offset: usize = (0..skip)
+        .map(|l| rmip_format.level_byte_size((width >> l).max(1), (height >> l).max(1)))
+        .sum();
+    let low_w = (width >> skip).max(1);
+    let low_h = (height >> skip).max(1);
+    let (aw, ah, mips, bytes) = aligned_upload(rmip_format, low_w, low_h, usable_mips - skip);
+
+    file.seek(SeekFrom::Start((HEADER_LEN + offset) as u64))?;
+    let mut pixels = vec![0u8; bytes];
+    file.read_exact(&mut pixels).map_err(|_| RmipLoadError::Truncated {
+        expected: HEADER_LEN + offset + bytes,
+        actual: file.metadata().map_or(0, |m| m.len() as usize),
+    })?;
+
+    Ok(Image {
+        data: Some(pixels),
+        data_order: TextureDataOrder::default(),
+        texture_descriptor: TextureDescriptor {
+            label: None,
+            size: Extent3d { width: aw, height: ah, depth_or_array_layers: 1 },
+            mip_level_count: mips,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: wgpu_format(rmip_format),
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        sampler: ImageSampler::Default,
+        texture_view_descriptor: None,
+        // Only ever drawn; no CPU reader can use block-compressed pixels.
+        asset_usage: RenderAssetUsages::RENDER_WORLD,
+        copy_on_resize: false,
+    })
+}
+
 /// Where a full-tier texture's pixels are kept once it reaches the GPU.
 ///
 /// Every CPU reader of image pixels in the engine (terrain texture arrays,

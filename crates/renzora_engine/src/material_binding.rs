@@ -155,6 +155,71 @@ fn material_file_exists(
     reader.read_string(&fs_path).is_some()
 }
 
+/// Which `.material` files exist, remembered across the frames one load takes
+/// to bind.
+///
+/// Answering by reading each file took 700 ms in one frame when a scene with
+/// the Bistro in it opened: well over a hundred materials, each opened and read
+/// in full on the main thread just to learn that it was there, and the answers
+/// were thrown away at the end of the frame while the model kept spawning. On
+/// disk a folder is now listed once and every name in it answered from that;
+/// a reader with no listing (a packed game, the web build) is still asked per
+/// file, but only once per file per load.
+#[derive(Default)]
+pub struct MaterialFiles {
+    /// Asset-relative materials folder -> the file names in it.
+    listed: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    /// Asset-relative path -> whether the reader could open it.
+    asked: std::collections::HashMap<String, bool>,
+}
+
+impl MaterialFiles {
+    fn clear(&mut self) {
+        self.listed.clear();
+        self.asked.clear();
+    }
+
+    fn exists(
+        &mut self,
+        path: &str,
+        dir_rel: &str,
+        on_disk: bool,
+        project: Option<&renzora::CurrentProject>,
+        reader: &renzora::VirtualFileReader,
+    ) -> bool {
+        if on_disk {
+            if let Some(project) = project {
+                let names = self.listed.entry(dir_rel.to_string()).or_insert_with(|| {
+                    std::fs::read_dir(project.resolve_path(dir_rel))
+                        .map(|entries| {
+                            entries
+                                .flatten()
+                                .map(|e| file_key(&e.file_name().to_string_lossy()))
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                });
+                let file = path.rsplit_once('/').map_or(path, |(_, f)| f);
+                return names.contains(&file_key(file));
+            }
+        }
+        *self
+            .asked
+            .entry(path.to_string())
+            .or_insert_with(|| material_file_exists(path, project, reader))
+    }
+}
+
+/// A file name as the filesystem compares it: Windows ignores case, so a
+/// listing must too, or a file the old per-file read found would stop binding.
+fn file_key(name: &str) -> String {
+    if cfg!(windows) {
+        name.to_lowercase()
+    } else {
+        name.to_string()
+    }
+}
+
 /// Arm material binding for a scene that Bevy has just finished spawning.
 ///
 /// `scene_root` is the entity holding the world-asset root — the child
@@ -257,12 +322,22 @@ pub fn bind_material_refs(
     gltf_assets: Res<Assets<Gltf>>,
     project: Option<Res<renzora::CurrentProject>>,
     file_reader: Option<Res<renzora::VirtualFileReader>>,
+    mut files: Local<MaterialFiles>,
 ) {
+    // Forget what was learned once nothing is binding, so the next import
+    // (which writes new `.material` files) is checked afresh.
+    if pending_query.is_empty() {
+        files.clear();
+        return;
+    }
     let default_reader = renzora::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
-    // One read per material per frame, not per mesh: a model's meshes mostly
-    // share a handful of materials.
-    let mut exists: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+    // Only the editor and a loose-folder game read the project from disk; a
+    // packed game or the web build installs its own reader, which has no
+    // directory listing, so those keep asking per file. The resource is always
+    // there (the material resolver installs the disk one), so it is the reader
+    // that says which it is, not whether one exists.
+    let on_disk = file_reader.as_deref().is_none_or(|r| r.is_disk());
     for (root_entity, pending, mesh_data) in pending_query.iter() {
         if gltf_assets.get(&pending.gltf_handle).is_none() {
             // GLB still loading. Wait — `PendingMaterialBinding` holds the
@@ -299,10 +374,8 @@ pub fn bind_material_refs(
                 // was never imported) mark it done so it is not retried.
                 let bound = mat_name.and_then(|name| {
                     bound_material_path(&materials_dir_rel, &name.0, |path| {
-                        *exists.entry(path.to_string()).or_insert_with(|| {
-                            let _check = info_span!("material_binding: file check").entered();
-                            material_file_exists(path, project.as_deref(), reader)
-                        })
+                        let _check = info_span!("material_binding: file check").entered();
+                        files.exists(path, &materials_dir_rel, on_disk, project.as_deref(), reader)
                     })
                 });
                 match bound {
