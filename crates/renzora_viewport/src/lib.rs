@@ -159,7 +159,11 @@ impl Plugin for ViewportPlugin {
                     // pipeline rather than a `Material`, so there is no material
                     // asset to swap for a debug view.
                 ),
-                render_systems::update_shadow_settings,
+                // After every camera's activation for this frame, so a camera
+                // waking gets its lights' shadows back in the same frame.
+                render_systems::update_shadow_settings
+                    .after(sync_viewport_camera_activation)
+                    .after(camera_preview::sync_camera_preview_activation),
                 play_mode::handle_play_mode_transitions,
                 (
                     external_runtime::poll_external_runtime,

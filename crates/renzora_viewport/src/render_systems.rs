@@ -615,6 +615,16 @@ impl ShadowBudget {
 /// [`MAX_SHADOW_CASTING_SPOT_LIGHTS`] spot lights to the camera. Runs every
 /// frame so the budget follows the camera.
 ///
+/// **No shadows while nothing renders.** When 3D cameras exist but none is
+/// active this frame (the viewport idling under render-on-change, or no
+/// viewport on screen), no light is allowed shadows. Point and spot light
+/// shadow maps belong to no camera, and Bevy renders them every frame whether
+/// or not a camera will read them: the apartment's five shadowed lights cost
+/// about 4 ms of GPU and 110 command buffers a frame with nothing on screen
+/// changing. The frame a camera wakes, this runs after the activation systems,
+/// lets the lights back in and marks them changed, so they are re-extracted
+/// and their shadow maps rendered before that frame's cameras read them.
+///
 /// A light let back into the budget is marked changed, and that is the only
 /// write to a light it makes; the value stays the same. Bevy re-extracts a
 /// light only when one of its components changes, so the extracted copy
@@ -623,14 +633,17 @@ impl ShadowBudget {
 /// else about it was edited. Marking it re-extracts it with its own setting.
 pub fn update_shadow_settings(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
+    cameras_3d: Query<&Camera, With<Camera3d>>,
     settings: Res<ViewportSettings>,
     mut directional_lights: Query<(Entity, &mut DirectionalLight)>,
     mut point_lights: Query<(Entity, &GlobalTransform, &mut PointLight)>,
     mut spot_lights: Query<(Entity, &GlobalTransform, &mut SpotLight)>,
     mut budget: ResMut<ShadowBudget>,
 ) {
+    // With no 3D camera at all there is nothing to save, so the budget stands.
+    let nothing_renders = !cameras_3d.is_empty() && !cameras_3d.iter().any(|c| c.is_active);
     let mut allowed = HashSet::new();
-    if settings.render_toggles.shadows {
+    if settings.render_toggles.shadows && !nothing_renders {
         let cam = camera.iter().next().map(|t| t.translation());
         allowed.extend(nearest_lights(
             cam,
@@ -780,6 +793,41 @@ mod shadow_budget_tests {
         assert!(app.world().resource::<ShadowBudget>().allows(far));
         assert_eq!(app.world().resource::<Touched>().0, vec![far]);
         assert!(app.world().get::<PointLight>(far).unwrap().shadow_maps_enabled);
+    }
+
+    /// While every 3D camera is idle no light gets shadows, since nothing would
+    /// read them; the frame one wakes they are back, and the lights are marked
+    /// changed so Bevy re-extracts them with their own setting.
+    #[test]
+    fn idle_cameras_render_no_shadows_and_waking_hands_them_back() {
+        #[derive(Resource, Default)]
+        struct Touched(Vec<Entity>);
+        let mut app = app();
+        app.init_resource::<Touched>().add_systems(
+            Update,
+            (|lights: Query<Entity, Changed<PointLight>>, mut touched: ResMut<Touched>| {
+                touched.0 = lights.iter().collect();
+            })
+            .after(update_shadow_settings),
+        );
+        let lit = point(&mut app, Vec3::ZERO, true);
+        let camera = app
+            .world_mut()
+            .spawn((Camera3d::default(), Camera { is_active: true, ..default() }))
+            .id();
+        app.update();
+        assert!(app.world().resource::<ShadowBudget>().allows(lit));
+
+        app.world_mut().get_mut::<Camera>(camera).unwrap().is_active = false;
+        app.update();
+        assert!(!app.world().resource::<ShadowBudget>().allows(lit), "an idle viewport renders no shadow maps");
+        assert!(app.world().resource::<Touched>().0.is_empty(), "going idle writes to no light");
+        assert!(app.world().get::<PointLight>(lit).unwrap().shadow_maps_enabled, "the light's own setting stays");
+
+        app.world_mut().get_mut::<Camera>(camera).unwrap().is_active = true;
+        app.update();
+        assert!(app.world().resource::<ShadowBudget>().allows(lit));
+        assert_eq!(app.world().resource::<Touched>().0, vec![lit], "re-extracted on waking");
     }
 
     /// The viewport's shadow toggle switches every light off, and nothing

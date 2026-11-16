@@ -1,5 +1,15 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-16 00:26
+- fix(solari): leaving a Solari scene no longer leaves rough surfaces mirroring the sky
+
+## 2026-11-16 00:11
+- perf(solari): ray-traced copies of meshes and lights are no longer rewritten every frame, so the viewport can idle with Solari on
+- perf(viewport): a model with an animator no longer keeps the viewport rendering while nothing plays
+
+## 2026-11-16 00:03
+- perf(viewport): light shadow maps are no longer re-rendered every frame while the viewport is idle
+
 ## 2026-11-15 23:34
 - fix(viewport): the viewport stops rendering when nothing changes again, instead of redrawing the whole scene every frame
 

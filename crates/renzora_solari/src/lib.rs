@@ -133,6 +133,7 @@ impl Plugin for SolariPlugin {
                 manage_solari_render_mode,
                 sync_shadow_map_suppression,
                 reset_history_on_sun_change,
+                restore_filtered_sky_probe,
             ),
         );
         app.init_resource::<SuppressShadowMaps>();
@@ -228,6 +229,35 @@ fn on_solari_lighting_removed(
     if let Ok(probe) = probes.get(trigger.entity) {
         if !probe.filtered {
             ec.try_insert(AtmosphereEnvironmentMapLight {
+                filtered: true,
+                ..probe.clone()
+            });
+        }
+    }
+}
+
+/// Put the sky probe back to filtered on any camera Solari is not lighting.
+///
+/// [`on_solari_lighting_removed`] does this the moment `SolariLighting` goes,
+/// but it can lose a race: Bevy's Solari makes the probe unfiltered with a
+/// queued command, and when `SolariLighting` came and went within a frame or
+/// two (a scene switch from a Solari scene to one without), the observer read
+/// the probe as still filtered, did nothing, and the queued command then landed.
+/// The probe stayed unfiltered with Solari off, and every rough surface mirrored
+/// the raw sky: the apartment's satin chairs showed sharp blue and beige
+/// patches. A per-frame check cannot be outrun that way, and costs a query.
+fn restore_filtered_sky_probe(
+    // The reference path tracer wants the raw cube too (the quality tests use
+    // it); left out, or the two would rebuild the probe every frame.
+    probes: Query<
+        (Entity, &AtmosphereEnvironmentMapLight),
+        (Without<SolariLighting>, Without<bevy::solari::pathtracer::Pathtracer>),
+    >,
+    mut commands: Commands,
+) {
+    for (entity, probe) in &probes {
+        if !probe.filtered {
+            commands.entity(entity).try_insert(AtmosphereEnvironmentMapLight {
                 filtered: true,
                 ..probe.clone()
             });
@@ -736,6 +766,15 @@ struct Twin {
     /// [`sync_traced_twins`]'s check that nothing has changed.
     source: AssetId<Mesh>,
     kind: MeshRaytracingFlags,
+    /// The source's `GlobalTransform` when the twin was last placed.
+    ///
+    /// Compared against instead of the twin's own `GlobalTransform`: the twin
+    /// is placed through a `Transform` decomposed from the source's, and
+    /// propagation rebuilds its global from that, which comes back slightly
+    /// different (exactly so for non-uniform scale under a rotation). Compared
+    /// against the twin, every such twin was rewritten every frame, which kept
+    /// the viewport's render-on-change from ever idling with Solari on.
+    placed_from: GlobalTransform,
 }
 
 /// Source mesh entity to its twin.
@@ -787,7 +826,6 @@ fn sync_traced_twins(
     materials: Res<Assets<StandardMaterial>>,
     active: Query<(), With<SolariLighting>>,
     sources: Query<TwinSource, Without<MeshMaterial3d<StandardMaterial>>>,
-    placed: Query<&GlobalTransform, With<SolariTracedTwin>>,
 ) {
     if active.is_empty() {
         for (_, twin) in twins.0.drain() {
@@ -829,8 +867,11 @@ fn sync_traced_twins(
                 || trace.proxies.copies.get(&src.id()).is_some_and(|copy| copy.as_ref().is_some_and(|h| h.id() == twin.mesh));
             if twin.source == src.id() && twin.material == stand_in.0.id() && twin.kind == kind && traces_current {
                 live.insert(source);
-                if placed.get(twin.entity).is_ok_and(|at| at != transform) {
+                if twin.placed_from != *transform {
                     commands.entity(twin.entity).try_insert((Transform::from(*transform), *transform));
+                    if let Some(twin) = twins.0.get_mut(&source) {
+                        twin.placed_from = *transform;
+                    }
                 }
                 continue;
             }
@@ -855,10 +896,13 @@ fn sync_traced_twins(
         {
             // Written only on a change: a moved `GlobalTransform` is what makes
             // Solari re-upload the instance's transform.
-            if placed.get(twin.entity).is_ok_and(|at| at != transform) {
+            if twin.placed_from != *transform {
                 commands
                     .entity(twin.entity)
                     .try_insert((Transform::from(*transform), *transform));
+                if let Some(twin) = twins.0.get_mut(&source) {
+                    twin.placed_from = *transform;
+                }
             }
             continue;
         }
@@ -886,6 +930,7 @@ fn sync_traced_twins(
                 // `traced` came from a source, so there is one.
                 source: source_mesh.map_or(traced.id(), Handle::id),
                 kind,
+                placed_from: *transform,
             },
         );
     }
@@ -1431,8 +1476,11 @@ struct SolariLightProxy;
 #[derive(Resource, Default)]
 struct LightProxies {
     sphere: Option<Handle<Mesh>>,
-    /// light entity -> (proxy entity, its emissive material)
-    proxies: HashMap<Entity, (Entity, Handle<StandardMaterial>)>,
+    /// light entity -> (proxy entity, its emissive material, where it was last
+    /// placed). The placement is compared against rather than the proxy's own
+    /// `GlobalTransform`, which propagation rebuilds from the `Transform` and
+    /// can come back a little different; see `Twin::placed_from`.
+    proxies: HashMap<Entity, (Entity, Handle<StandardMaterial>, GlobalTransform)>,
 }
 
 /// The smallest sphere we will stand in for a light, in metres.
@@ -1514,7 +1562,7 @@ fn sync_light_proxies(
     let wanted = !active.is_empty() && sources.iter().any(|gi| gi.enabled && gi.light_proxies);
     if !wanted {
         if !store.proxies.proxies.is_empty() {
-            for (proxy, _) in store.proxies.proxies.values() {
+            for (proxy, _, _) in store.proxies.proxies.values() {
                 commands.entity(*proxy).try_despawn();
             }
             store.proxies.proxies.clear();
@@ -1564,7 +1612,7 @@ fn sync_light_proxies(
     }
 
     // Drop proxies whose light was deleted, hidden, or moved off layer 0.
-    store.proxies.proxies.retain(|light, (proxy, _)| {
+    store.proxies.proxies.retain(|light, (proxy, _, _)| {
         let keep = live.contains(light);
         if !keep {
             commands.entity(*proxy).try_despawn();
@@ -1614,22 +1662,26 @@ fn upsert_light_proxy(
     // Scale the unit sphere to the light's radius, positioned where it is.
     let placement = transform.mul_transform(Transform::from_scale(Vec3::splat(radius)));
 
-    match store.proxies.proxies.get(&light) {
-        Some((proxy, material_handle)) => {
-            if let Some(mut material) = store.materials.get_mut(material_handle) {
-                // Guarded so a static light doesn't mark its material changed
-                // every frame: Solari re-uploads every `StandardMaterial` that
-                // does.
-                if material.emissive != emissive {
+    match store.proxies.proxies.get_mut(&light) {
+        Some((proxy, material_handle, placed)) => {
+            // Read before taking it mutably: `get_mut` alone marks the asset
+            // modified, so a static light re-uploaded its material every frame
+            // (Solari re-uploads every `StandardMaterial` that changes) and the
+            // viewport never idled.
+            if store.materials.get(&*material_handle).is_some_and(|m| m.emissive != emissive) {
+                if let Some(mut material) = store.materials.get_mut(&*material_handle) {
                     material.emissive = emissive;
                 }
             }
-            // Written every frame: a moving lamp has to drag its light with it,
+            // Only when the light moved: a moving lamp drags its proxy with it,
             // and `GlobalTransform` too, because ours is a root entity whose
             // propagation has already run by the time we get here.
-            commands
-                .entity(*proxy)
-                .try_insert((Transform::from(placement), placement));
+            if *placed != placement {
+                commands
+                    .entity(*proxy)
+                    .try_insert((Transform::from(placement), placement));
+                *placed = placement;
+            }
         }
         None => {
             let material = store.materials.add(StandardMaterial {
@@ -1649,7 +1701,7 @@ fn upsert_light_proxy(
                     placement,
                 ))
                 .id();
-            store.proxies.proxies.insert(light, (proxy, material));
+            store.proxies.proxies.insert(light, (proxy, material, placement));
         }
     }
     true

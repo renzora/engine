@@ -81,8 +81,11 @@ pub struct ViewportRedraw {
     frames_left: u32,
     /// Frames rendered since the viewport last idled.
     awake_for: u32,
-    /// Whether the "never idles" line has been printed for this stretch.
-    reported: bool,
+    /// The reason the "never idles" line last gave in this stretch, so it is
+    /// printed again (every [`NEVER_IDLE_FRAMES`]) only when the cause changes.
+    /// Once per stretch was not enough: a stretch first blamed on the pointer
+    /// over the viewport never said what kept it awake after the pointer left.
+    reported: Option<String>,
     /// The last thing that woke it, for that line.
     last_reason: String,
 }
@@ -92,7 +95,7 @@ impl Default for ViewportRedraw {
         Self {
             frames_left: SETTLE_FRAMES,
             awake_for: 0,
-            reported: false,
+            reported: None,
             last_reason: String::new(),
         }
     }
@@ -140,8 +143,12 @@ type CameraFilter = Or<(With<ViewportCamera>, With<ViewportCamera2d>)>;
 /// Components Bevy (or the editor) writes every frame whether or not anything
 /// changed. A missing entry here does no harm beyond the viewport never
 /// idling, and [`NEVER_IDLE_FRAMES`] says which entity is doing it.
-fn ignored_components() -> [TypeId; 15] {
+fn ignored_components() -> [TypeId; 16] {
     [
+        // Ticked mutably every frame by Bevy whether or not anything plays, so
+        // a model with an animator kept the viewport awake while idle. A clip
+        // that really plays moves its targets' transforms, which still count.
+        TypeId::of::<bevy::animation::AnimationPlayer>(),
         // Re-inserted every frame on every 3D camera (`update_previous_view_data`),
         // so a camera in the scene, such as the game's own, kept the viewport
         // awake forever.
@@ -210,7 +217,7 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         // settles rather than cutting to a half-converged frame.
         redraw.frames_left = settle_frames;
         redraw.awake_for = 0;
-        redraw.reported = false;
+        redraw.reported = None;
         return;
     }
     match reason {
@@ -222,11 +229,13 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
     }
     if redraw.frames_left == 0 {
         redraw.awake_for = 0;
-        redraw.reported = false;
+        redraw.reported = None;
     } else {
         redraw.awake_for += 1;
-        if redraw.awake_for >= NEVER_IDLE_FRAMES && !redraw.reported && !playing && demand.continuous.is_none() {
-            redraw.reported = true;
+        let due = redraw.awake_for % NEVER_IDLE_FRAMES == 0;
+        let new_cause = redraw.reported.as_deref() != Some(redraw.last_reason.as_str());
+        if due && new_cause && !playing && demand.continuous.is_none() {
+            redraw.reported = Some(redraw.last_reason.clone());
             // To the Console panel, not only the log: a viewport that never
             // idles renders the whole scene every frame for nothing, and the
             // log is a terminal nobody is watching.

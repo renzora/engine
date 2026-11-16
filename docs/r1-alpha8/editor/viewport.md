@@ -151,6 +151,8 @@ What wakes it:
 
 Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. It is saved with the project.
 
+While the viewport idles, lights' shadow maps are not re-rendered either, since nothing would read them; they are back in the same frame the viewport wakes.
+
 If something in the scene changes every frame, the viewport never gets to idle. After ten seconds of that the Console says so, naming the components and entities that keep changing (up to five).
 
 While you drag a divider or window edge beside a viewport, it keeps rendering at its old size and stretches to fit, then renders at the new size when you let go. With no viewport on screen at all (a workspace without one, with no game running), the scene is not rendered until one comes back.

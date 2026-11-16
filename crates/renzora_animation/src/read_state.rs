@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use crate::component::{AnimatorComponent, AnimatorState};
 
 /// Read-only snapshot of animator state. Never saved to scenes.
-#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, Default, PartialEq, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct AnimatorReadState {
     /// Name of the currently-playing clip slot, or empty if none.
@@ -57,24 +57,31 @@ pub fn auto_init_animator_read_state(
 }
 
 /// Refreshes [`AnimatorReadState`] from `AnimatorState` + `Assets<AnimationClip>`.
+///
+/// Written only when the snapshot differs. Rewriting every field each frame
+/// marked the component changed on every animated model, playing or not, and
+/// the editor viewport, which renders only when something changes, never idled
+/// with one in the scene.
 pub fn update_animator_read_state(
     mut q: Query<(&AnimatorState, &mut AnimatorReadState)>,
     clips: Res<Assets<AnimationClip>>,
 ) {
     for (state, mut rs) in &mut q {
-        rs.current_clip = state.current_clip.clone().unwrap_or_default();
-        rs.current_state = state.current_state.clone().unwrap_or_default();
-        rs.state_time = state.state_time;
-        rs.time = state.prop_time;
-        rs.playing = !state.is_paused && !state.prop_stopped;
+        let mut next = rs.clone();
+        next.current_clip = state.current_clip.clone().unwrap_or_default();
+        next.current_state = state.current_state.clone().unwrap_or_default();
+        next.state_time = state.state_time;
+        next.time = state.prop_time;
+        next.playing = !state.is_paused && !state.prop_stopped;
         for (name, handle) in &state.clip_handles {
             if let Some(clip) = clips.get(handle) {
-                rs.clip_lengths.insert(name.clone(), clip.duration());
+                next.clip_lengths.insert(name.clone(), clip.duration());
             }
         }
-        rs.params = state.params.floats.clone();
-        rs.bool_params = state.params.bools.clone();
-        rs.root_motion_delta = state.root_motion_delta;
-        rs.root_motion_yaw = state.root_motion_yaw;
+        next.params = state.params.floats.clone();
+        next.bool_params = state.params.bools.clone();
+        next.root_motion_delta = state.root_motion_delta;
+        next.root_motion_yaw = state.root_motion_yaw;
+        rs.set_if_neq(next);
     }
 }
