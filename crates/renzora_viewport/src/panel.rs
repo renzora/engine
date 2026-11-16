@@ -136,6 +136,22 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     );
     commands.entity(content).add_child(img);
 
+    // The slot's overlay image (gizmos, labels, the on-top selection box),
+    // drawn by its own camera and laid over the scene image; see `overlay`.
+    // `sync_overlay_nodes` gives it its image and shows it while the 3D view
+    // owns this slot. Hidden until then: an `ImageNode` with no image draws a
+    // white square.
+    let overlay_img = commands
+        .spawn((
+            ImageNode::default(),
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Percent(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            Visibility::Hidden,
+            crate::overlay::ViewportOverlayImage(index),
+            Name::new("native-viewport-overlay"),
+        ))
+        .id();
+    commands.entity(content).add_child(overlay_img);
+
     // Nav overlay (pan/zoom drag + grid/scene-icon toggles), right edge.
     let nav = crate::nav::build(commands, fonts);
     commands.entity(content).add_child(nav);
@@ -217,6 +233,14 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     root
 }
 
+/// The scene area and the two images covering it, which all need the rounded
+/// corners of [`round_scene_corners`].
+type SceneAreaNodes = Or<(
+    With<NativeViewport>,
+    With<ViewportImage>,
+    With<crate::overlay::ViewportOverlayImage>,
+)>;
+
 /// Round the scene area's bottom corners to match the dock's `leaf_radius`.
 ///
 /// The viewport is the one panel whose content is a different colour from the
@@ -229,7 +253,7 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
 /// toolbar, which is square, and mid-panel curves would look like a mistake.
 fn round_scene_corners(
     theme: Res<renzora_ember::style::Theme>,
-    mut q: Query<&mut Node, Or<(With<NativeViewport>, With<ViewportImage>)>>,
+    mut q: Query<&mut Node, SceneAreaNodes>,
 ) {
     let r = Val::Px(theme.dock.leaf_radius);
     let want = BorderRadius {

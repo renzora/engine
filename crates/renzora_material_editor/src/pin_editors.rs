@@ -44,7 +44,13 @@ impl Plugin for MaterialPinEditors {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (tex_drop, tex_clear, tex_browse, tex_drop_highlight).run_if(in_state(SplashState::Editor)),
+            (tex_drop, tex_clear, tex_browse, tex_drop_highlight)
+                .run_if(in_state(SplashState::Editor))
+                // All four act on a texture pin's field, and `texture_field`
+                // spawns the drop zone and its clear button together. With no
+                // material graph node or Material panel showing one, none has
+                // anything to read.
+                .run_if(any_with_component::<TexDropZone>),
         );
     }
 }

@@ -100,14 +100,24 @@ pub(crate) fn systems(app: &mut App) {
     app.add_systems(
         Update,
         (
-            new_project_click,
-            new_from_template_click,
-            open_project_click,
-            recent_open_click,
-            recent_remove_click,
-            animate_recent_borders,
-            refresh_recent_thumbs,
-            size_recent_grid,
+            // Everything these read (the buttons, the recents cards, the grid)
+            // is built under a `SplashRoot`, so without the dashboard they have
+            // nothing to do. A gated `Changed<UiInteraction>` query still sees a
+            // freshly spawned button as changed, as it did before.
+            (
+                new_project_click,
+                new_from_template_click,
+                open_project_click,
+                recent_open_click,
+                recent_remove_click,
+                animate_recent_borders,
+                size_recent_grid,
+            )
+                .run_if(any_with_component::<super::SplashRoot>),
+            // Not gated on the dashboard: the recents list can change from the
+            // editor (File > Open Project), and the cache should be warm when the
+            // dashboard comes back. The condition is the body's own `is_changed`.
+            refresh_recent_thumbs.run_if(resource_changed::<AppConfig>),
         ),
     );
 }

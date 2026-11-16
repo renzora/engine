@@ -85,12 +85,12 @@ impl MaterialIndex {
 ///
 /// Keep the index current as `.material` files come and go.
 ///
-/// Ungated, unlike the walk below, and that is required rather than tidy: a
-/// `MessageReader` inside a `run_if` advances no cursor while the condition is
-/// false, and the messages it skipped are dropped after two frames. Gated, the
-/// picker would open knowing nothing about materials created while it was
-/// closed. This costs a buffer read per frame, which on a quiet disk is reading
-/// that there is nothing to read.
+/// Not gated on the picker, unlike the walk below, and that is required rather
+/// than tidy: a `MessageReader` inside a `run_if` advances no cursor while the
+/// condition is false, and the messages it skipped are dropped after two
+/// frames. Gated on the picker, it would open knowing nothing about materials
+/// created while it was closed. Its only gate is `on_message`, which is true on
+/// exactly the frames there is something to read, so no event is ever skipped.
 ///
 /// A three-second throttle used to re-walk the whole project for as long as the
 /// popup was open, and the first fix for that re-walked on every change instead.

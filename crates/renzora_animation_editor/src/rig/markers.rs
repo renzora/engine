@@ -154,7 +154,10 @@ impl Markers {
 pub(super) fn register(app: &mut App) {
     app.init_resource::<Markers>().add_systems(
         Update,
-        follow_subject.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        // It ignores a `None` subject, so it waits for one.
+        follow_subject
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+            .run_if(|s: Option<Res<crate::AnimationEditorState>>| s.is_some_and(|s| s.selected_entity.is_some())),
     );
 }
 

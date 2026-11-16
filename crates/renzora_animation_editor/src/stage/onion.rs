@@ -117,15 +117,27 @@ pub(super) fn register(app: &mut App) {
         Update,
         (rebuild_curves, sync_ghosts, stamp_ghosts)
             .chain()
-            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+            .run_if(onion_live),
     );
     app.add_systems(
         PostUpdate,
         pose_ghosts
             .after(crate::timeline::pose::apply_pose)
             .before(bevy::transform::TransformSystems::Propagate)
-            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+            // It returns at once with no ghosts.
+            .run_if(|st: Res<OnionState>| !st.ghosts.is_empty()),
     );
+}
+
+/// Run condition for the ghost upkeep: onion skin on, or ghosts and materials
+/// from when it was on still to clear. Off and clean, `rebuild_curves` and
+/// `stamp_ghosts` return at once and `sync_ghosts` keeps an empty set empty.
+/// The first run after turning it back on sees `OnionSkin` changed, so the
+/// curves are rebuilt then.
+fn onion_live(skin: Res<OnionSkin>, st: Res<OnionState>) -> bool {
+    skin.enabled || !st.ghosts.is_empty() || !st.materials.is_empty()
 }
 
 fn rebuild_curves(cache: Res<TimelineClip>, mut curves: ResMut<OnionCurves>, skin: Res<OnionSkin>) {

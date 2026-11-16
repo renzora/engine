@@ -11,6 +11,7 @@ use crossbeam_channel::{unbounded, Receiver};
 
 use crate::auth::marketplace::AssetSummary;
 use crate::auth::session::AuthSession;
+use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
@@ -92,24 +93,43 @@ pub struct LibraryPanel;
 impl Plugin for LibraryPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubLibraryData>();
-        app.register_shell_panel("hub_library", "Library", "books", "Marketplace");
-        app.register_panel_content("hub_library", true, build)
+        app.register_shell_panel(PANEL_ID, "Library", "books", "Marketplace");
+        app.register_panel_content(PANEL_ID, true, build)
             .systems(
             Update,
             (
-                poll_library,
-                library_refresh,
-                library_refresh_click,
-                library_install_click,
-                library_filter_sync,
-                library_prev_click,
-                library_next_click,
-                request_lib_thumbs,
+                // The receiver is drained only here, so an empty one is a frame
+                // with nothing to apply, panel open or not (an install keeps
+                // going if the panel is closed).
+                poll_library.run_if(|data: Res<HubLibraryData>| {
+                    data.rx.as_ref().is_some_and(|rx| !rx.is_empty())
+                }),
+                // Fetching waits on a signed-in session, so it is idle until both
+                // a refresh is wanted and there is someone to fetch for. That is
+                // also what keeps the prefetch on sign-in working with the panel
+                // closed.
+                library_refresh.run_if(|data: Res<HubLibraryData>, session: Option<Res<AuthSession>>| {
+                    data.needs_refresh && session.is_some_and(|s| s.is_signed_in())
+                }),
+                // Every button and the filter field live in the panel's content.
+                (
+                    library_refresh_click,
+                    library_install_click,
+                    library_filter_sync,
+                    library_prev_click,
+                    library_next_click,
+                )
+                    .run_if(panel_active(PANEL_ID)),
+                // `request` is idempotent, so the listing changing is the only
+                // time there is anything new to ask for.
+                request_lib_thumbs.run_if(resource_changed::<HubLibraryData>),
             )
                 .run_if(in_state(SplashState::Editor)),
         );
     }
 }
+
+const PANEL_ID: &str = "hub_library";
 
 #[derive(Component)]
 struct LibFilter;

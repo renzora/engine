@@ -109,7 +109,12 @@ impl Plugin for LandscapePlugin {
                     instance::keep_twins_untraced,
                     instance::encode_weights,
                 )
-                    .chain(),
+                    .chain()
+                    // All of it is per terrain root or chunk. A probe left by
+                    // a despawned terrain counts as present until
+                    // `follow_terrain_materials` despawns it, and the grace
+                    // frames cover its `RemovedComponents<TerrainMaterial>`.
+                    .run_if(crate::terrain_in_scene),
             );
     }
 

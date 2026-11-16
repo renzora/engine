@@ -114,7 +114,17 @@ impl Plugin for PhysicsPlugin {
         // the new one in the same frame.
         app.add_systems(
             Update,
-            selection::follow_project_backends.before(PhysicsSet::Prepare),
+            selection::follow_project_backends
+                .before(PhysicsSet::Prepare)
+                // Exclusive, so a sync point for the schedule on every frame it
+                // starts. Its answer depends only on the project's backend
+                // choice and on which backends are registered and selected, so
+                // it runs on a frame either changed (its own switch included,
+                // which gives it one confirming pass) and not otherwise.
+                .run_if(
+                    resource_exists_and_changed::<renzora::core::CurrentProject>
+                        .or_else(resource_exists_and_changed::<PhysicsBackends>),
+                ),
         );
         app.add_systems(
             Update,

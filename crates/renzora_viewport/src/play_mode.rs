@@ -14,6 +14,14 @@ use crate::external_runtime::{
     self, find_runtime_binary, replace_child, spawn_runtime, ExternalRuntime,
 };
 
+/// Run condition for [`handle_play_mode_transitions`]: any request flag is set.
+/// The system clears all four, so all four are here, not only the two it acts
+/// on. Reading them through `Res` also stops the system from marking
+/// `PlayModeState` changed on every frame, which taking it mutably did.
+pub fn play_request_pending(play: Option<Res<PlayModeState>>) -> bool {
+    play.is_some_and(|p| p.request_play || p.request_stop || p.request_simulate || p.request_pause)
+}
+
 /// Handles Play/Stop requests each frame.
 ///
 /// While the game is running, *every* request means Stop. That keeps a second

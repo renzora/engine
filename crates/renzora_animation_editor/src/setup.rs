@@ -42,10 +42,25 @@ impl Plugin for AnimSetupPlugin {
         app.init_resource::<SetupFeedback>();
         app.add_systems(
             Update,
-            (select_entity_click, scan_clips_click, create_sm_click, create_anim_click, clear_feedback_on_select)
+            (
+                // Click handlers: nothing to click until one of their buttons
+                // is on screen.
+                (select_entity_click, scan_clips_click, create_sm_click, create_anim_click).run_if(setup_buttons_exist),
+                // Returns at once while there is no message to drop.
+                clear_feedback_on_select.run_if(|f: Res<SetupFeedback>| f.message.is_some()),
+            )
                 .run_if(in_state(SplashState::Editor)),
         );
     }
+}
+
+/// Run condition for the setup click handlers: one of their buttons exists.
+/// They are built into more than one panel (the animation panel and the
+/// state machine), so this asks for the buttons, not for a panel.
+type SetupButtons = Or<(With<SelectEntityBtn>, With<ScanClipsBtn>, With<CreateSmBtn>, With<CreateAnimBtn>)>;
+
+fn setup_buttons_exist(q: Query<(), SetupButtons>) -> bool {
+    !q.is_empty()
 }
 
 /// Result message of the last setup action (e.g. "Found 3 clips" or why a

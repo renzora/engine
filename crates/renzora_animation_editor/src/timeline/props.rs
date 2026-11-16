@@ -52,6 +52,40 @@ pub(crate) struct TimelineOps {
     pub(super) open_add_track_menu: Option<Vec2>,
 }
 
+/// Run condition for [`apply_timeline_ops`]: some request is set. The same
+/// fields the system checks before returning early, so it is skipped exactly
+/// when it would have done nothing.
+///
+/// Not `is_changed`: the system's own `take()` goes through `DerefMut` and
+/// marks the resource changed every run, which would hold the gate open
+/// forever.
+pub(super) fn timeline_ops_pending(ops: Res<TimelineOps>) -> bool {
+    ops.add_empty_track
+        || ops.add_key
+        || ops.open_property_menu.is_some()
+        || ops.delete_track.is_some()
+        || ops.add_key_track.is_some()
+        || ops.delete_selected_key
+        || ops.copy_keys
+        || ops.paste_keys
+        || ops.pending_property_pick.is_some()
+        || ops.pending_record_setup
+        || ops.open_add_track_menu.is_some()
+}
+
+/// Run condition for [`publish_active_timeline`]: a clip to publish, or a
+/// published entity still to clear. With neither, the system would compute
+/// `None` and write nothing.
+pub(super) fn active_timeline_stale(clip: Res<TimelineClip>, active: Res<renzora::ActiveTimeline>) -> bool {
+    clip.clip.is_some() || active.entity.is_some()
+}
+
+/// Run condition for [`apply_keyframe_requests`]: it drains the queue and does
+/// nothing else, so an empty queue means nothing to do.
+pub(super) fn keyframe_requests_pending(reqs: Option<Res<renzora::KeyframeRequests>>) -> bool {
+    reqs.is_some_and(|r| !r.is_empty())
+}
+
 /// Upsert a keyframe at `time` on a property track (replace if one already sits
 /// within epsilon, else insert + re-sort).
 pub(super) fn upsert_key(pt: &mut PropertyTrack, time: f32, value: TrackValue) {

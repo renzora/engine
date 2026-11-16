@@ -217,8 +217,19 @@ pub(crate) fn register(app: &mut App) {
                 animate_lights,
                 animate_motes,
                 sync_chamber_material,
-            ),
+            )
+                // The scene is only wanted in `Splash`, and `manage_chamber`
+                // tears it down on the first frame outside it. The second arm
+                // keeps the group alive for that teardown pass; after it the
+                // chamber entities and the `ChamberView` (under `SplashRoot`)
+                // are gone, both arms are false and the group stops for good.
+                .run_if(in_state(SplashState::Splash).or_else(chamber_built)),
         );
+}
+
+/// Run condition: is the chamber scene still standing?
+fn chamber_built(scene: Res<ChamberScene>) -> bool {
+    scene.built
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────

@@ -659,6 +659,10 @@ pub fn plugin(app: &mut App) {
     }
     app.add_systems(
         Update,
-        (vector_attach, vector_dial_sync, vector_series_sync).chain(),
+        (vector_attach, vector_dial_sync, vector_series_sync)
+            .chain()
+            // All three are exclusive, three sync points for the schedule on
+            // every frame, and every one of them walks `VectorSpec` nodes only.
+            .run_if(any_with_component::<VectorSpec>),
     );
 }

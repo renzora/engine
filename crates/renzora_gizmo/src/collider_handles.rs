@@ -498,8 +498,11 @@ pub fn pick_and_drag_handles(
             cursor_in_vp.y / vp.screen_size.y * vp.current_size.y as f32,
         );
         state.hovered = if let Ok(ray) = camera.viewport_to_world(cam_gt, viewport_px) {
+            // `Visible`: an idle viewport runs no visibility pass, so
+            // `VisibleInView` found no handle until something else woke it.
+            // The filter already keeps this to the handle meshes.
             let settings = MeshRayCastSettings {
-                visibility: RayCastVisibility::VisibleInView,
+                visibility: RayCastVisibility::Visible,
                 filter: &|e| handle_meshes.contains(e),
                 early_exit_test: &|_| true,
             };

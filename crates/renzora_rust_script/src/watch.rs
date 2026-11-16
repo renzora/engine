@@ -240,6 +240,13 @@ pub fn collect_remote(mut answers: MessageReader<renzora::CompanionJobDone>, mut
     }
 }
 
+/// Run condition for [`finish`]: a build is in flight or a remote one landed.
+/// `finish` is exclusive, so without this it was a sync point for the whole
+/// schedule on every frame, and it took the watcher mutably on each of them.
+pub fn builds_pending(watcher: Option<Res<ScriptWatcher>>) -> bool {
+    watcher.is_some_and(|w| !w.building.is_empty() || !w.remote_done.is_empty())
+}
+
 /// Load whatever finished building this frame.
 ///
 /// Separate from [`watch`] because the load must happen on the main thread — it

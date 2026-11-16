@@ -148,7 +148,13 @@ fn scene_hit(world: &mut World, ray: Ray3d, ignore: &[Entity]) -> Option<f32> {
                 !hidden && !gizmo && layers.is_none_or(|l| l.intersects(&RenderLayers::layer(0)))
             })
     };
-    let settings = MeshRayCastSettings::default().with_filter(&scene_only);
+    // `Visible`, not Bevy's default `VisibleInView`: an idle viewport runs no
+    // visibility pass, so the default saw every mesh as unseen (see
+    // `picking::entity_pick_system`). `scene_only` already keeps it to the
+    // scene's layer.
+    let settings = MeshRayCastSettings::default()
+        .with_visibility(bevy::picking::mesh_picking::ray_cast::RayCastVisibility::Visible)
+        .with_filter(&scene_only);
     ray_cast.cast_ray(ray, &settings).first().map(|(_, hit)| hit.distance)
 }
 

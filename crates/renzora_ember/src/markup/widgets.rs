@@ -346,9 +346,12 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            toggle_system,
-            drag_value_system,
-            value_fill_system,
+            // The three exclusive ones are sync points for the whole schedule
+            // even when they find nothing, and each walks only nodes carrying
+            // its own attribute component, so they wait for one to exist.
+            toggle_system.run_if(any_with_component::<Toggle>),
+            drag_value_system.run_if(any_with_component::<DragValue>),
+            value_fill_system.run_if(any_with_component::<ValueFill>),
             disclosure_system,
         ),
     );

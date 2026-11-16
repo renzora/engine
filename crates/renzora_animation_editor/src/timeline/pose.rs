@@ -57,6 +57,23 @@ impl PoseLayer {
     }
 }
 
+/// Run condition for [`capture_pose`] and [`apply_pose`]: anything selected,
+/// or anything the layer still holds.
+///
+/// With nothing selected and the layer empty, both systems only re-record the
+/// playhead in `at`, which is harmless to skip: the next run that matters finds
+/// `at` stale and clears maps that are already empty. Skipping them keeps two
+/// PostUpdate systems from being started every frame of an idle editor.
+pub(crate) fn pose_layer_live(selection: Res<renzora_editor_framework::EditorSelection>, layer: Res<PoseLayer>) -> bool {
+    selection.get().is_some() || !layer.posed.is_empty() || !layer.last.is_empty() || !layer.changed.is_empty()
+}
+
+/// Run condition for [`auto_key_pose`]: only `capture_pose` fills `autokey`,
+/// and the system returns at once while it is empty.
+pub(crate) fn autokey_pending(layer: Res<PoseLayer>) -> bool {
+    !layer.autokey.is_empty()
+}
+
 fn close(a: &Transform, b: &Transform) -> bool {
     a.translation.abs_diff_eq(b.translation, 1e-5)
         && a.rotation.abs_diff_eq(b.rotation, 1e-5)

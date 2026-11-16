@@ -65,6 +65,19 @@ pub struct ViewportCamera(pub usize);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ViewportCamera2d(pub usize);
 
+/// The camera that draws one 3D viewport slot's overlay: the transform gizmo,
+/// the light, collider and skeleton gizmos, the on-top selection box and
+/// labels (render layer 1 and the slot's own gizmo layer).
+///
+/// Split off the slot's [`ViewportCamera`], which draws the scene alone, so a
+/// handle lighting up under the cursor redraws a few lines into a transparent
+/// image over the last scene frame instead of the whole scene. It is a plain
+/// LDR camera with no prepass of its own; anything that equips every
+/// `Camera3d` for the scene (a deferred prepass, contact shadows, ray tracing)
+/// should leave it alone.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ViewportOverlayCamera(pub usize);
+
 /// Marker for viewport slot 0's camera specifically. Unlike [`EditorCamera`]
 /// (which follows focus), this never moves off slot 0 — used as the stable
 /// "default focus" view.

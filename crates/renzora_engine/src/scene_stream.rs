@@ -239,6 +239,25 @@ fn despawn_stream_entities(world: &mut World, stream: SceneStream) {
     );
 }
 
+/// Run condition for [`drive_streamed_scene_instances`]: streaming is active, or
+/// was on the previous frame, which is the edge the system re-expands on. It
+/// keeps its own copy of last frame's answer because the system's `was_active`
+/// is private to it; the two agree, since the system runs on every frame this
+/// is true and both then record the same answer. In the editor this is false
+/// outside play, so the exclusive system stops being a per-frame sync point.
+pub fn instance_streaming_live(world: &World, mut was_active: Local<bool>) -> bool {
+    let active = renzora::world_streaming_active(world);
+    let live = active || *was_active;
+    *was_active = active;
+    live
+}
+
+/// Run condition for [`drive_scene_streams`]: a stream is in flight. The same
+/// test the system opens with.
+pub fn scene_streams_pending(streams: Res<SceneStreams>) -> bool {
+    !streams.streams.is_empty()
+}
+
 /// Drive all in-flight scene streams: poll parse tasks, then apply components
 /// under the shared frame budget. Exclusive — component application needs
 /// `&mut World` for reflection + entity remapping.
@@ -482,6 +501,8 @@ pub fn cancel_streams_under(world: &mut World, parent: Entity) {
 /// Collapse keeps the instance root — its transform and host overrides are
 /// scene state — and drops only the expanded children.
 pub fn drive_streamed_scene_instances(world: &mut World, mut was_active: Local<bool>) {
+    // Gated by `instance_streaming_live`, which lets it run while streaming is
+    // active and for the one frame after, where the collapse below is undone.
     if !renzora::world_streaming_active(world) {
         // Leaving play/simulate: anything play-time streaming collapsed must
         // come back for edit mode. One expansion on the transition edge —

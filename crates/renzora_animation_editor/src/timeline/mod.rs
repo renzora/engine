@@ -109,6 +109,9 @@ impl Plugin for TimelinePanel {
         // The hand-made pose over the clip's: captured before the player
         // writes the clip's pose, restored after it, before transforms
         // propagate. See `pose`.
+        // Gated on there being a selection or a held pose, not on a panel: the
+        // pose is made in the viewport, so the only time there is nothing to do
+        // is when nothing is selected and nothing is posed.
         // panel-systems-ungated: posing happens in the VIEWPORT, not this panel
         app.add_systems(
             PostUpdate,
@@ -119,7 +122,8 @@ impl Plugin for TimelinePanel {
                     .before(bevy::transform::TransformSystems::Propagate),
             )
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora::not_in_play_mode)
+                .run_if(pose::pose_layer_live),
         );
         app.init_resource::<morph::MorphLayer>();
         // Hand-set blend shape weights, put back over the clip's the same way.
@@ -130,14 +134,19 @@ impl Plugin for TimelinePanel {
                 .after(bevy::app::AnimationSystems)
                 .before(bevy::transform::TransformSystems::Propagate)
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora::not_in_play_mode)
+                .run_if(morph::morph_pose_held),
         );
+        // Each one only acts on its own trigger: the shortcut on a K press, the
+        // record keying on bones `capture_pose` queued, so they wait for those.
         // panel-systems-ungated: K and record keying work from the viewport
         app.add_systems(
             Update,
             (
-                pose::viewport_key_shortcut.before(props::apply_timeline_ops),
-                pose::auto_key_pose.after(props::apply_timeline_ops),
+                pose::viewport_key_shortcut
+                    .before(props::apply_timeline_ops)
+                    .run_if(bevy::input::common_conditions::input_just_pressed(KeyCode::KeyK)),
+                pose::auto_key_pose.after(props::apply_timeline_ops).run_if(pose::autokey_pending),
             )
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora::not_in_play_mode),
@@ -166,6 +175,14 @@ impl Plugin for TimelinePanel {
         // documented ordering requirement ("key_drag must run before ruler_drag"),
         // so separating the gated and ungated halves would have to preserve that.
         app.register_panel_content("timeline", false, build::build);
+        // So the block is gated piece by piece instead, keeping its order: each
+        // run of consecutive widget systems is one sub-chain behind
+        // `timeline_ui_live` (the panel's widgets, or something they spawned,
+        // exist), and the three systems named above each wait on their own
+        // data, so none of them goes stale while the tab is hidden. Only the
+        // loaders that notice a new selection or effect (`resolve_target`,
+        // `cache_clip`, `sync_fx`) and `rebuild_layout` (whose rows `sync_fx`
+        // reads to focus a track) start every frame.
         // panel-systems-ungated: publishes ActiveTimeline (read by the inspector's add-keyframe buttons), applies KeyframeRequests queued by those buttons, and runs autosave
         app.add_systems(
             Update,
@@ -175,55 +192,72 @@ impl Plugin for TimelinePanel {
                     // stand-in clip), then the effect's copy for that clip.
                     (fx::resolve_target, clip::cache_clip, fx::sync_fx).chain(),
                     layout::rebuild_layout,
-                    edit::auto_fit_clip,
-                    runs::rebuild_runs,
-                    props::publish_active_timeline,
-                    edit::anim_btn_click,
-                    menus::clip_picker_open,
-                    menus::overflow_open,
-                    menus::empty_card_click,
-                    edit::track_row_click,
-                    (curves::mode_click, graph::graph_buttons, graph::graph_sync).chain(),
-                    curves::interp_click,
-                    // The scrollbars claim their press before anything else;
-                    // key_drag runs before ruler_drag because a press on the
-                    // playhead needle in the lanes hands its scrub to
-                    // ruler_drag, which carries it on the same frame.
-                    scrollbars::scrollbar_drag,
-                    // The Curves view's own drag right after the dopesheet's,
-                    // which stands aside while it shows.
-                    (edit::key_drag, graph::graph_input).chain(),
-                    edit::ruler_drag,
-                    // Before key_context_menu (next block): it decides whether a
-                    // right release was a pan or a click.
-                    (edit::timeline_pan, graph::graph_pan).chain(),
-                    edit::anim_sync,
-                    edit::sync_header_offset,
-                    edit::sync_box_rect,
-                    scrollbars::scrollbar_layout,
+                    // Moved ahead of `auto_fit_clip` and `rebuild_runs`, which
+                    // it used to follow: it reads only the clip cache, and
+                    // neither of them writes it.
+                    props::publish_active_timeline.run_if(props::active_timeline_stale),
+                    (
+                        edit::auto_fit_clip,
+                        runs::rebuild_runs,
+                        edit::anim_btn_click,
+                        menus::clip_picker_open,
+                        menus::overflow_open,
+                        menus::empty_card_click,
+                        edit::track_row_click,
+                        (curves::mode_click, graph::graph_buttons, graph::graph_sync).chain(),
+                        curves::interp_click,
+                        // The scrollbars claim their press before anything else;
+                        // key_drag runs before ruler_drag because a press on the
+                        // playhead needle in the lanes hands its scrub to
+                        // ruler_drag, which carries it on the same frame.
+                        scrollbars::scrollbar_drag,
+                        // The Curves view's own drag right after the dopesheet's,
+                        // which stands aside while it shows.
+                        (edit::key_drag, graph::graph_input).chain(),
+                        edit::ruler_drag,
+                        // Before key_context_menu (next block): it decides whether a
+                        // right release was a pan or a click.
+                        (edit::timeline_pan, graph::graph_pan).chain(),
+                        edit::anim_sync,
+                        edit::sync_header_offset,
+                        edit::sync_box_rect,
+                        scrollbars::scrollbar_layout,
+                    )
+                        .chain()
+                        .run_if(timeline_ui_live),
                 )
                     .chain(),
                 (
-                    edit::update_anim_play_icon,
-                    (edit::key_context_menu, graph::graph_context_menu).chain(),
-                    edit::track_context_menu,
-                    edit::timeline_cursor,
-                    clip::save_clip_click,
-                    edit::add_marker_click,
-                    edit::new_clip_click,
-                    menus::rename_clip_click,
-                    clip::auto_save_clip,
-                    (edit::timeline_wheel, graph::graph_wheel_read, graph::graph_wheel).chain(),
-                    menus::row_height_click,
-                    edit::timeline_shortcuts,
-                    edit::timeline_delete_guard,
-                    popover::open_requested_popover,
-                    popover::popover_escape,
-                    curves::curves_hover,
-                    props::prop_header_click,
-                    fx::fx_header_click,
-                    props::apply_timeline_ops,
-                    props::apply_keyframe_requests,
+                    (
+                        edit::update_anim_play_icon,
+                        (edit::key_context_menu, graph::graph_context_menu).chain(),
+                        edit::track_context_menu,
+                        edit::timeline_cursor,
+                        clip::save_clip_click,
+                        edit::add_marker_click,
+                        edit::new_clip_click,
+                        menus::rename_clip_click,
+                    )
+                        .chain()
+                        .run_if(timeline_ui_live),
+                    // Autosave pauses only while there is nothing unsaved,
+                    // which is the one case it returns at once anyway.
+                    clip::auto_save_clip.run_if(|c: Res<clip::TimelineClip>| c.dirty),
+                    (
+                        (edit::timeline_wheel, graph::graph_wheel_read, graph::graph_wheel).chain(),
+                        menus::row_height_click,
+                        edit::timeline_shortcuts,
+                        edit::timeline_delete_guard,
+                        popover::open_requested_popover,
+                        popover::popover_escape,
+                        curves::curves_hover,
+                        props::prop_header_click,
+                        fx::fx_header_click,
+                    )
+                        .chain()
+                        .run_if(timeline_ui_live),
+                    props::apply_timeline_ops.run_if(props::timeline_ops_pending),
+                    props::apply_keyframe_requests.run_if(props::keyframe_requests_pending),
                 )
                     .chain(),
             )
@@ -233,6 +267,8 @@ impl Plugin for TimelinePanel {
 
         // Property scrub-preview + record-capture. Editor-only (not in play
         // mode: there the runtime property sampler drives the entity instead).
+        // All three return before writing anything when no clip is keyed to an
+        // entity, so they wait for one.
         // panel-systems-ungated: property scrub-preview drives the VIEWPORT, not this panel
         app.add_systems(
             Update,
@@ -244,7 +280,8 @@ impl Plugin for TimelinePanel {
                 .chain()
                 .after(props::apply_timeline_ops)
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora::not_in_play_mode)
+                .run_if(|c: Res<clip::TimelineClip>| c.key.is_some()),
         );
 
         // The playhead drives the shown effect. After the playhead moves, so
@@ -255,7 +292,8 @@ impl Plugin for TimelinePanel {
             fx::drive_fx_clock
                 .after(crate::advance_preview_time)
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora::not_in_play_mode)
+                .run_if(fx::fx_clock_live),
         );
 
         app.init_resource::<undo::AnimUndoShadow>();
@@ -269,6 +307,43 @@ impl Plugin for TimelinePanel {
                 .run_if(|c: Option<Res<clip::TimelineClip>>| c.is_some_and(|c| c.clip.is_some())),
         );
     }
+}
+
+/// Run condition for the timeline's widget systems: is there anything for them
+/// to act on?
+///
+/// The panel's pane is despawned whenever its tab is not the active one
+/// (ember's `sync_panes`), so [`AnimTimeline`] existing means the panel is
+/// showing. The rest covers what can outlive it for a while:
+///
+/// - a [`ScreenMenu`](renzora_ember::widgets::ScreenMenu): the clip picker, the
+///   overflow menu, the context menus, the rename card and the key popover are
+///   all root-spawned menus whose clicks these systems handle;
+/// - a held or just-released mouse button: a drag begun in the panel finishes
+///   (and clears its grab) on release, even if the panel went away mid-drag;
+/// - the popover state, so `open_requested_popover` can see its card is gone
+///   and clear `open`;
+/// - `suppress_entity_delete`, so `timeline_delete_guard` lowers it again
+///   rather than leaving the Delete shortcut blocked.
+///
+/// With none of those there is no widget to read and no gesture in flight, so
+/// each system behind this either finds nothing to do or keeps a cache only the
+/// panel reads (`rebuild_runs`, `auto_fit_clip`), which catches up on the
+/// first frame the panel is back, ahead of everything that reads it.
+type TimelineUi = Or<(With<AnimTimeline>, With<renzora_ember::widgets::ScreenMenu>)>;
+
+fn timeline_ui_live(
+    ui: Query<(), TimelineUi>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    popover: Res<popover::PopoverState>,
+    focus: Option<Res<renzora::InputFocusState>>,
+) -> bool {
+    !ui.is_empty()
+        || buttons.get_pressed().next().is_some()
+        || buttons.get_just_released().next().is_some()
+        || popover.open
+        || popover.request.is_some()
+        || focus.is_some_and(|f| f.suppress_entity_delete)
 }
 
 // ── Markers ──────────────────────────────────────────────────────────────────

@@ -101,10 +101,13 @@ pub const VIEWPORT_2D_GRID_LAYER_BASE: usize = 20;
 
 /// Base bevy `RenderLayers` index for the per-slot 3D gizmo overlays.
 ///
-/// Every viewport's 3D camera renders layer 0 (the scene), layer 1 (shared
-/// world-space overlays — light/collider/skeleton gizmos, the selection box —
-/// which look correct from any angle so one instance serves all views), and its
-/// own private overlay layer `VIEWPORT_3D_GIZMO_LAYER_BASE + slot`. The
+/// Every viewport's 3D scene camera renders layer 0 (the scene) only. Its
+/// overlay camera (`ViewportOverlayCamera`) renders layer 1 (shared world-space
+/// overlays: light/collider/skeleton gizmos, the selection box, which look
+/// correct from any angle so one instance serves all views) and the slot's
+/// own private overlay layer `VIEWPORT_3D_GIZMO_LAYER_BASE + slot`. Everything
+/// on those layers draws on top of the scene, so it needs none of the scene's
+/// depth. The
 /// *camera-sized* transform gizmo (translate handles, rotate/scale/plane lines)
 /// is drawn per slot onto that private layer, scaled and axis-flipped for that
 /// slot's own camera — so each viewport shows a correctly-sized handle instead
@@ -390,6 +393,17 @@ pub struct PivotMarkerState {
     pub locked: bool,
     pub opacity: f32,
 }
+
+/// Touched (mutably) by anything that changes what the 3D viewports' overlay
+/// draws without changing an entity, so the overlay camera redraws.
+///
+/// The transform gizmo's rotate rings and scale lines are immediate-mode
+/// gizmos: they are recorded every frame and leave no component change behind
+/// when the hovered handle lights up. The viewport's redraw gate watches this
+/// resource's change tick; the value itself means nothing. Touch it only when
+/// the picture really changes, or the overlay renders every frame.
+#[derive(Resource, Debug, Clone, Copy, Default)]
+pub struct ViewportOverlayChanged;
 
 /// Work in progress the viewport shows a progress card for: anything that
 /// fills the scene in over several seconds (a large terrain being shaped and

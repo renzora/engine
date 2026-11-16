@@ -16,6 +16,13 @@ use crate::tool_buttons::{tool_button, tool_separator, ToolSepVis, ToolsPopulate
 #[derive(Component)]
 pub(super) struct ToolContainer;
 
+/// Run condition for [`populate_tools`]: a container still waits to be filled.
+/// Once it is, the system has nothing left to do for the session, so the
+/// exclusive pass (and its schedule-wide sync point) stops with it.
+pub(super) fn tools_unpopulated(q: Query<(), (With<ToolContainer>, Without<ToolsPopulated>)>) -> bool {
+    !q.is_empty()
+}
+
 /// Fill an empty `ToolContainer` from the registry (Transform / Terrain / custom
 /// sections with separators). Exclusive because the visibility/active predicates
 /// take `&World`; runs until the registry is populated and the container exists.

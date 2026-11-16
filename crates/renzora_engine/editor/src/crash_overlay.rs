@@ -23,6 +23,15 @@ pub(crate) struct CrashCloseButton;
 #[derive(Component)]
 pub(crate) struct CrashCopyButton;
 
+/// Run condition for the overlay systems: a report wants showing, or the
+/// overlay is still on screen and needs its teardown pass.
+pub(crate) fn crash_overlay_live(
+    state: Option<Res<CrashReportWindowState>>,
+    roots: Query<(), With<CrashOverlayRoot>>,
+) -> bool {
+    state.is_some_and(|s| s.show_window && s.report.is_some()) || !roots.is_empty()
+}
+
 /// Spawn the overlay when a previous crash is flagged; tear it down when cleared.
 pub(crate) fn manage_crash_overlay(world: &mut World) {
     let show = world

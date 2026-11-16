@@ -195,6 +195,9 @@ pub(crate) fn is_wrapper(name: &str) -> bool {
     name == "main app"
         || name == "update"
         || name.starts_with("schedule:")
+        // The system that runs a schedule the profiler wraps so it is timed
+        // (`renzora_profiler::Timed`): the whole schedule, not work of its own.
+        || name.contains("time_unspanned_schedules")
         // "sub app: RenderApp", "sub app: RenderExtractApp": the whole render
         // world's frame, which outranked every real system in a live editor.
         || name.starts_with("sub app:")

@@ -42,7 +42,23 @@ pub(crate) fn register(app: &mut App) {
     // download and the handle all have to happen there, not on the way into a
     // project. (`avatars::poll_avatars` is registered for both states for the
     // same reason; see the plugin's `build`.)
-    app.add_systems(Update, (start_fetch, poll_fetch, publish_handle).chain());
+    //
+    // Each step is gated on its own input, so a settled account costs nothing
+    // per frame: `start_fetch` acts only on a change of session (sign-in,
+    // sign-out, a different account), `poll_fetch` only while its request is
+    // out, and `publish_handle` only when the URL or the cache it reads from
+    // has moved.
+    app.add_systems(
+        Update,
+        (
+            start_fetch.run_if(resource_changed::<AuthSession>),
+            poll_fetch.run_if(|state: Res<AccountAvatar>| state.rx.is_some()),
+            publish_handle.run_if(
+                resource_changed::<AccountAvatar>.or_else(resource_changed::<AvatarCache>),
+            ),
+        )
+            .chain(),
+    );
 }
 
 /// Ask the server for this session's `avatar_url`, once.

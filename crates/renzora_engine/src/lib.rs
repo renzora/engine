@@ -81,6 +81,14 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
     }
 }
 
+/// The 3D cameras [`ensure_deferred_prepass_on_cameras`] still has to equip.
+#[cfg(feature = "render_3d")]
+type CamerasWithoutDeferred = (
+    With<Camera3d>,
+    Without<DeferredPrepass>,
+    Without<renzora::core::ViewportOverlayCamera>,
+);
+
 /// Safety net: when the project is in Deferred mode, every `Camera3d`
 /// in the scene needs `DeferredPrepass` so its prepass queue has the
 /// deferred opaque phase. The main editor camera attaches it explicitly
@@ -109,10 +117,14 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
 /// returned `false`, and would never be revisited. The `Without<DeferredPrepass>`
 /// filter is what makes scanning every frame cheap: as soon as the
 /// marker is on an entity, the query stops returning it.
+///
+/// The viewport overlay cameras are left out: they draw only gizmos, which
+/// are forward and on top, so a deferred prepass would only add a G-buffer and
+/// a full-screen lighting pass to every overlay redraw for nothing.
 #[cfg(feature = "render_3d")]
 fn ensure_deferred_prepass_on_cameras(
     rendering_mode: Res<ResolvedRenderingMode>,
-    cameras: Query<Entity, (With<Camera3d>, Without<DeferredPrepass>)>,
+    cameras: Query<Entity, CamerasWithoutDeferred>,
     mut commands: Commands,
 ) {
     if !rendering_mode.is_deferred() {
@@ -784,9 +796,15 @@ impl Plugin for RuntimePlugin {
         app.add_systems(
             Update,
             (
-                process_pending_scene_loads,
-                scene_stream::drive_streamed_scene_instances,
-                scene_stream::drive_scene_streams,
+                // All three are exclusive, so each is a sync point for the whole
+                // schedule even on a frame its own first check sends it home.
+                // Each condition is that first check.
+                process_pending_scene_loads
+                    .run_if(|p: Res<renzora::PendingSceneLoad>| !p.requests.is_empty()),
+                scene_stream::drive_streamed_scene_instances
+                    .run_if(scene_stream::instance_streaming_live),
+                scene_stream::drive_scene_streams
+                    .run_if(scene_stream::scene_streams_pending),
             )
                 .chain(),
         );

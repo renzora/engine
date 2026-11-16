@@ -44,7 +44,14 @@ impl Default for ChainSettings {
 
 pub(super) fn register(app: &mut App) {
     app.init_resource::<ChainSettings>().add_message::<MakeBendable>();
-    app.add_systems(Update, carry_out_make_bendable.run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+    // It drains the message queue and does nothing else, so it waits for a
+    // message.
+    app.add_systems(
+        Update,
+        carry_out_make_bendable
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+            .run_if(|m: Option<Res<Messages<MakeBendable>>>| m.is_some_and(|m| !m.is_empty())),
+    );
 }
 
 fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {

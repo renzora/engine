@@ -663,20 +663,29 @@ fn update_preview_camera_orbit(
         orbit.yaw += time.delta_secs() * 0.5;
     }
 
+    // Both writes compare first. This runs every frame the panel is visible,
+    // and assigning through `Mut` marks the component changed even when the
+    // value is the same, so a still preview kept transform propagation and the
+    // camera's frustum update running every frame.
     for (mut transform, mut cam) in camera.iter_mut() {
         let x = orbit.distance * orbit.pitch.cos() * orbit.yaw.sin();
         let y = orbit.distance * orbit.pitch.sin();
         let z = orbit.distance * orbit.pitch.cos() * orbit.yaw.cos();
 
-        transform.translation = orbit.target + Vec3::new(x, y, z);
-        transform.look_at(orbit.target, Vec3::Y);
+        transform.set_if_neq(
+            Transform::from_translation(orbit.target + Vec3::new(x, y, z))
+                .looking_at(orbit.target, Vec3::Y)
+                .with_scale(transform.scale),
+        );
 
         let bg = if orbit.dark_bg {
             Color::srgba(0.08, 0.08, 0.1, 1.0)
         } else {
             Color::srgba(0.45, 0.45, 0.5, 1.0)
         };
-        cam.clear_color = ClearColorConfig::Custom(bg);
+        if !matches!(cam.clear_color, ClearColorConfig::Custom(c) if c == bg) {
+            cam.clear_color = ClearColorConfig::Custom(bg);
+        }
     }
 }
 
@@ -1231,15 +1240,37 @@ impl Plugin for MaterialPreviewPlugin {
             .add_systems(
                 Update,
                 (
-                    finish_backdrop,
-                    sync_preview_camera_active,
-                    update_preview_camera_orbit,
-                    // Ordered: the swap reads the source the tracker just wrote,
-                    // so a fresh selection shows up this frame instead of next.
-                    (track_preview_source, swap_preview_shape).chain(),
-                    sync_preview_backdrop,
-                    update_preview_material,
+                    // Its body returns at once without the task.
+                    finish_backdrop.run_if(resource_exists::<BackdropTask>),
+                    // Must keep running after the panel is hidden until it has
+                    // switched the camera off, so the second arm holds it open
+                    // for that one pass.
+                    sync_preview_camera_active.run_if(
+                        renzora_ember::dock::panel_active("material_preview")
+                            .or_else(preview_camera_active),
+                    ),
+                    (
+                        update_preview_camera_orbit,
+                        // Ordered: the swap reads the source the tracker just wrote,
+                        // so a fresh selection shows up this frame instead of next.
+                        (track_preview_source, swap_preview_shape).chain(),
+                        sync_preview_backdrop,
+                        update_preview_material,
+                    )
+                        // Everything here only feeds the preview camera, which
+                        // renders only while this panel is visible. The change
+                        // checks they open with (`editor.is_changed()`,
+                        // `orbit.is_changed()`, selection) compare against each
+                        // system's own last run, so whatever changed while the
+                        // panel was hidden is caught up on the frame it shows,
+                        // before that frame renders.
+                        .run_if(renzora_ember::dock::panel_active("material_preview")),
                 ),
             );
     }
+}
+
+/// Run condition: is the 3D preview camera still rendering?
+fn preview_camera_active(camera: Query<&Camera, With<MaterialPreviewCamera>>) -> bool {
+    camera.iter().any(|c| c.is_active)
 }

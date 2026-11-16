@@ -21,6 +21,13 @@ impl Plugin for FoliageEditorPlugin {
         app.add_plugins(panel::FoliagePanel);
         app.init_resource::<FoliagePaintSettings>()
             .init_resource::<systems::FoliagePaintState>()
+            // The brush circle is drawn by the viewport's overlay camera; see
+            // `systems::FoliageBrushGizmos`.
+            .insert_gizmo_config(
+                systems::FoliageBrushGizmos,
+                systems::foliage_brush_gizmo_config(),
+            )
+            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
             .add_systems(
                 Update,
                 (

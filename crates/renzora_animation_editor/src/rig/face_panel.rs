@@ -52,7 +52,8 @@ impl Default for Performance {
 }
 
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<Performance>().add_systems(Update, finish_lip_sync);
+    // Polls the lip sync task, which exists only while one is reading a file.
+    app.init_resource::<Performance>().add_systems(Update, finish_lip_sync.run_if(resource_exists::<LipSyncTask>));
 }
 
 /// A voice recording being read for lip sync, on a worker thread: decoding a

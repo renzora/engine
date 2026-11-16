@@ -702,6 +702,13 @@ impl Plugin for DebugLogPlugin {
         );
         // Post-processing debug runs as exclusive system since it needs
         // world access for reflection.
-        app.add_systems(Update, debug_log_post_processing);
+        // Gated on its own enable flag: an exclusive system is a sync point for
+        // the whole schedule even when it returns at once, and this one is off
+        // unless someone is debugging the effect plumbing.
+        app.add_systems(
+            Update,
+            debug_log_post_processing
+                .run_if(|d: Option<Res<RenderingDebugLog>>| d.is_some_and(|d| d.enabled)),
+        );
     }
 }

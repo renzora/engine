@@ -132,10 +132,13 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            poll_results,
-            auto_load.run_if(panel_active(PANEL_ID)),
-            search_debounce.run_if(panel_active(PANEL_ID)),
-            clicks,
+            // Only this system drains the channel, so an empty one means no
+            // answer to apply; one requested before the panel closed still
+            // lands.
+            poll_results.run_if(|panel: Res<LearnPanel>| !panel.rx.is_empty()),
+            // The page links and the version dropdown are panel content, so a
+            // panel that is not showing has nothing to click.
+            (auto_load, search_debounce, clicks).run_if(panel_active(PANEL_ID)),
         )
             .run_if(in_state(SplashState::Editor)),
     );

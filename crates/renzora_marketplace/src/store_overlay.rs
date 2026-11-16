@@ -57,7 +57,12 @@ pub(crate) fn register(app: &mut App) {
     });
     app.add_systems(
         Update,
-        (open_on_action, open_on_updates_request)
+        (
+            // Both only react to a request: the shell's action message, or the
+            // marker resource the updater and Settings insert.
+            open_on_action.run_if(on_message::<renzora::ShellActionInvoked>),
+            open_on_updates_request.run_if(resource_exists::<renzora::PluginUpdatesRequested>),
+        )
             .run_if(in_state(renzora::SplashState::Editor)),
     );
 }

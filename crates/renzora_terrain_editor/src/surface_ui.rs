@@ -69,6 +69,11 @@ fn default_textures() -> [(String, &'static [u8], TextureRole); 16] {
 #[derive(Resource, Default)]
 pub(crate) struct DefaultTextureBakes(Vec<(String, Task<Result<(), String>>)>);
 
+/// Run condition for [`finish_default_texture_bakes`]: a bake is running.
+pub(crate) fn bakes_in_flight(bakes: Res<DefaultTextureBakes>) -> bool {
+    !bakes.0.is_empty()
+}
+
 /// Bake one default texture into `target`: in the companion when one is
 /// connected (job kind `"texture_bake"`), here otherwise. Sixteen 2K textures
 /// mipmapped and block-compressed is seconds of every core, which a new

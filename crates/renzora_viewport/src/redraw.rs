@@ -30,9 +30,20 @@
 //! - **Mesh, material and texture assets** changing or finishing loading.
 //! - **Editor state**: viewport settings, selection, effect routing, the clear
 //!   colour, gizmo config, and a viewport panel resizing or docking.
-//! - **The mouse or keyboard over a viewport**, for hover highlights and gizmo
-//!   handles, which change without anything in the scene changing.
+//! - **A press, the wheel or a key over a viewport.** Plain mouse movement does
+//!   not count: nothing in the scene follows the cursor.
 //! - **Play and Simulate**, which render every frame.
+//!
+//! # The overlay has a gate of its own
+//!
+//! Gizmos, labels and the on-top selection box are drawn by each viewport's
+//! overlay camera (`crate::overlay`) into a transparent image over the scene
+//! image, so they can change without the scene rendering. The overlay renders
+//! whenever the scene does, and on its own for a short burst
+//! ([`OVERLAY_SETTLE_FRAMES`]) when something on the overlay layers changes or
+//! [`renzora::core::viewport_types::ViewportOverlayChanged`] is touched (the
+//! gizmo handle under the cursor lighting up). That is the case plain mouse
+//! movement used to wake the whole scene for.
 //!
 //! Shader animation (wind, water, clouds) and GPU particles move without the
 //! scene changing, so they hold still while idle. Display > Render > Realtime
@@ -56,7 +67,7 @@ use bevy::camera::RenderTarget;
 use bevy::ecs::component::ComponentId;
 use bevy::ecs::message::{MessageCursor, Messages};
 use bevy::ecs::query::QueryState;
-use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::input::mouse::MouseWheel;
 use bevy::light::cluster::Clusters;
 use bevy::light::Cascades;
 use bevy::pbr::PreviousGlobalTransform;
@@ -70,6 +81,11 @@ use renzora_shader::material::GraphMaterial;
 /// Frames the viewport keeps rendering after the last change. Enough for TAA
 /// and Solari's temporal reuse to converge; at 60 FPS it is a third of a second.
 pub(crate) const SETTLE_FRAMES: u32 = 20;
+
+/// Frames the overlay keeps rendering after an overlay-only change. Gizmo lines
+/// need no temporal settling; the second frame is margin for a change made
+/// after this frame's check, which the next frame's check then sees.
+const OVERLAY_SETTLE_FRAMES: u32 = 2;
 
 /// Frames of rendering without a single idle frame before saying why. At 60
 /// FPS that is ten seconds, long enough that it is not a drag in progress.
@@ -88,6 +104,8 @@ pub struct ViewportRedraw {
     reported: Option<String>,
     /// The last thing that woke it, for that line.
     last_reason: String,
+    /// Frames the overlay cameras keep rendering for an overlay-only change.
+    overlay_frames_left: u32,
 }
 
 impl Default for ViewportRedraw {
@@ -97,6 +115,7 @@ impl Default for ViewportRedraw {
             awake_for: 0,
             reported: None,
             last_reason: String::new(),
+            overlay_frames_left: SETTLE_FRAMES,
         }
     }
 }
@@ -105,6 +124,13 @@ impl ViewportRedraw {
     /// Whether the viewport cameras should render this frame.
     pub fn should_render(&self) -> bool {
         self.frames_left > 0
+    }
+
+    /// Whether the overlay cameras should render this frame: whenever the
+    /// scene does, so the two images always show the same view, and on their
+    /// own after an overlay-only change.
+    pub fn should_render_overlay(&self) -> bool {
+        self.should_render() || self.overlay_frames_left > 0
     }
 }
 
@@ -116,9 +142,10 @@ pub(crate) struct DetectState {
     /// Entity and archetype signature of the scene, so spawns, despawns and
     /// component removals count, which change ticks cannot see.
     signature: u64,
+    /// The same for the entities on the overlay layers.
+    overlay_signature: u64,
     /// Size and docking of every viewport slot.
     slots: u64,
-    motion: MessageCursor<MouseMotion>,
     wheel: MessageCursor<MouseWheel>,
     meshes: MessageCursor<AssetEvent<Mesh>>,
     standard: MessageCursor<AssetEvent<StandardMaterial>>,
@@ -200,6 +227,7 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
     let demand = world.get_resource::<renzora::core::ViewportRedrawDemand>().copied().unwrap_or_default();
     let settle_frames = demand.settle_frames.max(SETTLE_FRAMES);
 
+    let mut overlay_changed = false;
     let reason = if realtime {
         None
     } else if playing {
@@ -207,10 +235,29 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
     } else if let Some(why) = demand.continuous {
         Some(why.to_string())
     } else {
-        find_change(world, state, last_run, this_run)
+        find_change(world, state, last_run, this_run, &mut overlay_changed)
     };
+    // Overlay-only changes that are not an entity: the gizmo handle under the
+    // cursor (see `ViewportOverlayChanged`), and the orbit pivot's ring, which
+    // fades out after the camera stops and has to be redrawn until it is gone,
+    // or the last frame holds a half-faded ring on screen.
+    let resource_changed = |ticks: Option<bevy::ecs::change_detection::ComponentTicks>| {
+        ticks.is_some_and(|t| t.is_changed(last_run, this_run))
+    };
+    if resource_changed(
+        world.get_resource_change_ticks::<renzora::core::viewport_types::ViewportOverlayChanged>(),
+    ) || resource_changed(
+        world.get_resource_change_ticks::<renzora::core::viewport_types::PivotMarkerState>(),
+    ) {
+        overlay_changed = true;
+    }
 
     let mut redraw = world.resource_mut::<ViewportRedraw>();
+    redraw.overlay_frames_left = if overlay_changed {
+        OVERLAY_SETTLE_FRAMES
+    } else {
+        redraw.overlay_frames_left.saturating_sub(1)
+    };
     if realtime {
         // Realtime renders every frame through `sync_viewport_camera_activation`
         // reading the setting directly; keep the window full so switching it off
@@ -251,24 +298,30 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
 }
 
 /// The first thing found that changed this frame, described for the log.
+///
+/// Also sets `overlay_changed` when an entity on the overlay layers changed,
+/// which only the overlay cameras need to redraw for. That is decided in the
+/// same pass over the entities as the scene, so the scan is not paid twice;
+/// on a frame that returns before the scan, the scene renders, and the overlay
+/// with it.
 fn find_change(
     world: &mut World,
     state: &mut DetectState,
     last_run: bevy::ecs::change_detection::Tick,
     this_run: bevy::ecs::change_detection::Tick,
+    overlay_changed: &mut bool,
 ) -> Option<String> {
     let changed = |ticks: Option<bevy::ecs::change_detection::ComponentTicks>| {
         ticks.is_some_and(|t| t.is_changed(last_run, this_run))
     };
 
     // Input over a viewport. Read every cursor every frame so a stale backlog
-    // never wakes it later.
+    // never wakes it later. Plain movement is left out: nothing in the scene
+    // follows the cursor, and the gizmo handle that lights up under it is
+    // drawn by the overlay camera, which `ViewportOverlayChanged` wakes alone.
     let hovered = world
         .get_resource::<Viewports>()
         .is_some_and(|v| v.slots.iter().any(|s| s.hovered && s.docked));
-    let moved = world
-        .get_resource::<Messages<MouseMotion>>()
-        .is_some_and(|m| state.motion.read(m).count() > 0);
     let scrolled = world
         .get_resource::<Messages<MouseWheel>>()
         .is_some_and(|m| state.wheel.read(m).count() > 0);
@@ -302,7 +355,7 @@ fn find_change(
         }
     }
 
-    if hovered && (moved || scrolled || buttons || keys) {
+    if hovered && (scrolled || buttons || keys) {
         return Some("input over the viewport".into());
     }
     if let Some(what) = assets_changed {
@@ -317,12 +370,6 @@ fn find_change(
         || changed(world.get_resource_change_ticks::<GizmoConfigStore>())
     {
         return Some("editor settings or selection".into());
-    }
-    // The orbit pivot's ring fades out after the camera stops, and the
-    // viewport has to keep rendering until it is gone, or the last frame holds
-    // a half-faded ring on screen.
-    if changed(world.get_resource_change_ticks::<renzora::core::viewport_types::PivotMarkerState>()) {
-        return Some("camera pivot marker".into());
     }
 
     // Viewport panels resizing or docking. `Viewports` itself is written every
@@ -370,10 +417,19 @@ fn find_change(
         .flatten()
         .cloned()
         .unwrap_or_default();
+    // What the overlay cameras draw: the shared overlay layer and every slot's
+    // private gizmo layer (see `VIEWPORT_3D_GIZMO_LAYER_BASE`).
+    let overlay_layers = {
+        use renzora::core::viewport_types::{VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
+        (0..VIEWPORT_COUNT).fold(RenderLayers::layer(1), |l, i| {
+            l.with(VIEWPORT_3D_GIZMO_LAYER_BASE + i)
+        })
+    };
     let scene = state
         .scene
         .get_or_insert_with(|| world.query_filtered::<EntityRef, SceneFilter>());
     let mut signature = 0u64;
+    let mut overlay_signature = 0u64;
     // Up to `MAX_NAMED` changes, so the report lists every per-frame writer at
     // once rather than one a session: fixing the first only revealed the next.
     const MAX_NAMED: usize = 5;
@@ -381,6 +437,23 @@ fn find_change(
     for entity in scene.iter(world) {
         let layers = entity.get::<RenderLayers>().cloned().unwrap_or_default();
         if !layers.intersects(&view_layers) {
+            // Not in the scene picture. On an overlay layer it decides the
+            // overlay's redraw instead: a gizmo handle's material swapping as
+            // the cursor reaches it is a change here, and only the overlay
+            // has to show it.
+            if layers.intersects(&overlay_layers) {
+                overlay_signature = overlay_signature.wrapping_add(mix(
+                    entity.id().to_bits(),
+                    entity.archetype().id().index() as u64,
+                ));
+                if !*overlay_changed
+                    && entity.archetype().components().iter().any(|id| {
+                        !ignored.contains(id) && changed(entity.get_change_ticks_by_id(*id))
+                    })
+                {
+                    *overlay_changed = true;
+                }
+            }
             continue;
         }
         signature = signature.wrapping_add(mix(
@@ -404,6 +477,10 @@ fn find_change(
                 .map_or_else(|| "a component".to_string(), |c| c.name().to_string());
             found.push(format!("{component} on '{name}'"));
         }
+    }
+    if overlay_signature != state.overlay_signature {
+        state.overlay_signature = overlay_signature;
+        *overlay_changed = true;
     }
     let found = (!found.is_empty()).then(|| found.join(", "));
     if signature != state.signature {

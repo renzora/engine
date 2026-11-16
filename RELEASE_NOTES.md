@@ -1,5 +1,35 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-16 13:46
+- fix(viewport): clicking selects in an idle viewport again, and the gizmo holds steady while the camera moves
+- fix(viewport): clicking a mesh in a model selects that mesh instead of the model's unnamed glTF wrapper
+
+## 2026-11-16 13:05
+- perf(viewport): gizmos, labels and brush cursors draw in an overlay of their own, so hovering a gizmo handle or moving a brush no longer re-renders the whole scene
+- perf(viewport): moving the mouse over an idle viewport no longer wakes it
+
+## 2026-11-16 12:33
+- fix(animation): an animated model that was selected once no longer keeps the viewport rendering every frame while idle
+- fix(settings): the Settings shortcut (Ctrl+,) opens and closes the Settings page again
+
+## 2026-11-16 03:51
+- perf(editor): about 70 systems that paused every other system each frame now run only when they have work
+- perf(editor): the Settings page's systems no longer run while it is closed
+- fix(editor): idle 2D viewports and open camera, material and animation previews no longer move their cameras every frame
+
+## 2026-11-16 03:02
+- fix(hierarchy): an empty scene no longer rebuilds the hierarchy tree every frame
+- feat(profiler): PostUpdate, Last and the fixed-update loop now show in profiles as schedules of their own
+
+## 2026-11-16 01:46
+- perf(editor): the Marketplace, animation editor, terrain, material editor, import window and launcher no longer run their systems every frame while they are not in use
+
+## 2026-11-16 00:48
+- feat(profiler): the summary shows each schedule's wall time, time spent outside the main world, and how many systems each schedule holds
+
+## 2026-11-16 00:42
+- feat(settings): Throttle When Unfocused switches off the editor's 60 fps cap while another window has focus
+
 ## 2026-11-16 00:26
 - fix(solari): leaving a Solari scene no longer leaves rough surfaces mirroring the sky
 

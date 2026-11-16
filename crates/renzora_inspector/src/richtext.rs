@@ -33,7 +33,13 @@ pub fn register(app: &mut App) {
     app.register_native_inspector_ui("text_rich", text_rich_native);
     app.add_systems(
         Update,
-        (rebuild_text_spans, add_span_click, remove_span_click)
+        (
+            // Exclusive, a sync point for the schedule even when it finds
+            // nothing, and it walks `SpansRoot`s only.
+            rebuild_text_spans.run_if(any_with_component::<SpansRoot>),
+            add_span_click,
+            remove_span_click,
+        )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
     );

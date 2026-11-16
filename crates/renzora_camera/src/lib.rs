@@ -1027,7 +1027,12 @@ impl SurfaceAhead<'_, '_> {
                     && layers.is_none_or(|l| l.intersects(&bevy::camera::visibility::RenderLayers::layer(0)))
             })
         };
-        let settings = bevy::picking::mesh_picking::ray_cast::MeshRayCastSettings::default().with_filter(&scene_only);
+        // `Visible`, not Bevy's default `VisibleInView`: an idle viewport runs
+        // no visibility pass, so the default saw every mesh as unseen and the
+        // first scroll step after idling found no surface ahead.
+        let settings = bevy::picking::mesh_picking::ray_cast::MeshRayCastSettings::default()
+            .with_visibility(bevy::picking::mesh_picking::ray_cast::RayCastVisibility::Visible)
+            .with_filter(&scene_only);
         self.ray_cast.cast_ray(ray, &settings).first().map(|(_, hit)| hit.distance)
     }
 }

@@ -631,9 +631,17 @@ impl ShadowBudget {
 /// [`apply_shadow_budget`] switched off would otherwise stay off: walk
 /// towards a lamp with Shadows on and it never got them back until something
 /// else about it was edited. Marking it re-extracts it with its own setting.
+///
+/// The viewport overlay cameras do not count as rendering: they draw gizmos
+/// and read no shadow map. Counting them let every gizmo hover bring the
+/// shadows back and mark the lights changed, which is a scene change, so the
+/// scene rendered too.
 pub fn update_shadow_settings(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
-    cameras_3d: Query<&Camera, With<Camera3d>>,
+    cameras_3d: Query<
+        &Camera,
+        (With<Camera3d>, Without<renzora::core::ViewportOverlayCamera>),
+    >,
     settings: Res<ViewportSettings>,
     mut directional_lights: Query<(Entity, &mut DirectionalLight)>,
     mut point_lights: Query<(Entity, &GlobalTransform, &mut PointLight)>,

@@ -81,7 +81,11 @@ impl Plugin for CommandPalettePlugin {
             ))
             .add_systems(
                 Update,
-                consume_toggle_request.run_if(in_state(SplashState::Editor)),
+                // Exclusive, so gated on its own first check: the request
+                // resource is inserted only when something asks for a toggle.
+                consume_toggle_request
+                    .run_if(in_state(SplashState::Editor))
+                    .run_if(resource_exists::<renzora::core::ToggleCommandPaletteRequested>),
             );
         // The palette modal itself.
         modal::register(app);

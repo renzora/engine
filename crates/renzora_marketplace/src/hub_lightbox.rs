@@ -24,7 +24,13 @@ struct HubLightboxRoot;
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<HubLightbox>();
-    app.add_systems(Update, close_clicks.run_if(in_state(SplashState::Editor)));
+    // Nothing to dismiss unless a lightbox is up.
+    app.add_systems(
+        Update,
+        close_clicks.run_if(
+            in_state(SplashState::Editor).and_then(|lb: Res<HubLightbox>| lb.root.is_some()),
+        ),
+    );
 }
 
 /// Open a full-screen preview of `url`, above everything (incl. the item

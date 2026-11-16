@@ -278,9 +278,16 @@ impl Plugin for TilemapEditorPlugin {
                 right_click_to_select,
                 sync_paint_mode,
                 sync_brush_active,
-                tilemap_stroke_begin,
+                // Both stroke ends are exclusive, so each is a sync point for
+                // the whole schedule even on the frames it returns at once.
+                // Each opens on the left button's edge, which is the condition.
+                tilemap_stroke_begin.run_if(
+                    bevy::input::common_conditions::input_just_pressed(MouseButton::Left),
+                ),
                 paint_tiles,
-                tilemap_stroke_end,
+                tilemap_stroke_end.run_if(
+                    bevy::input::common_conditions::input_just_released(MouseButton::Left),
+                ),
                 preview::update_brush_preview,
                 arm_tileset_drop,
                 commit_tileset_drop,

@@ -43,7 +43,11 @@ pub fn register(app: &mut App) {
             add_clip_drop,
             add_clip_drop_highlight,
         )
-            .run_if(in_state(renzora::SplashState::Editor)),
+            .run_if(in_state(renzora::SplashState::Editor))
+            // Every one of these reads or clicks widgets under an
+            // `AnimatorRoot`, which exists only while the inspector shows an
+            // animator; without one they have nothing to touch.
+            .run_if(any_with_component::<AnimatorRoot>),
     );
 }
 

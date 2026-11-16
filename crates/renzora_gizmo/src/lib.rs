@@ -176,6 +176,17 @@ impl Plugin for GizmoPlugin {
             .init_resource::<skeleton_gizmo::DrawnBones>()
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora::core::ModalTransformHud>()
+            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
+            // After the hover test and the drag have settled this frame's
+            // handle state, which is what the signal compares.
+            .add_systems(
+                Update,
+                hover::signal_overlay_changes
+                    .after(drag::gizmo_drag)
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
+            )
             // `Last`, so a borrower reading `drag_started` / `drag_ended` in
             // `Update` sees them whatever order the two systems ended up in.
             .add_systems(Last, clear_gizmo_target_edges)

@@ -12,6 +12,7 @@ pub mod material;
 pub mod mesh;
 pub mod paint;
 pub mod painter;
+pub mod presence;
 pub mod raycast;
 pub mod sculpt;
 pub mod shadows;
@@ -22,12 +23,15 @@ pub mod undo;
 
 use bevy::prelude::*;
 
+pub use presence::{terrain_in_scene, TerrainPresence};
+
 #[derive(Default)]
 pub struct TerrainPlugin;
 
 impl Plugin for TerrainPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] TerrainPlugin");
+        presence::install(app);
         app.add_plugins(material::TerrainMaterialPlugin)
             .add_plugins(surface::TerrainSurfacePlugin)
             // The terrain's landscape material and painted layer weights.
@@ -49,7 +53,11 @@ impl Plugin for TerrainPlugin {
                     // Before physics reads the request, so a chunk's collider
                     // is built as a heightfield and never as a trimesh.
                     mesh::sync_chunk_heightfields.before(renzora::physics::PhysicsSet::Prepare),
-                ),
+                )
+                    // Every one of these reads terrain chunks or roots. The
+                    // sun fit also runs in the grace frames after the last
+                    // terrain goes, which is when it puts Bevy's reach back.
+                    .run_if(terrain_in_scene),
             )
             .register_type::<data::TerrainData>()
             .register_type::<clusters::TerrainClusters>()
@@ -100,7 +108,13 @@ impl Plugin for TerrainPlugin {
                     streaming::sync_stream_proxies
                         .after(streaming::stream_terrain_chunks)
                         .after(height_layers::compose_height_layers_system),
-                ),
+                )
+                    // Rehydrate and backfill create chunks, but only for a
+                    // terrain root or chunk that already exists, and either
+                    // one makes the presence active. The `Added`/`Changed`
+                    // filters here count from each system's last run, so a
+                    // frame skipped loses nothing.
+                    .run_if(terrain_in_scene),
             );
     }
 }

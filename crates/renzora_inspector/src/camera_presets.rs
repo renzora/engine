@@ -35,7 +35,9 @@ pub fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            rebuild_camera_presets,
+            // Exclusive, a sync point for the schedule even when it finds
+            // nothing, and it walks `PresetsRoot`s only.
+            rebuild_camera_presets.run_if(any_with_component::<PresetsRoot>),
             capture_preset_click,
             goto_preset_click,
             snap_preset_click,

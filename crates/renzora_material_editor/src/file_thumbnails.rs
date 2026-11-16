@@ -993,9 +993,33 @@ impl Plugin for MaterialFileThumbnailPlugin {
                     fire_armed_captures,
                     resolve_disk_loads,
                 )
-                    .chain(),
+                    .chain()
+                    // Thumbnails are wanted by the Assets panel and the
+                    // inspector whatever workspace is showing, so this is gated
+                    // on queued work, not on a panel. Each system only drains
+                    // one of these queues; with all of them empty every body
+                    // finds nothing to do. Companion answers are only acted on
+                    // for ids in `CompanionCaptures::jobs`, which keeps the
+                    // condition true until each one has arrived.
+                    .run_if(thumbnail_work_pending),
             );
     }
+}
+
+/// Run condition: is any thumbnail request, capture, screenshot, disk load or
+/// companion job still in flight?
+fn thumbnail_work_pending(
+    registry: Res<MaterialThumbnailRegistry>,
+    pending: Res<PendingCaptures>,
+    armed: Res<ArmedCaptures>,
+    disk_loads: Res<PendingDiskLoads>,
+    companion: Res<CompanionCaptures>,
+) -> bool {
+    !registry.incoming_requests.is_empty()
+        || !pending.jobs.is_empty()
+        || !armed.list.is_empty()
+        || !disk_loads.entries.is_empty()
+        || !companion.jobs.is_empty()
 }
 
 /// Captures handed to the companion process, and the materials it failed on.

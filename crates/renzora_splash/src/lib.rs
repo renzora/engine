@@ -80,10 +80,19 @@ impl Plugin for SplashPlugin {
             .init_resource::<renzora::RecentProjects>()
             .add_systems(
                 Update,
+                // These must work from inside the editor (File > Open Project,
+                // File > Recent Projects), so they are not gated on a state. Each
+                // condition is exactly the early return its system starts with,
+                // which lets the executor skip the start instead of paying for a
+                // system that only finds nothing to do.
                 (
-                    handle_request_open_project,
-                    handle_request_open_project_path,
-                    mirror_recent_projects,
+                    handle_request_open_project
+                        .run_if(resource_exists::<renzora::RequestOpenProject>),
+                    handle_request_open_project_path
+                        .run_if(resource_exists::<renzora::RequestOpenProjectPath>),
+                    // `resource_changed` asks the same "changed since I last looked"
+                    // question the body's `is_changed` did, so no edit is missed.
+                    mirror_recent_projects.run_if(resource_changed::<AppConfig>),
                 ),
             )
             .add_systems(

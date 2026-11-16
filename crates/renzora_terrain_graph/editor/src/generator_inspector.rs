@@ -26,6 +26,12 @@ impl GraphFiles {
     }
 }
 
+/// Run condition for [`refresh_graph_files`]: a generator to keep current, or
+/// entries left over from one that has gone, which the system drops.
+pub fn graph_files_live(generators: Query<(), With<TerrainGenerator>>, files: Res<GraphFiles>) -> bool {
+    !generators.is_empty() || !files.map.is_empty()
+}
+
 /// Keep [`GraphFiles`] current for every generator in the scene. The open
 /// document's working copy wins over its file, so the card follows unsaved
 /// edits too.

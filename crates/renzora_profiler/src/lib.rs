@@ -128,6 +128,70 @@ impl Plugin for ProfilerPlugin {
         #[cfg(target_arch = "wasm32")]
         app.add_systems(First, collect_frame);
     }
+
+    fn finish(&self, app: &mut App) {
+        // In `finish`, after every plugin has built: plugins place their own
+        // schedules with `MainScheduleOrder::insert_after(PostUpdate, ..)`, which
+        // panics once `PostUpdate` is no longer in the list.
+        time_unspanned_schedules(app);
+    }
+}
+
+/// A main schedule run from inside a schedule of its own, so it is timed.
+///
+/// Bevy gives a schedule its span when the schedule is created, and a span made
+/// before a tracing subscriber exists is disabled for good. `PostUpdate`, `Last`
+/// and `RunFixedMainLoop` are created before `LogPlugin` installs the recorder,
+/// so their time showed only as a gap in the main world (about 4.5 ms of an
+/// idle editor frame) with no schedule to put it in. This label's schedule is
+/// created afterwards, so its span records, and it reads as the schedule it
+/// runs (`schedule: PostUpdate`).
+#[derive(bevy::ecs::schedule::ScheduleLabel, Clone, PartialEq, Eq, Hash)]
+struct Timed(bevy::ecs::intern::Interned<dyn bevy::ecs::schedule::ScheduleLabel>);
+
+impl std::fmt::Debug for Timed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
+
+/// The main schedules Bevy creates before the recorder exists.
+fn untimed_labels() -> [bevy::ecs::schedule::InternedScheduleLabel; 3] {
+    use bevy::ecs::schedule::ScheduleLabel;
+    [RunFixedMainLoop.intern(), PostUpdate.intern(), Last.intern()]
+}
+
+/// The [`Timed`] wrappers' own labels.
+fn timed_labels() -> [bevy::ecs::schedule::InternedScheduleLabel; 3] {
+    use bevy::ecs::schedule::ScheduleLabel;
+    untimed_labels().map(|l| Timed(l).intern())
+}
+
+/// Swap each untimed main schedule in the frame order for a [`Timed`] wrapper
+/// that runs it. A wrapper costs one exclusive system per frame on a
+/// single-threaded executor. If Bevy ever creates these schedules late enough
+/// to record them itself, the profile shows each one twice, nested, and this
+/// can go.
+fn time_unspanned_schedules(app: &mut App) {
+    use bevy::app::MainScheduleOrder;
+    use bevy::ecs::schedule::{ScheduleLabel, SingleThreadedExecutor};
+
+    for label in untimed_labels() {
+        let timed = Timed(label);
+        {
+            let Some(mut order) = app.world_mut().get_resource_mut::<MainScheduleOrder>() else {
+                return;
+            };
+            let Some(slot) = order.labels.iter_mut().find(|l| **l == label) else {
+                continue;
+            };
+            *slot = timed.intern();
+        }
+        let mut schedule = Schedule::new(timed);
+        schedule.set_executor(SingleThreadedExecutor::new());
+        schedule.add_systems(move |world: &mut World| world.run_schedule(label));
+        app.add_schedule(schedule);
+    }
 }
 
 /// Close the frame that just ended, if recording.
@@ -139,6 +203,8 @@ pub fn collect_frame(
     mut profiler: ResMut<Profiler>,
     diagnostics: Option<Res<DiagnosticsStore>>,
     entities: &Entities,
+    schedules: Option<Res<Schedules>>,
+    mut system_counts: Local<(u32, Vec<Counter>)>,
 ) {
     if !profiling::is_recording() {
         if profiler.mark_ns.is_some() {
@@ -175,6 +241,39 @@ pub fn collect_frame(
             name: profiling::intern("Frame time (ms)"),
             value: ms,
         });
+    }
+    // How many systems each schedule holds. A system a run condition skips
+    // leaves no span, so a frame whose systems add up to far less than its
+    // length can only be explained with these: each system is still checked
+    // and scheduled every frame whether it runs or not. Recounted about once
+    // a second; schedules rarely change. `First` and `Main` are running while
+    // this does, so they are out of `Schedules` and not counted.
+    if let Some(schedules) = schedules.as_deref() {
+        let (frames, cached) = &mut *system_counts;
+        if *frames == 0 || cached.is_empty() {
+            cached.clear();
+            let mut total = 0usize;
+            // The wrappers print as the schedule they run, so counting them
+            // would list `systems: PostUpdate` twice, once with one system.
+            let wrappers = timed_labels();
+            for (label, schedule) in schedules.iter() {
+                if wrappers.iter().any(|w| &**w == label) {
+                    continue;
+                }
+                let n = schedule.systems_len();
+                total += n;
+                cached.push(Counter {
+                    name: profiling::intern(&format!("systems: {label:?}")),
+                    value: n as f64,
+                });
+            }
+            cached.push(Counter {
+                name: profiling::intern("systems: total"),
+                value: total as f64,
+            });
+        }
+        *frames = (*frames + 1) % 60;
+        counters.extend(cached.iter().cloned());
     }
 
     let index = profiler.next_index;
@@ -244,6 +343,30 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(ProfilerPlugin);
         app
+    }
+
+    /// Wrapping a main schedule must not change what runs: each wrapped
+    /// schedule's systems still run exactly once a frame, in frame order.
+    #[test]
+    fn wrapped_schedules_still_run_once_a_frame_in_order() {
+        #[derive(Resource, Default)]
+        struct Ran(Vec<&'static str>);
+
+        // Its `collect_frame` drains the process-wide recorder too.
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let mut app = app();
+        app.init_resource::<Ran>()
+            .add_systems(Update, |mut r: ResMut<Ran>| r.0.push("update"))
+            .add_systems(PostUpdate, |mut r: ResMut<Ran>| r.0.push("post_update"))
+            .add_systems(Last, |mut r: ResMut<Ran>| r.0.push("last"));
+        app.finish();
+        app.cleanup();
+        app.update();
+        app.update();
+        assert_eq!(
+            app.world().resource::<Ran>().0,
+            ["update", "post_update", "last", "update", "post_update", "last"]
+        );
     }
 
     #[test]

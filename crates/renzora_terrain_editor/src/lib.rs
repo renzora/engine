@@ -22,6 +22,8 @@ use renzora_editor_framework::{
 };
 use renzora::SplinePath;
 use renzora_terrain::data::TerrainData;
+use renzora_terrain::landscape::{TerrainLandscape, TerrainMaterial};
+use renzora_terrain::paint::SurfacePaintState;
 
 use terrain_inspector::{follow_armed_tool_system, sync_active_tool_system, ShownTerrainTab, TerrainInspectorTab};
 
@@ -41,7 +43,11 @@ impl Plugin for TerrainEditorPlugin {
         app.register_inspector(terrain_data_entry())
             .init_resource::<TerrainInspectorTab>()
             .init_resource::<ShownTerrainTab>()
-            .init_resource::<systems::HeightPick>();
+            .init_resource::<systems::HeightPick>()
+            // The brush cursor is drawn by the viewport's overlay camera; see
+            // `brush_gizmo::BrushGizmos`.
+            .insert_gizmo_config(brush_gizmo::BrushGizmos, brush_gizmo::brush_gizmo_config())
+            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>();
 
         // **The terrain modes are not on the viewport shelf.** They were buttons
         // there next to the gizmos, until the brushes moved into this component:
@@ -66,14 +72,32 @@ impl Plugin for TerrainEditorPlugin {
         app
             // ActiveTool follows the terrain inspector's armed tab + selection,
             // and the shown pane follows a brush being armed.
-            .add_systems(Update, (sync_active_tool_system, follow_armed_tool_system).chain())
+            //
+            // Gated on what they react to: a terrain to select, a terrain tool
+            // armed (which the sync drops back to Select once no terrain is
+            // selected), or `ActiveTool` moving (which the sync mirrors into the
+            // tab and the follow into the shown pane). Their own `is_changed`
+            // counts from their last run, so a skipped frame loses no change.
+            .add_systems(
+                Update,
+                (sync_active_tool_system, follow_armed_tool_system)
+                    .chain()
+                    .run_if(terrain_tools_have_work),
+            )
             // Before the runtime reads a terrain's material and the resolver
             // compiles it, so a new terrain finds Alpine Landscape and its
             // textures already in the project.
             .init_resource::<surface_ui::DefaultTextureBakes>()
             .add_systems(
                 PreUpdate,
-                (surface_ui::provide_default_textures, surface_ui::finish_default_texture_bakes).chain(),
+                (
+                    // Reads `Changed<TerrainMaterial>`, counted from its last
+                    // run, so it can only have work while one exists.
+                    surface_ui::provide_default_textures.run_if(any_with_component::<TerrainMaterial>),
+                    // Returns at once with no bake in flight.
+                    surface_ui::finish_default_texture_bakes.run_if(surface_ui::bakes_in_flight),
+                )
+                    .chain(),
             )
             // Sculpt systems: active when ActiveTool is TerrainSculpt.
             .add_systems(
@@ -112,7 +136,10 @@ impl Plugin for TerrainEditorPlugin {
             // UI.
             .add_systems(
                 Update,
-                landscape_paint::landscape_command_system.run_if(renzora::core::not_in_play_mode),
+                landscape_paint::landscape_command_system
+                    // The system's own first test: nothing queued, nothing to do.
+                    .run_if(|state: Option<Res<SurfacePaintState>>| state.is_some_and(|s| !s.pending_commands.is_empty()))
+                    .run_if(renzora::core::not_in_play_mode),
             )
             // Undo capture: active when any terrain tool is on. Undo/redo
             // *replay* is handled by the central `renzora_undo` shortcut router
@@ -130,12 +157,21 @@ impl Plugin for TerrainEditorPlugin {
             // always shows current layer state.
             .add_systems(
                 Update,
-                systems::sync_layer_preview_system.run_if(renzora::core::not_in_play_mode),
+                systems::sync_layer_preview_system
+                    // With no landscape it only empties the cached list, so it
+                    // runs until that list is empty and then rests.
+                    .run_if(|landscapes: Query<(), With<TerrainLandscape>>, state: Res<SurfacePaintState>| {
+                        !landscapes.is_empty() || state.layer_count != 0 || !state.layers_preview.is_empty()
+                    })
+                    .run_if(renzora::core::not_in_play_mode),
             )
-            // Spline gizmos: always drawn in the editor (not in play mode).
+            // Spline gizmos: always drawn in the editor (not in play mode), for
+            // as many splines as there are, which is often none.
             .add_systems(
                 Update,
-                spline_gizmos::draw_spline_gizmos_system.run_if(renzora::core::not_in_play_mode),
+                spline_gizmos::draw_spline_gizmos_system
+                    .run_if(any_with_component::<SplinePath>)
+                    .run_if(renzora::core::not_in_play_mode),
             );
 
         app.register_entity_preset(EntityPreset {
@@ -168,6 +204,11 @@ impl Plugin for TerrainEditorPlugin {
             },
         });
     }
+}
+
+/// Whether the tool sync has anything to react to. See where it is used.
+fn terrain_tools_have_work(terrains: Query<(), With<TerrainData>>, tool: Option<Res<ActiveTool>>) -> bool {
+    !terrains.is_empty() || tool.is_some_and(|t| t.is_changed() || t.needs_terrain_selection())
 }
 
 fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -> bool {

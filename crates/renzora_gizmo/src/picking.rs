@@ -6,7 +6,9 @@
 //! a click or a drag — that is what lets a drag-select start on an entity as
 //! well as on empty space.
 
-use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
+use bevy::camera::visibility::RenderLayers;
+use bevy::ecs::system::SystemParam;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, RayCastVisibility};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -18,6 +20,17 @@ use renzora_editor_framework::{
 
 use crate::modal_transform;
 use crate::types::{BoxSelectionState, GizmoMesh, GizmoMode, GizmoRoot, GizmoState};
+
+/// The rest of [`entity_pick_system`]'s parameters, bundled because a system
+/// takes at most sixteen.
+#[derive(SystemParam)]
+pub(crate) struct PickExtras<'w, 's> {
+    hidden: Query<'w, 's, (), With<HideInHierarchy>>,
+    proxies: Query<'w, 's, (Entity, &'static GlobalTransform, &'static renzora::PickProxy)>,
+    drawn_bones: Res<'w, crate::skeleton_gizmo::DrawnBones>,
+    /// For keeping the pick ray to the scene's render layer.
+    layers: Query<'w, 's, &'static RenderLayers>,
+}
 
 pub(crate) fn entity_pick_system(
     gizmo_state: Res<GizmoState>,
@@ -34,14 +47,10 @@ pub(crate) fn entity_pick_system(
     named_entities: Query<(Entity, Has<SelectionStop>), With<Name>>,
     parent_query: Query<&ChildOf>,
     gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
-    // Bundled: a system takes at most sixteen parameters.
-    (hidden_entities, pick_proxies, drawn_bones): (
-        Query<(), With<HideInHierarchy>>,
-        Query<(Entity, &GlobalTransform, &renzora::PickProxy)>,
-        Res<crate::skeleton_gizmo::DrawnBones>,
-    ),
+    extras: PickExtras,
     mut box_sel: ResMut<BoxSelectionState>,
 ) {
+    let PickExtras { hidden: hidden_entities, proxies: pick_proxies, drawn_bones, layers } = extras;
     if !mouse_button.just_pressed(MouseButton::Left) {
         return;
     }
@@ -151,7 +160,25 @@ pub(crate) fn entity_pick_system(
     // Raycast and find the topmost selectable entity (if any). We do NOT
     // commit the selection yet — we arm `box_sel` with this entity as a
     // pending pick and wait for mouse-up to decide click vs drag.
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
+    //
+    // Anything shown in the scene, not what the camera saw last frame. Bevy's
+    // default (`VisibleInView`) asks the camera's last visibility pass, and a
+    // viewport idling under render-on-change runs none, so every mesh read as
+    // unseen: a click on an idle viewport hit nothing. It used to work only
+    // because moving the mouse to click woke the viewport first. The layer test
+    // is the part of `VisibleInView` worth keeping: offscreen preview rigs on
+    // their own render layers are never under the cursor.
+    let on_scene_layer = |entity: Entity| match layers.get(entity) {
+        Ok(l) => l.intersects(&RenderLayers::layer(0)),
+        // No `RenderLayers` is layer 0.
+        Err(_) => true,
+    };
+    let hits = mesh_ray_cast.cast_ray(
+        ray,
+        &MeshRayCastSettings::default()
+            .with_visibility(RayCastVisibility::Visible)
+            .with_filter(&on_scene_layer),
+    );
     let mut pending: Option<Entity> = None;
     let mut pending_dist = f32::INFINITY;
     for (entity, hit) in hits.iter() {

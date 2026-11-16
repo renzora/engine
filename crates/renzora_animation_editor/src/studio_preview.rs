@@ -30,9 +30,34 @@ pub fn studio_preview_panel_mounted(dock: Option<Res<renzora_ember::dock::Dock>>
     dock.is_some_and(|d| SHOWN_BY.iter().any(|p| d.tree.contains_panel(p)))
 }
 
+/// Run condition for [`sync_studio_preview_activation`]: true while the panel
+/// is mounted or visible, and afterwards for as long as anything it leaves
+/// behind still needs undoing (an active camera, a cloned model, a tracked
+/// source). Those are exactly the things the system writes when the panel is
+/// gone, so a close transition is still caught; once they are all clear it
+/// would change nothing, and is skipped.
+pub fn studio_preview_activation_pending(
+    dock: Option<Res<renzora_ember::dock::Dock>>,
+    fixed: Option<Res<renzora_ember::dock::FixedDock>>,
+    wins: Option<Res<renzora_ember::dock::DockWindows>>,
+    cameras: Query<&Camera, With<StudioPreviewCamera>>,
+    models: Query<(), With<StudioPreviewModel>>,
+    tracker: Res<StudioPreviewTracker>,
+) -> bool {
+    let mounted = dock.as_ref().is_some_and(|d| SHOWN_BY.iter().any(|p| d.tree.contains_panel(p)));
+    mounted
+        || SHOWN_BY
+            .iter()
+            .any(|p| renzora_ember::dock::panel_visible_anywhere(p, dock.as_deref(), fixed.as_deref(), wins.as_deref()))
+        || cameras.iter().any(|c| c.is_active)
+        || !models.is_empty()
+        || tracker.source_entity.is_some()
+}
+
 /// Toggles the studio-preview camera on/off with panel visibility and tears
-/// down the cloned model + tracker when the panel closes. Runs every frame
-/// regardless of panel state so close transitions are always caught.
+/// down the cloned model + tracker when the panel closes. Gated on
+/// [`studio_preview_activation_pending`] so close transitions are always
+/// caught but an editor without the panel does not start it every frame.
 pub fn sync_studio_preview_activation(
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed: Option<Res<renzora_ember::dock::FixedDock>>,
@@ -731,13 +756,19 @@ pub fn update_studio_preview_camera(
     orbit: Res<StudioPreviewOrbit>,
     mut camera: Query<&mut Transform, With<StudioPreviewCamera>>,
 ) {
+    // `set_if_neq`, because this runs every frame the panel is mounted and a
+    // plain assignment through `Mut` marks the camera moved even when the orbit
+    // has not: a still preview kept transform propagation busy every frame.
     for mut transform in camera.iter_mut() {
         let x = orbit.distance * orbit.pitch.cos() * orbit.yaw.sin();
         let y = orbit.distance * orbit.pitch.sin();
         let z = orbit.distance * orbit.pitch.cos() * orbit.yaw.cos();
 
-        transform.translation = orbit.target + Vec3::new(x, y, z);
-        transform.look_at(orbit.target, Vec3::Y);
+        transform.set_if_neq(
+            Transform::from_translation(orbit.target + Vec3::new(x, y, z))
+                .looking_at(orbit.target, Vec3::Y)
+                .with_scale(transform.scale),
+        );
     }
 }
 

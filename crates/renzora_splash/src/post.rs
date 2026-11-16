@@ -80,8 +80,27 @@ pub(crate) fn register(app: &mut App) {
             sync_post,
             attach_haze,
             sync_haze,
-        ),
+        )
+            // Every system here serves one of: the splash (`Splash` state, the
+            // `PostView` under `SplashRoot`), the loading screen or editor
+            // overlay (`HazeView`), or the post camera, which `gate_post_camera`
+            // must get one pass to switch off after `Splash` ends. Outside all
+            // of those (the editor at rest) none has work. On entering `Splash`
+            // the first arm is true on that frame, so the resize still happens
+            // before the background is drawn.
+            .run_if(
+                in_state(SplashState::Splash)
+                    .or_else(any_with_component::<PostView>)
+                    .or_else(any_with_component::<HazeView>)
+                    .or_else(post_camera_active),
+            ),
     );
+}
+
+/// Run condition: is the post camera still rendering? It is switched off by
+/// `gate_post_camera`, which therefore has to run until this is false.
+fn post_camera_active(cam: Query<&Camera, With<PostCamera>>) -> bool {
+    cam.iter().any(|c| c.is_active)
 }
 
 /// Build the offscreen image + the dedicated 2D camera that renders the splash

@@ -294,6 +294,12 @@ pub struct EditorSettings {
     /// Launcher cinematic and loading-screen haze: on, off, or decided by the
     /// display (see [`renzora::SplashEffects`]).
     pub splash_effects: renzora::SplashEffects,
+    /// Hold the editor to about 60 frames a second while its window is not
+    /// focused (Bevy's `WinitSettings::game()` unfocused mode). On by default to
+    /// save power and heat while you work in another window; off runs the
+    /// editor at full speed whatever has focus, which is what a profile taken
+    /// with the editor in the background needs.
+    pub throttle_when_unfocused: bool,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
     /// New scripts and UI templates are created with commented boilerplate
@@ -412,6 +418,7 @@ impl Default for EditorSettings {
             drag_value_rail_sweep: true,
             renderer_backend: renzora::RendererBackend::default(),
             splash_effects: renzora::SplashEffects::default(),
+            throttle_when_unfocused: true,
             // Off: the backdrop needs a viewport panel on screen to have
             // anything to show — an undocked viewport slot renders at 64×64 —
             // and the UI workspace ships without one.

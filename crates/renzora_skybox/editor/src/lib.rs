@@ -299,7 +299,13 @@ impl Plugin for SkyboxEditorPlugin {
         app.register_native_inspector_ui("skybox", native_inspector::skybox_native);
         app.add_systems(
             Update,
-            (native_inspector::rebuild_skybox, native_inspector::sky_browse_click)
+            (
+                // Exclusive, a sync point for the schedule even when it finds
+                // nothing, and it walks `SkyboxRoot`s only.
+                native_inspector::rebuild_skybox
+                    .run_if(any_with_component::<native_inspector::SkyboxRoot>),
+                native_inspector::sky_browse_click,
+            )
                 .run_if(in_state(renzora::SplashState::Editor)),
         );
     }

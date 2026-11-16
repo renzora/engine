@@ -18,9 +18,59 @@
 //! the ring is 48 points and the falloff ring another 48, and the mesh is
 //! already in memory as the array these read.
 
+use bevy::camera::visibility::RenderLayers;
+use bevy::ecs::system::SystemParam;
+use bevy::gizmos::config::{GizmoConfig, GizmoConfigGroup};
 use bevy::prelude::*;
 
+use renzora::core::viewport_types::ViewportOverlayChanged;
 use renzora_terrain::data::{BrushShape, TerrainChunkData, TerrainData};
+
+/// The brush cursor's gizmo group: on render layer 1, so the viewport's overlay
+/// camera draws it rather than the scene camera.
+///
+/// The cursor follows the mouse before any button is pressed, and the scene
+/// camera no longer redraws for plain mouse movement. On the overlay the ring
+/// costs a redraw of a few lines as it moves rather than a render of the whole
+/// scene. It draws on top of the terrain rather than being hidden behind a
+/// hill, which is no loss for a cursor, and the z-fighting [`RING_LIFT`]
+/// guards against cannot happen there.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub struct BrushGizmos;
+
+/// [`BrushGizmos`]' config: Bevy's default line, on the overlay layer.
+pub fn brush_gizmo_config() -> GizmoConfig {
+    GizmoConfig {
+        render_layers: RenderLayers::layer(1),
+        ..default()
+    }
+}
+
+/// Wakes the viewport overlay when the brush cursor would draw differently:
+/// it moved, it appeared or went, or a brush setting changed.
+///
+/// The ring is an immediate-mode gizmo, redrawn every frame, so it leaves no
+/// change behind for the overlay's redraw gate to see. Touching the signal
+/// only on a difference is what lets the overlay idle while the cursor is
+/// still.
+#[derive(SystemParam)]
+pub(crate) struct BrushCursorWake<'w, 's> {
+    /// Where the cursor was and whether it showed, as last drawn.
+    last: Local<'s, Option<(Option<Vec3>, bool)>>,
+    overlay: ResMut<'w, ViewportOverlayChanged>,
+}
+
+impl BrushCursorWake<'_, '_> {
+    /// `hover` and `visible` as the cursor will be drawn this frame.
+    pub(crate) fn update(&mut self, hover: Option<Vec3>, visible: bool, settings_changed: bool) {
+        let now = Some((hover, visible));
+        if settings_changed || *self.last != now {
+            *self.last = now;
+            self.overlay.set_changed();
+        }
+    }
+}
 
 /// Points around each ring. Enough that a 200 m brush doesn't read as a
 /// polygon, cheap enough to sample the heightmap at every one of them twice a
@@ -132,7 +182,7 @@ pub fn ring_offset(shape: BrushShape, t: f32, radius: f32) -> Vec2 {
 /// dropped: a ring with a gap in it at the terrain's edge reads as a bug.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_ring(
-    gizmos: &mut Gizmos,
+    gizmos: &mut Gizmos<BrushGizmos>,
     center: Vec3,
     radius: f32,
     shape: BrushShape,
@@ -164,7 +214,7 @@ pub fn draw_ring(
 /// the second ring would sit on the centre point, so it is dropped.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_brush_cursor(
-    gizmos: &mut Gizmos,
+    gizmos: &mut Gizmos<BrushGizmos>,
     center: Vec3,
     radius: f32,
     shape: BrushShape,

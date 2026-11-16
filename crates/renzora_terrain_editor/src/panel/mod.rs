@@ -77,6 +77,11 @@ impl Plugin for TerrainToolsPanel {
                     falloff::draw_falloff_curves,
                     material_slot::material_thumbnails,
                 )
+                    // The body these serve is built only for a selected
+                    // terrain, and the chunk map only maps one. The shared
+                    // presence includes grace frames after the last terrain
+                    // goes, which is when the chunk map resets to empty.
+                    .run_if(renzora_terrain::terrain_in_scene)
                     .run_if(in_state(SplashState::Editor)),
             );
     }

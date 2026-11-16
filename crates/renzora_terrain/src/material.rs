@@ -24,7 +24,17 @@ impl Plugin for TerrainMaterialPlugin {
     fn build(&self, app: &mut App) {
         bevy::asset::embedded_asset!(app, "shaders/terrain_checkerboard.wesl");
         app.add_plugins(MaterialPlugin::<TerrainCheckerboardMaterial>::default())
-            .add_systems(PostUpdate, (fill_grid_textures, follow_render_method));
+            .add_systems(
+                PostUpdate,
+                (
+                    // Its only inputs are new grid materials and the grid
+                    // images arriving. Materials seen before the images wait
+                    // in its `pending` list, and the images arriving wakes it.
+                    fill_grid_textures.run_if(grid_material_news),
+                    // Acts only on a change to the default render method.
+                    follow_render_method.run_if(resource_exists_and_changed::<bevy::pbr::DefaultOpaqueRendererMethod>),
+                ),
+            );
     }
 }
 
@@ -99,6 +109,19 @@ impl Material for TerrainCheckerboardMaterial {
     fn opaque_render_method(&self) -> OpaqueRendererMethod {
         OpaqueRendererMethod::Auto
     }
+}
+
+/// Run condition for [`fill_grid_textures`]: a grid material was added, or
+/// the grid images arrived or changed. The condition reads the messages with
+/// its own cursor, so the system still sees every one when it runs.
+fn grid_material_news(
+    mut events: MessageReader<AssetEvent<TerrainCheckerboardMaterial>>,
+    grid: Option<Res<GridTexture>>,
+) -> bool {
+    // Counted rather than `any`, which would leave the rest unread and wake
+    // the system again next frame for nothing.
+    let added = events.read().filter(|e| matches!(e, AssetEvent::Added { .. })).count() > 0;
+    added || grid.is_some_and(|g| g.is_changed())
 }
 
 /// Give every terrain grid material the engine's grid images once they exist.

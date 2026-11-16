@@ -76,8 +76,16 @@ pub fn landscape_paint_system(
     terrains: Query<(&TerrainData, &GlobalTransform, Option<&TerrainLandscape>)>,
     mut chunks: Query<(Entity, &TerrainChunkData, &TerrainChunkOf, &mut TerrainChunkWeights)>,
     time: Res<Time>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<brush_gizmo::BrushGizmos>,
+    mut wake: brush_gizmo::BrushCursorWake,
 ) {
+    // Before the early return below, so the cursor leaving the terrain wakes
+    // the overlay to take the ring away.
+    wake.update(
+        paint_state.hover_position,
+        paint_state.brush_visible,
+        paint_settings.is_changed(),
+    );
     let (Some(hover), Some(chunk_entity)) = (paint_state.hover_position, paint_state.active_entity) else {
         return;
     };

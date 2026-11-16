@@ -502,7 +502,14 @@ impl Plugin for PostProcessEditorPlugin {
         app.register_native_inspector_ui(TYPE_ID, drawer);
         app.add_systems(
             Update,
-            (rebuild, button_clicks, drop_effect, drop_highlight)
+            (
+                // Exclusive, a sync point for the schedule even when it finds
+                // nothing, and it walks `EffectsRoot`s only.
+                rebuild.run_if(any_with_component::<EffectsRoot>),
+                button_clicks,
+                drop_effect,
+                drop_highlight,
+            )
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora_ember::dock::panel_active("inspector")),
         );

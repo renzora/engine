@@ -274,13 +274,23 @@ fn restore_filtered_sky_probe(
 ///
 /// A camera that already has a deferred prepass is left alone and NOT marked, so
 /// going idle never strips a prepass the engine put there itself.
+///
+/// The viewport overlay cameras are left out (here and in
+/// [`manage_solari_render_mode`]): they see only gizmo lines and the
+/// alpha-blended gizmo handles, never a deferred material, so the panic cannot
+/// happen there, and a deferred prepass would add a full-screen lighting pass
+/// to every overlay redraw.
 fn on_camera3d_inserted(
     trigger: On<Insert<Camera3d>>,
     state: Res<SolariActive>,
     has_deferred: Query<Has<DeferredPrepass>>,
+    overlays: Query<(), With<renzora::core::ViewportOverlayCamera>>,
     mut commands: Commands,
 ) {
-    if state.0 && !has_deferred.get(trigger.entity).unwrap_or(false) {
+    if state.0
+        && !has_deferred.get(trigger.entity).unwrap_or(false)
+        && !overlays.contains(trigger.entity)
+    {
         commands
             .entity(trigger.entity)
             .try_insert((DeferredPrepass, Msaa::Off, SolariForcedDeferred));
@@ -424,6 +434,14 @@ fn same_preset(current: &SolariLighting, wanted: &SolariLighting) -> bool {
             == wanted.world_cache_cell_updates_soft_target
 }
 
+/// 3D cameras Solari may give a deferred prepass: not ones with one already,
+/// and not the viewport overlay cameras (see [`on_camera3d_inserted`]).
+type UnforcedCameras = (
+    With<Camera3d>,
+    Without<DeferredPrepass>,
+    Without<renzora::core::ViewportOverlayCamera>,
+);
+
 /// Marker on cameras we forced into the deferred prepass while Solari is active,
 /// so they can be reverted when it goes idle.
 #[derive(Component)]
@@ -451,7 +469,7 @@ fn manage_solari_render_mode(
     // Cameras with no deferred prepass yet. One that already has one, such as
     // the editor camera in a Deferred project, is the engine's and must not be
     // marked, or going idle would strip its prepass.
-    unforced_cameras: Query<Entity, (With<Camera3d>, Without<DeferredPrepass>)>,
+    unforced_cameras: Query<Entity, UnforcedCameras>,
     forced_cameras: Query<Entity, With<SolariForcedDeferred>>,
 ) {
     if !active.is_empty() {

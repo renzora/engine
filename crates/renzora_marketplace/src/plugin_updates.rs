@@ -53,9 +53,13 @@ pub(crate) fn register(app: &mut App) {
     app.insert_resource(renzora::PluginUpdateReminders(
         renzora::core::load_plugin_update_reminders(),
     ));
+    // One check per session: idle once it has started and its answer is in.
     app.add_systems(
         Update,
-        (start_check, poll_check).run_if(in_state(renzora::SplashState::Editor)),
+        (start_check, poll_check).run_if(
+            in_state(renzora::SplashState::Editor)
+                .and_then(|check: Res<PluginUpdateCheck>| !check.started || check.rx.is_some()),
+        ),
     );
 }
 

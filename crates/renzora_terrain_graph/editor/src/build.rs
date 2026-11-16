@@ -72,6 +72,16 @@ fn start(world: &mut World, terrain: Entity) -> Result<(), String> {
     Ok(())
 }
 
+/// Run condition for [`start_builds`]: a build request is waiting.
+pub fn builds_requested(m: Option<Res<Messages<BuildTerrainGraph>>>) -> bool {
+    m.is_some_and(|m| !m.is_empty())
+}
+
+/// Run condition for [`poll_builds`]: a build is in flight.
+pub fn builds_running(jobs: Res<BuildJobs>) -> bool {
+    !jobs.jobs.is_empty()
+}
+
 /// Start the builds asked for this frame.
 pub fn start_builds(world: &mut World) {
     let requests: Vec<BuildTerrainGraph> = match world.get_resource_mut::<Messages<BuildTerrainGraph>>() {

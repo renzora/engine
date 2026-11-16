@@ -111,37 +111,89 @@ pub(crate) fn register(app: &mut App) {
         .add_systems(
             Update,
             (
-                lifecycle::manage_import_modal,
-                toast::manage_import_toast,
-                interaction::file_browse_click,
-                interaction::folder_browse_click,
-                interaction::dest_folder_sync,
-                interaction::tab_click,
-                frame::splitter_drag,
-                interaction::staged_row_click,
-                interaction::tree_row_click,
-                interaction::tree_check_click,
-                interaction::mesh_row_click,
-                interaction::mat_row_click,
+                // Builds the window when `visible` turns on and tears it down
+                // when it turns off; the second arm holds it for that teardown.
+                // Every handler here reads a widget under `ImportRoot`, so they
+                // share the same gate.
+                (
+                    lifecycle::manage_import_modal,
+                    interaction::file_browse_click,
+                    interaction::folder_browse_click,
+                    interaction::tab_click,
+                    frame::splitter_drag,
+                    interaction::staged_row_click,
+                    interaction::tree_row_click,
+                    interaction::tree_check_click,
+                    interaction::mesh_row_click,
+                    interaction::mat_row_click,
+                    interaction::commit_click,
+                    interaction::discard_staged_click,
+                    interaction::reconvert_click,
+                    interaction::cancel_click,
+                    interaction::remove_file_click,
+                )
+                    .run_if(window_wanted),
+                // Not gated on the window: it must only ever see a pick made
+                // since the previous frame (see its doc), and a condition that
+                // asks "changed since I last looked" every frame is exactly
+                // that, where a skipped system's own `is_changed` would reach
+                // back to whatever another dialog picked while it slept.
+                interaction::dest_folder_sync
+                    .run_if(resource_exists_and_changed::<renzora_ember::widgets::FolderPick>),
+                // The corner toast spawns and despawns itself, so it gets the
+                // same build-or-teardown gate as the window.
+                (toast::manage_import_toast, toast::toast_dismiss_click).run_if(toast_wanted),
             ),
         )
         .add_systems(
             Update,
             (
-                interaction::commit_click,
-                interaction::discard_staged_click,
-                interaction::reconvert_click,
                 lifecycle::settings_watch,
                 crate::overlay::drive_reimport,
                 interaction::commit_when_converted,
                 lifecycle::auto_start_import,
                 lifecycle::on_staged_changed,
                 lifecycle::close_when_finished,
-                interaction::cancel_click,
-                toast::toast_dismiss_click,
-                interaction::remove_file_click,
-            ),
+            )
+                // Each of these opens by checking one of the flags this
+                // condition reads and returns when it is clear; together they
+                // describe an import session in progress. An idle editor has
+                // none of them set, and they never set themselves.
+                .run_if(import_session_active),
         );
+}
+
+/// Run condition: is the import window up, or wanted up?
+fn window_wanted(
+    state: Option<Res<crate::overlay::ImportOverlayState>>,
+    roots: Query<(), With<ImportRoot>>,
+) -> bool {
+    state.is_some_and(|s| s.visible) || !roots.is_empty()
+}
+
+/// Run condition: is the corner toast up, or wanted up?
+fn toast_wanted(
+    state: Option<Res<crate::overlay::ImportOverlayState>>,
+    roots: Query<(), With<ToastRoot>>,
+) -> bool {
+    state.is_some_and(|s| s.toast_active) || !roots.is_empty()
+}
+
+/// Run condition: is anything about an import still in motion that the
+/// session systems react to? The window being wanted, a reconvert or a deferred
+/// commit queued, a staged model (or its preview still loaded), or settings
+/// recorded against a conversion that has yet to be cleared.
+fn import_session_active(
+    state: Option<Res<crate::overlay::ImportOverlayState>>,
+    preview: Option<Res<crate::preview3d::ImportPreview>>,
+) -> bool {
+    state.is_some_and(|s| {
+        s.visible
+            || s.reimport_requested
+            || s.commit_when_converted
+            || s.converted_with.is_some()
+            || !s.staged.is_empty()
+    }) || preview.is_some_and(|p| p.path.is_some())
 }
 
 // ── Markers ──────────────────────────────────────────────────────────────────

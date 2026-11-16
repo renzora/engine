@@ -136,6 +136,12 @@ pub(crate) fn place_shelf(
     }
 }
 
+/// Run condition for [`populate_shelf`]: a shelf still waits to be filled.
+/// Once it is, the exclusive pass (and its schedule-wide sync point) stops.
+pub(crate) fn shelf_unpopulated(q: Query<(), (With<ShelfContainer>, Without<ToolsPopulated>)>) -> bool {
+    !q.is_empty()
+}
+
 /// Fill an empty `ShelfContainer` from the registry's [`ToolSection::Shelf`]
 /// entries, one group at a time separated by a rule. Exclusive because the
 /// visibility/active predicates take `&World`; runs until the registry is

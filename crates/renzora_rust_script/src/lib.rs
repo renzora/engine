@@ -253,7 +253,7 @@ impl Plugin for RustScriptPlugin {
                     watch::scan_on_project_open
                         .run_if(in_state(SplashState::Editor).or_else(not_editor_session)),
                     watch::watch,
-                    (watch::collect_remote, watch::finish).chain(),
+                    (watch::collect_remote, watch::finish.run_if(watch::builds_pending)).chain(),
                 ),
             )
             // Claims `.rs` with the engine. Not done in `build` because the

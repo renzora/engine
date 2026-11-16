@@ -38,7 +38,13 @@ pub struct RigPlugin;
 
 impl Plugin for RigPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, rig_click.run_if(in_state(renzora_editor_framework::SplashState::Editor)));
+        // Nothing to click until a panel or menu has spawned a `RigClick` button.
+        app.add_systems(
+            Update,
+            rig_click
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                .run_if(any_with_component::<RigClick>),
+        );
         markers::register(app);
         respawn::register(app);
         rig_panel::register(app);

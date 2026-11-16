@@ -111,6 +111,12 @@ The companion runs at a lower priority than the editor, so an export or a plugin
 
 While a recording runs, every job waits, so the profile measures only the game: an import or a compile would otherwise compete with it for the machine. Jobs that render (model, material and shape thumbnails) also wait while **Play** runs. The Jobs screen says what each job is waiting for, and **Run anyway** starts one now. Frames recorded while a job runs are greyed in the frame graph with a strip across the top, and `profiler_summary` counts them, so a hitch the companion caused is never mistaken for one in your game.
 
+### Where a frame goes that no system explains
+
+`profiler_summary` lists systems, which leaves out time no system reports: a system a run condition skips still costs its check and its scheduling, and a frame can also wait outside the main world on the window or the render thread. So the summary also gives each schedule's whole wall time (`schedules`), the frame time spent outside the main world (`outside_main_app_ms`), and `systems: <schedule>` counters with how many systems each schedule holds. A schedule much longer than the systems listed inside it is paying for the ones that did not run.
+
+Bevy gives a schedule its span when the schedule is created, and `PostUpdate`, `Last` and `RunFixedMainLoop` are made before the profiler's recorder is installed, so their own spans never record. The profiler runs each of them from inside a wrapper schedule of its own, which records under the same name (`schedule: PostUpdate`), so they appear in `schedules` like any other. `main_app_not_in_a_recorded_schedule_ms` gives whatever main-world time no recorded schedule covers after that, which should now be close to nothing. `system_runs_by_crate` counts how many systems each crate starts per frame and what they cost: a crate that starts many systems on an idle frame, each doing nothing, is where run conditions save the most.
+
 ## The Cache screen
 
 The companion watches the open project and keeps its caches in step with it:

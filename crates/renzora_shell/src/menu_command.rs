@@ -229,5 +229,10 @@ pub fn drain(world: &mut World) {
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<MenuCommandQueue>();
-    app.add_systems(Update, drain);
+    // Exclusive, so a sync point for the schedule even when it returns at
+    // once; its first check, an empty queue, is the condition instead.
+    app.add_systems(
+        Update,
+        drain.run_if(|q: Option<Res<MenuCommandQueue>>| q.is_some_and(|q| !q.0.is_empty())),
+    );
 }

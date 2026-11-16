@@ -107,8 +107,20 @@ enum ZoomBtn {
 struct GizmoDragging(bool);
 
 pub(crate) fn register(app: &mut App) {
-    app.init_resource::<GizmoDragging>()
-        .add_systems(Update, (gizmo_layout, gizmo_input, zoom_click));
+    app.init_resource::<GizmoDragging>().add_systems(
+        Update,
+        (gizmo_layout, gizmo_input, zoom_click)
+            // The gizmo and zoom buttons live in the window's preview pane,
+            // so with no window there is nothing to lay out or click. A drag
+            // latched when the window closed keeps the group alive until the
+            // button is released and `gizmo_input` clears the latch.
+            .run_if(any_with_component::<super::ImportRoot>.or_else(gizmo_dragging)),
+    );
+}
+
+/// Run condition: is a backplate drag still latched?
+fn gizmo_dragging(dragging: Res<GizmoDragging>) -> bool {
+    dragging.0
 }
 
 fn rgba((r, g, b): (u8, u8, u8), a: f32) -> Color {

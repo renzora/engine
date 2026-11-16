@@ -81,6 +81,18 @@ pub fn active_tgraph_path(ctx: Option<&EditorContext>) -> Option<String> {
     }
 }
 
+/// Run condition for [`load_active_document`]: the active tab names a graph
+/// other than the one loaded. The same test the system opens with.
+pub fn active_document_unloaded(ctx: Option<Res<EditorContext>>, st: Res<TerrainGraphEditorState>) -> bool {
+    active_tgraph_path(ctx.as_deref()).is_some_and(|p| st.path.as_deref() != Some(p.as_str()))
+}
+
+/// Run condition for [`observe_edits`]: a graph is open and its shadow belongs
+/// to it. The same test the system opens with.
+pub fn document_observable(st: Res<TerrainGraphEditorState>, shadow: Res<GraphShadow>) -> bool {
+    st.path.is_some() && shadow.path == st.path
+}
+
 /// Open the `.tgraph` the active document names whenever that changes,
 /// saving the outgoing one first if it has unsaved edits.
 pub fn load_active_document(world: &mut World) {

@@ -274,13 +274,44 @@ pub fn foliage_paint_scroll_system(
     }
 }
 
+/// The foliage brush cursor's gizmo group: on render layer 1, so the viewport's
+/// overlay camera draws it rather than the scene camera.
+///
+/// The circle follows the mouse before any button is pressed, and the scene
+/// camera no longer redraws for plain mouse movement; on the overlay the
+/// circle costs a redraw of a few lines as it moves rather than a render of
+/// the whole scene. Same arrangement as the terrain brushes
+/// (`renzora_terrain_editor::brush_gizmo`).
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub struct FoliageBrushGizmos;
+
+/// [`FoliageBrushGizmos`]' config: Bevy's default line, on the overlay layer.
+pub fn foliage_brush_gizmo_config() -> bevy::gizmos::config::GizmoConfig {
+    bevy::gizmos::config::GizmoConfig {
+        render_layers: bevy::camera::visibility::RenderLayers::layer(1),
+        ..default()
+    }
+}
+
 /// Draw brush circle gizmo at hover position.
+///
+/// The circle is redrawn every frame and leaves no change behind, so the
+/// viewport overlay is woken here when it would draw differently: the cursor
+/// moved or left the terrain, or a brush setting changed. Only on a
+/// difference, so the overlay idles while the cursor is still.
 pub fn foliage_brush_gizmo_system(
     paint_state: Res<FoliagePaintState>,
     settings: Res<FoliagePaintSettings>,
     terrain_query: Query<&TerrainData>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<FoliageBrushGizmos>,
+    mut last_cursor: Local<Option<Option<Vec3>>>,
+    mut overlay: ResMut<renzora::core::viewport_types::ViewportOverlayChanged>,
 ) {
+    if settings.is_changed() || *last_cursor != Some(paint_state.hover_position) {
+        *last_cursor = Some(paint_state.hover_position);
+        overlay.set_changed();
+    }
     let Some(pos) = paint_state.hover_position else {
         return;
     };

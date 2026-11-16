@@ -256,9 +256,31 @@ pub(crate) fn register(app: &mut App) {
                 preview_input,
                 apply_orbit,
             )
-                .chain(),
+                .chain()
+                // The preview has work only while it holds a model (`path`,
+                // which also keeps the camera on) or while the window that
+                // shows it is up. `on_staged_changed` clears `path` when the
+                // last staged model goes, and on that frame this still runs,
+                // so `sync_camera_active` switches the camera off before the
+                // group stops. The orbit ease has long converged by then, and
+                // a new model reframes with a snap.
+                .run_if(
+                    any_with_component::<crate::window::ImportRoot>
+                        .or_else(preview_loaded)
+                        .or_else(preview_camera_active),
+                ),
         )
         .add_observer(on_scene_ready);
+}
+
+/// Run condition: is a staged model loaded into the preview?
+fn preview_loaded(preview: Res<ImportPreview>) -> bool {
+    preview.path.is_some()
+}
+
+/// Run condition: is the preview camera still rendering?
+fn preview_camera_active(cameras: Query<&Camera, With<PreviewCamera>>) -> bool {
+    cameras.iter().any(|c| c.is_active)
 }
 
 /// How the preview is lit and what is behind it, which is the user's to choose.

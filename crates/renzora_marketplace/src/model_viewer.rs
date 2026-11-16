@@ -771,7 +771,25 @@ impl Plugin for ModelViewerPlugin {
                     spin_turntable,
                 )
                     .chain()
-                    .run_if(in_state(SplashState::Editor)),
+                    .run_if(in_state(SplashState::Editor).and_then(model_preview_live)),
             );
     }
+}
+
+/// Run condition for the turntable chain.
+///
+/// While a model is on show (`active`) or its download is out, every step may
+/// have work. Otherwise the only thing left to do is turn the offscreen camera
+/// off after a close, so the chain also runs while the camera disagrees with
+/// the preview.
+///
+/// Not `is_changed()`: `poll_model_download` takes the receiver through
+/// `ResMut` on every run, which marks the resource changed, so a gate on change
+/// would keep the chain running forever once it had run once.
+fn model_preview_live(
+    preview: Option<Res<ModelPreview>>,
+    cameras: Query<&Camera, With<ModelPreviewCamera>>,
+) -> bool {
+    let Some(p) = preview else { return false };
+    p.active || p.rx.is_some() || cameras.iter().any(|c| c.is_active != p.active)
 }

@@ -2611,7 +2611,7 @@ impl Plugin for ScenePlugin {
                 Update,
                 (
                     hot_reload::collect_scene_changes,
-                    hot_reload::apply_scene_reloads,
+                    hot_reload::apply_scene_reloads.run_if(hot_reload::reloads_pending),
                     // After the reload, so a conflict raised this frame gets its
                     // prompt on the same frame rather than the next.
                     conflict_prompt::conflict_prompt_buttons,
@@ -2699,13 +2699,17 @@ impl Plugin for ScenePlugin {
                     tab_asset_cache::cache_added_mesh_instances,
                     tick_editor_load_progress,
                     detect_file_keybindings,
-                    save_scene_system,
-                    save_as_scene_system,
+                    // The six file actions are exclusive, so each is a sync
+                    // point for the whole schedule even on the frames (nearly
+                    // all of them) its request is absent. Each opens by taking
+                    // its request resource, so that resource is its condition.
+                    save_scene_system.run_if(resource_exists::<SaveSceneRequested>),
+                    save_as_scene_system.run_if(resource_exists::<SaveAsSceneRequested>),
                     thumbnail::capture_scene_thumbnail,
-                    new_scene_system,
-                    open_scene_system,
-                    open_scene_path_system,
-                    handle_tab_switch,
+                    new_scene_system.run_if(resource_exists::<NewSceneRequested>),
+                    open_scene_system.run_if(resource_exists::<OpenSceneRequested>),
+                    open_scene_path_system.run_if(resource_exists::<OpenScenePathRequested>),
+                    handle_tab_switch.run_if(resource_exists::<TabSwitchRequest>),
                 )
                     .run_if(in_state(SplashState::Editor)),
             );

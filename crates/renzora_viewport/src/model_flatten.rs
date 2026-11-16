@@ -326,7 +326,11 @@ pub struct WrappersPending {
 /// Examples that match: `SceneRoot` (spawned by `model_drop`), `RootNode`,
 /// `RootNode.001` (Blender-exported), `RootNode_2` (some GLTF tooling),
 /// `Scene` (Blender's default scene) — and the canonical-id spellings of all of
-/// those: `sceneroot`, `rootnode`, `rootnode_001`, `rootnode_001_1`.
+/// those: `sceneroot`, `rootnode`, `rootnode_001`, `rootnode_001_1`. Also the
+/// placeholders Bevy's loader gives an unnamed scene or node, `Scene0` and
+/// `GltfNode0` (`scene0`, `gltfnode0`): left visible, the Bistro's two of them
+/// sat between the model root and every mesh, so a click on any mesh selected
+/// `scene0`.
 ///
 /// **Match case-insensitively and strip every trailing `_<digits>` group.** Both
 /// halves are load-bearing, and getting this wrong is silent:
@@ -348,7 +352,14 @@ fn is_gltf_wrapper_name(name: &str) -> bool {
         }
         base = head;
     }
-    matches!(base, "sceneroot" | "rootnode" | "scene")
+    // Bevy's glTF loader names an unnamed scene `Scene{index}` and an unnamed
+    // node `GltfNode{index}`, the digits joined straight on, which reach us as
+    // `scene0` and `gltfnode0`. Names the loader made up, never the artist's.
+    let indexed = |prefix: &str| {
+        base.strip_prefix(prefix)
+            .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
+    };
+    matches!(base, "sceneroot" | "rootnode" | "scene") || indexed("scene") || indexed("gltfnode")
 }
 
 /// System: walk each newly-imported model's subtree and tag GLTF wrapper
@@ -493,6 +504,11 @@ mod tests {
             "sceneroot",
             "sceneroot_2",
             "scene",
+            "scene0",
+            "scene12",
+            "gltfnode0",
+            "gltfnode245",
+            "gltfnode0_1",
         ] {
             assert!(is_gltf_wrapper_name(n), "{n} should be a wrapper");
         }
@@ -502,7 +518,7 @@ mod tests {
     /// `sanitize_id` yet (or a scene saved before canonical ids) must not regress.
     #[test]
     fn matches_raw_loader_names() {
-        for n in ["RootNode", "RootNode.001", "RootNode_2", "SceneRoot", "Scene"] {
+        for n in ["RootNode", "RootNode.001", "RootNode_2", "SceneRoot", "Scene", "Scene0", "GltfNode7"] {
             assert!(is_gltf_wrapper_name(n), "{n} should be a wrapper");
         }
     }
@@ -515,6 +531,10 @@ mod tests {
             "my_rootnode",     // only the leading segment counts
             "root",
             "node_001",
+            "scenery",         // a word that merely starts with `scene`
+            "scene_props",
+            "gltfnode",        // the placeholder always carries its index
+            "gltfnode_lamp",
         ] {
             assert!(!is_gltf_wrapper_name(n), "{n} should NOT be a wrapper");
         }

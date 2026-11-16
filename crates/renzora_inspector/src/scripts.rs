@@ -62,7 +62,9 @@ pub fn register(app: &mut App) {
             refresh_script_index
                 .run_if(any_with_component::<ScriptsRoot>)
                 .before(rebuild_scripts),
-            rebuild_scripts,
+            // Exclusive, a sync point for the schedule even when it finds
+            // nothing, and it walks `ScriptsRoot`s only.
+            rebuild_scripts.run_if(any_with_component::<ScriptsRoot>),
             remember_script_sections,
             script_remove_click,
             script_preview_click,

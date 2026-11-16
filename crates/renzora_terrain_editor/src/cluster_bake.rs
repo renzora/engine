@@ -53,8 +53,19 @@ struct Building {
 pub(crate) fn install(app: &mut App) {
     app.init_resource::<ClusterBakes>().add_systems(
         Update,
-        (name_cluster_folders, build_chunk_clusters).chain().run_if(renzora::core::not_in_play_mode),
+        (name_cluster_folders, build_chunk_clusters)
+            .chain()
+            .run_if(terrain_or_builds)
+            .run_if(renzora::core::not_in_play_mode),
     );
+}
+
+/// Both act on terrain roots and chunks, except that a build already in
+/// flight is collected when it lands even if its terrain has gone since. The
+/// mesh events they would have skipped name meshes of no terrain chunk.
+#[allow(clippy::type_complexity)]
+fn terrain_or_builds(terrain: Query<(), Or<(With<TerrainData>, With<TerrainChunkData>)>>, bakes: Res<ClusterBakes>) -> bool {
+    !terrain.is_empty() || !bakes.building.is_empty()
 }
 
 fn virtual_geometry_on(project: Option<&CurrentProject>) -> bool {

@@ -98,18 +98,13 @@ pub fn spawn_editor_camera(
             ViewportCamera(i),
             HideInHierarchy,
             EditorLocked,
-            // Layer 0: the scene. Layer 1: shared world-space overlays
-            // (light/collider/skeleton gizmos, selection box) — one instance
-            // reads correctly from every angle, so all slots share it. Layer
-            // `VIEWPORT_3D_GIZMO_LAYER_BASE + i`: this slot's *private* overlay
-            // layer, carrying the camera-sized transform gizmo drawn just for
-            // this view (see `renzora_gizmo`). Each camera draws only its own
-            // slot's transform handle, never another slot's.
-            RenderLayers::from_layers(&[
-                0,
-                1,
-                renzora::core::viewport_types::VIEWPORT_3D_GIZMO_LAYER_BASE + i,
-            ]),
+            // Layer 0, the scene, and nothing else. The overlay layers (1, and
+            // this slot's `VIEWPORT_3D_GIZMO_LAYER_BASE + i` transform gizmo)
+            // are drawn by the slot's overlay camera into an image of their own
+            // laid over this one (`renzora_viewport::overlay`). When this camera
+            // drew them too, a gizmo handle lighting up under the cursor cost a
+            // full render of the scene, ray tracing and all.
+            RenderLayers::layer(0),
             Name::new(format!("Editor Camera {i}")),
             Hdr,
             // Atmosphere/sky binds depth as non-multisampled (binding 13);
@@ -771,31 +766,50 @@ pub fn sync_2d_viewport_cameras(
         Without<EditorCamera2d>,
     >,
 ) {
+    // Every write below happens only when the value differs. This runs every
+    // frame in every view, 3D included, and a blind write through `ResMut` or
+    // `Mut` marks the component changed even when the value is the same: the
+    // three idle 2D cameras then read as moved every frame, which kept Bevy's
+    // transform propagation and frustum updates busy and marked `Viewports`
+    // changed for everything that watches it.
+    //
     // Mirror the marked camera's live framing into ITS OWN slot, and snapshot
     // that framing to seed any viewport that's never been framed yet.
     let mut seed = None;
     if let Ok((vc, transform, Projection::Orthographic(ortho))) = focused_cam.single() {
-        if let Some(slot) = viewports.slots.get_mut(vc.0) {
-            slot.pan_2d = transform.translation.truncate();
-            slot.zoom_2d = ortho.scale;
-            seed = Some((slot.pan_2d, slot.zoom_2d));
+        let framing = (transform.translation.truncate(), ortho.scale);
+        if let Some(slot) = viewports.slots.get(vc.0) {
+            if (slot.pan_2d, slot.zoom_2d) != framing {
+                let slot = &mut viewports.slots[vc.0];
+                slot.pan_2d = framing.0;
+                slot.zoom_2d = framing.1;
+            }
+            seed = Some(framing);
         }
     }
 
     // Drive every non-focused 2D camera from its own stored framing.
     for (vc, mut transform, mut projection) in other_cams.iter_mut() {
-        let Some(slot) = viewports.slots.get_mut(vc.0) else {
+        let Some(slot) = viewports.slots.get(vc.0) else {
             continue;
         };
-        if slot.zoom_2d <= 0.0 {
-            let Some((pan, zoom)) = seed else { continue };
-            slot.pan_2d = pan;
-            slot.zoom_2d = zoom;
+        let (pan, zoom) = if slot.zoom_2d <= 0.0 {
+            let Some(framing) = seed else { continue };
+            let slot = &mut viewports.slots[vc.0];
+            slot.pan_2d = framing.0;
+            slot.zoom_2d = framing.1;
+            framing
+        } else {
+            (slot.pan_2d, slot.zoom_2d)
+        };
+        if transform.translation.truncate() != pan {
+            transform.translation.x = pan.x;
+            transform.translation.y = pan.y;
         }
-        transform.translation.x = slot.pan_2d.x;
-        transform.translation.y = slot.pan_2d.y;
-        if let Projection::Orthographic(ortho) = projection.as_mut() {
-            ortho.scale = slot.zoom_2d;
+        if matches!(&*projection, Projection::Orthographic(o) if o.scale != zoom) {
+            if let Projection::Orthographic(ortho) = projection.as_mut() {
+                ortho.scale = zoom;
+            }
         }
     }
 }

@@ -150,15 +150,20 @@ pub(crate) struct InstallRestartBtn;
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<InstallJobs>();
+    // Each gated on what it acts on, so an editor with no install dialog up and
+    // no install running starts none of them. The poll is gated on the job list
+    // rather than the dialog because an install outlives its dialog.
     app.add_systems(
         Update,
         (
-            install_buttons,
-            poll_install_result,
-            restart_button,
-            close_button,
-            drive_install_bar,
-            forget_closed_overlay,
+            install_buttons.run_if(
+                any_with_component::<InstallConfirmBtn>
+                    .or_else(any_with_component::<InstallDismissBtn>),
+            ),
+            poll_install_result.run_if(|jobs: Res<InstallJobs>| !jobs.0.is_empty()),
+            restart_button.run_if(any_with_component::<InstallRestartBtn>),
+            close_button.run_if(any_with_component::<InstallCloseBtn>),
+            (drive_install_bar, forget_closed_overlay).run_if(resource_exists::<OverlayInstall>),
         ),
     );
     // A background install is invisible without this: the confirm overlay

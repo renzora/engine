@@ -94,7 +94,15 @@ impl Plugin for TerrainGraphEditorPlugin {
         // load it before either panel has been built.
         app.add_systems(
             Update,
-            (state::load_active_document, state::observe_edits, generator_inspector::refresh_graph_files)
+            // All three are exclusive, so each is a sync point for the whole
+            // schedule even on a frame it returns at once. Each condition is
+            // the system's own opening check; with no graph open and no
+            // generator in the scene, none of them starts.
+            (
+                state::load_active_document.run_if(state::active_document_unloaded),
+                state::observe_edits.run_if(state::document_observable),
+                generator_inspector::refresh_graph_files.run_if(generator_inspector::graph_files_live),
+            )
                 .chain()
                 .run_if(in_state(SplashState::Editor)),
         );
@@ -110,7 +118,16 @@ impl Plugin for TerrainGraphEditorPlugin {
         );
         // Builds run to the end whatever is showing: a build started from the
         // entity inspector must land with the Terrain workspace closed.
-        app.add_systems(Update, (build::start_builds, build::poll_builds).chain().run_if(in_state(SplashState::Editor)));
+        // Both exclusive; each waits for its own work (a request, a job).
+        app.add_systems(
+            Update,
+            (
+                build::start_builds.run_if(build::builds_requested),
+                build::poll_builds.run_if(build::builds_running),
+            )
+                .chain()
+                .run_if(in_state(SplashState::Editor)),
+        );
     }
 }
 

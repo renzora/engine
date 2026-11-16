@@ -424,6 +424,11 @@ pub fn cameras_draw_deferred<'a>(cameras: impl IntoIterator<Item = (&'a Camera, 
     cameras.into_iter().filter(|(c, _)| c.is_active).all(|(_, deferred)| deferred)
 }
 
+/// The 3D cameras that may draw a particle: all but the editor's viewport
+/// overlay cameras (see [`resolve_render_routes`]).
+#[cfg(feature = "render_3d")]
+type SceneCameras3d = (With<Camera3d>, Without<renzora::core::ViewportOverlayCamera>);
+
 /// Promote or demote every `Deferred` request of material `M` to what the
 /// cameras allow (see [`RenderRoute`]). Only a material whose route changes
 /// is touched, so the steady state writes nothing and respecializes nothing.
@@ -433,9 +438,13 @@ pub fn cameras_draw_deferred<'a>(cameras: impl IntoIterator<Item = (&'a Camera, 
 /// world extracts it. A camera spawned later in the same frame without a
 /// deferred prepass would see one frame of a deferred material; nothing in
 /// the engine spawns cameras there.
+///
+/// The editor's viewport overlay cameras are not asked: they draw only gizmos,
+/// never a particle, and have no deferred prepass, so counting them demoted
+/// every deferred particle material to forward whenever a gizmo handle lit up.
 #[cfg(feature = "render_3d")]
 pub fn resolve_render_routes<M: Asset + ParticleRouteMut>(
-    cameras: Query<(&Camera, Has<bevy::core_pipeline::prepass::DeferredPrepass>), With<Camera3d>>,
+    cameras: Query<(&Camera, Has<bevy::core_pipeline::prepass::DeferredPrepass>), SceneCameras3d>,
     materials: Option<ResMut<Assets<M>>>,
 ) {
     let Some(mut materials) = materials else { return };

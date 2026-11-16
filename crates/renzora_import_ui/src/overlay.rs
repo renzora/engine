@@ -591,6 +591,12 @@ pub(crate) struct PendingCommit {
 #[derive(Resource, Default)]
 pub(crate) struct PendingCommits(Vec<PendingCommit>);
 
+/// Run condition for [`finish_commits`]: is any accepted import still being
+/// built? With none in flight its body only walks an empty list.
+pub(crate) fn commits_pending(pending: Res<PendingCommits>) -> bool {
+    !pending.0.is_empty()
+}
+
 /// Finish each accepted import whose model file is built: move it into the
 /// project, write its materials, ask for its thumbnail.
 pub(crate) fn finish_commits(world: &mut World) {

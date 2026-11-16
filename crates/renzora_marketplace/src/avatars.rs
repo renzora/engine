@@ -95,6 +95,13 @@ fn start_download(url: String, tx: Sender<Result<Downloaded, String>>) {
 #[cfg(target_arch = "wasm32")]
 fn start_download(_url: String, _tx: Sender<Result<Downloaded, String>>) {}
 
+/// Run condition for [`poll_avatars`]: a finished download is a message on the
+/// cache's own channel, and nothing else reads that channel, so an empty one
+/// means there is nothing to register this frame.
+pub(crate) fn downloads_landed(cache: Res<AvatarCache>) -> bool {
+    !cache.rx.is_empty()
+}
+
 /// Drain finished downloads, register them as `Image` assets.
 pub(crate) fn poll_avatars(
     mut cache: ResMut<AvatarCache>,

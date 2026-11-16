@@ -183,8 +183,95 @@ fn summary(capture: &Capture, frames: &[&ProfileFrame], limit: usize) -> Value {
     times.sort_by(f64::total_cmp);
     let mean = times.iter().sum::<f64>() / n;
 
+    let tallied = tally(frames.iter().copied());
+    // The wrappers the system list leaves out: whole schedules, the main and
+    // render worlds' frames. Shown apart, because they answer a different
+    // question than the systems do. A schedule much longer than the systems
+    // seen inside it is spending its time on systems a run condition skipped
+    // (no span, still scheduled) or on the executor itself; a frame much longer
+    // than `main app` spent the difference outside the main world altogether,
+    // waiting on the window, the render thread or the event loop.
+    let mut schedules: Vec<(u32, Tally)> =
+        tallied.iter().filter(|(name, _)| is_wrapper(capture.name(**name))).map(|(n, t)| (*n, *t)).collect();
+    schedules.sort_by(|a, b| b.1.total_ms.total_cmp(&a.1.total_ms));
+    let main_app_ms = schedules
+        .iter()
+        .find(|(name, _)| capture.name(*name) == "main app")
+        .map(|(_, t)| t.total_ms / n);
+    let schedules: Vec<Value> = schedules
+        .iter()
+        .take(limit.max(20))
+        .map(|(name, t)| {
+            json!({
+                "name": capture.name(*name),
+                "ms_per_frame": round(t.total_ms / n),
+                "runs_per_frame": round(t.runs as f64 / n),
+                "longest_run_ms": round(t.max_ms),
+            })
+        })
+        .collect();
+
+    // Time in the main world that no recorded schedule covers. Some schedules
+    // never record a span: Bevy makes a schedule's span when the schedule is
+    // created, and the ones made before the log layer is installed (`Main`,
+    // `RunFixedMainLoop`, and whichever others a plugin added systems to that
+    // early) keep a disabled one for good. So rather than trust the list, this
+    // takes each frame's `main app` span and subtracts the schedules recorded
+    // directly inside it (same thread, one level down).
+    let main_app_id = capture.names.iter().find(|(_, n)| n.as_str() == "main app").map(|(id, _)| *id);
+    let unattributed_ms = main_app_id.map(|main_id| {
+        let mut total = 0.0;
+        for frame in frames {
+            for app in frame.spans.iter().filter(|s| s.name == main_id) {
+                let covered: u64 = frame
+                    .spans
+                    .iter()
+                    .filter(|s| {
+                        s.thread == app.thread
+                            && s.depth == app.depth + 1
+                            && s.start_ns >= app.start_ns
+                            && s.end_ns <= app.end_ns
+                            && capture.name(s.name).starts_with("schedule:")
+                    })
+                    .map(|s| s.end_ns.saturating_sub(s.start_ns))
+                    .sum();
+                total += app.end_ns.saturating_sub(app.start_ns).saturating_sub(covered) as f64 / 1e6;
+            }
+        }
+        total / n
+    });
+
+    // Which crates start the most systems a frame. The executor pays for every
+    // system it starts whether or not it then does anything, so a crate whose
+    // systems run every idle frame doing nothing is the place to add run
+    // conditions. Grouped by the first path segment of the span name; spans
+    // that are not paths (inner spans like "material_binding: walk model")
+    // are left out.
+    let mut crates: HashMap<String, (f64, u32)> = HashMap::new();
+    for (name, t) in tallied.iter().filter(|(name, _)| !is_wrapper(capture.name(**name))) {
+        let text = capture.name(*name);
+        let Some((krate, _)) = text.split_once("::") else { continue };
+        let krate = krate.trim_start_matches('<');
+        let e = crates.entry(krate.to_string()).or_default();
+        e.0 += t.total_ms;
+        e.1 += t.runs;
+    }
+    let mut crates: Vec<(String, (f64, u32))> = crates.into_iter().collect();
+    crates.sort_by_key(|c| std::cmp::Reverse(c.1 .1));
+    let crates: Vec<Value> = crates
+        .iter()
+        .take(limit.max(20))
+        .map(|(krate, (ms, runs))| {
+            json!({
+                "crate": krate,
+                "runs_per_frame": round(*runs as f64 / n),
+                "ms_per_frame": round(ms / n),
+            })
+        })
+        .collect();
+
     let mut systems: Vec<(u32, Tally)> =
-        tally(frames.iter().copied()).into_iter().filter(|(name, _)| !is_wrapper(capture.name(*name))).collect();
+        tallied.into_iter().filter(|(name, _)| !is_wrapper(capture.name(*name))).collect();
     systems.sort_by(|a, b| b.1.total_ms.total_cmp(&a.1.total_ms));
     let systems: Vec<Value> = systems
         .iter()
@@ -240,6 +327,11 @@ fn summary(capture: &Capture, frames: &[&ProfileFrame], limit: usize) -> Value {
         },
         "note": "System times are inclusive (a span's time includes spans inside it) and summed over every thread, so they can add up to more than a frame.",
         "slowest_systems": systems,
+        "schedules": schedules,
+        "schedules_note": "Wall time of whole schedules and worlds, each including everything inside it. A schedule far longer than its systems is paying for skipped systems or the executor; frame time minus 'main app' is time outside the main world (waiting on the window, render thread or event loop). The 'systems: <schedule>' counters say how many systems each schedule holds.",
+        "outside_main_app_ms": main_app_ms.map(|m| round(mean - m)),
+        "main_app_not_in_a_recorded_schedule_ms": unattributed_ms.map(round),
+        "system_runs_by_crate": crates,
         "gpu_ms_per_frame": round(gpu_total),
         "gpu_passes": gpu.iter().take(limit).map(|(name, ms)| json!({"pass": capture.name(*name), "ms": round(*ms)})).collect::<Vec<_>>(),
         "counters": counters,

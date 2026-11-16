@@ -77,7 +77,9 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            reopen_last_project,
+            // Only has work while the marker is present; the condition is the
+            // body's own early return.
+            reopen_last_project.run_if(resource_exists::<crate::PendingProjectReopen>),
             native_splash_poll.run_if(in_state(SplashState::Splash)),
             poll_releases.run_if(in_state(SplashState::Splash)),
             update_fps.run_if(in_state(SplashState::Splash)),
@@ -103,11 +105,18 @@ pub(crate) fn register(app: &mut App) {
             (manage_splash, sections::rebuild_section).chain().run_if(
                 in_state(SplashState::Splash).or_else(any_with_component::<SplashRoot>),
             ),
-            sections::nav_click,
-            chrome::window_btn_click,
-            chrome::drag_handle,
-            chrome::resize_zone_click,
-            chrome::url_click,
+            // Click handlers for the dashboard's own buttons. Every button they
+            // read lives under a `SplashRoot`, so with no dashboard there is
+            // nothing they could see; skipping them keeps five idle starts off
+            // every editor frame.
+            (
+                sections::nav_click,
+                chrome::window_btn_click,
+                chrome::drag_handle,
+                chrome::resize_zone_click,
+                chrome::url_click,
+            )
+                .run_if(any_with_component::<SplashRoot>),
             #[cfg(target_arch = "wasm32")]
             collect_web_project_pick,
         ),

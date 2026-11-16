@@ -71,7 +71,23 @@ struct ConvertCancel;
 struct ConvertConfirm;
 
 pub(crate) fn build(app: &mut App) {
-    app.init_resource::<Migration>().add_systems(Update, migrate);
+    app.init_resource::<Migration>().add_systems(Update, migrate.run_if(migration_has_work));
+}
+
+/// Run condition for [`migrate`]. Exclusive, it is a sync point for the whole
+/// schedule on every frame it starts, and on an idle editor every part of its
+/// pass returns at once. It has work when the project changed under it, a
+/// conversion was asked for, or a scan, dialog or conversion is in progress.
+fn migration_has_work(
+    m: Res<Migration>,
+    project: Option<Res<CurrentProject>>,
+    asked: Option<Res<ConvertModelsRequested>>,
+) -> bool {
+    asked.is_some()
+        || m.root.as_deref() != project.as_ref().map(|p| p.path.as_path())
+        || m.scan.is_some()
+        || m.dialog.is_some()
+        || m.busy()
 }
 
 /// The models stored as `.glb` under `root`.

@@ -142,6 +142,15 @@ pub(crate) fn tab_editor(
     settings_row(commands, fonts, body, 1, &tr("settings.row.splash_effects"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.splash_effects"));
 
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| w.resource::<EditorSettings>().throttle_when_unfocused,
+        |w, &v| w.resource_mut::<EditorSettings>().throttle_when_unfocused = v,
+    );
+    settings_row(commands, fonts, body, 2, &tr("settings.row.throttle_unfocused"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.throttle_unfocused"));
+
     // Import — the former Assets tab, a single toggle. Folded in here so it
     // stops being a whole sidebar category holding one checkbox.
     let (sec, body) = section(commands, fonts, "folder-open", &tr("common.import"), A_BLUE);

@@ -69,9 +69,17 @@ pub(crate) fn register(app: &mut App) {
             manage_editor_overlay.run_if(
                 editor_overlay_requested.or_else(any_with_component::<EditorOverlayRoot>),
             ),
-            tick_loading_anim,
+            // Outside `Loading` the body only resets the eased value to zero.
+            // The second arm grants that one reset pass after a load, then it
+            // reads false (already zero) and the system stops starting.
+            tick_loading_anim.run_if(in_state(SplashState::Loading).or_else(loading_anim_dirty)),
         ),
     );
+}
+
+/// Run condition: does [`LoadingAnim`] still hold values from the last load?
+fn loading_anim_dirty(anim: Res<LoadingAnim>) -> bool {
+    anim.displayed != 0.0 || anim.elapsed != 0.0
 }
 
 /// Compute the *real* load fraction: the GLB/scene phase is the first half, the

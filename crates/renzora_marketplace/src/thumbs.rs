@@ -224,6 +224,15 @@ fn start_download(url: String, remote: Option<renzora::CompanionRemote>, tx: Sen
 #[cfg(target_arch = "wasm32")]
 fn start_download(_url: String, _remote: Option<renzora::CompanionRemote>, _tx: Sender<Result<Downloaded, String>>) {}
 
+/// Run condition for [`poll_thumbs`]: it has work only when a fetch is queued
+/// or a finished one is waiting on the channel. A full set of running fetches
+/// with nothing landed yet is the one busy state this skips, and it is safe to:
+/// nothing can start until one of them answers, which makes the channel
+/// non-empty.
+pub(crate) fn busy(thumbs: Res<HubThumbs>) -> bool {
+    !thumbs.rx.is_empty() || (!thumbs.queue.is_empty() && thumbs.running < CONCURRENT)
+}
+
 /// Start queued fetches within [`CONCURRENT`], and register finished images as
 /// `Image` assets.
 pub(crate) fn poll_thumbs(

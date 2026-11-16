@@ -60,6 +60,8 @@ The editor is your game with editor chrome on top, so a setting the game has is 
 
 **Renderer** holds the **Graphics Backend** the editor starts with, which takes effect after a restart, and **Launcher Effects**: the launcher's 3D cinematic and the animated haze behind the loading screen. Both fill the window, so their cost grows with the display. **Auto** turns them off on ultrawide and larger-than-4K displays and leaves them on elsewhere; **Full** and **Reduced** force one or the other.
 
+**Throttle When Unfocused** (on by default) holds the editor to about 60 frames a second while another window has focus, to save power and heat. Turn it off to keep the editor at full speed in the background, for example while profiling it from another window: with it on, every measurement taken that way stops at about 16 ms a frame whatever the editor's real cost.
+
 ## Viewport, Camera and Gizmos
 
 <!-- screenshot: settings_viewport.png - the Viewport settings page showing the Grid section -->

@@ -320,7 +320,12 @@ impl Plugin for RenzoraEditorPlugin {
             // toggles, undo/redo, etc.) under the native (bevy_ui) shell.
             .add_systems(
                 Update,
-                drain_editor_commands_native.run_if(in_state(SplashState::Editor)),
+                // Exclusive, so skipped while the queue is empty rather than
+                // started to find it so. A command pushed after the check
+                // waits one frame, as one pushed after the drain always has.
+                drain_editor_commands_native
+                    .run_if(in_state(SplashState::Editor))
+                    .run_if(|ec: Option<Res<EditorCommands>>| ec.is_some_and(|ec| !ec.is_empty())),
             )
             .add_observer(show_script_reload_toasts)
             .add_observer(show_hot_plugin_toasts)
@@ -330,7 +335,10 @@ impl Plugin for RenzoraEditorPlugin {
                 Update,
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
-            .add_systems(Update, (apply_vsync_setting, sync_dev_mode, sync_splash_effects))
+            .add_systems(
+                Update,
+                (apply_vsync_setting, apply_unfocused_throttle, sync_dev_mode, sync_splash_effects),
+            )
             .add_systems(Update, (reset_ui_scale_shortcut, apply_ui_scale_setting).chain())
             .add_systems(
                 Update,
@@ -527,6 +535,30 @@ fn apply_vsync_setting(
     };
     if window.present_mode != desired {
         window.present_mode = desired;
+    }
+}
+
+/// Apply `EditorSettings.throttle_when_unfocused` to the window's update mode
+/// while it is not focused: Bevy's default of waiting up to 1/60 s between
+/// frames, or continuous. The focused mode is left as it is.
+///
+/// The default throttle saves power while the editor sits behind another
+/// window, but it also caps anything measured with the editor in the
+/// background at about 60 frames a second, which read as a VSync limit in a
+/// profile taken while VSync was off.
+fn apply_unfocused_throttle(
+    settings: Res<EditorSettings>,
+    winit: Option<ResMut<bevy::winit::WinitSettings>>,
+) {
+    use bevy::winit::UpdateMode;
+    let Some(mut winit) = winit else { return };
+    let wanted = if settings.throttle_when_unfocused {
+        bevy::winit::WinitSettings::game().unfocused_mode
+    } else {
+        UpdateMode::Continuous
+    };
+    if winit.unfocused_mode != wanted {
+        winit.unfocused_mode = wanted;
     }
 }
 

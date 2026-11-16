@@ -30,6 +30,7 @@ pub struct FoliagePlugin;
 impl Plugin for FoliagePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] FoliagePlugin");
+        crate::presence::install(app);
         app.add_plugins(render::GrassRenderPlugin)
             .init_resource::<data::FoliageConfig>()
             .init_resource::<systems::FoliageRebuildCost>()
@@ -46,7 +47,11 @@ impl Plugin for FoliagePlugin {
                         .before(crate::mesh::terrain_chunk_mesh_update_system),
                     systems::foliage_scatter_rebuild_system,
                     systems::foliage_despawn_orphaned_batches_system,
-                ),
+                )
+                    // Density maps live on terrain chunks. A blade set is a
+                    // root entity that outlives its terrain, so it counts as
+                    // present until the orphan sweep here despawns it.
+                    .run_if(crate::terrain_in_scene),
             );
     }
 }

@@ -139,8 +139,25 @@ pub(crate) fn register(app: &mut App) {
                 orbit_input,
                 apply_orbit,
             )
-                .chain(),
+                .chain()
+                // A sphere is built only for a selected material, and that
+                // selection is made in the window. `rebuild_selected` clears
+                // `shown` when the selection goes, and on that frame this still
+                // runs, so the camera is switched off before the group stops.
+                // `apply_orbit` compares against its own last run, so an orbit
+                // change is never lost to a skipped frame.
+                .run_if(
+                    any_with_component::<crate::window::ImportRoot>.or_else(material_selected),
+                ),
         );
+}
+
+/// Run condition: is a material selected, or still shown on the sphere?
+fn material_selected(
+    shown: Res<MaterialPreviewShown>,
+    nav: Option<Res<crate::window::ImportNav>>,
+) -> bool {
+    shown.index.is_some() || nav.is_some_and(|n| n.sel_material.is_some())
 }
 
 pub fn preview_image(world: &World) -> Option<Handle<Image>> {

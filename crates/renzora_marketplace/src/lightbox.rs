@@ -21,6 +21,13 @@ pub(crate) struct Lightbox(Option<Entity>);
 #[derive(Component)]
 pub(crate) struct LightboxRoot;
 
+/// Run condition for the two click systems: one needs a clickable image to
+/// exist, the other an open lightbox, and with neither there is nothing either
+/// could react to.
+pub(crate) fn live(lightbox: Res<Lightbox>, images: Query<(), With<LightboxImage>>) -> bool {
+    lightbox.0.is_some() || !images.is_empty()
+}
+
 pub(crate) fn open_clicks(
     mut commands: Commands,
     mut lightbox: ResMut<Lightbox>,

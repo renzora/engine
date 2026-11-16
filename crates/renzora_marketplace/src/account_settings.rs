@@ -106,9 +106,28 @@ pub(crate) fn register(app: &mut App) {
     app.register_settings_section("account", "Account", "user-circle", build);
     app.add_systems(
         Update,
-        (poll_results, auto_load, clicks).run_if(in_state(SplashState::Editor)),
+        (
+            // Only this system drains the channel, so an empty one means no
+            // answer to apply. Requests started from the section (or by a
+            // preference toggle's binding) still land after Settings closes.
+            poll_results.run_if(|acc: Res<AccountSettings>| !acc.rx.is_empty()),
+            // Loads on sign-in and resets on sign-out, both of which are changes
+            // to the session; with no change there is nothing new to act on.
+            auto_load.run_if(resource_changed::<AuthSession>),
+            // Every button and field it reads is in the section's own tree.
+            // That includes the delete confirmation timing out: it only
+            // matters to a banner that is on screen, and the next time the
+            // section is up the first run disarms a stale one.
+            clicks.run_if(any_with_component::<AccountSectionRoot>),
+        )
+            .run_if(in_state(SplashState::Editor)),
     );
 }
+
+/// Marks the section's root, so its click system can tell whether the section
+/// is built at all.
+#[derive(Component)]
+struct AccountSectionRoot;
 
 // ── Systems ──────────────────────────────────────────────────────────────────
 
@@ -497,12 +516,15 @@ fn persist_comm(w: &mut World, prefs: CommunicationPrefs) {
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(10.0),
-            ..default()
-        })
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(10.0),
+                ..default()
+            },
+            AccountSectionRoot,
+        ))
         .id();
 
     let signed_out = commands

@@ -320,16 +320,32 @@ impl Plugin for UploaderPanel {
         app.add_systems(
             Update,
             (
-                (forward_upload_answer, uploader_poll).chain(),
-                nav_click,
-                pick_click,
-                tag_click,
-                tag_search,
-                success_link_click,
+                // Gated on work in flight rather than on the overlay: a publish
+                // keeps going if the overlay is closed, and its answer still has
+                // to land.
+                (forward_upload_answer, uploader_poll).chain().run_if(uploader_busy),
+                // The form lives in the marketplace overlay's Publish view, so
+                // with the overlay closed there is nothing to click or type into.
+                (nav_click, pick_click, tag_click, tag_search, success_link_click)
+                    .run_if(any_with_component::<crate::store_overlay::StoreOverlayRoot>),
             )
                 .run_if(in_state(SplashState::Editor)),
         );
     }
+}
+
+/// Run condition for the two systems that bring worker results back.
+///
+/// A companion publish is answered by message, so `forward_upload_answer` is
+/// needed only while one is outstanding; every other result is an `Option`
+/// receiver that `uploader_poll` clears once answered, plus the file-pick
+/// channel, which only it drains.
+fn uploader_busy(state: Res<Uploader>) -> bool {
+    state.submit_job.is_some()
+        || state.cats_rx.is_some()
+        || state.tag_rx.is_some()
+        || state.submit_rx.is_some()
+        || !state.pick_rx.is_empty()
 }
 
 // ── Marker components ───────────────────────────────────────────────────────────

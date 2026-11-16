@@ -238,9 +238,15 @@ pub fn terrain_sculpt_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     terrain_query: Query<(&TerrainData, &GlobalTransform)>,
     mut chunk_query: Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<brush_gizmo::BrushGizmos>,
+    mut wake: brush_gizmo::BrushCursorWake,
 ) {
     let is_stamp = settings.brush_type == TerrainBrushType::Stamp;
+    wake.update(
+        sculpt_state.hover_position,
+        sculpt_state.brush_visible,
+        settings.is_changed() || stamp_data.is_changed(),
+    );
 
     // Draw brush gizmo
     if sculpt_state.brush_visible {
@@ -372,7 +378,7 @@ pub fn terrain_brush_scroll_system(
 /// with the paint tool — only the colour is this tool's own.
 #[allow(clippy::too_many_arguments)]
 fn draw_brush_gizmo(
-    gizmos: &mut Gizmos,
+    gizmos: &mut Gizmos<brush_gizmo::BrushGizmos>,
     hover_pos: Vec3,
     settings: &TerrainSettings,
     terrain: &TerrainData,
@@ -395,7 +401,7 @@ fn draw_brush_gizmo(
 /// Draw a stamp preview gizmo — shows the stamp shape as a raised wireframe grid
 /// at the terrain's actual vertex density so the preview matches reality.
 fn draw_stamp_gizmo(
-    gizmos: &mut Gizmos,
+    gizmos: &mut Gizmos<brush_gizmo::BrushGizmos>,
     hover_pos: Vec3,
     settings: &TerrainSettings,
     stamp: &StampBrushData,

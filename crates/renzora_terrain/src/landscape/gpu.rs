@@ -96,7 +96,14 @@ pub(crate) fn install_render_upload(app: &mut App) {
     render_app
         .init_resource::<PendingWeightPatches>()
         .add_systems(ExtractSchedule, extract_weight_patches)
-        .add_systems(Render, upload_weight_patches.in_set(RenderSystems::PrepareResources));
+        // It returns at once with nothing pending; skipped then, the
+        // executor does not start it at all.
+        .add_systems(
+            Render,
+            upload_weight_patches
+                .run_if(|pending: Res<PendingWeightPatches>| !pending.0.is_empty())
+                .in_set(RenderSystems::PrepareResources),
+        );
 }
 
 /// Patches waiting in the render world for their texture.

@@ -214,14 +214,28 @@ pub(crate) fn register(app: &mut App) {
             systems::audio_track_click,
             systems::poll_item,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor).and_then(overlay_live)),
     );
     // The audio backend is native-only; on wasm the player renders but stays silent.
     #[cfg(not(target_arch = "wasm32"))]
     app.add_systems(
         Update,
-        audio::sync_audio.run_if(in_state(SplashState::Editor)),
+        audio::sync_audio.run_if(in_state(SplashState::Editor).and_then(overlay_live)),
     );
+}
+
+/// Run condition for this overlay's systems.
+///
+/// The overlay opens from a store card, and every card lives in the store
+/// overlay; once it is open its own `root` is set. Closing resets the whole
+/// resource (stopping the audio clip and dropping every channel first), so with
+/// neither the store nor this overlay up there is no card to click, no button,
+/// no player and no request whose answer is still owed.
+fn overlay_live(
+    state: Res<ItemOverlay>,
+    store: Query<(), With<crate::store_overlay::StoreOverlayRoot>>,
+) -> bool {
+    state.root.is_some() || !store.is_empty()
 }
 
 /// True when a user is signed in — gates rating/commenting.

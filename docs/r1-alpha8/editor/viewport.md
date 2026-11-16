@@ -144,10 +144,12 @@ What wakes it:
 
 - Moving, adding, removing or editing anything in the scene, including the World Environment
 - Moving the camera
-- Moving the mouse or pressing a key over the viewport
+- Clicking, scrolling or pressing a key over the viewport
 - Meshes, materials and textures changing or finishing loading
 - Changing the selection or a viewport setting
 - Resizing or docking a viewport
+
+Moving the mouse alone does not wake the scene. Gizmos, labels, brush cursors and the on-top selection box are drawn into a separate overlay on top of the scene image. The overlay redraws by itself when only it changes, for example when a gizmo handle lights up under the cursor or a terrain brush ring follows it. That costs a few lines rather than a full render of the scene. The overlay is not touched by the scene's anti-aliasing, upscaling, exposure or tonemapping, so its lines stay sharp and keep their exact colours. The brush rings draw on top of the terrain rather than being hidden behind it.
 
 Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. It is saved with the project.
 

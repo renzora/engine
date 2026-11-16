@@ -137,7 +137,13 @@ pub(crate) fn update_brush_preview(
 
     let root = match roots.single_mut() {
         Ok((root, mut tf, mut vis)) => {
-            tf.translation = target.origin.extend(PREVIEW_Z);
+            // Compared first: this runs every frame the brush is over the
+            // viewport, and a blind write marks the ghost moved while the
+            // cursor is still.
+            let at = target.origin.extend(PREVIEW_Z);
+            if tf.translation != at {
+                tf.translation = at;
+            }
             if *vis != Visibility::Visible {
                 *vis = Visibility::Visible;
             }

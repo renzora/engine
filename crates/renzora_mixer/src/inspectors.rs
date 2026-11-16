@@ -112,7 +112,14 @@ pub fn register_audio_native(app: &mut App) {
     app.register_native_inspector_ui("audio_player", audio_player_native);
     app.add_systems(
         Update,
-        (rebuild_audio, audio_remove_clip_click, audio_reset_click).run_if(in_state(renzora::SplashState::Editor)),
+        (
+            // Exclusive, a sync point for the schedule even when it finds
+            // nothing, and it walks `AudioRoot`s only.
+            rebuild_audio.run_if(any_with_component::<AudioRoot>),
+            audio_remove_clip_click,
+            audio_reset_click,
+        )
+            .run_if(in_state(renzora::SplashState::Editor)),
     );
 }
 

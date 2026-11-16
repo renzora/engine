@@ -486,7 +486,14 @@ impl Plugin for TerrainSurfacePlugin {
                     undress_chunks,
                     stand_in_chunks,
                 )
-                    .chain(),
+                    .chain()
+                    // A `TerrainSurface` lives on a terrain root, and these
+                    // dress that terrain's chunks. `undress_chunks` reads
+                    // removals of a surface from a terrain still present (or
+                    // one in its grace frames, when its chunks are gone too).
+                    // `build_surface_arrays` reads image events only for a
+                    // surface's own loads, none of which exist without one.
+                    .run_if(crate::terrain_in_scene),
             );
     }
 }
