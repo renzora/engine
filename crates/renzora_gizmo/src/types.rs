@@ -232,6 +232,10 @@ pub struct BoxSelectionState {
     /// Entity under the cursor at press time. Committed as a single-entity
     /// selection on release if the gesture didn't become a drag.
     pub pending_pick: Option<Entity>,
+    /// The press landed on something already selected, so a drag moves the
+    /// selection (`drag::gizmo_drag` takes the gesture over) instead of
+    /// drawing a box. A release without a drag is still a click.
+    pub move_on_drag: bool,
 }
 
 impl BoxSelectionState {
@@ -316,6 +320,7 @@ mod tests {
             start_pos: Vec2::new(100.0, 20.0),
             current_pos: Vec2::new(40.0, 80.0),
             pending_pick: None,
+            move_on_drag: false,
         };
         let (min, max) = state.get_rect();
         assert_eq!(min, Vec2::new(40.0, 20.0));

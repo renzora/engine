@@ -485,12 +485,24 @@ pub struct EntityLabelColor(pub [u8; 3]);
 #[reflect(Component, Default)]
 pub struct HierarchyOrder(pub u32);
 
-/// Marker component — viewport picking stops at this entity instead of walking
-/// past it to a higher-up named ancestor. Apply to compound entities (terrains,
-/// prefab roots, etc.) that own many named children but should be selectable
-/// as a unit.
+/// Marker component: an entity whose children are its own machinery, so a
+/// viewport click on any of them selects this entity. Put there by the code
+/// that builds the entity (a terrain and its chunks), never chosen by the user,
+/// and not saved; the user's version of the same thing is [`PickAsUnit`].
 #[derive(Component, Default, Clone, Copy, Debug)]
 pub struct SelectionStop;
+
+/// The user's choice that a viewport click anywhere on this entity or its
+/// children selects this entity, so the model or group picks as one object.
+///
+/// A click selects the mesh it hits by default; this is the opt-in, set from
+/// the hierarchy's right-click menu. The outermost such ancestor wins, so a
+/// group of grouped models picks as the whole group. The parts stay reachable
+/// from the hierarchy and from the viewport's right-click list of everything
+/// under the cursor. Saved with the scene.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component, Default)]
+pub struct PickAsUnit;
 
 /// Marker component — camera should be excluded from scene-wide effects (skybox, post-processing).
 #[derive(Component)]

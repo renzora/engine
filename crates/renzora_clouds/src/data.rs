@@ -139,11 +139,8 @@ impl Default for CloudsData {
             top_height: 2960.0,
             planet_radius: 6_371_000.0,
 
-            coverage: 0.5,
-            // Dense enough, with hard enough edges, that a cloud has a
-            // silhouette. At 0.2 and 0.2 the deck read as one soft haze with
-            // no shapes in it.
-            density: 0.32,
+            coverage: 0.45,
+            density: 0.021,
             scale: 1.5,
             detail_scale: 30.5,
             detail_strength: 0.27,

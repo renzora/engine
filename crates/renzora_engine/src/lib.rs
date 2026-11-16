@@ -328,6 +328,9 @@ impl Plugin for RuntimePlugin {
             // The hierarchy's root order, saved so a scene reopens in the
             // order it was left in.
             .register_type::<renzora::HierarchyOrder>()
+            // The editor's "select as one object" choice. Saved with the scene,
+            // so registered by the host for the same reason as the two above.
+            .register_type::<renzora::PickAsUnit>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::YSort>()

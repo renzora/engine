@@ -213,6 +213,14 @@ The same switches are in **Settings > Viewport > Gizmos**.
 
 Click an object to select it. `Ctrl+Click` adds or removes, `Shift+Click` extends a range, and dragging from empty space rubber-bands a selection. `Esc` clears it.
 
+A click selects the part you clicked: on a car, the wheel or the door, not the whole car. To have a model or group select as one object instead, right-click it in the Hierarchy and choose **Select as One Object**. A click anywhere on it then selects the whole thing. **Select Parts Separately** turns that off again. The choice is saved with the scene. If groups are nested, the outermost one is selected. A terrain always selects as one object.
+
+Locked entities (the lock icon in the Hierarchy) can't be clicked in the viewport, and neither can anything inside them. A click passes through them to whatever is behind, and rubber-band selection leaves them out.
+
+Right-click without dragging to list everything under the cursor, nearest first. The list also shows the parents of the nearest part, so a whole wheel assembly is one click from its tyre. It includes parts hidden behind others, parts inside a group, and locked entities, each labelled with why a plain click would not reach it. Choosing a row selects exactly that entity.
+
+Drag an object that is already selected to slide it along the ground. This is the same as dragging the gizmo's flat square handle, without having to find the handle. It works with the Move tool, which a selection switches to.
+
 `H` hides the selection and `Shift+H` isolates it, hiding everything else.
 
 ## Placing the selection on surfaces

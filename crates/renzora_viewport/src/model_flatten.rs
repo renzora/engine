@@ -328,9 +328,11 @@ pub struct WrappersPending {
 /// `Scene` (Blender's default scene) — and the canonical-id spellings of all of
 /// those: `sceneroot`, `rootnode`, `rootnode_001`, `rootnode_001_1`. Also the
 /// placeholders Bevy's loader gives an unnamed scene or node, `Scene0` and
-/// `GltfNode0` (`scene0`, `gltfnode0`): left visible, the Bistro's two of them
-/// sat between the model root and every mesh, so a click on any mesh selected
-/// `scene0`.
+/// `GltfNode0` (`scene0`, `gltfnode0`).
+///
+/// Hiding them is for the hierarchy panel's sake: a viewport click selects the
+/// mesh it hits whatever sits above it (`renzora_gizmo::picking`), so a wrapper
+/// left visible is clutter, not a trap for clicks.
 ///
 /// **Match case-insensitively and strip every trailing `_<digits>` group.** Both
 /// halves are load-bearing, and getting this wrong is silent:
@@ -338,9 +340,8 @@ pub struct WrappersPending {
 /// `.` to `_`, so the loader's `RootNode.001` reaches us as `rootnode_001`, and
 /// `unique_id` can append a further `_1` on collision. This function used to
 /// compare against the PascalCase spelling only, so when canonical ids landed it
-/// quietly stopped matching anything — leaving live wrapper nodes that clutter
-/// the hierarchy *and* capture clicks, because `resolve_pick`'s `MeshRoot` target
-/// is the topmost **visible** named ancestor below the `SelectionStop`.
+/// quietly stopped matching anything, leaving live wrapper nodes cluttering
+/// the hierarchy.
 fn is_gltf_wrapper_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     let mut base = lower.as_str();
@@ -359,7 +360,35 @@ fn is_gltf_wrapper_name(name: &str) -> bool {
         base.strip_prefix(prefix)
             .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
     };
-    matches!(base, "sceneroot" | "rootnode" | "scene") || indexed("scene") || indexed("gltfnode")
+    // Sketchfab wraps every model it exports in `Sketchfab_model` and
+    // `GLTF_SceneRootNode` (with a `root` between them, which only counts by
+    // position: see `is_top_level_wrapper_name`).
+    matches!(
+        base,
+        "sceneroot" | "rootnode" | "scene" | "gltf_scenerootnode" | "sketchfab_model"
+    ) || indexed("scene")
+        || indexed("gltfnode")
+}
+
+/// A name that is a wrapper only at the top of a model: directly under the
+/// model root, or under another wrapper.
+///
+/// Sketchfab's exports nest `Sketchfab_model` → `root` → `GLTF_SceneRootNode`,
+/// so `root` there is plumbing, an extra level in the hierarchy over every
+/// part of the model. But `root` is also what rigs commonly
+/// call their root bone, which a user does select and key, so it is never a
+/// wrapper by name alone. A bone sits under an armature node, never directly
+/// under the model or a wrapper, so position tells the two apart.
+fn is_top_level_wrapper_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let mut base = lower.as_str();
+    while let Some((head, tail)) = base.rsplit_once(['_', '.']) {
+        if tail.is_empty() || !tail.bytes().all(|b| b.is_ascii_digit()) {
+            break;
+        }
+        base = head;
+    }
+    base == "root"
 }
 
 /// System: walk each newly-imported model's subtree and tag GLTF wrapper
@@ -406,21 +435,28 @@ pub fn hide_gltf_wrappers(
         // application — `flatten_pending_scenes` runs in the same set and
         // collapses some of these wrappers, so a wrapper we tagged here may
         // be gone by the time the insert applies.
-        let mut stack: Vec<Entity> = root_children
-            .map(|c| c.iter().collect())
+        //
+        // Each entry carries whether its parent is the model root or a wrapper,
+        // which is where a top-level-only wrapper (`root`) can be one.
+        let mut stack: Vec<(Entity, bool)> = root_children
+            .map(|c| c.iter().map(|e| (e, true)).collect())
             .unwrap_or_default();
-        while let Some(entity) = stack.pop() {
-            if let Ok(kids) = children_query.get(entity) {
-                stack.extend(kids.iter());
-            }
-            if hidden_query.get(entity).is_ok() {
-                continue;
-            }
-            let Ok(name) = name_query.get(entity) else {
-                continue;
+        while let Some((entity, at_top)) = stack.pop() {
+            let wrapper = if hidden_query.get(entity).is_ok() {
+                true
+            } else if let Ok(name) = name_query.get(entity) {
+                let name = name.as_str();
+                let wrapper =
+                    is_gltf_wrapper_name(name) || (at_top && is_top_level_wrapper_name(name));
+                if wrapper {
+                    commands.entity(entity).try_insert(renzora::HideInHierarchy);
+                }
+                wrapper
+            } else {
+                false
             };
-            if is_gltf_wrapper_name(name.as_str()) {
-                commands.entity(entity).try_insert(renzora::HideInHierarchy);
+            if let Ok(kids) = children_query.get(entity) {
+                stack.extend(kids.iter().map(|k| (k, wrapper)));
             }
         }
 
@@ -438,10 +474,7 @@ pub fn hide_gltf_wrappers(
 /// `WorldAssetRoot`) frames before the glTF instantiates under it. So the walk
 /// used to see a subtree of one, tag `SceneRoot`, stamp `WrappersHidden`, and
 /// never run again — leaving the real wrapper (`RootNode.001` → `rootnode_001`)
-/// untagged and visible. That matters beyond hierarchy clutter: `resolve_pick`
-/// selects the topmost *visible* named ancestor below the `SelectionStop`, so a
-/// visible wrapper swallows every click and the model can only be selected as
-/// one lump.
+/// untagged and visible in the hierarchy.
 ///
 /// This is the same in-flight-spawn race `decorate_rehydrated_scene_on_ready`
 /// documents, and it wants the same answer: `WorldInstanceReady` fires once,
@@ -509,6 +542,9 @@ mod tests {
             "gltfnode0",
             "gltfnode245",
             "gltfnode0_1",
+            "gltf_scenerootnode",
+            "gltf_scenerootnode_1",
+            "sketchfab_model",
         ] {
             assert!(is_gltf_wrapper_name(n), "{n} should be a wrapper");
         }
@@ -518,7 +554,17 @@ mod tests {
     /// `sanitize_id` yet (or a scene saved before canonical ids) must not regress.
     #[test]
     fn matches_raw_loader_names() {
-        for n in ["RootNode", "RootNode.001", "RootNode_2", "SceneRoot", "Scene", "Scene0", "GltfNode7"] {
+        for n in [
+            "RootNode",
+            "RootNode.001",
+            "RootNode_2",
+            "SceneRoot",
+            "Scene",
+            "Scene0",
+            "GltfNode7",
+            "GLTF_SceneRootNode",
+            "Sketchfab_model",
+        ] {
             assert!(is_gltf_wrapper_name(n), "{n} should be a wrapper");
         }
     }
@@ -537,6 +583,18 @@ mod tests {
             "gltfnode_lamp",
         ] {
             assert!(!is_gltf_wrapper_name(n), "{n} should NOT be a wrapper");
+        }
+    }
+
+    /// `root` is Sketchfab's middle wrapper only at the top of a model; the
+    /// walk asks this only there, so a rig's `root` bone deeper down is kept.
+    #[test]
+    fn root_is_a_wrapper_only_by_position() {
+        for n in ["root", "Root", "root_1"] {
+            assert!(super::is_top_level_wrapper_name(n), "{n} at the top should be a wrapper");
+        }
+        for n in ["root_bone", "rootnode_bone", "my_root", "roots"] {
+            assert!(!super::is_top_level_wrapper_name(n), "{n} should NOT be a wrapper");
         }
     }
 }

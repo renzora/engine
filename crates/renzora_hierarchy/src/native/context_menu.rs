@@ -73,6 +73,7 @@ pub(crate) fn hier_context_menu(
     selection: Option<Res<EditorSelection>>,
     rows: Query<(&UiInteraction, &HierRowClick)>,
     props: Query<(Has<Camera3d>, Has<renzora::SceneInstance>, Has<EntityLabelColor>)>,
+    unit_props: Query<(Has<renzora::PickAsUnit>, Has<renzora::SelectionStop>, Has<Children>)>,
     ui: Query<
         (),
         Or<(
@@ -139,6 +140,27 @@ pub(crate) fn hier_context_menu(
     }
     if multi {
         kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
+    }
+    // Whether a viewport click on any part of this selects the whole thing
+    // (`renzora::PickAsUnit`, read by `renzora_gizmo::picking`). Offered on
+    // anything with children, which is anything it can make a difference to;
+    // not on an entity whose code already makes it pick as one
+    // (`SelectionStop`, a terrain), which the toggle could not undo.
+    let (is_unit, is_stop, has_children) = unit_props.get(target).unwrap_or((false, false, false));
+    if !is_ui && has_children && !is_stop {
+        let (icon, key) = if is_unit {
+            ("squares-four", "hierarchy.context.select_parts")
+        } else {
+            ("cube", "hierarchy.context.select_as_one")
+        };
+        kids.push(menu_item(&mut commands, &fonts, icon, &renzora::lang::t(key), move |w| {
+            let Ok(mut e) = w.get_entity_mut(target) else { return };
+            if is_unit {
+                e.remove::<renzora::PickAsUnit>();
+            } else {
+                e.insert(renzora::PickAsUnit);
+            }
+        }));
     }
 
     // Make a new project asset (and, for scripts, attach it here).

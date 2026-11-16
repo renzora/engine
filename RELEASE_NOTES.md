@@ -1,5 +1,18 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-16 14:57
+- feat(viewport): a click selects the part it hits, and the Settings option "Click Selects" is gone
+- feat(hierarchy): "Select as One Object" in the right-click menu makes a model or group pick as a whole, and is saved with the scene
+- feat(viewport): locked entities can't be clicked or rubber-band selected, and a click passes through them
+- feat(viewport): right-click without dragging lists everything under the cursor and the nearest part's parents
+- feat(viewport): dragging an already-selected object slides it along the ground
+
+## 2026-11-16 14:26
+- fix(viewport): clicking a part of a Sketchfab model selects that part instead of its `root` or `GLTF_SceneRootNode` wrapper
+
+## 2026-11-16 14:08
+- feat(clouds): new cloud layers default to 0.45 coverage and 0.021 density
+
 ## 2026-11-16 13:46
 - fix(viewport): clicking selects in an idle viewport again, and the gizmo holds steady while the camera moves
 - fix(viewport): clicking a mesh in a model selects that mesh instead of the model's unnamed glTF wrapper

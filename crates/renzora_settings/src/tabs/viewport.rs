@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use renzora_editor_framework::{EditorSettings, SelectionGranularity};
+use renzora_editor_framework::EditorSettings;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::inspector::color_field;
 use renzora_ember::widgets::section;
@@ -271,25 +271,9 @@ pub(crate) fn tab_viewport(
     // (The "Selection highlight" row was removed with `bevy_mod_outline` — the
     // wireframe bounding box is now the only highlight, so there is nothing to
     // choose. `settings.row.boundary_on_top` below still applies to it.)
-    let gran_strs: Vec<String> = SelectionGranularity::ALL.iter().map(|g| loc_opt(g.label())).collect();
-    let gran_labels: Vec<&str> = gran_strs.iter().map(|g| g.as_str()).collect();
-    let dd = ctl_dropdown(
-        commands, fonts, &gran_labels,
-        // Seed with the default; reseeded from the resource by bind_2way.
-        SelectionGranularity::ALL
-            .iter()
-            .position(|g| *g == SelectionGranularity::default())
-            .unwrap_or(0),
-        |w| {
-            let cur = w.resource::<EditorSettings>().selection_granularity;
-            SelectionGranularity::ALL.iter().position(|g| *g == cur).unwrap_or(0)
-        },
-        |w, &i| {
-            let g = SelectionGranularity::ALL.get(i).copied().unwrap_or_default();
-            w.resource_mut::<EditorSettings>().selection_granularity = g;
-        },
-    );
-    settings_row(commands, fonts, body, 5, &tr("settings.row.click_selects"), dd);
+    //
+    // (So was "Click selects": what a click picks is now per model, from the
+    // hierarchy's "select as one object", not one setting for every model.)
     let boundary_opts = [tr("settings.opt.on_top"), tr("settings.opt.depth_tested")];
     let boundary_refs: Vec<&str> = boundary_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(

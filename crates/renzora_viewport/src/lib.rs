@@ -193,7 +193,6 @@ impl Plugin for ViewportPlugin {
                     model_drop::auto_discover_animations,
                     model_cameras::add_imported_cameras
                         .run_if(any_with_component::<model_cameras::PendingImportedCameras>),
-                    model_drop::mark_models_selectable_as_unit,
                     model_drop::align_models_to_ground,
                 ),
                 (
