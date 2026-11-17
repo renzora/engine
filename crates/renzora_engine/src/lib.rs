@@ -821,8 +821,17 @@ impl Plugin for RuntimePlugin {
             // enforce it on the play camera — the editor's tier enforcement is
             // Editor-scoped and never reaches a game, so without this the
             // exported build runs the full fullscreen-pass stack at every tier.
+            //
+            // Also in `Startup`, so the tier is the project's before the first
+            // `Update`: `rehydrate_cameras` sizes the game camera's sky probe
+            // from it in that frame, unordered against the `Update` copy. Built
+            // at the default tier and resized a frame later, the probe's
+            // filtered reflection map kept the old mip count while its sky
+            // cube took the new one, and the filter crashed the game asking
+            // for a mip the map did not have.
             #[cfg(feature = "render_3d")]
-            app.add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
+            app.add_systems(Startup, graphics_quality::sync_runtime_graphics_quality)
+                .add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
                 .add_systems(PostUpdate, graphics_quality::enforce_runtime_graphics_quality);
         }
 

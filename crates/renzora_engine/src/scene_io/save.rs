@@ -148,6 +148,9 @@ pub fn extract_authored(
             ) {
                 return false;
             }
+            if is_engine_managed(type_name) {
+                return false;
+            }
             let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
                 component.as_partial_reflect(),
                 &registry,
@@ -158,6 +161,24 @@ pub fn extract_authored(
     }
     drop(registry);
     scene
+}
+
+/// Components the engine puts on a camera from settings saved elsewhere:
+/// Solari's lighting from the World Environment's `SolariGi`, DLSS from it and
+/// from `AntiAliasing`, and the jitter and mip bias TAA and DLSS bring with
+/// them. A save leaves them out and a load drops them.
+///
+/// Saved, they came back on load without the markers saying the engine had
+/// added them, so nothing took them away again. A game camera kept Solari with
+/// nothing in the scene turning it on, and DLSS Ray Reconstruction with
+/// Solari off: the ground rendered black under a lit sky, or a flickering
+/// ghost of the scene. Dropping them on load as well heals scenes saved before
+/// the save learned this, and games already exported with them.
+pub(crate) fn is_engine_managed(type_path: &str) -> bool {
+    type_path == "bevy_solari::realtime::SolariLighting"
+        || type_path.starts_with("bevy_anti_alias::dlss::Dlss<")
+        || type_path == "bevy_render::camera::TemporalJitter"
+        || type_path == "bevy_render::camera::MipBias"
 }
 
 /// The entities a save of this world would write: named, and not editor
@@ -358,5 +379,46 @@ pub fn save_current_scene(world: &mut World) {
         .unwrap_or_else(|| project.main_scene_path());
     if let Err(e) = save_scene(world, &path) {
         error!("Failed to save scene: {}", e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::render::camera::{MipBias, TemporalJitter};
+
+    /// What TAA and DLSS put on a camera is rebuilt from the settings that
+    /// asked for it, so a save leaves it out; what the user set stays.
+    #[test]
+    fn a_save_leaves_out_what_anti_aliasing_puts_on_a_camera() {
+        let atr = bevy::ecs::reflect::AppTypeRegistry::default();
+        {
+            let mut reg = atr.write();
+            reg.register::<Name>();
+            reg.register::<Transform>();
+            reg.register::<TemporalJitter>();
+            reg.register::<MipBias>();
+        }
+        let mut world = World::new();
+        world.insert_resource(atr);
+        let camera = world
+            .spawn((
+                Name::new("camera"),
+                Transform::from_xyz(1.0, 2.0, 3.0),
+                TemporalJitter::default(),
+                MipBias(-1.0),
+            ))
+            .id();
+
+        let scene = extract_authored(&mut world, vec![camera], false);
+        let saved: Vec<&str> = scene.entities[0]
+            .components
+            .iter()
+            .map(|c| c.reflect_type_path())
+            .collect();
+        assert!(saved.iter().any(|p| p.ends_with("::Transform")), "{saved:?}");
+        assert!(saved.iter().any(|p| p.ends_with("::Name")), "{saved:?}");
+        assert!(!saved.iter().any(|p| p.ends_with("::TemporalJitter")), "{saved:?}");
+        assert!(!saved.iter().any(|p| p.ends_with("::MipBias")), "{saved:?}");
     }
 }

@@ -1,5 +1,15 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 05:48
+- fix(export): a game set to High graphics quality no longer crashes on start with a `storage_view_mip_8` GPU error
+
+## 2026-11-17 05:42
+- fix(scene): scenes and exported games saved with Solari or DLSS stuck on their camera load without it, so the game no longer renders the ground black under a lit sky
+
+## 2026-11-17 05:31
+- fix(rendering): a game camera no longer flickers with ghosted reflections when a scene saved DLSS Ray Reconstruction on it with Solari off
+- fix(scene): saving no longer writes the Solari, DLSS and anti-aliasing jitter components the engine adds to cameras by itself
+
 ## 2026-11-17 02:13
 - fix(web): the web editor builds again
 

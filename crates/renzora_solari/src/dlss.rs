@@ -229,8 +229,22 @@ mod imp {
                 }
                 (false, Some(_)) => {
                     // Only DLSS this plugin attached; one put there by hand
-                    // or by a script is left alone.
-                    let Some(ours) = ours else { continue };
+                    // or by a script is left alone while Solari lights the
+                    // camera. Without Solari it goes whoever put it there: Ray
+                    // Reconstruction rebuilds the frame from guide images only
+                    // Solari writes, so with none it drew a flickering ghost of
+                    // the scene. Scenes saved before the save stopped writing
+                    // it carry one with no marker, which is how a game camera
+                    // ended up that way. Only the component goes: whatever
+                    // jitter and mip bias it has may be TAA's, which the
+                    // anti-aliasing plugin puts back once this is gone.
+                    let Some(ours) = ours else {
+                        if !solari {
+                            commands.entity(target).try_remove::<RayReconstruction>();
+                            dropped = true;
+                        }
+                        continue;
+                    };
                     let mut ec = commands.entity(target);
                     ec.try_remove::<(RayReconstruction, DlssByRenzora)>();
                     if !ours.had_jitter {
