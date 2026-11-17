@@ -40,7 +40,7 @@ image = { version = "0.25", default-features = false, features = ["ico"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
-zip = "2"
+zip = "9.0.5"
 # APK signer crypto (ECDSA P-256 + SHA-256), pure-Rust RustCrypto stack — see
 # apk_signer.rs. We deliberately AVOID `ring`/`aws-lc-rs`: on Bevy 0.19 `ring`
 # is pulled into the shared `bevy_dylib` by bevy_asset's HTTP loader, and rustls

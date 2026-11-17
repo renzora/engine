@@ -310,7 +310,10 @@ fn extract_zip(data: &[u8], dest: &Path, asset_name: &str) -> Result<PathBuf, St
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {e}"))?;
 
-        let entry_name = entry.name().to_string();
+        let entry_name = entry
+            .name()
+            .map_err(|e| format!("Bad zip entry name: {e}"))?
+            .into_owned();
 
         // Reject anything that would land outside `extract_dir`.
         //
@@ -570,7 +573,10 @@ fn plugin_crate_and_prefix(data: &[u8]) -> Result<(String, String), String> {
         let mut f = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {e}"))?;
-        let name = f.name().to_string();
+        let name = f
+            .name()
+            .map_err(|e| format!("Bad zip entry name: {e}"))?
+            .into_owned();
         if !name.ends_with("Cargo.toml") || name.contains("..") {
             continue;
         }
@@ -694,7 +700,10 @@ pub fn install_plugin_source(asset_id: &str, data: &[u8]) -> Result<PluginInstal
             let mut entry = archive
                 .by_index(i)
                 .map_err(|e| format!("Failed to read zip entry: {e}"))?;
-            let raw = entry.name().to_string();
+            let raw = entry
+                .name()
+                .map_err(|e| format!("Bad zip entry name: {e}"))?
+                .into_owned();
             // See `extract_zip` for why this is `enclosed_name` and not a `..`
             // string test. The `strip_prefix` below looks like it already
             // guards this, and does for a wrapped archive, but `prefix` is ""

@@ -25,7 +25,7 @@ renzora_splash = { path = "../renzora_splash" }
 rfd = "0.15"
 serde_json = "1"
 sha2 = "0.10"
-zip = "2"
+zip = "9.0.5"
 
 [lints]
 workspace = true

@@ -573,7 +573,10 @@ fn export_android_apk(
         let mut entry = archive
             .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            .into_owned();
 
         // Android requires resources.arsc and native libs to be stored
         // uncompressed with 4-byte alignment (R+ / API 30+)
@@ -644,7 +647,10 @@ fn export_ios_app(
         let mut entry = archive
             .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            .into_owned();
 
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(entry.compression())
@@ -670,8 +676,9 @@ fn export_ios_app(
     // Find the .app directory name from existing entries
     let app_prefix = archive
         .file_names()
+        .filter_map(Result::ok)
         .find(|n| n.ends_with(".app/"))
-        .map(|n| n.to_string())
+        .map(|n| n.into_owned())
         .unwrap_or_else(|| "Payload/RenzoraRuntime.app/".to_string());
 
     let rpak_path = format!("{}game.rpak", app_prefix);
@@ -727,7 +734,10 @@ fn export_wasm_zip(
         let mut entry = template_archive
             .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            .into_owned();
 
         let file_options = options;
 

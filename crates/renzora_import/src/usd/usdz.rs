@@ -25,7 +25,10 @@ pub fn parse(path: &Path) -> UsdResult<UsdStage> {
             .by_index(i)
             .map_err(|e| UsdError::Parse(format!("Failed to read USDZ entry: {}", e)))?;
 
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| UsdError::Parse(format!("Bad USDZ entry name: {}", e)))?
+            .into_owned();
         let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
 
         log::debug!(

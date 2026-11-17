@@ -34,7 +34,7 @@ renzora = { path = "../renzora", default-features = false }
 #
 # This also drops bzip2-sys and lzma-sys from the DESKTOP build, where they were
 # being compiled for a code path that could never reach them.
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 
 # LZ4 decompression (USDC token tables, compressed arrays)
 lz4_flex = "0.11"
