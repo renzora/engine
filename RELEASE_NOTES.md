@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 02:13
+- fix(web): the web editor builds again
+
 ## 2026-11-17 01:29
 - fix(navmesh): a NavMesh Volume with Include Terrain cuts the steep ground out of the navmesh again
 - fix(viewport): a scene with terrain or resting physics bodies lets the viewport idle again

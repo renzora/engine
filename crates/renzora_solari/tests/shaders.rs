@@ -52,7 +52,23 @@ fn solari_modules() -> Vec<(String, String)> {
     let root = solari_src();
     let mut out = Vec::new();
     walk(&root, &root, &mut out);
+    out.extend(atmosphere_modules());
     out
+}
+
+/// The atmosphere's shader libraries, which Solari imports to light the scene
+/// through the sky (`realtime/atmosphere.wesl`). `AtmospherePlugin` registers
+/// them with `load_shader_library!`; the headless app does not add that plugin,
+/// so they are read from disk under the same module paths.
+fn atmosphere_modules() -> Vec<(String, String)> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bevy/crates/bevy_pbr/src/atmosphere");
+    ["types", "functions", "bruneton_functions", "bindings"]
+        .into_iter()
+        .map(|name| {
+            let source = std::fs::read_to_string(dir.join(format!("{name}.wesl"))).unwrap();
+            (format!("bevy_pbr::atmosphere::{name}"), source)
+        })
+        .collect()
 }
 
 fn validator() -> ShaderValidator {

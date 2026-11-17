@@ -183,15 +183,21 @@ pub fn spawn_runtime(
     // what makes this safe, not just useful.
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
 
+    #[allow(unused_mut)]
     let mut child = command.spawn()?;
     // Ended with the editor however the editor ends: a game left behind holds
-    // the executable open and fails the next build's staging step.
-    renzora::child_process::tie_to_editor(&child, "the game");
-    if let Some(stdout) = child.stdout.take() {
-        renzora::child_process::forward_to_console(stdout, "Runtime");
-    }
-    if let Some(stderr) = child.stderr.take() {
-        renzora::child_process::forward_to_console(stderr, "Runtime");
+    // the executable open and fails the next build's staging step. Native
+    // only, like `child_process` itself: the web build cannot start a process,
+    // so `spawn` has already failed there.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        renzora::child_process::tie_to_editor(&child, "the game");
+        if let Some(stdout) = child.stdout.take() {
+            renzora::child_process::forward_to_console(stdout, "Runtime");
+        }
+        if let Some(stderr) = child.stderr.take() {
+            renzora::child_process::forward_to_console(stderr, "Runtime");
+        }
     }
     Ok(child)
 }
