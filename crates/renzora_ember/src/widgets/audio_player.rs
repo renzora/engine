@@ -10,7 +10,7 @@
 //! preview, a future asset browser) wire the same widget to different backends.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::cursor_icon::HoverCursor;
@@ -120,7 +120,7 @@ pub fn audio_player(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(card_bg())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             AudioScrubTrack(root),
             Name::new("audio-player-track"),
@@ -202,7 +202,7 @@ pub(crate) fn audio_player_play_click(
 /// Click/drag the scrub track → set `seek_to` from the cursor's x over the track.
 /// No `Changed` filter so a held drag keeps seeking, like the slider widget.
 pub(crate) fn audio_player_scrub(
-    tracks: Query<(&UiInteraction, &RelativeCursorPosition, &AudioScrubTrack)>,
+    tracks: Query<(&UiInteraction, &UiCursor, &AudioScrubTrack)>,
     mut players: Query<&mut AudioPlayer>,
 ) {
     for (interaction, rcp, track) in &tracks {

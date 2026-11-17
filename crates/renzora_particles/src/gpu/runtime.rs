@@ -689,7 +689,7 @@ pub fn apply_gpu_readouts(mut effects: Query<&mut ParticleRuntime>, cells: Query
 /// Decode a state buffer readback onto its render child.
 pub fn on_readback(event: On<ReadbackComplete>, mut cells: Query<&mut GpuReadoutCell>) {
     let Ok(mut cell) = cells.get_mut(event.entity) else { return };
-    let words: Vec<u32> = event.data.chunks_exact(4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect();
+    let words: Vec<u32> = event.data.as_chunks::<4>().0.iter().map(|b| u32::from_le_bytes(*b)).collect();
     if let Some(readout) = GpuReadout::decode(&words) {
         cell.0 = Some(readout);
     }

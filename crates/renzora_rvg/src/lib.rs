@@ -621,7 +621,9 @@ fn read_mesh(r: &mut Reader) -> Result<RvgMesh, RvgLoadError> {
     if a.has(Attributes::SKIN) {
         let raw = r.take(n * 8)?;
         m.joints = raw
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|c| {
                 let j = |i: usize| u16::from_le_bytes([c[i * 2], c[i * 2 + 1]]);
                 [j(0), j(1), j(2), j(3)]
@@ -813,7 +815,9 @@ impl<'a> Reader<'a> {
     fn arrays<const N: usize>(&mut self, n: usize) -> Result<Vec<[f32; N]>, RvgLoadError> {
         let words = self.shuffled(n.checked_mul(N).ok_or(RvgLoadError::Truncated)?)?;
         Ok(words
-            .chunks_exact(N)
+            .as_chunks::<N>()
+            .0
+            .iter()
             .map(|c| std::array::from_fn(|i| f32::from_bits(c[i])))
             .collect())
     }

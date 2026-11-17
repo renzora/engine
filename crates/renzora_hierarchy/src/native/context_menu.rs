@@ -14,7 +14,7 @@
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::ShapeRegistry;
 use renzora_editor_framework::{EditorSelection, EntityLabelColor, InspectorRegistry, SpawnRegistry};
@@ -81,7 +81,7 @@ pub(crate) fn hier_context_menu(
             With<renzora_ember::game_ui::UiWidget>,
         )>,
     >,
-    list_area: Query<&RelativeCursorPosition, With<HierListArea>>,
+    list_area: Query<&UiCursor, With<HierListArea>>,
     registries: SpawnRegistries,
     mut commands: Commands,
 ) {

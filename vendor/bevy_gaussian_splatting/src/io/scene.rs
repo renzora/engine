@@ -580,12 +580,17 @@ async fn load_buffers(
                     })?;
                     let path = load_context.path().resolve_embed(&uri_path);
 
-                    load_context.read_asset_bytes(path).await.map_err(|err| {
+                    // RENZORA: `read_asset_bytes` is deprecated in Bevy main;
+                    // `read_asset` plus `read_to_end` is its replacement.
+                    let mut reader = load_context.read_asset(path).await.map_err(|err| {
                         std::io::Error::new(
                             ErrorKind::NotFound,
                             format!("failed to read external buffer '{uri}': {err}"),
                         )
-                    })?
+                    })?;
+                    let mut bytes = Vec::new();
+                    reader.read_to_end(&mut bytes).await?;
+                    bytes
                 }
             }
         };

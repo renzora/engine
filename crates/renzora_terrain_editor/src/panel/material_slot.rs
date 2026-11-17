@@ -8,7 +8,7 @@
 //! Landscape, the engine's default, in one click.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::material_thumbnail_registry::MaterialThumbnailRegistry;
@@ -78,7 +78,7 @@ pub(super) fn material_slot(commands: &mut Commands, fonts: &EmberFonts, terrain
             },
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             AssetSlot::Material,
             Name::new("terrain-material-slot"),
         ))

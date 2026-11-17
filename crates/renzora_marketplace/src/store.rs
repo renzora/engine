@@ -1352,7 +1352,7 @@ fn asset_card(
             // card's state could hide itself the instant the cursor reached it,
             // and flicker. `cursor_over` is a rect test and does not care what
             // is on top.
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("store-card"),
         ))
@@ -1882,7 +1882,7 @@ fn build_section(
 /// The price it used to carry moved to the meta line as text, so nothing is
 /// hidden — only the *button* is.
 ///
-/// Bound to `card`'s [`RelativeCursorPosition`] rather than its `UiInteraction`,
+/// Bound to `card`'s [`UiCursor`](renzora_ember::UiCursor) rather than its `UiInteraction`,
 /// because this pill blocks focus and would otherwise steal the hover it depends
 /// on the moment the cursor arrived.
 fn get_pill(
@@ -1985,7 +1985,7 @@ fn get_pill(
         }
     });
     bind_display(commands, pill, move |w| {
-        w.get::<bevy::ui::RelativeCursorPosition>(card)
+        w.get::<renzora_ember::UiCursor>(card)
             .is_some_and(|r| r.cursor_over)
     });
 

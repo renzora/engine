@@ -75,7 +75,7 @@ fn apply_window_actions(
     if queue.actions.is_empty() {
         return;
     }
-    let actions: Vec<_> = queue.actions.drain(..).collect();
+    let actions = std::mem::take(&mut queue.actions);
     let Ok(mut window) = windows.single_mut() else {
         return;
     };

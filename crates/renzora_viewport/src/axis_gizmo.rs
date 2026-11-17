@@ -17,7 +17,8 @@ use std::sync::atomic::Ordering;
 use bevy::input::mouse::MouseMotion;
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform};
+use bevy::ui::UiTransform;
+use renzora_ember::UiCursor;
 
 use renzora::core::viewport_types::{
     CameraOrbitSnapshot, NavOverlayState, ViewAngleCommand, ViewportSettings, AXIS_NEG_X,
@@ -106,7 +107,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
                 height: Val::Px(AXIS_GIZMO_SIZE),
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlaySurface,
             UiInteraction::default(),
             AxisGizmoRoot,

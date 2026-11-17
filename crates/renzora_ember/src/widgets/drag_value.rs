@@ -307,7 +307,7 @@ fn drag_value_impl(
             UiInteraction::default(),
             // Lets the drag system tell a press on the bottom slider rail (an
             // absolute min→max sweep) from one on the number area (fine scrub).
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             // Scrub affordance on hover; flips to the text I-beam while editing.
             crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("drag-value"),
@@ -624,7 +624,7 @@ pub(crate) fn drag_value_drag(
         Option<&DragSnap>,
         Option<&mut Styled>,
         &mut crate::cursor_icon::HoverCursor,
-        &bevy::ui::RelativeCursorPosition,
+        &crate::UiCursor,
         &bevy::ui::ComputedNode,
     )>,
 ) {

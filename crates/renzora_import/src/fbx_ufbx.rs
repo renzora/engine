@@ -1326,7 +1326,7 @@ fn append_indices(
     mirrored: bool,
     buckets: &mut [Vec<u32>],
 ) {
-    for (tri, bucket) in tri_indices.chunks_exact(3).zip(tri_bucket) {
+    for (tri, bucket) in tri_indices.as_chunks::<3>().0.iter().zip(tri_bucket) {
         let Some(out) = buckets.get_mut(*bucket) else {
             continue;
         };

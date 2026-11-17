@@ -34,7 +34,7 @@
 //! (document ops), [`systems`].
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::interaction::PASS_THROUGH;
@@ -399,7 +399,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 ..default()
             },
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             CodeViewport { editor: root },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("code-viewport"),

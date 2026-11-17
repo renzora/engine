@@ -361,14 +361,18 @@ fn looks_like_indices(data: &[u8], vertex_count: usize) -> bool {
 // a filter that a `try_into().unwrap()` two lines down had to be trusted to
 // agree with. A trailing partial chunk is dropped either way.
 fn read_f32_array(data: &[u8]) -> Vec<f32> {
-    data.chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    data.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_le_bytes(*c))
         .collect()
 }
 
 fn read_i32_array(data: &[u8]) -> Vec<i32> {
-    data.chunks_exact(4)
-        .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+    data.as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| i32::from_le_bytes(*c))
         .collect()
 }
 

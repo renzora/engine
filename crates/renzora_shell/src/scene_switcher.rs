@@ -24,7 +24,8 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -64,7 +65,7 @@ pub(crate) fn build_scene_switcher(
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             SceneSwitcherBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("scene_switcher.tooltip")),
@@ -251,7 +252,7 @@ struct OpenDoc {
 /// elsewhere, and, while a scene is the active document, making it the one the
 /// game boots into.
 pub(crate) fn scene_switcher_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<SceneSwitcherBtn>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode), (With<SceneSwitcherBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     project: Option<Res<renzora::CurrentProject>>,
@@ -301,7 +302,7 @@ pub(crate) fn scene_switcher_open(
             renzora_ember::widgets::ScreenMenu,
             renzora_ember::widgets::OverlaySurface,
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("scene-switcher-menu"),
         ))
         .id();

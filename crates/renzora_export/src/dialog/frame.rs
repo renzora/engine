@@ -30,7 +30,7 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
             GlobalZIndex(9300),
             BLOCK,
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             OverlaySurface,
             ExportRoot,
             Name::new("export-modal"),

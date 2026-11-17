@@ -51,7 +51,7 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
                 ..default()
             },
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("range"),
         ))
@@ -101,7 +101,7 @@ pub fn range(commands: &mut Commands, low: f32, high: f32) -> Entity {
 }
 
 pub(crate) fn range_drag(
-    mut ranges: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &mut EmberRange)>,
+    mut ranges: Query<(&UiInteraction, &crate::UiCursor, &mut EmberRange)>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, rcp, mut r) in &mut ranges {

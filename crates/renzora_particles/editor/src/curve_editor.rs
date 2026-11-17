@@ -21,7 +21,7 @@
 //! dragged; the compiler sorts anyway.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -262,7 +262,7 @@ fn popover(commands: &mut Commands, fonts: &EmberFonts, t: PropTarget, x: f32, y
             GlobalZIndex(900),
             BLOCK,
             OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             TablePopover,
             Name::new("vfx-table-popover"),
         ))
@@ -365,7 +365,7 @@ fn curve_body(commands: &mut Commands, fonts: &EmberFonts, t: PropTarget) -> Ent
                 position_type: PositionType::Relative,
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("vfx-curve-plot"),
         ))
         .id();
@@ -589,7 +589,7 @@ fn gradient_body(commands: &mut Commands, fonts: &EmberFonts, t: PropTarget) -> 
     let strip = commands
         .spawn((
             Node { width: Val::Px(PLOT_W), height: Val::Px(14.0), position_type: PositionType::Relative, ..default() },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("vfx-gradient-strip"),
         ))
         .id();
@@ -647,7 +647,7 @@ fn drag_keys(
     handles: Query<(&UiInteraction, &KeyHandle)>,
     pressed: Query<(&UiInteraction, &KeyHandle), Changed<UiInteraction>>,
     actions: Query<(&UiInteraction, &KeyAction), Changed<UiInteraction>>,
-    plots: Query<&RelativeCursorPosition>,
+    plots: Query<&UiCursor>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut edit: ResMut<TableEdit>,
     mut state: ResMut<VfxEditorState>,
@@ -787,8 +787,8 @@ fn apply_gradient_action(s: &mut Vec<GradientStop>, sel: usize, action: KeyActio
 fn dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    popovers: Query<(Entity, &RelativeCursorPosition, Ref<TablePopover>)>,
-    surfaces: Query<(&RelativeCursorPosition, &Node), (With<OverlaySurface>, Without<TablePopover>)>,
+    popovers: Query<(Entity, &UiCursor, Ref<TablePopover>)>,
+    surfaces: Query<(&UiCursor, &Node), (With<OverlaySurface>, Without<TablePopover>)>,
     closes: Query<&UiInteraction, (With<PopoverClose>, Changed<UiInteraction>)>,
     state: Res<VfxEditorState>,
     mut edit: ResMut<TableEdit>,

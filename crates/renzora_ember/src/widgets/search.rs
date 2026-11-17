@@ -715,7 +715,7 @@ pub fn search_menu(commands: &mut Commands, fonts: &EmberFonts, x: f32, y: f32, 
             super::popup::ScreenMenu,
             super::popup::OverlaySurface,
             BLOCK,
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             Name::new("search-menu"),
         ))
         .id();

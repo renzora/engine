@@ -146,7 +146,7 @@ fn spawn_modal(commands: &mut Commands) {
             GlobalZIndex(9400),
             BLOCK,
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             OverlaySurface,
             AuthBackdrop,
             Name::new("auth-modal"),

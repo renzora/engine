@@ -84,8 +84,8 @@ pub fn fit_mesh(mesh: &Mesh, axis: NormalAxis) -> Option<PlaneFit> {
     };
     let mut tris: Vec<(Vec3, Vec3, f32)> = Vec::new();
     match mesh.try_indices_option().ok()? {
-        Some(Indices::U32(ix)) => tris.extend(ix.chunks_exact(3).filter_map(|t| tri(t[0] as usize, t[1] as usize, t[2] as usize))),
-        Some(Indices::U16(ix)) => tris.extend(ix.chunks_exact(3).filter_map(|t| tri(t[0] as usize, t[1] as usize, t[2] as usize))),
+        Some(Indices::U32(ix)) => tris.extend(ix.as_chunks::<3>().0.iter().filter_map(|t| tri(t[0] as usize, t[1] as usize, t[2] as usize))),
+        Some(Indices::U16(ix)) => tris.extend(ix.as_chunks::<3>().0.iter().filter_map(|t| tri(t[0] as usize, t[1] as usize, t[2] as usize))),
         None => tris.extend((0..positions.len() / 3).filter_map(|i| tri(i * 3, i * 3 + 1, i * 3 + 2))),
     }
     let total_area: f32 = tris.iter().map(|t| t.2).sum();

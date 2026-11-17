@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::ComponentIconRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -124,7 +124,7 @@ pub(crate) fn build_filter_funnel(commands: &mut Commands, fonts: &EmberFonts) -
             GlobalZIndex(700),
             // Absorb pointer events so hover/click never leaks to the rows behind.
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("hier-filter-panel"),
         ))
         .id();

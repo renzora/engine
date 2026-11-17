@@ -730,12 +730,14 @@ fn luma_at_size(image: &Image, size: u32) -> Option<Vec<u8>> {
     }
     let grey: Vec<u8> = match image.texture_descriptor.format {
         TextureFormat::R8Unorm => data.get(..n)?.to_vec(),
-        TextureFormat::Rg8Unorm => data.get(..n * 2)?.chunks_exact(2).map(|p| p[0]).collect(),
+        TextureFormat::Rg8Unorm => data.get(..n * 2)?.as_chunks::<2>().0.iter().map(|p| p[0]).collect(),
         // Little-endian: the second byte is the high one.
-        TextureFormat::R16Unorm => data.get(..n * 2)?.chunks_exact(2).map(|p| p[1]).collect(),
+        TextureFormat::R16Unorm => data.get(..n * 2)?.as_chunks::<2>().0.iter().map(|p| p[1]).collect(),
         TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => data
             .get(..n * 4)?
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|p| ((p[0] as u32 * 54 + p[1] as u32 * 183 + p[2] as u32 * 19) >> 8) as u8)
             .collect(),
         _ => return None,
@@ -760,7 +762,7 @@ fn pack_height(packed: &mut [u8], height: &[u8]) {
     let variance = height.iter().map(|&h| (h as f32 - mean).powi(2)).sum::<f32>() / n;
     // A spread of 0.18 of full range; a flat map stays flat at the middle.
     let gain = if variance > 1.0 { 0.18 * 255.0 / variance.sqrt() } else { 0.0 };
-    for (px, &h) in packed.chunks_exact_mut(4).zip(height) {
+    for (px, &h) in packed.as_chunks_mut::<4>().0.iter_mut().zip(height) {
         px[2] = (128.0 + (h as f32 - mean) * gain).round().clamp(0.0, 255.0) as u8;
     }
 }
@@ -869,7 +871,7 @@ fn average_srgb(pixels: &[u8]) -> Vec3 {
     let mut sum = Vec3::ZERO;
     let mut n = 0.0;
     // Every 7th texel is plenty for a mean, and keeps this off the profile.
-    for px in pixels.chunks_exact(4).step_by(7) {
+    for px in pixels.as_chunks::<4>().0.iter().step_by(7) {
         let c = Color::srgb_u8(px[0], px[1], px[2]).to_linear();
         sum += Vec3::new(c.red, c.green, c.blue);
         n += 1.0;

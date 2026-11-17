@@ -23,7 +23,7 @@
 //! change, but the host they hang under can and does.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::{
     entity_icon_name, ComponentIconRegistry, EntityIcon, EntityLabelColor, FieldValue,
@@ -373,7 +373,7 @@ fn icon_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Ent
             BLOCK,
             // The popover is aimed from the tile's own rect, recovered from the
             // cursor and its normalized position inside the tile.
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
                 "inspector.icon_and_colour",
@@ -685,7 +685,7 @@ pub(crate) fn entity_icon_menu_open(
         (
             &UiInteraction,
             &EntityIconBtn,
-            &RelativeCursorPosition,
+            &UiCursor,
             &bevy::ui::ComputedNode,
         ),
         Changed<UiInteraction>,

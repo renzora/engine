@@ -128,7 +128,7 @@ pub(super) fn build_asset_field(
             },
             BackgroundColor(c((28, 28, 34))),
             BorderColor::all(c((70, 70, 82))),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             AssetDropZone {
                 extensions,
                 get_fn: get_fn.clone(),
@@ -265,7 +265,7 @@ pub(super) fn asset_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    zones: Query<(&bevy::ui::RelativeCursorPosition, &AssetDropZone)>,
+    zones: Query<(&renzora_ember::UiCursor, &AssetDropZone)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -317,7 +317,7 @@ pub(super) fn asset_clear_click(
 pub(super) fn asset_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     theme: Option<Res<ThemeManager>>,
-    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &AssetDropZone, &mut BorderColor)>,
+    mut zones: Query<(&renzora_ember::UiCursor, &AssetDropZone, &mut BorderColor)>,
 ) {
     let accent = theme
         .map(|t| c(c32(t.active_theme.semantic.accent)))

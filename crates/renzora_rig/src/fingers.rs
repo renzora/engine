@@ -94,7 +94,7 @@ pub fn triangles(glb: &Glb) -> Result<Vec<[Vec3; 3]>, GlbError> {
                 Some(idx) => idx,
                 None => (0..pts.len() as u32).collect(),
             };
-            out.extend(idx.chunks_exact(3).filter_map(|t| Some([*pts.get(t[0] as usize)?, *pts.get(t[1] as usize)?, *pts.get(t[2] as usize)?])));
+            out.extend(idx.as_chunks::<3>().0.iter().filter_map(|t| Some([*pts.get(t[0] as usize)?, *pts.get(t[1] as usize)?, *pts.get(t[2] as usize)?])));
         }
     }
     Ok(out)

@@ -43,7 +43,9 @@ std = ["glam/std"]
 [dependencies]
 # Math
 approx = { version = "0.5", optional = true, default-features = false }
-glam = { version = "0.33.9", default-features = false }
+# RENZORA: the glam Bevy uses (`bevy/crates/bevy_math`). Two glams means Bevy's
+# reflection covers only its own, and every reflected matrix here fails.
+glam = { version = "0.34.2", default-features = false }
 libm = { version = "0.2", optional = true }
 
 # Reflection

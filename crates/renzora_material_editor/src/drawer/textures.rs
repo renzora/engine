@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 use bevy::ui::widget::ImageNode;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::AssetDragPayload;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -160,7 +160,7 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
             HoverTint::solid(Color::NONE, rgb(hover_bg()), rgb(hover_bg())),
             UiInteraction::default(),
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             TexSlotZone { entity, slot: state.slot },
             // No tooltip here: the row already spells out its channel in the
             // label, and six rows that each pop a sentence on hover turn a
@@ -248,7 +248,7 @@ pub(super) fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, enti
 pub(super) fn tex_slot_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    zones: Query<(&RelativeCursorPosition, &TexSlotZone)>,
+    zones: Query<(&UiCursor, &TexSlotZone)>,
     mut commands: Commands,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -279,7 +279,7 @@ pub(super) fn tex_slot_drop(
 /// before the mouse comes up.
 pub(super) fn tex_slot_highlight(
     payload: Option<Res<AssetDragPayload>>,
-    mut zones: Query<(&RelativeCursorPosition, &mut BorderColor), With<TexSlotZone>>,
+    mut zones: Query<(&UiCursor, &mut BorderColor), With<TexSlotZone>>,
 ) {
     for (rcp, mut bc) in &mut zones {
         let active = payload

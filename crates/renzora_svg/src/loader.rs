@@ -4,8 +4,8 @@
 //! # Hot reload
 //!
 //! Every file this loader reads besides the SVG (the sidecar, each embedded
-//! image, each project font) goes through `LoadContext::read_asset_bytes`,
-//! which records it as a *loader dependency*. Bevy reloads an asset when one of
+//! image, each project font) goes through `LoadContext::read_asset` (see
+//! [`read_whole`]), which records it as a *loader dependency*. Bevy reloads an asset when one of
 //! its loader dependencies changes, so editing `logo.svg`, `logo.svg.toml` or a
 //! PNG the SVG embeds all re-rasterize the image while the editor runs, and
 //! every material, particle and UI node holding the handle picks it up.
@@ -27,7 +27,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use bevy::asset::io::{AssetReaderError, Reader};
-use bevy::asset::{AssetLoader, AssetPath, LoadContext, ReadAssetBytesError};
+use bevy::asset::{AssetLoader, AssetPath, LoadContext, ReadAssetError};
 use bevy::image::{Image, ImageLoaderSettings};
 use bevy::log::warn;
 use bevy::reflect::TypePath;
@@ -98,7 +98,7 @@ async fn load_svg(
     // Sidecar settings.
     let mut settings = SvgRasterSettings::default();
     let sidecar = sidecar_path(&svg_path.to_string_lossy().replace('\\', "/"));
-    match ctx.read_asset_bytes(asset_path(sidecar.clone())).await {
+    match read_whole(ctx, asset_path(sidecar.clone())).await {
         Ok(raw) => match std::str::from_utf8(&raw)
             .map_err(|e| e.to_string())
             .and_then(SvgRasterSettings::from_toml)
@@ -116,7 +116,7 @@ async fn load_svg(
     let mut images = FetchedImages::new();
     for href in &scan.image_hrefs {
         match resolve_href(&svg_path, href) {
-            Ok(resolved) => match ctx.read_asset_bytes(asset_path(resolved.clone())).await {
+            Ok(resolved) => match read_whole(ctx, asset_path(resolved.clone())).await {
                 Ok(data) => {
                     images.insert(href.clone(), Arc::new(data));
                 }
@@ -140,7 +140,7 @@ async fn load_svg(
                 if !loaded_paths.insert(resolved.clone()) {
                     continue;
                 }
-                match ctx.read_asset_bytes(asset_path(resolved.clone())).await {
+                match read_whole(ctx, asset_path(resolved.clone())).await {
                     Ok(data) => Arc::make_mut(&mut fontdb).load_font_data(data),
                     Err(e) => report_warning(format!(
                         "{sidecar}: font `{entry}` ({resolved}) could not be read: {e}"
@@ -166,7 +166,7 @@ async fn load_svg(
                     if !loaded_paths.insert(resolved.clone()) {
                         continue;
                     }
-                    if let Ok(data) = ctx.read_asset_bytes(asset_path(resolved)).await {
+                    if let Ok(data) = read_whole(ctx, asset_path(resolved)).await {
                         Arc::make_mut(&mut fontdb).load_font_data(data);
                         found = true;
                         break 'search;
@@ -210,10 +210,38 @@ fn decode_text(bytes: &[u8]) -> Result<String, SvgLoadError> {
     Ok(text)
 }
 
-fn is_not_found(e: &ReadAssetBytesError) -> bool {
+/// Why a file the SVG refers to could not be read.
+#[derive(Debug)]
+enum ReadError {
+    /// The asset reader could not open it (missing, refused, no source).
+    Open(ReadAssetError),
+    /// It opened, and reading it failed part way.
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open(e) => e.fmt(f),
+            Self::Io(e) => e.fmt(f),
+        }
+    }
+}
+
+/// Read the whole file at `path` through the load context, which records it as
+/// a loader dependency (see the module docs). Every file an SVG needs is small
+/// and needed whole, so reading it all at once is what is wanted here.
+async fn read_whole(ctx: &mut LoadContext<'_>, path: AssetPath<'static>) -> Result<Vec<u8>, ReadError> {
+    let mut reader = ctx.read_asset(path).await.map_err(ReadError::Open)?;
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).await.map_err(ReadError::Io)?;
+    Ok(bytes)
+}
+
+fn is_not_found(e: &ReadError) -> bool {
     matches!(
         e,
-        ReadAssetBytesError::AssetReaderError(AssetReaderError::NotFound(_))
+        ReadError::Open(ReadAssetError::AssetReaderError(AssetReaderError::NotFound(_)))
     )
 }
 

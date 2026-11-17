@@ -235,7 +235,7 @@ fn spawn_loading(
         backdrop.insert((
             BLOCK,
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             OverlaySurface,
             EditorOverlayRoot,
         ));

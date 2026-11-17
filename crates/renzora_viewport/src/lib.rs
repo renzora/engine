@@ -92,6 +92,9 @@ impl Plugin for ViewportPlugin {
                 default_topology: bevy::pbr::wireframe::WireframeTopology::default(),
                 // 0.20: wireframes drawn through geometry. Off, as before.
                 xray_mode: false,
+                // Back faces culled, which is what the wireframe pass always
+                // did before it became a setting.
+                ..default()
             })
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
@@ -426,11 +429,11 @@ pub(crate) fn setup_viewport(
     use renzora::core::viewport_types::VIEWPORT_COUNT;
     bevy::log::info!("[viewport] setup_viewport — creating {VIEWPORT_COUNT} render targets");
 
-    for i in 0..VIEWPORT_COUNT {
+    for (i, slot) in viewports.slots.iter_mut().enumerate() {
         let image_handle = images.add(make_render_target(DEFAULT_WIDTH, DEFAULT_HEIGHT));
 
-        viewports.slots[i].image = Some(image_handle.clone());
-        viewports.slots[i].current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        slot.image = Some(image_handle.clone());
+        slot.current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
         if i == 0 {
             render_target.image = Some(image_handle.clone());

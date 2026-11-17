@@ -16,7 +16,8 @@
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, ScrollPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform};
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::resize::ResizeBusy;
@@ -82,7 +83,7 @@ pub(crate) fn hier_marquee(
     rows: Query<(&HierRowClick, &ComputedNode, &UiGlobalTransform)>,
     content: Query<Entity, With<HierScrollContent>>,
     parents: Query<&ChildOf>,
-    viewports: Query<&RelativeCursorPosition>,
+    viewports: Query<&UiCursor>,
     scrollbar: Res<ScrollbarBusy>,
     resizing: Res<ResizeBusy>,
     mut marquee: ResMut<HierMarquee>,

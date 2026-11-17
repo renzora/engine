@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{EditorCommands, EditorSelection};
@@ -23,7 +23,7 @@ use renzora_ui::{DocumentTabState, Toasts};
 const SCENE_EXTENSIONS: &[&str] = &["bsn", "ron"];
 
 /// Marks the hierarchy panel's root node as a scene-drop target (carries a
-/// `RelativeCursorPosition` so the arm system can hit-test the cursor).
+/// `UiCursor` so the arm system can hit-test the cursor).
 #[derive(Component)]
 pub(crate) struct HierRoot;
 
@@ -39,7 +39,7 @@ pub(crate) struct ArmedHierSceneDrop(Option<PathBuf>);
 /// snapshot is left untouched so [`commit_hier_scene_drop`] can still consume it.
 pub(crate) fn arm_hier_scene_drop(
     payload: Option<Res<AssetDragPayload>>,
-    roots: Query<&RelativeCursorPosition, With<HierRoot>>,
+    roots: Query<&UiCursor, With<HierRoot>>,
     over_overlay: Option<Res<PointerOverOverlay>>,
     mut armed: ResMut<ArmedHierSceneDrop>,
 ) {

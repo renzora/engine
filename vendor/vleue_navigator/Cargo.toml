@@ -14,6 +14,11 @@ categories = ["game-development"]
 
 [dependencies]
 itertools = "0.15"
+# RENZORA: the glam polyanya is built on, to convert at the boundary. Bevy moved
+# to glam 0.34 and polyanya 0.18 (the latest) is still on 0.33, so the two
+# `Vec2`s are different types; `src/glam_bridge.rs` converts between them.
+# Drop this, and the bridge, once polyanya moves to Bevy's glam.
+polyanya_glam = { package = "glam", version = "0.33" }
 tracing = { version = "0.1", optional = true }
 log = "0.4.27"
 

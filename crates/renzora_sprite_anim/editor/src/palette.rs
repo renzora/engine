@@ -9,13 +9,13 @@ use std::hash::{Hash, Hasher};
 
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, ScrollPosition};
+use bevy::ui::{ComputedNode, ScrollPosition};
 
 use renzora::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb};
 use renzora_ember::widgets::{EmberScroll, ScrollThumb, ScrollbarBusy};
-use renzora_ember::UiInteraction;
+use renzora_ember::{UiCursor, UiInteraction};
 
 use crate::panel::{GridLine, SelCellMark, SheetImageNode, ZoomInBtn, ZoomOutBtn};
 use crate::{CurrentSheet, SheetGrid, SheetSelection, SheetZoom};
@@ -63,7 +63,7 @@ fn zoom_pan_sheet(
     mut zoom: ResMut<SheetZoom>,
     sheet: Query<Entity, With<SheetImageNode>>,
     parents: Query<&ChildOf>,
-    mut viewports: Query<(&mut EmberScroll, &mut ScrollPosition, &ComputedNode, &RelativeCursorPosition)>,
+    mut viewports: Query<(&mut EmberScroll, &mut ScrollPosition, &ComputedNode, &UiCursor)>,
 ) {
     let Ok(img) = sheet.single() else {
         wheel.clear();
@@ -224,7 +224,7 @@ fn select_cells_from_sheet(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     grid: Res<SheetGrid>,
     sheet: Res<CurrentSheet>,
-    image: Query<&RelativeCursorPosition, With<SheetImageNode>>,
+    image: Query<&UiCursor, With<SheetImageNode>>,
     thumbs: Query<&UiInteraction, With<ScrollThumb>>,
     scrollbar: Res<ScrollbarBusy>,
     mut selection: ResMut<SheetSelection>,

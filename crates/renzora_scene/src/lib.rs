@@ -1971,7 +1971,7 @@ fn stale_text_nodes(
         return String::new();
     }
     let mut places: Vec<(String, usize)> = places.into_iter().collect();
-    places.sort_by(|a, b| b.1.cmp(&a.1));
+    places.sort_by_key(|p| std::cmp::Reverse(p.1));
     let list: Vec<String> = places.iter().take(6).map(|(p, n)| format!("{p} x{n}")).collect();
     format!("; {stale} text nodes laid out every frame: {}", list.join(", "))
 }

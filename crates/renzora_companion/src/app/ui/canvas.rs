@@ -18,7 +18,8 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::sprite::Anchor;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 /// Render layers canvases use start here, clear of the default layer the
 /// window's camera draws.
@@ -144,7 +145,7 @@ pub(crate) fn spawn_canvas(
                 ..default()
             },
             ImageNode::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Canvas { layer, camera, mesh, image: None, size: UVec2::ZERO, scale: 1.0, labels: Vec::new() },
             CanvasContent::default(),
             Name::new("companion-canvas"),

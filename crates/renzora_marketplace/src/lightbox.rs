@@ -58,7 +58,7 @@ pub(crate) fn open_clicks(
                 GlobalZIndex(9600),
                 BLOCK,
                 UiInteraction::default(),
-                bevy::ui::RelativeCursorPosition::default(),
+                renzora_ember::UiCursor::default(),
                 renzora_ember::widgets::OverlaySurface,
                 // `request_avatars` fetches every on-screen AvatarUrl, so the
                 // full-size image downloads through the shared cache.

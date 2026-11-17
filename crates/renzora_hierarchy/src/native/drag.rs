@@ -8,7 +8,7 @@
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::{EditorCommands, EditorSelection, HierarchyOrder, TreeDropZone};
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -43,7 +43,7 @@ pub(crate) fn hier_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     selection: Option<Res<EditorSelection>>,
-    rows: Query<(&UiInteraction, &RelativeCursorPosition, &HierRowClick)>,
+    rows: Query<(&UiInteraction, &UiCursor, &HierRowClick)>,
     mut edges: Query<(&HierDropEdge, &mut Node)>,
     cmds: Option<Res<EditorCommands>>,
 ) {

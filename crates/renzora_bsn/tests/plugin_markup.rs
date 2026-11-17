@@ -50,20 +50,20 @@ fn a_group_splits_into_separate_components() {
 
 /// A field-less marker sitting between components that do have bodies.
 ///
-/// `Button` and `Interaction` are the case that matters: a panel needs them on
-/// ONE entity alongside `Node` and `PanelActionId`, because dispatch reads the
-/// interaction and the action id together and `#[require(..)]` is not applied
-/// by a reflected spawn.
+/// `Button` and `UiInteraction` are the case that matters: a widget needs them
+/// on ONE entity alongside `Node` and its action id, because whatever reacts to
+/// the press reads them together, and `#[require(..)]` is not applied by a
+/// reflected spawn.
 #[test]
 fn a_bare_marker_between_bodied_components_survives() {
     let child = first_child(concat!(
         "Node\n",
         "Children [\n",
-        "    ( Node { flex_direction: Row } Button Interaction PanelActionId { action: 4 } ),\n",
+        "    ( Node { flex_direction: Row } Button UiInteraction PanelActionId { action: 4 } ),\n",
         "]\n",
     ));
-    let names = dump("Node + Button + Interaction + PanelActionId", &child);
-    for want in ["Node", "Button", "Interaction", "PanelActionId"] {
+    let names = dump("Node + Button + UiInteraction + PanelActionId", &child);
+    for want in ["Node", "Button", "UiInteraction", "PanelActionId"] {
         assert!(names.iter().any(|x| x == want), "`{want}` lost: {names:?}");
     }
 }
@@ -75,7 +75,7 @@ fn a_marker_survives_alongside_a_children_list() {
     let child = first_child(concat!(
         "Node\n",
         "Children [\n",
-        "    ( Node Button Interaction PanelActionId { action: 4 } Children [ Text(\"Browse\") ] ),\n",
+        "    ( Node Button UiInteraction PanelActionId { action: 4 } Children [ Text(\"Browse\") ] ),\n",
         "]\n",
     ));
     let names = dump("group with trailing Children", &child);

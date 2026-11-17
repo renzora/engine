@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, RepeatedGridTrack};
+use bevy::ui::RepeatedGridTrack;
+use renzora_ember::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
@@ -479,11 +480,11 @@ fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData)
             // `cursor_over` — not `UiInteraction` — drives the card's hover sheen:
             // the ✕ blocks, so `UiInteraction` correctly drops to `None` the moment
             // the pointer crosses onto it, and keying the sheen off that would
-            // make the card flatten out under your own cursor. Bevy fills
-            // `RelativeCursorPosition` for every node containing the pointer
+            // make the card flatten out under your own cursor. Ember fills
+            // `UiCursor` for every node containing the pointer
             // regardless of who captures the press, which is exactly the "is the
             // pointer anywhere over this card" signal the visual wants.
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             BLOCK,
             RecentRow,
         ))
@@ -713,7 +714,7 @@ fn bind_text_color_on_hover(commands: &mut Commands, text_e: Entity, btn: Entity
 fn animate_recent_borders(
     time: Res<Time>,
     mut rows: Query<
-        (&RelativeCursorPosition, &mut BorderColor, &mut bevy::ui::BackgroundGradient),
+        (&UiCursor, &mut BorderColor, &mut bevy::ui::BackgroundGradient),
         With<RecentRow>,
     >,
 ) {

@@ -12,6 +12,7 @@ use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use vleue_navigator::{
+    glam_bridge::to_p,
     prelude::{
         ManagedNavMesh, NavMeshAgentExclusion, NavMeshDebug, NavMeshSettings, NavMeshUpdateMode,
         Triangulation, VleueNavigatorPlugin,
@@ -96,11 +97,12 @@ pub struct NavMeshObstacle;
 fn build_settings(volume: &NavMeshVolume) -> NavMeshSettings {
     let (hx, hz) = (volume.half_extents.x, volume.half_extents.z);
     NavMeshSettings {
+        // Polyanya's own glam, not Bevy's (see `vleue_navigator::glam_bridge`).
         fixed: Triangulation::from_outer_edges(&[
-            Vec2::new(-hx, -hz),
-            Vec2::new(hx, -hz),
-            Vec2::new(hx, hz),
-            Vec2::new(-hx, hz),
+            to_p(Vec2::new(-hx, -hz)),
+            to_p(Vec2::new(hx, -hz)),
+            to_p(Vec2::new(hx, hz)),
+            to_p(Vec2::new(-hx, hz)),
         ]),
         agent_radius: volume.agent_radius,
         simplify: volume.simplify,
@@ -261,10 +263,10 @@ fn sync_terrain_obstacles(
 
         // Rebuild fixed triangulation from scratch (outer edges + terrain obstacles).
         let mut tri = Triangulation::from_outer_edges(&[
-            Vec2::new(-hx, -hz),
-            Vec2::new(hx, -hz),
-            Vec2::new(hx, hz),
-            Vec2::new(-hx, hz),
+            to_p(Vec2::new(-hx, -hz)),
+            to_p(Vec2::new(hx, -hz)),
+            to_p(Vec2::new(hx, hz)),
+            to_p(Vec2::new(-hx, hz)),
         ]);
 
         let mut obstacle_count = 0usize;
@@ -274,7 +276,7 @@ fn sync_terrain_obstacles(
             };
             let obs = terrain_slope_obstacles(volume, vol_pos, terrain, chunk_data);
             obstacle_count += obs.len();
-            tri.add_obstacles(obs);
+            tri.add_obstacles(obs.into_iter().map(|o| o.into_iter().map(to_p).collect::<Vec<_>>()));
         }
 
         if obstacle_count > 0 {

@@ -76,8 +76,7 @@ pub fn spawn_editor_camera(
     // the primary's real prefiltered maps once the bake is ready.
     let placeholder_cube = make_placeholder_cube(&mut images);
 
-    for i in 0..VIEWPORT_COUNT {
-        let slot = &viewports.slots[i];
+    for (i, slot) in viewports.slots.iter_mut().enumerate() {
         let transform = orbit_transform(slot.focus, slot.distance, slot.yaw, slot.pitch);
         let slot_image = slot.image.clone();
 
@@ -221,7 +220,7 @@ pub fn spawn_editor_camera(
         }
 
         let id = entity.id();
-        viewports.slots[i].camera_entity = Some(id);
+        slot.camera_entity = Some(id);
     }
 
     // Says "spawned", not "rendering": all four exist from boot, but only slot 0
@@ -368,10 +367,8 @@ pub fn spawn_editor_2d_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
-
-    for i in 0..VIEWPORT_COUNT {
-        let slot_image = viewports.slots[i].image.clone();
+    for (i, slot) in viewports.slots.iter_mut().enumerate() {
+        let slot_image = slot.image.clone();
         let mut entity = commands.spawn((
             Camera2d,
             Camera {
@@ -437,7 +434,7 @@ pub fn spawn_editor_2d_camera(
             entity.insert(RenderTarget::Image(image.clone().into()));
         }
 
-        viewports.slots[i].camera_2d_entity = Some(entity.id());
+        slot.camera_2d_entity = Some(entity.id());
     }
 }
 

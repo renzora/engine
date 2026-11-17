@@ -197,15 +197,15 @@ refuses. That is not a blocker, because `.cargo/config.toml` pins the linker to
 raises the cap far enough for the normal build. Native links succeed; we simply
 never use `link.exe`.
 
-Pinned toolchain: **Rust 1.97.1**, **Bevy 0.20** (Bevy 0.20 needs at least Rust
-1.97.1). The wind plugin's prepass vertex shader reads the material bind group,
+Pinned toolchain: **Rust 1.100.0**, **Bevy 0.20-dev** (Bevy `main`, which needs
+at least Rust 1.100.0). The wind plugin's prepass vertex shader reads the material bind group,
 which only works because bevy_pbr has the `prepass_reads_material()` escape hatch
 (added in 0.19.1, still there in 0.20); a Bevy without it brings back a wgpu
 validation crash, "group 3 binding 100 is not available in the pipeline layout",
 the moment a swaying mesh renders. Avian has no 0.20 release yet, so
 `[workspace.dependencies]` pins its open 0.20 branch by commit; move back to
 crates.io once one exists. The Rust version lives in TWO
-files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.97.1`, the
+files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.100.0`, the
 container) and `rust-toolchain.toml` (native `cargo renzora` / `cargo check`); a
 bump must edit both.
 
@@ -591,6 +591,28 @@ Several may be registered, and two languages coexist in one project. See
   a change in Bevy (a bug, a missing hook, an API that is in the way), stop and
   tell the user what the change would be and why; do not make it. Work around it
   from Renzora's side, or wait for the maintainer.
+- **Pulling Bevy means fixing everything Bevy changed, in the same piece of
+  work.** When the maintainer asks for the latest Bevy, pull it with
+  `git subtree pull --prefix=bevy https://github.com/bevyengine/bevy.git main
+  --squash`, then make the whole workspace build and pass again. A broken build
+  after the pull is the expected starting point, not a reason to stop or to
+  offer to undo it. That covers removed and renamed APIs across `crates/` and
+  `vendor/`, a raised `rust-version` (bump both toolchain pins, see §2), new
+  lints, and behaviour changes the tests catch. The fixes go on Renzora's side;
+  the carried patches inside `bevy/` (the Solari and DLSS ones in memory and in
+  the commit log) must still be there afterwards, so check them, and if the
+  merge conflicts on one, keep the patch's intent on top of the new upstream
+  code. Release notes and docs describe what changed for the user, as for any
+  other change.
+- **When Bevy removes something, move to what Bevy offers instead; never
+  re-create the removed API on Renzora's side.** A port of deleted Bevy code is
+  a fork we then carry forever, drifting further from everything around it. Read
+  the deprecation note or the removing PR for the intended replacement and
+  migrate every caller onto it. Where Bevy offers no one-for-one replacement
+  (`RelativeCursorPosition` went with the focus system that wrote it), build the
+  missing piece on top of what Bevy does provide (picking's hover state and
+  pointer location, plus `ComputedNode`'s own geometry), not as a copy of the
+  old system.
 - **Everything built on Bevy comes from this repo, never from crates.io.** Bevy
   is `bevy/`; every third-party crate that depends on Bevy (avian, gaussian
   splatting, the XR crates, navigation, ...) lives in `vendor/` and points at

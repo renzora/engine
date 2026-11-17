@@ -265,8 +265,8 @@ fn build_dropdown_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity
     rows.push(inspector_row(commands, &fonts.ui, "Selected", dd));
 
     // One text input per option.
-    for i in 0..data.options.len() {
-        let ti = text_input(commands, &fonts.ui, "", &data.options[i]);
+    for (i, option) in data.options.iter().enumerate() {
+        let ti = text_input(commands, &fonts.ui, "", option);
         bind_text_input(
             commands,
             ti,

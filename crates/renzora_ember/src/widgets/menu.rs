@@ -56,7 +56,7 @@ pub(crate) fn build_menu(
             BorderColor::all(rgb(border())),
             GlobalZIndex(700),
             super::popup::OverlaySurface,
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             Name::new("menu"),
         ))
         .id();
@@ -110,7 +110,7 @@ pub(crate) fn build_menu(
                     },
                     BackgroundColor(rgb(popup_bg())),
                     BorderColor::all(rgb(border())),
-                    bevy::ui::RelativeCursorPosition::default(),
+                    crate::UiCursor::default(),
                     GlobalZIndex(701),
                     Name::new("submenu"),
                 ))
@@ -166,7 +166,7 @@ pub(crate) fn menu_hover(
 
 pub(crate) fn submenu_hover(
     parents: Query<(&UiInteraction, &EmberSubmenu)>,
-    subs: Query<&bevy::ui::RelativeCursorPosition>,
+    subs: Query<&crate::UiCursor>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, parent) in &parents {

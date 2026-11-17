@@ -8,7 +8,8 @@
 //! not something to do while holding queries over the chunks.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{AssetDragPayload, DocTabKind};
@@ -93,7 +94,7 @@ pub(super) fn layer_row_click(
     }
 }
 
-type ComboPress<'a> = (&'a UiInteraction, &'a RelativeCursorPosition, &'a ComputedNode);
+type ComboPress<'a> = (&'a UiInteraction, &'a UiCursor, &'a ComputedNode);
 
 pub(super) fn stamp_preset_combo_open(
     q: Query<ComboPress, (With<StampPresetCombo>, Changed<UiInteraction>)>,
@@ -339,7 +340,7 @@ pub(super) fn asset_slot_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
     project: Option<Res<CurrentProject>>,
-    slots: Query<(&RelativeCursorPosition, &AssetSlot)>,
+    slots: Query<(&UiCursor, &AssetSlot)>,
     mut commands: Commands,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -369,7 +370,7 @@ pub(super) fn asset_slot_drop(
 /// Accent a slot's border while an asset it takes is dragged over it.
 pub(super) fn asset_slot_highlight(
     payload: Option<Res<AssetDragPayload>>,
-    mut slots: Query<(&RelativeCursorPosition, &AssetSlot, &mut BorderColor)>,
+    mut slots: Query<(&UiCursor, &AssetSlot, &mut BorderColor)>,
 ) {
     for (rcp, slot, mut bc) in &mut slots {
         let hot = payload

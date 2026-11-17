@@ -221,7 +221,7 @@ pub(super) fn interp_label_tr(label: &str) -> String {
 /// Detect clicks on a property track's dropdown / delete button (built inside
 /// the keyed header list) and queue the corresponding world op.
 pub(super) fn prop_header_click(
-    combos: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode, &PropTrackCombo), Changed<UiInteraction>>,
+    combos: Query<(&UiInteraction, &renzora_ember::UiCursor, &bevy::ui::ComputedNode, &PropTrackCombo), Changed<UiInteraction>>,
     dels: Query<(&UiInteraction, &DeletePropTrack), Changed<UiInteraction>>,
     addks: Query<(&UiInteraction, &AddKeyTrackBtn), Changed<UiInteraction>>,
     add_track: Query<&UiInteraction, (With<AddTrackBtn>, Changed<UiInteraction>)>,

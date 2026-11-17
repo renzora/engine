@@ -193,7 +193,7 @@ pub(crate) fn asset_context_menu(
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Res<NativeAssets>,
-    roots: Query<&bevy::ui::RelativeCursorPosition, With<AssetRoot>>,
+    roots: Query<&renzora_ember::UiCursor, With<AssetRoot>>,
     registry: Option<Res<renzora::CreateMenuRegistry>>,
     actions: Option<Res<renzora::AssetActionRegistry>>,
     project: Option<Res<renzora::core::CurrentProject>>,
@@ -419,7 +419,7 @@ fn registered_action_items(
 ///
 /// The overlay root also carries [`ScreenMenu`], which is what makes picking a
 /// row close it: `menu_action_run` runs the row's action and despawns every
-/// screen menu. It has no `RelativeCursorPosition`, so the screen-menu
+/// screen menu. It has no `UiCursor`, so the screen-menu
 /// click-outside rule (which would need one) leaves it to the overlay's own
 /// dismissal, and its full-window box is already inside the screen clamp.
 pub(crate) fn add_menu_open(
@@ -679,7 +679,7 @@ pub(crate) fn sort_menu_open(
     q: Query<
         (
             &UiInteraction,
-            &bevy::ui::RelativeCursorPosition,
+            &renzora_ember::UiCursor,
             &bevy::ui::ComputedNode,
         ),
         (With<SortMenuBtn>, Changed<UiInteraction>),

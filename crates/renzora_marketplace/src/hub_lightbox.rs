@@ -5,7 +5,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::SplashState;
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -79,7 +79,7 @@ fn build(commands: &mut Commands, url: &str) -> Entity {
             GlobalZIndex(9900),
             BLOCK,
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::widgets::OverlaySurface,
             HubLightboxRoot,
             Name::new("hub-image-lightbox"),

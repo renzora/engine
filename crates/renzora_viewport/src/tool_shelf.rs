@@ -103,7 +103,7 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
             // must not also reach the picker underneath — that would select
             // whatever object happened to be behind it.
             OverlaySurface,
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             UiInteraction::default(),
             ShelfContainer,
             Name::new("vp-tool-shelf"),

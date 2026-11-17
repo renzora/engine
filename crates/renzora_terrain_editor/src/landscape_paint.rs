@@ -33,7 +33,7 @@ pub fn landscape_command_system(world: &mut World) {
         if state.pending_commands.is_empty() {
             return;
         }
-        state.pending_commands.drain(..).collect()
+        std::mem::take(&mut state.pending_commands)
     };
     let Some(target) = paint_target(world) else { return };
     for cmd in pending {

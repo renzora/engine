@@ -244,7 +244,7 @@ impl Plugin for GizmoPlugin {
                     skeleton_gizmo::draw_skeleton_gizmo,
                     // A resize handle overhangs the content it sizes, and the
                     // viewport decides a press is its own purely geometrically
-                    // (`RelativeCursorPosition`) — so the global bottom panel's
+                    // (`UiCursor`), so the global bottom panel's
                     // grip band, which straddles its own top edge, reads as a
                     // press in the scene and armed a selection box that then
                     // stretched across the viewport for the whole drag. A run

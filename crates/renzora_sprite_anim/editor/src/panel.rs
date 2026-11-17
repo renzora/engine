@@ -9,11 +9,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 
 use renzora::core::{SpriteImagePath, SpriteImages};
 use renzora::RenzoraShellExt;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
@@ -267,7 +267,7 @@ fn sheet_snapshot(world: &Rx) -> KeyedSnapshot {
                 ImageNode::new(handle),
                 Node { width: Val::Px(1.0), height: Val::Px(1.0), flex_shrink: 0.0, ..default() },
                 SheetImageNode,
-                RelativeCursorPosition::default(),
+                UiCursor::default(),
             ))
             .id()
         }),

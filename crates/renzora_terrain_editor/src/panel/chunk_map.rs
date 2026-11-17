@@ -14,7 +14,7 @@
 //! [`super::canvas`] for why.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::EditorCamera;
 use renzora_editor_framework::EditorSelection;
@@ -143,7 +143,7 @@ pub(crate) fn refresh_chunk_map(
     terrains: Query<(&TerrainData, &GlobalTransform)>,
     chunks: Query<(&TerrainChunkData, &TerrainChunkOf, Has<TerrainChunkStreamedOut>)>,
     camera: Query<&GlobalTransform, With<EditorCamera>>,
-    views: Query<&RelativeCursorPosition, With<ChunkMapView>>,
+    views: Query<&UiCursor, With<ChunkMapView>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut map: ResMut<ChunkMap>,
 ) {

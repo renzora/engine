@@ -3,7 +3,6 @@
 //! Widget spawn functions — each creates the correct entity hierarchy for a widget type.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 
 use crate::game_ui::components::*;
 use crate::game_ui::shapes::{self, UiShapeWidget};
@@ -607,7 +606,7 @@ fn spawn_slider(world: &mut World, r: &Ref) -> Entity {
             },
             data.clone(),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             UiCursor::Pointer,
         ))
         .id();

@@ -16,7 +16,8 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_animation::AnimatorState;
 use renzora_editor_framework::{EditorCommands, SplashState};
@@ -252,7 +253,7 @@ fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             KindCombo,
         ))
         .id();
@@ -709,7 +710,7 @@ fn fire_click(
 
 fn kind_combo_open(
     q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode),
+        (&UiInteraction, &UiCursor, &ComputedNode),
         (With<KindCombo>, Changed<UiInteraction>),
     >,
     windows: Query<&Window>,

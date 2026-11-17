@@ -775,7 +775,9 @@ where
     context(
         "Is not a valid `AlignItems`, try `default` `center` `start` `flex_end` `stretch` `end` `baseline` `flex_start`",
         alt((
-            map(tag("default"), |_| AlignItems::Default),
+            // RENZORA: Bevy renamed `AlignItems::Default` to `Normal`; markup
+            // keeps the `default` keyword.
+            map(tag("default"), |_| AlignItems::Normal),
             map(tag("center"), |_| AlignItems::Center),
             map(tag("start"), |_| AlignItems::Start),
             map(tag("flex_end"), |_| AlignItems::FlexEnd),
@@ -831,7 +833,8 @@ where
     context(
         "Is not a valid `JustifyItems`, try `default` `center` `start` `end` `baseline`",
         alt((
-            map(tag("default"), |_| JustifyItems::Default),
+            // RENZORA: renamed to `Normal` in Bevy, as with `AlignItems`.
+            map(tag("default"), |_| JustifyItems::Normal),
             map(tag("center"), |_| JustifyItems::Center),
             map(tag("start"), |_| JustifyItems::Start),
             map(tag("stretch"), |_| JustifyItems::Stretch),

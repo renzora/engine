@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{open_asset_tab, AssetDragPayload, DocTabKind};
@@ -29,7 +29,7 @@ use super::{material_path, MatCache, MatClearBtn, MatDropZone, MatEditBtn};
 pub(super) fn mat_slot_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    zones: Query<(&RelativeCursorPosition, &MatDropZone)>,
+    zones: Query<(&UiCursor, &MatDropZone)>,
     mut commands: Commands,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -219,7 +219,7 @@ pub(super) fn create_material_at(world: &mut World, entity: Entity, dir: &Path, 
 
 pub(super) fn mat_slot_drop_highlight(
     payload: Option<Res<AssetDragPayload>>,
-    mut zones: Query<(&RelativeCursorPosition, &mut BorderColor), With<MatDropZone>>,
+    mut zones: Query<(&UiCursor, &mut BorderColor), With<MatDropZone>>,
 ) {
     let mut exts: Vec<&str> = vec!["material"];
     exts.extend_from_slice(IMAGE_EXTENSIONS);

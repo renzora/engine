@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use bevy::window::SystemCursorIcon;
 use renzora::core::viewport_types::DropCursorRequest;
@@ -113,9 +113,9 @@ fn has_extension(path: &std::path::Path, exts: &[&str]) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn arm_hier_asset_drop(
     payload: Option<Res<AssetDragPayload>>,
-    rows: Query<(&RelativeCursorPosition, &HierRowArea)>,
-    pins: Query<(&RelativeCursorPosition, &HierPinClick)>,
-    roots: Query<&RelativeCursorPosition, With<HierRoot>>,
+    rows: Query<(&UiCursor, &HierRowArea)>,
+    pins: Query<(&UiCursor, &HierPinClick)>,
+    roots: Query<&UiCursor, With<HierRoot>>,
     over_overlay: Option<Res<PointerOverOverlay>>,
     wearers: Query<(Has<Mesh3d>, Has<Sprite>)>,
     children: Query<&Children>,

@@ -327,9 +327,11 @@ pub fn trimesh_from_mesh(mesh: &Mesh) -> Option<TriMeshData> {
         .map(|p| Vec3::new(p[0], p[1], p[2]))
         .collect();
     let indices: Vec<[u32; 3]> = match mesh.indices()? {
-        Indices::U32(idx) => idx.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect(),
+        Indices::U32(idx) => idx.as_chunks::<3>().0.to_vec(),
         Indices::U16(idx) => idx
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| [c[0] as u32, c[1] as u32, c[2] as u32])
             .collect(),
     };

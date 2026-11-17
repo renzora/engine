@@ -508,9 +508,9 @@ fn apply_xnode_to(
             host: ctx.host,
         });
         ec.insert(crate::game_ui::components::UiButton);
-        // `RelativeCursorPosition` is auto-updated by bevy_ui's focus system and
-        // gives the cursor's 0..1 position within the node — what the drag reads.
-        ec.insert(bevy::ui::RelativeCursorPosition::default());
+        // `UiCursor` is kept up to date from picking and gives the cursor's
+        // position within the node, which is what the drag reads.
+        ec.insert(crate::UiCursor::default());
     }
     // `image_fill="0.75"` — declare a textured fill with a starting fraction and
     // let something else drive it later, by writing `UiImageFill.value` from a
@@ -700,7 +700,7 @@ fn apply_xnode_to(
             drop_group: defs.get("drop_group").cloned(),
             on_drop: defs.get("on_drop").cloned(),
         });
-        ec.insert(bevy::ui::RelativeCursorPosition::default());
+        ec.insert(crate::UiCursor::default());
         ec.insert(UiInteraction::default());
     }
 

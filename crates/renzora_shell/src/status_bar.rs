@@ -237,7 +237,7 @@ fn theme_dropup(
             BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
             BorderColor::all(rgb(divider())),
             GlobalZIndex(600),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("theme-menu"),
         ))
         .id();
@@ -331,7 +331,7 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
             BorderColor::all(rgb(divider())),
             GlobalZIndex(600),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("language-menu"),
         ))
         .id();

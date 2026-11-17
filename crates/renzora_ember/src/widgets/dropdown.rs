@@ -263,7 +263,7 @@ fn build_dropdown(
             // unblocking menu let a click on an option also press whatever
             // control sat underneath it (a "Start over" button, say).
             crate::interaction::BLOCK,
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             Name::new("dropdown-menu"),
         ))
         .id();

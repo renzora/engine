@@ -3,7 +3,7 @@
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use super::drag_value::{WheelOverDragValue, GESTURE_GAP};
@@ -123,7 +123,7 @@ pub fn knob_pivoted(commands: &mut Commands, value: f32, pivot: f32) -> Entity {
             EmberKnob,
             Bound::<f32>(v),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
             Name::new("knob"),
         ))
@@ -132,7 +132,7 @@ pub fn knob_pivoted(commands: &mut Commands, value: f32, pivot: f32) -> Entity {
 
 /// User drag → write the model (`Bound<f32>`). The arc follows via [`knob_apply`].
 pub(crate) fn knob_drag(
-    mut knobs: Query<(&UiInteraction, &RelativeCursorPosition, &mut Bound<f32>), With<EmberKnob>>,
+    mut knobs: Query<(&UiInteraction, &UiCursor, &mut Bound<f32>), With<EmberKnob>>,
 ) {
     for (interaction, rcp, mut b) in &mut knobs {
         if *interaction != UiInteraction::Pressed {

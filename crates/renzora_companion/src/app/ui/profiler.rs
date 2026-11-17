@@ -6,10 +6,9 @@
 
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::*;
-use renzora_ember::UiInteraction;
+use renzora_ember::{UiCursor, UiInteraction};
 use renzora_profiler::{ProfileFrame, Span};
 
 use super::canvas::{spawn_canvas, CLabel, CRect, CanvasContent};
@@ -297,7 +296,7 @@ fn pan(view: &mut TimelineView, fraction: f64) {
 
 /// Wheel zoom around the pointer, Shift+wheel and drag to pan.
 fn timeline_input(
-    timeline: Query<(&RelativeCursorPosition, &UiInteraction), With<Timeline>>,
+    timeline: Query<(&UiCursor, &UiInteraction), With<Timeline>>,
     mut wheel: MessageReader<MouseWheel>,
     mut motion: MessageReader<MouseMotion>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -387,7 +386,7 @@ const LANE_DRAG_PX: f32 = 40.0;
 
 /// A click on the frame graph selects the frame under the pointer.
 fn graph_click(
-    graph: Query<(&RelativeCursorPosition, &UiInteraction, &super::canvas::Canvas), (With<FrameGraph>, Changed<UiInteraction>)>,
+    graph: Query<(&UiCursor, &UiInteraction, &super::canvas::Canvas), (With<FrameGraph>, Changed<UiInteraction>)>,
     capture: Res<Capture>,
     mut selected: ResMut<SelectedFrame>,
     mut view: ResMut<TimelineView>,

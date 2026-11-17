@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy::ui::widget::ImageNode;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::MaterialThumbnailRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -140,7 +140,7 @@ pub(super) fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: En
             },
             BackgroundColor(Color::NONE),
             BorderColor::all(Color::NONE),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             MatDropZone { entity },
             Name::new("material-slot"),
         ))

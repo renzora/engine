@@ -35,8 +35,11 @@ use itertools::Itertools;
 pub mod asset_loaders;
 #[cfg(feature = "avoidance")]
 pub mod avoidance;
+pub mod glam_bridge;
 mod obstacles;
 mod updater;
+
+use glam_bridge::{from_p, to_p};
 
 /// Prelude for imports
 pub mod prelude {
@@ -156,7 +159,7 @@ impl NavMesh {
         let vertices = get_vectors(mesh, Mesh::ATTRIBUTE_POSITION)
             .expect("can't extract a navmesh from a mesh without `Mesh::ATTRIBUTE_POSITION`")
             .map(|vertex| rotation_reverse.mul_vec3(vertex))
-            .map(|coords| coords.xy())
+            .map(|coords| to_p(coords.xy()))
             .collect();
 
         let triangles = mesh
@@ -196,6 +199,11 @@ impl NavMesh {
     ///
     /// Depending on the scale of your mesh, you should change the [`Self::search_delta`] value using [`Self::set_search_delta`].
     pub fn from_edge_and_obstacles(edges: Vec<Vec2>, obstacles: Vec<Vec<Vec2>>) -> NavMesh {
+        let edges: Vec<_> = edges.into_iter().map(to_p).collect();
+        let obstacles: Vec<Vec<_>> = obstacles
+            .into_iter()
+            .map(|o| o.into_iter().map(to_p).collect())
+            .collect();
         let mut triangulation = Triangulation::from_outer_edges(&edges);
         triangulation.add_obstacles(obstacles);
 
@@ -257,7 +265,7 @@ impl NavMesh {
     /// Asynchronously finds the shortest path between two points.
     #[inline]
     pub async fn get_path(&self, from: Vec2, to: Vec2) -> Option<Path> {
-        self.mesh.get_path(from, to).await
+        self.mesh.get_path(to_p(from), to_p(to)).await
     }
 
     /// Asynchronously finds the shortest path between two points.
@@ -266,14 +274,14 @@ impl NavMesh {
     pub async fn get_transformed_path(&self, from: Vec3, to: Vec3) -> Option<TransformedPath> {
         let inner_from = self.world_to_mesh().transform_point(from).xy();
         let inner_to = self.world_to_mesh().transform_point(to).xy();
-        let path = self.mesh.get_path(inner_from, inner_to).await;
+        let path = self.mesh.get_path(to_p(inner_from), to_p(inner_to)).await;
         path.map(|path| self.transform_path(path))
     }
 
     /// Finds the shortest path between two points.
     #[inline]
     pub fn path(&self, from: Vec2, to: Vec2) -> Option<Path> {
-        self.mesh.path(from, to)
+        self.mesh.path(to_p(from), to_p(to))
     }
 
     /// Finds the shortest path between two points.
@@ -282,7 +290,7 @@ impl NavMesh {
     pub fn transformed_path(&self, from: Vec3, to: Vec3) -> Option<TransformedPath> {
         let inner_from = self.world_to_mesh().transform_point(from).xy();
         let inner_to = self.world_to_mesh().transform_point(to).xy();
-        let path = self.mesh.path(inner_from, inner_to);
+        let path = self.mesh.path(to_p(inner_from), to_p(inner_to));
         path.map(|path| self.transform_path(path))
     }
 
@@ -291,7 +299,7 @@ impl NavMesh {
         let path_3d: Vec<Vec3> = path
             .path
             .into_iter()
-            .map(|coords| transform.transform_point(coords.extend(0.0)))
+            .map(|coords| transform.transform_point(from_p(coords).extend(0.0)))
             .collect();
         let length = path_3d.windows(2).map(|w| w[0].distance(w[1])).sum();
         TransformedPath {
@@ -309,12 +317,12 @@ impl NavMesh {
     /// Checks if a 3D point is within a navigable part of the mesh, using the [`NavMesh::transform`].
     pub fn transformed_is_in_mesh(&self, point: Vec3) -> bool {
         let point_in_navmesh = self.world_to_mesh().transform_point(point).xy();
-        self.mesh.point_in_mesh(point_in_navmesh)
+        self.mesh.point_in_mesh(to_p(point_in_navmesh))
     }
 
     /// Checks if a point is within a navigable part of the mesh.
     pub fn is_in_mesh(&self, point: Vec2) -> bool {
-        self.mesh.point_in_mesh(point)
+        self.mesh.point_in_mesh(to_p(point))
     }
 
     /// Retrieves the transform used to convert world coordinates into mesh coordinates.
@@ -342,7 +350,7 @@ impl NavMesh {
             self.mesh.layers[0]
                 .vertices
                 .iter()
-                .map(|v| v.coords.extend(0.0))
+                .map(|v| from_p(v.coords).extend(0.0))
                 .map(|coords| mesh_to_world.transform_point(coords).into())
                 .collect::<Vec<[f32; 3]>>(),
         );
@@ -471,7 +479,7 @@ pub fn display_layer_gizmo<T: bevy::gizmos::config::GizmoConfigGroup>(
             .iter()
             .filter(|i| **i != u32::MAX)
             .map(|i| {
-                (layer.vertices[*i as usize].coords * scale).extend(
+                (from_p(layer.vertices[*i as usize].coords) * scale).extend(
                     -layer
                         .heights()
                         .and_then(|h| h.get(*i as usize))
@@ -486,7 +494,7 @@ pub fn display_layer_gizmo<T: bevy::gizmos::config::GizmoConfigGroup>(
             let first = &layer.vertices[first_index];
             v.push(
                 mesh_to_world.transform_point(
-                    (first.coords * scale).extend(
+                    (from_p(first.coords) * scale).extend(
                         -layer
                             .heights()
                             .and_then(|h| h.get(first_index))
@@ -519,7 +527,7 @@ pub fn display_polygon_gizmo<T: bevy::gizmos::config::GizmoConfigGroup>(
         .iter()
         .filter(|i| **i != u32::MAX)
         .map(|i| {
-            (layer.vertices[*i as usize].coords * scale).extend(
+            (from_p(layer.vertices[*i as usize].coords) * scale).extend(
                 -layer
                     .heights()
                     .and_then(|h| h.get(*i as usize))
@@ -534,7 +542,7 @@ pub fn display_polygon_gizmo<T: bevy::gizmos::config::GizmoConfigGroup>(
         let first = &layer.vertices[first_index];
         v.push(
             mesh_to_world.transform_point(
-                (first.coords * scale).extend(
+                (from_p(first.coords) * scale).extend(
                     -layer
                         .heights()
                         .and_then(|h| h.get(first_index))

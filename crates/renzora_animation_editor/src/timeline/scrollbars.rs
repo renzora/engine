@@ -14,7 +14,8 @@
 //! `edit::ruler_drag` starts, and it turns a scrollbar's press away.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -66,7 +67,7 @@ pub(super) fn build_scrollbars(commands: &mut Commands) -> [Entity; 2] {
                 // Blocks, so a press on the bar never reaches the timeline
                 // widget's scrub surface underneath it.
                 BLOCK,
-                RelativeCursorPosition::default(),
+                UiCursor::default(),
                 HoverCursor(bevy::window::SystemCursorIcon::Default),
                 ScrollTrack(axis),
                 Name::new("timeline-scrollbar"),
@@ -209,7 +210,7 @@ pub(super) fn scrollbar_layout(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn scrollbar_drag(
     buttons: Res<ButtonInput<MouseButton>>,
-    tracks: Query<(&ScrollTrack, &RelativeCursorPosition, &ComputedNode, &Node)>,
+    tracks: Query<(&ScrollTrack, &UiCursor, &ComputedNode, &Node)>,
     state: Option<Res<AnimationEditorState>>,
     mut layout: ResMut<TrackLayout>,
     cache: Res<TimelineClip>,

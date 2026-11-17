@@ -17,7 +17,8 @@
 //! gives a scrollbar that fights the drag, which is worse than none.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_ember::theme::*;
 use renzora_ember::UiInteraction;
@@ -89,7 +90,7 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
                 BackgroundColor(rgb(panel_bg()).with_alpha(0.55)),
                 Visibility::Hidden,
                 ScrollBar { horizontal },
-                RelativeCursorPosition::default(),
+                UiCursor::default(),
                 UiInteraction::default(),
                 Name::new(if horizontal { "canvas-hscroll" } else { "canvas-vscroll" }),
             ))
@@ -186,7 +187,7 @@ fn position_scrollbars(
 
 /// Drag a thumb to pan.
 ///
-/// The cursor is read from the *track's* `RelativeCursorPosition` rather than
+/// The cursor is read from the *track's* `UiCursor` rather than
 /// the window, so the mapping is in track space and needs no knowledge of where
 /// the panel sits on screen.
 fn drag_thumbs(
@@ -194,7 +195,7 @@ fn drag_thumbs(
     mut drag: ResMut<ThumbDrag>,
     mut state: ResMut<NativeCanvasState>,
     area: Query<&ComputedNode, With<RulerArea>>,
-    bars: Query<(&ScrollBar, &ComputedNode, &RelativeCursorPosition)>,
+    bars: Query<(&ScrollBar, &ComputedNode, &UiCursor)>,
     thumbs: Query<(&ScrollThumb, &UiInteraction)>,
 ) {
     if !mouse.pressed(MouseButton::Left) {

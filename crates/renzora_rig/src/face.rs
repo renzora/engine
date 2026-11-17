@@ -353,9 +353,9 @@ fn mouth_pieces(frame: &FaceFrame, m: &FaceMarkers, s: &Surface) -> Vec<Option<b
     let height_of = |p: Vec3| p.dot(frame.up) - line;
     // Per piece: lowest, highest, and summed height.
     let mut pieces: std::collections::HashMap<usize, (f32, f32, f32, usize)> = std::collections::HashMap::new();
-    for i in 0..n {
+    for (i, &p) in s.positions.iter().enumerate() {
         let root = find(&mut parent, i);
-        let h = height_of(s.positions[i]);
+        let h = height_of(p);
         let e = pieces.entry(root).or_insert((f32::MAX, f32::MIN, 0.0, 0));
         *e = (e.0.min(h), e.1.max(h), e.2 + h, e.3 + 1);
     }
@@ -405,8 +405,8 @@ fn mouth_pieces(frame: &FaceFrame, m: &FaceMarkers, s: &Surface) -> Vec<Option<b
     let cell = |p: Vec3| ((p.x / near).floor() as i64, (p.y / near).floor() as i64, (p.z / near).floor() as i64);
     {
         let mut by_cell: std::collections::HashMap<(i64, i64, i64), Vec<usize>> = std::collections::HashMap::new();
-        for i in 0..n {
-            by_cell.entry(cell(s.positions[i])).or_default().push(i);
+        for (i, &p) in s.positions.iter().enumerate() {
+            by_cell.entry(cell(p)).or_default().push(i);
         }
         let size = |r: usize| pieces.get(&r).map_or(0, |p| p.3);
         let mut order: Vec<usize> = pieces.keys().copied().collect();
@@ -549,7 +549,7 @@ fn mouth_decisions(glb: &Glb, frame: &FaceFrame, m: &FaceMarkers) -> Result<std:
             let base = first as u32;
             positions.extend(pts.iter().map(|p| world[node].transform_point3(*p)));
             match glb.indices(mesh, prim)? {
-                Some(idx) => triangles.extend(idx.chunks_exact(3).map(|t| [t[0] + base, t[1] + base, t[2] + base])),
+                Some(idx) => triangles.extend(idx.as_chunks::<3>().0.iter().map(|t| [t[0] + base, t[1] + base, t[2] + base])),
                 None => triangles.extend((0..pts.len() as u32 / 3).map(|t| [base + t * 3, base + t * 3 + 1, base + t * 3 + 2])),
             }
             spans.push(((mesh, prim), first, positions.len()));
@@ -745,7 +745,7 @@ fn skin_triangles(glb: &Glb) -> Result<Vec<[Vec3; 3]>, GlbError> {
                 Some(idx) => idx,
                 None => (0..pts.len() as u32).collect(),
             };
-            out.extend(idx.chunks_exact(3).filter_map(|t| Some([*pts.get(t[0] as usize)?, *pts.get(t[1] as usize)?, *pts.get(t[2] as usize)?])));
+            out.extend(idx.as_chunks::<3>().0.iter().filter_map(|t| Some([*pts.get(t[0] as usize)?, *pts.get(t[1] as usize)?, *pts.get(t[2] as usize)?])));
         }
     }
     Ok(out)

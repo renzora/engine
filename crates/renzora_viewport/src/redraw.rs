@@ -279,7 +279,7 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         redraw.reported = None;
     } else {
         redraw.awake_for += 1;
-        let due = redraw.awake_for % NEVER_IDLE_FRAMES == 0;
+        let due = redraw.awake_for.is_multiple_of(NEVER_IDLE_FRAMES);
         let new_cause = redraw.reported.as_deref() != Some(redraw.last_reason.as_str());
         if due && new_cause && !playing && demand.continuous.is_none() {
             redraw.reported = Some(redraw.last_reason.clone());

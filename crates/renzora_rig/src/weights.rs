@@ -105,7 +105,7 @@ pub fn surface_raw(positions: &[Vec3], indices: &[u32], bones: &[Segment], sharp
     }
     let m = nodes.len();
     let mut adj: Vec<Vec<(u32, f32)>> = vec![Vec::new(); m];
-    for tri in indices.chunks_exact(3) {
+    for tri in indices.as_chunks::<3>().0 {
         for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
             let (Some(&x), Some(&y)) = (node_of.get(a as usize), node_of.get(b as usize)) else { continue };
             if x == y || adj[x].iter().any(|(k, _)| *k as usize == y) {
@@ -189,7 +189,7 @@ fn merge(raw: Vec<(usize, f32)>) -> Vec<(usize, f32)> {
 /// Which vertices share an edge with which, from a triangle list.
 pub fn adjacency(indices: &[u32], vertex_count: usize) -> Vec<Vec<u32>> {
     let mut adj: Vec<Vec<u32>> = vec![Vec::new(); vertex_count];
-    for tri in indices.chunks_exact(3) {
+    for tri in indices.as_chunks::<3>().0 {
         for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
             let (ai, bi) = (a as usize, b as usize);
             if ai >= vertex_count || bi >= vertex_count {

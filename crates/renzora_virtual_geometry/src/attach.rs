@@ -248,7 +248,7 @@ fn probe(asset_server: &AssetServer, model: &AssetPath<'static>) -> FileState {
         let Ok(source) = server.get_source(source) else {
             return false;
         };
-        source.reader().read(rvg.path()).await.is_ok()
+        source.reader().read(rvg.path_cow()).await.is_ok()
     }))
 }
 

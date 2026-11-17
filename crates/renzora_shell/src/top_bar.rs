@@ -8,7 +8,8 @@
 //! action. This bar is on screen in every workspace.
 
 use bevy::prelude::*;
-use bevy::ui::{BackgroundGradient, RelativeCursorPosition};
+use bevy::ui::BackgroundGradient;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{glyph, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -150,7 +151,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     );
     commands
         .entity(ribbon)
-        .insert((WorkspaceDropZone, RelativeCursorPosition::default()));
+        .insert((WorkspaceDropZone, UiCursor::default()));
     renzora_ember::reactive::tracked::keyed_list(commands, ribbon, ribbon_snapshot);
     let add = commands
         .spawn((
@@ -165,7 +166,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
             UiInteraction::default(),
             WorkspaceAddBtn,
             WorkspaceDropZone,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("workspace-add"),
         ))

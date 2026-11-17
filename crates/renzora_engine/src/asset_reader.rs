@@ -12,6 +12,7 @@
 use bevy::asset::io::{
     AssetReader, AssetReaderError, AssetSourceBuilder, AssetSourceId, PathStream, Reader, VecReader,
 };
+use bevy::asset::CowArc;
 use bevy::prelude::*;
 use renzora_rpak::RpakArchive;
 use std::path::{Path, PathBuf};
@@ -201,7 +202,8 @@ impl EmbeddedAssetReader {
 }
 
 impl AssetReader for EmbeddedAssetReader {
-    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read<'a>(&'a self, path: CowArc<'a, Path>) -> Result<impl Reader + 'a, AssetReaderError> {
+        let path: &Path = &path;
         // 1. Absolute paths — used for project assets (drag-and-drop, scene loads, etc.)
         if path.is_absolute() {
             if let Ok(bytes) = std::fs::read(path) {
@@ -252,7 +254,7 @@ impl AssetReader for EmbeddedAssetReader {
         Err(AssetReaderError::NotFound(path.to_path_buf()))
     }
 
-    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read_meta<'a>(&'a self, path: CowArc<'a, Path>) -> Result<impl Reader + 'a, AssetReaderError> {
         Err::<VecReader, _>(AssetReaderError::NotFound(path.to_path_buf()))
     }
 

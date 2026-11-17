@@ -22,7 +22,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 
 use crate::reactive::Rx;
 use crate::font::{ui_font, EmberFonts};
@@ -350,7 +350,7 @@ fn color_field_anchored(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             GlobalZIndex(700),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("color-panel"),
         ))
         .id();
@@ -460,7 +460,7 @@ pub fn color_field_rgba(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             GlobalZIndex(700),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("color-panel-rgba"),
         ))
         .id();

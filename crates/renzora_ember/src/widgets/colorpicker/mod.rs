@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
@@ -90,7 +90,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
             PickerData { mode: 0.0, hue },
             PickerSquare { root },
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("sv-square"),
         ))
@@ -126,7 +126,7 @@ pub fn hsv_picker(commands: &mut Commands, hue: f32, s: f32, v: f32) -> Entity {
             PickerData { mode: 1.0, hue: 0.0 },
             PickerHue { root },
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("hue-strip"),
         ))
@@ -221,8 +221,8 @@ fn apply_picker(
 }
 
 fn hsv_drag(
-    squares: Query<(&UiInteraction, &RelativeCursorPosition, &PickerSquare)>,
-    hues: Query<(&UiInteraction, &RelativeCursorPosition, &PickerHue)>,
+    squares: Query<(&UiInteraction, &UiCursor, &PickerSquare)>,
+    hues: Query<(&UiInteraction, &UiCursor, &PickerHue)>,
     mut pickers: Query<&mut HsvPicker>,
     mut datas: Query<&mut PickerData>,
     mut nodes: Query<&mut Node>,

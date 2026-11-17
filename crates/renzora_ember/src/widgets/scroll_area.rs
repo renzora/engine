@@ -9,7 +9,8 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::theme::{border, rgb, text_muted, text_primary};
@@ -135,7 +136,7 @@ pub struct ScrollThumb {
 /// panel, or out of the window entirely — like a real scrollbar.
 ///
 /// The old drag rode `UiInteraction::Pressed` on the thumb plus the track's
-/// `RelativeCursorPosition`; both drop the moment the cursor leaves the node, so
+/// `UiCursor`; both drop the moment the cursor leaves the node, so
 /// a quick flick or a drag that strayed out of the panel would let go of the
 /// thumb. Latching here and driving the offset from a [`GlobalCursor`] delta —
 /// the same physical-space capture the dock's divider drag uses — keeps the
@@ -186,7 +187,7 @@ impl ScrollbarBusy {
 pub(crate) fn scrollbar_busy(
     dragged: Res<DraggedThumb>,
     mouse: Res<ButtonInput<MouseButton>>,
-    tracks: Query<(&RelativeCursorPosition, &Node), With<ScrollTrack>>,
+    tracks: Query<(&UiCursor, &Node), With<ScrollTrack>>,
     mut busy: ResMut<ScrollbarBusy>,
 ) {
     let over_track = mouse.pressed(MouseButton::Left)
@@ -249,7 +250,7 @@ fn build_scroll(
                 },
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             ScrollPosition::default(),
             Name::new("scroll-viewport"),
         ))
@@ -272,7 +273,7 @@ fn build_scroll(
                 ..default()
             },
             BackgroundColor(rgb(border()).with_alpha(0.5)),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             ScrollTrack,
             // Local ZIndex (not Global) so the bar sits above the content but
             // stays within its modal/panel stacking context — a GlobalZIndex
@@ -323,7 +324,7 @@ fn build_scroll(
                     ..default()
                 },
                 BackgroundColor(rgb(border()).with_alpha(0.5)),
-                RelativeCursorPosition::default(),
+                UiCursor::default(),
                 ScrollTrack,
                 ZIndex(50),
                 Name::new("scroll-track-h"),
@@ -493,7 +494,7 @@ pub(crate) fn scroll_wheel(
     config: Res<ScrollConfig>,
     // 0.19: the UI stack index moved off `ComputedNode` into its own
     // `ComputedStackIndex(u32)` component.
-    mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
+    mut areas: Query<(Entity, &UiCursor, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
     overlays: OverlayQuery,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
@@ -534,7 +535,7 @@ type OverlayQuery<'w, 's> = Query<
     's,
     (
         Entity,
-        &'static RelativeCursorPosition,
+        &'static UiCursor,
         &'static bevy::ui::ComputedStackIndex,
         &'static Node,
     ),
@@ -558,7 +559,7 @@ type OverlayQuery<'w, 's> = Query<
 /// tree's stacking order than the floating overlay.
 fn hovered_scroll_area<'a>(
     candidates: impl Iterator<
-        Item = (Entity, &'a RelativeCursorPosition, &'a bevy::ui::ComputedStackIndex, bool),
+        Item = (Entity, &'a UiCursor, &'a bevy::ui::ComputedStackIndex, bool),
     >,
     overlays: &OverlayQuery,
     modals: &Query<Entity, With<super::overlay::ModalSurface>>,
@@ -609,7 +610,7 @@ pub(crate) fn scroll_arrow_keys(
     menu: Res<super::menu_nav::MenuHasKeys>,
     inputs: Query<&super::text_input::EmberTextInput>,
     editors: Query<&super::code_editor::CodeEditor>,
-    mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
+    mut areas: Query<(Entity, &UiCursor, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
     overlays: OverlayQuery,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
@@ -651,7 +652,7 @@ pub(crate) fn scroll_middle_drag(
     cursor: Res<crate::dock::GlobalCursor>,
     mut areas: Query<(
         Entity,
-        &RelativeCursorPosition,
+        &UiCursor,
         &bevy::ui::ComputedStackIndex,
         &ComputedNode,
         &mut EmberScroll,

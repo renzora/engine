@@ -18,7 +18,8 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora::{euler_slope_of_quat_tangent, quat_to_euler_deg, wrap_deg_near, ChannelSpline, Interp, KeyMode, TrackValue};
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -879,7 +880,7 @@ pub(super) fn curves_hover(world: &mut World) {
             return None;
         }
         let p = {
-            let mut q = world.query_filtered::<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>();
+            let mut q = world.query_filtered::<(&UiCursor, &ComputedNode), With<KeyLane>>();
             let (rcp, cn) = q.iter(world).next()?;
             if !rcp.cursor_over {
                 return None;

@@ -196,7 +196,7 @@ fn drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Ent
             },
             BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.02)),
             BorderColor::all(rgb(border())),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             DropZone { entity },
             Name::new("post-effects-drop"),
         ))
@@ -433,7 +433,7 @@ fn drop_effect(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    zones: Query<(&bevy::ui::RelativeCursorPosition, &DropZone)>,
+    zones: Query<(&renzora_ember::UiCursor, &DropZone)>,
     cmds: Option<Res<EditorCommands>>,
     mut cache: Local<EffectFileCache>,
 ) {
@@ -471,7 +471,7 @@ fn drop_effect(
 /// the same test as [`drop_effect`], so it never lights for a drop it refuses.
 fn drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor), With<DropZone>>,
+    mut zones: Query<(&renzora_ember::UiCursor, &mut BorderColor), With<DropZone>>,
     mut cache: Local<EffectFileCache>,
 ) {
     if payload.is_none() {

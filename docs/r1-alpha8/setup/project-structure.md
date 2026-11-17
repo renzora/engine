@@ -37,7 +37,7 @@ engine/
 └── docs/                   # in-repo engine docs (markdown)
 ```
 
-> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.97.1`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Building from Source](/docs/r1-alpha8/setup/building-from-source)).
+> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.100.0`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Building from Source](/docs/r1-alpha8/setup/building-from-source)).
 
 ## The workspace member globs
 

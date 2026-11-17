@@ -5,7 +5,8 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
@@ -87,7 +88,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { height: Val::Percent(100.0), aspect_ratio: Some(1.0), ..default() },
             BackgroundColor(Color::srgb(0.05, 0.05, 0.08)),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OrbitTarget,
             Name::new("material-preview-image"),
         ))
@@ -124,7 +125,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             ShapeCombo,
         ))
         .id();
@@ -223,7 +224,7 @@ fn mat_btn_click(q: Query<(&UiInteraction, &MatBtn), Changed<UiInteraction>>, or
 }
 
 fn shape_combo_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<ShapeCombo>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode), (With<ShapeCombo>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     source: Option<Res<MaterialPreviewSource>>,
@@ -294,7 +295,7 @@ fn orbit_pan(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut last: Local<Option<Vec2>>,
-    q: Query<&RelativeCursorPosition, With<OrbitTarget>>,
+    q: Query<&UiCursor, With<OrbitTarget>>,
     orbit: Option<ResMut<MaterialPreviewOrbit>>,
 ) {
     if !mouse.pressed(MouseButton::Right) {
@@ -326,7 +327,7 @@ fn orbit_pan(
     *last = Some(c);
 }
 
-fn orbit_zoom(mut wheel: MessageReader<MouseWheel>, q: Query<&RelativeCursorPosition, With<OrbitTarget>>, orbit: Option<ResMut<MaterialPreviewOrbit>>) {
+fn orbit_zoom(mut wheel: MessageReader<MouseWheel>, q: Query<&UiCursor, With<OrbitTarget>>, orbit: Option<ResMut<MaterialPreviewOrbit>>) {
     let mut dy = 0.0;
     for ev in wheel.read() {
         dy += ev.y;

@@ -17,9 +17,10 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, keyed_list};
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
@@ -207,7 +208,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, view: Entity) -> E
     commands.entity(file).add_children(&[glyph, name, dirty]);
 
     let add = tool_button(commands, fonts, "plus", Some("Add Node"), "Add a node (or right-click the graph)", false);
-    commands.entity(add).insert((ToolAction::AddNode, RelativeCursorPosition::default()));
+    commands.entity(add).insert((ToolAction::AddNode, UiCursor::default()));
     let comment = tool_button(commands, fonts, "chat-text", Some("Comment"), "Group the selected nodes in a comment box (C)", false);
     commands.entity(comment).insert(ViewOpBtn { op: ViewOp::Comment, view });
     let save = tool_button(commands, fonts, "floppy-disk", Some("Save"), "Write the graph to its file (Ctrl+S)", false);
@@ -590,7 +591,7 @@ fn toolbar_click(q: Query<(&UiInteraction, &ToolAction), Changed<UiInteraction>>
 }
 
 fn add_node_open(
-    q: Query<(&UiInteraction, &ToolAction, &RelativeCursorPosition, &ComputedNode), Changed<UiInteraction>>,
+    q: Query<(&UiInteraction, &ToolAction, &UiCursor, &ComputedNode), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,

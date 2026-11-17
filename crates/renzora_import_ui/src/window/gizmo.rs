@@ -19,12 +19,13 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform};
+use bevy::ui::UiTransform;
 
 use renzora::core::viewport_types::{
     AXIS_NEG_X, AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
@@ -212,7 +213,7 @@ fn build_gizmo(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // The node is replaced by `build`, which places it; this is only
             // here so the entity has one before its children are attached.
             Node::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlaySurface,
             UiInteraction::default(),
             // The preview camera reads its own node's `UiInteraction` to decide

@@ -203,7 +203,7 @@ fn rgba8_bytes_for_encoding(image: &Image) -> Option<(u32, u32, Vec<u8>)> {
     ) {
         let data = image.data.as_ref()?;
         let mut rgba = data.clone();
-        for px in rgba.chunks_exact_mut(4) {
+        for px in rgba.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
         return Some((w, h, rgba));

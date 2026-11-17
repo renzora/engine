@@ -1064,12 +1064,12 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
 pub struct EditorDropZone;
 
 /// Make `entity` (a native panel's content root) an asset-drop target: inserts
-/// the [`EditorDropZone`] marker plus a `RelativeCursorPosition` so the drop
-/// system can hit-test the cursor against it.
+/// the [`EditorDropZone`] marker plus a `UiCursor` so the drop system can
+/// hit-test the cursor against it.
 pub fn mark_drop_zone(commands: &mut Commands, entity: Entity) {
     commands
         .entity(entity)
-        .insert((EditorDropZone, bevy::ui::RelativeCursorPosition::default()));
+        .insert((EditorDropZone, renzora_ember::UiCursor::default()));
 }
 
 /// Map a file path to the document-tab kind it opens as, or `None` for files
@@ -1107,7 +1107,7 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
 fn editor_panel_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    zones: Query<&bevy::ui::RelativeCursorPosition, With<EditorDropZone>>,
+    zones: Query<&renzora_ember::UiCursor, With<EditorDropZone>>,
     cmds: Option<Res<EditorCommands>>,
     mut commands: Commands,
 ) {

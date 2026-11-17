@@ -18,7 +18,7 @@
 //! next: `cinder` (particle UI).
 
 use bevy::prelude::*;
-use bevy::ui::{CalculatedClip, ComputedStackIndex, RelativeCursorPosition, UiSystems};
+use bevy::ui::{CalculatedClip, ComputedStackIndex, UiSystems};
 use bevy::window::PrimaryWindow;
 
 use widgets::{ModalSurface, OverlaySurface};
@@ -34,6 +34,8 @@ pub mod inspector;
 /// Hovered / pressed state from Bevy's picking: [`UiInteraction`].
 pub mod interaction;
 pub use interaction::UiInteraction;
+pub mod ui_cursor;
+pub use ui_cursor::UiCursor;
 // The in-game `.html` UI runtime. Gated so the lean export can drop it (and its
 // `renzora_game_ui` + `bevy_hui` deps) for a game with no markup UI. Its
 // `MarkupPlugin` self-registers via `renzora::add!`, so gating the module out
@@ -85,14 +87,16 @@ impl Plugin for EmberPlugin {
         // module. (When markup IS present, it no longer installs them.)
         cursor_icon::plugin(app);
         icons::plugin(app);
+        // Each node's mouse position, from picking; see `ui_cursor`.
+        ui_cursor::plugin(app);
         // Hidden menus would otherwise lay their text out every frame at any UI
         // scale but 100%: see `hidden_text`.
         hidden_text::plugin(app);
         // Bevy never frees a font atlas; free the ones no text uses any more.
         font_atlas_cleanup::plugin(app);
         // Correct pointer state (clip + occlusion): see `correct_pointer_state`.
-        // Runs right after `UiSystems::Focus` (where `UiInteraction` is derived
-        // and `RelativeCursorPosition` written) so every consumer reads the
+        // Runs right after `UiSystems::Focus` (where `UiInteraction` and
+        // `UiCursor` are derived from picking) so every consumer reads the
         // corrected values.
         app.add_systems(PreUpdate, correct_pointer_state.after(UiSystems::Focus));
         // Then the "a resize gesture is in flight" flag, off the corrected state.
@@ -102,7 +106,7 @@ impl Plugin for EmberPlugin {
     }
 }
 
-/// Fix two gaps in Bevy 0.19's pointer hit-testing — **clipping** and
+/// Fix two gaps in Bevy's pointer hit-testing — **clipping** and
 /// **occlusion** — so a click or wheel can never land on a widget the user can't
 /// actually see/reach, and never fires in two places at once.
 ///
@@ -115,23 +119,23 @@ impl Plugin for EmberPlugin {
 ///    out of view. `CalculatedClip` does NOT have this gap (`update_clipping`
 ///    inherits it through visible nodes), so we re-test against it.
 ///
-/// 2. **Occlusion.** An overlay blocks picking, so nodes behind it are not
-///    hovered, but their `RelativeCursorPosition` (pure geometry) still says
-///    `cursor_over`. Every panel-level wheel/drag handler (timeline zoom,
-///    code-editor scroll, canvas zoom, …) gates on `cursor_over`, so they all
-///    fire *through* an open dropdown/menu/modal onto the panel behind it. We
-///    clear `cursor_over` (and `UiInteraction`) for any node sitting below the
-///    topmost overlay/modal under the cursor that the node isn't part of — so
-///    those handlers stand down without each needing its own overlay check.
+/// 2. **Occlusion.** A blocking overlay keeps the nodes behind it out of
+///    picking's hover map, so their [`UiCursor`] already reads not-over. An
+///    overlay that lets the pointer through (a pass-through menu layer) does
+///    not, and every panel-level wheel/drag handler (timeline zoom,
+///    code-editor scroll, canvas zoom, …) gates on `cursor_over`, so they
+///    would fire *through* an open dropdown/menu/modal onto the panel behind
+///    it. We clear `cursor_over` (and `UiInteraction`) for any node sitting
+///    below the topmost overlay/modal under the cursor that the node isn't
+///    part of — so those handlers stand down without each needing its own
+///    overlay check.
 ///
 /// Both `CalculatedClip` (PostUpdate) and the cursor are physical, window-global
-/// pixels, the same basis `ui_focus_system` read when it wrote
-/// `RelativeCursorPosition` a frame earlier. Only nodes
-/// that currently carry pointer state are inspected, so the per-frame cost is the
-/// handful of nodes actually under the cursor.
+/// pixels. Only nodes that currently carry pointer state are inspected, so the
+/// per-frame cost is the handful of nodes actually under the cursor.
 fn correct_pointer_state(
     windows: Query<&Window, With<PrimaryWindow>>,
-    // A `ParamSet`: the blocker query reads `RelativeCursorPosition` while the
+    // A `ParamSet`: the blocker query reads `UiCursor` while the
     // node query writes it, and an overlay entity is in both — so they alias and
     // must not be borrowed at once. We read `p0` to pick the blocker, then write
     // through `p1`.
@@ -142,7 +146,7 @@ fn correct_pointer_state(
         Query<
             (
                 Entity,
-                Option<&RelativeCursorPosition>,
+                Option<&UiCursor>,
                 &ComputedStackIndex,
                 &Node,
                 Has<ModalSurface>,
@@ -154,11 +158,11 @@ fn correct_pointer_state(
             (
                 Entity,
                 Option<&mut UiInteraction>,
-                Option<&mut RelativeCursorPosition>,
+                Option<&mut UiCursor>,
                 &ComputedStackIndex,
                 Option<&CalculatedClip>,
             ),
-            Or<(With<UiInteraction>, With<RelativeCursorPosition>)>,
+            Or<(With<UiInteraction>, With<UiCursor>)>,
         >,
     )>,
     parents: Query<&ChildOf>,

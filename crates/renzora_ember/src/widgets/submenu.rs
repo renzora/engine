@@ -22,7 +22,8 @@ use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform};
+use crate::UiCursor;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
@@ -223,7 +224,7 @@ pub fn menu_submenu_parts(
             // root does it: a menu torn down the same frame would leave the
             // deferred insert operating on a dead entity.
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             // Editor chrome, not scene content — a menu open when autosave fires
             // must not be serialized into the scene.
             renzora::HideInHierarchy,
@@ -241,7 +242,7 @@ pub fn menu_submenu_parts(
 /// menu alone when the click landed in one of its submenus (which floats outside
 /// the root's own rect, so the root reads as "not hovered").
 pub(crate) fn cursor_over_submenu(
-    panels: &Query<(&RelativeCursorPosition, &Node), With<SubPanel>>,
+    panels: &Query<(&UiCursor, &Node), With<SubPanel>>,
 ) -> bool {
     panels
         .iter()
@@ -253,7 +254,7 @@ pub(crate) fn cursor_over_submenu(
 pub(crate) fn submenu_reveal(
     windows: Query<&Window, With<PrimaryWindow>>,
     rows: Query<(Entity, &UiInteraction, &SubmenuRow)>,
-    panels: Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+    panels: Query<(&UiCursor, &ComputedNode, &SubPanel)>,
     parents: Query<&ChildOf>,
     // `UiGlobalTransform`, not `GlobalTransform`: bevy 0.19's layout writes the
     // node's placement here, and a UI node's `GlobalTransform` just sits at the
@@ -389,7 +390,7 @@ fn panel_rect(node: &Node, cn: &ComputedNode) -> Option<Rect> {
 fn nesting_depth(
     row: Entity,
     parents: &Query<&ChildOf>,
-    panels: &Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+    panels: &Query<(&UiCursor, &ComputedNode, &SubPanel)>,
 ) -> i32 {
     let mut depth = 0;
     let mut cur = row;
@@ -409,7 +410,7 @@ fn nesting_depth(
 fn owner_row(
     mut e: Entity,
     parents: &Query<&ChildOf>,
-    panels: &Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+    panels: &Query<(&UiCursor, &ComputedNode, &SubPanel)>,
 ) -> Option<Entity> {
     while let Ok(child_of) = parents.get(e) {
         let parent = child_of.parent();

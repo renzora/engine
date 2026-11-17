@@ -4,7 +4,8 @@ use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::text::TextLayoutInfo;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::reactive::Rx;
@@ -192,7 +193,7 @@ fn build_input(
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
             // Needed to map a click's x to a caret index (code-editor technique).
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             SingleLineInput,
             Styled::new(Role::Input),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
@@ -401,7 +402,7 @@ pub(crate) fn text_input_focus(
         &mut EmberTextInput,
         &mut Styled,
         &ComputedNode,
-        Option<&RelativeCursorPosition>,
+        Option<&UiCursor>,
     )>,
     // Last press: which input it landed on (if any) + when, for double-click detection.
     mut last_click: Local<Option<(Entity, f32)>>,
@@ -481,7 +482,7 @@ fn wipe_selection(inp: &mut EmberTextInput, range: Option<(usize, usize)>, idx: 
     inp.sel_anchor = None;
 }
 
-/// Char index under the cursor, from the box's [`RelativeCursorPosition`] and
+/// Char index under the cursor, from the box's [`UiCursor`] and
 /// the measured advance — the same hit-test `text_input_focus` uses for clicks.
 /// Clamped to `0..=len`, including while the cursor is dragged outside the box
 /// (normalized keeps extrapolating, which is what lets a drag select to the
@@ -522,7 +523,7 @@ pub(crate) fn text_input_drag_select(
             &UiInteraction,
             &mut EmberTextInput,
             &ComputedNode,
-            &RelativeCursorPosition,
+            &UiCursor,
         ),
         With<SingleLineInput>,
     >,

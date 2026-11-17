@@ -312,7 +312,7 @@ Deliberately not a path list in the test: a list rots the moment a file is renam
 
 ## Press guards — what else sits over your content
 
-A panel that acts on a press in its *empty* space — clear the selection, start a rubber-band sweep, begin a drag — usually decides "was this press mine?" geometrically, by testing `RelativeCursorPosition::cursor_over` on its content node. That test is pure geometry: it knows the cursor is inside your rect, not whether something was drawn on top of it. Two editor widgets are drawn on top of every panel's rect, so a press on either one reads as a press on your empty content unless you say otherwise:
+A panel that acts on a press in its *empty* space — clear the selection, start a rubber-band sweep, begin a drag — usually decides "was this press mine?" by testing `UiCursor::cursor_over` (`renzora_ember::UiCursor`) on its content node. That comes from picking: true when the pointer is over the node or anything inside it, false under an overlay that blocks the pointer. It does not know about widgets that pass the pointer through, and two editor widgets are drawn on top of every panel's rect, so a press on either one reads as a press on your empty content unless you say otherwise:
 
 | Resource | Set while | Import |
 |---|---|---|
@@ -324,7 +324,7 @@ The divider is the surprising one. Its visible line is 1px but its grab strip is
 ```rust
 fn my_empty_press(
     mouse: Res<ButtonInput<MouseButton>>,
-    content: Query<&RelativeCursorPosition, With<MyContentArea>>,
+    content: Query<&UiCursor, With<MyContentArea>>,
     scrollbar: Res<ScrollbarBusy>,
     resizing: Res<ResizeBusy>,
 ) {

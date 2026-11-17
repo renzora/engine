@@ -63,7 +63,7 @@ pub fn toolbar_bar(commands: &mut Commands, name: &str) -> Entity {
         },
         BackgroundColor(rgb(panel_bg())),
         BorderColor::all(rgb(divider())),
-        bevy::ui::RelativeCursorPosition::default(),
+        crate::UiCursor::default(),
         OverlaySurface,
     ));
     // Track the live theme — the colours set above only cover the first frame,

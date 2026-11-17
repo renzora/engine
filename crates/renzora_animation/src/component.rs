@@ -62,7 +62,7 @@ impl AnimClipSlot {
 
 /// Scene-persistent component that defines which animation clips an entity has.
 ///
-/// Attach this to a GLTF model entity. The runtime will build an AnimationGraph,
+/// Attach this to a GLTF model entity. The runtime will build an BlendGraph,
 /// locate the AnimationPlayer in children, and drive playback.
 #[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -147,13 +147,13 @@ pub struct AnimatorState {
     pub is_paused: bool,
     /// Loaded clip handles keyed by slot name.
     pub clip_handles: HashMap<String, Handle<AnimationClip>>,
-    /// Base node index in the AnimationGraph per clip name. The same nodes as
+    /// Base node index in the BlendGraph per clip name. The same nodes as
     /// `layout.base`, kept as its own map because the editor preview reads it.
-    pub node_indices: HashMap<String, AnimationNodeIndex>,
+    pub node_indices: HashMap<String, BlendNodeIndex>,
     /// Every clip node of the graph by role.
     pub layout: GraphLayout,
-    /// The AnimationGraph handle assigned to the player.
-    pub graph_handle: Option<Handle<AnimationGraph>>,
+    /// The BlendGraph handle assigned to the player.
+    pub graph_handle: Option<Handle<BlendGraph>>,
     /// The entity that has the AnimationPlayer (found in children).
     pub player_entity: Option<Entity>,
     /// Whether initialization is complete.
@@ -208,7 +208,7 @@ pub struct AnimatorState {
     /// One per layer, in layer order.
     pub layer_controllers: Vec<LayerController>,
     /// Per-node playback cursors for markers and root motion.
-    pub cursors: HashMap<AnimationNodeIndex, NodeCursor>,
+    pub cursors: HashMap<BlendNodeIndex, NodeCursor>,
     /// Slots whose markers are muted this frame (the lighter clips of a tree).
     pub marker_suppressed: Vec<String>,
     /// The root bone entity and its name, once found.

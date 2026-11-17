@@ -347,7 +347,7 @@ fn vertex_axes(mesh: &Mesh, scale: Vec3) -> Option<(Vec<Option<usize>>, bool)> {
 
     let mut axes: Vec<Option<usize>> = vec![None; positions.len()];
     let mut conflict = false;
-    for tri in indices.chunks_exact(3) {
+    for tri in indices.as_chunks::<3>().0 {
         if tri.iter().any(|&i| i >= positions.len()) {
             return None;
         }

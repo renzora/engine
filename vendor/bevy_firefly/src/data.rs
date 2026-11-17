@@ -1,5 +1,3 @@
-use std::usize;
-
 use bevy::{
     camera::visibility::RenderLayers,
     color::palettes::css::WHITE,

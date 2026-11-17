@@ -27,9 +27,10 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_with, keyed_list};
@@ -476,7 +477,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let (cat_btn, cat_label) = pill(commands, fonts, Some("funnel"), "");
     // Not a ConsoleBtn: it opens a menu, so it gets its own marker instead.
-    commands.entity(cat_btn).insert((CategoryBtn, RelativeCursorPosition::default()));
+    commands.entity(cat_btn).insert((CategoryBtn, UiCursor::default()));
     commands.entity(cat_btn).entry::<Node>().and_modify(|mut n| n.border_radius = BorderRadius::all(Val::Px(6.0)));
     bind_bg(commands, cat_btn, move |w| match w.get::<UiInteraction>(cat_btn) {
         Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
@@ -1217,7 +1218,7 @@ pub(crate) fn console_entity_chips(
 
 /// The category button opens a menu of every category seen, each ticked while
 /// shown; picking one shows or hides it.
-type CategoryTrigger<'a> = (&'a UiInteraction, &'a RelativeCursorPosition, &'a ComputedNode);
+type CategoryTrigger<'a> = (&'a UiInteraction, &'a UiCursor, &'a ComputedNode);
 
 pub(crate) fn console_category_menu(
     q: Query<CategoryTrigger, (With<CategoryBtn>, Changed<UiInteraction>)>,

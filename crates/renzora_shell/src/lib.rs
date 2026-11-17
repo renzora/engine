@@ -22,7 +22,7 @@
 //! - [`panels`] — panel titles, icons and content dispatch
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::dock::{Dock, DockArea, DockDirty};
 use renzora_ember::font::{icon_text, EmberFonts};
@@ -669,12 +669,12 @@ fn spawn_shell(
             // events like any other overlay surface — without this a click or
             // scroll inside it bleeds through to the viewport behind.
             //
-            // The `RelativeCursorPosition` is not optional decoration:
-            // `update_pointer_over_overlay` queries `(&RelativeCursorPosition,
+            // The `UiCursor` is not optional decoration:
+            // `update_pointer_over_overlay` queries `(&UiCursor,
             // &Node)` filtered on `OverlaySurface`, so a surface without one
             // never matches the query and the marker silently does nothing.
             renzora_ember::widgets::OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("bottom-dock-area"),
         ))
         .id();
@@ -834,11 +834,11 @@ fn spawn_shell(
             // It sits over whatever the panels below leave exposed, so it must
             // swallow pointer events like any floating surface — without this a
             // click or scroll on the strip bleeds into the viewport behind it.
-            // The `RelativeCursorPosition` is required: `update_pointer_over_overlay`
+            // The `UiCursor` is required: `update_pointer_over_overlay`
             // queries for it, so a surface without one never matches and the
             // marker does nothing.
             renzora_ember::widgets::OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             CollapsedBottomBar,
             Name::new("collapsed-bottom-bar"),
         ))

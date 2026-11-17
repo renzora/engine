@@ -506,7 +506,7 @@ pub(crate) fn drive_reimport(world: &mut World) {
         // turn — a batch added while the last one was still running would
         // otherwise be dropped on the floor by the reconvert.
         let mut files = s.last_files.clone();
-        for q in s.pending_files.drain(..).collect::<Vec<_>>() {
+        for q in std::mem::take(&mut s.pending_files) {
             if !files.iter().any(|f| f.path == q.path) {
                 files.push(q);
             }
@@ -532,11 +532,7 @@ pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
     };
     match decision {
         PreviewDecision::CancelAll => {
-            let all: Vec<_> = world
-                .resource_mut::<ImportOverlayState>()
-                .staged
-                .drain(..)
-                .collect();
+            let all = std::mem::take(&mut world.resource_mut::<ImportOverlayState>().staged);
             for st in &all {
                 crate::staged::discard(st);
             }

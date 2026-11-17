@@ -62,7 +62,7 @@ pub(crate) fn rename_commit(
     mouse: Res<ButtonInput<MouseButton>>,
     mut inputs: Query<(
         &mut EmberTextInput,
-        &bevy::ui::RelativeCursorPosition,
+        &renzora_ember::UiCursor,
         &HierRenameInput,
     )>,
     mut commands: Commands,
@@ -86,7 +86,7 @@ pub(crate) fn rename_commit(
     // Clicking INSIDE the field (to move the caret) must keep it editing. The
     // row's click layer can otherwise steal focus the instant you click, so
     // re-assert focus whenever a click lands over the field's own rect — this uses
-    // the field geometry (`RelativeCursorPosition`), not fragile pick order.
+    // the field geometry (`UiCursor`), not fragile pick order.
     if mouse.just_pressed(MouseButton::Left) && rcp.cursor_over && !inp.focused {
         inp.focused = true;
     }

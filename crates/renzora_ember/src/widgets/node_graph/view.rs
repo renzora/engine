@@ -16,7 +16,8 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, Outline, RelativeCursorPosition, UiGlobalTransform, UiTransform, Val2};
+use bevy::ui::{ComputedNode, Outline, UiGlobalTransform, UiTransform, Val2};
+use crate::UiCursor;
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::SystemCursorIcon;
 
@@ -282,7 +283,7 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
                 ..default()
             },
             BackgroundColor(rgb(window_bg())),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             NodeGraphView::default(),
             Name::new("node-graph-view"),
         ))
@@ -293,7 +294,7 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
             UiTransform::default(),
             GraphView { zoom: 1.0, pan: Vec2::ZERO },
             GraphPan,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("node-graph-view-canvas"),
         ))
         .id();
@@ -370,7 +371,7 @@ pub fn graph_node_view(
             },
             NgvNode { id: node_id, canvas, viewport },
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             ZTier(NODE_Z),
             GlobalZIndex(NODE_Z),
             // Drag-to-move node → the 4-arrow Move cursor.
@@ -565,7 +566,7 @@ fn pin_row(
             // the node's edge). Marked as an editor so a press on it scrubs
             // rather than drags the node; the empty node body around it still
             // drags. See `NgvInputEditor`.
-            commands.entity(editor).insert((NgvInputEditor, RelativeCursorPosition::default()));
+            commands.entity(editor).insert((NgvInputEditor, UiCursor::default()));
             // Grows into spare width but keeps its own minimum: with a zero
             // basis the editor counted for nothing when the node sized itself
             // to its content, so the node came out label-wide and every field
@@ -947,7 +948,7 @@ fn ngv_drag(
     views: Query<&GraphView>,
     mut nodes: Query<(&NgvNode, &mut Node)>,
     mut graphs: Query<&mut NodeGraphView>,
-    editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
+    editors: Query<&UiCursor, With<NgvInputEditor>>,
 ) {
     if active.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
@@ -1070,7 +1071,7 @@ fn ngv_connect(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     ports: Query<(&UiInteraction, &NgvPort)>,
-    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
@@ -1208,7 +1209,7 @@ fn ngv_context(
     node_blockers: Query<&UiInteraction, With<NgvNode>>,
     port_blockers: Query<&UiInteraction, With<NgvPort>>,
     comment_blockers: Query<&UiInteraction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
-    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
     mut press: Local<Option<Vec2>>,
 ) {
@@ -1252,7 +1253,7 @@ fn ngv_open_key(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     text_inputs: Query<&crate::widgets::text_input::EmberTextInput>,
-    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
@@ -1287,7 +1288,7 @@ fn ngv_keys(
     text_inputs: Query<&EmberTextInput>,
     drag_editing: Option<Res<crate::widgets::drag_value::AnyDragValueEditing>>,
     all_nodes: Query<&NgvNode>,
-    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition)>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &UiCursor)>,
 ) {
     // A number field being typed into is not an `EmberTextInput`; it reports
     // through its own flag.
@@ -1338,12 +1339,12 @@ fn ngv_box(
     node_blockers: Query<&UiInteraction, With<NgvNode>>,
     port_blockers: Query<&UiInteraction, With<NgvPort>>,
     mut active: Local<Option<(Vec2, Entity, Entity, bool)>>, // (start, viewport, rect, moved)
-    mut vps: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &UiGlobalTransform, &ComputedNode)>,
+    mut vps: Query<(Entity, &mut NodeGraphView, &UiCursor, &UiGlobalTransform, &ComputedNode)>,
     node_rects: Query<(&NgvNode, &UiGlobalTransform, &ComputedNode)>,
     mut box_nodes: Query<&mut Node, With<NgvBoxRect>>,
     wires: Query<&NgvWire>,
     ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>,
-    editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
+    editors: Query<&UiCursor, With<NgvInputEditor>>,
     comment_blockers: Query<&UiInteraction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
 ) {
     if active.is_none() {
@@ -1808,7 +1809,7 @@ fn ngv_comment_delete(changed: Query<(&UiInteraction, &NgvCommentDelete), Change
 fn ngv_comment_key(
     keys: Res<ButtonInput<KeyCode>>,
     text_inputs: Query<&EmberTextInput>,
-    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
     if !keys.just_pressed(KeyCode::KeyC) {

@@ -337,7 +337,7 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
             BackgroundColor(c(22, 24, 30)),
             BorderColor::all(border_soft()),
             GlobalZIndex(700),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("splash-language-menu"),
         ))
         .id();

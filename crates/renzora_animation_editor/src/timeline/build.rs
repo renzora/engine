@@ -8,7 +8,7 @@
 //! 30-control bar could do was lost.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -58,9 +58,9 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Shared timeline shell.
     let tl = timeline_view(commands, fonts);
-    commands.entity(tl.root).insert((AnimTimeline, RelativeCursorPosition::default()));
-    commands.entity(tl.clips).insert((KeyLane, RelativeCursorPosition::default()));
-    commands.entity(tl.markers).insert((PaneLayer, RelativeCursorPosition::default()));
+    commands.entity(tl.root).insert((AnimTimeline, UiCursor::default()));
+    commands.entity(tl.clips).insert((KeyLane, UiCursor::default()));
+    commands.entity(tl.markers).insert((PaneLayer, UiCursor::default()));
     bind_display(commands, tl.root, ready);
 
     // Track-list head: the filter and "+ Track".
@@ -154,7 +154,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { height: Val::Px(28.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::horizontal(Val::Px(10.0)), border_radius: BorderRadius::all(Val::Px(7.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             ClipCombo,
         ))
         .id();
@@ -317,7 +317,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let sep3 = vsep(commands);
     let mode = super::curves::build_mode_switch(commands, fonts);
     let (overflow, _) = icon_btn(commands, fonts, "dots-three", text_primary(), OverflowBtn);
-    commands.entity(overflow).insert((RelativeCursorPosition::default(), HoverTooltip::new(renzora::lang::t_or("timeline.more_tip", "More: length, events, zoom, row height, save"))));
+    commands.entity(overflow).insert((UiCursor::default(), HoverTooltip::new(renzora::lang::t_or("timeline.more_tip", "More: length, events, zoom, row height, save"))));
     for e in [row_height, speed_dd, snap_b, sep3, mode, overflow] {
         bind_display(commands, e, ready);
     }

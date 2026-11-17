@@ -14,7 +14,7 @@
 //! `text_input`/`bind_text_input` editing primitives.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -242,7 +242,7 @@ fn texture_field(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin:
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             TexDropZone { node_id, pin: pin.to_string() },
             Name::new("mat-tex-drop"),
         ))
@@ -263,7 +263,7 @@ fn tex_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    zones: Query<(&RelativeCursorPosition, &TexDropZone)>,
+    zones: Query<(&UiCursor, &TexDropZone)>,
     state: Option<ResMut<MaterialEditorState>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -326,7 +326,7 @@ fn tex_browse(
 }
 
 /// Accent the zone border while a compatible asset is dragged over it.
-fn tex_drop_highlight(payload: Option<Res<AssetDragPayload>>, mut zones: Query<(&RelativeCursorPosition, &mut BorderColor), With<TexDropZone>>) {
+fn tex_drop_highlight(payload: Option<Res<AssetDragPayload>>, mut zones: Query<(&UiCursor, &mut BorderColor), With<TexDropZone>>) {
     for (rcp, mut bc) in &mut zones {
         let active = payload.as_ref().is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(IMG_EXTS));
         let want = BorderColor::all(rgb(if active { accent() } else { border() }));

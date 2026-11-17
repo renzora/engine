@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
@@ -94,7 +94,7 @@ pub fn curve_editor(commands: &mut Commands, p1: Vec2, p2: Vec2) -> Entity {
             },
             BorderColor::all(rgb(border())),
             CurveData { p1, p2 },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("curve-editor"),
         ))
         .id();
@@ -136,7 +136,7 @@ fn curve_sync(
 
 fn curve_drag(
     handles: Query<(Entity, &UiInteraction, &CurveHandle)>,
-    roots: Query<&RelativeCursorPosition>,
+    roots: Query<&UiCursor>,
     mut datas: Query<&mut CurveData>,
     mut nodes: Query<&mut Node>,
 ) {

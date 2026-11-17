@@ -1,7 +1,7 @@
 //! Slider: interactive track + thumb driven by pointer interaction.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 
 use crate::game_ui::components::{SliderData, UiWidgetPart};
 use crate::UiInteraction;
@@ -10,7 +10,7 @@ use crate::UiInteraction;
 pub fn slider_system(
     mut sliders: Query<(&mut SliderData, &UiInteraction, &Children, &ComputedNode)>,
     mut parts: Query<(&UiWidgetPart, &mut Node, &mut BackgroundColor)>,
-    relative_cursor: Query<&RelativeCursorPosition>,
+    relative_cursor: Query<&UiCursor>,
 ) {
     for (mut data, interaction, children, _computed) in &mut sliders {
         // Handle drag on slider track

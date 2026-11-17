@@ -170,6 +170,6 @@ fn probe(asset_server: &AssetServer, path: &str) -> ClusterFile {
         let Ok(source) = server.get_source(AssetSourceId::Default) else {
             return false;
         };
-        source.reader().read(path.path()).await.is_ok()
+        source.reader().read(path.path_cow()).await.is_ok()
     }))
 }

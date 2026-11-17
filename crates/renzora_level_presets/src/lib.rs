@@ -27,7 +27,7 @@ fn process_level_commands(
 ) {
     state.entity_count = level_entities.iter().count();
 
-    let cmds: Vec<LevelCommand> = state.commands.drain(..).collect();
+    let cmds: Vec<LevelCommand> = std::mem::take(&mut state.commands);
     if cmds.is_empty() {
         return;
     }

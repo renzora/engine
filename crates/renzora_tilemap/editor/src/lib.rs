@@ -1538,7 +1538,7 @@ struct ArmedTilesetDrop(Option<Vec<std::path::PathBuf>>);
 /// payload exists (the release frame) the snapshot is left for the commit.
 fn arm_tileset_drop(
     payload: Option<Res<AssetDragPayload>>,
-    panel_root: Query<&bevy::ui::RelativeCursorPosition, With<panel::TilemapPanelRoot>>,
+    panel_root: Query<&renzora_ember::UiCursor, With<panel::TilemapPanelRoot>>,
     mut armed: ResMut<ArmedTilesetDrop>,
 ) {
     let Some(payload) = payload else {

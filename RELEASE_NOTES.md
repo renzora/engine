@@ -1,5 +1,17 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 00:31
+- fix(rendering): rough surfaces no longer show grain from screen-space reflections when the camera has no TAA or DLSS, such as after switching Solari off
+
+## 2026-11-16 18:03
+- fix(build): `cargo renzora` stages up-to-date shared libraries and plugin SDK again, so the editor starts after a Rust update
+- fix(plugin): a native plugin with third-party dependencies finds them under Rust 1.100's new build layout
+
+## 2026-11-16 15:56
+- chore(engine): the engine runs on Bevy `main` of 2026-11-15 and Rust 1.100.0
+- feat(ember): `UiCursor` replaces Bevy's removed `RelativeCursorPosition`, and native plugins that read the cursor over a UI node should use it
+- feat(ui): markup sizes accept `min-content`, `max-content`, `fit-content`, `stretch` and `content`
+
 ## 2026-11-16 14:57
 - feat(viewport): a click selects the part it hits, and the Settings option "Click Selects" is gone
 - feat(hierarchy): "Select as One Object" in the right-click menu makes a model or group pick as a whole, and is saved with the scene

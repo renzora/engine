@@ -140,7 +140,7 @@ pub(crate) fn build_rail_host(commands: &mut Commands) -> Entity {
             },
             BorderColor::all(c(renzora_ember::theme::divider())),
             bevy::ui::ScrollPosition::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             RailHost,
             Name::new("inspector-page-strip"),
         ))
@@ -156,7 +156,7 @@ pub(crate) fn build_rail_host(commands: &mut Commands) -> Entity {
 /// scrollable range, so only the near edge needs guarding.
 pub(crate) fn page_strip_wheel(
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    mut strips: Query<(&bevy::ui::RelativeCursorPosition, &mut bevy::ui::ScrollPosition), With<RailHost>>,
+    mut strips: Query<(&renzora_ember::UiCursor, &mut bevy::ui::ScrollPosition), With<RailHost>>,
 ) {
     use bevy::input::mouse::MouseScrollUnit;
     let mut delta = 0.0;

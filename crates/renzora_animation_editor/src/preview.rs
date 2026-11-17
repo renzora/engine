@@ -30,7 +30,7 @@ pub struct AppliedPreview {
     /// moves off is always held, whatever else reset `at`.
     player: Option<Entity>,
     /// The clip node and playhead last applied to `player`.
-    at: Option<(AnimationNodeIndex, f32)>,
+    at: Option<(BlendNodeIndex, f32)>,
 }
 
 /// Seek the selected entity's AnimationPlayer to the playhead.
@@ -39,7 +39,7 @@ pub fn update_animation_preview(
     animators: Query<&AnimatorState>,
     mut players: Query<(&mut AnimationPlayer, Option<&mut AnimationTransitions>)>,
     mut clip_events: MessageReader<AssetEvent<AnimationClip>>,
-    mut graph_events: MessageReader<AssetEvent<AnimationGraph>>,
+    mut graph_events: MessageReader<AssetEvent<BlendGraph>>,
     mut applied: Local<AppliedPreview>,
 ) {
     // Read both every run so a stale backlog never forces a re-apply later.
@@ -109,7 +109,7 @@ pub fn update_animation_preview(
 
 /// Stop Bevy re-applying any of `player`'s clips, leaving the pose as it is.
 fn hold_all(player: &mut AnimationPlayer) {
-    let active: Vec<AnimationNodeIndex> = player.playing_animations().map(|(idx, _)| *idx).collect();
+    let active: Vec<BlendNodeIndex> = player.playing_animations().map(|(idx, _)| *idx).collect();
     for idx in active {
         if let Some(anim) = player.animation_mut(idx) {
             anim.set_weight(0.0);
@@ -130,10 +130,10 @@ fn hold_all(player: &mut AnimationPlayer) {
 fn show_only(
     player: &mut AnimationPlayer,
     transitions: Option<Mut<AnimationTransitions>>,
-    node: AnimationNodeIndex,
+    node: BlendNodeIndex,
     time: f32,
 ) -> bool {
-    let stale: Vec<AnimationNodeIndex> = player
+    let stale: Vec<BlendNodeIndex> = player
         .playing_animations()
         .map(|(idx, _)| *idx)
         .filter(|idx| *idx != node)

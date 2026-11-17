@@ -8,7 +8,7 @@
 //! The document tabs and the bottom panel's set menu are built the same way.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::dock::{Dock, DockDirty};
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -83,14 +83,14 @@ pub(crate) fn ribbon_interact(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     rename: Res<RibbonRename>,
     pressed: Query<(&RibbonItem, &UiInteraction)>,
-    items: Query<(&RibbonItem, &RelativeCursorPosition)>,
+    items: Query<(&RibbonItem, &UiCursor)>,
     mut nodes: Query<&mut Node>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
 ) {
     // Hide every insertion marker (no drag live, or before re-showing one slot).
-    let hide_markers = |items: &Query<(&RibbonItem, &RelativeCursorPosition)>, nodes: &mut Query<&mut Node>| {
+    let hide_markers = |items: &Query<(&RibbonItem, &UiCursor)>, nodes: &mut Query<&mut Node>| {
         for (it, _) in items {
             if let Ok(mut n) = nodes.get_mut(it.marker) {
                 if n.display != Display::None {
@@ -126,7 +126,7 @@ pub(crate) fn ribbon_interact(
     }
 
     // While actively dragging, track the insertion slot under the cursor and show
-    // the matching edge marker. Using each tab's RelativeCursorPosition (not a
+    // the matching edge marker. Using each tab's UiCursor (not a
     // GlobalTransform center compared against the cursor, which drifts under UI
     // scaling) keeps the hit-test in the cursor's own space — fixing both the
     // missing divider and the wrong drop position.
@@ -211,7 +211,7 @@ pub(crate) fn ribbon_context_menu(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
-    items: Query<(&RibbonItem, &RelativeCursorPosition)>,
+    items: Query<(&RibbonItem, &UiCursor)>,
     layouts: Res<ShellLayouts>,
     mut commands: Commands,
 ) {
@@ -373,7 +373,7 @@ pub(crate) fn workspace_add_click(
 pub(crate) fn workspace_drop_to_new(
     watch: Option<ResMut<renzora_ember::dock::DockDragWatch>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    zones: Query<&RelativeCursorPosition, With<WorkspaceDropZone>>,
+    zones: Query<&UiCursor, With<WorkspaceDropZone>>,
     mut add_bg: Query<&mut BackgroundColor, With<WorkspaceAddBtn>>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
@@ -469,7 +469,7 @@ fn ribbon_item(
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new(format!("ribbon:{label}")),
         ))

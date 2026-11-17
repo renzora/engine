@@ -900,7 +900,7 @@ fn build_drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) 
                 ..default()
             },
             BorderColor::all(Color::NONE),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             AddScriptDropZone { entity },
             Name::new("script-drop-zone"),
         ))
@@ -1222,7 +1222,7 @@ fn add_script_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    zones: Query<(&bevy::ui::RelativeCursorPosition, &AddScriptDropZone)>,
+    zones: Query<(&renzora_ember::UiCursor, &AddScriptDropZone)>,
     cmds: Option<Res<EditorCommands>>,
     engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
@@ -1257,7 +1257,7 @@ fn add_script_drop(
 /// rest it has no outline at all.
 fn add_script_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor), With<AddScriptDropZone>>,
+    mut zones: Query<(&renzora_ember::UiCursor, &mut BorderColor), With<AddScriptDropZone>>,
     engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     // Must agree with `add_script_drop` exactly: a zone that highlights but

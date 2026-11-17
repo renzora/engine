@@ -17,7 +17,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -166,7 +166,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             BackgroundColor(rgb(panel_bg())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             StageImage,
             Name::new("stage-image"),
         ))
@@ -693,7 +693,7 @@ fn choice_list_snapshot(w: &Rx) -> KeyedSnapshot {
 /// sizes the render target to the picture, so a pixel on the stage is a pixel
 /// of the camera's.
 fn update_cursor(
-    images: Query<(&ComputedNode, &RelativeCursorPosition, &InheritedVisibility, &UiInteraction), With<StageImage>>,
+    images: Query<(&ComputedNode, &UiCursor, &InheritedVisibility, &UiInteraction), With<StageImage>>,
     mut preview: ResMut<StudioPreviewImage>,
     cams: Query<(&Camera, &GlobalTransform), With<StudioPreviewCamera>>,
     mut cursor: ResMut<StageCursor>,

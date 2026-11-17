@@ -124,7 +124,7 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
             GlobalZIndex(9500),
             BLOCK,
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             OverlaySurface,
             PaletteOverlay { sig: None },
             PaletteBackdrop,

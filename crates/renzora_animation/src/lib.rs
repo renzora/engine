@@ -1,4 +1,4 @@
-//! Renzora Animation — runtime animation system built on Bevy's AnimationGraph.
+//! Renzora Animation — runtime animation system built on Bevy's BlendGraph.
 //!
 //! Provides:
 //! - `.anim` file format (RON) and asset loader

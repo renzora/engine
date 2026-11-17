@@ -583,7 +583,7 @@ fn open_border_locks(input: &MeshInput) -> Vec<meshopt::SimplifyVertex> {
         })
         .collect();
     let mut edges: HashMap<(u32, u32), u32> = HashMap::new();
-    for tri in input.indices.chunks_exact(3) {
+    for tri in input.indices.as_chunks::<3>().0 {
         for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
             let (a, b) = (ids[a as usize], ids[b as usize]);
             *edges.entry((a.min(b), a.max(b))).or_default() += 1;

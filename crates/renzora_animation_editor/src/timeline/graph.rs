@@ -17,7 +17,8 @@
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora::{euler_deg_to_quat, euler_slope_of_quat_tangent, quat_tangent_of_euler_slope, quat_to_euler_deg, AnimClip, KeyMode, TrackValue};
 use renzora_ember::font::EmberFonts;
@@ -220,7 +221,7 @@ fn set_handle(clip: &mut AnimClip, pick: CurvePick, out: bool, slope: f32, broke
 // ── Picking ──────────────────────────────────────────────────────────────────
 
 fn cursor(world: &mut World, over_only: bool) -> Option<Vec2> {
-    let mut q = world.query_filtered::<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>();
+    let mut q = world.query_filtered::<(&UiCursor, &ComputedNode), With<KeyLane>>();
     let (rcp, cn) = q.iter(world).next()?;
     if over_only && !rcp.cursor_over {
         return None;
@@ -656,7 +657,7 @@ pub(super) fn graph_sync(world: &mut World) {
     let f_key = world.resource::<ButtonInput<KeyCode>>().just_pressed(KeyCode::KeyF)
         && !world.get_resource::<renzora::InputFocusState>().is_some_and(|f| f.ui_wants_keyboard)
         && {
-            let mut q = world.query_filtered::<&RelativeCursorPosition, With<AnimTimeline>>();
+            let mut q = world.query_filtered::<&UiCursor, With<AnimTimeline>>();
             q.iter(world).any(|r| r.cursor_over)
         };
     let mut request = world.resource_mut::<GraphDrag>().frame_request.take();

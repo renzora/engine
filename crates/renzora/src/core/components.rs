@@ -901,19 +901,23 @@ impl EditedMesh {
         let n = self.positions.len() / 3;
         let positions: Vec<[f32; 3]> = self
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| [c[0], c[1], c[2]])
             .collect();
         let normals: Vec<[f32; 3]> = if self.normals.len() == self.positions.len() {
             self.normals
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|c| [c[0], c[1], c[2]])
                 .collect()
         } else {
             vec![[0.0, 1.0, 0.0]; n]
         };
         let uvs: Vec<[f32; 2]> = if self.uvs.len() == n * 2 {
-            self.uvs.chunks_exact(2).map(|c| [c[0], c[1]]).collect()
+            self.uvs.as_chunks::<2>().0.iter().map(|c| [c[0], c[1]]).collect()
         } else {
             vec![[0.0, 0.0]; n]
         };

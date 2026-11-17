@@ -416,7 +416,7 @@ fn apply_property_commands(
         }
         return;
     }
-    let cmds: Vec<PhysicsPropertyCommand> = state.commands.drain(..).collect();
+    let cmds: Vec<PhysicsPropertyCommand> = std::mem::take(&mut state.commands);
     for cmd in cmds {
         match cmd {
             PhysicsPropertyCommand::SetGravity(g) => {

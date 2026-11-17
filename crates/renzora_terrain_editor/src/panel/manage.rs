@@ -16,7 +16,7 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -255,7 +255,7 @@ fn world_group(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity) -> 
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ChunkMapView::default(),
             Name::new("terrain-chunk-map"),
@@ -447,7 +447,7 @@ fn generator_group(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity)
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             AssetSlot::Graph,
             Name::new("terrain-graph-slot"),
         ))

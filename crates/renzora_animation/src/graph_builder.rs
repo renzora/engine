@@ -1,4 +1,4 @@
-//! Graph builder: lays an animator out as a Bevy `AnimationGraph`, and
+//! Graph builder: lays an animator out as a Bevy `BlendGraph`, and
 //! resolves blend tree weights.
 //!
 //! # The shape of the graph
@@ -50,18 +50,18 @@ pub enum NodeRole {
 /// Where each slot's clip nodes ended up, by role.
 #[derive(Clone, Debug, Default)]
 pub struct GraphLayout {
-    pub base: HashMap<String, AnimationNodeIndex>,
-    pub overlay: HashMap<String, AnimationNodeIndex>,
+    pub base: HashMap<String, BlendNodeIndex>,
+    pub overlay: HashMap<String, BlendNodeIndex>,
     pub layers: Vec<LayerNodes>,
     /// Reverse lookup: what a node plays and for whom.
-    pub roles: HashMap<AnimationNodeIndex, (String, NodeRole)>,
+    pub roles: HashMap<BlendNodeIndex, (String, NodeRole)>,
 }
 
 /// One layer's clip nodes.
 #[derive(Clone, Debug, Default)]
 pub struct LayerNodes {
     pub mode: LayerBlendMode,
-    pub nodes: HashMap<String, AnimationNodeIndex>,
+    pub nodes: HashMap<String, BlendNodeIndex>,
 }
 
 /// One layer, as the builder needs it.
@@ -87,8 +87,8 @@ pub struct GraphSpec<'a> {
 const MAX_MASKED_LAYERS: usize = 64;
 
 /// Build an animator's graph. See the module docs for the shape.
-pub fn build_animator_graph(spec: &GraphSpec) -> (AnimationGraph, GraphLayout) {
-    let mut graph = AnimationGraph::new();
+pub fn build_animator_graph(spec: &GraphSpec) -> (BlendGraph, GraphLayout) {
+    let mut graph = BlendGraph::new();
     let mut layout = GraphLayout::default();
     let overlays: Vec<&String> = spec
         .overlay_slots
@@ -97,7 +97,7 @@ pub fn build_animator_graph(spec: &GraphSpec) -> (AnimationGraph, GraphLayout) {
         .collect();
     let base_is_add = !overlays.is_empty();
 
-    let level_node = |graph: &mut AnimationGraph, level: usize, parent: AnimationNodeIndex| {
+    let level_node = |graph: &mut BlendGraph, level: usize, parent: BlendNodeIndex| {
         let additive = if level == 0 {
             base_is_add
         } else {
@@ -583,7 +583,7 @@ mod tests {
         names.iter().map(|n| (n.to_string(), Handle::default())).collect()
     }
 
-    fn parent_of(graph: &AnimationGraph, node: AnimationNodeIndex) -> AnimationNodeIndex {
+    fn parent_of(graph: &BlendGraph, node: BlendNodeIndex) -> BlendNodeIndex {
         graph
             .graph
             .edge_indices()
@@ -637,7 +637,7 @@ mod tests {
         let layer_node = layout.layers[0].nodes["breathe"];
         assert!(!layout.layers[0].nodes.contains_key("idle"), "no difference clip, no additive node");
         let wrapper = parent_of(&graph, layer_node);
-        assert!(matches!(graph[wrapper].node_type, bevy::animation::graph::AnimationNodeType::Add));
+        assert!(matches!(graph[wrapper].node_type, bevy::animation::graph::BlendNodeType::Add));
         let below = parent_of(&graph, layout.base["idle"]);
         assert_eq!(parent_of(&graph, below), wrapper);
         assert!(below.index() < layer_node.index());
@@ -651,7 +651,7 @@ mod tests {
         let (graph, layout) = build_animator_graph(&GraphSpec { base: &base, additive: &additive, overlay_slots: &overlay, layers: &[] });
         let over = layout.overlay["breathe"];
         let add = parent_of(&graph, over);
-        assert!(matches!(graph[add].node_type, bevy::animation::graph::AnimationNodeType::Add));
+        assert!(matches!(graph[add].node_type, bevy::animation::graph::BlendNodeType::Add));
         let blend = parent_of(&graph, layout.base["walk"]);
         assert_eq!(parent_of(&graph, blend), add);
         assert!(blend.index() < over.index());
