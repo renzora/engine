@@ -210,6 +210,9 @@ pub use script_ctx::ScriptCtx;
 /// The lifecycle events a Rust script can receive — see [`script_hook::ScriptHook`].
 pub mod script_hook;
 pub use script_hook::ScriptHook;
+/// Whether Rust scripts can be compiled here — see [`rust_toolchain::RustToolchain`].
+pub mod rust_toolchain;
+pub use rust_toolchain::{RustToolchain, RustToolchainAnswer};
 
 // ── The language-backend half of scripting ───────────────────────────────
 // `renzora_scripting` owns the scripting SYSTEM and still does. These are the

@@ -34,7 +34,7 @@ use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
 use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
 use renzora::core::console_log::{console_error, console_success};
 use renzora::core::project_files::ProjectFileChanged;
-use renzora::CurrentProject;
+use renzora::{CurrentProject, RustToolchain};
 
 use crate::{load_library, sdk_dir, LoadedScripts};
 
@@ -76,6 +76,17 @@ pub struct ScriptWatcher {
     /// The project root the opening walk has already been run for, so it runs
     /// once per project and not once per `CurrentProject` write.
     scanned_root: Option<PathBuf>,
+    /// Scripts waiting for [`RustToolchain`] to say a compiler is there, so a
+    /// machine without Rust is asked once instead of failing every script.
+    /// See [`crate::toolchain`].
+    held: Vec<(PathBuf, SystemTime)>,
+}
+
+impl ScriptWatcher {
+    /// Whether any script is waiting on the toolchain check.
+    pub fn has_held(&self) -> bool {
+        !self.held.is_empty()
+    }
 }
 
 /// Start a full walk when the project ROOT changes, and only then.
@@ -136,6 +147,8 @@ pub fn watch(
     project: Option<Res<CurrentProject>>,
     mut changes: MessageReader<ProjectFileChanged>,
     mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    toolchain: Res<RustToolchain>,
+    session: Option<Res<renzora::EditorSession>>,
 ) {
     let Some(project) = project else {
         // Drained rather than left: without a project there is nothing to build,
@@ -179,6 +192,24 @@ pub fn watch(
         };
         sources.push((change.path.clone(), mtime));
     }
+
+    // In the editor, nothing builds until the compiler is known to be there or
+    // the user has answered the prompt; see `crate::toolchain`. A game process
+    // has nobody to ask, so it builds straight away as it always has.
+    let editor = session.is_some_and(|s| s.is_editor());
+    let hold = editor
+        && matches!(
+            *toolchain,
+            RustToolchain::Unknown
+                | RustToolchain::Checking
+                | RustToolchain::Missing { .. }
+                | RustToolchain::Installing { .. }
+        );
+    if hold {
+        watcher.held.extend(sources);
+        return;
+    }
+    sources.append(&mut watcher.held);
 
     if sources.is_empty() {
         return;

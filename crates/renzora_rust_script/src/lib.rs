@@ -71,6 +71,7 @@
 
 pub mod backend;
 pub mod hooks;
+pub mod toolchain;
 pub mod watch;
 
 use std::collections::HashMap;
@@ -213,6 +214,11 @@ impl Plugin for RustScriptPlugin {
         }
         app.init_resource::<LoadedScripts>()
             .init_resource::<watch::ScriptWatcher>()
+            // The compiler check and the install prompt's answer. The prompt
+            // itself is editor UI and lives in `renzora_scripting_editor`.
+            .init_resource::<renzora::RustToolchain>()
+            .init_resource::<toolchain::ToolchainTasks>()
+            .add_message::<renzora::RustToolchainAnswer>()
             // Registered here as well as by `renzora_project_watch`, and
             // `add_message` is idempotent so the second call is free.
             //
@@ -252,7 +258,7 @@ impl Plugin for RustScriptPlugin {
                     // sources, so there it finds nothing to do.
                     watch::scan_on_project_open
                         .run_if(in_state(SplashState::Editor).or_else(not_editor_session)),
-                    watch::watch,
+                    (watch::watch, toolchain::drive).chain(),
                     (watch::collect_remote, watch::finish.run_if(watch::builds_pending)).chain(),
                 ),
             )

@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 22:46
+- feat(scripting): when a Rust script needs compiling and Rust is not installed, the editor offers to install it
+
 ## 2026-11-17 22:38
 - fix(sdk): Rust scripts and native plugins link again in a downloaded build, which was missing the Windows import libraries
 

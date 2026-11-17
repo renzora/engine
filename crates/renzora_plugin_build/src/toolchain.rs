@@ -127,6 +127,54 @@ pub fn install_toolchain(version: &str) -> Result<(), String> {
     }
 }
 
+/// Where rustup's official installer for this machine is published, or `None`
+/// on a platform it has no installer for.
+///
+/// The download itself is the caller's: this crate links no HTTP client, and the
+/// engine routes every request through its own backend.
+pub fn rustup_init_url() -> Option<String> {
+    let triple = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("windows", "x86_64") => "x86_64-pc-windows-msvc",
+        ("windows", "aarch64") => "aarch64-pc-windows-msvc",
+        ("linux", "x86_64") => "x86_64-unknown-linux-gnu",
+        ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
+        ("macos", "x86_64") => "x86_64-apple-darwin",
+        ("macos", "aarch64") => "aarch64-apple-darwin",
+        _ => return None,
+    };
+    let exe = if cfg!(windows) { "rustup-init.exe" } else { "rustup-init" };
+    Some(format!("https://static.rust-lang.org/rustup/dist/{triple}/{exe}"))
+}
+
+/// Run a downloaded `rustup-init` to put Rust on a machine that has none.
+///
+/// A standard install into `~/.cargo` and `~/.rustup`, the same one the
+/// rust-lang.org instructions produce, so the user ends up with ordinary Rust
+/// rather than a private copy only the editor knows about. `--profile minimal`
+/// for the reason [`install_toolchain`] gives, and the pinned release as the
+/// default toolchain so nothing further has to be fetched.
+///
+/// The editor finds the result without a restart: [`renzora_native_build::tool`]
+/// looks in `~/.cargo/bin` before `PATH`, which in a running process still holds
+/// whatever it was launched with.
+pub fn run_rustup_init(init: &std::path::Path, version: &str) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(init, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("could not make rustup-init executable: {e}"))?;
+    }
+    let out = renzora_native_build::hide_console(&mut Command::new(init))
+        .args(["-y", "--profile", "minimal", "--default-toolchain", version])
+        .output()
+        .map_err(|e| format!("could not run rustup-init: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 impl Toolchain {
     /// The compiler to invoke, if there is one.
     pub fn rustc(&self) -> Option<&PathBuf> {
