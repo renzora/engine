@@ -15,9 +15,14 @@ use bevy::prelude::*;
 use bevy::shader::Shader;
 use renzora_shader::material::validate::{library_count, ShaderValidator};
 
-const REQUIRED_LIBRARIES: [&str; 4] = [
+/// The libraries the surface shaders import, each waited for by name.
+/// `mesh_bindings` is loaded apart from the embedded libraries and can arrive
+/// frames after them; without it here the tests passed or failed on whether it
+/// happened to be in time.
+const REQUIRED_LIBRARIES: [&str; 5] = [
     "bevy_pbr::render::pbr_functions",
     "bevy_pbr::render::pbr_fragment",
+    "bevy_pbr::render::mesh_bindings",
     "bevy_pbr::deferred::functions",
     "bevy_pbr::prepass::io",
 ];

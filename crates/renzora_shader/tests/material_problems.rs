@@ -32,7 +32,14 @@ use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 fn wait_for_shader_libraries(app: &mut App) {
     // `pbr_fragment` specifically, not just any library: it is the one the
     // generated surface shaders import and the one CI reported missing.
-    const REQUIRED: [&str; 2] = ["bevy_pbr::render::pbr_functions", "bevy_pbr::render::pbr_fragment"];
+    // `mesh_bindings` too: Bevy loads it apart from the embedded libraries,
+    // with settings that depend on the device, so it can arrive frames after
+    // them, and `pbr_fragment` imports it through `mesh_functions`.
+    const REQUIRED: [&str; 3] = [
+        "bevy_pbr::render::pbr_functions",
+        "bevy_pbr::render::pbr_fragment",
+        "bevy_pbr::render::mesh_bindings",
+    ];
     let present = |app: &App| {
         let shaders = app.world().resource::<Assets<Shader>>();
         REQUIRED.iter().all(|want| {
@@ -59,14 +66,24 @@ fn wait_for_shader_libraries(app: &mut App) {
 /// which makes it the only way to author a graph that codegen accepts and the
 /// shader compiler rejects — exactly the case the panel exists for. Returns
 /// the snippet node's id so a test can assert errors land on it.
+///
+/// Every call gets shader text no other call has, through a numbered comment
+/// after the snippet. A shader's id comes from its text, and the resolver keeps
+/// each id's source in one table shared by every `App` in the process. When
+/// one test repaired its `BROKEN` material, that removed `BROKEN`'s source from
+/// the table while other tests running at the same time still needed it, and
+/// their broken material then got no verdict at all. The editor has one `App`
+/// per process, so this only ever happened here.
 fn graph_with_snippet(name: &str, code: &str) -> (MaterialGraph, u64) {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let tag = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut graph = MaterialGraph::new(name, MaterialDomain::Surface);
     let node = graph.add_node("custom/code", [0.0, 0.0]);
     graph
         .get_node_mut(node)
         .unwrap()
         .input_values
-        .insert("code".to_string(), PinValue::String(code.to_string()));
+        .insert("code".to_string(), PinValue::String(format!("{code}\n    // test graph {tag}")));
     let output = graph.output_node().unwrap().id;
     graph.connect(node, "result", output, "base_color");
     (graph, node)

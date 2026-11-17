@@ -17,8 +17,9 @@ use renzora_shader::material::validate::{library_count, ShaderValidator};
 
 /// Libraries Solari imports that arrive late, the way the material validator's
 /// own test waits for them: `mesh_bindings` streams in after the embedded ones.
-const REQUIRED_LIBRARIES: [&str; 5] = [
+const REQUIRED_LIBRARIES: [&str; 6] = [
     "bevy_pbr::render::pbr_functions",
+    "bevy_pbr::render::mesh_bindings",
     "bevy_pbr::render::pbr_lighting",
     "bevy_pbr::deferred::types",
     "bevy_pbr::prepass::bindings",
