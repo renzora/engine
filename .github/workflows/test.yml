@@ -95,9 +95,13 @@ jobs:
       # `vendor/bevy_oxr`, vleue_navigator, ...) are excluded from the workspace
       # in Cargo.toml, so `--workspace` never reaches them; only the vendored
       # crates that are still members are listed here.
+      #
+      # `--no-fail-fast`: without it cargo stops at the first crate whose tests
+      # fail, so a run reports one broken crate and hides the rest behind it,
+      # and each fix costs another full run to find the next.
       - name: Run tests
         run: |
-          cargo test --workspace \
+          cargo test --workspace --no-fail-fast \
             --exclude bevy_args \
             --exclude bevy_firefly \
             --exclude bevy_gaussian_splatting \
