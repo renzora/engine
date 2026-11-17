@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 15:22
+- fix(build): the Windows arm64 editor builds again
+
 ## 2026-11-17 10:01
 - fix(physics): a vehicle's wheels no longer wobble on models whose meshes are simplified in memory
 
