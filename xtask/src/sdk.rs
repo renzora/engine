@@ -195,7 +195,7 @@ pub fn build_from(
     };
 
     let out = dist_root.join("sdk");
-    let deps_mtime = deps_dir_mtime(&from.profile_dir(repo));
+    let outputs = outputs_key(&from.profile_dir(repo), plat);
 
     // Skip BEFORE the cargo run below, not just before staging. That invocation
     // exists only to re-read a finished build, and on an already-built tree it
@@ -204,8 +204,8 @@ pub fn build_from(
     //
     // Two conditions, because one of them alone is unsound:
     //
-    // * the `deps/` directory's mtime, which moves when an artifact is added or
-    //   removed. A crate added to the workspace leaves every *existing* artifact
+    // * the final linked outputs (see [`outputs_key`]), which are relinked when a
+    //   crate is added. A crate added to the workspace leaves every *existing* artifact
     //   byte-for-byte identical, so per-file stats cannot see it — and an SDK
     //   missing a crate fails later as `can't find crate`, pointing at the
     //   plugin rather than at here.
@@ -215,7 +215,7 @@ pub fn build_from(
     // Anything unreadable or absent falls through to the real enumeration.
     if out.join("manifest.json").is_file() {
         if let Some(cached) = cache_read(&out) {
-            if cached.deps_mtime == deps_mtime && input_stamp(&cached.artifacts) == cached.stamp {
+            if cached.outputs == outputs && input_stamp(&cached.artifacts) == cached.stamp {
                 println!("[xtask] sdk: unchanged, staging skipped");
                 return Ok(out);
             }
@@ -273,29 +273,29 @@ pub fn build_from(
     }
     // Rewritten on every run that got this far, NOT only when staging happened.
     // Reaching here means the enumeration agreed with what is on disk, so the
-    // `deps` key recorded now is the one the early return should compare against
+    // outputs key recorded now is the one the early return should compare against
     // next time. Writing it only after a stage left the key stale whenever the
     // stamp matched but the key did not — which disarmed the fast path
     // permanently, so every later run paid the cargo enumeration to conclude
     // nothing had changed.
     //
     // Still never written on a failed stage: that path returns above.
-    cache_write(&out, &deps_mtime, &stamp, &artifacts);
+    cache_write(&out, &outputs, &stamp, &artifacts);
     Ok(out)
 }
 
 /// What the last successful staging was cut from, so the next run can tell
 /// whether to do any of it again.
 struct StageCache {
-    /// mtime of the build's `deps/` directory, which changes when an artifact is
-    /// added or removed but not when one is rewritten in place.
-    deps_mtime: String,
+    /// [`outputs_key`]: the final linked outputs, which change when a crate is
+    /// added but not when an rlib is rewritten in place.
+    outputs: String,
     /// [`input_stamp`] over `artifacts`, which catches the rewrite case.
     stamp: String,
     artifacts: Vec<(PathBuf, bool)>,
 }
 
-/// The cache file: `deps` mtime, stamp, then one `0|1<TAB>path` line per
+/// The cache file: outputs key, stamp, then one `0|1<TAB>path` line per
 /// artifact.
 fn cache_path(out: &Path) -> PathBuf {
     out.join(".stage-cache")
@@ -304,18 +304,18 @@ fn cache_path(out: &Path) -> PathBuf {
 fn cache_read(out: &Path) -> Option<StageCache> {
     let text = std::fs::read_to_string(cache_path(out)).ok()?;
     let mut lines = text.lines();
-    let deps_mtime = lines.next()?.to_string();
+    let outputs = lines.next()?.to_string();
     let stamp = lines.next()?.to_string();
     let mut artifacts = Vec::new();
     for line in lines {
         let (flag, path) = line.split_once('\t')?;
         artifacts.push((PathBuf::from(path), flag == "1"));
     }
-    Some(StageCache { deps_mtime, stamp, artifacts })
+    Some(StageCache { outputs, stamp, artifacts })
 }
 
-fn cache_write(out: &Path, deps_mtime: &str, stamp: &str, artifacts: &[(PathBuf, bool)]) {
-    let mut text = format!("{deps_mtime}\n{stamp}\n");
+fn cache_write(out: &Path, outputs: &str, stamp: &str, artifacts: &[(PathBuf, bool)]) {
+    let mut text = format!("{outputs}\n{stamp}\n");
     for (path, proc_macro) in artifacts {
         text.push_str(if *proc_macro { "1\t" } else { "0\t" });
         text.push_str(&path.to_string_lossy());
@@ -324,19 +324,39 @@ fn cache_write(out: &Path, deps_mtime: &str, stamp: &str, artifacts: &[(PathBuf,
     let _ = std::fs::write(cache_path(out), text);
 }
 
-/// The `deps/` directory's own mtime, as a string (`""` when unreadable).
+/// mtime and length of the build's final linked outputs, as one string.
 ///
-/// Used as the cheap half of the "did cargo produce anything new" test: a
-/// directory's mtime moves when an entry is added or removed, which is exactly
-/// the case per-file stats cannot see — a crate added to the workspace leaves
-/// every existing artifact untouched.
-fn deps_dir_mtime(profile_dir: &Path) -> String {
-    std::fs::metadata(profile_dir.join("deps"))
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs().to_string())
-        .unwrap_or_default()
+/// The cheap half of the "did cargo produce anything new" test. It has to see a
+/// crate added to the workspace, which leaves every existing rlib untouched so
+/// per-artifact stats cannot. Any crate a plugin can reach is linked into the
+/// executable, the editor image or one of the shared images, so adding one
+/// relinks at least one of these.
+///
+/// This used to be the mtime of the `deps/` directory. Rust 1.100's cargo no
+/// longer writes `deps/` (each crate's output lives in
+/// `build/<crate>/<hash>/out/`), so that key never moved again, and neither did
+/// the cached artifact list it guarded: the SDK stayed cut from the old
+/// toolchain while the engine beside it was rebuilt.
+fn outputs_key(profile_dir: &Path, plat: &Platform) -> String {
+    let names = [
+        format!("renzora{}", plat.exe_suffix),
+        format!("{}renzora_editor.{}", plat.lib_prefix, plat.ext),
+        format!("{}bevy_dylib.{}", plat.lib_prefix, plat.ext),
+        format!("{}renzora_dylib.{}", plat.lib_prefix, plat.ext),
+        format!("{}renzora_ember_dylib.{}", plat.lib_prefix, plat.ext),
+    ];
+    let mut key = String::new();
+    for name in names {
+        let meta = std::fs::metadata(profile_dir.join(&name)).ok();
+        let len = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let secs = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        key.push_str(&format!("{name}:{len}:{secs};"));
+    }
+    key
 }
 
 /// Run the build and collect the `.rlib` / proc-macro / import-library paths it

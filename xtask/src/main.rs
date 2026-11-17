@@ -689,7 +689,12 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
     // Both executables are scanned: they are built from one `--workspace`
     // invocation and so agree today, but staging what each one actually asks for
     // costs nothing and cannot be wrong.
-    let deps = src.join("deps");
+    // The copies cargo leaves in the profile directory itself, not `deps/`. Rust
+    // 1.100's cargo stopped writing `deps/` (each crate's output now lives in
+    // `build/<crate>/<hash>/out/`), so `deps/` held whatever an older toolchain
+    // last put there: a staged tree whose shared images imported the previous
+    // `std-<hash>.dll`, and an editor that died before `main` with 0xc0000135.
+    // The final dylibs are placed in the profile directory under either layout.
     let mut wanted = std::collections::BTreeSet::new();
     // The executable and the editor image both import shared libraries, and the
     // image imports more of them than the exe does — it is the editor, so it
@@ -707,7 +712,7 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
         }
     }
     for name in &wanted {
-        let from = deps.join(name);
+        let from = src.join(name);
         if from.is_file() {
             link_or_copy(&from, &out.join(name))?;
         }
@@ -742,7 +747,7 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
         return Err(std::io::Error::other(format!(
             "{missing} is imported by the engine binaries but was found in neither \
              {} nor {}",
-            deps.display(),
+            src.display(),
             libdir.display()
         )));
     }
