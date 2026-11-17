@@ -228,7 +228,8 @@ pub fn build_from(
     // re-run resolves in a second or two and reprints the artifact list, which is
     // the only thing wanted here.
     let mut externs = Externs::default();
-    let artifacts = artifact_files(repo, from, &mut externs).map_err(|e| {
+    let mut link_search = BTreeSet::new();
+    let artifacts = artifact_files(repo, from, &mut externs, &mut link_search).map_err(|e| {
         eprintln!("[xtask] sdk build failed: {e}");
         ExitCode::FAILURE
     })?;
@@ -250,8 +251,6 @@ pub fn build_from(
         }
     }
 
-    let profile_dir = from.profile_dir(repo);
-
     // Staging wipes `deps/`, `host-deps/` and `native/` and re-links ~1000 files
     // — every run, whether or not the compiler produced anything new. The wipe
     // is load-bearing (a crate dropped from the workspace must not linger as a
@@ -266,7 +265,7 @@ pub fn build_from(
     if out.join("manifest.json").is_file() && cache_read(&out).is_some_and(|c| c.stamp == stamp) {
         println!("[xtask] sdk: unchanged, staging skipped");
     } else {
-        stage(&profile_dir, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
+        stage(&link_search, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
             eprintln!("[xtask] sdk staging failed: {e}");
             ExitCode::FAILURE
         })?;
@@ -382,6 +381,7 @@ fn artifact_files(
     repo: &Path,
     from: &From,
     externs: &mut Externs,
+    link_search: &mut BTreeSet<String>,
 ) -> Result<Vec<(PathBuf, bool)>, String> {
     // Must be the profile the engine was actually built with, or this resolves a
     // different set of artifacts and the SDK describes a build nobody has.
@@ -442,6 +442,14 @@ fn artifact_files(
     let text = String::from_utf8_lossy(&out.stdout);
     let mut files = BTreeSet::new();
     for line in text.lines() {
+        // Cargo reports every build script's `rustc-link-search` here, fresh or
+        // rerun, so the native library directories come from the same run as
+        // the artifacts. See [`stage_native`] for why they are not read from
+        // `target/` instead.
+        if line.contains("\"reason\":\"build-script-executed\"") {
+            link_search.extend(json_string_array(line, "linked_paths"));
+            continue;
+        }
         if !line.contains("\"reason\":\"compiler-artifact\"") {
             continue;
         }
@@ -633,7 +641,7 @@ pub(crate) fn json_string_array(text: &str, field: &str) -> Vec<String> {
 /// Copy the collected artifacts, plus the native import-library directories, and
 /// write the manifest that ties them to the engine build they belong to.
 fn stage(
-    profile_dir: &Path,
+    link_search: &BTreeSet<String>,
     plat: &Platform,
     out: &Path,
     artifacts: &[(PathBuf, bool)],
@@ -675,7 +683,7 @@ fn stage(
         }
     }
 
-    let mut native_dirs = stage_native(profile_dir, &native)?;
+    let mut native_dirs = stage_native(link_search, &native)?;
     native_dirs.extend(stage_msvc(&native, triple)?);
 
     let build_id = build_id(out, externs);
@@ -703,35 +711,25 @@ fn stage(
 /// machine that built the engine. Each is flattened to a numbered subdirectory
 /// and recorded in the manifest, so the plugin build can regenerate the
 /// `-L native=` flags from paths that exist on the machine doing the compiling.
-fn stage_native(profile_dir: &Path, native: &Path) -> std::io::Result<Vec<String>> {
-    let build = profile_dir.join("build");
+///
+/// `link_search` is cargo's own `linked_paths` from the build it just reported
+/// on. This used to scan `target/<profile>/build/*/output`, and Rust 1.100's cargo
+/// moved that file to `build/<pkg>/<hash>/run/stdout`. The scan then found
+/// nothing on a clean CI checkout, the shipped SDK had no `windows.0.5x.lib`,
+/// and every Rust script failed to link on a user's machine. A developer's
+/// machine kept working off stale old-layout directories, which hid it.
+fn stage_native(link_search: &BTreeSet<String>, native: &Path) -> std::io::Result<Vec<String>> {
     let mut sources = BTreeSet::new();
-    if let Ok(entries) = std::fs::read_dir(&build) {
-        for e in entries.flatten() {
-            let output = e.path().join("output");
-            let Ok(text) = std::fs::read_to_string(&output) else {
-                continue;
-            };
-            for line in text.lines() {
-                // Both spellings are live: `cargo:` is the classic form and
-                // `cargo::` the newer namespaced one, and a workspace this size
-                // has build scripts of both vintages.
-                let Some(rest) = line
-                    .strip_prefix("cargo::rustc-link-search=")
-                    .or_else(|| line.strip_prefix("cargo:rustc-link-search="))
-                else {
-                    continue;
-                };
-                // The `KIND=PATH` form is optional. Only `native` (and the bare
-                // default, which means native) name import-library directories.
-                let path = match rest.split_once('=') {
-                    Some(("native", p)) => p,
-                    Some((_, _)) => continue,
-                    None => rest,
-                };
-                sources.insert(path.to_string());
-            }
-        }
+    for entry in link_search {
+        // The `KIND=PATH` form is optional. Only `native` (and the bare
+        // default, which means native) name import-library directories. The
+        // bare form is a path, which on Windows has a `C:` but never a `=`.
+        let path = match entry.split_once('=') {
+            Some(("native", p)) => p,
+            Some((_, _)) => continue,
+            None => entry.as_str(),
+        };
+        sources.insert(path.to_string());
     }
 
     let mut staged = Vec::new();

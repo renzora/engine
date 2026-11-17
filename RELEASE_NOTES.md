@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 22:38
+- fix(sdk): Rust scripts and native plugins link again in a downloaded build, which was missing the Windows import libraries
+
 ## 2026-11-17 19:45
 - security: zip archives (plugins, updates, imports and exports) are read with a zip library that is no longer open to file overwrite through a disguised archive
 
