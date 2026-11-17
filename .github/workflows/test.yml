@@ -205,14 +205,24 @@ jobs:
       # list rather than `--workspace`: a software-rasterized `--workspace` run
       # would take hours, and almost all of it would be tests that do not touch
       # an adapter and already ran in the `test` job.
+      #
+      # Virtual geometry's GPU tests run one process each. Under lavapipe every
+      # GPU allocation is system memory, and run back to back in one process
+      # they were killed by the runner (SIGKILL) near the end of the list, while
+      # each passes on its own and the whole set passes on a real GPU. A fresh
+      # process per test gives every one of them the runner's full memory; cargo
+      # builds once, so the cost is a process start per test.
       - name: Run GPU-backed tests
         run: |
           cargo test \
             -p renzora_test_harness \
             -p renzora_postprocess \
             -p renzora_shader \
-            -p renzora_rmip \
-            -p renzora_virtual_geometry
+            -p renzora_rmip
+          cargo test -p renzora_virtual_geometry -- --skip gpu_tests::
+          for t in $(cargo test -q -p renzora_virtual_geometry --lib -- --list gpu_tests:: 2>/dev/null | sed -n 's/: test$//p'); do
+            cargo test -q -p renzora_virtual_geometry --lib -- --exact "$t"
+          done
 
   clippy:
     runs-on: ubuntu-latest
