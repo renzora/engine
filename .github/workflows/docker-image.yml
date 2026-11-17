@@ -175,6 +175,11 @@ jobs:
   # ── 4. Merge each platform into a manifest at <plat>Tag + latest + sha ───────
   platform-merge:
     needs: [base-merge, platform-build]
+    # One platform failing to build must not hold back the others: without this
+    # a broken Windows image skipped every merge, and wasm kept an image on the
+    # previous Rust. A platform whose build failed has no digests, so its own
+    # merge still fails below.
+    if: ${{ !cancelled() && needs.base-merge.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:

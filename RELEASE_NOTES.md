@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 16:03
+- fix(build): the Windows cross-compile image builds again with the current Windows SDK
+
 ## 2026-11-17 15:22
 - fix(build): the Windows arm64 editor builds again
 
