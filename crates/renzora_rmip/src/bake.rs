@@ -62,11 +62,14 @@ pub extern "C" fn xlength_error(_what: *const core::ffi::c_char) -> ! {
 /// that aborts. The asserts it serves are in the ASTC encoder, which nothing
 /// here calls (only BC formats; see `encode_block_level`): like
 /// [`xlength_error`], unreachable, and abort is the honest translation.
-#[cfg(all(windows, target_env = "msvc", target_arch = "x86_64"))]
+///
+/// Both Windows architectures: the arm64 archives import it the same way, and
+/// the arm64 companion failed to link on it once the x64 one was fixed.
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
 #[export_name = "__imp__wassert"]
 pub static WASSERT_IMPORT: unsafe extern "C" fn(*const u16, *const u16, core::ffi::c_uint) -> ! = wassert;
 
-#[cfg(all(windows, target_env = "msvc", target_arch = "x86_64"))]
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
 unsafe extern "C" fn wassert(_message: *const u16, _file: *const u16, _line: core::ffi::c_uint) -> ! {
     std::process::abort()
 }
