@@ -1319,6 +1319,22 @@ jobs:
             echo "\`manifest.json\` lists every asset with its size and SHA-256; \`SHA256SUMS\` is the same digests in \`sha256sum -c\` form."
           } > notes.md
 
+          # GitHub refuses a release body over 125,000 characters with a 422,
+          # after every platform has already built. That happened when no
+          # nightly tag heading had been added for weeks and the "since the
+          # last nightly" list grew past it. Cut the body short instead of
+          # failing the publish, and point at the full file.
+          limit=120000
+          if [ "$(wc -m < notes.md)" -gt "$limit" ]; then
+            head -c "$limit" notes.md | sed '$d' > notes.trimmed.md
+            {
+              echo
+              echo
+              echo "_These notes were cut short to fit on this page. The full list is in [RELEASE_NOTES.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/RELEASE_NOTES.md)._"
+            } >> notes.trimmed.md
+            mv notes.trimmed.md notes.md
+          fi
+
           # Nightlies are cut from whatever `main` is at build time; a tag push
           # already has its own commit, and --target on an existing tag is a
           # no-op, so passing the sha is right in both cases.

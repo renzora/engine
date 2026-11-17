@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 19:32
+- fix(ci): a nightly publishes again when its notes run past GitHub's release size limit
+
 ## 2026-11-17 17:35
 - fix(build): the Windows arm64 companion links again
 
@@ -667,6 +670,8 @@
 
 ## 2026-10-28 18:06
 - feat(editor): the editor starts a companion process beside itself for background work, shown in the status bar and opened from the top bar
+
+## r1-alpha8-nightly-29oct26
 
 ## 2026-10-28 17:12
 - fix(lighting): soft shadows render smooth under TAA instead of staying grainy
