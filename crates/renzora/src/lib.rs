@@ -152,6 +152,8 @@ pub mod terrain_tools;
 // linking `renzora_physics`. Not glob re-exported: `PhysicsBackend` and `Caps`
 // read better qualified, and `Caps` would collide with audio's.
 pub mod physics;
+// Wheeled vehicles, run by `renzora_physics` on whichever backend simulates.
+pub mod vehicle;
 
 // ── Language / localization contract ─────────────────────────────────────
 // The process-global translation table + `t()` lookup every crate calls, plus

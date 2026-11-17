@@ -96,7 +96,8 @@ pub fn register_physics_inspectors(app: &mut App) {
     use renzora::{AppEditorExt, EntityPreset};
 
     app.register_inspector(physics_body_entry())
-        .register_inspector(collision_shape_entry());
+        .register_inspector(collision_shape_entry())
+        .register_inspector(crate::vehicle_inspector::vehicle_entry());
     // Native (bevy_ui) inspector drawers.
     app.register_native_inspector_ui("physics_body", physics_body_native);
     app.register_native_inspector_ui("collision_shape", collision_shape_native);

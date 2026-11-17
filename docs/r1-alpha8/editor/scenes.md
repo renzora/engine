@@ -196,6 +196,8 @@ Everything a global scene spawns is marked persistent, so scene loads skip it an
 
 This is also the only place a loading screen can work, because everything in the outgoing scene is despawned partway through a scene change. Only a global scene's script is still running to show progress.
 
+A loading screen reads `asset_progress()`, which stays at `"loading"` after a scene loads until the scene is ready to be seen: its models are in, its terrain is built, its materials are resolved, and textures and shaders have stopped arriving for half a second. It waits as long as that takes; if a scene is still loading after 30 seconds, the log says what it is waiting for, which finds a load that never ends (a material whose file is missing). Terrain streaming in or textures loading while the game plays do not bring it back.
+
 ## Reusing scenes inside scenes
 
 Drop one scene inside another as a **scene instance**. Good for a prop, an enemy or a room you want in many places. Edit the original once and every copy follows.

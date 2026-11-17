@@ -76,11 +76,13 @@ fn read_models(mut models: ResMut<ProjectModels>, index: Option<Res<renzora::cor
         .with_extensions(&["rvg", "glb", "gltf"])
         .map(|f| f.path.as_str())
         .filter(|p| !p.split('/').any(|part| SKIP.contains(&part)))
-        // The original a rig was built from is kept beside the model; it is
-        // the way back, not a second model.
+        // The original a rig (or a separation of parts) was built from is
+        // kept beside the model; it is the way back, not a second model.
         .filter(|p| {
             let lower = p.to_lowercase();
-            ![".unrigged.glb", ".unrigged.rvg", ".unshaped.glb", ".unshaped.rvg"].iter().any(|s| lower.ends_with(s))
+            ![".unrigged.glb", ".unrigged.rvg", ".unshaped.glb", ".unshaped.rvg", ".unsplit.glb", ".unsplit.rvg"]
+                .iter()
+                .any(|s| lower.ends_with(s))
         })
         .map(str::to_string)
         .collect();

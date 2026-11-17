@@ -56,10 +56,13 @@ impl PhysicsBackend for Avian3dBackend {
             .iter(world)
             .collect();
         for entity in entities {
-            world
-                .entity_mut(entity)
-                .remove::<BodyParts>()
-                .remove::<ColliderParts>();
+            let mut e = world.entity_mut(entity);
+            e.remove::<BodyParts>().remove::<ColliderParts>();
+            if let Some(child) = e.take::<HeightfieldChild>() {
+                if let Ok(c) = world.get_entity_mut(child.0) {
+                    c.despawn();
+                }
+            }
         }
         let joints: Vec<Entity> = world
             .query_filtered::<Entity, With<PhysicsJoint>>()
@@ -218,29 +221,81 @@ fn collider_for(shape: &ResolvedShape) -> Option<Collider> {
     })
 }
 
-/// avian's heightfield for a grid that spans `0..size` from the entity's
-/// origin.
+/// avian's heightfield for a grid, centred on its own origin, and where that
+/// origin sits in a grid that spans `0..size` from the entity's.
 ///
 /// Two conventions meet here. parry's heightfield is centred on its origin,
 /// with rows along Z and columns along X, stored column-major; avian's
 /// constructor flattens its `Vec<Vec<_>>` one inner vec after another into
 /// that column-major store, which only lines up when the grid is square and
 /// the OUTER index is X. Every terrain chunk is square; a grid that is not
-/// falls back to triangles rather than come out transposed.
-fn heightfield_collider(field: &renzora::physics::HeightfieldData) -> Option<Collider> {
+/// falls back to triangles ([`collider_for`]) rather than come out transposed,
+/// and returns `None` here.
+fn heightfield_parts(field: &renzora::physics::HeightfieldData) -> Option<(Collider, Vec3)> {
     if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
         return None;
     }
     if field.columns != field.rows {
-        let mesh = field.triangles();
-        return Some(Collider::trimesh(mesh.vertices, mesh.indices));
+        return None;
     }
     let by_x: Vec<Vec<f32>> = (0..field.columns)
         .map(|x| (0..field.rows).map(|z| field.heights[z * field.columns + x]).collect())
         .collect();
     let shape = Collider::heightfield(by_x, Vec3::new(field.size.x, 1.0, field.size.y));
-    let centre = Vec3::new(field.size.x * 0.5, 0.0, field.size.y * 0.5);
-    Some(Collider::compound(vec![(centre, Quat::IDENTITY, shape)]))
+    Some((shape, Vec3::new(field.size.x * 0.5, 0.0, field.size.y * 0.5)))
+}
+
+/// A heightfield as one collider, for casting a shape and for the uncommon
+/// grid that is not square. A body's own heightfield is never built this way:
+/// see [`HeightfieldPart`].
+fn heightfield_collider(field: &renzora::physics::HeightfieldData) -> Option<Collider> {
+    if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
+        return None;
+    }
+    match heightfield_parts(field) {
+        Some((shape, centre)) => Some(Collider::compound(vec![(centre, Quat::IDENTITY, shape)])),
+        None => {
+            let mesh = field.triangles();
+            Some(Collider::trimesh(mesh.vertices, mesh.indices))
+        }
+    }
+}
+
+/// The entity that carries a terrain chunk's heightfield collider, a child of
+/// the chunk placed at the grid's centre.
+///
+/// A heightfield cannot be moved off its own centre inside its shape, and the
+/// chunk's grid starts at the chunk's origin. Wrapping it in a one-shape
+/// compound to move it was tried, and rays hit it, but parry makes contacts
+/// for a compound only from convex parts: a box, a car, anything but a
+/// sphere, fell straight through the ground. A child collider is moved by its
+/// own transform and belongs to the chunk's body like any other.
+#[derive(Component)]
+struct HeightfieldPart(Entity);
+
+/// On a chunk: the [`HeightfieldPart`] carrying its collider.
+#[derive(Component)]
+struct HeightfieldChild(Entity);
+
+/// Take away an entity's heightfield child, if it has one.
+fn drop_heightfield_child(commands: &mut Commands, entity: Entity) {
+    commands.queue(move |world: &mut World| {
+        let Some(child) = world.get::<HeightfieldChild>(entity).map(|c| c.0) else {
+            return;
+        };
+        if let Ok(mut e) = world.get_entity_mut(entity) {
+            e.remove::<HeightfieldChild>();
+        }
+        if let Ok(e) = world.get_entity_mut(child) {
+            e.despawn();
+        }
+    });
+}
+
+/// The entity a collider belongs to as the engine sees it: a heightfield's
+/// owner rather than its carrier.
+fn owner_of(parts: &Query<&HeightfieldPart>, entity: Entity) -> Entity {
+    parts.get(entity).map_or(entity, |p| p.0)
 }
 
 /// The entity's collider with its offset and turn baked in.
@@ -276,6 +331,7 @@ fn remove_dropped_bodies(
             if let Ok(mut e) = commands.get_entity(entity) {
                 e.try_remove::<BodyParts>().try_remove::<ColliderParts>();
             }
+            drop_heightfield_child(&mut commands, entity);
         }
     }
     for entity in removed_bodies.read() {
@@ -305,6 +361,7 @@ fn remove_dropped_colliders(
         if let Ok(mut e) = commands.get_entity(entity) {
             e.try_remove::<ColliderParts>();
         }
+        drop_heightfield_child(&mut commands, entity);
     }
 }
 
@@ -354,18 +411,52 @@ fn sync_colliders(
         (Entity, &ResolvedCollider),
         (With<RuntimePhysics>, Without<RuntimePhysics2d>, Changed<ResolvedCollider>),
     >,
+    heightfield_children: Query<&HeightfieldChild>,
 ) {
     for (entity, resolved) in &colliders {
+        let surface = (
+            Friction::new(resolved.friction),
+            Restitution::new(resolved.restitution),
+            CollisionLayers::from_bits(resolved.layers.memberships, resolved.layers.filters),
+        );
+        // A heightfield goes on a child; see `HeightfieldPart`.
+        let field = match &resolved.shape {
+            ResolvedShape::Heightfield(field) if resolved.offset == Vec3::ZERO && resolved.rotation == Quat::IDENTITY => {
+                heightfield_parts(field)
+            }
+            _ => None,
+        };
+        if let Some((shape, centre)) = field {
+            commands.entity(entity).try_remove::<ColliderParts>();
+            let parts = (shape, surface, Transform::from_translation(centre));
+            let child = match heightfield_children.get(entity) {
+                Ok(child) => {
+                    commands.entity(child.0).try_insert(parts);
+                    child.0
+                }
+                Err(_) => {
+                    let child = commands
+                        .spawn((parts, HeightfieldPart(entity), renzora::HideInHierarchy, ChildOf(entity)))
+                        .id();
+                    commands.entity(entity).try_insert(HeightfieldChild(child));
+                    child
+                }
+            };
+            if resolved.sensor {
+                commands.entity(child).try_insert(Sensor);
+            } else {
+                commands.entity(child).try_remove::<Sensor>();
+            }
+            continue;
+        }
+        if heightfield_children.contains(entity) {
+            drop_heightfield_child(&mut commands, entity);
+        }
         let Some(collider) = placed_collider(resolved) else {
             continue;
         };
         let mut e = commands.entity(entity);
-        e.try_insert((
-            collider,
-            Friction::new(resolved.friction),
-            Restitution::new(resolved.restitution),
-            CollisionLayers::from_bits(resolved.layers.memberships, resolved.layers.filters),
-        ));
+        e.try_insert((collider, surface));
         // Left over from before offsets were baked into the collider.
         e.try_remove::<ColliderTransform>();
         if resolved.sensor {
@@ -477,13 +568,18 @@ fn write_velocities(
 fn write_contacts(
     mut q: Query<(Entity, &mut PhysicsContacts, Option<&GlobalTransform>), Without<RuntimePhysics2d>>,
     collisions: Collisions,
+    heightfield_children: Query<&HeightfieldChild>,
+    parts: Query<&HeightfieldPart>,
 ) {
     for (entity, mut contacts, transform) in &mut q {
+        // A chunk's collider is on its heightfield child, and what touches it
+        // is reported as touching the chunk.
+        let collider = heightfield_children.get(entity).map_or(entity, |c| c.0);
         let current: Vec<Contact> = collisions
-            .collisions_with(entity)
+            .collisions_with(collider)
             .map(|pair| {
-                let first = pair.collider1 == entity;
-                let other = if first { pair.collider2 } else { pair.collider1 };
+                let first = pair.collider1 == collider;
+                let other = owner_of(&parts, if first { pair.collider2 } else { pair.collider1 });
                 // Manifold normals point from collider1 to collider2; ours points
                 // at this body, which is the opposite way when it is collider1.
                 let deepest = pair
@@ -554,6 +650,7 @@ fn apply_queue(
             if let Ok(mut e) = commands.get_entity(entity) {
                 e.try_remove::<BodyParts>().try_remove::<ColliderParts>();
             }
+            drop_heightfield_child(commands, entity);
             continue;
         }
         if dims.get(entity) != Ok(false) {
@@ -598,6 +695,7 @@ type QueryParams = (
     SpatialQuery<'static, 'static>,
     Query<'static, 'static, (), With<Sensor>>,
     Query<'static, 'static, &'static Collider>,
+    Query<'static, 'static, &'static HeightfieldPart>,
 );
 
 /// The spatial-query parameters, built once so a cast needs only `&World`.
@@ -610,6 +708,8 @@ struct Queries<'a, 'w, 's> {
     spatial: &'a SpatialQuery<'w, 's>,
     sensors: &'a Query<'w, 's, (), With<Sensor>>,
     colliders: &'a Query<'w, 's, &'static Collider>,
+    /// To report a heightfield's owner, not its carrier.
+    parts: &'a Query<'w, 's, &'static HeightfieldPart>,
 }
 
 fn with_queries(world: &World, run: impl FnOnce(Queries)) {
@@ -617,8 +717,8 @@ fn with_queries(world: &World, run: impl FnOnce(Queries)) {
     // then a miss, which is the same answer as an empty scene.
     let Some(state) = world.get_resource::<QueryState>() else { return };
     let Ok(mut state) = state.0.lock() else { return };
-    let Ok((spatial, sensors, colliders)) = state.get(world) else { return };
-    run(Queries { spatial: &spatial, sensors: &sensors, colliders: &colliders });
+    let Ok((spatial, sensors, colliders, parts)) = state.get(world) else { return };
+    run(Queries { spatial: &spatial, sensors: &sensors, colliders: &colliders, parts: &parts });
 }
 
 fn cast(q: Queries, batch: &mut CastBatch) {
@@ -648,7 +748,7 @@ fn cast(q: Queries, batch: &mut CastBatch) {
                         distance: h.distance,
                         point: cast.origin + *dir * h.distance,
                         normal: h.normal,
-                        entity: h.entity,
+                        entity: owner_of(q.parts, h.entity),
                     });
                 }
                 continue;
@@ -681,7 +781,7 @@ fn cast(q: Queries, batch: &mut CastBatch) {
                 distance: h.distance,
                 point: h.point1,
                 normal: h.normal1,
-                entity: h.entity,
+                entity: owner_of(q.parts, h.entity),
             });
         }
     }
@@ -698,7 +798,10 @@ fn overlap(q: Queries, batch: &mut OverlapBatch) {
             .with_excluded_entities(query.exclude.iter().copied());
         q.spatial.shape_intersections_callback(&shape, query.position, query.rotation, &filter, |e| {
             if query.include_sensors || !q.sensors.contains(e) {
-                found.push(e);
+                let e = owner_of(q.parts, e);
+                if !found.contains(&e) {
+                    found.push(e);
+                }
             }
             true
         });

@@ -206,7 +206,7 @@ These functions are **Lua-only**:
 | `input_button_pressed(action)` | bool | True while any binding for the action is held |
 | `input_button_just_pressed(action)` | bool | True on the frame the action fires |
 | `input_button_just_released(action)` | bool | True on the frame the action releases |
-| `input_axis_1d(action)` | number | Single axis value (-1..1) |
+| `input_axis_1d(action)` | number | Single axis value (-1..1). For a button action, how far it is pressed (0..1): a gamepad trigger's own travel, 1 for a key |
 | `input_axis_2d(action)` | number, number | Two return values — `local x, y = input_axis_2d("move")` |
 
 ```lua

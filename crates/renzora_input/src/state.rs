@@ -22,6 +22,12 @@ pub fn update_action_state(
 
         match action.kind {
             ActionKind::Button => {
+                // A button action's `axis_1d` is how far it is pressed: 1 for
+                // a key or a mouse button, a trigger's own travel for an
+                // analog gamepad button. Bevy counts a trigger as pressed
+                // only past three quarters of its travel, so a light squeeze
+                // would otherwise be nothing at all.
+                let mut amount = 0.0f32;
                 for binding in &action.bindings {
                     match binding {
                         InputBinding::Key(key_str) => {
@@ -29,6 +35,9 @@ pub fn update_action_state(
                                 data.pressed |= keyboard.pressed(key);
                                 data.just_pressed |= keyboard.just_pressed(key);
                                 data.just_released |= keyboard.just_released(key);
+                                if keyboard.pressed(key) {
+                                    amount = 1.0;
+                                }
                             }
                         }
                         InputBinding::MouseButton(btn_str) => {
@@ -36,6 +45,9 @@ pub fn update_action_state(
                                 data.pressed |= mouse_buttons.pressed(btn);
                                 data.just_pressed |= mouse_buttons.just_pressed(btn);
                                 data.just_released |= mouse_buttons.just_released(btn);
+                                if mouse_buttons.pressed(btn) {
+                                    amount = 1.0;
+                                }
                             }
                         }
                         InputBinding::GamepadButton(btn_str) => {
@@ -45,12 +57,19 @@ pub fn update_action_state(
                                     data.pressed |= gp.pressed(btn);
                                     data.just_pressed |= gp.just_pressed(btn);
                                     data.just_released |= gp.just_released(btn);
+                                    // A digital button reports no travel: pressed is all the way.
+                                    let travel = gp.get(btn).unwrap_or(if gp.pressed(btn) { 1.0 } else { 0.0 });
+                                    // A worn trigger rarely rests at exactly zero.
+                                    if travel > action.dead_zone.max(0.05) {
+                                        amount = amount.max(travel);
+                                    }
                                 }
                             }
                         }
                         _ => {}
                     }
                 }
+                data.axis_1d = amount.clamp(0.0, 1.0);
             }
             ActionKind::Axis1D => {
                 let mut value = 0.0f32;

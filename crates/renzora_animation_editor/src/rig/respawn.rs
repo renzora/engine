@@ -79,6 +79,6 @@ fn respawn_when_reloaded(
         if let Some(t) = tracker.as_mut() {
             t.source_entity = None;
         }
-        renzora::core::console_log::console_info("Rig", format!("Reloaded {rel} with its rig in {count} instance(s)"));
+        renzora::core::console_log::console_info("Rig", format!("Reloaded {rel} in {count} instance(s)"));
     }
 }

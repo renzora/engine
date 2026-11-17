@@ -74,6 +74,18 @@ Models are stored as `.rvg` on import, whatever format they came in: one file ho
 
 A project from before models were stored as `.rvg` holds them as `.glb`, each with an `.rvg` beside it that the panel hides. **Convert Models to RVG...** in the command palette turns them into `.rvg` models and updates every scene that uses them.
 
+### Separating parts of a model
+
+Models often come with things that should move on their own merged together: both wheels of a car's axle as one part, every door of a building as one. Turning that part turns both wheels around the middle of the car.
+
+Right-click the part in the Hierarchy and choose **Separate Parts**. Each separate piece of it becomes a part of its own, named after the one you clicked with `_part1`, `_part2` and so on added, numbered along the direction the pieces are spread out in. Each new part's origin is the centre of its piece, so a wheel turns about its own hub.
+
+Pieces that sit inside one another stay together: a tyre, its rim and the bolts in it are one wheel, even when the model stores them as separate materials. Materials are kept.
+
+This changes the model file, so every scene using the model gets the separated parts. The first time, the original is kept beside it as `<name>.unsplit.rvg`; copy it back over the model to undo. Separating a second part of the same model keeps the first. Rigging again starts from the copy kept before the model was first rigged, so separate parts before rigging: a separation made after it is lost the next time the model is rigged.
+
+The entry only appears on a part of a placed model that draws meshes, and it refuses a part that is already one piece, a skinned mesh, and a mesh with blend shapes.
+
 ## The toolbar
 
 From left to right the toolbar has **Import**, **New Folder** (which makes a folder where you are and starts its rename), the path to the folder you are in, a search box, the sort order, and the grid and list views.

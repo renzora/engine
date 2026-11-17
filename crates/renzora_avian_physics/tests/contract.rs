@@ -311,6 +311,49 @@ fn model_floor(app: &mut App, body: bool) {
     app.world_mut().spawn((Mesh3d(mesh), Transform::default(), ChildOf(group)));
 }
 
+/// A terrain chunk's collider: a static heightfield spanning `0..size` from
+/// its entity, the way the terrain hands one over. A box as well as a ball:
+/// a heightfield moved into place inside a compound held a ball up and let
+/// every box, so every car, fall straight through it.
+#[test]
+fn a_heightfield_holds_a_body_up() {
+    let mut app = physics_app();
+    let n = 17;
+    let ground = app.world_mut().spawn((
+        PhysicsBodyData::static_body(),
+        renzora_physics::auto_fit::SkipAutoFit,
+        CollisionShapeData::mesh(),
+        renzora::physics::HeightfieldSource(std::sync::Arc::new(renzora::physics::HeightfieldData {
+            heights: vec![2.0; n * n],
+            columns: n,
+            rows: n,
+            size: Vec2::splat(16.0),
+        })),
+        Transform::from_xyz(-8.0, 0.0, -8.0),
+    )).id();
+    let b = ball(&mut app, Vec3::new(0.0, 6.0, 0.0), 1.0);
+    let car = app
+        .world_mut()
+        .spawn((SkipAutoFit, PhysicsBodyData::default(), CollisionShapeData::cuboid(Vec3::new(0.9, 0.6, 2.1)), Transform::from_xyz(-4.0, 4.0, -2.0)))
+        .id();
+    step(&mut app, 180);
+    let y = pos(&app, b).y;
+    assert!((y - 2.5).abs() < 0.1, "the ball should rest on the ground at 2 m, it is at {y}");
+    let y = pos(&app, car).y;
+    assert!((y - 2.6).abs() < 0.1, "the box should rest on the ground at 2 m, it is at {y}");
+
+    // Rays and contacts name the ground's own entity.
+    let hit = PhysicsBackends::cast_one(
+        app.world(),
+        renzora::physics::Cast::ray(PhysicsDim::D3, Vec3::new(6.0, 10.0, 6.0), Vec3::NEG_Y, 20.0),
+    )
+    .expect("the ray finds the ground");
+    assert_eq!(hit.entity, ground);
+    assert!((hit.point.y - 2.0).abs() < 1e-3, "{:?}", hit.point);
+    let contacts = app.world().get::<PhysicsContacts>(car).expect("contacts");
+    assert!(contacts.touches(ground), "{contacts:?}");
+}
+
 #[test]
 fn a_model_root_mesh_collider_holds_a_body_up() {
     let mut app = physics_app();
@@ -652,4 +695,179 @@ fn a_2d_revolute_joint_swings_a_body_round_its_pin() {
     }
     // A pendulum released level passes straight under its pin.
     assert!(lowest < -1.9, "swings down under gravity, lowest y = {lowest}");
+}
+
+// ── Vehicles ─────────────────────────────────────────────────────────────
+
+/// A static slab, top face at y = 0, spanning `x` and `z` (min, max).
+fn slab(app: &mut App, x: (f32, f32), z: (f32, f32)) {
+    let half = Vec3::new((x.1 - x.0) * 0.5, 0.5, (z.1 - z.0) * 0.5);
+    app.world_mut().spawn((
+        SkipAutoFit,
+        PhysicsBodyData::static_body(),
+        CollisionShapeData::cuboid(half),
+        Transform::from_xyz((x.0 + x.1) * 0.5, -0.5, (z.0 + z.1) * 0.5),
+    ));
+}
+
+/// A 2 x 0.8 x 4 m car body of 1000 kg at `at`, driven by a script (no input
+/// actions), with four wheels of 0.4 m radius named the way Separate Parts
+/// names them: hubs 0.4 m below the body's centre, so it rests with its
+/// centre 0.8 m above the ground.
+fn car(app: &mut App, at: Vec3) -> Entity {
+    let car = app
+        .world_mut()
+        .spawn((
+            SkipAutoFit,
+            PhysicsBodyData { mass: 1000.0, ..Default::default() },
+            CollisionShapeData::cuboid(Vec3::new(1.0, 0.4, 2.0)),
+            Transform::from_translation(at),
+            renzora::vehicle::Vehicle {
+                front_axle: "front".into(),
+                rear_axle: "rear".into(),
+                wheel_radius: 0.4,
+                use_input: false,
+                ..Default::default()
+            },
+        ))
+        .id();
+    for (name, z) in [("front", 1.5f32), ("rear", -1.5)] {
+        let axle = app.world_mut().spawn((Name::new(name), Transform::default(), ChildOf(car))).id();
+        for (n, x) in [(1, 0.9f32), (2, -0.9)] {
+            app.world_mut().spawn((
+                Name::new(format!("{name}_part{n}")),
+                Transform::from_xyz(x, -0.4, z),
+                ChildOf(axle),
+            ));
+        }
+    }
+    car
+}
+
+fn drive(app: &mut App, car: Entity, throttle: f32) {
+    app.world_mut().get_mut::<renzora::vehicle::VehicleControls>(car).unwrap().throttle = throttle;
+}
+
+#[test]
+fn a_vehicle_settles_on_its_suspension() {
+    let mut app = physics_app();
+    slab(&mut app, (-20.0, 20.0), (-20.0, 20.0));
+    let car = car(&mut app, Vec3::new(0.0, 1.5, 0.0));
+    step(&mut app, 240);
+    let state = *app.world().get::<renzora::vehicle::VehicleState>(car).unwrap();
+    assert_eq!(state.wheels, 4);
+    assert_eq!(state.wheels_on_ground, 4);
+    let t = app.world().get::<Transform>(car).unwrap();
+    assert!((t.translation.y - 0.8).abs() < 0.12, "rests on its wheels at 0.8 m, at {}", t.translation.y);
+    assert!((t.rotation * Vec3::Y).y > 0.99, "sits level");
+}
+
+#[test]
+fn a_vehicle_drives_on_throttle_and_stays_upright() {
+    let mut app = physics_app();
+    slab(&mut app, (-50.0, 50.0), (-20.0, 200.0));
+    let car = car(&mut app, Vec3::new(0.0, 1.0, 0.0));
+    step(&mut app, 60);
+    drive(&mut app, car, 1.0);
+    step(&mut app, 180);
+    let t = *app.world().get::<Transform>(car).unwrap();
+    let speed = app.world().get::<renzora::vehicle::VehicleState>(car).unwrap().speed;
+    assert!(t.translation.z > 10.0, "drove forward, at z = {}", t.translation.z);
+    assert!(speed > 5.0, "at speed, {speed} m/s");
+    assert!((t.rotation * Vec3::Y).y > 0.95, "upright");
+    assert!(t.translation.x.abs() < 1.0, "straight, x = {}", t.translation.x);
+}
+
+/// Throttle with nothing under the car still turns the driven wheels, and
+/// only those.
+#[test]
+fn a_vehicle_revs_its_driven_wheels_in_the_air() {
+    let mut app = physics_app();
+    let car = car(&mut app, Vec3::new(0.0, 50.0, 0.0));
+    step(&mut app, 2);
+    drive(&mut app, car, 1.0);
+    step(&mut app, 30);
+    let turned = |app: &mut App, name: &str| {
+        let mut q = app.world_mut().query::<(&Name, &Transform)>();
+        let t = q.iter(app.world()).find(|(n, _)| n.as_str() == name).unwrap().1;
+        t.rotation.angle_between(Quat::IDENTITY)
+    };
+    assert!(turned(&mut app, "rear_part1") > 0.05, "a driven wheel spins up");
+    assert!(turned(&mut app, "front_part1") < 1e-3, "a free wheel stays still");
+}
+
+/// A model that poses a wheel turned (here 20 degrees) gets it back straight,
+/// and the wheel's brake caliper stays at the top of the hub while the wheel
+/// spins.
+#[test]
+fn a_vehicle_straightens_a_turned_wheel_and_keeps_its_caliper_still() {
+    let mut app = physics_app();
+    let car = car(&mut app, Vec3::new(0.0, 50.0, 0.0));
+    let mut named = app.world_mut().query::<(Entity, &Name)>();
+    let wheel = named.iter(app.world()).find(|(_, n)| n.as_str() == "rear_part1").unwrap().0;
+    app.world_mut().get_mut::<Transform>(wheel).unwrap().rotation = Quat::from_rotation_y(20f32.to_radians());
+    // A tyre: a cylinder about the wheel's X axis.
+    let tyre = app.world_mut().resource_mut::<Assets<Mesh>>().add(Mesh::from(Cylinder::new(0.4, 0.25)));
+    let caliper = app.world_mut().resource_mut::<Assets<Mesh>>().add(Mesh::from(Cuboid::new(0.08, 0.1, 0.15)));
+    app.world_mut().spawn((Mesh3d(tyre), Transform::from_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)), ChildOf(wheel)));
+    let caliper = app.world_mut().spawn((Mesh3d(caliper), Transform::from_xyz(0.0, 0.25, 0.0), ChildOf(wheel))).id();
+    step(&mut app, 2);
+    drive(&mut app, car, 1.0);
+    step(&mut app, 40);
+
+    let car_rotation = app.world().get::<GlobalTransform>(car).unwrap().rotation();
+    let wheel_global = *app.world().get::<GlobalTransform>(wheel).unwrap();
+    let axle = car_rotation.inverse() * (wheel_global.rotation() * Quat::from_rotation_z(std::f32::consts::FRAC_PI_2) * Vec3::Y);
+    assert!(axle.x.abs() > 0.999, "the wheel faces straight ahead, axle {axle:?}");
+    assert!(wheel_global.rotation().angle_between(car_rotation) > 0.05, "and it spins");
+    let caliper_at = car_rotation.inverse() * (app.world().get::<GlobalTransform>(caliper).unwrap().translation() - wheel_global.translation());
+    assert!(caliper_at.y > 0.2, "the caliper stays at the top of the hub, at {caliper_at:?}");
+}
+
+/// A model spawns its parts again once it has loaded. The vehicle must find
+/// the new wheels, not keep posing the ones that were despawned.
+#[test]
+fn a_vehicle_poses_wheels_spawned_again_after_it_found_them() {
+    let mut app = physics_app();
+    let car = car(&mut app, Vec3::new(0.0, 50.0, 0.0));
+    step(&mut app, 2);
+    // Throw the model's parts away and spawn a fresh copy, the way a model
+    // that finishes loading replaces its scene.
+    let axles: Vec<Entity> = app.world().get::<Children>(car).unwrap().iter().collect();
+    for axle in axles {
+        app.world_mut().entity_mut(axle).despawn();
+    }
+    for (name, z) in [("front", 1.5f32), ("rear", -1.5)] {
+        let axle = app.world_mut().spawn((Name::new(name), Transform::default(), ChildOf(car))).id();
+        for (n, x) in [(1, 0.9f32), (2, -0.9)] {
+            app.world_mut().spawn((Name::new(format!("{name}_part{n}")), Transform::from_xyz(x, -0.4, z), ChildOf(axle)));
+        }
+    }
+    drive(&mut app, car, 1.0);
+    step(&mut app, 30);
+    let mut q = app.world_mut().query::<(&Name, &Transform)>();
+    let spun = q
+        .iter(app.world())
+        .find(|(n, _)| n.as_str() == "rear_part1")
+        .map(|(_, t)| t.rotation.angle_between(Quat::IDENTITY))
+        .unwrap();
+    assert!(spun > 0.05, "the new rear wheel spins, turned {spun}");
+}
+
+/// Nothing tips the car but the physics engine: driven off a ledge, its nose
+/// drops as the front wheels leave the edge.
+#[test]
+fn a_vehicle_driven_off_a_ledge_noses_down() {
+    let mut app = physics_app();
+    slab(&mut app, (-20.0, 20.0), (-20.0, 6.0));
+    let car = car(&mut app, Vec3::new(0.0, 1.0, 0.0));
+    step(&mut app, 60);
+    drive(&mut app, car, 0.4);
+    let mut steepest = 0.0f32;
+    for _ in 0..180 {
+        app.update();
+        let forward = app.world().get::<Transform>(car).unwrap().rotation * Vec3::Z;
+        steepest = steepest.min(forward.y);
+    }
+    assert!(steepest < -0.15, "the nose should drop off the edge, steepest {steepest}");
 }

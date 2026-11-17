@@ -89,11 +89,113 @@ impl AssetLoadProgress {
     }
 }
 
+/// After every counted thing is done, how long nothing more may finish
+/// loading before the scene counts as loaded. Textures and shaders arrive one
+/// after another for a while after the last model, and nothing counts those
+/// in flight; a quiet spell is the sign they have stopped.
+pub const SETTLE_SECONDS: f64 = 0.5;
+
+/// How long a scene load can be held before the log says what it is still
+/// waiting for. Not a limit: a scene takes as long as it takes, and a loading
+/// screen that came down early would show it unfinished. The line is there so
+/// a load that never ends (a material whose file is missing) can be found.
+pub const SLOW_LOAD_SECONDS: f64 = 30.0;
+
+/// What [`tick_asset_load_progress`] remembers of the scene load it is holding
+/// open.
+#[derive(Default)]
+pub struct LoadHold {
+    /// A scene loaded and is not ready to be seen yet.
+    active: bool,
+    started: f64,
+    /// When something last finished loading.
+    last_activity: f64,
+    /// Whether the slow-load line has been written for this load.
+    reported_slow: bool,
+}
+
+/// What still has to happen after a scene's models are in, before it is ready
+/// to be seen.
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct SceneSettling<'w, 's> {
+    scene: Option<Res<'w, crate::scene_io::SceneLoadState>>,
+    work: Option<Res<'w, renzora::core::SceneLoadWork>>,
+    unresolved_materials: Query<'w, 's, (), (With<renzora::core::MaterialRef>, Without<renzora::core::MaterialResolved>)>,
+    // Optional, not `MessageReader`s: a headless server registers neither
+    // asset type, and a reader of an unregistered message panics.
+    images: Option<Res<'w, Messages<AssetEvent<Image>>>>,
+    shaders: Option<Res<'w, Messages<AssetEvent<bevy::shader::Shader>>>>,
+    image_cursor: Local<'s, bevy::ecs::message::MessageCursor<AssetEvent<Image>>>,
+    shader_cursor: Local<'s, bevy::ecs::message::MessageCursor<AssetEvent<bevy::shader::Shader>>>,
+}
+
+impl SceneSettling<'_, '_> {
+    /// Whether a scene load is still settling at `now`, starting a hold when a
+    /// scene has just loaded and ending it when everything is in.
+    ///
+    /// Only a scene load starts one. Chunks streaming in as the player drives,
+    /// or a texture loaded mid-game, extend nothing, so a loading screen never
+    /// comes back over a game in progress.
+    fn holding(&mut self, hold: &mut LoadHold, now: f64) -> bool {
+        // Scene loading is synchronous: a load leaves the phase at `Ready` in
+        // the frame it happens, so the resource changing to it is the signal.
+        let loaded = self
+            .scene
+            .as_ref()
+            .is_some_and(|s| s.is_changed() && s.phase == crate::scene_io::SceneLoadPhase::Ready);
+        if loaded {
+            *hold = LoadHold { active: true, started: now, last_activity: now, reported_slow: false };
+        }
+        let mut activity = 0;
+        if let Some(images) = self.images.as_deref() {
+            activity += self
+                .image_cursor
+                .read(images)
+                .filter(|e| matches!(e, AssetEvent::LoadedWithDependencies { .. } | AssetEvent::Modified { .. }))
+                .count();
+        }
+        if let Some(shaders) = self.shaders.as_deref() {
+            activity += self
+                .shader_cursor
+                .read(shaders)
+                .filter(|e| matches!(e, AssetEvent::LoadedWithDependencies { .. } | AssetEvent::Modified { .. }))
+                .count();
+        }
+        if !hold.active {
+            return false;
+        }
+        let pending = self.work.as_ref().map_or(0, |w| w.total()) + self.unresolved_materials.iter().count() as u32;
+        // Work still under way counts as activity, so the quiet spell is timed
+        // from when the last of it finished, not from the last texture.
+        if activity > 0 || pending > 0 {
+            hold.last_activity = now;
+        }
+        let settling = now - hold.last_activity < SETTLE_SECONDS;
+        if !settling {
+            hold.active = false;
+            info!("[load] scene ready {:.1}s after it loaded", now - hold.started);
+        } else if now - hold.started > SLOW_LOAD_SECONDS && !hold.reported_slow {
+            hold.reported_slow = true;
+            warn!(
+                "[load] the scene is still loading after {SLOW_LOAD_SECONDS}s: {} still building, {} materials unresolved",
+                self.work.as_ref().map_or(0, |w| w.total()),
+                self.unresolved_materials.iter().count()
+            );
+        }
+        hold.active
+    }
+}
+
 /// Refresh [`AssetLoadProgress`] from current scene state.
 ///
 /// Runs every `Update`. Counts files via `MeshInstanceData` + the
 /// `PendingMeshInstanceRehydrate` marker; computes byte sums by looking
 /// up each entity's `model_path` in the rpak index.
+///
+/// Then, after a scene loads, holds the state at `Loading` until the rest of
+/// it is in too ([`SceneSettling`]): the terrain built, every material
+/// resolved, and textures and shaders stopped arriving. Counting only model
+/// files, a loading screen came down over a level still filling in.
 pub fn tick_asset_load_progress(
     instances: Query<&MeshInstanceData>,
     // Only models loaded through bevy_gltf are ever "pending" — see the `gltf`
@@ -103,6 +205,8 @@ pub fn tick_asset_load_progress(
     vfs: Option<Res<Vfs>>,
     time: Res<Time>,
     mut progress: ResMut<AssetLoadProgress>,
+    mut settling: SceneSettling,
+    mut hold: Local<LoadHold>,
 ) {
     // Count files. Only consider entities whose `model_path` is set —
     // primitives without an external mesh have nothing to load.
@@ -149,11 +253,13 @@ pub fn tick_asset_load_progress(
 
     // State machine: Idle ↔ Loading ↔ Done.
     let now_secs = time.elapsed_secs_f64();
+    let holding = settling.holding(&mut hold, now_secs);
+    let busy = pending_files > 0 || holding;
     let next_state = match progress.state {
         LoadProgressState::Idle => {
-            if total_files == 0 {
+            if total_files == 0 && !holding {
                 LoadProgressState::Idle
-            } else if pending_files > 0 {
+            } else if busy {
                 progress.started_at = Some(now_secs);
                 LoadProgressState::Loading
             } else {
@@ -162,14 +268,14 @@ pub fn tick_asset_load_progress(
             }
         }
         LoadProgressState::Loading => {
-            if pending_files == 0 {
+            if !busy {
                 LoadProgressState::Done
             } else {
                 LoadProgressState::Loading
             }
         }
         LoadProgressState::Done => {
-            if pending_files > 0 {
+            if busy {
                 progress.started_at = Some(now_secs);
                 LoadProgressState::Loading
             } else {
@@ -263,4 +369,82 @@ pub fn publish_scene_load_to_bridge(
         current_path: state.current_path.clone(),
         progress: state.progress,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene_io::{SceneLoadPhase, SceneLoadState};
+    use bevy::time::TimeUpdateStrategy;
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(100)))
+            .init_resource::<AssetLoadProgress>()
+            .init_resource::<SceneLoadState>()
+            .init_resource::<renzora::core::SceneLoadWork>()
+            .add_systems(Update, tick_asset_load_progress);
+        app.update();
+        app
+    }
+
+    fn load_scene(app: &mut App) {
+        app.world_mut().resource_mut::<SceneLoadState>().phase = SceneLoadPhase::Ready;
+    }
+
+    fn state(app: &App) -> LoadProgressState {
+        app.world().resource::<AssetLoadProgress>().state
+    }
+
+    /// A scene loads with its terrain still building: loading holds until the
+    /// terrain is done and a settle period has passed, then ends.
+    #[test]
+    fn loading_waits_for_reported_work_and_a_quiet_spell() {
+        let mut app = app();
+        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 40);
+        load_scene(&mut app);
+        for _ in 0..20 {
+            app.update();
+        }
+        assert_eq!(state(&app), LoadProgressState::Loading, "terrain still building");
+
+        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 0);
+        app.update();
+        assert_eq!(state(&app), LoadProgressState::Loading, "settling");
+        for _ in 0..8 {
+            app.update();
+        }
+        assert_eq!(state(&app), LoadProgressState::Done);
+    }
+
+    /// Work reported mid-game, terrain streaming in as the player drives,
+    /// does not bring loading back.
+    #[test]
+    fn work_without_a_scene_load_does_not_start_loading() {
+        let mut app = app();
+        load_scene(&mut app);
+        for _ in 0..10 {
+            app.update();
+        }
+        let before = state(&app);
+        assert_ne!(before, LoadProgressState::Loading);
+        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 5);
+        for _ in 0..5 {
+            app.update();
+        }
+        assert_eq!(state(&app), before);
+    }
+
+    /// A slow scene is waited for, however long it takes.
+    #[test]
+    fn a_slow_scene_is_waited_for() {
+        let mut app = app();
+        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 1);
+        load_scene(&mut app);
+        for _ in 0..((SLOW_LOAD_SECONDS * 10.0) as usize + 50) {
+            app.update();
+        }
+        assert_eq!(state(&app), LoadProgressState::Loading);
+    }
 }

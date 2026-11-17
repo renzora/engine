@@ -99,6 +99,37 @@ commands.spawn(
 
 [Ragdolls](/docs/r1-alpha8/scripting/ragdoll) build their skeletons out of spherical joints this way.
 
+## Vehicles
+
+A **Vehicle** turns a model into a car the physics engine drives. Each wheel casts down to the ground and pushes on the body: its suspension (a spring and a damper) holds the car up, and its tyre pushes it along, brakes it and grips sideways, never harder than the wheel is pressed down. Everything else comes from the physics engine: the car pitches over a crest, tips off an edge, flies, lands and can roll over. No script is needed.
+
+To make one:
+
+1. Give the model a **Physics Body** (Rigid Body, with its real mass, and **no** rotation locks) and a Box **Collision Shape** around the body. Keep the box's bottom above the axles, like a real car's floor: the wheels hold the car up, and a box reaching down to the tyres catches on every bump.
+2. If each axle's two wheels are one part, right-click each axle in the Hierarchy and choose **Separate Parts** (see [Assets](/docs/r1-alpha8/editor/assets)).
+3. Add a **Vehicle** and pick the **Front Axle** and **Rear Axle**. The lists show the parts whose wheels were separated.
+
+| Field | Default | Meaning |
+|---|---|---|
+| **Front Axle** / **Rear Axle** | none | The axles' names. Their wheels are the parts named `<axle>_part1`, `<axle>_part2`, ...; a part named just `<axle>` is one wheel. The front wheels steer. |
+| **Drive** | Rear | Which wheels the engine turns: Front, Rear or All. |
+| **Engine Force** | 12000 N | The engine's push at full throttle, shared by the driven wheels. |
+| **Brake Force** | 15000 N | The brakes' push at full pedal, shared by every wheel. |
+| **Top Speed** / **Reverse Speed** | 50 / 12 m/s | |
+| **Steering** | 32° | Full lock. Less at speed. |
+| **Suspension Travel** | 0.2 m | How far each wheel moves up and down from where the model puts it. |
+| **Stiffness** | 0 (auto) | Spring stiffness in N/m. Zero works it out from the mass so the car sits with its wheels where the model put them. |
+| **Damping** | 0.5 | 0 is bouncy, 1 settles without bouncing at all. |
+| **Grip** | 1.2 | The tyres' friction. Lower slides more. |
+| **Wheel Radius** | 0 (auto) | Zero measures it from the wheels. |
+| **Drive With Input** | on | Drive it from the input actions. |
+
+With **Drive With Input** on, `move` drives it (W/S or the arrows for throttle, brake and reverse, A/D, the arrows or the left stick to steer), and the `accelerate` and `brake` actions add the gamepad triggers, as far as they are squeezed. Hold brake when stopped to reverse.
+
+Turn it off to drive the car from a script. A Rust script writes `renzora::vehicle::VehicleControls` (`throttle` and `brake` 0 to 1, `steer` -1 to 1) on the vehicle's entity, and reads `VehicleState` (`speed` in m/s, negative in reverse, and how many wheels are on the ground).
+
+The wheels steer, spin and move with their suspension by themselves. Each spins about its own axle and centre, measured from the surface of its tyre and rim (by area, so a simplified mesh measures the same as the full detail), so a wheel the model poses slightly turned or tilted, or whose origin is off its axle, rolls true. The measured size is the tyre's too, unless **Wheel Radius** is set. Every wheel starts pointing straight ahead, even when the model poses its front wheels turned. A wheel follows the ground while its tyre grips; throttle spins a driven wheel up when the tyre slips or the car is stuck or in the air, and the brakes lock it. A piece of a wheel part that sits off its axle, such as a brake caliper, steers and rides the suspension with the wheel but does not spin.
+
 ## Adding physics in the editor
 
 Select an entity, then in the **Inspector** use **Add Component**:

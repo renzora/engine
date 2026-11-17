@@ -23,6 +23,7 @@ pub mod scene_query;
 pub mod script_extension;
 pub mod selection;
 pub mod slide;
+pub mod vehicle;
 
 /// When `active`, the editor enters "edit collider" mode for the selected entity:
 /// the transform gizmo is hidden and (later) collider resize/move handles take over.
@@ -74,7 +75,23 @@ impl Plugin for PhysicsPlugin {
             .register_type::<CollisionShapeType>()
             .register_type::<Physics2d>()
             .register_type::<PhysicsReadState>()
-            .register_type::<read_state::CollisionReadState>();
+            .register_type::<read_state::CollisionReadState>()
+            .register_type::<renzora::vehicle::Vehicle>()
+            .register_type::<renzora::vehicle::VehicleDrive>();
+
+        // Vehicles: found and driven only while the game runs, so a car sits
+        // still with its wheels where the model put them while it is edited.
+        // Forces every physics step, before that step's commands are applied.
+        app.add_systems(
+            Update,
+            (vehicle::rig_vehicles, vehicle::read_vehicle_input, vehicle::pose_vehicle_wheels)
+                .chain()
+                .run_if(not_editing),
+        )
+        .add_systems(
+            FixedUpdate,
+            vehicle::drive_vehicles.before(PhysicsSet::Commands).run_if(not_editing),
+        );
 
         app.init_resource::<PhysicsBackends>()
             .init_resource::<PhysicsSettings>()

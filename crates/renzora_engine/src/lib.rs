@@ -767,6 +767,7 @@ impl Plugin for RuntimePlugin {
             .init_resource::<scene_io::SceneLoadState>()
             .init_resource::<scene_io::SceneReferenceCache>()
             .init_resource::<asset_progress::AssetLoadProgress>()
+            .init_resource::<renzora::core::SceneLoadWork>()
             .add_systems(
                 Update,
                 (

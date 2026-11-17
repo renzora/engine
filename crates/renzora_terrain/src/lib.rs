@@ -115,7 +115,8 @@ impl Plugin for TerrainPlugin {
                     // filters here count from each system's last run, so a
                     // frame skipped loses nothing.
                     .run_if(terrain_in_scene),
-            );
+            )
+            .add_systems(Update, starter::report_terrain_load_work.after(starter::report_terrain_progress));
     }
 }
 

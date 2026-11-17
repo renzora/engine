@@ -22,6 +22,7 @@
 use bevy::prelude::*;
 
 pub mod inspector;
+mod vehicle_inspector;
 
 /// Background queue for bulk-stamping mesh colliders on a hierarchy, chunked
 /// across frames so the UI can show progress. Populated by the inspector's

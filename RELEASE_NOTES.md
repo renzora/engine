@@ -1,5 +1,38 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 10:01
+- fix(physics): a vehicle's wheels no longer wobble on models whose meshes are simplified in memory
+
+## 2026-11-17 09:51
+- fix(physics): a vehicle's wheels start straight even when the model poses them turned, so they steer equally both ways
+- fix(physics): a brake caliper inside a vehicle's wheel no longer spins with it
+
+## 2026-11-17 09:31
+- fix(physics): a vehicle's wheels turn about their tyre's true centre, so they no longer wobble when the model's wheel origin is off the axle
+
+## 2026-11-17 09:22
+- fix(physics): a vehicle's wheels steer and spin after its model finishes loading, instead of staying still
+
+## 2026-11-17 09:12
+- fix(physics): a vehicle's wheels spin true about their own axles, and rev up in the air or when the tyres slip
+- feat(input): a button action reports how far an analog trigger is pressed, so vehicles get part throttle
+
+## 2026-11-17 08:48
+- feat(physics): a **Vehicle** component makes a model a car the physics engine drives, with suspension and tyre grip on each wheel, steering and spinning wheels, and keyboard and gamepad input built in
+- feat(input): the default input map has `accelerate` and `brake` on the gamepad triggers
+
+## 2026-11-17 08:11
+- fix(scene): a loading screen stays up until the level is ready, with its terrain built, materials resolved and textures in, instead of coming down as soon as its models load
+
+## 2026-11-17 08:01
+- fix(physics): boxes, cars and every other non-round body rest on terrain instead of falling straight through it
+
+## 2026-11-17 07:39
+- fix(export): Rust scripts in an exported game receive `Ready` and their other lifecycle events, as they do in Play
+
+## 2026-11-17 07:04
+- feat(editor): **Separate Parts** in the Hierarchy's right-click menu splits a model part into its separate pieces, each centred on itself, such as both wheels of an axle into two wheels that turn about their own hubs
+
 ## 2026-11-17 05:48
 - fix(export): a game set to High graphics quality no longer crashes on start with a `storage_view_mip_8` GPU error
 

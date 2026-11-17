@@ -60,6 +60,25 @@ impl SpawnRegistries<'_> {
     }
 }
 
+/// What decides whether "Separate Parts" is offered: a part of a placed model
+/// (not the model itself) that draws meshes, or holds parts that do.
+#[derive(SystemParam)]
+pub(crate) struct ModelParts<'w, 's> {
+    meshes: Query<'w, 's, (), With<bevy::gltf::GltfMeshName>>,
+    models: Query<'w, 's, (), With<renzora::core::MeshInstanceData>>,
+    children: Query<'w, 's, &'static Children>,
+    parents: Query<'w, 's, &'static ChildOf>,
+}
+
+impl ModelParts<'_, '_> {
+    fn separable(&self, entity: Entity) -> bool {
+        let in_model = self.parents.iter_ancestors(entity).any(|a| self.models.contains(a));
+        in_model
+            && !self.models.contains(entity)
+            && (self.meshes.contains(entity) || self.children.iter_descendants(entity).any(|d| self.meshes.contains(d)))
+    }
+}
+
 /// Right-click a row → open a menu of actions for that entity. Right-click the
 /// empty space below the tree → the quick-add categories instead, so a scene can
 /// be filled without going through the header button's search overlay. The two
@@ -83,6 +102,7 @@ pub(crate) fn hier_context_menu(
     >,
     list_area: Query<&UiCursor, With<HierListArea>>,
     registries: SpawnRegistries,
+    model_parts: ModelParts,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -160,6 +180,13 @@ pub(crate) fn hier_context_menu(
             } else {
                 e.insert(renzora::PickAsUnit);
             }
+        }));
+    }
+    // Split merged pieces of a model part (both wheels of an axle) into nodes
+    // of their own. A rewrite of the model file, done by the rig tools.
+    if !is_ui && model_parts.separable(target) {
+        kids.push(menu_item(&mut commands, &fonts, "scissors", &renzora::lang::t("hierarchy.context.separate_parts"), move |w| {
+            w.trigger(renzora::core::SeparateModelParts { entity: target });
         }));
     }
 

@@ -17,6 +17,8 @@
 //!   and painted.
 //! - [`morphs`]: blend shapes (glTF morph targets) read from and written into
 //!   a model; [`sculpt`]: the brushes that sculpt them.
+//! - [`split`]: one mesh separated into the pieces it is made of, each on a
+//!   node of its own (both wheels of an axle into two wheels).
 
 pub mod chain;
 pub mod controls;
@@ -33,6 +35,7 @@ pub mod morphs;
 pub mod quadruped;
 pub mod sculpt;
 pub mod skin;
+pub mod split;
 pub mod weights;
 
 pub use glb::{Glb, GlbError};
@@ -190,6 +193,40 @@ pub fn unrigged_path(path: &std::path::Path) -> std::path::PathBuf {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
     let ext = if is_rvg(path) { "rvg" } else { "glb" };
     path.with_file_name(format!("{stem}.unrigged.{ext}"))
+}
+
+/// Where a model's original is kept the first time parts of it are separated
+/// ([`split`]): `<stem>.unsplit.glb` or `<stem>.unsplit.rvg` beside it. Kept
+/// apart from the rig's original ([`unrigged_path`]), which is the way back
+/// from a rig and has nothing to do with separating. Rigging restarts from its
+/// own original, so parts separated after a model was first rigged are lost
+/// when it is rigged again; separated before, they are in that original.
+pub fn unsplit_path(path: &std::path::Path) -> std::path::PathBuf {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("model");
+    let ext = if is_rvg(path) { "rvg" } else { "glb" };
+    path.with_file_name(format!("{stem}.unsplit.{ext}"))
+}
+
+/// Separate the meshes named in `mesh_names` into pieces in a model file, in
+/// place, keeping the original beside it ([`unsplit_path`]) the first time.
+///
+/// Unlike [`rig_file`] this edits the file as it is now, not the original, so
+/// separating a second part keeps the first.
+pub fn separate_file(
+    path: &std::path::Path,
+    mesh_names: &[&str],
+) -> Result<split::Separated, Box<dyn std::error::Error>> {
+    let bytes = read_model(path)?;
+    let mut glb = Glb::parse(&bytes)?;
+    // Worked out before anything is written, so a refusal leaves no backup
+    // and no changed file behind.
+    let done = split::separate_parts(&mut glb, mesh_names)?;
+    let original = unsplit_path(path);
+    if !original.exists() {
+        std::fs::copy(path, &original)?;
+    }
+    write_model(path, &glb.to_bytes())?;
+    Ok(done)
 }
 
 /// Put the original back, removing the rig.

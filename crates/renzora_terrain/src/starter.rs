@@ -241,6 +241,33 @@ pub fn shape_pending_chunks(
 /// How the viewport's progress card describes a terrain filling in.
 const WORK_ID: &str = "terrain_build";
 
+/// Report the chunks still to shape or build to a loading scene
+/// ([`SceneLoadWork`](renzora::core::SceneLoadWork)), so a loading screen
+/// stays up until the ground is all there.
+///
+/// Not gated on a terrain being in the scene like the systems that do the
+/// building: a scene without one has to report zero, or the last scene's count
+/// would hold the next one's loading screen up.
+pub fn report_terrain_load_work(
+    work: Option<ResMut<renzora::core::SceneLoadWork>>,
+    shaping: Query<(), With<PendingShape>>,
+    building: Query<
+        (),
+        (
+            With<TerrainChunkData>,
+            Without<Mesh3d>,
+            Without<crate::data::TerrainChunkStreamedOut>,
+            Without<PendingShape>,
+        ),
+    >,
+) {
+    let Some(mut work) = work else { return };
+    let waiting = (shaping.iter().count() + building.iter().count()) as u32;
+    if work.get(WORK_ID) != waiting {
+        work.set(WORK_ID, waiting);
+    }
+}
+
 /// Report terrain that is still shaping or building to the viewport's
 /// progress card ([`ViewportWork`](renzora::core::viewport_types::ViewportWork)).
 ///

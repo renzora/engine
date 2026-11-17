@@ -457,6 +457,21 @@ impl LoadedScripts {
         }
         self._images.push(std::mem::ManuallyDrop::new(lib));
     }
+
+    /// Another name for a script already loaded: its update function and its
+    /// lifecycle hook both, so the script behaves the same whichever name it
+    /// is looked up by.
+    pub fn alias(&mut self, name: String, f: ScriptFn, hook: Option<ScriptHookFn>) {
+        self.entries.insert(name.clone(), f);
+        match hook {
+            Some(h) => {
+                self.hooks.insert(name, h);
+            }
+            None => {
+                self.hooks.remove(&name);
+            }
+        }
+    }
 }
 
 /// Compile one `.rs` into `<project>/.renzora/scripts/`, returning the library.
@@ -585,7 +600,13 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
     // One `Library` per FILE, not per key: two keys naming the same library must
     // share one image, or the second `dlopen` would map a second copy of a
     // library holding its own statics.
-    let mut opened: HashMap<String, ScriptFn> = HashMap::new();
+    //
+    // The second key gets the hook as well as the update function. Only the
+    // first used to: the index lists each script by path and by file name, and
+    // dispatch looks scripts up by file name, which is the second, so no
+    // shipped script ever received `Ready` or any other lifecycle event. A
+    // script that set itself up in `Ready` did nothing at all in an export.
+    let mut opened: HashMap<String, (ScriptFn, Option<ScriptHookFn>)> = HashMap::new();
     let mut count = 0usize;
     for line in index.lines() {
         let Some((key, file)) = line.split_once('\t') else { continue };
@@ -593,13 +614,13 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
         if key.is_empty() || file.is_empty() {
             continue;
         }
-        if let Some(f) = opened.get(file) {
-            loaded.entries.insert(key.to_string(), *f);
+        if let Some(&(f, hook)) = opened.get(file) {
+            loaded.alias(key.to_string(), f, hook);
             continue;
         }
         match load_library(&dir.join(file)) {
             Ok((f, hook, lib)) => {
-                opened.insert(file.to_string(), f);
+                opened.insert(file.to_string(), (f, hook));
                 loaded.insert(key.to_string(), f, hook, lib);
                 count += 1;
             }
@@ -763,4 +784,24 @@ pub(crate) fn describe_panic(name: &str, caught: &renzora::core::recoverable::Ca
 /// [`renzora_plugin_build::install`].
 fn exe_dir() -> Option<PathBuf> {
     renzora_plugin_build::install::root()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn update(_: &mut World, _: Entity) {}
+    fn hook(_: &mut World, _: Entity, _: &renzora::ScriptHook<'_>) {}
+
+    /// A shipped script is indexed by path and by file name, and looked up by
+    /// file name. Both names must reach its hooks, or it never hears `Ready`.
+    #[test]
+    fn a_second_name_for_a_script_reaches_its_hooks_too() {
+        let mut loaded = LoadedScripts::default();
+        loaded.alias("scripts/car.rs".into(), update, Some(hook));
+        loaded.alias("car.rs".into(), update, Some(hook));
+        assert!(loaded.is_loaded("car.rs"));
+        assert!(loaded.hook("car.rs").is_some());
+        assert!(loaded.hook("scripts/car.rs").is_some());
+    }
 }

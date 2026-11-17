@@ -398,10 +398,12 @@ pub(crate) fn thumbnailed(relative: &str) -> Option<Thumbnailed> {
         return Some(Thumbnailed::Material);
     }
     let model = MODELS.iter().any(|ext| lower.ends_with(&format!(".{ext}")))
-        // The original a rig was built from is kept beside the model; it is
-        // not shown anywhere and has no thumbnail.
+        // The original a rig (or a separation of parts) was built from is
+        // kept beside the model; it is not shown anywhere and has no
+        // thumbnail.
         && !lower.contains(".unrigged.")
-        && !lower.contains(".unshaped.");
+        && !lower.contains(".unshaped.")
+        && !lower.contains(".unsplit.");
     model.then_some(Thumbnailed::Model)
 }
 
@@ -474,6 +476,7 @@ mod tests {
         assert_eq!(thumbnailed("materials/rock.material"), Some(Thumbnailed::Material));
         assert_eq!(thumbnailed("models/car/textures/paint.png"), None);
         assert_eq!(thumbnailed("models/hero/hero.unrigged.rvg"), None);
+        assert_eq!(thumbnailed("models/car/car.unsplit.rvg"), None);
     }
 
     #[test]

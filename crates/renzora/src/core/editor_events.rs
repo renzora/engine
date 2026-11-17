@@ -14,6 +14,18 @@ pub struct PausePhysics;
 #[derive(bevy::prelude::Event)]
 pub struct UnpausePhysics;
 
+/// Sent by the Hierarchy's "Separate Parts" to split the meshes of a model
+/// part (the entity and everything under it) into separate pieces, each with
+/// its own node centred on it: both wheels of an axle into two wheels.
+///
+/// The work is a rewrite of the model's file, done by the editor that owns
+/// model files (the animation editor's rig tools, which link
+/// `renzora_rig::split`), so the Hierarchy asks rather than linking it.
+#[derive(bevy::prelude::Event, Clone, Copy, Debug)]
+pub struct SeparateModelParts {
+    pub entity: bevy::prelude::Entity,
+}
+
 /// Sent by the editor to request resetting all script runtime states.
 #[derive(bevy::prelude::Event)]
 pub struct ResetScriptStates;

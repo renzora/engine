@@ -11,6 +11,8 @@
 //! - [`markers`]: the points a rig is built from, placed on the stage.
 //! - [`respawn`]: once a model file has been rigged or reweighted, reloading
 //!   it and rebuilding every instance of it so the change is in the scene.
+//! - [`separate`]: the Hierarchy's "Separate Parts", splitting merged pieces
+//!   of a model (both wheels of an axle) into nodes of their own.
 //!
 //! The rigging itself (GLB editing, weights, expressions, IK) is the
 //! `renzora_rig` crate; this is its front end.
@@ -32,6 +34,7 @@ pub(crate) mod markers;
 pub(crate) mod respawn;
 pub(crate) mod quadruped_panel;
 pub(crate) mod rig_panel;
+pub(crate) mod separate;
 pub(crate) mod skeleton_panel;
 
 pub struct RigPlugin;
@@ -51,6 +54,7 @@ impl Plugin for RigPlugin {
         face_panel::register(app);
         controls::register(app);
         chain_panel::register(app);
+        separate::register(app);
     }
 }
 

@@ -27,6 +27,7 @@ pub mod entity_id; // canonical unique snake_case entity ids (Name)
 pub mod graph; // node-graph vocabulary (material / particle)
 pub mod image_formats; // which extensions load as an Image (raster + SVG)
 pub mod input_actions; // named actions + the character controller queue
+pub mod load_work; // what a freshly loaded scene still has to build
 pub mod environment_suppressed; // shading modes that show no sky
 pub mod material_nodes; // the material node catalogue, as data
 pub mod material_ref; // pointing an entity at a .material file
@@ -56,6 +57,7 @@ pub use entity_id::*;
 pub use graph::*;
 pub use image_formats::*;
 pub use input_actions::*;
+pub use load_work::*;
 pub use environment_suppressed::*;
 pub use material_nodes::*;
 pub use material_ref::*;
