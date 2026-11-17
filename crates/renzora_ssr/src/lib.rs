@@ -1,6 +1,21 @@
 use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
+use bevy::render::camera::TemporalJitter;
+use std::ops::Range;
+
+/// The roughness range over which SSR fades out on a camera that nothing
+/// resolves temporally (FXAA, SMAA or no anti-aliasing).
+///
+/// Bevy's SSR reflects a rough surface by taking ONE random sample of its
+/// reflection lobe per pixel per frame, and relies on TAA or DLSS to average
+/// those samples over time. Without one, every pixel shows its own random
+/// reflection, which reads as grain over rough wood and stone (it appeared
+/// as soon as Solari was switched off, because DLSS had been doing the
+/// averaging). Up to about 0.3 roughness the lobe is narrow enough that a
+/// single sample is nearly noise-free; above that, the environment map's
+/// prefiltered reflection is what a surface gets, as it would without SSR.
+const UNRESOLVED_MAX_ROUGHNESS: Range<f32> = 0.25..0.3;
 use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -50,6 +65,11 @@ pub fn stood_down_by_solari(world: &World, source: Entity) -> bool {
 /// screen-space reflections composited over them flicker as the two disagree
 /// from frame to frame. The settings keep their value, so turning Solari off
 /// brings SSR back, the same way SSAO stands aside.
+///
+/// **Rough reflections need a temporal pass.** A camera with no
+/// `TemporalJitter` (which TAA and DLSS both bring) gets SSR on glossy
+/// surfaces only; see [`UNRESOLVED_MAX_ROUGHNESS`].
+#[allow(clippy::too_many_arguments)]
 fn sync_ssr(
     mut commands: Commands,
     sources: Query<Ref<SsrSettings>>,
@@ -58,11 +78,18 @@ fn sync_ssr(
     solari: Query<(), With<renzora::SolariLit>>,
     gained_solari: Query<(), Added<renzora::SolariLit>>,
     mut lost_solari: RemovedComponents<renzora::SolariLit>,
+    jittered: Query<(), With<TemporalJitter>>,
+    gained_jitter: Query<(), Added<TemporalJitter>>,
+    mut lost_jitter: RemovedComponents<TemporalJitter>,
 ) {
     let routing_changed = routing.is_changed();
     let lost: Vec<Entity> = lost_solari.read().collect();
+    let lost_jitter: Vec<Entity> = lost_jitter.read().collect();
     for (target, source_list) in routing.iter() {
-        let solari_changed = gained_solari.contains(*target) || lost.contains(target);
+        let solari_changed = gained_solari.contains(*target)
+            || lost.contains(target)
+            || gained_jitter.contains(*target)
+            || lost_jitter.contains(target);
         let mut found = false;
         for &src in source_list {
             if let Ok(settings) = sources.get(src) {
@@ -88,14 +115,20 @@ fn sync_ssr(
                         );
                         commands.entity(*target).remove::<ScreenSpaceReflections>();
                     } else {
+                        let defaults = ScreenSpaceReflections::default();
+                        let max_perceptual_roughness = if jittered.contains(*target) {
+                            defaults.max_perceptual_roughness.clone()
+                        } else {
+                            UNRESOLVED_MAX_ROUGHNESS
+                        };
                         commands.entity(*target).insert(ScreenSpaceReflections {
                             thickness: settings.thickness,
                             linear_steps: settings.linear_steps,
                             bisection_steps: settings.bisection_steps,
                             use_secant: settings.use_secant,
-                            // perceptual-roughness / fadeout ranges keep bevy's
-                            // tuned defaults.
-                            ..default()
+                            max_perceptual_roughness,
+                            // The other ranges keep bevy's tuned defaults.
+                            ..defaults
                         });
                     }
                 } else {
@@ -178,5 +211,30 @@ mod tests {
         app.world_mut().entity_mut(camera).remove::<renzora::SolariLit>();
         app.update();
         assert!(has_ssr(&app, camera), "SSR should come back without Solari");
+    }
+
+    fn max_roughness(app: &App, camera: Entity) -> Range<f32> {
+        app.world().get::<ScreenSpaceReflections>(camera).unwrap().max_perceptual_roughness.clone()
+    }
+
+    /// Without a temporal pass SSR keeps to glossy surfaces, whose one sample
+    /// per pixel is not grain; TAA or DLSS (both jitter) brings the full
+    /// range back, and losing it takes it away again.
+    #[test]
+    fn rough_reflections_follow_the_temporal_pass() {
+        let (mut app, _source, camera) = app();
+        app.update();
+        assert_eq!(max_roughness(&app, camera), UNRESOLVED_MAX_ROUGHNESS);
+
+        app.world_mut().entity_mut(camera).insert(TemporalJitter::default());
+        app.update();
+        assert_eq!(
+            max_roughness(&app, camera),
+            ScreenSpaceReflections::default().max_perceptual_roughness
+        );
+
+        app.world_mut().entity_mut(camera).remove::<TemporalJitter>();
+        app.update();
+        assert_eq!(max_roughness(&app, camera), UNRESOLVED_MAX_ROUGHNESS);
     }
 }

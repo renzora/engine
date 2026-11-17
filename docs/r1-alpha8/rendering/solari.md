@@ -71,6 +71,12 @@ decision, which is the half no plugin can make.
   a second time. The SSR section's switch reads off and cannot be turned on
   while Solari is on, with a note saying why. Both keep their settings, so
   they come back when Solari is switched off or the GPU cannot ray trace.
+- **SSR without a temporal pass reflects glossy surfaces only.** SSR reflects
+  a rough surface with one random sample per pixel, which TAA or DLSS averages
+  over frames. On a camera with neither (FXAA, SMAA or no anti-aliasing, which
+  is where a camera is once Solari is off) that showed as grain, so SSR there
+  fades out from 0.25 to 0.3 roughness and rougher surfaces use the
+  environment map. With TAA on, SSR covers Bevy's full range again.
 - **Meshes.** While Solari is active, eligible meshes are mirrored into the
   ray-tracing scene with `RaytracingMesh3d` (it coexists with the rasterized
   `Mesh3d`). Solari's BLAS builder demands `TriangleList` topology, 32-bit
