@@ -374,10 +374,11 @@ fn reflect_component_value(
             type_path: type_path.to_string(),
             offset,
         })?;
+    let value_str = rename_legacy_variants(value_str);
     let mut legacy = LegacyEntityBits;
     let seed = TypedReflectDeserializer::with_processor(registration, registry, &mut legacy);
     let mut ron_de =
-        ron::Deserializer::from_str(value_str).map_err(|e| BsnError::Deserialize {
+        ron::Deserializer::from_str(&value_str).map_err(|e| BsnError::Deserialize {
             type_path: type_path.to_string(),
             message: e.to_string(),
         })?;
@@ -385,6 +386,89 @@ fn reflect_component_value(
         type_path: type_path.to_string(),
         message: e.to_string(),
     })
+}
+
+/// Enum variants Bevy renamed, as `(field, old, new)`.
+///
+/// Bevy main renamed `Default` to `Normal` on `AlignItems`, `JustifyItems`,
+/// `AlignContent` and `JustifyContent`, with no serde alias. A UI `Node`
+/// deserializes itself whole through serde, so reflection never reaches these
+/// fields to translate them: an old `align_items:Default` failed the whole
+/// `Node`, the loader skipped it, and the next save wrote the entity without
+/// its layout. Rewriting the text before it is parsed is the one place that
+/// sees the field. Saving writes the new name, so a scene converts on its
+/// first save.
+const RENAMED_VARIANTS: [(&str, &str, &str); 4] = [
+    ("align_items", "Default", "Normal"),
+    ("justify_items", "Default", "Normal"),
+    ("align_content", "Default", "Normal"),
+    ("justify_content", "Default", "Normal"),
+];
+
+/// Components Bevy deleted, which old scenes still carry.
+///
+/// They held nothing a scene needs any more (`FocusPolicy` went with Bevy's
+/// focus system, replaced by picking), so they are dropped quietly rather than
+/// reported as skipped on every load. Only consulted once the type has failed
+/// to resolve, so a game's own type that happens to share a name still loads.
+const RETIRED_BY_BEVY: [&str; 3] = [
+    "bevy_ui::focus::FocusPolicy",
+    "bevy_ui::focus::Interaction",
+    "bevy_ui::focus::RelativeCursorPosition",
+];
+
+/// Rewrite `field: Old` to `field: New` for every [`RENAMED_VARIANTS`] entry.
+///
+/// Matches the field name as a whole word followed by a single `:` (not the
+/// `::` of a path) and the variant as a whole word, so `self_align_items` and
+/// `DefaultSomething` are left alone. Borrows when there is nothing to change,
+/// which is every scene saved after the rename.
+fn rename_legacy_variants(value: &str) -> std::borrow::Cow<'_, str> {
+    let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let mut out: Option<String> = None;
+    for (field, old, new) in RENAMED_VARIANTS {
+        let src = out.as_deref().unwrap_or(value);
+        let bytes = src.as_bytes();
+        let mut edits: Vec<(usize, usize)> = Vec::new();
+        let mut from = 0;
+        while let Some(at) = src[from..].find(field) {
+            let start = from + at;
+            from = start + field.len();
+            if start > 0 && is_ident(bytes[start - 1]) {
+                continue;
+            }
+            let mut i = from;
+            while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+                i += 1;
+            }
+            if bytes.get(i) != Some(&b':') || bytes.get(i + 1) == Some(&b':') {
+                continue;
+            }
+            i += 1;
+            while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+                i += 1;
+            }
+            if src[i..].starts_with(old) && !bytes.get(i + old.len()).is_some_and(|&b| is_ident(b)) {
+                edits.push((i, i + old.len()));
+            }
+        }
+        if edits.is_empty() {
+            continue;
+        }
+        let mut rewritten = String::with_capacity(src.len());
+        let mut last = 0;
+        for (a, b) in edits {
+            rewritten.push_str(&src[last..a]);
+            rewritten.push_str(new);
+            last = b;
+        }
+        rewritten.push_str(&src[last..]);
+        out = Some(rewritten);
+    }
+    match out {
+        Some(s) => std::borrow::Cow::Owned(s),
+        None => std::borrow::Cow::Borrowed(value),
+    }
 }
 
 /// Reads an [`Entity`] in either of the forms a scene has stored it in.
@@ -686,6 +770,8 @@ impl<'a> Parser<'a> {
 
         match reflect_component_value(&type_path, &value_str, registry, path_start) {
             Ok(value) => Ok(Some(value)),
+            // Deleted from Bevy: nothing to load, and nothing worth a warning.
+            Err(BsnError::UnregisteredType { .. }) if RETIRED_BY_BEVY.contains(&type_path.as_str()) => Ok(None),
             Err(e) => match skipped {
                 Some(list) => {
                     list.push(type_path);
@@ -1001,5 +1087,66 @@ entity 4294967295 {
         assert_eq!(scene.entities.len(), 1);
         // The real `Name` component survived; only the bogus one was skipped.
         assert_eq!(scene.entities[0].components.len(), 1);
+    }
+
+    #[test]
+    fn renames_only_the_whole_field_and_variant() {
+        let old = "(align_items:Default,justify_items: Default,align_content :Default,justify_content:Default,align_self:Auto)";
+        assert_eq!(
+            rename_legacy_variants(old),
+            "(align_items:Normal,justify_items: Normal,align_content :Normal,justify_content:Normal,align_self:Auto)"
+        );
+        // Lookalikes are left alone: a longer field name, a longer variant, a path.
+        for untouched in [
+            "(self_align_items:Default)",
+            "(align_items:DefaultLike)",
+            "(align_items::Default)",
+            "(align_items:FlexEnd)",
+        ] {
+            assert!(
+                matches!(rename_legacy_variants(untouched), std::borrow::Cow::Borrowed(_)),
+                "{untouched} should not change"
+            );
+        }
+    }
+
+    /// A UI `Node` saved before Bevy renamed `Default` to `Normal` loads, with
+    /// the old value read as the new one, instead of being skipped.
+    #[test]
+    fn loads_a_node_saved_with_default_alignment() {
+        let atr = registry();
+        atr.write().register::<Node>();
+        let old_scene = "\
+// renzora interim bsn v1
+entity 4294967295 {
+    bevy_ui::ui_node::Node: (align_items:Default,justify_items:Default,align_content:Default,justify_content:Default,width:Px(10.0)),
+}
+";
+        let (scene, skipped) = BsnSerializer
+            .deserialize_lossy(old_scene, &atr.read())
+            .expect("parses");
+        assert!(skipped.is_empty(), "nothing should be skipped: {skipped:?}");
+        let node = Node::from_reflect(scene.entities[0].components[0].as_ref()).expect("a Node");
+        assert_eq!(node.align_items, AlignItems::Normal);
+        assert_eq!(node.justify_content, JustifyContent::Normal);
+        assert_eq!(node.width, Val::Px(10.0));
+    }
+
+    /// `FocusPolicy` is gone from Bevy; an old scene carrying it loads without
+    /// reporting it as skipped, and keeps everything else.
+    #[test]
+    fn drops_components_bevy_deleted_without_reporting_them() {
+        let atr = registry();
+        let mut src = World::new();
+        src.insert_resource(atr.clone());
+        let e = src.spawn(Name::new("Button")).id();
+        let scene = DynamicSceneBuilder::from_world(&src).extract_entity(e).build();
+        let text = BsnSerializer.serialize(&scene, &atr.read()).expect("serialize");
+        let old_scene = text.replacen("{\n", "{\n    bevy_ui::focus::FocusPolicy: Block,\n", 1);
+        let (scene, skipped) = BsnSerializer
+            .deserialize_lossy(&old_scene, &atr.read())
+            .expect("parses");
+        assert!(skipped.is_empty(), "a retired type is not a skip: {skipped:?}");
+        assert_eq!(scene.entities[0].components.len(), 1, "the Name survives");
     }
 }

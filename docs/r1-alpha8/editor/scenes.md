@@ -114,6 +114,10 @@ Only named objects are saved. Everything you add through **+ Add Entity** is nam
 
 Saving also gives each object a **Scene Entity Id**, a number stored with it in the file. Names can repeat (a duplicated object keeps its name), so the id is what lets the running game find the object you are editing; see [The editor follows the game](/docs/r1-alpha8/editor/play-mode#the-editor-follows-the-game). A duplicate gets a new id of its own on the next save. You never need to set or change it.
 
+### Opening older scenes
+
+A component the editor cannot read is skipped, with a warning naming it, and **the next save writes the scene without it**. Autosave counts as a save. Scenes from older engine versions are translated as they load where the engine knows how: UI layouts saved with the old `Default` alignment value read as `Normal`, entity references in the old numeric form are converted, and components Bevy removed (`FocusPolicy`) are dropped quietly. Saving writes the new format, which an older engine cannot read back, so keep a copy (or commit the project) before opening it in a newer version.
+
 ### Scene thumbnails
 
 Every save also snapshots the viewport and keeps it as the scene's thumbnail, so the Assets panel shows you the level rather than a generic icon. Whatever the focused viewport was showing when you saved is the picture you get. Frame the shot, then save.
