@@ -68,7 +68,7 @@ Chunk size and resolution rebuild every chunk with a fresh collider, so they wai
 
 The engine ships Highlands, Rolling Hills and Desert graphs on the Assets panel's create menu.
 
-**Whole terrain**: **Erode all** weathers the whole terrain (rain carves gullies and fills valleys with sediment, then slopes settle to their angle of repose), and **Flatten all** levels the sculpt layer to 0 m. Each is one undo step. Erosion works the same at any grid spacing: on a fine terrain the raindrops run on a grid of about 3 m and the change is carried back up to full resolution, so gullies come out a few metres across instead of a comb of one-vertex grooves.
+**Whole terrain**: **Erode all** weathers the whole terrain (rain carves gullies and fills valleys with sediment, then slopes settle to their angle of repose), and **Flatten all** levels the sculpt layer to 0 m. Each is one undo step. The amount of rain scales with the terrain's area, so a 64 m tile and a 2 km landscape weather by the same amount for their size. Erosion works the same at any grid spacing: on a fine terrain the raindrops run on a grid of about 3 m and the change is carried back up to full resolution, so gullies come out a few metres across instead of a comb of one-vertex grooves.
 
 **Heightmap import and export** is folded away at the bottom; see [Heightmaps](#heightmaps).
 

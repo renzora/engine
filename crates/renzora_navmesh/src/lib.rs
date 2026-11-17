@@ -625,10 +625,15 @@ impl Plugin for NavMeshPlugin {
             .add_systems(Update, obstacle::mirror_collider_obstacles);
 
         // Terrain-aware obstacle injection — only when the `terrain` subsystem is
-        // built (the tuple above is unordered, so a separate add doesn't change
-        // scheduling). Stripped together with `renzora_terrain` in a lean export.
+        // built. Stripped together with `renzora_terrain` in a lean export.
+        //
+        // After `sync_volume_changes`, always: both react to the same volume
+        // change and both write `NavMeshSettings::fixed`, the volume sync with
+        // the bare outline and this with the outline plus terrain obstacles.
+        // Unordered, the bare outline won whenever the volume sync ran second,
+        // and the navmesh came out as one square ignoring the terrain.
         #[cfg(feature = "terrain")]
-        app.add_systems(Update, sync_terrain_obstacles);
+        app.add_systems(Update, sync_terrain_obstacles.after(sync_volume_changes));
 
         // Script functions owned by the navmesh crate.
         #[cfg(feature = "scripting")]
@@ -697,6 +702,46 @@ mod tests {
         };
         assert!((span(&xs) - 20.0).abs() < 1e-3, "x span should be 2*10");
         assert!((span(&zs) - 8.0).abs() < 1e-3, "z span should be 2*4 — the Y half-extent must not leak in");
+    }
+
+    /// An obstacle handed over as Bevy `Vec2`s (converted to polyanya's glam at
+    /// the boundary, as `sync_terrain_obstacles` does) cuts a hole in the mesh.
+    #[test]
+    fn an_obstacle_cuts_a_hole_in_the_outline() {
+        let volume = NavMeshVolume { half_extents: Vec3::new(10.0, 5.0, 10.0), ..default() };
+        let mut tri = build_settings(&volume).fixed;
+        let square = vec![
+            Vec2::new(-2.0, -2.0),
+            Vec2::new(2.0, -2.0),
+            Vec2::new(2.0, 2.0),
+            Vec2::new(-2.0, 2.0),
+        ];
+        tri.add_obstacles(std::iter::once(square.into_iter().map(to_p).collect::<Vec<_>>()));
+        let mesh = tri.as_navmesh();
+        assert!(mesh.point_in_mesh(to_p(Vec2::new(6.0, 6.0))), "open ground stays walkable");
+        assert!(!mesh.point_in_mesh(to_p(Vec2::new(0.0, 0.0))), "the obstacle is a hole");
+    }
+
+    /// Terrain slope obstacles are grid cells that share their edges. A band of
+    /// them still blocks the ground it covers.
+    #[test]
+    fn touching_cell_obstacles_still_cut_holes() {
+        let volume = NavMeshVolume { half_extents: Vec3::new(20.0, 5.0, 20.0), ..default() };
+        let mut tri = build_settings(&volume).fixed;
+        let mut cells = Vec::new();
+        for i in 0..6 {
+            let x = -12.0 + i as f32 * 4.0;
+            cells.push(
+                [Vec2::new(x, -2.0), Vec2::new(x + 4.0, -2.0), Vec2::new(x + 4.0, 2.0), Vec2::new(x, 2.0)]
+                    .into_iter()
+                    .map(to_p)
+                    .collect::<Vec<_>>(),
+            );
+        }
+        tri.add_obstacles(cells);
+        let mesh = tri.as_navmesh();
+        assert!(mesh.point_in_mesh(to_p(Vec2::new(0.0, 10.0))), "open ground stays walkable");
+        assert!(!mesh.point_in_mesh(to_p(Vec2::new(1.0, 0.0))), "inside the band is blocked");
     }
 
     // ── agent movement ───────────────────────────────────────────────────────

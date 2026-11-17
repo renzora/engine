@@ -1,5 +1,14 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-17 01:29
+- fix(navmesh): a NavMesh Volume with Include Terrain cuts the steep ground out of the navmesh again
+- fix(viewport): a scene with terrain or resting physics bodies lets the viewport idle again
+- fix(terrain): Erode on a small terrain no longer wears most of it away
+
+## 2026-11-17 01:09
+- fix(scene): UI layouts saved with the old `Default` alignment load again instead of being dropped
+- fix(scene): scenes that still carry Bevy's removed `FocusPolicy` load without a skipped-component warning
+
 ## 2026-11-17 00:31
 - fix(rendering): rough surfaces no longer show grain from screen-space reflections when the camera has no TAA or DLSS, such as after switching Solari off
 

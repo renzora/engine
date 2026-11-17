@@ -273,11 +273,16 @@ fn erode_all(world: &mut World, terrain: Entity) {
     let Some(tools) = world.get_resource::<renzora::terrain_tools::TerrainTools>().copied() else { return };
     // The default rain count suits a 512 m terrain; scale it with the area so
     // every terrain gets the same density.
+    //
+    // Linearly, with no floor of a quarter of the 512 m amount: that floor gave
+    // a fresh 64 m terrain sixteen times the density, and rain that runs off
+    // the edge takes its sediment with it, so one press wore most of the
+    // terrain down to the bottom of its height range.
     let area = world
         .get::<TerrainData>(terrain)
         .map_or(1.0, |t| t.total_width() * t.total_depth() / (512.0 * 512.0));
     let base = renzora::terrain_tools::TerrainErode::default().droplets;
-    let droplets = ((base as f32 * area.max(0.25)) as u32).min(2_000_000);
+    let droplets = ((base as f32 * area) as u32).clamp(500, 2_000_000);
     let request = renzora::terrain_tools::TerrainErode { terrain: Some(terrain), droplets, ..default() };
     if let Err(e) = (tools.erode)(world, &request) {
         warn!("[terrain] {e}");
