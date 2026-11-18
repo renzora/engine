@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 17:46
+- fix(rendering): clearcoated glass on models drawn as virtual geometry no longer renders solid white, and blended surfaces there are shaded with their own normals
+
 ## 2026-11-18 17:03
 - fix(materials): textures on models drawn as virtual geometry no longer sparkle, shimmer in motion or look washed out under TAA
 

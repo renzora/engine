@@ -34,6 +34,7 @@ use bevy::render::render_phase::{
 use bevy::render::render_resource::*;
 use bevy::render::sync_world::MainEntity;
 use bevy::render::view::ExtractedView;
+use bevy::shader::ShaderDefVal;
 
 use super::materials::{specialize_main, vertex_layout};
 use super::pipelines::{vg_bindings, VgPipelines, TRANSPARENT_VG_BASE};
@@ -157,6 +158,22 @@ pub(crate) fn queue(
                         continue;
                     };
                     *slot = pipelines.transparent_layout.clone();
+                    // A blended surface computes its own normal. The view's
+                    // normal prepass holds whatever opaque surface is behind
+                    // it (a car's seats, for its window), because blended
+                    // geometry is never drawn into that pass. Bevy's
+                    // `pbr_fragment` also only sets `clearcoat_N` on the
+                    // branch that does not load it, so a clearcoated window
+                    // kept a zero coat normal: Fresnel went to 1 and the
+                    // glass rendered solid white. Only the define goes, as
+                    // Bevy does for transmissive materials in
+                    // `pbr_material.rs`; the key, and with it the view layout
+                    // the bound view bind group was made for, stays.
+                    if let Some(fragment) = descriptor.fragment.as_mut() {
+                        fragment
+                            .shader_defs
+                            .retain(|def| def != &ShaderDefVal::from("LOAD_PREPASS_NORMALS"));
+                    }
                     let id = pipeline_cache.queue_render_pipeline(descriptor);
                     specialized.0.insert(cache_key, id);
                     id

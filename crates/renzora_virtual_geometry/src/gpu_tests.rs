@@ -14,7 +14,7 @@ use bevy::pbr::DefaultOpaqueRendererMethod;
 use bevy::prelude::*;
 use bevy::render::render_resource::{CachedPipelineState, PipelineCache, TextureFormat, TextureUsages};
 use bevy::render::RenderApp;
-use bevy::shader::ShaderCacheError;
+use bevy::shader::{ShaderCacheError, ShaderDefVal};
 use bevy::window::{ExitCondition, WindowPlugin};
 use renzora_rvg::bake::{build_mesh, MeshInput};
 use renzora_rvg::RvgFile;
@@ -71,7 +71,7 @@ fn ordinary_mesh(input: &MeshInput) -> Mesh {
         .with_inserted_indices(Indices::U32(input.indices.clone()))
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Setup {
     Forward,
     ForwardWithPrepass,
@@ -932,6 +932,15 @@ fn transparent_sphere(setup: Setup) {
                 matches!(state, CachedPipelineState::Ok(_)),
                 "transparent pipeline not ready after the warm-up frames: {state:?}"
             );
+            // Glass computes its own normal: the prepass holds the surface
+            // behind it, and loading it left a clearcoat's normal at zero,
+            // which rendered every clearcoated window solid white.
+            let loads_prepass_normals = cache
+                .get_render_pipeline_descriptor(id)
+                .fragment
+                .as_ref()
+                .is_some_and(|f| f.shader_defs.contains(&ShaderDefVal::from("LOAD_PREPASS_NORMALS")));
+            assert!(!loads_prepass_normals, "a blended surface must not read the normal prepass");
         }
     }
     let world = app.world_mut();
@@ -951,6 +960,14 @@ fn transparent_sphere(setup: Setup) {
         overlap[0] > 120 && overlap[2] > 120,
         "the glass over the red sphere should blend to purple: {overlap:?}"
     );
+    // Not compared with a normal prepass: there Bevy's own transparent pass
+    // shades the glass with the prepass normals, which belong to whatever is
+    // behind it, so the ordinary image is the wrong one. Its glass is flat
+    // where it covers the background and lit with the red sphere's normals
+    // where it covers that. The virtual glass computes its own normal.
+    if setup == Setup::ForwardWithPrepass {
+        return;
+    }
     let total: u64 = virtual_image
         .iter()
         .zip(&ordinary_image)
