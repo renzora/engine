@@ -40,6 +40,53 @@ pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
     ((elevation_deg - FADE_START_DEG) / (FADE_END_DEG - FADE_START_DEG)).clamp(0.0, 1.0)
 }
 
+/// How far the moon has risen, 0 to 1: nothing while the sun is up, rising as
+/// the sun sinks from 1 to 7 degrees below the horizon.
+///
+/// It starts where [`sun_horizon_factor`] has finished, so the two never light
+/// the scene at once: the light is the sun's until the sun is gone, then the
+/// moon's. Twilight between them is the sky's.
+pub fn moon_factor(elevation_deg: f32) -> f32 {
+    const RISE_START_DEG: f32 = -1.0;
+    const RISE_END_DEG: f32 = -7.0;
+    ((elevation_deg - RISE_START_DEG) / (RISE_END_DEG - RISE_START_DEG)).clamp(0.0, 1.0)
+}
+
+/// What the scene's one directional light should be for this `Sun`: the sun
+/// while it is up, the moon once it has set.
+///
+/// One light rather than a second moon entity, so every scene with a sun
+/// already has a moon and nothing new is saved into it. Below the horizon the
+/// sun used to fade to nothing and take the sky light with it, leaving a night
+/// scene pitch black except for whatever glowed.
+pub struct SunLight {
+    pub color: Color,
+    pub illuminance: f32,
+    pub direction: Vec3,
+    /// Whether anything is lighting the scene, so shadows are worth casting.
+    pub lit: bool,
+}
+
+pub fn sun_light(sun: &Sun) -> SunLight {
+    let day = sun_horizon_factor(sun.elevation);
+    if day > 0.0 {
+        return SunLight {
+            color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
+            illuminance: sun.illuminance * day,
+            direction: sun.direction(),
+            lit: true,
+        };
+    }
+    let night = moon_factor(sun.elevation);
+    let illuminance = sun.moon_illuminance.max(0.0) * night;
+    SunLight {
+        color: Color::srgb(sun.moon_color.x, sun.moon_color.y, sun.moon_color.z),
+        illuminance,
+        direction: sun.moon_direction(),
+        lit: illuminance > 0.0,
+    }
+}
+
 fn sync_sun(
     mut commands: Commands,
     mut query: Query<
@@ -48,21 +95,20 @@ fn sync_sun(
     >,
 ) {
     for (entity, sun, mut light, mut transform) in &mut query {
-        // Below the horizon, fade illuminance and disable shadows. Keeps
-        // the authored `sun.illuminance` value intact in the inspector
-        // while the *effective* light goes to 0 — matches the physical
-        // model where the sun is below the horizon and the scene goes
-        // dark (until a moon / other key light fills in).
-        let factor = sun_horizon_factor(sun.elevation);
-        light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
-        light.illuminance = sun.illuminance * factor;
-        light.shadow_maps_enabled = sun.shadows_enabled && factor > 0.0;
-        light.contact_shadows_enabled = sun.contact_shadows && factor > 0.0;
+        // The authored `sun.illuminance` stays as typed in the inspector; the
+        // light carries the effective value, sun or moon. See `sun_light`.
+        let state = sun_light(sun);
+        light.color = state.color;
+        light.illuminance = state.illuminance;
+        light.shadow_maps_enabled = sun.shadows_enabled && state.lit;
+        light.contact_shadows_enabled = sun.contact_shadows && state.lit;
         *transform =
-            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, state.direction));
+        // The disc is the sun's: it fades with the sun and does not follow
+        // the light round to the moon.
         commands.entity(entity).try_insert(SunDisk {
             angular_size: sun.angular_diameter.to_radians(),
-            intensity: sun.sun_disk_intensity * factor,
+            intensity: sun.sun_disk_intensity * sun_horizon_factor(sun.elevation),
         });
     }
 }
@@ -276,10 +322,34 @@ mod tests {
         let sun = Sun::default();
         assert_eq!(sun.azimuth, 245.5);
         assert_eq!(sun.elevation, 38.5);
-        assert_eq!(sun.illuminance, 40_000.0);
+        assert_eq!(sun.illuminance, 120_000.0);
         assert!(sun.shadows_enabled);
         assert!(sun.contact_shadows);
         assert_eq!(sun.angular_diameter, 0.53);
+    }
+
+    /// The light is the sun's while it is up and the moon's once it has set,
+    /// never both, and a night is lit rather than black.
+    #[test]
+    fn the_light_hands_over_from_sun_to_moon() {
+        let at = |elevation| sun_light(&Sun { elevation, ..Sun::default() });
+
+        let day = at(40.0);
+        assert_eq!(day.illuminance, 120_000.0);
+        assert!(day.direction.y < 0.0, "sunlight comes down");
+
+        // Just set: the sun has faded and the moon has not yet risen.
+        let dusk = at(-1.0);
+        assert_eq!(dusk.illuminance, 0.0);
+        assert!(!dusk.lit);
+
+        let night = at(-30.0);
+        assert_eq!(night.illuminance, Sun::default().moon_illuminance);
+        assert!(night.lit);
+        assert!(night.direction.y < 0.0, "moonlight comes down, not up from below the ground");
+
+        let unlit = sun_light(&Sun { elevation: -30.0, moon_illuminance: 0.0, ..Sun::default() });
+        assert!(!unlit.lit, "a moonlight of 0 keeps nights unlit");
     }
 
     fn filtering_app() -> (App, Entity) {

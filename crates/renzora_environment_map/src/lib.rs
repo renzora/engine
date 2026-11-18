@@ -47,7 +47,7 @@ pub struct EnvironmentMapComponentSettings {
 impl Default for EnvironmentMapComponentSettings {
     fn default() -> Self {
         Self {
-            intensity: 0.3,
+            intensity: 0.5,
             enabled: true,
         }
     }

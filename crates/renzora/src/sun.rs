@@ -52,6 +52,19 @@ pub struct Sun {
     #[serde(default = "default_glare_size")]
     #[reflect(default = "default_glare_size")]
     pub glare_size: f32,
+    /// Moonlight, in lux, that the sun's light becomes once the sun has set.
+    /// 0 keeps nights unlit.
+    ///
+    /// Brighter than a real full moon (about 0.3 lux) on purpose: the camera's
+    /// auto exposure cannot open far enough to make physical moonlight
+    /// readable, and the keep-dark curve still holds the result to night.
+    #[serde(default = "default_moon_illuminance")]
+    #[reflect(default = "default_moon_illuminance")]
+    pub moon_illuminance: f32,
+    /// Colour of the moonlight (RGB, 0 to 1). Cool, as moonlit scenes read.
+    #[serde(default = "default_moon_color")]
+    #[reflect(default = "default_moon_color")]
+    pub moon_color: Vec3,
 }
 
 fn default_glare_intensity() -> f32 {
@@ -60,6 +73,14 @@ fn default_glare_intensity() -> f32 {
 
 fn default_glare_size() -> f32 {
     6.0
+}
+
+fn default_moon_illuminance() -> f32 {
+    30.0
+}
+
+fn default_moon_color() -> Vec3 {
+    Vec3::new(0.62, 0.72, 1.0)
 }
 
 impl Default for Sun {
@@ -72,7 +93,10 @@ impl Default for Sun {
             azimuth: 245.5,
             elevation: 38.5,
             color: Vec3::new(1.0, 0.95, 0.88),
-            illuminance: 40_000.0,
+            // Tuned against the default camera (EV100 13.5, manual): at
+            // 40,000 lux the sky light outweighed the sun and a sunlit
+            // street read flat and grey, with weak shadows.
+            illuminance: 120_000.0,
             shadows_enabled: true,
             // On: it is what seats small things on the ground (a bollard, a
             // chair leg) where the shadow map is too coarse to reach.
@@ -81,6 +105,8 @@ impl Default for Sun {
             sun_disk_intensity: 1.0,
             glare_intensity: default_glare_intensity(),
             glare_size: default_glare_size(),
+            moon_illuminance: default_moon_illuminance(),
+            moon_color: default_moon_color(),
         }
     }
 }
@@ -88,10 +114,21 @@ impl Default for Sun {
 impl Sun {
     /// Compute the direction the light travels (away from the sun toward the scene).
     pub fn direction(&self) -> Vec3 {
-        let az = self.azimuth.to_radians();
-        let el = self.elevation.to_radians();
-        Vec3::new(-el.cos() * az.sin(), -el.sin(), -el.cos() * az.cos())
+        direction_from_angles(self.azimuth, self.elevation)
     }
+
+    /// The direction moonlight travels: from the opposite side of the sky,
+    /// as high as the sun is low, held between 15 and 75 degrees so the moon
+    /// neither skims the ground nor stands directly overhead.
+    pub fn moon_direction(&self) -> Vec3 {
+        direction_from_angles(self.azimuth + 180.0, (-self.elevation).clamp(15.0, 75.0))
+    }
+}
+
+fn direction_from_angles(azimuth_deg: f32, elevation_deg: f32) -> Vec3 {
+    let az = azimuth_deg.to_radians();
+    let el = elevation_deg.to_radians();
+    Vec3::new(-el.cos() * az.sin(), -el.sin(), -el.cos() * az.cos())
 }
 
 /// Night stars — procedural starfield rendered on a sky dome.
@@ -163,5 +200,21 @@ mod tests {
         assert_eq!(sun.azimuth, 120.0);
         assert_eq!(sun.glare_intensity, default_glare_intensity());
         assert_eq!(sun.glare_size, default_glare_size());
+        assert_eq!(sun.moon_illuminance, default_moon_illuminance());
+        assert_eq!(sun.moon_color, default_moon_color());
+    }
+
+    /// The moon rises opposite the sun: a sun just set in the west puts the
+    /// moon low in the east, and the light always comes from above.
+    #[test]
+    fn the_moon_is_opposite_the_sun_and_above_the_horizon() {
+        let sun = Sun { azimuth: 270.0, elevation: -30.0, ..default() };
+        let toward_moon = -sun.moon_direction();
+        assert!(toward_moon.y > 0.4, "the moon is up: {toward_moon}");
+        let toward_set_sun = -sun.direction();
+        assert!(
+            toward_moon.x * toward_set_sun.x + toward_moon.z * toward_set_sun.z < 0.0,
+            "the moon is across the sky from the sun"
+        );
     }
 }

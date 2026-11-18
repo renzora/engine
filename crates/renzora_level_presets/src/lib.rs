@@ -125,9 +125,10 @@ fn seed_camera_effects(
             renzora::AutoExposureSettings::default(),
             renzora_tonemapping::TonemappingSettings::default(),
             renzora_antialiasing::AntiAliasing::default(),
-            // Manual exposure (lens attribute, edited in the Camera section). The
-            // tuned 9.7 preserves the stock look; Auto Exposure overrides it when on.
-            bevy::camera::Exposure { ev100: 9.7 },
+            // Manual exposure (lens attribute, edited in the Camera section).
+            // 13.5 is a sunlit exterior under the default 120,000 lux sun,
+            // and the value used when Auto Exposure is switched off.
+            bevy::camera::Exposure { ev100: 13.5 },
         ));
     }
 }
@@ -1514,8 +1515,8 @@ fn environment_spawned(world: &mut World, entity: Entity, outdoor_daylight: bool
 }
 
 /// The New Environment camera's lens and picture: a 90 degree view across a
-/// 16:9 frame, the filmic curve, bloom from every bright pixel rather than only
-/// the brightest, and auto exposure metering across a wide range of light.
+/// 16:9 frame, with the default picture: AgX, bloom on lights only and auto
+/// exposure, with EV100 13.5 as the manual value.
 ///
 /// Inserted with [`CameraEffectsSeeded`] so `seed_camera_effects` leaves them
 /// as they are.
@@ -1527,22 +1528,11 @@ fn outdoor_camera() -> impl Bundle {
             fov: 2.0 * (1.0f32 / (16.0 / 9.0)).atan(),
             ..default()
         }),
-        renzora_tonemapping::TonemappingSettings {
-            // ACES fitted.
-            mode: 3,
-            ..default()
-        },
-        renzora_bloom_effect::BloomSettings {
-            threshold: 0.0,
-            ..default()
-        },
-        renzora::AutoExposureSettings {
-            range_min: -10.0,
-            range_max: 16.0,
-            ..default()
-        },
+        renzora_tonemapping::TonemappingSettings::default(),
+        renzora_bloom_effect::BloomSettings::default(),
+        renzora::AutoExposureSettings::default(),
         renzora_antialiasing::AntiAliasing::default(),
-        bevy::camera::Exposure { ev100: 9.7 },
+        bevy::camera::Exposure { ev100: 13.5 },
     )
 }
 

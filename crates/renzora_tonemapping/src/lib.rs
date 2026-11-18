@@ -14,12 +14,11 @@ pub struct TonemappingSettings {
 
 impl Default for TonemappingSettings {
     fn default() -> Self {
-        // TonyMcMapface (mode 6) — modern picture-formation algorithm
-        // that preserves saturated highlights better than AgX or ACES.
-        // It's also Bevy's default tonemapper for HDR cameras, so this
-        // matches what users see before adding any tonemapping settings.
+        // AgX (mode 4). Compared side by side on a sunlit street it kept
+        // contrast and colour where TonyMcMapface lifted the shadows into a
+        // grey veil, and it holds bright lights to a soft, natural white.
         Self {
-            mode: 6,
+            mode: 4,
             ev100: 9.7,
             enabled: true,
         }

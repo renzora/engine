@@ -26,8 +26,8 @@ fewer steps.
 
 The clouds follow the camera's exposure (**EV100** in its Camera section)
 the same way the sky does, so changing the exposure brightens or dims both
-together. Their colours are tuned at EV100 9.7, a new camera's default, and
-look exactly the same there.
+together. Their colours are tuned for a 40,000 lux sun at EV100 9.7, and they
+also follow the sun's illuminance, so a brighter sun lights them more.
 
 ## Reflections and sky light
 

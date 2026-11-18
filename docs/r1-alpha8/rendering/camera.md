@@ -148,8 +148,8 @@ use renzora_bloom_effect::BloomSettings;
 
 fn enable_bloom(mut commands: Commands, camera: Single<Entity, With<Camera3d>>) {
     commands.entity(*camera).insert(BloomSettings {
-        intensity: 0.15,
-        threshold: 0.5,
+        intensity: 0.2,
+        threshold: 1.5,
         enabled: true,
         ..default()
     });
@@ -201,19 +201,30 @@ Scenes saved with the old per-method components (`TaaSettings`, `FxaaSettings`, 
 
 ## Tonemapping
 
-The camera's tonemapping curve is the **Tonemapping** row of its **Camera** section: **None** (no curve), Reinhard, Reinhard Luminance, ACES Fitted, AgX, Somewhat Boring, Tony McMapface (the default) or Blender Filmic. It is stored in `renzora_tonemapping::TonemappingSettings`, which the section only draws; exposure is the section's **EV100**, not part of tonemapping.
+The camera's tonemapping curve is the **Tonemapping** row of its **Camera** section: **None** (no curve), Reinhard, Reinhard Luminance, ACES Fitted, AgX (the default), Somewhat Boring, Tony McMapface or Blender Filmic. It is stored in `renzora_tonemapping::TonemappingSettings`, which the section only draws; exposure is the section's **EV100**, not part of tonemapping.
+
+A new scene camera starts with this picture:
+
+| Setting | Default |
+|---|---|
+| Tonemapping | AgX |
+| Auto Exposure | on, metering from -10 to 16 EV, keep-dark strength 0.55 |
+| EV100 | 13.5, used when Auto Exposure is switched off; it suits the default 120,000 lux sun |
+| Bloom | threshold 1.5, intensity 0.2: lamps, bulbs and signs glow, sunlit walls do not |
+
+Scenes saved before 2026-11-18 keep the values they were saved with.
 
 Older scenes that carry `TonemappingSettings` on a non-camera entity (the World Environment) still show it there as its own Tonemapping section.
 
 ## Auto Exposure (keeping night dark)
 
-`AutoExposureSettings` wraps Bevy's histogram auto-exposure: it meters the scene and animates the camera's exposure so the average pixel lands on middle gray (eye adaptation). Because it *always* targets middle gray, a genuinely dark night scene gets **brightened** — physically faithful, but usually not the night look you want.
+Auto exposure is on for a new camera, so a scene stays readable from noon to night; switch it off to hold the camera's EV100 instead. `AutoExposureSettings` wraps Bevy's histogram auto-exposure: it meters the scene and animates the camera's exposure so the average pixel lands on middle gray (eye adaptation). Because it *always* targets middle gray, a genuinely dark night scene gets **brightened**: physically faithful, but usually not the night look you want.
 
 Two extra knobs shape the response without touching daytime, via Bevy's exposure-compensation curve:
 
 | Field | Meaning |
 |---|---|
-| **Keep Night Dark** (`keep_dark_strength`, 0–1) | How much dark scenes resist being lifted to middle gray. `0` = vanilla Bevy AE (night washes out); `1` ≈ the metered darkness is preserved (night stays night). Default `0.7`. |
+| **Keep Night Dark** (`keep_dark_strength`, 0 to 1) | How much dark scenes resist being lifted to middle gray. `0` = vanilla Bevy AE (night washes out); `1` ≈ the metered darkness is preserved (night stays night). Default `0.55`. |
 | **Keep-Dark Pivot (EV)** (`keep_dark_pivot_ev`) | The metered brightness (EV-100) at/above which **no** compensation is applied, so daytime is left exactly as before. Compensation ramps in below it. Default `2.0`. Raise it if nights still wash out; lower it if dusk/interiors get too dark. |
 
 The curve is flat (zero) from the pivot upward and ramps negative below it, so the day exposure you already like is unchanged while night is pulled back down. Both knobs are live — tune them in the inspector (Auto Exposure section) without rebuilding.

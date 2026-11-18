@@ -6,12 +6,27 @@ it looks in the sky.
 | Field | What it does |
 |---|---|
 | **Azimuth**, **Elevation** | Where the sun is, in degrees. Below the horizon its light fades out. |
-| **Color**, **Illuminance** | The light it casts, in lux. 40,000 is a clear day. |
+| **Color**, **Illuminance** | The light it casts, in lux. A new sun is 120,000, a bright clear day. |
 | **Angular Diameter** | How big the disc looks, in degrees. Earth's sun is 0.53. |
 | **Disk Intensity** | How bright the disc is. 0 hides it, 1 is physical. |
 | **Glare** | Strength of the bright haze around the sun when it is in view. 0 turns it off; the default is 1.5. Raise **Glare Size** with care: the wide part of the glare grows with both, and together they soon veil the whole sky. |
 | **Glare Size** | How far the glare spreads from the sun, in degrees. |
 | **Shadows**, **Contact Shadows** | Whether the sun casts shadow maps and screen-space contact shadows. |
+| **Moonlight**, **Moon Color** | The light the sun becomes once it has set, in lux, and its colour. 0 keeps nights unlit. |
+
+## Night
+
+Once the sun is more than a degree below the horizon, its light becomes the
+moon: it comes from the opposite side of the sky, between 15 and 75 degrees up,
+in a cool colour, and fades in over the next six degrees of sunset. The sun's
+disc and glare stay with the sun and are not drawn for the moon. The sky light
+still fades out with the sun, so a night scene is lit by the moon and by its
+own lamps.
+
+The default **Moonlight** of 30 lux is about a hundred times a real full moon.
+That is what makes a night readable: auto exposure cannot open far enough to
+show physical moonlight, and its keep-dark curve still holds the picture to
+night. Raise it for a brighter night; set it to 0 for one lit by lamps alone.
 
 A new World Environment starts with the sun at mid-morning, azimuth 245.5°
 and 38.5° up, with contact shadows on and screen-space reflections enabled:

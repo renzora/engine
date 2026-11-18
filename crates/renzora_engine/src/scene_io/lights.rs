@@ -17,12 +17,14 @@ use renzora_lighting::Sun;
 /// sun was next edited, since nothing else rewrites the light until then.
 pub fn rehydrate_suns(mut query: Query<(&Sun, &mut DirectionalLight, &mut Transform), Added<Sun>>) {
     for (sun, mut light, mut transform) in &mut query {
-        let factor = renzora_lighting::sun_horizon_factor(sun.elevation);
-        light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
-        light.illuminance = sun.illuminance * factor;
-        light.shadow_maps_enabled = sun.shadows_enabled && factor > 0.0;
+        // The same sun-or-moon decision as the live sync, so a scene saved at
+        // night loads moonlit rather than lit from below or unlit.
+        let state = renzora_lighting::sun_light(sun);
+        light.color = state.color;
+        light.illuminance = state.illuminance;
+        light.shadow_maps_enabled = sun.shadows_enabled && state.lit;
         *transform =
-            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, state.direction));
     }
 }
 

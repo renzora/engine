@@ -1,6 +1,16 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 19:46
+- feat(lighting): once the sun sets, its light becomes a moon, so night scenes are moonlit instead of black
+
+## 2026-11-18 19:20
+- fix(import): glass and other smooth surfaces in an FBX with packed metal-rough textures import smooth instead of rough and dull
+
+## 2026-11-18 19:09
+- feat(rendering): new scenes start with a 120,000 lux sun, AgX tonemapping, auto exposure tuned to carry from noon to night, bloom on lights only and sky light at 0.5
+
 ## 2026-11-18 17:46
+- fix(import): an FBX whose specular slot holds a packed metal-rough texture imports with the right roughness instead of looking glossy
 - fix(rendering): clearcoated glass on models drawn as virtual geometry no longer renders solid white, and blended surfaces there are shaded with their own normals
 
 ## 2026-11-18 17:03
