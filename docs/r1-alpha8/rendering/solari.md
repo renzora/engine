@@ -530,14 +530,15 @@ NVIDIA's DLSS Ray Reconstruction runs.
 The Solari Ray-Traced GI inspector's **Denoiser** setting picks what removes
 the noise:
 
-- **DLSS**, the default: DLSS Ray Reconstruction where it can run, this
-  denoiser everywhere else.
+- **DLSS (if available)**, the default: DLSS Ray Reconstruction where it can
+  run, this denoiser everywhere else.
 - **Built-in**: this denoiser, even where DLSS could run.
 - **Off (raw)**: nothing, in any mode. The raw estimate is the thing to compare
   a denoiser against when judging it.
 
-With **DLSS** chosen, the **DLSS Mode** row appears only while DLSS is actually
-running; without it, this denoiser is in use. See [DLSS](./dlss.md). A scene saved with the older separate **Denoiser** and
+Where DLSS cannot run, **DLSS (if available)** carries an amber warning icon
+whose tooltip says why and that this denoiser is running instead, and the
+**DLSS Mode** row stays hidden. See [DLSS](./dlss.md). A scene saved with the older separate **Denoiser** and
 **DLSS** toggles loads with the matching choice.
 
 How it works, in order:

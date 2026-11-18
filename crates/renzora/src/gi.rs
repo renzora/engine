@@ -209,9 +209,13 @@ impl SolariDenoiser {
     pub const ALL: [Self; 3] = [Self::Auto, Self::BuiltIn, Self::Off];
 
     /// The inspector dropdown labels, index for index with [`ALL`](Self::ALL).
-    /// `Auto` shows as "DLSS" because that is what choosing it asks for; the
-    /// variant keeps its name since scenes have saved it.
-    pub const LABELS: [&'static str; 3] = ["DLSS", "Built-in", "Off (raw)"];
+    ///
+    /// `Auto` was labelled plain "DLSS", which read as "DLSS is running" in a
+    /// build or on a GPU without it, while the built-in denoiser quietly did
+    /// the work. The label now says it is conditional, and the inspector puts
+    /// a warning on it where DLSS cannot run. The variant keeps its name since
+    /// scenes have saved it; only the label changed.
+    pub const LABELS: [&'static str; 3] = ["DLSS (if available)", "Built-in", "Off (raw)"];
 
     /// The inspector dropdown label.
     pub fn label(self) -> &'static str {

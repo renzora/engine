@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 16:42
+- fix(solari): the Denoiser's DLSS choice reads "DLSS (if available)" and shows a warning icon where DLSS cannot run, naming the built-in denoiser that runs instead
+
 ## 2026-11-18 15:15
 - feat(splash): the start screen offers to install Rust when it is missing, before any script or plugin needs it
 - fix(plugins): a plugin installed while Rust is missing builds once Rust is installed, instead of staying marked as failed

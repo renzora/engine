@@ -24,6 +24,27 @@ fn dlss_running(world: &World, gi: &SolariGi) -> bool {
     gi.denoiser_choice().wants_dlss() && support.ray_reconstruction
 }
 
+/// Why DLSS Ray Reconstruction cannot denoise on this run, or `None` when it
+/// can. Worded to match anti-aliasing's DLSS warnings, plus what runs instead.
+fn dlss_unavailable(world: &World) -> Option<String> {
+    let support = world.get_resource::<DlssSupport>().copied().unwrap_or_default();
+    if support.ray_reconstruction {
+        None
+    } else if !support.compiled {
+        Some(
+            "This build has no DLSS, so the built-in denoiser is running. Build with the \
+             DLSS SDK to use it."
+                .to_string(),
+        )
+    } else {
+        Some(
+            "DLSS needs an NVIDIA RTX GPU on the Vulkan renderer, so the built-in denoiser \
+             is running."
+                .to_string(),
+        )
+    }
+}
+
 fn solari_inspector_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "solari_gi",
@@ -109,10 +130,21 @@ fn solari_inspector_entry() -> InspectorEntry {
             // itself a denoiser, so a DLSS toggle beside a denoiser toggle read
             // as two settings where there was one, and the denoiser toggle did
             // nothing while DLSS ran. "Off" shows the raw estimate in any mode.
+            //
+            // Checked, so the DLSS choice carries the same amber warning the
+            // anti-aliasing dropdown puts on DLSS where it cannot run. The
+            // choice is kept rather than refused: the same scene opened on an
+            // RTX machine with a DLSS build uses DLSS without anyone touching it.
             FieldDef {
                 name: "Denoiser",
-                field_type: FieldType::Enum {
+                field_type: FieldType::CheckedEnum {
                     options: &SolariDenoiser::LABELS,
+                    warning: |world, _entity, i| {
+                        if SolariDenoiser::ALL.get(i).copied()? != SolariDenoiser::Auto {
+                            return None;
+                        }
+                        dlss_unavailable(world)
+                    },
                 },
                 get_fn: |world, entity| {
                     world
