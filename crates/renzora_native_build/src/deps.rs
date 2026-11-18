@@ -272,12 +272,11 @@ impl Pinned {
 
     /// Drop a `target/` left behind by a different toolchain.
     ///
-    /// A successful build deletes `deps/` wholesale (see the note in
-    /// `renzora_plugin_build`), so this only ever sees what a **failed** one
-    /// left — and a failure is precisely when the tree is most likely to have
-    /// been built by the wrong compiler. Without this, fixing the toolchain and
-    /// building again reuses those rlibs and fails identically, which reads as
-    /// the fix not having worked.
+    /// The tree is kept between builds (see the note in `renzora_plugin_build`),
+    /// and a tree built by another compiler is useless to this one: rustc
+    /// refuses its rlibs. Without this, fixing the toolchain and building again
+    /// reuses those rlibs and fails identically, which reads as the fix not
+    /// having worked.
     ///
     /// Keyed on a stamp of our own rather than on cargo's `.rustc_info.json`:
     /// that file is cargo's private format, and cargo's own invalidation did not

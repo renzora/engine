@@ -408,6 +408,10 @@ impl Sdk {
             cmd.env(key, value);
         }
         cmd.args(&args);
+        // No `-C incremental`: measured on `system_monitor` and `text3d`, it
+        // saved about a second per warm rebuild, made a cold one 7 s slower,
+        // and added a cache folder per plugin. The kept `deps/` below is what
+        // takes a rebuild from 44 s to 3 s.
 
         // Streamed rather than collected with `output()`, so a caller can show
         // what the compiler is saying while it says it. The first-run window
@@ -440,25 +444,17 @@ impl Sdk {
         // plugin. Nothing loads them, and on Windows they outweigh the plugin.
         // After success only: a failed build's leftovers are worth reading.
         native_build::rustc::prune_byproducts(out);
-        // And the cargo target directory, for a plugin that had third-party
-        // dependencies. Those rlibs were `--extern`s for the link that just
-        // happened and are dead the moment it succeeds — nothing loads an rlib.
-        //
-        // It is the overwhelming majority of what a build leaves behind: measured
-        // across 65 installed plugins, 423 MB of the 465 MB was this, and
-        // `system_monitor` alone kept 358 MB of `sysinfo` and `nvml-wrapper`
-        // build tree beside a 1.7 MB plugin. The 61 plugins with no third-party
-        // dependencies have no `deps/` at all and are already just the image and
-        // its stamp.
-        //
-        // The cost is that a plugin which goes stale recompiles its dependency
-        // tree rather than reusing cargo's cache — about a minute for the two
-        // largest. Staleness means the engine moved, which for an installed build
-        // is an update; paying a minute then, once, is the better side of the
-        // trade against a third of a gigabyte sitting there permanently.
-        if let Some(build_dir) = out.parent() {
-            let _ = std::fs::remove_dir_all(build_dir.join("deps"));
-        }
+        // The cargo target directory under `deps/`, where a plugin's
+        // third-party crates were built, is KEPT. It used to be deleted here to
+        // save disk (about 420 MB across 65 installed plugins, most of it
+        // `system_monitor`'s `sysinfo` and `nvml-wrapper`), on the reasoning that
+        // a plugin only goes stale when the engine is updated. That is not so:
+        // every engine build restages the SDK and marks every plugin stale, so a
+        // plugin with dependencies rebuilt all of them from nothing each time
+        // (44 s for `system_monitor`). Those crates do not depend on Bevy or the
+        // engine, so cargo's cache of them stays valid across engine builds; a
+        // toolchain change is the one thing that invalidates it, and
+        // `invalidate_stale_cache` in `renzora_native_build` clears it then.
         // Before the stamp is recorded, so a plugin is never marked built until
         // it points at the images the host actually has mapped.
         native_build::rustc::fixup_install_names(out);

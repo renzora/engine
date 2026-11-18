@@ -80,7 +80,13 @@ Every plugin is a **directory** under `plugins/`, named by its id.
       src/lib.rs
       build/my_plugin.dll                         what rustc produced
       build/stamp.txt                             what it was built against
+      build/deps/                                 its third-party crates, built once
 ```
+
+A plugin with third-party dependencies keeps their build in `build/deps/`, so
+when the engine is rebuilt and the plugin goes stale only the plugin itself
+recompiles, in a few seconds, rather than its whole dependency tree. Deleting
+the folder is safe: the next build makes it again.
 
 `src/lib.rs` is what makes a directory a plugin. Submodules work — `src/ui/panel.rs` and deeper are staged and watched.
 

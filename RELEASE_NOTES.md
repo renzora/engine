@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 21:45
+- fix(plugins): a plugin with third-party dependencies rebuilds in seconds after an engine update instead of recompiling them all
+
 ## 2026-11-18 20:59
 - feat(atmosphere): the moon glows, follows the real lunar month or a chosen day, takes a tint, and can be eclipsed into a blood moon
 
