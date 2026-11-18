@@ -38,6 +38,12 @@ fn inspector_entry() -> InspectorEntry {
             renzora::bool_field!("Contact Shadows", Sun, contact_shadows),
             renzora::float_field!("Moonlight", Sun, moon_illuminance, 1.0, 0.0, 1000.0),
             renzora::vec3_color_field!("Moon Color", Sun, moon_color),
+            renzora::bool_field!("Moon Follows Calendar", Sun, moon_follows_calendar),
+            renzora::float_field!("Moon Day", Sun, moon_day, 0.1, 0.0, 29.5),
+            renzora::vec3_color_field!("Moon Tint", Sun, moon_tint),
+            renzora::float_field!("Eclipse", Sun, moon_eclipse, 0.01, 0.0, 1.0),
+            renzora::float_field!("Moon Glow", Sun, moon_glow, 0.05, 0.0, 10.0),
+            renzora::float_field!("Moon Size", Sun, moon_size, 0.05, 0.1, 20.0),
         ],
     }
 }

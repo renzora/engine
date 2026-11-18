@@ -65,6 +65,80 @@ pub struct Sun {
     #[serde(default = "default_moon_color")]
     #[reflect(default = "default_moon_color")]
     pub moon_color: Vec3,
+    /// Take the moon's phase from today's date (the real lunar month), rather
+    /// than from [`moon_day`](Self::moon_day).
+    #[serde(default = "default_true")]
+    #[reflect(default = "default_true")]
+    pub moon_follows_calendar: bool,
+    /// Day of the lunar month, 0 to 29.5: 0 new, 7.4 first quarter, 14.8
+    /// full, 22.1 last quarter. Used when the calendar is not followed.
+    #[serde(default = "default_moon_day")]
+    #[reflect(default = "default_moon_day")]
+    pub moon_day: f32,
+    /// Colour of the moon's face (RGB, 0 to 1). Warm orange for a harvest
+    /// moon, near white for a high one.
+    #[serde(default = "default_moon_tint")]
+    #[reflect(default = "default_moon_tint")]
+    pub moon_tint: Vec3,
+    /// A lunar eclipse, 0 to 1: the Earth's shadow sweeps across the moon and
+    /// at 1 covers it, leaving it dim and copper red (a blood moon). An
+    /// eclipse happens at full moon, so the phase is drawn as full while one
+    /// is under way, and the moonlight dims and reddens with it.
+    #[serde(default)]
+    #[reflect(default)]
+    pub moon_eclipse: f32,
+    /// Strength of the glow around the moon. 0 turns it off.
+    #[serde(default = "default_moon_glow")]
+    #[reflect(default = "default_moon_glow")]
+    pub moon_glow: f32,
+    /// Apparent diameter of the moon in degrees. Larger than the real 0.52
+    /// by default, so its face reads in a wide game view.
+    #[serde(default = "default_moon_size")]
+    #[reflect(default = "default_moon_size")]
+    pub moon_size: f32,
+}
+
+/// Length of the lunar month (new moon to new moon), in days.
+pub const SYNODIC_MONTH_DAYS: f32 = 29.530_588;
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_moon_day() -> f32 {
+    SYNODIC_MONTH_DAYS * 0.5
+}
+
+fn default_moon_tint() -> Vec3 {
+    Vec3::new(1.0, 0.97, 0.92)
+}
+
+fn default_moon_glow() -> f32 {
+    1.0
+}
+
+fn default_moon_size() -> f32 {
+    1.6
+}
+
+/// Days since the last new moon, from the system clock, or `None` where there
+/// is no clock to read (the web build).
+///
+/// Counted from the new moon of 2000-01-06 18:14 UTC in whole synodic months.
+/// The real month wanders by up to about 14 hours around its mean, which is
+/// well under a day and invisible in the moon's shape.
+pub fn calendar_moon_age() -> Option<f32> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        const REFERENCE_NEW_MOON_UNIX: f64 = 947_182_440.0;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?;
+        let days = (now.as_secs_f64() - REFERENCE_NEW_MOON_UNIX) / 86_400.0;
+        Some(days.rem_euclid(SYNODIC_MONTH_DAYS as f64) as f32)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
 }
 
 fn default_glare_intensity() -> f32 {
@@ -109,6 +183,12 @@ impl Default for Sun {
             glare_size: default_glare_size(),
             moon_illuminance: default_moon_illuminance(),
             moon_color: default_moon_color(),
+            moon_follows_calendar: true,
+            moon_day: default_moon_day(),
+            moon_tint: default_moon_tint(),
+            moon_eclipse: 0.0,
+            moon_glow: default_moon_glow(),
+            moon_size: default_moon_size(),
         }
     }
 }
@@ -119,12 +199,65 @@ impl Sun {
         direction_from_angles(self.azimuth, self.elevation)
     }
 
+    /// How much of the sun is up, 0 to 1: full above 5 degrees, nothing below
+    /// -1. Its light, disc and glare fade together over that band.
+    pub fn daylight(&self) -> f32 {
+        horizon_factor(self.elevation)
+    }
+
+    /// How far the moon has risen, 0 to 1: nothing while any of the sun is
+    /// up, full once the sun is 7 degrees down. It starts where
+    /// [`daylight`](Self::daylight) ends, so sun and moon never light the scene
+    /// at once.
+    pub fn moonrise(&self) -> f32 {
+        moon_factor(self.elevation)
+    }
+
+    /// Days into the lunar month, 0 to 29.5: from the date when the calendar
+    /// is followed, else [`moon_day`](Self::moon_day).
+    pub fn moon_age(&self) -> f32 {
+        let age = if self.moon_follows_calendar {
+            calendar_moon_age().unwrap_or(self.moon_day)
+        } else {
+            self.moon_day
+        };
+        age.rem_euclid(SYNODIC_MONTH_DAYS)
+    }
+
+    /// The moon's phase angle in radians, signed: 0 full, +-PI new, positive
+    /// while waxing. Its magnitude is the angle at the moon between the sun
+    /// and the viewer. An eclipse pulls it to full, where eclipses happen.
+    pub fn moon_phase_angle(&self) -> f32 {
+        let elongation = std::f32::consts::TAU * self.moon_age() / SYNODIC_MONTH_DAYS;
+        (std::f32::consts::PI - elongation) * (1.0 - self.moon_eclipse.clamp(0.0, 1.0))
+    }
+
+    /// How much of the moon's face is lit, 0 (new) to 1 (full).
+    pub fn moon_lit_fraction(&self) -> f32 {
+        0.5 * (1.0 + self.moon_phase_angle().cos())
+    }
+
     /// The direction moonlight travels: from the opposite side of the sky,
     /// as high as the sun is low, held between 15 and 75 degrees so the moon
     /// neither skims the ground nor stands directly overhead.
     pub fn moon_direction(&self) -> Vec3 {
         direction_from_angles(self.azimuth + 180.0, (-self.elevation).clamp(15.0, 75.0))
     }
+}
+
+/// See [`Sun::daylight`]. Free so `renzora_lighting` can answer for a bare
+/// elevation.
+pub fn horizon_factor(elevation_deg: f32) -> f32 {
+    const FADE_START_DEG: f32 = -1.0;
+    const FADE_END_DEG: f32 = 5.0;
+    ((elevation_deg - FADE_START_DEG) / (FADE_END_DEG - FADE_START_DEG)).clamp(0.0, 1.0)
+}
+
+/// See [`Sun::moonrise`].
+pub fn moon_factor(elevation_deg: f32) -> f32 {
+    const RISE_START_DEG: f32 = -1.0;
+    const RISE_END_DEG: f32 = -7.0;
+    ((elevation_deg - RISE_START_DEG) / (RISE_END_DEG - RISE_START_DEG)).clamp(0.0, 1.0)
 }
 
 fn direction_from_angles(azimuth_deg: f32, elevation_deg: f32) -> Vec3 {
@@ -204,6 +337,30 @@ mod tests {
         assert_eq!(sun.glare_size, default_glare_size());
         assert_eq!(sun.moon_illuminance, default_moon_illuminance());
         assert_eq!(sun.moon_color, default_moon_color());
+        assert!(sun.moon_follows_calendar);
+        assert_eq!(sun.moon_eclipse, 0.0);
+        assert_eq!(sun.moon_size, default_moon_size());
+    }
+
+    /// Day 0 is new, mid-month full, a quarter lit half, and an eclipse
+    /// shows a full moon whatever the day.
+    #[test]
+    fn the_moon_phase_follows_the_day() {
+        let on = |day: f32| Sun { moon_follows_calendar: false, moon_day: day, ..default() };
+        assert!(on(0.0).moon_lit_fraction() < 1e-4);
+        assert!((on(SYNODIC_MONTH_DAYS * 0.5).moon_lit_fraction() - 1.0).abs() < 1e-4);
+        assert!((on(SYNODIC_MONTH_DAYS * 0.25).moon_lit_fraction() - 0.5).abs() < 1e-3);
+        assert!(on(3.0).moon_phase_angle() > 0.0, "waxing");
+        assert!(on(25.0).moon_phase_angle() < 0.0, "waning");
+        let eclipsed = Sun { moon_eclipse: 1.0, ..on(3.0) };
+        assert!((eclipsed.moon_lit_fraction() - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn the_calendar_gives_a_day_of_the_month() {
+        if let Some(age) = calendar_moon_age() {
+            assert!((0.0..SYNODIC_MONTH_DAYS).contains(&age));
+        }
     }
 
     /// The moon rises opposite the sun: a sun just set in the west puts the

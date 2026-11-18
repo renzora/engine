@@ -35,9 +35,7 @@ pub use renzora::Sun;
 /// horizon the procedural sky cubemap is dark anyway, and applying the
 /// same horizon fade ensures no residual ambient leaks in.
 pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
-    const FADE_START_DEG: f32 = -1.0;
-    const FADE_END_DEG: f32 = 5.0;
-    ((elevation_deg - FADE_START_DEG) / (FADE_END_DEG - FADE_START_DEG)).clamp(0.0, 1.0)
+    renzora::sun::horizon_factor(elevation_deg)
 }
 
 /// How far the moon has risen, 0 to 1: nothing while the sun is up, rising as
@@ -47,9 +45,7 @@ pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
 /// the scene at once: the light is the sun's until the sun is gone, then the
 /// moon's. Twilight between them is the sky's.
 pub fn moon_factor(elevation_deg: f32) -> f32 {
-    const RISE_START_DEG: f32 = -1.0;
-    const RISE_END_DEG: f32 = -7.0;
-    ((elevation_deg - RISE_START_DEG) / (RISE_END_DEG - RISE_START_DEG)).clamp(0.0, 1.0)
+    renzora::sun::moon_factor(elevation_deg)
 }
 
 /// What the scene's one directional light should be for this `Sun`: the sun
@@ -78,9 +74,18 @@ pub fn sun_light(sun: &Sun) -> SunLight {
         };
     }
     let night = moon_factor(sun.elevation);
-    let illuminance = sun.moon_illuminance.max(0.0) * night;
+    // A thin crescent lights far less than a full moon, but never nothing:
+    // a new-moon night still keeps some sky glow to read the scene by.
+    let phase = 0.15 + 0.85 * sun.moon_lit_fraction();
+    // In the Earth's shadow the moon only gets light bent red through the
+    // Earth's atmosphere: dim and coppery.
+    let eclipse = sun.moon_eclipse.clamp(0.0, 1.0);
+    let dimming = 1.0 - 0.9 * eclipse;
+    let red = Vec3::ONE.lerp(Vec3::new(1.0, 0.4, 0.25), eclipse);
+    let illuminance = sun.moon_illuminance.max(0.0) * night * phase * dimming;
+    let c = sun.moon_color * red;
     SunLight {
-        color: Color::srgb(sun.moon_color.x, sun.moon_color.y, sun.moon_color.z),
+        color: Color::srgb(c.x, c.y, c.z),
         illuminance,
         direction: sun.moon_direction(),
         lit: illuminance > 0.0,
@@ -104,8 +109,9 @@ fn sync_sun(
         light.contact_shadows_enabled = sun.contact_shadows && state.lit;
         *transform =
             Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, state.direction));
-        // The disc is the sun's: it fades with the sun and does not follow
-        // the light round to the moon.
+        // The disc is the sun's only. Bevy draws it where the light points, so
+        // at night it would sit where the moon is, but as a flat untextured
+        // spot; `renzora_atmosphere::moon` draws the moon itself.
         commands.entity(entity).try_insert(SunDisk {
             angular_size: sun.angular_diameter.to_radians(),
             intensity: sun.sun_disk_intensity * sun_horizon_factor(sun.elevation),
@@ -343,8 +349,14 @@ mod tests {
         assert_eq!(dusk.illuminance, 0.0);
         assert!(!dusk.lit);
 
-        let night = at(-30.0);
-        assert_eq!(night.illuminance, Sun::default().moon_illuminance);
+        // A full moon, so the phase does not scale the light.
+        let night = sun_light(&Sun {
+            elevation: -30.0,
+            moon_follows_calendar: false,
+            moon_day: renzora::sun::SYNODIC_MONTH_DAYS * 0.5,
+            ..Sun::default()
+        });
+        assert!((night.illuminance - Sun::default().moon_illuminance).abs() < 0.01);
         assert!(night.lit);
         assert!(night.direction.y < 0.0, "moonlight comes down, not up from below the ground");
 

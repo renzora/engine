@@ -88,13 +88,9 @@ pub(crate) fn build(app: &mut App) {
 
 /// The glare a camera should draw for `sun`, or `None` for none at all.
 fn glare_for(sun: &Sun, light: &DirectionalLight, disc: &SunDisk, transform: &GlobalTransform) -> Option<SunGlare> {
-    // `sync_sun` fades the light's illuminance out below the horizon while the
-    // authored value stays put; the ratio is that fade.
-    let horizon = if sun.illuminance > 0.0 {
-        (light.illuminance / sun.illuminance).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
+    // From the sun's own elevation, not the light: once the sun has set the
+    // light is the moon's, and the glare is the sun's alone.
+    let horizon = if sun.illuminance > 0.0 { sun.daylight() } else { 0.0 };
     // No glare is still a pass while the disc is in the sky: the pass also
     // brings the disc's overflowing pixels back into range before bloom (see
     // `sanitize` in `glare.wesl`), and that is needed with or without a glare.

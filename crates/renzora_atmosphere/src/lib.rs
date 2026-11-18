@@ -1,4 +1,5 @@
 pub mod glare;
+pub mod moon;
 
 // Bevy 0.19: `Atmosphere`/`ScatteringMedium` moved to `bevy::light`;
 // `AtmosphereMode`/`AtmosphereSettings` stay in `bevy::pbr`.
@@ -319,6 +320,7 @@ impl Plugin for AtmospherePlugin {
         app.register_type::<AtmosphereComponentSettings>();
         app.add_systems(Update, (sync_atmosphere, sync_space_backdrop));
         glare::build(app);
+        moon::build(app);
     }
 }
 

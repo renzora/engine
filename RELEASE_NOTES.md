@@ -1,5 +1,12 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 20:59
+- feat(atmosphere): the moon glows, follows the real lunar month or a chosen day, takes a tint, and can be eclipsed into a blood moon
+
+## 2026-11-18 20:38
+- feat(atmosphere): a textured moon with phases shows in the night sky
+- fix(clouds): clouds fade out at sunset instead of staying lit by the moon
+
 ## 2026-11-18 19:46
 - feat(lighting): once the sun sets, its light becomes a moon, so night scenes are moonlit instead of black
 
