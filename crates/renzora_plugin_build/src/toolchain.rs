@@ -186,21 +186,26 @@ impl Toolchain {
 
     /// What to tell the user, phrased for a dialog rather than a log.
     ///
-    /// Says "Rust compiler" outright rather than folding it into "SDK". Anyone
-    /// who cares what is on their machine will find `~/.rustup` afterwards; a
-    /// prompt that already said so is a non-event, and one that did not is a bug
-    /// report.
+    /// Says "Rust" outright rather than folding it into "SDK", and says where
+    /// the fix is. It used to promise that the compiler "will be downloaded",
+    /// written ahead of an install step that did not exist yet, so a failed
+    /// plugin install told the user something was on its way when nothing was.
+    /// This is shown after a build has already stopped, so it states what is
+    /// missing and where to install it, and promises nothing.
     pub fn needs(&self) -> Option<String> {
         match self {
             Toolchain::Ready(_) => None,
             Toolchain::ToolchainMissing { version } => Some(format!(
-                "Plugins are compiled on your machine and need Rust {version}. \
-                 It will be downloaded to ~/.rustup (about 400 MB)."
+                "Plugins and scripts are compiled on your machine and need Rust \
+                 {version}, which rustup has not installed yet. Install it from the \
+                 strip at the top of the start screen, or run \
+                 `rustup toolchain install {version}` (about 400 MB in ~/.rustup)."
             )),
             Toolchain::RustupMissing { version } => Some(format!(
-                "Plugins are compiled on your machine and need the Rust compiler \
-                 ({version}), which is not installed. It will be downloaded to \
-                 ~/.rustup (about 400 MB)."
+                "Plugins and scripts are compiled on your machine and need Rust \
+                 {version}, which is not installed. Install it from the strip at the \
+                 top of the start screen, or from https://rustup.rs (about 400 MB in \
+                 ~/.rustup)."
             )),
         }
     }

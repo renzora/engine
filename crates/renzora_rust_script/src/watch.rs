@@ -194,8 +194,8 @@ pub fn watch(
     }
 
     // In the editor, nothing builds until the compiler is known to be there or
-    // the user has answered the prompt; see `crate::toolchain`. A game process
-    // has nobody to ask, so it builds straight away as it always has.
+    // the user has declined it; see `crate::toolchain`. A game process has
+    // nobody to ask, so it builds straight away as it always has.
     let editor = session.is_some_and(|s| s.is_editor());
     let hold = editor
         && matches!(

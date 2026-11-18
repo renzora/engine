@@ -71,7 +71,11 @@ impl Plugin for ScriptingEditorPlugin {
             .add_message::<renzora::RustToolchainAnswer>()
             .add_systems(
                 Update,
-                (toolchain_prompt::spawn_prompt, toolchain_prompt::prompt_buttons),
+                (
+                    toolchain_prompt::spawn_prompt
+                        .run_if(in_state(renzora::SplashState::Editor)),
+                    toolchain_prompt::prompt_buttons,
+                ),
             );
     }
 }

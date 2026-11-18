@@ -47,6 +47,7 @@ pub(crate) mod account;
 pub(crate) mod changelog;
 pub(crate) mod chrome;
 pub(crate) mod projects;
+pub(crate) mod rust_setup;
 pub(crate) mod sections;
 pub(crate) mod style;
 
@@ -68,7 +69,12 @@ pub(crate) struct SplashFps(pub f32);
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<SplashFps>()
         .init_resource::<SplashSections>()
-        .init_resource::<ActiveSection>();
+        .init_resource::<ActiveSection>()
+        // Owned by `renzora_rust_script`, which registers both as well. Done here
+        // too so the Install button has somewhere to write in a build without
+        // that crate (the web), where the strip simply never shows.
+        .init_resource::<renzora::RustToolchain>()
+        .add_message::<renzora::RustToolchainAnswer>();
 
     // The built-in pages register through the same door a plugin uses.
     projects::register(app);
@@ -115,6 +121,7 @@ pub(crate) fn register(app: &mut App) {
                 chrome::drag_handle,
                 chrome::resize_zone_click,
                 chrome::url_click,
+                rust_setup::install_click,
             )
                 .run_if(any_with_component::<SplashRoot>),
             #[cfg(target_arch = "wasm32")]
@@ -342,11 +349,14 @@ fn build_shell(
     commands.entity(body).add_children(&[rail, host]);
 
     let status = account::build_status_bar(commands, fonts);
+    // Above the rail and the page rather than inside a page, so it is seen
+    // whichever page is open. See `rust_setup`.
+    let rust_strip = rust_setup::build_strip(commands, fonts);
 
     if let Some(title_bar) = title_bar {
         commands.entity(shell).add_child(title_bar);
     }
-    commands.entity(shell).add_children(&[body, status]);
+    commands.entity(shell).add_children(&[rust_strip, body, status]);
     shell
 }
 

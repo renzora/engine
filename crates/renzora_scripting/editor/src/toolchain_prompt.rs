@@ -1,10 +1,16 @@
-//! Asking to install Rust when a script needs compiling and this machine has
-//! none.
+//! Asking to install Rust when a project's scripts need compiling and this
+//! machine has none.
 //!
-//! `renzora_rust_script` holds its builds and publishes
-//! [`RustToolchain::Missing`]; this asks, and answers with
+//! The splash offers the install first, to everyone. This is the fallback for
+//! someone who opened a project without taking it: `renzora_rust_script` holds
+//! the project's script builds and sets `scripts_waiting` on
+//! [`RustToolchain::Missing`], and this asks, answering with
 //! [`RustToolchainAnswer`]. Installing software is the user's decision about
 //! their machine, so nothing is fetched until they press Install.
+//!
+//! Only once scripts are waiting, so a project without any is never asked about
+//! a compiler it does not use, and only in the editor proper, so it never lands
+//! on top of the splash's own offer.
 //!
 //! Dismissing (Escape, a backdrop click, the ×) counts as "Not now". Unlike the
 //! scene-conflict prompt, which comes back because an unanswered conflict is
@@ -25,18 +31,18 @@ pub(crate) struct ToolchainPromptLater;
 #[derive(Component)]
 pub(crate) struct ToolchainPromptInstall;
 
-/// Raise the prompt when the builder reports the compiler missing.
+/// Raise the prompt when scripts are waiting on a compiler that is missing.
 ///
-/// `shown` keeps it to once per `Missing`: a second check after a failed
-/// install would otherwise ask again, but the answer to that is already on
-/// screen in the Console.
+/// `shown` keeps it to once a session: an answer of "Not now" is not reversed
+/// by opening a second project, and the splash still offers the install.
 pub(crate) fn spawn_prompt(
     state: Res<RustToolchain>,
     fonts: Option<Res<EmberFonts>>,
     mut shown: Local<bool>,
     mut commands: Commands,
 ) {
-    let RustToolchain::Missing { version, rustup_installed } = &*state else {
+    let RustToolchain::Missing { version, rustup_installed, scripts_waiting: true } = &*state
+    else {
         return;
     };
     let Some(fonts) = fonts else { return };

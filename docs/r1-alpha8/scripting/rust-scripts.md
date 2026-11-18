@@ -154,9 +154,10 @@ The list is rebuilt from nothing every frame, so draw your whole picture each ti
 A Rust script is compiled on the machine that opens the project, so that machine needs a compiler.
 
 - The **plugin SDK** must be installed, under **Settings > Plugins**. Without it nothing compiles, and the Console says so once.
-- The pinned Rust version must be present. When a script needs compiling and it is not, the editor asks once, with an **Install Rust?** prompt naming the version. Your scripts wait while you decide.
-  - **Install** adds the version through rustup if you have rustup, or downloads the official installer from rust-lang.org and sets Rust up in `~/.cargo` and `~/.rustup` if you do not (about 400 MB). The Console reports progress, and your scripts compile as soon as it finishes. No restart is needed.
-  - **Not now**, or closing the prompt, lets the scripts build anyway. They fail with an error naming the command that installs the version, and the prompt does not come back until the editor restarts.
+- The pinned Rust version must be present. The editor checks when it starts, and if Rust is missing, a strip across the top of the start screen says so and offers **Install Rust**.
+  - **Install Rust** adds the version through rustup if you have rustup, or downloads the official installer from rust-lang.org and sets Rust up in `~/.cargo` and `~/.rustup` if you do not (about 400 MB). It takes a few minutes, and you can keep using the start screen meanwhile. The strip turns green when it is done. Scripts then compile without a restart, and a marketplace plugin that was waiting for Rust builds the next time the editor starts.
+  - If you open a project without installing, and the project has scripts, the editor asks once more with an **Install Rust?** prompt, and the scripts wait while you decide. **Not now**, or closing the prompt, lets them build anyway: they fail with an error naming the command that installs the version.
+  - A plugin installed from the marketplace while Rust is missing still installs. It is not marked as failed; it builds on the first start after Rust is there.
 - The editor must have been built for the platform you are running it on. An editor cross-built for another operating system carries an SDK that cannot compile scripts here. The symptom is every name in `bevy::prelude` reported missing at once.
 
 Build output lands in `<project>/.renzora/scripts/`. Nothing in there needs looking at or committing.

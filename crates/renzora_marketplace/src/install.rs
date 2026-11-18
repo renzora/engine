@@ -646,10 +646,16 @@ pub struct PluginInstall {
 /// installed so a fixed version can replace it.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn build_installed_plugin(path: &Path) -> Result<&'static str, String> {
+    use renzora_native_plugin::prebuild::InstalledBuild;
     match renzora_native_plugin::prebuild::build_installed(path, &mut |_| {}) {
-        Ok(true) => Ok(" It loads when the editor restarts."),
+        Ok(InstalledBuild::Built) => Ok(" It loads when the editor restarts."),
         // No SDK yet, or disabled: the launch-time pass builds it, as before.
-        Ok(false) => Ok(" It is built on the next start."),
+        Ok(InstalledBuild::Deferred) => Ok(" It is built on the next start."),
+        // Not a failure: the install itself worked, and the plugin builds on
+        // the first start after Rust is installed. Said as an outcome rather
+        // than an error, because nothing about the plugin needs fixing.
+        Ok(InstalledBuild::NeedsRust) => Ok(" It builds once Rust is installed: use Install \
+             Rust at the top of the start screen, then restart."),
         Err(e) => Err(format!("it failed to compile:\n{e}")),
     }
 }

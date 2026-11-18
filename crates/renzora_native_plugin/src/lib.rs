@@ -698,9 +698,14 @@ fn load_one(
         info!("compiling plugin '{name}' for this engine build");
         let stamp = sdk.compile(dir, &lib_path).map_err(|e| {
             // Record the failure before returning, against the SDK stamp it was
-            // attempted with. Without this the next launch retries identically —
+            // attempted with. Without this the next launch retries identically;
             // see `layout` for why that loops rather than merely wasting time.
-            if let Some(want) = expected {
+            //
+            // Except a missing compiler, which is no fault of the plugin's and
+            // cannot loop: `prebuild::needed()` answers false without one. A
+            // record would stand until the source changed, so the plugin would
+            // never build even after Rust was installed.
+            if let (Some(want), false) = (expected, matches!(e, BuildError::Toolchain { .. })) {
                 let _ = std::fs::write(&fail_path, want);
             }
             match e {

@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 15:15
+- feat(splash): the start screen offers to install Rust when it is missing, before any script or plugin needs it
+- fix(plugins): a plugin installed while Rust is missing builds once Rust is installed, instead of staying marked as failed
+- fix(marketplace): installing a plugin without Rust no longer says the compiler is being downloaded when nothing is
+
 ## 2026-11-17 22:46
 - feat(scripting): when a Rust script needs compiling and Rust is not installed, the editor offers to install it
 
