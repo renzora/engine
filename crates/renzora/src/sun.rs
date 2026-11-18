@@ -75,8 +75,10 @@ fn default_glare_size() -> f32 {
     6.0
 }
 
+/// Tested on the Bistro under the default auto exposure: at 30 lux the
+/// street was black but for its lamps; 150 reads as moonlit.
 fn default_moon_illuminance() -> f32 {
-    30.0
+    150.0
 }
 
 fn default_moon_color() -> Vec3 {

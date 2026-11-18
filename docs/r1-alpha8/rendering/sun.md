@@ -23,7 +23,7 @@ disc and glare stay with the sun and are not drawn for the moon. The sky light
 still fades out with the sun, so a night scene is lit by the moon and by its
 own lamps.
 
-The default **Moonlight** of 30 lux is about a hundred times a real full moon.
+The default **Moonlight** of 150 lux is several hundred times a real full moon.
 That is what makes a night readable: auto exposure cannot open far enough to
 show physical moonlight, and its keep-dark curve still holds the picture to
 night. Raise it for a brighter night; set it to 0 for one lit by lamps alone.
