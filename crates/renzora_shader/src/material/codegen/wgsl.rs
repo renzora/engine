@@ -470,8 +470,18 @@ pub(crate) const PARALLAX_FRAGMENT_WGSL: &str = r#"    @if(VERTEX_TANGENTS) {
 pub(crate) fn fragment_input_aliases() -> String {
     // `var`, not `let`: the parallax block reassigns `mat_uv` in place so that
     // every downstream sampler picks up the offset without knowing about it.
+    //
+    // `mat_uv_dx` / `mat_uv_dy` are the mesh UV's screen-space derivatives,
+    // taken here, before parallax rebinds `mat_uv`, as `bevy_pbr` does. Under
+    // virtual geometry they come from the visibility buffer resolve, which
+    // computes them analytically, because the material pass's own quad
+    // derivatives span unrelated micro-triangles. See `Ctx::sample_call`.
     r#"    @if(VERTEX_UVS_A) var mat_uv = in.uv;
     @if(!VERTEX_UVS_A) var mat_uv = vec2<f32>(0.0, 0.0);
+    @if(MESHLET_MESH_MATERIAL_PASS) let mat_uv_dx = in.ddx_uv;
+    @if(MESHLET_MESH_MATERIAL_PASS) let mat_uv_dy = in.ddy_uv;
+    @if(!MESHLET_MESH_MATERIAL_PASS) let mat_uv_dx = dpdx(mat_uv);
+    @if(!MESHLET_MESH_MATERIAL_PASS) let mat_uv_dy = dpdy(mat_uv);
     @if(VERTEX_COLORS) let mat_vertex_color = in.color;
     @if(!VERTEX_COLORS) let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
 "#

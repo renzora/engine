@@ -57,7 +57,10 @@ pub const MAX_SPRITE_D2_TEXTURES: usize = 6;
 /// 2: Surface shaders gained the virtual geometry (visibility buffer) branch.
 /// 3: Sample nodes reading the same image share one 2D slot, which renumbers
 ///    the slots of any graph that sampled an image twice.
-pub const CODEGEN_VERSION: u32 = 3;
+/// 4: Reads at the mesh UV sample with explicit gradients, so a texture on
+///    virtual geometry picks its mip from the resolve pass's true UV
+///    derivatives rather than from quads that span unrelated micro-triangles.
+pub const CODEGEN_VERSION: u32 = 4;
 
 /// Whether a generated Surface shader can also run as the deferred G-buffer
 /// pass. Read from the source rather than carried beside it, so it holds for a
@@ -588,6 +591,44 @@ mod tests {
         let result = compile(&graph);
         assert!(result.errors.is_empty(), "{:?}", result.errors);
         assert!(supports_virtual_geometry(&result.fragment_shader), "{}", result.fragment_shader);
+    }
+
+    /// A read at the mesh UV samples with the UV's explicit gradients, which
+    /// is what keeps a texture on virtual geometry from picking a random mip
+    /// per pixel. A UV the graph computed keeps the hardware sample, since its
+    /// derivatives are not `mat_uv`'s, and a sprite, whose shader declares no
+    /// gradients, keeps it too.
+    #[test]
+    fn mesh_uv_reads_sample_with_explicit_gradients() {
+        let mut graph = MaterialGraph::new("Grad", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let colour = graph.add_node("texture/sample", [0.0, 0.0]);
+        let normal = graph.add_node("texture/sample_normal", [0.0, 0.0]);
+        graph.connect(colour, "color", out, "base_color");
+        graph.connect(normal, "normal", out, "normal");
+        let s = compile(&graph).fragment_shader;
+        assert!(s.contains("@if(MESHLET_MESH_MATERIAL_PASS) let mat_uv_dx = in.ddx_uv;"), "{s}");
+        assert!(s.contains("@if(!MESHLET_MESH_MATERIAL_PASS) let mat_uv_dx = dpdx(mat_uv);"), "{s}");
+        assert_eq!(s.matches("mat_uv, mat_uv_dx, mat_uv_dy)").count(), 2, "{s}");
+        assert!(!s.contains("textureSample(texture_"), "{s}");
+
+        let mut tiled = MaterialGraph::new("Tiled", MaterialDomain::Surface);
+        let out = tiled.output_node().unwrap().id;
+        let uv = tiled.add_node("input/uv", [0.0, 0.0]);
+        let scale = tiled.add_node("math/multiply", [0.0, 0.0]);
+        let sample = tiled.add_node("texture/sample", [0.0, 0.0]);
+        tiled.connect(uv, "uv", scale, "a");
+        tiled.connect(scale, "result", sample, "uv");
+        tiled.connect(sample, "color", out, "base_color");
+        let s = compile(&tiled).fragment_shader;
+        assert!(!s.contains("textureSampleGrad("), "a computed UV keeps the hardware path: {s}");
+
+        let mut sprite = MaterialGraph::new("Sprite", MaterialDomain::Sprite);
+        let out = sprite.output_node().unwrap().id;
+        let sample = sprite.add_node("texture/sample", [0.0, 0.0]);
+        sprite.connect(sample, "color", out, "color");
+        let s = compile(&sprite).fragment_shader;
+        assert!(!s.contains("mat_uv_dx"), "{s}");
     }
 
     /// A sprite is never a particle, so its Particle nodes are plain

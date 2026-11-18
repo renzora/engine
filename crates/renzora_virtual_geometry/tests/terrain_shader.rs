@@ -185,6 +185,54 @@ fn the_landscape_material_compiles_for_every_pass() {
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
+/// The graph an imported material becomes (colour, a mask whose inverse is
+/// roughness, a normal map, all at the mesh UV), compiled for every pass a
+/// model drawn as virtual geometry goes through, and the ordinary ones.
+///
+/// These reads sample with the mesh UV's explicit gradients. In the virtual
+/// geometry pass those come from the resolve module's `ddx_uv` / `ddy_uv`,
+/// which is the field this pins: a resolve without them, or a prelude that
+/// declared them only on one side of the flag, fails to build here instead of
+/// leaving every imported model's material unready.
+#[test]
+fn an_imported_textured_material_compiles_for_every_pass() {
+    use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
+
+    let validator = validator();
+    let mut graph = MaterialGraph::new("Imported", MaterialDomain::Surface);
+    let out = graph.output_node().unwrap().id;
+    let colour = graph.add_node("texture/sample", [0.0, 0.0]);
+    let mask = graph.add_node("texture/sample", [0.0, 0.0]);
+    let normal = graph.add_node("texture/sample_normal", [0.0, 0.0]);
+    let invert = graph.add_node("math/one_minus", [0.0, 0.0]);
+    graph.connect(colour, "color", out, "base_color");
+    graph.connect(mask, "r", invert, "value");
+    graph.connect(invert, "result", out, "roughness");
+    graph.connect(normal, "normal", out, "normal");
+    let result = renzora_shader::material::codegen::compile(&graph);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let source = result.fragment_shader;
+    assert!(source.contains("textureSampleGrad("), "{source}");
+
+    let mesh = ["VERTEX_POSITIONS", "VERTEX_NORMALS", "VERTEX_UVS", "VERTEX_UVS_A", "VERTEX_TANGENTS"];
+    let deferred: &[&str] =
+        &["PREPASS_PIPELINE", "PREPASS_FRAGMENT", "DEFERRED_PREPASS", "NORMAL_PREPASS_OR_DEFERRED_PREPASS"];
+    let numeric = [("VG_GROUP", 2), ("VG_BASE", 0)];
+    let mut failures = Vec::new();
+    for (vg, pass) in [(true, deferred), (true, &[][..]), (false, &[][..]), (false, deferred)] {
+        let mut flags: Vec<&str> = mesh.to_vec();
+        if vg {
+            flags.push("MESHLET_MESH_MATERIAL_PASS");
+        }
+        flags.extend_from_slice(pass);
+        let numeric: &[(&str, u32)] = if vg { &numeric } else { &[] };
+        if let Err(error) = validator.check_module("renzora_shader::material::imported", &source, &flags, numeric) {
+            failures.push(format!("vg {vg} {pass:?}:\n{error}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}
+
 /// The same shader in the ordinary mesh passes, which every chunk not drawn
 /// as virtual geometry (and every stand-in and level of detail) goes through.
 #[test]

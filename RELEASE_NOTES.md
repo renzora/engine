@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-18 17:03
+- fix(materials): textures on models drawn as virtual geometry no longer sparkle, shimmer in motion or look washed out under TAA
+
 ## 2026-11-18 16:42
 - fix(solari): the Denoiser's DLSS choice reads "DLSS (if available)" and shows a warning icon where DLSS cannot run, naming the built-in denoiser that runs instead
 

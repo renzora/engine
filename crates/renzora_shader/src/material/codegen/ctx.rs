@@ -11,7 +11,7 @@
 //! [`super::nodes`]; they are not a public API.
 
 use super::super::graph::{
-    self, MaterialFunction, MaterialGraph, MaterialNode, NodeId,
+    self, MaterialDomain, MaterialFunction, MaterialGraph, MaterialNode, NodeId,
 };
 use super::super::nodes;
 use super::{safe_fn_ident, FunctionRegistry, MaterialParam, ParamKind, TextureBinding,
@@ -77,6 +77,14 @@ pub(crate) struct Ctx<'a> {
     /// to compile gradient instructions inside one — the same reason Bevy's
     /// own `sample_depth_map` is level-sampled.
     pub(crate) in_displacement_fn: bool,
+    /// The fragment declares `mat_uv_dx` / `mat_uv_dy` beside `mat_uv` (see
+    /// `wgsl::fragment_input_aliases`), so a texture read at the mesh UV can
+    /// sample with explicit gradients. True for every domain whose shader
+    /// takes those aliases, which is all but Sprite. Fixed at construction
+    /// from the top-level graph: `graph` is swapped while a material function
+    /// compiles, and the function's own domain says nothing about the shader
+    /// it ends up in.
+    pub(crate) uv_derivatives: bool,
     /// Named parameters discovered while walking the graph. The `Vec`'s
     /// position is the slot index in `material_params.slots[N]` — codegen
     /// emits reads keyed on that index, and the resolver writes the
@@ -156,6 +164,7 @@ impl<'a> Ctx<'a> {
             uses_parallax: false,
             uses_particle: false,
             in_displacement_fn: false,
+            uv_derivatives: graph.domain != MaterialDomain::Sprite,
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),
             warnings: Vec::new(),
@@ -456,14 +465,33 @@ impl<'a> Ctx<'a> {
 
     /// A 2D texture read, level-sampled while compiling `graph_displacement`.
     ///
-    /// See [`Ctx::in_displacement_fn`] — inside the parallax loop the mip
+    /// See [`Ctx::in_displacement_fn`]: inside the parallax loop the mip
     /// level has to be supplied rather than derived, or DX12 fails to build
-    /// the pipeline. Everywhere else the derivative-based sample is what we
-    /// want, so this is a single call site's worth of branching rather than
-    /// a global change of sampling strategy.
+    /// the pipeline.
+    ///
+    /// A read at the mesh UV samples with explicit gradients, `mat_uv_dx` and
+    /// `mat_uv_dy`, which the fragment declares beside `mat_uv`. On an
+    /// ordinary mesh those are `dpdx(mat_uv)` and `dpdy(mat_uv)`, the very
+    /// values `textureSample` would have taken, so nothing changes there. They
+    /// exist for virtual geometry, whose material pass shades a fullscreen
+    /// triangle from the visibility buffer: neighbouring pixels belong to
+    /// different micro-triangles, the GPU's quad derivatives of the UV are
+    /// meaningless, and every texture picked a near-random mip per pixel. On
+    /// a normal map that is a field of sparkling highlights over every surface,
+    /// which TAA smears into a milky haze and which crawls as the camera moves.
+    /// The resolve pass computes the true UV derivatives analytically, and
+    /// `bevy_pbr`'s own material samples with them for the same reason.
+    ///
+    /// Only the untransformed mesh UV can use them. A UV the graph computed
+    /// (tiling, panning, a projection) has derivatives of its own that only
+    /// the hardware path can see, so it keeps `textureSample`. Material
+    /// functions are emitted as separate WGSL functions where `mat_uv_dx` is
+    /// not in scope, so they keep it too.
     pub(crate) fn sample_call(&self, tex_name: &str, uv: &str) -> String {
         if self.in_displacement_fn {
             format!("textureSampleLevel({tex_name}, texture_sampler, {uv}, 0.0)")
+        } else if uv == "mat_uv" && self.uv_derivatives && self.compiling_functions.is_empty() {
+            format!("textureSampleGrad({tex_name}, texture_sampler, mat_uv, mat_uv_dx, mat_uv_dy)")
         } else {
             format!("textureSample({tex_name}, texture_sampler, {uv})")
         }
