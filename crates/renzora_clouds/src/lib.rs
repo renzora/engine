@@ -338,6 +338,7 @@ fn sync_clouds(
         &GlobalTransform,
         &DirectionalLight,
         Option<&bevy::camera::visibility::RenderLayers>,
+        Option<&renzora::Sun>,
     )>,
     atmosphere_query: Query<&Atmosphere>,
     media: Res<Assets<ScatteringMedium>>,
@@ -486,11 +487,18 @@ fn sync_clouds(
     // 30° *up*, and the deck faded out at 0° and then snapped back at -1°.
     let sun = sun_query
         .iter()
-        .filter(|(_, _, layers)| lights_the_scene(*layers))
-        .max_by(|(_, a, _), (_, b, _)| a.illuminance.total_cmp(&b.illuminance));
+        .filter(|(_, _, layers, _)| lights_the_scene(*layers))
+        .max_by(|(_, a, _, _), (_, b, _, _)| a.illuminance.total_cmp(&b.illuminance));
 
+    // A `Sun` says where the sun really is. Its light is the moon once the sun
+    // has set (see `renzora_lighting::sun_light`), pointing down from high in
+    // the sky, and read off the light alone that made a moonlit night look
+    // like day to the deck, which stayed in the sky.
     let sun_dir = sun
-        .map(|(transform, _, _)| -transform.forward().as_vec3())
+        .map(|(transform, _, _, authored)| match authored {
+            Some(s) => -s.direction(),
+            None => -transform.forward().as_vec3(),
+        })
         .unwrap_or_else(|| Vec3::new(0.5, 0.7, 0.5).normalize())
         .normalize_or(Vec3::Y);
 
@@ -498,7 +506,7 @@ fn sync_clouds(
     // for the same reason.
     let elevation = sun_dir.y.clamp(-1.0, 1.0).asin().to_degrees();
     let sun_tint = sun
-        .map(|(_, light, _)| {
+        .map(|(_, light, _, _)| {
             let c = light.color.to_linear();
             Vec3::new(c.red, c.green, c.blue)
         })
@@ -506,7 +514,7 @@ fn sync_clouds(
     // Both the direct light and the skylight filling the shadows come from the
     // sun in the end, so both track its illuminance.
     let sun_power = sun
-        .map(|(_, light, _)| (light.illuminance / REFERENCE_ILLUMINANCE).clamp(0.0, 4.0))
+        .map(|(_, light, _, _)| (light.illuminance / REFERENCE_ILLUMINANCE).clamp(0.0, 4.0))
         .unwrap_or(1.0);
     let day = smoothstep(NIGHT_ELEVATION, DAY_ELEVATION, elevation);
 
