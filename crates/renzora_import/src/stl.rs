@@ -268,6 +268,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             specular_texture,
             roughness_texture,
             metallic_texture,
+            metallic_roughness_texture: None,
             alpha: crate::glb_build::AlphaKind::Opaque,
             double_sided: false,
             advanced: renzora::core::PbrAdvanced::default(),

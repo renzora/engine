@@ -186,6 +186,8 @@ This matters most for models exported from the older specular-glossiness workflo
 
 A spec-gloss model imported before 2026-10-19 has its glossiness routed through a maths node in each graph, which renders correctly but costs a generated shader per material. Re-importing it bakes the glossiness into a real roughness texture instead, so its materials become plain StandardMaterials, and surfaces whose specular is black (brick, plaster) come out matte as authored.
 
+An FBX file's specular slot can hold either of two things, and the engine reads the image to tell them apart. A grey image is a classic specular mask, where bright means shiny. A coloured one is a packed metal-rough texture as game engines export it, with roughness in green and metallic in blue, and it is read that way. Models such as the Bistro use the packed kind; one imported before 2026-11-18 read it as a mask and came out too glossy, which re-importing corrects.
+
 ## Supported image formats
 
 `png`, `jpg`, `jpeg`, `bmp`, `tga`, `webp`, `hdr`, `exr`, `ktx2` and `dds`.

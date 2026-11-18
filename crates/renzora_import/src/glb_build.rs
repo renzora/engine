@@ -786,6 +786,11 @@ pub(crate) struct PbrMaterialDef {
     /// ride in the vendor extension alongside opacity and specular.
     pub roughness_texture: Option<usize>,
     pub metallic_texture: Option<usize>,
+    /// A packed metal-rough texture in glTF's layout: roughness in green,
+    /// metallic in blue. Written as the standard `metallicRoughnessTexture`,
+    /// multiplied by `roughness` and `metallic` as glTF specifies, so a
+    /// converter setting it sets both factors to 1.
+    pub metallic_roughness_texture: Option<usize>,
     /// How transparency is rendered. Converters set this; it is written
     /// straight out as glTF `alphaMode` (+ `alphaCutoff` for `Mask`).
     pub alpha: AlphaKind,
@@ -1191,6 +1196,9 @@ fn material_json(mat: &PbrMaterialDef, uri_index: &HashMap<&str, usize>) -> serd
     if let Some(t) = info(mat.base_color_texture) {
         pbr.insert("baseColorTexture".into(), t);
     }
+    if let Some(t) = info(mat.metallic_roughness_texture) {
+        pbr.insert("metallicRoughnessTexture".into(), t);
+    }
 
     let mut out = Map::new();
     out.insert("name".into(), json!(mat.name));
@@ -1540,6 +1548,7 @@ mod tests {
                 specular_texture: None,
                 roughness_texture: None,
                 metallic_texture: None,
+                metallic_roughness_texture: None,
                 alpha: AlphaKind::Opaque,
                 double_sided: false,
                 advanced: renzora::core::PbrAdvanced::default(),
@@ -1570,6 +1579,7 @@ mod tests {
             specular_texture: None,
             roughness_texture: None,
             metallic_texture: None,
+            metallic_roughness_texture: None,
             alpha: AlphaKind::Opaque,
             double_sided: false,
             advanced: renzora::core::PbrAdvanced::default(),

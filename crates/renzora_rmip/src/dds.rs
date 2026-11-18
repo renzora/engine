@@ -289,6 +289,62 @@ pub fn clamp(bytes: &[u8], max_size: u32) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Whether a DDS holds grayscale colour (red, green and blue equal
+/// everywhere), or `None` when the format cannot be read cheaply.
+///
+/// An importer needs this to tell two textures apart that FBX puts in the same
+/// slot. A legacy Phong specular map is a grayscale mask, "bright is shiny". A
+/// game-engine export often puts a *packed* metal-rough texture there instead,
+/// with occlusion, roughness and metallic in separate channels, and reading
+/// that as a mask makes every surface glossy. The two differ in exactly this.
+///
+/// Reads BC1 and BC3 colour endpoints, which are plain RGB565, from the first
+/// level of at most 256x256: interpolated texels lie between the endpoints, so
+/// grey endpoints mean grey pixels, and that level already averages the whole
+/// image. Judged on the average spread across the endpoints, against
+/// [`GREY_SPREAD`], so a few odd blocks do not decide it. BC4 is one channel and so always grayscale. BC5, BC7 and anything
+/// else would need a real decode and answer `None`.
+pub fn is_grayscale(bytes: &[u8]) -> Option<bool> {
+    let header = parse_header(bytes, false).ok()?;
+    let colour_at = match header.format {
+        RmipFormat::Bc1RgbaUnorm | RmipFormat::Bc1RgbaUnormSrgb => 0,
+        RmipFormat::Bc3RgbaUnorm | RmipFormat::Bc3RgbaUnormSrgb => 8,
+        RmipFormat::Bc4RUnorm => return Some(true),
+        _ => return None,
+    };
+    let block_bytes = header.format.bytes_per_block();
+    let (mut w, mut h, mut offset) = (header.width, header.height, header.data_offset);
+    for _ in 1..header.mips {
+        if w <= 256 && h <= 256 {
+            break;
+        }
+        offset += header.format.level_byte_size(w, h);
+        w = (w / 2).max(1);
+        h = (h / 2).max(1);
+    }
+    let end = offset + header.format.level_byte_size(w, h);
+    let level = bytes.get(offset..end)?;
+    let (mut spread, mut count) = (0u64, 0u64);
+    for block in level.chunks_exact(block_bytes) {
+        for e in [0, 2] {
+            let at = colour_at + e;
+            let c = u16::from_le_bytes([block[at], block[at + 1]]) as i32;
+            let r = ((c >> 11) & 31) * 255 / 31;
+            let g = ((c >> 5) & 63) * 255 / 63;
+            let b = (c & 31) * 255 / 31;
+            spread += (r.max(g).max(b) - r.min(g).min(b)) as u64;
+            count += 1;
+        }
+    }
+    (count > 0).then(|| spread / count <= GREY_SPREAD)
+}
+
+/// The most the channels of a "grayscale" texture may differ on average, out
+/// of 255. RGB565 alone rounds an exact grey a step or two apart, and a
+/// specular mask is often faintly tinted; a packed texture differs by far
+/// more, the Bistro's by about 190, because its channels hold unrelated data.
+pub const GREY_SPREAD: u64 = 24;
+
 /// Map a legacy FourCC to the matching `.rmip` block format.
 ///
 /// `ATI2` is the one that earns its keep: it's how essentially every DCC tool
@@ -392,6 +448,30 @@ mod tests {
     fn header_of(bytes: &[u8]) -> (u32, u32, u32, u32) {
         let r = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
         (r(8), r(12), r(16), r(20))
+    }
+
+    /// A DXT5 whose every colour block has both endpoints `rgb565`.
+    fn dxt5_of(rgb565: u16) -> Vec<u8> {
+        let mut src = dds(b"DXT5", 16, 16, 5, RmipFormat::Bc3RgbaUnorm);
+        for block in src[DDS_DATA_OFFSET..].chunks_exact_mut(16) {
+            block[8..10].copy_from_slice(&rgb565.to_le_bytes());
+            block[10..12].copy_from_slice(&rgb565.to_le_bytes());
+        }
+        src
+    }
+
+    /// A grey mask and a packed metal-rough texture (here the Bistro's: no
+    /// red, roughness 0.74 in green, no blue) are what FBX's specular slot
+    /// holds, and only the channels tell them apart.
+    #[test]
+    fn tells_a_grey_mask_from_a_packed_texture() {
+        let grey = (16 << 11) | (32 << 5) | 16;
+        assert_eq!(is_grayscale(&dxt5_of(grey)), Some(true));
+        let packed = 47 << 5;
+        assert_eq!(is_grayscale(&dxt5_of(packed)), Some(false));
+        // One channel is grey by construction; two would need a decode.
+        assert_eq!(is_grayscale(&dds(b"ATI1", 16, 16, 5, RmipFormat::Bc4RUnorm)), Some(true));
+        assert_eq!(is_grayscale(&dds(b"ATI2", 16, 16, 5, RmipFormat::Bc5RgUnorm)), None);
     }
 
     #[test]
