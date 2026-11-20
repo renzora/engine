@@ -49,6 +49,13 @@ impl MaterialThumbnailRegistry {
         self.handles.insert(path, handle);
     }
 
+    /// Whether a thumbnail for `path` has been asked for and is not done.
+    /// With [`Self::handle`], how a caller tells a capture that failed (neither)
+    /// from one still running.
+    pub fn is_in_flight(&self, path: &PathBuf) -> bool {
+        self.in_flight.contains(path)
+    }
+
     /// Called by the renderer when a capture failed (parse error, unsupported
     /// domain, IO error, etc.) — clears the in-flight flag so the request
     /// can be retried later.
@@ -65,9 +72,8 @@ impl MaterialThumbnailRegistry {
     /// Clear every cached thumbnail entry, every in-flight marker, and
     /// every pending request. Called when re-opening a project from
     /// inside the editor — without this, [`request`](Self::request)
-    /// short-circuits on every path the previous session had thumbnailed,
-    /// no requests enqueue, and the splash's "Material thumbnails" task
-    /// is left stuck at 0/N forever.
+    /// short-circuits on every path the previous session had thumbnailed
+    /// and the new project's materials never get theirs.
     ///
     /// Doesn't touch the on-disk PNG cache — those are still valid
     /// across sessions and will be reloaded by the first re-request.
@@ -88,7 +94,7 @@ impl MaterialThumbnailRegistry {
 /// editor caches (compiled shaders, asset import state, etc.) can share
 /// the same gitignored umbrella without colliding with thumbnails.
 pub fn thumbnail_cache_dir(project: &CurrentProject, kind: &str) -> PathBuf {
-    project.path.join(".cache").join("thumbnails").join(kind)
+    renzora::core::project_files::thumbnail_cache_dir(&project.path, kind)
 }
 
 /// Best-effort migration from the legacy `<project>/.thumbs/` directory
@@ -140,8 +146,7 @@ pub fn material_thumb_path(material_abs: &Path, project: &CurrentProject) -> Pat
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default()
     });
-    let rel = rel.strip_prefix("assets/").unwrap_or(&rel);
-    let mut out = thumbnail_cache_dir(project, "materials").join(rel);
-    out.set_extension("png");
-    out
+    // The rule is shared with the companion, which deletes a material's
+    // thumbnail when the material goes.
+    renzora::core::project_files::cached_thumbnail(&project.path, &rel, "materials")
 }

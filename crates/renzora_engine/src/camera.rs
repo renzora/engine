@@ -50,7 +50,9 @@ use renzora::viewport_types::EditorCameraMatrix;
 /// these components in-place from a `WorldEnvironment` source entity (or
 /// any entity with `AtmosphereComponentSettings`), giving us one logical
 /// source of truth that drives both editor and play cameras identically.
-/// The plugin replaces, never removes — see its file for the why.
+/// Turning the sky off removes the atmosphere completely, these camera
+/// components included, and turning it on puts back what the camera had
+/// (`renzora_atmosphere::ParkedSky`), which Bevy 0.20 handles; see its file.
 pub fn spawn_editor_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
@@ -74,8 +76,7 @@ pub fn spawn_editor_camera(
     // the primary's real prefiltered maps once the bake is ready.
     let placeholder_cube = make_placeholder_cube(&mut images);
 
-    for i in 0..VIEWPORT_COUNT {
-        let slot = &viewports.slots[i];
+    for (i, slot) in viewports.slots.iter_mut().enumerate() {
         let transform = orbit_transform(slot.focus, slot.distance, slot.yaw, slot.pitch);
         let slot_image = slot.image.clone();
 
@@ -96,18 +97,13 @@ pub fn spawn_editor_camera(
             ViewportCamera(i),
             HideInHierarchy,
             EditorLocked,
-            // Layer 0: the scene. Layer 1: shared world-space overlays
-            // (light/collider/skeleton gizmos, selection box) — one instance
-            // reads correctly from every angle, so all slots share it. Layer
-            // `VIEWPORT_3D_GIZMO_LAYER_BASE + i`: this slot's *private* overlay
-            // layer, carrying the camera-sized transform gizmo drawn just for
-            // this view (see `renzora_gizmo`). Each camera draws only its own
-            // slot's transform handle, never another slot's.
-            RenderLayers::from_layers(&[
-                0,
-                1,
-                renzora::core::viewport_types::VIEWPORT_3D_GIZMO_LAYER_BASE + i,
-            ]),
+            // Layer 0, the scene, and nothing else. The overlay layers (1, and
+            // this slot's `VIEWPORT_3D_GIZMO_LAYER_BASE + i` transform gizmo)
+            // are drawn by the slot's overlay camera into an image of their own
+            // laid over this one (`renzora_viewport::overlay`). When this camera
+            // drew them too, a gizmo handle lighting up under the cursor cost a
+            // full render of the scene, ray tracing and all.
+            RenderLayers::layer(0),
             Name::new(format!("Editor Camera {i}")),
             Hdr,
             // Atmosphere/sky binds depth as non-multisampled (binding 13);
@@ -128,16 +124,11 @@ pub fn spawn_editor_camera(
             // covers every other `Camera3d` in the editor (previews,
             // thumbnails, etc.), so we don't special-case it here.
             (NormalPrepass, DepthPrepass, MotionVectorPrepass),
-            // NOTE: `bevy::pbr::ContactShadows` is NOT attached here. Contact
-            // shadows live at `mesh_view` binding 16; the *forward* opaque mesh
-            // pipeline specializes the `CONTACT_SHADOWS` key (so its layout has
-            // binding 16), but the deferred lighting pipeline does not — attach
-            // it to a deferred camera and its bind group exposes binding 16 while
-            // the pipeline's layout omits it, a wgpu hard-crash.
-            // `ensure_contact_shadows_on_forward_cameras` (lib.rs) attaches it to
-            // FORWARD cameras only, where it works; the `Sun`'s contact-shadow
-            // toggle then takes effect there. (`seed_contact_shadows_offset`
-            // closes the separate first-frame specialization race.)
+            // NOTE: `bevy::pbr::ContactShadows` is not attached here but by
+            // `ensure_contact_shadows_on_cameras` (lib.rs), which also keeps it
+            // off isolated utility views and, on the web, deferred cameras.
+            // (`seed_contact_shadows_offset` closes a first-frame
+            // specialization race.)
         ));
 
         // Resident, no-op distance fog (3D only — bevy_pbr mesh-view binding 13).
@@ -152,9 +143,10 @@ pub fn spawn_editor_camera(
         // wants 13. The alternatives were all worse: without one of them
         // `alpha_blend_mesh_pipeline` fails to create and NOTHING transparent
         // draws at all. Of the optional uniforms, SSR and contact shadows are
-        // already absent here (SSR needs a deferred prepass, contact shadows are
-        // forward-only) and OIT contributes nothing once disabled, which leaves
-        // fog as the one remaining slot to give back.
+        // already absent here (SSR needs a deferred prepass, and contact
+        // shadows stay off deferred cameras on the web) and OIT contributes
+        // nothing once disabled, which leaves fog as the one remaining slot to
+        // give back.
         //
         // Consistently absent is safe; INTERMITTENT is what crashes wgpu, per
         // the note above. So this is gated at the insert, and the reconcile that
@@ -224,7 +216,7 @@ pub fn spawn_editor_camera(
         }
 
         let id = entity.id();
-        viewports.slots[i].camera_entity = Some(id);
+        slot.camera_entity = Some(id);
     }
 
     // Says "spawned", not "rendering": all four exist from boot, but only slot 0
@@ -371,10 +363,8 @@ pub fn spawn_editor_2d_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
-
-    for i in 0..VIEWPORT_COUNT {
-        let slot_image = viewports.slots[i].image.clone();
+    for (i, slot) in viewports.slots.iter_mut().enumerate() {
+        let slot_image = slot.image.clone();
         let mut entity = commands.spawn((
             Camera2d,
             Camera {
@@ -440,7 +430,7 @@ pub fn spawn_editor_2d_camera(
             entity.insert(RenderTarget::Image(image.clone().into()));
         }
 
-        viewports.slots[i].camera_2d_entity = Some(entity.id());
+        slot.camera_2d_entity = Some(entity.id());
     }
 }
 
@@ -769,31 +759,50 @@ pub fn sync_2d_viewport_cameras(
         Without<EditorCamera2d>,
     >,
 ) {
+    // Every write below happens only when the value differs. This runs every
+    // frame in every view, 3D included, and a blind write through `ResMut` or
+    // `Mut` marks the component changed even when the value is the same: the
+    // three idle 2D cameras then read as moved every frame, which kept Bevy's
+    // transform propagation and frustum updates busy and marked `Viewports`
+    // changed for everything that watches it.
+    //
     // Mirror the marked camera's live framing into ITS OWN slot, and snapshot
     // that framing to seed any viewport that's never been framed yet.
     let mut seed = None;
     if let Ok((vc, transform, Projection::Orthographic(ortho))) = focused_cam.single() {
-        if let Some(slot) = viewports.slots.get_mut(vc.0) {
-            slot.pan_2d = transform.translation.truncate();
-            slot.zoom_2d = ortho.scale;
-            seed = Some((slot.pan_2d, slot.zoom_2d));
+        let framing = (transform.translation.truncate(), ortho.scale);
+        if let Some(slot) = viewports.slots.get(vc.0) {
+            if (slot.pan_2d, slot.zoom_2d) != framing {
+                let slot = &mut viewports.slots[vc.0];
+                slot.pan_2d = framing.0;
+                slot.zoom_2d = framing.1;
+            }
+            seed = Some(framing);
         }
     }
 
     // Drive every non-focused 2D camera from its own stored framing.
     for (vc, mut transform, mut projection) in other_cams.iter_mut() {
-        let Some(slot) = viewports.slots.get_mut(vc.0) else {
+        let Some(slot) = viewports.slots.get(vc.0) else {
             continue;
         };
-        if slot.zoom_2d <= 0.0 {
-            let Some((pan, zoom)) = seed else { continue };
-            slot.pan_2d = pan;
-            slot.zoom_2d = zoom;
+        let (pan, zoom) = if slot.zoom_2d <= 0.0 {
+            let Some(framing) = seed else { continue };
+            let slot = &mut viewports.slots[vc.0];
+            slot.pan_2d = framing.0;
+            slot.zoom_2d = framing.1;
+            framing
+        } else {
+            (slot.pan_2d, slot.zoom_2d)
+        };
+        if transform.translation.truncate() != pan {
+            transform.translation.x = pan.x;
+            transform.translation.y = pan.y;
         }
-        transform.translation.x = slot.pan_2d.x;
-        transform.translation.y = slot.pan_2d.y;
-        if let Projection::Orthographic(ortho) = projection.as_mut() {
-            ortho.scale = slot.zoom_2d;
+        if matches!(&*projection, Projection::Orthographic(o) if o.scale != zoom) {
+            if let Projection::Orthographic(ortho) = projection.as_mut() {
+                ortho.scale = zoom;
+            }
         }
     }
 }

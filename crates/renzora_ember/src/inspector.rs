@@ -22,7 +22,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 
 use crate::reactive::Rx;
 use crate::font::{ui_font, EmberFonts};
@@ -119,10 +119,20 @@ pub fn inspector_row(
             Text::new(label),
             ui_font(font, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::no_wrap(),
-            InspectorLabelText,
         ))
         .id();
+    inspector_row_with_label(commands, lbl, control)
+}
+
+/// [`inspector_row`] with a label the caller has built: a `Text` entity, which
+/// may carry spans of its own (the inspector's field groups put their caret
+/// glyph in front of the name this way). The whole text is what the label
+/// column is fitted to, so nothing in it is clipped and the control still lands
+/// in the shared column.
+pub fn inspector_row_with_label(commands: &mut Commands, lbl: Entity, control: Entity) -> Entity {
+    commands
+        .entity(lbl)
+        .insert((bevy::text::TextLayout::no_wrap(), InspectorLabelText));
     // Starts at the fixed column; `fit_label_columns` narrows it to the
     // longest label among this row's siblings once their text is measured.
     let label_col = commands
@@ -231,7 +241,7 @@ pub(crate) fn fit_label_columns(
 /// Checking here fixes every drawer at once. It runs as a queued command
 /// because the widget's components are only in the world once the builder's
 /// commands apply.
-fn fill_if_growable(commands: &mut Commands, control: Entity) {
+pub fn fill_if_growable(commands: &mut Commands, control: Entity) {
     commands.queue(move |w: &mut World| {
         let Ok(mut e) = w.get_entity_mut(control) else { return };
         let grows = e.contains::<crate::widgets::EmberDragValue>()
@@ -350,7 +360,7 @@ fn color_field_anchored(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             GlobalZIndex(700),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("color-panel"),
         ))
         .id();
@@ -460,7 +470,7 @@ pub fn color_field_rgba(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             GlobalZIndex(700),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("color-panel-rgba"),
         ))
         .id();

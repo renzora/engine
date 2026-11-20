@@ -31,11 +31,11 @@ pub(super) struct ShapeMenuTrigger;
 /// The (initially empty) column inside the shapes popup that `populate_shapes`
 /// fills from the registry.
 #[derive(Component)]
-struct ShapeMenuContainer;
+pub(super) struct ShapeMenuContainer;
 
 /// Marks a shapes list that's already been filled, so it isn't refilled.
 #[derive(Component)]
-struct ShapesPopulated;
+pub(super) struct ShapesPopulated;
 
 /// A selectable shape row — carries the registry id so the click handler can
 /// look the rest up (name + default color) at spawn time.
@@ -99,6 +99,13 @@ fn shape_row(commands: &mut Commands, fonts: &EmberFonts, icon: &str, name: &str
         .id();
     commands.entity(row).add_children(&[glyph, label]);
     row
+}
+
+/// Run condition for [`populate_shapes`]: a shape menu still waits to be filled.
+/// The system copies the whole registry before it looks for one, so ungated it
+/// paid that copy, and a schedule-wide sync point, on every frame.
+pub(super) fn shapes_unpopulated(q: Query<(), (With<ShapeMenuContainer>, Without<ShapesPopulated>)>) -> bool {
+    !q.is_empty()
 }
 
 /// Fill an empty `ShapeMenuContainer` from `ShapeRegistry`, grouped by category

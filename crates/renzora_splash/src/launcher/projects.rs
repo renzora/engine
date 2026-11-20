@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, RepeatedGridTrack};
+use bevy::ui::RepeatedGridTrack;
+use renzora_ember::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
@@ -100,14 +101,24 @@ pub(crate) fn systems(app: &mut App) {
     app.add_systems(
         Update,
         (
-            new_project_click,
-            new_from_template_click,
-            open_project_click,
-            recent_open_click,
-            recent_remove_click,
-            animate_recent_borders,
-            refresh_recent_thumbs,
-            size_recent_grid,
+            // Everything these read (the buttons, the recents cards, the grid)
+            // is built under a `SplashRoot`, so without the dashboard they have
+            // nothing to do. A gated `Changed<UiInteraction>` query still sees a
+            // freshly spawned button as changed, as it did before.
+            (
+                new_project_click,
+                new_from_template_click,
+                open_project_click,
+                recent_open_click,
+                recent_remove_click,
+                animate_recent_borders,
+                size_recent_grid,
+            )
+                .run_if(any_with_component::<super::SplashRoot>),
+            // Not gated on the dashboard: the recents list can change from the
+            // editor (File > Open Project), and the cache should be warm when the
+            // dashboard comes back. The condition is the body's own `is_changed`.
+            refresh_recent_thumbs.run_if(resource_changed::<AppConfig>),
         ),
     );
 }
@@ -469,11 +480,11 @@ fn build_recent_card(commands: &mut Commands, fonts: &EmberFonts, row: &RowData)
             // `cursor_over` — not `UiInteraction` — drives the card's hover sheen:
             // the ✕ blocks, so `UiInteraction` correctly drops to `None` the moment
             // the pointer crosses onto it, and keying the sheen off that would
-            // make the card flatten out under your own cursor. Bevy fills
-            // `RelativeCursorPosition` for every node containing the pointer
+            // make the card flatten out under your own cursor. Ember fills
+            // `UiCursor` for every node containing the pointer
             // regardless of who captures the press, which is exactly the "is the
             // pointer anywhere over this card" signal the visual wants.
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             BLOCK,
             RecentRow,
         ))
@@ -703,7 +714,7 @@ fn bind_text_color_on_hover(commands: &mut Commands, text_e: Entity, btn: Entity
 fn animate_recent_borders(
     time: Res<Time>,
     mut rows: Query<
-        (&RelativeCursorPosition, &mut BorderColor, &mut bevy::ui::BackgroundGradient),
+        (&UiCursor, &mut BorderColor, &mut bevy::ui::BackgroundGradient),
         With<RecentRow>,
     >,
 ) {

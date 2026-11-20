@@ -62,6 +62,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod bevy_source;
 mod bundle;
 mod coverage;
 mod dlss;
@@ -296,11 +297,24 @@ fn main() -> ExitCode {
             let args: Vec<String> = std::env::args().skip(2).collect();
             wasm::build_and_stage(&repo, &args)
         }
+        // Fail if anything built on Bevy comes from crates.io instead of
+        // `bevy/` or `vendor/`. Runs before every build; standalone for CI.
+        // See `bevy_source.rs`.
+        "check-bevy" => match bevy_source::check(&repo) {
+            Ok(()) => {
+                println!("[xtask] every Bevy crate in the build comes from bevy/");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("[xtask] error: {e}");
+                ExitCode::FAILURE
+            }
+        },
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
                  (expected: run | xr | dist | sdk | wasm [--no-opt] | profile | \
-                 coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
+                 coverage [--check|--bless] | sync [--check] | check-bevy | remove <crate-name>)"
             );
             ExitCode::from(2)
         }
@@ -315,6 +329,13 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
     // remember.
     if let Err(e) = sync::sync(repo, false) {
         eprintln!("[xtask] plugin sync failed: {e}");
+        return Err(ExitCode::FAILURE);
+    }
+    // One Bevy, from `bevy/`: a second one from crates.io builds fine and fails
+    // only at runtime, so it is caught here, before the compile. See
+    // `bevy_source.rs`.
+    if let Err(e) = bevy_source::check(repo) {
+        eprintln!("[xtask] error: {e}");
         return Err(ExitCode::FAILURE);
     }
     // DLSS whenever this machine can build it; see `dlss.rs`.
@@ -428,6 +449,9 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         "renzora-android",
         "--exclude",
         "renzora-ios",
+        // Built below, on its own. See `build_companion`.
+        "--exclude",
+        COMPANION_PACKAGE,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -447,7 +471,33 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    ok && build_updater(repo)
+    ok && build_companion(repo, &profile) && build_updater(repo)
+}
+
+/// The standalone companion's package; its binary is `renzora-companion`.
+const COMPANION_PACKAGE: &str = "renzora_companion_server";
+
+/// Build the standalone companion (`crates/renzora_companion_server`).
+///
+/// In an invocation of its own because cargo resolves features once per
+/// invocation, across every package it selected. The companion uses a few
+/// engine crates with their optional `bevy` feature off; built inside the
+/// `--workspace` build, the engine's own use of those crates turns `bevy` back
+/// on, and the companion links the engine it exists to leave out.
+/// `cargo renzora check-bevy` reads its graph the same way, alone.
+///
+/// Fatal, like the workspace build: the editor starts it when
+/// `RENZORA_COMPANION_SERVER` is set, and a stale one beside a new editor
+/// would speak an old protocol.
+fn build_companion(repo: &Path, profile: &str) -> bool {
+    let args = ["build", "--profile", profile, "-p", COMPANION_PACKAGE];
+    println!("[xtask] cargo {}", args.join(" "));
+    cargo_command()
+        .current_dir(repo)
+        .args(args)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// Build the update sidecar (`tools/updater`).
@@ -509,6 +559,17 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     link_or_copy(&src.join(&bin_name), &host_bin)?;
     #[cfg(unix)]
     make_executable(&host_bin)?;
+
+    // The standalone companion, which the editor starts beside itself. Missing
+    // is not fatal here: the editor then starts the engine companion instead.
+    let companion_name = format!("renzora-companion{}", plat.exe_suffix);
+    let companion_src = src.join(&companion_name);
+    if companion_src.exists() {
+        let companion_bin = out.join(&companion_name);
+        link_or_copy(&companion_src, &companion_bin)?;
+        #[cfg(unix)]
+        make_executable(&companion_bin)?;
+    }
 
     // The update sidecar, from its own target dir (own workspace).
     let updater_name = format!("renzora-update{}", plat.exe_suffix);
@@ -628,7 +689,12 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
     // Both executables are scanned: they are built from one `--workspace`
     // invocation and so agree today, but staging what each one actually asks for
     // costs nothing and cannot be wrong.
-    let deps = src.join("deps");
+    // The copies cargo leaves in the profile directory itself, not `deps/`. Rust
+    // 1.100's cargo stopped writing `deps/` (each crate's output now lives in
+    // `build/<crate>/<hash>/out/`), so `deps/` held whatever an older toolchain
+    // last put there: a staged tree whose shared images imported the previous
+    // `std-<hash>.dll`, and an editor that died before `main` with 0xc0000135.
+    // The final dylibs are placed in the profile directory under either layout.
     let mut wanted = std::collections::BTreeSet::new();
     // The executable and the editor image both import shared libraries, and the
     // image imports more of them than the exe does — it is the editor, so it
@@ -646,7 +712,7 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
         }
     }
     for name in &wanted {
-        let from = deps.join(name);
+        let from = src.join(name);
         if from.is_file() {
             link_or_copy(&from, &out.join(name))?;
         }
@@ -681,7 +747,7 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
         return Err(std::io::Error::other(format!(
             "{missing} is imported by the engine binaries but was found in neither \
              {} nor {}",
-            deps.display(),
+            src.display(),
             libdir.display()
         )));
     }

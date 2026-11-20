@@ -22,7 +22,7 @@ use bevy::ecs::change_detection::Tick;
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectSerializer;
 use bevy::reflect::{PartialReflect, ReflectRef};
-use renzora::{SceneEntityId, ViewportGateHidden};
+use renzora::SceneEntityId;
 use renzora_engine::scene_io::{assign_scene_entity_ids, extract_authored, saveable_entities};
 
 use crate::LinkMessage;
@@ -217,14 +217,6 @@ pub(crate) struct EntityValues {
 ///   every frame on both sides, so sending it would only double the traffic of
 ///   every move.
 /// - The scene id itself, which is the address, not a value.
-///
-/// And `Visibility` on an entity the editor's viewport gate is hiding is read
-/// from the gate, which holds the real value while it shows `Hidden`. The gate
-/// hides the whole scene whenever no viewport is on screen, which is the
-/// moment someone switches to the Game panel. Reading the live value would
-/// hide the running game's world; leaving the value out, as this first did,
-/// left a gap in the baseline Stop restores from, and Stop then removed the
-/// component instead of putting it back.
 pub(crate) fn authored_values(world: &mut World, entities: Vec<Entity>) -> Vec<EntityValues> {
     if entities.is_empty() {
         return Vec::new();
@@ -233,15 +225,10 @@ pub(crate) fn authored_values(world: &mut World, entities: Vec<Entity>) -> Vec<E
         .iter()
         .filter_map(|&e| world.get::<SceneEntityId>(e).map(|id| (e, id.0)))
         .collect();
-    let gated: HashMap<Entity, Visibility> = entities
-        .iter()
-        .filter_map(|&e| world.get::<ViewportGateHidden>(e).map(|g| (e, g.0)))
-        .collect();
 
     let scene = extract_authored(world, entities, false);
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
-    let visibility = Visibility::type_path();
     let skipped = [GlobalTransform::type_path(), SceneEntityId::type_path()];
 
     let mut out = Vec::with_capacity(scene.entities.len());
@@ -255,16 +242,10 @@ pub(crate) fn authored_values(world: &mut World, entities: Vec<Entity>) -> Vec<E
                 withheld.insert(ty.to_string());
                 continue;
             }
-            let real_visibility = (ty == visibility)
-                .then(|| gated.get(&entity.entity))
-                .flatten();
-            let serialized = match real_visibility {
-                Some(real) => ron::ser::to_string(&TypedReflectSerializer::new(real, &registry)),
-                None => ron::ser::to_string(&TypedReflectSerializer::new(
-                    component.as_partial_reflect(),
-                    &registry,
-                )),
-            };
+            let serialized = ron::ser::to_string(&TypedReflectSerializer::new(
+                component.as_partial_reflect(),
+                &registry,
+            ));
             if let Ok(value) = serialized {
                 values.insert(ty.to_string(), value);
             }

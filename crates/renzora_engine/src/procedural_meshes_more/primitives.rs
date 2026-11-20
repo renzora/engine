@@ -12,7 +12,7 @@ use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, TAU};
 use super::builder::{LathePt, MeshBuilder, ProfilePt, hard_lathe};
 
 /// The golden ratio, which is what places an icosahedron's corners.
-const PHI: f32 = 1.618_034;
+const PHI: f32 = std::f32::consts::GOLDEN_RATIO;
 
 /// Regular tetrahedron, 1 m edge, resting on a face.
 pub fn create_tetrahedron_mesh() -> Mesh {

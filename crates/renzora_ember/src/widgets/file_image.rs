@@ -24,7 +24,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 
 use crate::interaction::PASS_THROUGH;
@@ -92,12 +91,22 @@ impl FileImages {
     }
 }
 
+/// The longest side an image is kept at. Every caller shows these as tiles a
+/// couple of hundred pixels across, and the files are often full-size artwork:
+/// with the plugins panel's thumbnails loaded, the cache held about 150 MB of
+/// images at 512 and 1024 pixels square.
+#[cfg(all(feature = "editor_tools", not(target_arch = "wasm32")))]
+const MAX_SIDE: u32 = 512;
+
 #[cfg(all(feature = "editor_tools", not(target_arch = "wasm32")))]
 fn start_decode(path: PathBuf, tx: Sender<Result<Decoded, PathBuf>>) {
     std::thread::spawn(move || {
         let result = (|| -> Result<Decoded, PathBuf> {
             let bytes = std::fs::read(&path).map_err(|_| path.clone())?;
-            let img = image::load_from_memory(&bytes).map_err(|_| path.clone())?;
+            let mut img = image::load_from_memory(&bytes).map_err(|_| path.clone())?;
+            if img.width() > MAX_SIDE || img.height() > MAX_SIDE {
+                img = img.resize(MAX_SIDE, MAX_SIDE, image::imageops::FilterType::Triangle);
+            }
             let rgba = img.to_rgba8();
             let (width, height) = rgba.dimensions();
             Ok(Decoded { path: path.clone(), rgba: rgba.into_raw(), width, height })
@@ -203,7 +212,11 @@ pub fn request_file_images(mut cache: ResMut<FileImages>, q: Query<&FileImageWan
 }
 
 /// Drain finished decodes and register them as `Image` assets.
-pub fn poll_file_images(mut cache: ResMut<FileImages>, mut images: ResMut<Assets<Image>>) {
+pub fn poll_file_images(
+    mut cache: ResMut<FileImages>,
+    mut images: ResMut<Assets<Image>>,
+    mut sizes: ResMut<super::GpuImageSizes>,
+) {
     let mut done = Vec::new();
     while let Ok(res) = cache.rx.try_recv() {
         done.push(res);
@@ -212,14 +225,7 @@ pub fn poll_file_images(mut cache: ResMut<FileImages>, mut images: ResMut<Assets
         match res {
             Ok(d) => {
                 cache.in_flight.remove(&d.path);
-                let image = Image::new(
-                    Extent3d { width: d.width, height: d.height, depth_or_array_layers: 1 },
-                    TextureDimension::D2,
-                    d.rgba,
-                    TextureFormat::Rgba8UnormSrgb,
-                    default(),
-                );
-                let handle = images.add(image);
+                let handle = super::add_gpu_image(&mut images, &mut sizes, d.rgba, d.width, d.height);
                 cache.handles.insert(d.path, handle);
             }
             Err(path) => {

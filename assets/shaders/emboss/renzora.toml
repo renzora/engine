@@ -1,0 +1,9 @@
+name = "Emboss"
+version = "2.0.0"
+description = "Emboss: the picture is turned into a relief of light and shadow along its edges, as if stamped into metal or paper. A post-process effect: drop emboss.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "emboss"
+tags = ["post-processing", "shader", "emboss", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

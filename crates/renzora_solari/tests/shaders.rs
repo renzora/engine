@@ -17,8 +17,9 @@ use renzora_shader::material::validate::{library_count, ShaderValidator};
 
 /// Libraries Solari imports that arrive late, the way the material validator's
 /// own test waits for them: `mesh_bindings` streams in after the embedded ones.
-const REQUIRED_LIBRARIES: [&str; 5] = [
+const REQUIRED_LIBRARIES: [&str; 6] = [
     "bevy_pbr::render::pbr_functions",
+    "bevy_pbr::render::mesh_bindings",
     "bevy_pbr::render::pbr_lighting",
     "bevy_pbr::deferred::types",
     "bevy_pbr::prepass::bindings",
@@ -29,7 +30,7 @@ const REQUIRED_LIBRARIES: [&str; 5] = [
 const WORLD_CACHE_SIZE: u32 = 1 << 20;
 
 fn solari_src() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bevy_solari/src")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bevy/crates/bevy_solari/src")
 }
 
 /// Every `.wesl` under `bevy_solari/src`, as (module path, source).
@@ -52,7 +53,23 @@ fn solari_modules() -> Vec<(String, String)> {
     let root = solari_src();
     let mut out = Vec::new();
     walk(&root, &root, &mut out);
+    out.extend(atmosphere_modules());
     out
+}
+
+/// The atmosphere's shader libraries, which Solari imports to light the scene
+/// through the sky (`realtime/atmosphere.wesl`). `AtmospherePlugin` registers
+/// them with `load_shader_library!`; the headless app does not add that plugin,
+/// so they are read from disk under the same module paths.
+fn atmosphere_modules() -> Vec<(String, String)> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../bevy/crates/bevy_pbr/src/atmosphere");
+    ["types", "functions", "bruneton_functions", "bindings"]
+        .into_iter()
+        .map(|name| {
+            let source = std::fs::read_to_string(dir.join(format!("{name}.wesl"))).unwrap();
+            (format!("bevy_pbr::atmosphere::{name}"), source)
+        })
+        .collect()
 }
 
 fn validator() -> ShaderValidator {

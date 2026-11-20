@@ -1,0 +1,9 @@
+name = "Dithering"
+version = "2.0.0"
+description = "Ordered (Bayer) dithering: colour is reduced to a small number of levels and the error is traded for a fixed crosshatch pattern, the way early 8-bit and 16-bit displays faked extra shades. A post-process effect: drop dithering.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "dithering"
+tags = ["post-processing", "shader", "dithering", "retro", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

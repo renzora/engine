@@ -101,10 +101,13 @@ pub const VIEWPORT_2D_GRID_LAYER_BASE: usize = 20;
 
 /// Base bevy `RenderLayers` index for the per-slot 3D gizmo overlays.
 ///
-/// Every viewport's 3D camera renders layer 0 (the scene), layer 1 (shared
-/// world-space overlays — light/collider/skeleton gizmos, the selection box —
-/// which look correct from any angle so one instance serves all views), and its
-/// own private overlay layer `VIEWPORT_3D_GIZMO_LAYER_BASE + slot`. The
+/// Every viewport's 3D scene camera renders layer 0 (the scene) only. Its
+/// overlay camera (`ViewportOverlayCamera`) renders layer 1 (shared world-space
+/// overlays: light/collider/skeleton gizmos, the selection box, which look
+/// correct from any angle so one instance serves all views) and the slot's
+/// own private overlay layer `VIEWPORT_3D_GIZMO_LAYER_BASE + slot`. Everything
+/// on those layers draws on top of the scene, so it needs none of the scene's
+/// depth. The
 /// *camera-sized* transform gizmo (translate handles, rotate/scale/plane lines)
 /// is drawn per slot onto that private layer, scaled and axis-flipped for that
 /// slot's own camera — so each viewport shows a correctly-sized handle instead
@@ -378,6 +381,70 @@ impl Default for CameraOrbitSnapshot {
     }
 }
 
+/// The editor camera's orbit pivot as the viewport should show it. Written by
+/// the camera, which draws the marker; read by the viewport, which labels it
+/// with the distance. `opacity` 0 means hidden.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct PivotMarkerState {
+    pub position: Vec3,
+    /// From the camera to the pivot, in metres.
+    pub distance: f32,
+    /// Pivot lock (L) is on: zoom and pan keep the pivot where it is.
+    pub locked: bool,
+    pub opacity: f32,
+}
+
+/// Touched (mutably) by anything that changes what the 3D viewports' overlay
+/// draws without changing an entity, so the overlay camera redraws.
+///
+/// The transform gizmo's rotate rings and scale lines are immediate-mode
+/// gizmos: they are recorded every frame and leave no component change behind
+/// when the hovered handle lights up. The viewport's redraw gate watches this
+/// resource's change tick; the value itself means nothing. Touch it only when
+/// the picture really changes, or the overlay renders every frame.
+#[derive(Resource, Debug, Clone, Copy, Default)]
+pub struct ViewportOverlayChanged;
+
+/// Work in progress the viewport shows a progress card for: anything that
+/// fills the scene in over several seconds (a large terrain being shaped and
+/// built). Each owner keeps one entry under its own `id`, and removes it when
+/// done; the viewport shows the first.
+#[derive(Resource, Debug, Clone, Default)]
+pub struct ViewportWork {
+    pub items: Vec<WorkItem>,
+}
+
+/// One entry of [`ViewportWork`]: what is happening, and how far along it is.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkItem {
+    pub id: &'static str,
+    pub label: String,
+    pub done: u32,
+    pub total: u32,
+}
+
+impl ViewportWork {
+    /// The entry `id` holds, if any.
+    pub fn get(&self, id: &str) -> Option<&WorkItem> {
+        self.items.iter().find(|w| w.id == id)
+    }
+
+    /// What `id`'s entry should become, `None` to remove it: whether that
+    /// differs from what is there. Owners check this through a read before
+    /// writing, so an unchanged entry does not wake the viewport every frame.
+    pub fn differs(&self, id: &str, next: Option<&WorkItem>) -> bool {
+        self.get(id) != next
+    }
+
+    /// Replace `id`'s entry, or remove it with `None`.
+    pub fn set(&mut self, id: &'static str, next: Option<WorkItem>) {
+        self.items.retain(|w| w.id != id);
+        if let Some(item) = next {
+            self.items.push(item);
+        }
+    }
+}
+
 /// Cached clip-from-world matrix of the editor camera, plus camera world position.
 /// Updated every frame. Used by CPU-projected viewport overlays (grid, gizmos).
 #[derive(Resource, Debug, Clone)]
@@ -512,7 +579,7 @@ pub enum GraphicsQuality {
     /// The shipping default: it sheds the heaviest fullscreen passes while
     /// keeping the tonemapped look, so the engine runs acceptably on the kind of older /
     /// integrated GPUs where the full stack drops to single-digit FPS. Capable
-    /// machines can raise it to `High` in Settings → Viewport → Performance.
+    /// machines can raise it to `High` in Settings > Project > Rendering.
     #[default]
     Medium,
     High,
@@ -569,6 +636,15 @@ impl GraphicsQuality {
     /// "fullscreen, resolution-bound" cost class `Medium` — the weak-machine
     /// default — exists to shed.
     pub fn ssao(&self) -> bool {
+        matches!(self, Self::High)
+    }
+
+    /// Screen-space indirect lighting: on only at `High`.
+    ///
+    /// It is global illumination, the cost class `Medium` exists to shed: a
+    /// half-resolution gather of a dozen taps per pixel, two blur passes and a
+    /// full-resolution composite, every frame, whatever the scene holds.
+    pub fn ssil(&self) -> bool {
         matches!(self, Self::High)
     }
 
@@ -629,19 +705,21 @@ impl GraphicsQuality {
     ///
     /// The mapping is a table here rather than a field on `InspectorEntry`
     /// because a component does not get to decide this: the gates are already one
-    /// central list on this enum (`bloom`, `taa`, `ssao`, `clouds`,
+    /// central list on this enum (`bloom`, `ssao`, `clouds`,
     /// `auto_exposure`, `atmosphere_raymarched`), and a second copy spread across
     /// 180-odd registration sites would drift from it the first time a tier moved.
     /// Anything not listed is ungated and returns `None`.
     pub fn inspector_gate(&self, type_id: &str) -> Option<QualityGate> {
         // Not in the list below, and deliberately: Solari reads no tier at all,
-        // so its section must not claim to be gated.
+        // so its section must not claim to be gated. Nor is anti-aliasing: the
+        // tier stops only one of its methods (TAA), so the header must not say
+        // the whole section is off; its Method dropdown warns on TAA instead.
         let on = match type_id {
             "clouds" => self.clouds(),
             "bloom" => self.bloom(),
-            "taa" => self.taa(),
             "auto_exposure" => self.auto_exposure(),
             "world_env_ssao" => self.ssao(),
+            "ssil" => self.ssil(),
             // The one that survives in reduced form rather than going away.
             "atmosphere" => {
                 return (!self.atmosphere_raymarched()).then_some(QualityGate::Downgraded)
@@ -851,6 +929,23 @@ pub enum VisualizationMode {
     /// camera wants is on the GPU, red where a coarser level stands in while
     /// it streams in (or because the memory budget has no room for it).
     VgResidency,
+    /// SSIL's gathered bounce light on its own. Drawn by `renzora_ssil` in
+    /// place of the frame, in editor viewports only, and only where SSIL is
+    /// on.
+    SsilLight,
+    /// SSIL's occlusion: white is open, black blocked.
+    SsilOcclusion,
+    /// Last frame as SSIL's taps read it: reprojected, from the blurred mip.
+    SsilHistory,
+}
+
+/// Which submenu of the viewport's Visualization menu a mode is listed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisualizationGroup {
+    /// Listed directly: the material-swap views.
+    General,
+    VirtualGeometry,
+    Ssil,
 }
 
 impl VisualizationMode {
@@ -867,7 +962,53 @@ impl VisualizationMode {
         Self::VgLod,
         Self::VgInstances,
         Self::VgResidency,
+        Self::SsilLight,
+        Self::SsilOcclusion,
+        Self::SsilHistory,
     ];
+
+    /// The submenu this mode is listed in.
+    pub fn group(self) -> VisualizationGroup {
+        if self.is_virtual_geometry() {
+            VisualizationGroup::VirtualGeometry
+        } else if self.is_ssil() {
+            VisualizationGroup::Ssil
+        } else {
+            VisualizationGroup::General
+        }
+    }
+
+    /// A view a rendering feature draws itself, over or in place of the frame
+    /// (virtual geometry, SSIL), rather than a material swap.
+    ///
+    /// These are drawn before TAA, and TAA's jitter and history then smear
+    /// and shake flat debug colours, so while one is on the editor viewport
+    /// runs without a temporal method (`renzora_antialiasing`).
+    pub fn is_feature_view(self) -> bool {
+        self.group() != VisualizationGroup::General
+    }
+
+    /// One of SSIL's views, which leave materials alone and are drawn by the
+    /// SSIL pass.
+    pub fn is_ssil(self) -> bool {
+        matches!(self, Self::SsilLight | Self::SsilOcclusion | Self::SsilHistory)
+    }
+
+    /// The label inside its submenu, where the group's name is already said:
+    /// "Clusters" under Virtual Geometry rather than the full [`Self::label`].
+    pub fn menu_label(&self) -> &'static str {
+        match self {
+            Self::VgClusters => "Clusters",
+            Self::VgTriangles => "Triangles",
+            Self::VgLod => "LOD Level",
+            Self::VgInstances => "Instances",
+            Self::VgResidency => "Residency",
+            Self::SsilLight => "Light",
+            Self::SsilOcclusion => "Occlusion",
+            Self::SsilHistory => "History",
+            other => other.label(),
+        }
+    }
 
     /// One of the virtual geometry views, which leave materials alone and are
     /// drawn as an overlay by the virtual geometry renderer.
@@ -892,6 +1033,9 @@ impl VisualizationMode {
             Self::VgLod => "Virtual Geometry: LOD Level",
             Self::VgInstances => "Virtual Geometry: Instances",
             Self::VgResidency => "Virtual Geometry: Residency",
+            Self::SsilLight => "SSIL: Light",
+            Self::SsilOcclusion => "SSIL: Occlusion",
+            Self::SsilHistory => "SSIL: History",
         }
     }
 }
@@ -1154,6 +1298,11 @@ pub struct ViewportSettings {
     pub show_light_gizmos: bool,
     /// The selected camera's frustum wireframe + forward arrow. On by default.
     pub show_camera_gizmos: bool,
+    /// The editor camera's orbit pivot, drawn while you orbit, pan or zoom
+    /// and for a moment after F / End / A / Home move it. On by default: how
+    /// far away the pivot is sets how fast zoom and orbit move, and with
+    /// nothing on screen a pivot left a kilometre off was invisible.
+    pub show_pivot: bool,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
@@ -1169,10 +1318,11 @@ pub struct ViewportSettings {
     /// a home is also a re-focus on the origin and a reset of the zoom.
     /// Transient, so it is never persisted.
     pub pending_camera_home: bool,
-    /// Cap the framerate at the monitor refresh rate. Off lets the FPS
-    /// counter reflect actual render capacity at the cost of possible
-    /// screen tearing.
-    pub vsync: bool,
+    // VSync and the graphics-quality tier are not here. The editor is the game
+    // with chrome on top, so it runs on the game's own `[window] vsync` and
+    // `[rendering] graphics_quality`. Each used to have an editor copy as well,
+    // and the two disagreeing made a game look frame-limited (or slower) than
+    // the editor had shown it.
     /// Render the viewport every frame (`true`), or only when the scene has
     /// changed (`false`, the default).
     ///
@@ -1189,11 +1339,6 @@ pub struct ViewportSettings {
     /// whatever you're moving; fading them lets the object stay visible during
     /// the drag. `1.0` keeps the gizmo fully opaque (no fade).
     pub gizmo_drag_opacity: f32,
-    /// Overall graphics-quality tier — gates the expensive fullscreen passes
-    /// (SSAO / auto-exposure / bloom / TAA). Enforced by
-    /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
-    /// editor stays responsive on weak / high-DPI hardware out of the box.
-    pub graphics_quality: GraphicsQuality,
     /// Show the transform gizmo + selection outline/handles in **every** open
     /// viewport at once. Off by default — the gizmo follows the viewport your
     /// cursor is in, so the other views stay clean — matching most DCCs. Turn it
@@ -1244,6 +1389,7 @@ impl Default for ViewportSettings {
             show_skeleton_gizmos: true,
             show_light_gizmos: true,
             show_camera_gizmos: true,
+            show_pivot: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
@@ -1252,10 +1398,8 @@ impl Default for ViewportSettings {
             snap: SnapSettings::default(),
             pending_view_angle: None,
             pending_camera_home: false,
-            vsync: true,
             realtime: false,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
-            graphics_quality: GraphicsQuality::default(),
             gizmos_all_viewports: false,
             gizmo_pivot_bottom: true,
         }
@@ -1363,6 +1507,8 @@ pub struct PersistedViewportSettings {
     pub show_light_gizmos: bool,
     #[serde(default = "default_true")]
     pub show_camera_gizmos: bool,
+    #[serde(default = "default_true")]
+    pub show_pivot: bool,
     /// The collider gizmo's on/off half. Stored separately from
     /// `collision_always` (rather than replacing both with one enum string) so
     /// existing configs keep their Selected Only / Always choice: they simply
@@ -1394,19 +1540,15 @@ pub struct PersistedViewportSettings {
     pub object_snap_distance: f32,
     pub floor_snap_enabled: bool,
     pub floor_y: f32,
-    #[serde(default = "default_true")]
-    pub vsync: bool,
+    // `vsync` and `graphics_quality` were saved here until the editor started
+    // following the game's own settings. A project that still has them loads
+    // fine: serde skips keys the struct no longer names.
     /// Defaults off, the same as a fresh project: rendering on change is what
     /// every project gets from now on.
     #[serde(default)]
     pub realtime: bool,
     #[serde(default = "default_gizmo_drag_opacity")]
     pub gizmo_drag_opacity: f32,
-    /// Graphics-quality tier label (`"Low"` / `"Medium"` / `"High"`). Missing in
-    /// configs written before this field existed → `default_graphics_quality()`
-    /// (`"Medium"`), so upgrading projects pick up the lighter default.
-    #[serde(default = "default_graphics_quality")]
-    pub graphics_quality: String,
     /// Missing in configs written before this field existed → `false`.
     #[serde(default)]
     pub gizmos_all_viewports: bool,
@@ -1447,6 +1589,7 @@ impl PersistedViewportSettings {
             show_skeleton_gizmos: s.show_skeleton_gizmos,
             show_light_gizmos: s.show_light_gizmos,
             show_camera_gizmos: s.show_camera_gizmos,
+            show_pivot: s.show_pivot,
             show_collider_gizmos: !matches!(
                 s.collision_gizmo_visibility,
                 CollisionGizmoVisibility::Off
@@ -1476,10 +1619,8 @@ impl PersistedViewportSettings {
             object_snap_distance: sn.object_snap_distance,
             floor_snap_enabled: sn.floor_snap_enabled,
             floor_y: sn.floor_y,
-            vsync: s.vsync,
             realtime: s.realtime,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
-            graphics_quality: s.graphics_quality.label().to_string(),
             gizmos_all_viewports: s.gizmos_all_viewports,
         }
     }
@@ -1504,6 +1645,9 @@ impl PersistedViewportSettings {
             "VgLod" => VisualizationMode::VgLod,
             "VgInstances" => VisualizationMode::VgInstances,
             "VgResidency" => VisualizationMode::VgResidency,
+            "SsilLight" => VisualizationMode::SsilLight,
+            "SsilOcclusion" => VisualizationMode::SsilOcclusion,
+            "SsilHistory" => VisualizationMode::SsilHistory,
             _ => VisualizationMode::None,
         };
         s.toolbar_order = self.toolbar_order.clone();
@@ -1529,6 +1673,7 @@ impl PersistedViewportSettings {
         s.show_skeleton_gizmos = self.show_skeleton_gizmos;
         s.show_light_gizmos = self.show_light_gizmos;
         s.show_camera_gizmos = self.show_camera_gizmos;
+        s.show_pivot = self.show_pivot;
         s.collision_gizmo_visibility = match (self.show_collider_gizmos, self.collision_always) {
             (false, _) => CollisionGizmoVisibility::Off,
             (true, true) => CollisionGizmoVisibility::Always,
@@ -1566,10 +1711,8 @@ impl PersistedViewportSettings {
             floor_snap_enabled: self.floor_snap_enabled,
             floor_y: self.floor_y,
         };
-        s.vsync = self.vsync;
         s.realtime = self.realtime;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
-        s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
         s.gizmos_all_viewports = self.gizmos_all_viewports;
     }
 }
@@ -1584,10 +1727,6 @@ fn default_grid_divisions() -> u32 {
 
 fn default_grid_size_2d() -> f32 {
     16.0
-}
-
-fn default_graphics_quality() -> String {
-    GraphicsQuality::default().label().to_string()
 }
 
 fn default_grid_color_2d() -> [u8; 4] {
@@ -1683,6 +1822,7 @@ mod tests {
             show_skeleton_gizmos: false,
             show_light_gizmos: false,
             show_camera_gizmos: false,
+            show_pivot: false,
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,
             projection_mode: ProjectionMode::Orthographic,
             viewport_mode: ViewportMode::default(),
@@ -1713,12 +1853,9 @@ mod tests {
             },
             pending_view_angle: None,
             pending_camera_home: false,
-            vsync: false,
             // Non-default (default is false) so the round-trip exercises it.
             realtime: true,
             gizmo_drag_opacity: 0.6,
-            // Non-default tier (default is Medium) so the round-trip exercises it.
-            graphics_quality: GraphicsQuality::High,
             // Non-default (default is false) so the round-trip exercises it.
             gizmos_all_viewports: true,
         }
@@ -1759,6 +1896,7 @@ mod tests {
         assert_eq!(original.show_skeleton_gizmos, restored.show_skeleton_gizmos);
         assert_eq!(original.show_light_gizmos, restored.show_light_gizmos);
         assert_eq!(original.show_camera_gizmos, restored.show_camera_gizmos);
+        assert_eq!(original.show_pivot, restored.show_pivot);
         assert!(matches!(
             restored.collision_gizmo_visibility,
             CollisionGizmoVisibility::Always
@@ -1769,26 +1907,24 @@ mod tests {
         ));
         assert_eq!(original.camera, restored.camera);
         assert_eq!(original.snap, restored.snap);
-        assert_eq!(original.vsync, restored.vsync);
         assert_eq!(original.realtime, restored.realtime);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
-        assert_eq!(original.graphics_quality, restored.graphics_quality);
         assert_eq!(
             original.gizmos_all_viewports,
             restored.gizmos_all_viewports
         );
     }
 
+    /// A project saved while the editor had its own VSync and quality tier
+    /// still carries both keys under `[editor.viewport]`. They must not stop
+    /// the rest of the viewport prefs loading.
     #[test]
-    fn vsync_round_trips() {
-        // The whole point of the recent vsync setting is that it survives
-        // a save/load. Lock that in.
-        let mut s = ViewportSettings::default();
-        s.vsync = false;
-        let persisted = PersistedViewportSettings::from_settings(&s);
-        let mut restored = ViewportSettings::default();
-        persisted.apply(&mut restored);
-        assert!(!restored.vsync);
+    fn retired_vsync_and_quality_keys_still_load() {
+        let parsed: PersistedViewportSettings = toml::from_str(
+            "vsync = false\ngraphics_quality = \"High\"\nshow_grid = false",
+        )
+        .expect("parse");
+        assert!(!parsed.show_grid);
     }
 
     #[test]
@@ -1887,10 +2023,8 @@ mod tests {
             object_snap_distance = 1.0
             floor_snap_enabled = false
             floor_y = 0.0
-            vsync = true
         "#;
         let parsed: PersistedViewportSettings = toml::from_str(s).expect("parse");
-        assert!(parsed.vsync);
         assert!(parsed.mesh);
     }
 }

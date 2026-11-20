@@ -1,0 +1,9 @@
+name = "Radial Blur"
+version = "2.0.0"
+description = "Streaks the frame outward from a point, for speed and impact shots. A post-process effect: drop radial_blur.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "radial_blur"
+tags = ["post-processing", "shader", "blur", "motion"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

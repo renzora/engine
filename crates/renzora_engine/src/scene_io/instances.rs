@@ -18,7 +18,6 @@ use std::path::Path;
 use super::deny::{DenyOptionalSubsystems, DenyUiCameraTargets};
 use super::load::{load_scene, loading_stack_contains};
 use super::physics_filter::PhysicsFilter;
-use super::save::restore_viewport_gated_visibility;
 
 /// Expand every `SceneInstance` entity in the world that has no children yet:
 /// load the referenced source scene and reparent its roots under the instance.
@@ -343,7 +342,6 @@ pub fn save_prefab_source(
     instance_entity: Entity,
     source_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    restore_viewport_gated_visibility(world);
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     // Collect all descendants of the instance, breadth-first.

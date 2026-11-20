@@ -246,11 +246,17 @@ impl PinTemplate {
 /// What kind of shader this material graph compiles to.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize, Default)]
 pub enum MaterialDomain {
-    /// Standard PBR surface material (meshes, props).
+    /// Standard PBR surface material (meshes, props, and terrain: a terrain is
+    /// textured by an ordinary Surface graph built from the Landscape nodes).
+    ///
+    /// The alias reads a file saved with the old Terrain Layer domain, whose
+    /// `layer_main` shader nothing ever called. Such a file loads as a Surface
+    /// graph still holding its `output/terrain_layer` node, which no longer
+    /// exists, so it is refused with "Unknown output node type" rather than
+    /// failing to parse.
     #[default]
+    #[serde(alias = "TerrainLayer")]
     Surface,
-    /// Terrain layer — compiles to `layer_main()` / `layer_pbr()`.
-    TerrainLayer,
     /// Vegetation — PBR + vertex displacement (wind, sway).
     Vegetation,
     /// Unlit — raw color output, no PBR lighting.
@@ -266,7 +272,6 @@ impl MaterialDomain {
     pub fn display_name(&self) -> &'static str {
         match self {
             Self::Surface => "Surface",
-            Self::TerrainLayer => "Terrain Layer",
             Self::Vegetation => "Vegetation",
             Self::Unlit => "Unlit",
             Self::Sprite => "Sprite",
@@ -309,6 +314,10 @@ impl MaterialDomain {
 /// environment map or the opaque-pass colour. The 2D pipeline has none of
 /// them. Screen UV and refraction offsets are plain arithmetic on what every
 /// view has, so those work everywhere.
+///
+/// The Landscape nodes count too: their weight maps and terrain bounds are
+/// bindings of the 3D graph material (`SurfaceGraphExt`), which a sprite's
+/// material does not carry.
 pub fn needs_3d_view(node_type: &str) -> bool {
     matches!(
         node_type,
@@ -319,7 +328,7 @@ pub fn needs_3d_view(node_type: &str) -> bool {
             | "scene/scene_color"
             | "scene/env_map_sample"
             | "scene/env_map_reflect"
-    )
+    ) || node_type.starts_with("landscape/")
 }
 
 fn node_display_name(node_type: &str) -> &str {
@@ -502,7 +511,6 @@ impl MaterialGraph {
     fn add_output_node(&mut self, domain: MaterialDomain) {
         let node_type = match domain {
             MaterialDomain::Surface => "output/surface",
-            MaterialDomain::TerrainLayer => "output/terrain_layer",
             MaterialDomain::Vegetation => "output/vegetation",
             MaterialDomain::Unlit => "output/unlit",
             MaterialDomain::Sprite => "output/sprite",
@@ -594,54 +602,6 @@ impl MaterialGraph {
             .find(|c| c.to_node == to_node && c.to_pin == to_pin)
     }
 
-    /// Extract texture paths from a material graph for terrain layer use.
-    ///
-    /// Traces connections from the output node's `base_color`, `normal`, and
-    /// `metallic`/`roughness`/`ao` inputs back to texture sample nodes.
-    pub fn extract_layer_textures(&self) -> LayerTextureSet {
-        let mut result = LayerTextureSet::default();
-        let Some(output) = self.output_node() else {
-            return result;
-        };
-        let output_id = output.id;
-
-        // Trace base_color → albedo texture
-        result.albedo = self.trace_texture_path(output_id, "base_color");
-        // Trace normal → normal map
-        result.normal = self.trace_texture_path(output_id, "normal");
-        // Trace metallic, roughness, or ao → ARM texture (any of them)
-        result.arm = self
-            .trace_texture_path(output_id, "metallic")
-            .or_else(|| self.trace_texture_path(output_id, "roughness"))
-            .or_else(|| self.trace_texture_path(output_id, "ao"));
-
-        result
-    }
-
-    /// Trace a pin connection back through the graph to find a texture path.
-    /// Follows one hop: output_pin → texture/sample node → TexturePath input value.
-    fn trace_texture_path(&self, node_id: NodeId, pin_name: &str) -> Option<String> {
-        let conn = self.connection_to(node_id, pin_name)?;
-        let source_node = self.get_node(conn.from_node)?;
-
-        // If the source is a texture sample node, extract the texture path
-        if source_node.node_type.starts_with("texture/") {
-            if let Some(PinValue::TexturePath(path)) = source_node.get_input_value("texture") {
-                if !path.is_empty() {
-                    return Some(path.clone());
-                }
-            }
-        }
-        None
-    }
-}
-
-/// Texture paths extracted from a material graph for terrain layer use.
-#[derive(Clone, Debug, Default)]
-pub struct LayerTextureSet {
-    pub albedo: Option<String>,
-    pub normal: Option<String>,
-    pub arm: Option<String>,
 }
 
 // ── Material Function (subgraph) ────────────────────────────────────────────

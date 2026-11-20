@@ -1,0 +1,9 @@
+name = "Kuwahara"
+version = "2.0.0"
+description = "Edge-preserving smoothing: flat areas are flattened further while edges stay sharp. A post-process effect: drop kuwahara.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "kuwahara"
+tags = ["post-processing", "shader", "painterly", "smoothing", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

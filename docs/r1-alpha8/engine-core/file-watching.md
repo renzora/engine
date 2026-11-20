@@ -181,6 +181,26 @@ fn relist(mut changes: MessageReader<ProjectFileChanged>, mut dirty: Local<bool>
 }
 ```
 
+## Listing the project's files
+
+To know what files exist, rather than what just changed, read `ProjectIndex` instead of walking the project yourself:
+
+```rust
+use renzora::core::ProjectIndex;
+
+fn list_models(index: Res<ProjectIndex>, mut seen: Local<Option<u64>>) {
+    if *seen == Some(index.revision()) {
+        return; // nothing changed since the last look
+    }
+    *seen = Some(index.revision());
+    for file in index.with_extensions(&["rvg", "glb"]) {
+        // file.path is project-relative; file.size and file.modified too
+    }
+}
+```
+
+The project is walked once when it opens, by the companion when it is connected and by a thread of the editor's own otherwise, and the index then follows `ProjectFileChanged`. It uses the watcher's own rules for what counts as a project file. Until the first walk lands, `index.ready()` is false and the index is empty. A walk in a system stalls the frame for as long as the project is big: the Animation workspace's own walk took 79 ms of a frame before it moved onto the index.
+
 ## Scope
 
 `ProjectWatchPlugin` is editor-scope. A shipped game reads its assets from a

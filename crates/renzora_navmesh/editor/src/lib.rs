@@ -80,7 +80,14 @@ impl Plugin for NavMeshEditorPlugin {
         // (Update, in renzora_navmesh) always reads a fresh value — deterministic
         // ordering across the two crates instead of a same-schedule race.
         app.add_systems(PreUpdate, sync_show_agent_paths_override);
-        app.add_systems(Update, editor_panel::flush_bake_request);
+        // Exclusive, so a sync point for the schedule even when it returns at
+        // once; its first check, the request flag, is the condition instead.
+        app.add_systems(
+            Update,
+            editor_panel::flush_bake_request.run_if(
+                |r: Option<Res<editor_panel::NavMeshBakeRequest>>| r.is_some_and(|r| r.0),
+            ),
+        );
     }
 }
 

@@ -34,6 +34,9 @@ the config authored on the scene camera.
 
 ## Point lights
 
+The core and falloff settings fold into a **Falloff** group, and the two angles
+into **Cone**.
+
 | Field | Meaning |
 |---|---|
 | Color / Intensity | Tint and strength of the light. |
@@ -57,6 +60,10 @@ shadows only fall on sprites *below* the occluder's z — the standard top-down
 setup where a character's shadow darkens the floor but not the character.
 
 ## Camera config reference
+
+Normal Mode and Normal Attenuation fold into a **Normals** group, and Z
+Sorting, Light Bands and Lightmap Filtering into **Advanced**. (On an occluder,
+its shadow colour, opacity and Z Sorting are in a **Shadow** group.)
 
 | Field | Meaning |
 |---|---|
@@ -82,7 +89,7 @@ flicker, or toggling `Occluder2dEnabled`. No dedicated script functions yet.
 - **Plugin:** `crates/renzora_light2d`, a Runtime-scope `cdylib` in
   `<exe>/plugins/` — delete the file and the feature is gone; the engine still
   boots and scenes still load (unknown components are skipped).
-- **Vendored engine:** `crates/bevy_firefly` (upstream `0.19.0`, pinned by
+- **Vendored engine:** `vendor/bevy_firefly` (upstream `0.19.0`, pinned by
   commit in its `Cargo.toml` header) with local patches:
   `#[reflect(Component, Default)]` on the public components so the inspector
   and the reflection-driven scene serializer can see them, and a port to Bevy

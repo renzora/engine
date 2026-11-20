@@ -550,10 +550,14 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            tools::populate_tools,
-            crate::tool_shelf::populate_shelf,
+            // The three fillers run once per container; gated on one waiting,
+            // so they are not a sync point for the schedule every frame after.
+            // The button pass re-evaluates every tool's predicates each frame,
+            // so it stays as it is.
+            tools::populate_tools.run_if(tools::tools_unpopulated),
+            crate::tool_shelf::populate_shelf.run_if(crate::tool_shelf::shelf_unpopulated),
             crate::tool_buttons::update_tool_buttons,
-            shapes::populate_shapes,
+            shapes::populate_shapes.run_if(shapes::shapes_unpopulated),
         )
             .run_if(in_state(SplashState::Editor)),
     );

@@ -530,23 +530,8 @@ fn firefly_config_entry() -> InspectorEntry {
             },
             renzora::float_field!("Ambient Brightness", FireflyConfig, ambient_brightness, 0.01, 0.0, 5.0),
             renzora::bool_field!("Soft Shadows", FireflyConfig, soft_shadows),
-            renzora::bool_field!("Z Sorting", FireflyConfig, z_sorting),
-            // `light_bands: Option<f32>` — 0 disables banding, matching the
-            // upstream semantics of `None`.
-            FieldDef {
-                name: "Light Bands",
-                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
-                get_fn: |w, e| {
-                    w.get::<FireflyConfig>(e)
-                        .map(|c| FieldValue::Float(c.light_bands.unwrap_or(0.0)))
-                },
-                set_fn: |w, e, v| {
-                    if let (FieldValue::Float(f), Some(mut c)) = (v, w.get_mut::<FireflyConfig>(e))
-                    {
-                        c.light_bands = (f > 0.0).then_some(f);
-                    }
-                },
-            },
+            // How sprites' normal maps shade under the lights.
+            FieldDef::group("Normals", vec![
             FieldDef {
                 name: "Normal Mode",
                 field_type: FieldType::Enum {
@@ -577,7 +562,27 @@ fn firefly_config_entry() -> InspectorEntry {
                 },
             },
             renzora::float_field!("Normal Attenuation", FireflyConfig, normal_attenuation, 0.01, 0.0, 1.0),
+            ]),
+            FieldDef::group("Advanced", vec![
+            renzora::bool_field!("Z Sorting", FireflyConfig, z_sorting),
+            // `light_bands: Option<f32>`: 0 disables banding, matching the
+            // upstream semantics of `None`.
+            FieldDef {
+                name: "Light Bands",
+                field_type: FieldType::Float { speed: 0.01, min: 0.0, max: 1.0 },
+                get_fn: |w, e| {
+                    w.get::<FireflyConfig>(e)
+                        .map(|c| FieldValue::Float(c.light_bands.unwrap_or(0.0)))
+                },
+                set_fn: |w, e, v| {
+                    if let (FieldValue::Float(f), Some(mut c)) = (v, w.get_mut::<FireflyConfig>(e))
+                    {
+                        c.light_bands = (f > 0.0).then_some(f);
+                    }
+                },
+            },
             renzora::bool_field!("Lightmap Filtering", FireflyConfig, lightmap_filtering),
+            ]),
         ],
     }
 }
@@ -616,6 +621,9 @@ fn point_light_entry() -> InspectorEntry {
             },
             renzora::float_field!("Intensity", PointLight2d, intensity, 0.05, 0.0, 100.0),
             renzora::float_field!("Radius", PointLight2d, radius, 1.0, 0.0, 100_000.0),
+            renzora::bool_field!("Cast Shadows", PointLight2d, cast_shadows),
+            // How the light fades from its bright core to its edge.
+            FieldDef::group("Falloff", vec![
             FieldDef {
                 name: "Core Radius",
                 field_type: FieldType::Float { speed: 0.5, min: 0.0, max: 100_000.0 },
@@ -681,6 +689,9 @@ fn point_light_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
+            // A cone narrower than 360 degrees makes it a spotlight.
+            FieldDef::group("Cone", vec![
             FieldDef {
                 name: "Inner Angle",
                 field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 360.0 },
@@ -701,7 +712,7 @@ fn point_light_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::bool_field!("Cast Shadows", PointLight2d, cast_shadows),
+            ]),
             FieldDef {
                 name: "Offset",
                 field_type: FieldType::Vec3 { speed: 0.1 },
@@ -871,6 +882,7 @@ fn occluder_entry() -> InspectorEntry {
                     }
                 },
             },
+            FieldDef::group("Shadow", vec![
             FieldDef {
                 name: "Shadow Color",
                 field_type: FieldType::Color,
@@ -888,6 +900,7 @@ fn occluder_entry() -> InspectorEntry {
             },
             renzora::float_field!("Opacity", Occluder2d, opacity, 0.01, 0.0, 1.0),
             renzora::bool_field!("Z Sorting", Occluder2d, z_sorting),
+            ]),
             FieldDef {
                 name: "Offset",
                 field_type: FieldType::Vec3 { speed: 0.1 },

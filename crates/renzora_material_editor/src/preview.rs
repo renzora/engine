@@ -224,8 +224,10 @@ fn setup_material_preview(
         depth_or_array_layers: 1,
     };
 
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -240,10 +242,17 @@ fn setup_material_preview(
         size: (PREVIEW_RESOLUTION, PREVIEW_RESOLUTION),
     });
 
-    // Decode the embedded HDRI and reproject it into two power-of-two cubes once,
-    // up front (one crisp for the skybox, one clamped for IBL). CPU work, but it's
-    // a single startup reprojection and lets us attach IBL to the camera from spawn.
-    let (sky_cube, env_cube) = decode_backdrop_cubes(&mut images);
+    // Decode the embedded HDRI and reproject it into two power-of-two cubes (one
+    // crisp for the skybox, one clamped for IBL), on a worker thread. It is
+    // about 280 ms of CPU and used to run right here, on the main thread, at
+    // every launch, for a preview most sessions never open. The handles are
+    // reserved now so the camera carries its IBL from spawn, as it must (see
+    // below); the cubes are filled in when the task ends (`finish_backdrop`),
+    // long before anyone can open the panel.
+    let (sky_cube, env_cube) = (images.reserve_handle(), images.reserve_handle());
+    let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async { decode_backdrop_cubes() });
+    commands.insert_resource(BackdropTask { task, sky: sky_cube.clone(), env: env_cube.clone() });
+    let (sky_cube, env_cube) = (Some(sky_cube), Some(env_cube));
     commands.insert_resource(MaterialPreviewEnv {
         sky: sky_cube.clone(),
         env: env_cube.clone(),
@@ -367,12 +376,34 @@ fn setup_material_preview(
 
 // ── Backdrop (HDRI) ───────────────────────────────────────────────────────────
 
+/// The backdrop cubes being built off the main thread, and the handles they go
+/// into.
+#[derive(Resource)]
+struct BackdropTask {
+    task: bevy::tasks::Task<Option<(Image, Image)>>,
+    sky: Handle<Image>,
+    env: Handle<Image>,
+}
+
+/// Put the backdrop cubes in place once their task ends.
+fn finish_backdrop(mut commands: Commands, task: Option<ResMut<BackdropTask>>, mut images: ResMut<Assets<Image>>) {
+    let Some(mut task) = task else { return };
+    let Some(cubes) = bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(&mut task.task)) else {
+        return;
+    };
+    // On failure the handles stay empty: the preview renders with no backdrop
+    // or IBL, as it did before the backdrop existed.
+    if let Some((sky, env)) = cubes {
+        let _ = images.insert(&task.sky, sky);
+        let _ = images.insert(&task.env, env);
+    }
+    commands.remove_resource::<BackdropTask>();
+}
+
 /// Decode the embedded equirectangular HDR and reproject it into the (sky, env)
-/// cube pair. Returns `(None, None)` if decode/convert fails (the preview then
-/// renders with no backdrop/IBL, exactly as before this feature).
-fn decode_backdrop_cubes(
-    images: &mut Assets<Image>,
-) -> (Option<Handle<Image>>, Option<Handle<Image>>) {
+/// cube pair. `None` if decode/convert fails (the preview then renders with no
+/// backdrop/IBL, exactly as before this feature).
+fn decode_backdrop_cubes() -> Option<(Image, Image)> {
     // Linear (`is_srgb = false`): HDR radiance is already linear light.
     let equirect = match Image::from_buffer(
         BACKDROP_HDR,
@@ -385,13 +416,10 @@ fn decode_backdrop_cubes(
         Ok(img) => img,
         Err(e) => {
             warn!("[material_preview] failed to decode embedded backdrop HDR: {e}");
-            return (None, None);
+            return None;
         }
     };
-    match build_backdrop_cubes(&equirect) {
-        Some((sky, env)) => (Some(images.add(sky)), Some(images.add(env))),
-        None => (None, None),
-    }
+    build_backdrop_cubes(&equirect)
 }
 
 /// Largest power of two `<= n`. Keeps the cube faces filter-friendly regardless
@@ -445,7 +473,7 @@ fn sample_equirect_bilinear(src: &Image, u: f32, v: f32, sw: u32, sh: u32) -> Op
 /// Allocate an empty 6-face `Rgba16Float` cube of `face`² — the format
 /// `GeneratedEnvironmentMapLight`'s filter requires (POT + GPU-filterable) and
 /// that `Skybox` samples cleanly.
-fn empty_cube(face: u32) -> Image {
+fn empty_cube(face: u32, usage: RenderAssetUsages) -> Image {
     Image::new_fill(
         Extent3d {
             width: face,
@@ -457,7 +485,7 @@ fn empty_cube(face: u32) -> Image {
         // loop below overwrites each, with `set_color_at_3d` handling f32→f16.
         &[0, 0, 0, 0, 0, 0, 0, 0],
         TextureFormat::Rgba16Float,
-        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+        usage,
     )
 }
 
@@ -487,8 +515,12 @@ fn build_backdrop_cubes(src: &Image) -> Option<(Image, Image)> {
     // sky texels read as a hard grid of squares, so we lean toward full detail.
     let face = prev_pot(sh).clamp(256, 1024);
 
-    let mut sky = empty_cube(face);
-    let mut env = empty_cube(face);
+    // Only the GPU samples the sky, so it keeps no CPU copy (12 MB at a 512
+    // face). The env cube has to keep its copy: Bevy's environment map filter
+    // reads its size from the main world before it will build anything, and
+    // a GPU-only image is gone from there after its first upload.
+    let mut sky = empty_cube(face, RenderAssetUsages::RENDER_WORLD);
+    let mut env = empty_cube(face, RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
 
     // +X, -X, +Y, -Y, +Z, -Z face bases (forward, up, right).
     let faces: [(Vec3, Vec3, Vec3); 6] = [
@@ -631,20 +663,29 @@ fn update_preview_camera_orbit(
         orbit.yaw += time.delta_secs() * 0.5;
     }
 
+    // Both writes compare first. This runs every frame the panel is visible,
+    // and assigning through `Mut` marks the component changed even when the
+    // value is the same, so a still preview kept transform propagation and the
+    // camera's frustum update running every frame.
     for (mut transform, mut cam) in camera.iter_mut() {
         let x = orbit.distance * orbit.pitch.cos() * orbit.yaw.sin();
         let y = orbit.distance * orbit.pitch.sin();
         let z = orbit.distance * orbit.pitch.cos() * orbit.yaw.cos();
 
-        transform.translation = orbit.target + Vec3::new(x, y, z);
-        transform.look_at(orbit.target, Vec3::Y);
+        transform.set_if_neq(
+            Transform::from_translation(orbit.target + Vec3::new(x, y, z))
+                .looking_at(orbit.target, Vec3::Y)
+                .with_scale(transform.scale),
+        );
 
         let bg = if orbit.dark_bg {
             Color::srgba(0.08, 0.08, 0.1, 1.0)
         } else {
             Color::srgba(0.45, 0.45, 0.5, 1.0)
         };
-        cam.clear_color = ClearColorConfig::Custom(bg);
+        if !matches!(cam.clear_color, ClearColorConfig::Custom(c) if c == bg) {
+            cam.clear_color = ClearColorConfig::Custom(bg);
+        }
     }
 }
 
@@ -1136,7 +1177,6 @@ fn update_preview_material(
     // `new_graph_material` fills every 2D slot with fallback-white and leaves
     // cube/array/3D as None (Bevy's FallbackImage covers the layout), so unused
     // slots stay valid without explicit resets.
-    use renzora_shader::material::codegen::TextureKind;
     let mut material = new_graph_material(&fallback);
     material.extension.shader_uuid = Some(preview_uuid);
     material.extension.params.slots = default_slots;
@@ -1166,20 +1206,11 @@ fn update_preview_material(
             continue;
         }
         let handle: Handle<Image> = asset_server.load(&tb.asset_path);
-        match (tb.kind, tb.binding) {
-            (TextureKind::D2, 0) => material.extension.texture_0 = Some(handle),
-            (TextureKind::D2, 1) => material.extension.texture_1 = Some(handle),
-            (TextureKind::D2, 2) => material.extension.texture_2 = Some(handle),
-            (TextureKind::D2, 3) => material.extension.texture_3 = Some(handle),
-            (TextureKind::D2, 4) => material.extension.texture_4 = Some(handle),
-            (TextureKind::D2, 5) => material.extension.texture_5 = Some(handle),
-            (TextureKind::Cube, 0) => material.extension.cube_0 = Some(handle),
-            (TextureKind::D2Array, 0) => material.extension.array_0 = Some(handle),
-            (TextureKind::D3, 0) => material.extension.volume_0 = Some(handle),
-            _ => warn!(
+        if !material.extension.set_texture(tb.kind, tb.binding, handle) {
+            warn!(
                 "[material_preview] Texture binding slot {:?}/{} not routed!",
                 tb.kind, tb.binding
-            ),
+            );
         }
     }
 
@@ -1209,15 +1240,37 @@ impl Plugin for MaterialPreviewPlugin {
             .add_systems(
                 Update,
                 (
-                    sync_preview_camera_active,
-                    update_preview_camera_orbit,
-                    // Ordered: the swap reads the source the tracker just wrote,
-                    // so a fresh selection shows up this frame instead of next.
-                    (track_preview_source, swap_preview_shape).chain(),
-                    sync_preview_backdrop,
-                    update_preview_material,
+                    // Its body returns at once without the task.
+                    finish_backdrop.run_if(resource_exists::<BackdropTask>),
+                    // Must keep running after the panel is hidden until it has
+                    // switched the camera off, so the second arm holds it open
+                    // for that one pass.
+                    sync_preview_camera_active.run_if(
+                        renzora_ember::dock::panel_active("material_preview")
+                            .or_else(preview_camera_active),
+                    ),
+                    (
+                        update_preview_camera_orbit,
+                        // Ordered: the swap reads the source the tracker just wrote,
+                        // so a fresh selection shows up this frame instead of next.
+                        (track_preview_source, swap_preview_shape).chain(),
+                        sync_preview_backdrop,
+                        update_preview_material,
+                    )
+                        // Everything here only feeds the preview camera, which
+                        // renders only while this panel is visible. The change
+                        // checks they open with (`editor.is_changed()`,
+                        // `orbit.is_changed()`, selection) compare against each
+                        // system's own last run, so whatever changed while the
+                        // panel was hidden is caught up on the frame it shows,
+                        // before that frame renders.
+                        .run_if(renzora_ember::dock::panel_active("material_preview")),
                 ),
             );
     }
 }
 
+/// Run condition: is the 3D preview camera still rendering?
+fn preview_camera_active(camera: Query<&Camera, With<MaterialPreviewCamera>>) -> bool {
+    camera.iter().any(|c| c.is_active)
+}

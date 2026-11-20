@@ -670,10 +670,10 @@ fn indent_selection(ed: &mut CodeEditor) {
     ed.push_history(EditKind::Other);
     let ((sl, _), (el, _)) = sel_range(ed);
     let pad = " ".repeat(TAB_WIDTH);
-    for l in sl..=el {
+    for line in &mut ed.text[sl..=el] {
         // Skip blank lines so we don't add trailing whitespace.
-        if !ed.text[l].trim().is_empty() {
-            ed.text[l].insert_str(0, &pad);
+        if !line.trim().is_empty() {
+            line.insert_str(0, &pad);
         }
     }
     shift_cols_for_indent(ed, sl, el, TAB_WIDTH as isize);
@@ -767,9 +767,9 @@ fn selected_text(ed: &CodeEditor) -> String {
         chars(ed, sl).into_iter().skip(sc).take(ec - sc).collect()
     } else {
         let mut out: String = chars(ed, sl).into_iter().skip(sc).collect();
-        for l in sl + 1..el {
+        for line in &ed.text[sl + 1..el] {
             out.push('\n');
-            out.push_str(&ed.text[l]);
+            out.push_str(line);
         }
         out.push('\n');
         let last: String = chars(ed, el).into_iter().take(ec).collect();
@@ -953,20 +953,20 @@ pub(crate) fn toggle_comment(ed: &mut CodeEditor, token: &str) {
     let all_commented = (sl..=el)
         .filter(|&l| !ed.text[l].trim().is_empty())
         .all(|l| ed.text[l].trim_start().starts_with(token));
-    for l in sl..=el {
-        if ed.text[l].trim().is_empty() {
+    for line in &mut ed.text[sl..=el] {
+        if line.trim().is_empty() {
             continue;
         }
-        let indent_len = ed.text[l].len() - ed.text[l].trim_start().len();
+        let indent_len = line.len() - line.trim_start().len();
         if all_commented {
-            let body = &ed.text[l][indent_len..];
+            let body = &line[indent_len..];
             let stripped = body
                 .strip_prefix(&with_space)
                 .or_else(|| body.strip_prefix(token))
                 .unwrap_or(body);
-            ed.text[l] = format!("{}{}", &ed.text[l][..indent_len], stripped);
+            *line = format!("{}{}", &line[..indent_len], stripped);
         } else {
-            ed.text[l].insert_str(indent_len, &with_space);
+            line.insert_str(indent_len, &with_space);
         }
     }
     ed.cursor_col = ed.cursor_col.min(line_len(ed, ed.cursor_line));

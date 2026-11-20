@@ -1,0 +1,74 @@
+//! How to use an external thread to run an infinite task and communicate with a channel.
+
+use bevy::prelude::*;
+// Using crossbeam_channel instead of std as std `Receiver` is `!Sync`
+use chacha20::ChaCha8Rng;
+use crossbeam_channel::{bounded, Receiver};
+use rand::{RngExt, SeedableRng};
+
+fn main() {
+    App::new()
+        .add_message::<StreamMessage>()
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup)
+        .add_systems(Update, (spawn_text, move_text))
+        .add_systems(FixedUpdate, read_stream)
+        .insert_resource(Time::<Fixed>::from_seconds(0.5))
+        .run();
+}
+
+#[derive(Resource, Deref)]
+struct StreamReceiver(Receiver<u32>);
+
+#[derive(Message)]
+struct StreamMessage(u32);
+
+fn setup(mut commands: Commands) {
+    commands.spawn(Camera2d);
+
+    let (tx, rx) = bounded::<u32>(1);
+    std::thread::spawn(move || {
+        // We're seeding the PRNG here to make this example deterministic for testing purposes.
+        // This isn't strictly required in practical use unless you need your app to be deterministic.
+        let mut rng = ChaCha8Rng::seed_from_u64(19878367467713);
+        loop {
+            // Everything here happens in another thread
+            // This is where you could connect to an external data source
+
+            // This will block until the previous value has been read in system `read_stream`
+            tx.send(rng.random_range(0..2000)).unwrap();
+        }
+    });
+
+    commands.insert_resource(StreamReceiver(rx));
+}
+
+// This system reads from the receiver and sends messages in the ECS
+fn read_stream(receiver: Res<StreamReceiver>, mut events: MessageWriter<StreamMessage>) {
+    for from_stream in receiver.try_iter() {
+        events.write(StreamMessage(from_stream));
+    }
+}
+
+fn spawn_text(mut commands: Commands, mut reader: MessageReader<StreamMessage>) {
+    for (per_frame, message) in reader.read().enumerate() {
+        commands.spawn((
+            Text2d::new(message.0.to_string()),
+            TextLayout::justify(Justify::Center),
+            Transform::from_xyz(per_frame as f32 * 100.0, 300.0, 0.0),
+        ));
+    }
+}
+
+fn move_text(
+    mut commands: Commands,
+    mut texts: Query<(Entity, &mut Transform), With<Text2d>>,
+    time: Res<Time>,
+) {
+    for (entity, mut position) in &mut texts {
+        position.translation -= Vec3::new(0.0, 100.0 * time.delta_secs(), 0.0);
+        if position.translation.y < -300.0 {
+            commands.entity(entity).despawn();
+        }
+    }
+}

@@ -1,0 +1,9 @@
+name = "Toon"
+version = "2.0.0"
+description = "Cel shading: luminance is quantized into bands and an edge is drawn over the result. A post-process effect: drop toon.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "toon"
+tags = ["post-processing", "shader", "cel-shading", "toon", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

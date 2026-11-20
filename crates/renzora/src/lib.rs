@@ -39,14 +39,7 @@ pub use gi::*;
 pub mod world_environment;
 pub use world_environment::*;
 
-// The cloud deck's authored settings. Here rather than in the `clouds` plugin
-// because `renzora_level_presets` builds a sky by inserting `CloudsData` and is
-// compiled into the editor binary, while the renderer is a plugin loaded at
-// runtime — a binary cannot name a type that lives in a plugin.
-pub mod clouds;
-pub use clouds::*;
-
-// Auto-exposure settings. Same boundary reason as `clouds`: `level_presets`
+// Auto-exposure settings. Here because `level_presets`
 // inserts and queries it, and the `debugger` plugin reads it for the live EV
 // readout — both compiled into the binary, while the metering is a plugin.
 pub mod auto_exposure;
@@ -147,12 +140,20 @@ pub use wind::*;
 // friends read better qualified at the call site.
 pub mod scene_query;
 
+// Terrain operations (ground height, sculpt, generate, erode) for crates that
+// must not link the terrain crate, which today means the MCP server. The
+// terrain editor installs the service. Not glob re-exported, like
+// `scene_query`.
+pub mod terrain_tools;
+
 // The physics contract: the components scenes save, the runtime state the
 // engine and a backend exchange, and the `PhysicsBackend` trait a physics engine
 // implements. Here because a backend plugin must name these types without
 // linking `renzora_physics`. Not glob re-exported: `PhysicsBackend` and `Caps`
 // read better qualified, and `Caps` would collide with audio's.
 pub mod physics;
+// Wheeled vehicles, run by `renzora_physics` on whichever backend simulates.
+pub mod vehicle;
 
 // ── Language / localization contract ─────────────────────────────────────
 // The process-global translation table + `t()` lookup every crate calls, plus
@@ -169,6 +170,22 @@ pub mod lang;
 // every Rust script must share one store. Not glob-re-exported: callers write
 // `renzora::save::write("slot1")`, which reads as what it does.
 pub mod save;
+pub mod load_timeline;
+
+// Copies of the editor it starts (Play's game, the companion): tied to the
+// editor's lifetime and heard in its Console. Here because more than one crate
+// launches them, and the job object they join must be one per process.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod child_process;
+
+// The profiler's recorder: a log layer that timestamps every span (each Bevy
+// system run is one) into per-thread buffers. Here because its switch and
+// buffers must be one per process. See the module docs.
+pub mod profiling;
+
+// Debug readouts a process offers the companion: registered by any crate or
+// plugin, built only while a companion watches them. See the module docs.
+pub mod probes;
 
 // ── Engine version / release channel ─────────────────────────────────────
 // `ENGINE_VERSION` (`r1-alphaN`) plus the release-tag resolution the export
@@ -199,6 +216,9 @@ pub use script_ctx::ScriptCtx;
 /// The lifecycle events a Rust script can receive — see [`script_hook::ScriptHook`].
 pub mod script_hook;
 pub use script_hook::ScriptHook;
+/// Whether scripts and plugins can be compiled here. See [`rust_toolchain::RustToolchain`].
+pub mod rust_toolchain;
+pub use rust_toolchain::{RustToolchain, RustToolchainAnswer};
 
 // ── The language-backend half of scripting ───────────────────────────────
 // `renzora_scripting` owns the scripting SYSTEM and still does. These are the
@@ -241,7 +261,7 @@ pub mod get_handler;
 // The names a backend actually writes, lifted to the root the way `ScriptCtx`
 // and `ScriptHook` are. A plugin implementing a language should not have to know
 // which of five modules each type happens to sit in.
-pub use backend::{AppScriptBackendExt, FileReader, ScriptBackend};
+pub use backend::{AppScriptBackendExt, FileReader, ScriptBackend, ANY_HOOK};
 pub use command::ScriptCommand;
 pub use component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};
@@ -425,6 +445,16 @@ pub struct RequestOpenProject;
 /// point of the list undone.
 #[derive(bevy::prelude::Resource)]
 pub struct RequestOpenProjectPath(pub std::path::PathBuf);
+
+/// Request: switch to the project rooted at this path, the way File > Recent
+/// Projects does, unsaved-changes prompt included.
+///
+/// [`RequestOpenProjectPath`] opens straight away and is what that prompt
+/// inserts once it has been answered. This is the request for anything that
+/// cannot see the document tabs, a plugin above all: it goes through the same
+/// check the menu does, so it can never throw away an unsaved scene.
+#[derive(bevy::prelude::Resource)]
+pub struct RequestSwitchProject(pub std::path::PathBuf);
 
 /// The recently-opened project roots, most recent first.
 ///

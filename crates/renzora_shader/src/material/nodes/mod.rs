@@ -16,6 +16,7 @@ pub mod control;
 pub mod custom;
 pub mod functions;
 pub mod inputs;
+pub mod landscape;
 pub mod math;
 pub mod output;
 pub mod parameters;
@@ -31,6 +32,7 @@ pub use control::*;
 pub use custom::*;
 pub use functions::*;
 pub use inputs::*;
+pub use landscape::*;
 pub use math::*;
 pub use output::*;
 pub use parameters::*;
@@ -65,6 +67,7 @@ pub const CAT_ANIMATION: &str = "Animation";
 pub const CAT_UTILITY: &str = "Utility";
 pub const CAT_CONTROL: &str = "Control";
 pub const CAT_SCENE: &str = "Scene";
+pub const CAT_LANDSCAPE: &str = "Landscape";
 pub const CAT_CUSTOM: &str = "Custom";
 pub const CAT_OUTPUT: &str = "Output";
 
@@ -81,6 +84,7 @@ const CLR_ANIMATION: [u8; 3] = [80, 200, 180];
 const CLR_UTILITY: [u8; 3] = [140, 140, 160];
 const CLR_CONTROL: [u8; 3] = [200, 200, 80];
 const CLR_SCENE: [u8; 3] = [100, 180, 220];
+const CLR_LANDSCAPE: [u8; 3] = [90, 150, 100];
 const CLR_CUSTOM: [u8; 3] = [210, 90, 90];
 const CLR_OUTPUT: [u8; 3] = [200, 60, 60];
 
@@ -261,11 +265,15 @@ pub static ALL_NODES: &[&MaterialNodeDef] = &[
     &SCENE_COLOR_STUB,
     &ENV_MAP_SAMPLE,
     &ENV_MAP_REFLECT,
+    // Landscape
+    &LANDSCAPE_LAYER_COORDS,
+    &LANDSCAPE_LAYER_BLEND,
+    &LANDSCAPE_LAYER_SAMPLE,
+    &LANDSCAPE_SLOPE,
     // Custom
     &CUSTOM_CODE,
     // Output
     &OUTPUT_SURFACE,
-    &OUTPUT_TERRAIN_LAYER,
     &OUTPUT_VEGETATION,
     &OUTPUT_UNLIT,
     &OUTPUT_SPRITE,
@@ -285,6 +293,7 @@ pub fn categories() -> Vec<&'static str> {
         CAT_UTILITY,
         CAT_CONTROL,
         CAT_SCENE,
+        CAT_LANDSCAPE,
         CAT_CUSTOM,
         CAT_OUTPUT,
     ]

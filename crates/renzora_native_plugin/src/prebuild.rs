@@ -182,7 +182,12 @@ pub fn needed() -> bool {
         if is_native_source(&p) {
             let Some(sdk) = sdk.as_ref() else { continue };
             if layout(&p, Some(sdk), native_stamp.as_deref()).needs_build {
-                return true;
+                // Work to do, but only if there is a compiler to do it with.
+                // Asked here, after a pending build is found, so an ordinary
+                // launch with nothing stale never spawns rustup. Without Rust the
+                // window would open, fail every plugin on the same missing tool
+                // and close, on every launch until it was installed.
+                return sdk.toolchain().rustc().is_some();
             }
         }
     }
@@ -315,6 +320,15 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
         }
     }
     if pending.is_empty() {
+        return 0;
+    }
+    // No compiler is not a fault in any plugin, so it is said once and no
+    // failure is recorded against them. A record would outlive the cause: it
+    // stands until the source changes, so after Rust was installed every
+    // plugin would go on reporting "failed to compile last time" and never
+    // build. With none, the first launch that has Rust builds them all.
+    if let Some(msg) = sdk.as_ref().and_then(|s| s.toolchain().needs()) {
+        report(Progress::Failed(msg));
         return 0;
     }
 
@@ -497,6 +511,19 @@ fn build_one(
     }
 }
 
+/// How [`build_installed`] left a plugin it was not refused on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstalledBuild {
+    /// Compiled; it loads on the next start.
+    Built,
+    /// Nothing to do here: no SDK yet, the plugin is disabled, or it is already
+    /// current. The launch-time pass covers those.
+    Deferred,
+    /// The compiler is not installed. Not a failure of the plugin: it builds on
+    /// the first launch after Rust is, which the splash offers to install.
+    NeedsRust,
+}
+
 /// Build one plugin that has just been installed, from the running editor.
 ///
 /// The marketplace calls this on its install thread straight after writing the
@@ -507,26 +534,31 @@ fn build_one(
 /// happens while the editor is still usable.
 ///
 /// Records the stamp, or the failure, exactly as [`build_stale`] does, so the
-/// next launch agrees with it. Returns `Ok(false)` when there was nothing to
-/// build: no SDK yet, the plugin is disabled, or it is already current. The
-/// launch-time pass still covers those.
-pub fn build_installed(plugin: &Path, on_line: &mut dyn FnMut(&str)) -> Result<bool, String> {
-    let Some(root) = exe_dir() else { return Ok(false) };
-    let Ok(sdk) = Sdk::load(crate::sdk_dir(&root)) else { return Ok(false) };
+/// next launch agrees with it. A missing compiler records nothing, for the
+/// reason [`build_stale`] gives.
+pub fn build_installed(
+    plugin: &Path,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<InstalledBuild, String> {
+    let Some(root) = exe_dir() else { return Ok(InstalledBuild::Deferred) };
+    let Ok(sdk) = Sdk::load(crate::sdk_dir(&root)) else { return Ok(InstalledBuild::Deferred) };
     if !is_native_source(plugin) || renzora::load_disabled_plugins().iter().any(|d| *d == name_of(plugin)) {
-        return Ok(false);
+        return Ok(InstalledBuild::Deferred);
     }
     let stamp = sdk.stamp();
     let l = layout(plugin, Some(&sdk), Some(&stamp));
     if !l.needs_build {
-        return Ok(false);
+        return Ok(InstalledBuild::Deferred);
+    }
+    if sdk.toolchain().rustc().is_none() {
+        return Ok(InstalledBuild::NeedsRust);
     }
     std::fs::create_dir_all(plugin.join("build")).map_err(|e| e.to_string())?;
     match sdk.compile_with(plugin, &l.lib_path, on_line) {
         Ok(built) => {
             std::fs::write(&l.stamp_path, &built).map_err(|e| format!("writing stamp: {e}"))?;
             let _ = std::fs::remove_file(&l.fail_path);
-            Ok(true)
+            Ok(InstalledBuild::Built)
         }
         Err(e) => {
             // Recorded so the next launch does not retry it in the setup window

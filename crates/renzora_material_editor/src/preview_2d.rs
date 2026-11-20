@@ -71,10 +71,30 @@ struct SpritePreviewTracker {
 }
 
 pub(crate) fn plugin(app: &mut App) {
+    let panel = renzora_ember::dock::panel_active("material_preview");
     app.init_resource::<SpritePreviewTracker>().add_systems(
         Update,
-        (spawn_rig, sync_camera, update_material, sync_checker).chain(),
+        (
+            // One-shot: the rig inserts `CheckerImages` when it is built, after
+            // which the body's `done` flag only returns.
+            spawn_rig.run_if(not(resource_exists::<CheckerImages>)),
+            // Kept running past the panel being hidden until the camera is off,
+            // the same rule as the 3D camera in `preview`.
+            sync_camera.run_if(panel.clone().or_else(sprite_camera_active)),
+            // Both only dress what the camera draws, and it draws only while the
+            // panel is visible. `update_material` opens with `state.is_changed()`,
+            // which compares against its own last run, so an edit made while the
+            // panel was hidden is applied on the frame it shows.
+            update_material.run_if(panel.clone()),
+            sync_checker.run_if(panel),
+        )
+            .chain(),
     );
+}
+
+/// Run condition: is the sprite preview camera still rendering?
+fn sprite_camera_active(camera: Query<&Camera, With<SpritePreviewCamera>>) -> bool {
+    camera.iter().any(|c| c.is_active)
 }
 
 /// Whether the open material is a Sprite one, which is the whole switch

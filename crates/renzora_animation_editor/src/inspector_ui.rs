@@ -43,7 +43,11 @@ pub fn register(app: &mut App) {
             add_clip_drop,
             add_clip_drop_highlight,
         )
-            .run_if(in_state(renzora::SplashState::Editor)),
+            .run_if(in_state(renzora::SplashState::Editor))
+            // Every one of these reads or clicks widgets under an
+            // `AnimatorRoot`, which exists only while the inspector shows an
+            // animator; without one they have nothing to touch.
+            .run_if(any_with_component::<AnimatorRoot>),
     );
 }
 
@@ -518,7 +522,7 @@ fn build_clip_drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Ent
             },
             BackgroundColor(rgb(faint_bg())),
             BorderColor::all(rgb(border())),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             AddClipDropZone { entity },
             Name::new("animator-clip-drop-zone"),
         ))
@@ -552,7 +556,7 @@ fn add_clip_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    zones: Query<(&bevy::ui::RelativeCursorPosition, &AddClipDropZone)>,
+    zones: Query<(&renzora_ember::UiCursor, &AddClipDropZone)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -588,7 +592,7 @@ fn add_clip_drop(
 /// worse than one that never lights.
 fn add_clip_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    mut zones: Query<(&bevy::ui::RelativeCursorPosition, &mut BorderColor, &mut BackgroundColor), With<AddClipDropZone>>,
+    mut zones: Query<(&renzora_ember::UiCursor, &mut BorderColor, &mut BackgroundColor), With<AddClipDropZone>>,
 ) {
     for (rcp, mut bc, mut bg) in &mut zones {
         let active = payload

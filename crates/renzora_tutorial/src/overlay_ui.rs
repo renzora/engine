@@ -14,10 +14,10 @@
 //! Skip off the top of the window.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 
 use renzora::core::{EditorLocked, HideInHierarchy};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::interaction::BLOCK;
 use renzora_ember::theme::{
     accent, border, header_bg, play_green, rgb, text_muted, text_primary, window_bg,
@@ -94,7 +94,7 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
             // Block on the card itself (so its own clicks/scroll don't bleed),
             // but the card covers none of the viewport.
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlaySurface,
             HideInHierarchy,
             EditorLocked,

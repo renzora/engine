@@ -52,7 +52,7 @@ Under the header runs a strip of **pages**. Each page holds one kind of componen
 | Lighting | Lights, light probes, ray-traced GI |
 | Camera | The camera and its image effects: bloom, tonemapping, anti-aliasing, depth of field, motion blur |
 | Environment | Sky, atmosphere, clouds, fog, water, wind, terrain |
-| Post Process | SSAO, SSR and shader post effects |
+| Post Process | SSAO, SSR, SSIL and shader post effects |
 | Physics | Bodies, colliders, joints, ragdolls |
 | Animation | Animators and clips |
 | Scripting | Scripts |
@@ -88,6 +88,12 @@ Transform leads the Object page and Material leads the Rendering page, so the th
 The toolbar above the cards holds **+ Add** (Add Component), a **filter box** that hides every component not matching what you type, and an **expand or collapse all** button. The filter searches every page at once: while it has text in it, matching cards from all pages show, and pages with no match fade on the strip.
 
 <!-- screenshot: inspector_add_component.png - the Add Component menu open, grouped by category -->
+
+### Groups inside a card
+
+Some cards fold related settings into a **group**: a row with a caret and a name, its settings listed under it in line with the rest of the card. Click the row to unfold it. When the group belongs to a feature, its on/off switch sits in the row itself, so the feature can be turned on or off without opening it (the Sun's **Contact Shadows** is one, with its length, thickness and steps inside).
+
+Groups start folded and stay the way you leave them for that kind of component, across selections. A folded group costs nothing, because its rows are not built.
 
 ### Rearranging
 
@@ -125,7 +131,7 @@ Each setting gets the control that fits it.
 
 A number with a range fills as it rises, so the field is empty at the minimum and full at the maximum. A column of them reads at a glance without comparing digits.
 
-Every editable field has a small **reset** button to its right, which snaps it back to its default.
+Every editable field has a small **reset** button to its right, which snaps it back to its default: the value the component starts with when it is added, not zero (a camera's FOV goes back to 45, not 0). It is one undo step like any other edit. A field whose default the editor cannot find is left as it is.
 
 Edits apply live. There is no Apply button.
 

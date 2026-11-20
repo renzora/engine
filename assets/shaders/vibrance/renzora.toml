@@ -1,0 +1,9 @@
+name = "Vibrance"
+version = "2.0.0"
+description = "Saturation weighted by how unsaturated a pixel already is, so it lifts muted colour without pushing already-vivid pixels further. A post-process effect: drop vibrance.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "vibrance"
+tags = ["post-processing", "shader", "colour", "saturation"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

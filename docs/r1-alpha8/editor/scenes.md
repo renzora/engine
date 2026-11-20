@@ -16,7 +16,7 @@ On the right of each row are an **eye** to hide the object and a **lock** to sto
 
 ## Adding objects
 
-An empty scene shows a starter screen in place of the tree: a grid of **starters** (Empty Scene, 2D Scene, New Environment, UI Canvas and any a plugin adds), each of which fills the scene with a working arrangement, and below them **Common entities**: Cube, Sphere, Plane, Light, Camera and Empty, each one click. Both are undoable like any other add. When the tree is filtered (the UI workspace shows only canvases) the starters narrow to what the filter would show and the common entities are hidden.
+An empty scene shows a starter screen in place of the tree: a grid of **starters** (Empty Scene, 2D Scene, New Environment, UI Canvas and any a plugin adds), each of which fills the scene with a working arrangement, and below them **Common entities**: Cube, Sphere, Plane, Light, Camera and Empty, each one click. Both are undoable like any other add. **New Environment** gives an outdoor scene ready to work in: sun, sky, clouds and fog over a 2 km sculpted landscape, a flat floor about 850 m across at the centre, in a basin of soft, uneven hills that rise to about 90 m at the edges and a little over 100 m in the corners, with the camera standing on the floor at eye height looking across it at the hills. It is lit as a clear mid-morning: the sun 16 degrees up and a little left of straight ahead, the sky lighting the shadowed slopes at full strength, and a thin haze that half hides the hills at 700 m. Its camera sees 90 degrees across a 16:9 frame, with the ACES filmic curve, bloom from every bright pixel, and auto exposure metering from -10 to 16 EV. These are the starter's own values; the World Environment preset keeps its defaults. The land fills in over a few seconds, nearest the camera first, with a progress card at the top of the viewport; the editor stays usable while it does. The terrain wears the blockout grid like any new terrain; give it a landscape material from the Terrain component. It is ordinary terrain, so it can be sculpted or regenerated too. When the tree is filtered (the UI workspace shows only canvases) the starters narrow to what the filter would show and the common entities are hidden.
 
 Click **+ Add Entity** for a searchable grid of everything you can create, three to a row with each item's icon beside its name, grouped by category.
 
@@ -65,6 +65,8 @@ Drag a row to move it. Where you drop decides what happens:
 
 Children move with their parent. You cannot drop an object into one of its own children, and the whole move is one undo step.
 
+The order of the top-level objects is saved with the scene, so a scene reopens in the order you left it. A new top-level object goes to the bottom of the list.
+
 Right-click a row for **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **Attach**, label colours and **Delete**.
 
 A label colour shows as a thin line down the left edge of the entity's row and of every row under it, and tints the entity's own icon. The names keep their normal colour.
@@ -112,6 +114,10 @@ Only named objects are saved. Everything you add through **+ Add Entity** is nam
 
 Saving also gives each object a **Scene Entity Id**, a number stored with it in the file. Names can repeat (a duplicated object keeps its name), so the id is what lets the running game find the object you are editing; see [The editor follows the game](/docs/r1-alpha8/editor/play-mode#the-editor-follows-the-game). A duplicate gets a new id of its own on the next save. You never need to set or change it.
 
+### Opening older scenes
+
+A component the editor cannot read is skipped, with a warning naming it, and **the next save writes the scene without it**. Autosave counts as a save. Scenes from older engine versions are translated as they load where the engine knows how: UI layouts saved with the old `Default` alignment value read as `Normal`, entity references in the old numeric form are converted, and components Bevy removed (`FocusPolicy`) are dropped quietly. Saving writes the new format, which an older engine cannot read back, so keep a copy (or commit the project) before opening it in a newer version.
+
 ### Scene thumbnails
 
 Every save also snapshots the viewport and keeps it as the scene's thumbnail, so the Assets panel shows you the level rather than a generic icon. Whatever the focused viewport was showing when you saved is the picture you get. Frame the shot, then save.
@@ -130,6 +136,56 @@ A countdown appears in the status bar in the last few seconds. When it fires it 
 
 When a project opens, it reopens the scene and tabs you had open last. One whose file has since been deleted or moved outside the editor is dropped, and the project opens on its boot scene instead.
 
+### How long a project took to open
+
+Every project load is timed, stage by stage, and written to the terminal the editor was started from. Each stage is logged as it is reached:
+
+```
+[loading] mcp_test: load started
+[loading]       12 ms  scene parsed  (1 model instance(s), 1 model file(s), 82.7 MB)
+[loading]     2270 ms  models loaded  (1 model instance(s), 82.7 MB)
+[loading]     2410 ms  viewport camera ready
+```
+
+and once everything has arrived, the whole load as one table, with the gap between each stage and the one before it:
+
+```
+[loading] mcp_test: loaded in 9120 ms
+       12 ms  (+   12 ms)  scene parsed  (1 model instance(s), 1 model file(s), 82.7 MB)
+     2270 ms  (+ 2258 ms)  models loaded  (1 model instance(s), 82.7 MB)
+     ...
+  longest frame 1840 ms; 3 frame(s) over 250 ms stalled the editor for 2900 ms in all
+```
+
+| Stage | What it means |
+|---|---|
+| scene parsed | The scene file has been read and its entities created |
+| models loaded | Every model file the scene names has been read from disk |
+| model asset added | Bevy has the model asset itself (the first one, when there are several) |
+| model scene asset added | Bevy has the scene inside the model, which is what gets instantiated |
+| model loaded with dependencies | Every texture and file the model names has loaded as well |
+| model instantiated by Bevy | Bevy has created every entity of a model; the time from here to the next stage is the editor's own work on it |
+| models spawned | Every model's meshes exist in the scene |
+| viewport camera ready | The viewport has a camera to draw with; until then it is black |
+| editor opened | The loading screen has gone and the editor is showing |
+| textures loaded | Every texture the scene's materials use has arrived (or failed, which is counted) |
+| materials resolved | Every mesh has been given its material |
+| shaders compiled | No render pipeline is left queued or compiling. Each graph material has its own shader, so a scene with many materials spends a while here, and a mesh draws nothing until its pipelines exist |
+| virtual geometry ready | Every model's virtual geometry has loaded; until then a model is drawn as ordinary meshes |
+| environment lighting filled | The viewport's sky lighting has been computed; until then surfaces get no light from the sky |
+
+When the load finishes, the table ends with what each kind of asset holds: the CPU copies of meshes and images, the virtual geometry files, an estimate of the images' size on the GPU, and how much of the editor's committed memory is outside the assets altogether (the GPU driver's copies and staging, render buffers, compiled pipelines, the allocator's reserve). The images row also says how much of it comes from files and names the ten largest, by path or, for an image the engine made itself, by label, size and format, with alike images counted together, render targets marked as such, and the font atlases text keeps its drawn glyphs in counted apart, with how many fonts and sizes they cover and the sizes most of them are for. If any UI text is being laid out again on every frame, the same row says how much and where it sits in the UI, since that is the usual way atlases pile up. Where the graphics backend can report it (Direct3D 12 and Vulkan), a GPU allocations row gives what the GPU allocator has handed out, what it has reserved in memory blocks behind that, and the labels holding the most: buffers, render targets and ray-tracing structures all come from there, and on Windows the reserved blocks in system memory count toward the editor's committed memory. With the MCP Server plugin, `memory_report` gives the same breakdown at any moment, to measure what an action allocates and whether it gives it back.
+
+On Windows and Linux every stage also records the editor's memory, resident (what Task Manager shows) and committed, with how much committed memory grew since the stage before, so a load that ends far heavier than its files says which stage allocated it. Where the backend can report it, each stage also gives what the GPU allocator holds and has reserved, with how much its reserve grew, so a stage's growth can be split between the GPU and the editor's own memory.
+
+The loading screen closes once the models have spawned, so textures, virtual geometry and the sky lighting can arrive after the editor opens, and the timeline keeps following them. The frame line at the end counts frames that took a quarter of a second or more: time the editor did not respond at all. A load that has not settled after two minutes is closed with what it was still waiting on.
+
+The memory breakdown under the timeline also lists the file textures no material uses, grouped by folder, with how many handles still hold each folder's textures. A model's textures should be freed together with its materials. If its folder still appears there after its scene tab has closed, something kept the textures, and the handle count tells you how many references are left.
+
+With the MCP Server plugin installed, an assistant can read this with `project_load`, and with `reload` reopen the project and time a fresh load, to compare before and after a change. A reload is warm: the models are often still in memory. To time the cold load you wait through after starting the editor, use `wait` and open the project from the launcher.
+
+A crate can add a stage of its own: take `Option<ResMut<renzora::load_timeline::LoadTimeline>>` and call `mark("stage name", "detail")`. It is recorded the first time only, and only while a load is running.
+
 ### Global scenes
 
 A global scene loads before the boot scene and stays alive through every later scene change. Use one per concern: a HUD scene, a music scene, a networking scene.
@@ -139,6 +195,8 @@ Set them under **Settings > Project > Global Scenes**.
 Everything a global scene spawns is marked persistent, so scene loads skip it and scene saves never bake it into the level you have open. Play runs your game, which loads them exactly as an exported game does, so you can test without exporting.
 
 This is also the only place a loading screen can work, because everything in the outgoing scene is despawned partway through a scene change. Only a global scene's script is still running to show progress.
+
+A loading screen reads `asset_progress()`, which stays at `"loading"` after a scene loads until the scene is ready to be seen: its models are in, its terrain is built, its materials are resolved, and textures and shaders have stopped arriving for half a second. It waits as long as that takes; if a scene is still loading after 30 seconds, the log says what it is waiting for, which finds a load that never ends (a material whose file is missing). Terrain streaming in or textures loading while the game plays do not bring it back.
 
 ## Reusing scenes inside scenes
 

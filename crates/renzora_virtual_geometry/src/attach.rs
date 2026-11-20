@@ -14,7 +14,8 @@
 //! component swaps the class back, so falling back is one `remove`.
 
 use std::any::TypeId;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use bevy::asset::io::AssetSourceId;
 use bevy::asset::AssetPath;
@@ -109,6 +110,8 @@ enum FileState {
 #[derive(Resource, Default)]
 pub(crate) struct VgFiles {
     by_model: HashMap<AssetPath<'static>, FileState>,
+    /// Models whose loaded file no mesh used at the last prune.
+    unused: HashSet<AssetPath<'static>>,
 }
 
 impl VgFiles {
@@ -116,6 +119,49 @@ impl VgFiles {
     /// converter calls this after writing a new one.
     pub fn forget(&mut self, model: &AssetPath<'static>) {
         self.by_model.remove(model);
+        self.unused.remove(model);
+    }
+
+    /// Let go of loaded files no mesh uses any more. Every converted mesh
+    /// holds its file through [`VirtualGeometry`], so a file only this table
+    /// holds belongs to a model nothing shows: without this, a closed scene's
+    /// whole cluster data stayed in memory until the editor quit.
+    ///
+    /// Dropped only once unused on two calls in a row, so a file that has
+    /// just become ready, and whose meshes convert on the next frame, is not
+    /// thrown away under them. A model shown again is looked for afresh.
+    fn prune_unused(&mut self) -> usize {
+        let idle: HashSet<AssetPath<'static>> = self
+            .by_model
+            .iter()
+            .filter(|(_, state)| {
+                matches!(state, FileState::Ready(Handle::Strong(arc)) if Arc::strong_count(arc) == 1)
+            })
+            .map(|(model, _)| model.clone())
+            .collect();
+        let stale: Vec<AssetPath<'static>> = idle.intersection(&self.unused).cloned().collect();
+        for model in &stale {
+            self.by_model.remove(model);
+        }
+        self.unused = idle;
+        for model in &stale {
+            self.unused.remove(model);
+        }
+        stale.len()
+    }
+}
+
+/// Every two seconds, drop the `.rvg` files nothing draws any more (see
+/// [`VgFiles::prune_unused`]).
+pub(crate) fn prune_files(time: Res<Time<Real>>, mut files: ResMut<VgFiles>, mut next: Local<f32>) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 2.0;
+    let dropped = files.bypass_change_detection().prune_unused();
+    if dropped > 0 {
+        debug!("[virtual geometry] released {dropped} unused file(s)");
     }
 }
 
@@ -154,7 +200,18 @@ fn rvg_path(model: &AssetPath<'static>) -> AssetPath<'static> {
 pub(crate) fn poll_files(
     mut files: ResMut<VgFiles>,
     asset_server: Res<AssetServer>,
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
 ) {
+    // A model is drawn as ordinary geometry until its clusters are ready, so a
+    // late file is a slow, heavy first stretch of a load. Recorded once every
+    // file seen so far has settled.
+    if let Some(mut timeline) = timeline.filter(|t| t.is_running()) {
+        let settled = |s: &FileState| matches!(s, FileState::Ready(_) | FileState::Missing);
+        if !files.by_model.is_empty() && files.by_model.values().all(settled) {
+            let ready = files.by_model.values().filter(|s| matches!(s, FileState::Ready(_))).count();
+            timeline.mark("virtual geometry ready", format!("{ready} of {} model(s)", files.by_model.len()));
+        }
+    }
     for (model, state) in files.by_model.iter_mut() {
         match state {
             FileState::Probing(task) => {
@@ -191,7 +248,7 @@ fn probe(asset_server: &AssetServer, model: &AssetPath<'static>) -> FileState {
         let Ok(source) = server.get_source(source) else {
             return false;
         };
-        source.reader().read(rvg.path()).await.is_ok()
+        source.reader().read(rvg.path_cow()).await.is_ok()
     }))
 }
 
@@ -524,6 +581,35 @@ pub(crate) fn full_detail(
     }
 }
 
+/// Drop the full-detail meshes rebuilt from a clusters file once the file is
+/// gone.
+///
+/// Both caches are keyed by the file, and the file goes when the last scene
+/// using its model closes. Kept, every full-detail mesh of that model stayed
+/// in memory, CPU copy included, for the rest of the session: a model drawn
+/// once without virtual geometry (any debug view does that) left its whole
+/// detail behind.
+pub(crate) fn forget_removed_files(
+    mut events: MessageReader<AssetEvent<RvgFile>>,
+    mut full_detail: ResMut<FullDetailMeshes>,
+    traced: Option<ResMut<TracedMeshes>>,
+) {
+    let removed: Vec<AssetId<RvgFile>> = events
+        .read()
+        .filter_map(|event| match event {
+            AssetEvent::Removed { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    if removed.is_empty() {
+        return;
+    }
+    full_detail.0.retain(|(file, _), _| !removed.contains(file));
+    if let Some(mut traced) = traced {
+        traced.0.retain(|(file, _), _| !removed.contains(file));
+    }
+}
+
 fn is_rvg_model(model: &AssetPath) -> bool {
     model.path().extension().is_some_and(|e| e.eq_ignore_ascii_case("rvg"))
 }
@@ -540,6 +626,13 @@ pub(crate) struct TracedMeshes(HashMap<(AssetId<RvgFile>, u32), Handle<Mesh>>);
 /// ray tracer needs it while virtual geometry draws the detail. A mesh that
 /// stops being virtual geometry loses its `TracedGeometry`: `full_detail` then
 /// makes its `Mesh3d` the full detail, which is traced like any mesh.
+///
+/// Only a mesh that *stops* being virtual geometry. `TracedGeometry(None)` is
+/// also how other crates keep a mesh out of the traced scene (a terrain's
+/// levels of detail and stream stand-ins, see `renzora_terrain`), and taking
+/// it off every mesh without virtual geometry fought that system every frame:
+/// one inserted, this removed, for every stand-in of a large terrain, about
+/// 6 ms a frame at 4096 chunks.
 #[allow(clippy::type_complexity)]
 pub(crate) fn traced_geometry(
     mut commands: Commands,
@@ -548,13 +641,16 @@ pub(crate) fn traced_geometry(
     mut meshes: ResMut<Assets<Mesh>>,
     mut traced: ResMut<TracedMeshes>,
     full_detail: Res<FullDetailMeshes>,
-    mut marked: Query<(Entity, &mut TracedGeometry, Option<&VirtualGeometry>)>,
+    mut marked: Query<(&mut TracedGeometry, &VirtualGeometry)>,
+    mut no_longer_vg: RemovedComponents<VirtualGeometry>,
+    still_marked: Query<(), (With<TracedGeometry>, Without<VirtualGeometry>)>,
 ) {
-    for (entity, mut geometry, vg) in &mut marked {
-        let Some(vg) = vg else {
+    for entity in no_longer_vg.read() {
+        if still_marked.contains(entity) {
             commands.entity(entity).try_remove::<TracedGeometry>();
-            continue;
-        };
+        }
+    }
+    for (mut geometry, vg) in &mut marked {
         if wanted.is_none() {
             if geometry.0.is_some() {
                 geometry.0 = None;

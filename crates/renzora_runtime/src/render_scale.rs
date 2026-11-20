@@ -85,10 +85,11 @@ fn make_image(images: &mut Assets<Image>, size: UVec2) -> Handle<Image> {
         height: size.y,
         depth_or_array_layers: 1,
     };
-    let mut image = Image::new_fill(
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
+    let mut image = Image::new_uninit(
         ext,
         TextureDimension::D2,
-        &[0, 0, 0, 0],
         TextureFormat::Bgra8UnormSrgb,
         bevy::asset::RenderAssetUsages::default(),
     );

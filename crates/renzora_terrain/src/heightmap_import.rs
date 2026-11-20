@@ -360,8 +360,10 @@ fn load_png(data: &[u8]) -> Result<(u32, u32, Vec<f32>), String> {
             .take(pixels)
             .map(|px| {
                 let s: Vec<f32> = px
-                    .chunks_exact(2)
-                    .map(|c| u16::from_be_bytes([c[0], c[1]]) as f32 / 65535.0)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| u16::from_be_bytes(*c) as f32 / 65535.0)
                     .collect();
                 luma(&s)
             })
@@ -406,13 +408,15 @@ fn load_raw16(
     }
 
     let normalized: Vec<f32> = data
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .take((width * height) as usize)
         .map(|c| {
             let val = if big_endian {
-                u16::from_be_bytes([c[0], c[1]])
+                u16::from_be_bytes(*c)
             } else {
-                u16::from_le_bytes([c[0], c[1]])
+                u16::from_le_bytes(*c)
             };
             val as f32 / 65535.0
         })

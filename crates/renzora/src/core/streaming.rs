@@ -58,11 +58,20 @@ pub fn streaming_camera_pos(world: &mut World) -> Option<Vec3> {
     if fallback.is_some() {
         return fallback;
     }
+    editor_camera_pos(world)
+}
+
+/// Where the active editor viewport camera is, if there is one.
+pub fn editor_camera_pos(world: &mut World) -> Option<Vec3> {
     let mut q = world.query_filtered::<(&GlobalTransform, &Camera), With<EditorCamera>>();
-    for (transform, camera) in q.iter(world) {
-        if camera.is_active {
-            return Some(transform.translation());
-        }
-    }
-    None
+    q.iter(world).find(|(_, camera)| camera.is_active).map(|(t, _)| t.translation())
+}
+
+/// Whether the editor is open and not playing: the one case
+/// [`world_streaming_active`] answers no for, besides a dedicated server.
+pub fn editor_editing(world: &World) -> bool {
+    world.get_resource::<EditorSession>().is_some_and(|s| s.is_editor())
+        && world
+            .get_resource::<PlayModeState>()
+            .is_none_or(|play| matches!(play.state, PlayState::Editing))
 }

@@ -66,7 +66,7 @@ pub enum ExportProgress {
 }
 
 /// Messages sent from the background export thread.
-enum ExportMsg {
+pub(crate) enum ExportMsg {
     Progress(String),
     Done(String),
     Error(String),
@@ -119,6 +119,9 @@ pub struct ExportOverlayState {
     pub window_width: u32,
     pub window_height: u32,
     pub console_logging: bool,
+    /// Bake this editor's profiling key into the game, so the companion can
+    /// find and profile it on another device. Off for builds that ship.
+    pub allow_profiling: bool,
     pub compression_level: i32,
     /// Pack the shipped executable (and any sibling libraries) with UPX.
     ///
@@ -242,6 +245,7 @@ impl Default for ExportOverlayState {
             window_width: 1280,
             window_height: 720,
             console_logging: false,
+            allow_profiling: false,
             compression_level: 3,
             upx_compress: false,
             icon_path: None,
@@ -569,7 +573,10 @@ fn export_android_apk(
         let mut entry = archive
             .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            .into_owned();
 
         // Android requires resources.arsc and native libs to be stored
         // uncompressed with 4-byte alignment (R+ / API 30+)
@@ -640,7 +647,10 @@ fn export_ios_app(
         let mut entry = archive
             .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            .into_owned();
 
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(entry.compression())
@@ -666,8 +676,9 @@ fn export_ios_app(
     // Find the .app directory name from existing entries
     let app_prefix = archive
         .file_names()
+        .filter_map(Result::ok)
         .find(|n| n.ends_with(".app/"))
-        .map(|n| n.to_string())
+        .map(|n| n.into_owned())
         .unwrap_or_else(|| "Payload/RenzoraRuntime.app/".to_string());
 
     let rpak_path = format!("{}game.rpak", app_prefix);
@@ -723,7 +734,10 @@ fn export_wasm_zip(
         let mut entry = template_archive
             .by_index(i)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+            .into_owned();
 
         let file_options = options;
 
@@ -877,6 +891,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let window_width = export_state.window_width;
     let window_height = export_state.window_height;
     let console_logging = export_state.console_logging;
+    let allow_profiling = export_state.allow_profiling;
     let include_server = export_state.include_server;
     let bundle_app = export_state.bundle_app;
     // Sorted so the packing log reads in a stable order rather than a hash one.
@@ -1013,43 +1028,44 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         });
     }
 
-    // Spawn background thread
-    std::thread::spawn(move || {
-        export_worker(
-            tx,
-            project,
-            project_name,
-            platform,
-            packaging_mode,
-            compression_level,
-            output_dir,
-            window_mode,
-            window_width,
-            window_height,
-            console_logging,
-            icon_path,
-            binary_name_override,
-            include_server,
-            bundle_app,
-            enable_modding,
-            mesh_simplify,
-            mesh_simplify_ratio,
-            mesh_quantize,
-            mesh_generate_lods,
-            mesh_lod_levels,
-            template_path,
-            selected_plugins,
-            link_plugins_in,
-            runtime_dir,
-            disabled_bevy_features,
-            disabled_runtime_features,
-            lean_profile,
-            upx_compress,
-            included_files,
-            dlss,
-            cancel,
-        );
-    });
+    // In the companion when one is connected, on a thread here otherwise; see
+    // `remote`.
+    let job = crate::remote::ExportJob {
+        project_path: project.path,
+        project_config: project.config,
+        project_name,
+        platform,
+        packaging_mode,
+        compression_level,
+        output_dir,
+        window_mode,
+        window_width,
+        window_height,
+        console_logging,
+        allow_profiling,
+        icon_path,
+        binary_name_override,
+        include_server,
+        bundle_app,
+        enable_modding,
+        mesh_simplify,
+        mesh_simplify_ratio,
+        mesh_quantize,
+        mesh_generate_lods,
+        mesh_lod_levels,
+        template_path,
+        selected_plugins: selected_plugins.iter().map(Into::into).collect(),
+        link_plugins_in,
+        runtime_dir,
+        disabled_bevy_features,
+        disabled_runtime_features,
+        lean_profile,
+        upx_compress,
+        included_files,
+        dlss,
+    };
+    let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
+    crate::remote::start(job, tx, cancel, remote);
 }
 
 /// Build or refresh the `.rvg` beside every model in the project. A model that
@@ -1077,7 +1093,7 @@ fn ensure_virtual_geometry(root: &std::path::Path, tx: &mpsc::Sender<ExportMsg>)
 
 /// Background export worker: runs on a separate thread.
 #[allow(clippy::too_many_arguments)]
-fn export_worker(
+pub(crate) fn export_worker(
     tx: mpsc::Sender<ExportMsg>,
     project: CurrentProject,
     project_name: String,
@@ -1089,6 +1105,7 @@ fn export_worker(
     window_width: u32,
     window_height: u32,
     console_logging: bool,
+    allow_profiling: bool,
     icon_path: Option<String>,
     binary_name_override: Option<String>,
     include_server: bool,
@@ -1216,6 +1233,8 @@ fn export_worker(
     export_config.window.mode = window_mode;
     export_config.window.resizable = matches!(window_mode, WindowMode::Windowed);
     export_config.console_logging = console_logging;
+    // The key the companion presents; without it the game never opens a port.
+    export_config.profiling_key = allow_profiling.then(renzora::profiling::machine_key);
     // Editor-only fields shouldn't ship in exported builds. Both of these are
     // `skip_serializing` now, so a fresh `project.toml` never carries them —
     // this clears them from the in-memory copy anyway, because an export can be

@@ -59,7 +59,7 @@ fn build_fader(commands: &mut Commands, value: f32, horizontal: bool) -> Entity 
                 ..default()
             },
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             crate::cursor_icon::HoverCursor(if horizontal {
                 SystemCursorIcon::EwResize
             } else {
@@ -230,7 +230,7 @@ fn fader_cap(commands: &mut Commands, v: f32, horizontal: bool) -> Entity {
 pub(crate) fn fader_drag(
     mut faders: Query<(
         &UiInteraction,
-        &bevy::ui::RelativeCursorPosition,
+        &crate::UiCursor,
         &EmberFader,
         &mut Bound<f32>,
     )>,

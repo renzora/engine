@@ -107,6 +107,19 @@ cargo clippy --profile dist [-p <crate>]
 cargo test   --profile dist -p <crate>
 ```
 
+**The `dist` profile alone does not keep it to one set.** Cargo keeps a separate
+copy of every crate for each different way it is compiled, all inside
+`target/dist`: `check` output is stored apart from `build` output, and a
+different feature set compiles a second Bevy. `cargo renzora` builds with
+`--features dlss` whenever `DLSS_SDK` is set, so a plain `cargo check
+--profile dist --workspace` on such a machine is a whole second engine's worth
+of artefacts that `cargo renzora` never reuses. That is how `target/` reached
+580 GB on 2026-10-30 with no `target/debug` at all. **A whole-workspace build
+goes through `cargo renzora dist`**; if you need its errors without the stop at
+the first failing crate, run the same command it prints (`[xtask] cargo build
+...`) and add only `--keep-going`. Per-crate `check`/`clippy`/`test` are for
+iterating on one crate, not for surveying the workspace.
+
 **To build or test, use `cargo renzora dist`, not `cargo renzora`.** The two
 build and stage exactly the same thing; the difference is that the plain form
 then *launches* the editor. Launching is the user's to do: they are usually
@@ -184,15 +197,15 @@ refuses. That is not a blocker, because `.cargo/config.toml` pins the linker to
 raises the cap far enough for the normal build. Native links succeed; we simply
 never use `link.exe`.
 
-Pinned toolchain: **Rust 1.97.1**, **Bevy 0.20** (Bevy 0.20 needs at least Rust
-1.97.1). The wind plugin's prepass vertex shader reads the material bind group,
+Pinned toolchain: **Rust 1.100.0**, **Bevy 0.20-dev** (Bevy `main`, which needs
+at least Rust 1.100.0). The wind plugin's prepass vertex shader reads the material bind group,
 which only works because bevy_pbr has the `prepass_reads_material()` escape hatch
 (added in 0.19.1, still there in 0.20); a Bevy without it brings back a wgpu
 validation crash, "group 3 binding 100 is not available in the pipeline layout",
 the moment a swaying mesh renders. Avian has no 0.20 release yet, so
 `[workspace.dependencies]` pins its open 0.20 branch by commit; move back to
 crates.io once one exists. The Rust version lives in TWO
-files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.97.1`, the
+files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.100.0`, the
 container) and `rust-toolchain.toml` (native `cargo renzora` / `cargo check`); a
 bump must edit both.
 
@@ -222,34 +235,21 @@ engine or installed beside it.
 
 | | Crate type | Compiled | Ships in |
 |---|---|---|---|
-| **In-workspace** | `rlib` + `add!` | with the engine, statically | the engine binary |
-| **Bundled** | `rlib` + `plugin!` in the checkout's `plugins/<name>/` | with the engine, statically | the engine binary |
+| **In-workspace** | `rlib` + `add!` in `crates/` | with the engine, statically | the engine binary |
 | **Native** | `dylib` in `<exe dir>/plugins/<name>/` | on the installing machine, against the staged SDK | the editor, as source |
 
 An in-workspace plugin is an engine feature; a native plugin is something a user
 installs. A native plugin reaches a shipped **game** two ways: copied beside the
 binary, or compiled into it by a lean export (§ `renzora_export::build`).
 
-### Bundled plugins: a native plugin's source, linked in
-
-A **bundled** plugin is written exactly like a native one (`renzora::plugin!`,
-only `bevy` + `renzora`) but lives in the engine checkout's `plugins/` and is
-compiled into the binary, so the engine ships with it and a checkout drops it by
-deleting the folder (`cargo renzora remove <name>`). `plugins/avian_physics` is
-the engine's physics. `xtask/src/sync.rs` (`scan_bundled`) finds the one
-`plugin!` line and wires the crate into `renzora_runtime` (Runtime) or
-`renzora_editor` (Editor) like an `add!` crate; avian is hand-moved out of the
-generated block and gated on its own `avian` feature (which turns `physics`
-on), and the exporter's `avian` capability drops it when the project has no
-physics or `project.toml` picks another backend for every world. The manifest has no `[workspace]` and no `crate-type`, declares
-`[features] bundled = []` (the dependency turns it on so `plugin!` drops its
-`#[no_mangle]` loader symbols, which two linked-in plugins would both define;
-the `renzora/static_plugins` switch cannot be used because it would also strip
-them from every installed plugin built against the SDK), and takes
-`bevy = { version = "0.20", default-features = false }`, since a bare
-`bevy = "0.20"` would unify Bevy's default features onto the whole engine. It is
-a workspace member by being a path dependency, so `cargo test --profile dist -p
-avian_physics` works and CI runs it.
+**There is no third kind.** Something that ships with the engine is a crate in
+`crates/`, made strippable from game exports by an optional dependency behind a
+`renzora_runtime` feature and an export capability (`renzora_clouds` and
+`renzora_avian_physics` are both done this way). Something standalone is a
+native plugin, installed beside the editor. The engine checkout has no
+`plugins/` folder: a "bundled plugin" linked in from there was tried and
+removed on 2026-10-30, because it was a crate in all but name and made the
+engine name the plugin anyway.
 
 ### In-workspace plugins are statically linked, via a build-time generator
 
@@ -318,8 +318,7 @@ stable id rather than its contents, so nothing downstream caught it either.
 
 Never run `cargo build` inside an installed native plugin's directory. The
 editor's `plugins/` is outside the workspace, so cargo resolves it a fresh Bevy
-from crates.io; the result builds, loads, and corrupts the World. (The
-checkout's own `plugins/` holds bundled plugins, which are workspace members.)
+from crates.io; the result builds, loads, and corrupts the World.
 
 A native plugin's third-party dependencies are ordinary crates it compiles
 for itself (`rapier3d`, `sysinfo`, `mlua`). It must not depend on a crate built
@@ -328,7 +327,7 @@ the World. A `RUSTC_WRAPPER` shim that substituted the engine's own copies of
 such crates was tried and removed on 2026-10-24: no plugin needed it, it broke
 six that use plain crates, and the `shared.tsv` it read made every SDK staging
 walk all of cargo's fingerprints, minutes per build. Bevy-based functionality
-belongs in a bundled plugin (`plugins/`) or in the engine.
+belongs in the engine, as a crate.
 
 Rust **scripts** (`crates/renzora_rust_script`) are the same mechanism with a
 per-entity convention on top — same driver, same SDK, same loading. See §7.
@@ -584,6 +583,57 @@ Several may be registered, and two languages coexist in one project. See
 
 ## 8. Code conventions
 
+- **NEVER edit anything in the `bevy/` directory.** It is Bevy's own source,
+  pulled from bevyengine/bevy's `main` as a git subtree, and only the project
+  maintainer changes it: they decide when Bevy is updated and which patches it
+  carries. No edits, no reformatting, no "small fixes", no moved or deleted
+  files, no running scripts or tools that write into it. If a task seems to need
+  a change in Bevy (a bug, a missing hook, an API that is in the way), stop and
+  tell the user what the change would be and why; do not make it. Work around it
+  from Renzora's side, or wait for the maintainer.
+- **Pulling Bevy means fixing everything Bevy changed, in the same piece of
+  work.** When the maintainer asks for the latest Bevy, pull it with
+  `git subtree pull --prefix=bevy https://github.com/bevyengine/bevy.git main
+  --squash`, then make the whole workspace build and pass again. A broken build
+  after the pull is the expected starting point, not a reason to stop or to
+  offer to undo it. That covers removed and renamed APIs across `crates/` and
+  `vendor/`, a raised `rust-version` (bump both toolchain pins, see §2), new
+  lints, and behaviour changes the tests catch. The fixes go on Renzora's side;
+  the carried patches inside `bevy/` (the Solari and DLSS ones in memory and in
+  the commit log) must still be there afterwards, so check them, and if the
+  merge conflicts on one, keep the patch's intent on top of the new upstream
+  code. Release notes and docs describe what changed for the user, as for any
+  other change.
+- **When Bevy removes something, move to what Bevy offers instead; never
+  re-create the removed API on Renzora's side.** A port of deleted Bevy code is
+  a fork we then carry forever, drifting further from everything around it. Read
+  the deprecation note or the removing PR for the intended replacement and
+  migrate every caller onto it. Where Bevy offers no one-for-one replacement
+  (`RelativeCursorPosition` went with the focus system that wrote it), build the
+  missing piece on top of what Bevy does provide (picking's hover state and
+  pointer location, plus `ComputedNode`'s own geometry), not as a copy of the
+  old system.
+- **Everything built on Bevy comes from this repo, never from crates.io.** Bevy
+  is `bevy/`; every third-party crate that depends on Bevy (avian, gaussian
+  splatting, the XR crates, navigation, ...) lives in `vendor/` and points at
+  `bevy/` **by path**. Never add a crates.io dependency on a Bevy crate, or on
+  any crate that itself pulls one in: Cargo would build a second Bevy beside
+  ours, and two Bevys in one program corrupt the `World`. crates.io is still
+  right for everything not built on Bevy (serde, wgpu, image, glam, ...).
+  - **Adding a Bevy-based crate:** copy it into `vendor/<name>/`, change its
+    Bevy dependency (and any `bevy_*` sub-crate dependency) to the path in
+    `bevy/`, add it to the workspace members, then fix whatever does not compile
+    against Bevy `main`.
+  - **Updating one:** bring in the new upstream version, re-point its Bevy
+    dependency if the update changed that line, and fix what breaks.
+  - **`crates/` is Renzora's crates only**; third-party code never goes there.
+  - `cargo renzora check-bevy` (run before every `cargo renzora` build, and in
+    CI) fails if the build graph holds a Bevy crate from anywhere but `bevy/`,
+    naming the crate that pulled it in. That means a dependency needs vendoring,
+    not that the check needs loosening. It reads `cargo tree`, not `Cargo.lock`:
+    the lockfile also lists optional dependencies nobody enables, such as the
+    registry `bevy_reflect` behind `rerecast`'s off-by-default feature.
+
 - **Edit source files with the Edit/Write tools — never through the shell.**
   No `python - <<'EOF'` heredocs, no `sed -i`, no `perl -pi`, no "write a patch
   script and run it". Those rewrites are **invisible**: the transcript shows a
@@ -683,7 +733,8 @@ Several may be registered, and two languages coexist in one project. See
 | `xtask/src/sdk.rs` | Stages the plugin SDK. (`xtask/src/native_plugin.rs` is gone: the first-party plugins left for the marketplace and everything that existed only to build them went with them) |
 | `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
 | `crates/renzora_scripting/` | Scripting system: hooks, the `ScriptCommand` vocabulary, context, declarative `ScriptExtension`, and the `ScriptBackend` trait a language plugin implements |
-| `plugins/` | **Bundled plugins** (`plugins/avian_physics`): `plugin!` crates compiled into the binary; delete a folder to drop one |
+| `bevy/` | **Bevy's own source**, a git subtree of bevyengine/bevy `main`. **Never edit anything in it** (see §8); only the maintainer updates or patches it |
+| `vendor/` | **Every third-party crate built on Bevy**, each pointing at `bevy/` by path (see §8). `crates/` is Renzora's own crates only; crates.io supplies only crates that are not built on Bevy |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
 | `crates/renzora_cloth`, `crates/renzora_oit` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |

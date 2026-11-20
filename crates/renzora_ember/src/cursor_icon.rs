@@ -32,12 +32,17 @@ pub struct NoAutoCursor;
 /// inputs use `Text`, drag handles use `Grab`, ...) is stamped `Pointer`.
 /// Runs continuously so late-spawned widgets are covered; `Without` keeps it
 /// a no-op after the first frame per entity.
+///
+/// `try_insert`, because the insert is queued and the widget can be gone by the
+/// time it applies: a panel that rebuilds (the inspector re-laying a section)
+/// despawns rows this query saw a moment earlier, and a plain `insert` then
+/// fails the whole command and reports it as an error.
 pub(crate) fn auto_pointer_cursor(
     mut commands: Commands,
     q: Query<Entity, (With<UiInteraction>, Without<HoverCursor>, Without<NoAutoCursor>)>,
 ) {
     for e in &q {
-        commands.entity(e).insert(HoverCursor(SystemCursorIcon::Pointer));
+        commands.entity(e).try_insert(HoverCursor(SystemCursorIcon::Pointer));
     }
 }
 

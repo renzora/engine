@@ -43,6 +43,8 @@ pub struct FakeBackend {
     pub props: Vec<ScriptVariableDefinition>,
     pub on_ready: CommandFactory,
     pub on_update: CommandFactory,
+    /// What [`ScriptBackend::defines_hook`] answers, by hook name.
+    pub defines: fn(&str) -> Option<bool>,
 }
 
 impl FakeBackend {
@@ -55,6 +57,7 @@ impl FakeBackend {
             props: Vec::new(),
             on_ready: || Ok(Vec::new()),
             on_update: || Ok(Vec::new()),
+            defines: |_| None,
         }
     }
 
@@ -75,6 +78,10 @@ impl ScriptBackend for FakeBackend {
 
     fn set_scripts_folder(&mut self, path: PathBuf) {
         self.state.lock().unwrap().scripts_folder = Some(path);
+    }
+
+    fn defines_hook(&self, _path: &Path, hook: &str) -> Option<bool> {
+        (self.defines)(hook)
     }
 
     fn set_file_reader(&mut self, reader: FileReader) {

@@ -15,9 +15,12 @@ use bevy::prelude::*;
 
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::text_muted;
-use renzora_ember::widgets::{icon_popup_trigger, menu_submenu_parts, popup_anchor, popup_panel};
+use renzora_ember::widgets::{
+    icon_popup_trigger, menu_submenu_parts, menu_submenu_parts_sized, popup_anchor, popup_panel,
+};
 
 use super::camera::{camera_rows, snap_rows};
+use super::BTN_H;
 use super::display::{display_rows, gizmos_rows, DisplayTrigger};
 
 pub(super) fn build_options_menu(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -46,11 +49,6 @@ pub(super) fn build_options_menu(commands: &mut Commands, fonts: &EmberFonts) ->
 }
 
 /// One row of the options menu, opening `kids` to its side on hover.
-///
-/// The floating panel is restyled to the popup surface the rows were laid out
-/// for (8px padding, 3px between rows, 220px wide): the defaults are a context
-/// menu's, whose rows carry their own padding, and these switches and drag
-/// fields do not.
 fn submenu(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -59,6 +57,37 @@ fn submenu(
     kids: Vec<Entity>,
 ) -> Entity {
     let (row, content, panel) = menu_submenu_parts(commands, fonts, icon, label, text_muted());
+    fill_panel(commands, content, panel, kids);
+    row
+}
+
+/// A submenu row one level down, inside a panel of option rows (Display's
+/// Virtual Geometry and SSIL): sized like those rows, 12px text in a
+/// [`BTN_H`]-high row with their 8px inset, so it reads as one more entry with
+/// an arrow rather than as a heading in a bigger font.
+pub(super) fn compact_submenu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    kids: Vec<Entity>,
+) -> Entity {
+    let (row, content, panel) =
+        menu_submenu_parts_sized(commands, fonts, icon, label, text_muted(), 12.0, 12.0);
+    commands.entity(row).entry::<Node>().and_modify(|mut n| {
+        n.height = Val::Px(BTN_H);
+        n.padding = UiRect::new(Val::Px(8.0), Val::Px(6.0), Val::Px(0.0), Val::Px(0.0));
+        n.column_gap = Val::Px(6.0);
+    });
+    fill_panel(commands, content, panel, kids);
+    row
+}
+
+/// Restyle a submenu's floating panel to the popup surface its rows were laid
+/// out for (8px padding, 3px between rows, 220px wide), and fill it. The
+/// defaults are a context menu's, whose rows carry their own padding, and these
+/// switches and drag fields do not.
+fn fill_panel(commands: &mut Commands, content: Entity, panel: Entity, kids: Vec<Entity>) {
     commands.entity(panel).entry::<Node>().and_modify(|mut n| {
         n.min_width = Val::Px(220.0);
         n.padding = UiRect::all(Val::Px(8.0));
@@ -67,5 +96,4 @@ fn submenu(
         n.row_gap = Val::Px(3.0);
     });
     commands.entity(content).add_children(&kids);
-    row
 }

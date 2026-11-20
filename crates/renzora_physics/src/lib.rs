@@ -5,8 +5,8 @@
 //! world, resolving colliders, script actions, the read-back state scripts
 //! see, world settings, collide-and-slide, and the scene queries
 //! particles use. What actually simulates is a backend behind
-//! `renzora::physics::PhysicsBackend`, registered by a native plugin
-//! (`avian_physics`, `rapier_physics`). The engine links none.
+//! `renzora::physics::PhysicsBackend`, registered by `renzora_avian_physics`
+//! or by a plugin installed beside the engine.
 //!
 //! Without any backend this crate still builds and runs: entities are routed
 //! and colliders resolved, and nothing moves (the console says so, see
@@ -23,6 +23,7 @@ pub mod scene_query;
 pub mod script_extension;
 pub mod selection;
 pub mod slide;
+pub mod vehicle;
 
 /// When `active`, the editor enters "edit collider" mode for the selected entity:
 /// the transform gizmo is hidden and (later) collider resize/move handles take over.
@@ -74,7 +75,23 @@ impl Plugin for PhysicsPlugin {
             .register_type::<CollisionShapeType>()
             .register_type::<Physics2d>()
             .register_type::<PhysicsReadState>()
-            .register_type::<read_state::CollisionReadState>();
+            .register_type::<read_state::CollisionReadState>()
+            .register_type::<renzora::vehicle::Vehicle>()
+            .register_type::<renzora::vehicle::VehicleDrive>();
+
+        // Vehicles: found and driven only while the game runs, so a car sits
+        // still with its wheels where the model put them while it is edited.
+        // Forces every physics step, before that step's commands are applied.
+        app.add_systems(
+            Update,
+            (vehicle::rig_vehicles, vehicle::read_vehicle_input, vehicle::pose_vehicle_wheels)
+                .chain()
+                .run_if(not_editing),
+        )
+        .add_systems(
+            FixedUpdate,
+            vehicle::drive_vehicles.before(PhysicsSet::Commands).run_if(not_editing),
+        );
 
         app.init_resource::<PhysicsBackends>()
             .init_resource::<PhysicsSettings>()
@@ -114,7 +131,17 @@ impl Plugin for PhysicsPlugin {
         // the new one in the same frame.
         app.add_systems(
             Update,
-            selection::follow_project_backends.before(PhysicsSet::Prepare),
+            selection::follow_project_backends
+                .before(PhysicsSet::Prepare)
+                // Exclusive, so a sync point for the schedule on every frame it
+                // starts. Its answer depends only on the project's backend
+                // choice and on which backends are registered and selected, so
+                // it runs on a frame either changed (its own switch included,
+                // which gives it one confirming pass) and not otherwise.
+                .run_if(
+                    resource_exists_and_changed::<renzora::core::CurrentProject>
+                        .or_else(resource_exists_and_changed::<PhysicsBackends>),
+                ),
         );
         app.add_systems(
             Update,
@@ -406,7 +433,7 @@ fn apply_property_commands(
         }
         return;
     }
-    let cmds: Vec<PhysicsPropertyCommand> = state.commands.drain(..).collect();
+    let cmds: Vec<PhysicsPropertyCommand> = std::mem::take(&mut state.commands);
     for cmd in cmds {
         match cmd {
             PhysicsPropertyCommand::SetGravity(g) => {

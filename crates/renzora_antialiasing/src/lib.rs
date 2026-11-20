@@ -1,258 +1,28 @@
-use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
-use bevy::anti_alias::fxaa::{Fxaa, Sensitivity};
-use bevy::anti_alias::smaa::{Smaa, SmaaPreset};
-use bevy::anti_alias::taa::TemporalAntiAliasing;
+//! Anti-aliasing: one [`AntiAliasing`] component on a camera, choosing one of
+//! MSAA, FXAA, SMAA, TAA or DLSS, plus sharpening ([`CasSettings`]) on top.
+//!
+//! It used to be a component per method, which let a camera run several at
+//! once: TAA under FXAA blurs twice, and TAA beside DLSS fights over one
+//! jitter. One component with one method makes those combinations impossible
+//! to set up. Scenes saved with the old components are converted as they load
+//! (see [`legacy`]).
+//!
+//! Not every method can run on every camera. MSAA cannot share a camera with
+//! deferred shading, SSAO, the sky or OIT; DLSS needs the SDK in the build and
+//! an RTX GPU. [`compat`] holds those rules once, for both the systems that
+//! apply a method and the inspector that warns about one.
+
+pub mod compat;
+pub mod legacy;
+mod settings;
+mod sharpening;
+mod systems;
+
 use bevy::prelude::*;
-use serde::{Deserialize, Serialize};
 
-// ── FXAA Settings ──
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct FxaaSettings {
-    /// 0=Low, 1=Medium, 2=High, 3=Ultra, 4=Extreme
-    pub edge_threshold: u32,
-    pub edge_threshold_min: u32,
-    pub enabled: bool,
-}
-
-impl Default for FxaaSettings {
-    fn default() -> Self {
-        Self {
-            edge_threshold: 2,
-            edge_threshold_min: 2,
-            enabled: true,
-        }
-    }
-}
-
-fn idx_to_sensitivity(i: u32) -> Sensitivity {
-    match i {
-        0 => Sensitivity::Low,
-        1 => Sensitivity::Medium,
-        2 => Sensitivity::High,
-        3 => Sensitivity::Ultra,
-        4 => Sensitivity::Extreme,
-        _ => Sensitivity::High,
-    }
-}
-
-fn sync_fxaa(
-    mut commands: Commands,
-    sources: Query<(Entity, Ref<FxaaSettings>)>,
-    routing: Res<renzora::EffectRouting>,
-) {
-    let routing_changed = routing.is_changed();
-    for (target, source_list) in routing.iter() {
-        let mut found = false;
-        for &src in source_list {
-            if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() {
-                    found = true;
-                    break;
-                }
-                if settings.enabled {
-                    commands.entity(*target).insert(Fxaa {
-                        enabled: true,
-                        edge_threshold: idx_to_sensitivity(settings.edge_threshold),
-                        edge_threshold_min: idx_to_sensitivity(settings.edge_threshold_min),
-                    });
-                } else {
-                    commands.entity(*target).remove::<Fxaa>();
-                }
-                found = true;
-                break;
-            }
-        }
-        if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<Fxaa>();
-            }
-        }
-    }
-}
-
-// ── SMAA Settings ──
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct SmaaSettings {
-    /// 0=Low, 1=Medium, 2=High, 3=Ultra
-    pub preset: u32,
-    pub enabled: bool,
-}
-
-impl Default for SmaaSettings {
-    fn default() -> Self {
-        Self {
-            preset: 2,
-            enabled: true,
-        }
-    }
-}
-
-fn sync_smaa(
-    mut commands: Commands,
-    sources: Query<(Entity, Ref<SmaaSettings>)>,
-    routing: Res<renzora::EffectRouting>,
-) {
-    let routing_changed = routing.is_changed();
-    for (target, source_list) in routing.iter() {
-        let mut found = false;
-        for &src in source_list {
-            if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() {
-                    found = true;
-                    break;
-                }
-                if settings.enabled {
-                    let preset = match settings.preset {
-                        0 => SmaaPreset::Low,
-                        1 => SmaaPreset::Medium,
-                        2 => SmaaPreset::High,
-                        3 => SmaaPreset::Ultra,
-                        _ => SmaaPreset::High,
-                    };
-                    commands.entity(*target).insert(Smaa { preset });
-                } else {
-                    commands.entity(*target).remove::<Smaa>();
-                }
-                found = true;
-                break;
-            }
-        }
-        if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<Smaa>();
-            }
-        }
-    }
-}
-
-// ── TAA Settings ──
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct TaaSettings {
-    pub reset: bool,
-    pub enabled: bool,
-}
-
-impl Default for TaaSettings {
-    fn default() -> Self {
-        Self {
-            reset: false,
-            enabled: true,
-        }
-    }
-}
-
-fn sync_taa(
-    mut commands: Commands,
-    sources: Query<(Entity, Ref<TaaSettings>)>,
-    routing: Res<renzora::EffectRouting>,
-) {
-    let routing_changed = routing.is_changed();
-    for (target, source_list) in routing.iter() {
-        let mut found = false;
-        for &src in source_list {
-            if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() {
-                    found = true;
-                    break;
-                }
-                if settings.enabled {
-                    commands
-                        .entity(*target)
-                        .insert(Msaa::Off)
-                        .insert(TemporalAntiAliasing {
-                            reset: settings.reset,
-                        });
-                } else {
-                    commands.entity(*target).remove::<TemporalAntiAliasing>();
-                }
-                found = true;
-                break;
-            }
-        }
-        if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<TemporalAntiAliasing>();
-            }
-        }
-    }
-}
-
-fn cleanup_taa(
-    mut commands: Commands,
-    mut removed: RemovedComponents<TaaSettings>,
-    routing: Res<renzora::EffectRouting>,
-) {
-    if removed.read().next().is_some() {
-        for (target, _) in routing.iter() {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<TemporalAntiAliasing>();
-            }
-        }
-    }
-}
-
-// ── CAS Settings ──
-
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct CasSettings {
-    pub sharpening_strength: f32,
-    pub denoise: bool,
-    pub enabled: bool,
-}
-
-impl Default for CasSettings {
-    fn default() -> Self {
-        Self {
-            sharpening_strength: 0.6,
-            denoise: false,
-            enabled: true,
-        }
-    }
-}
-
-fn sync_cas(
-    mut commands: Commands,
-    sources: Query<(Entity, Ref<CasSettings>)>,
-    routing: Res<renzora::EffectRouting>,
-) {
-    let routing_changed = routing.is_changed();
-    for (target, source_list) in routing.iter() {
-        let mut found = false;
-        for &src in source_list {
-            if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() {
-                    found = true;
-                    break;
-                }
-                if settings.enabled {
-                    commands.entity(*target).insert(ContrastAdaptiveSharpening {
-                        enabled: true,
-                        sharpening_strength: settings.sharpening_strength,
-                        denoise: settings.denoise,
-                    });
-                } else {
-                    commands
-                        .entity(*target)
-                        .remove::<ContrastAdaptiveSharpening>();
-                }
-                found = true;
-                break;
-            }
-        }
-        if !found && routing_changed {
-            if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.remove::<ContrastAdaptiveSharpening>();
-            }
-        }
-    }
-}
+pub use legacy::{FxaaSettings, SmaaSettings, TaaSettings};
+pub use settings::{AntiAliasing, AntiAliasingMethod};
+pub use sharpening::CasSettings;
 
 #[derive(Default)]
 pub struct AntiAliasingPlugin;
@@ -260,13 +30,15 @@ pub struct AntiAliasingPlugin;
 impl Plugin for AntiAliasingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] AntiAliasingPlugin");
+        app.register_type::<AntiAliasing>();
+        app.register_type::<CasSettings>();
         app.register_type::<FxaaSettings>();
         app.register_type::<SmaaSettings>();
         app.register_type::<TaaSettings>();
-        app.register_type::<CasSettings>();
+        app.add_systems(Update, (legacy::migrate_legacy, sharpening::sync_cas));
         app.add_systems(
-            Update,
-            (sync_fxaa, sync_smaa, sync_taa, sync_cas, cleanup_taa),
+            PostUpdate,
+            (systems::reconcile_anti_aliasing, systems::release_temporal_jitter).chain(),
         );
     }
 }

@@ -1,0 +1,16 @@
+[package]
+name = "renzora_companion_proto"
+version = "0.1.0"
+edition = "2021"
+description = "What the editor, its companion and a profiled game say to each other: the job protocol and arguments, the profiler's stream and frame types, and probe reports. No Bevy, so the standalone companion can link it."
+
+# No Bevy, directly or through any dependency. The standalone companion links
+# this crate precisely because it carries no engine; one `bevy` line here
+# (or a dependency on a `renzora_*` crate that has one) puts the whole engine
+# back into that executable. Plain data and std only.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

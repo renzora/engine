@@ -1,14 +1,32 @@
-//! Surface painting — splatmap weight storage and brush operations.
+//! The paint tool's settings and state, plus the old splatmap surface data.
 //!
-//! Each paintable surface has up to 4 material layers, blended via per-texel
-//! RGBA weights. Layers will eventually reference `MaterialGraph` assets
-//! compiled with the `TerrainLayer` domain.
+//! [`SurfacePaintSettings`] and [`SurfacePaintState`] drive the landscape
+//! weight brush (`crate::landscape::weights`): which layer, which mode, and the
+//! brush in metres.
+//!
+//! [`PaintableSurfaceData`] is the splatmap model that predates both the
+//! overlay painter and landscape materials. Nothing draws it any more (its
+//! material and upload were removed); it stays registered so scenes holding it
+//! load, and because the height layers still read its carve depths.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::data::{compute_brush_falloff, BrushFalloffType, BrushShape};
-use crate::splatmap_material::LayerAnimationType;
+use crate::data::{BrushFalloffType, BrushShape};
+
+/// What an old splatmap layer animated as. Kept only so [`MaterialLayer`]
+/// keeps its shape for scenes that hold it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum LayerAnimationType {
+    #[default]
+    Solid = 0,
+    Grass = 1,
+    Water = 2,
+    Rock = 3,
+    Sand = 4,
+    Snow = 5,
+    Dirt = 6,
+}
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -179,16 +197,28 @@ pub enum PaintBrushType {
     Fill,
 }
 
-/// Resource: surface paint tool settings.
-#[derive(Resource)]
+/// Resource: the landscape weight brush's settings, shared by every terrain.
+#[derive(Resource, Clone, Debug)]
 pub struct SurfacePaintSettings {
+    /// Index into the target terrain's `TerrainLandscape::layers`: the layer
+    /// the brush paints.
     pub active_layer: usize,
     pub brush_type: PaintBrushType,
+    /// Brush radius in metres, as the sculpt brush's is.
     pub brush_radius: f32,
+    /// 0..1: how fast Paint, Erase and Smooth move toward their result.
     pub brush_strength: f32,
+    /// 0..1: how much of the radius fades out.
     pub brush_falloff: f32,
     pub brush_shape: BrushShape,
     pub falloff_type: BrushFalloffType,
+    /// 0..1: the weight Paint and Fill bring the layer to. Below 1 leaves the
+    /// layers already there showing through.
+    pub target_weight: f32,
+    /// Paint only where the ground's slope is in this range (degrees).
+    pub slope_mask: Option<Vec2>,
+    /// Paint only where the ground's world height is in this range (metres).
+    pub height_mask: Option<Vec2>,
 }
 
 impl Default for SurfacePaintSettings {
@@ -196,14 +226,20 @@ impl Default for SurfacePaintSettings {
         Self {
             active_layer: 0,
             brush_type: PaintBrushType::Paint,
-            brush_radius: 0.1,
-            brush_strength: 0.5,
-            brush_falloff: 1.0,
+            brush_radius: 12.0,
+            brush_strength: 0.35,
+            brush_falloff: 0.6,
             brush_shape: BrushShape::Circle,
             falloff_type: BrushFalloffType::Smooth,
+            target_weight: 1.0,
+            slope_mask: None,
+            height_mask: None,
         }
     }
 }
+
+/// The weight brush's radius limits, in metres.
+pub const PAINT_RADIUS_RANGE: (f32, f32) = (0.5, 200.0);
 
 /// Lightweight layer info for the UI (cached from PaintableSurfaceData).
 #[derive(Clone, Debug, Default)]
@@ -236,97 +272,6 @@ pub struct SurfacePaintState {
     pub layer_count: usize,
     /// Pending commands from the UI to apply to the component.
     pub pending_commands: Vec<SurfacePaintCommand>,
-}
-
-// ── Brush Operations ─────────────────────────────────────────────────────────
-
-/// Apply a paint brush stroke at a UV position on a `PaintableSurfaceData`.
-///
-/// Stamps a disc into the currently-active layer's mask. Stamping over
-/// already-painted coverage is idempotent (`max`), so dragging the brush
-/// over the same spot doesn't amplify. Erase clamps to zero. Smooth blurs
-/// the active layer's mask against itself. Other layers are untouched.
-///
-/// `uv` is the brush center in `[0, 1]` UV space. `dt` is frame delta time.
-pub fn apply_paint_brush(
-    surface: &mut PaintableSurfaceData,
-    settings: &SurfacePaintSettings,
-    uv: Vec2,
-    dt: f32,
-) {
-    let res = surface.splatmap_resolution;
-    let layer = settings.active_layer;
-    if layer >= surface.layers.len() {
-        return;
-    }
-
-    let radius = settings.brush_radius;
-    let strength = (settings.brush_strength * dt * 4.0).clamp(0.0, 1.0);
-
-    // Ensure the active layer's mask is sized before we stamp.
-    ensure_layer_mask(&mut surface.layers[layer], res, layer == 0);
-
-    let min_u = ((uv.x - radius) * res as f32).floor().max(0.0) as u32;
-    let max_u = ((uv.x + radius) * res as f32).ceil().min(res as f32 - 1.0) as u32;
-    let min_v = ((uv.y - radius) * res as f32).floor().max(0.0) as u32;
-    let max_v = ((uv.y + radius) * res as f32).ceil().min(res as f32 - 1.0) as u32;
-
-    // Smooth requires reading neighbours from a snapshot to avoid the feedback
-    // loop of reading already-updated values. Copy once up-front.
-    let mask_snapshot = if matches!(settings.brush_type, PaintBrushType::Smooth) {
-        Some(surface.layers[layer].mask.clone())
-    } else {
-        None
-    };
-
-    let mask = &mut surface.layers[layer].mask;
-
-    for tv in min_v..=max_v {
-        for tu in min_u..=max_u {
-            let texel_u = (tu as f32 + 0.5) / res as f32;
-            let texel_v = (tv as f32 + 0.5) / res as f32;
-
-            let du = texel_u - uv.x;
-            let dv = texel_v - uv.y;
-
-            let dist = match settings.brush_shape {
-                BrushShape::Circle => (du * du + dv * dv).sqrt(),
-                BrushShape::Square => du.abs().max(dv.abs()),
-                BrushShape::Diamond => du.abs() + dv.abs(),
-            };
-
-            if dist > radius {
-                continue;
-            }
-
-            let t = dist / radius;
-            let falloff = compute_brush_falloff(t, settings.brush_falloff, settings.falloff_type);
-            let contribution = (strength * falloff).clamp(0.0, 1.0);
-            let idx = (tv * res + tu) as usize;
-            let current = mask[idx];
-
-            mask[idx] = match settings.brush_type {
-                PaintBrushType::Paint => current.max(contribution),
-                PaintBrushType::Erase => (current - contribution).max(0.0),
-                PaintBrushType::Fill => 1.0,
-                PaintBrushType::Smooth => {
-                    let snap = mask_snapshot.as_ref().unwrap();
-                    let mut sum = 0.0f32;
-                    let mut count = 0.0f32;
-                    for nv in tv.saturating_sub(1)..=(tv + 1).min(res - 1) {
-                        for nu in tu.saturating_sub(1)..=(tu + 1).min(res - 1) {
-                            let ni = (nv * res + nu) as usize;
-                            sum += snap[ni];
-                            count += 1.0;
-                        }
-                    }
-                    let avg = sum / count;
-                    current + (avg - current) * contribution
-                }
-            };
-        }
-    }
-    surface.dirty = true;
 }
 
 /// Ensure a layer's mask matches the splatmap resolution. `is_base` seeds the
@@ -414,46 +359,4 @@ pub fn mark_new_surfaces_dirty_system(
         surface.dirty = true;
         surface.shader_dirty = true;
     }
-}
-
-/// Convert splatmap weights (layers 0-3) to RGBA8 pixel data for GPU upload.
-///
-/// Always returns exactly `resolution * resolution * 4` bytes. If `weights`
-/// is short (e.g. a freshly-spawned surface before derivation has run),
-/// missing texels are filled with the base-layer default (layer 0 = 255,
-/// rest = 0) so the texture is valid for GPU upload.
-pub fn splatmap_to_rgba8_a(weights: &[[f32; 8]], resolution: u32) -> Vec<u8> {
-    let count = (resolution * resolution) as usize;
-    let mut pixels = Vec::with_capacity(count * 4);
-    for i in 0..count {
-        if let Some(w) = weights.get(i) {
-            pixels.push((w[0] * 255.0).round() as u8);
-            pixels.push((w[1] * 255.0).round() as u8);
-            pixels.push((w[2] * 255.0).round() as u8);
-            pixels.push((w[3] * 255.0).round() as u8);
-        } else {
-            pixels.extend_from_slice(&[255, 0, 0, 0]);
-        }
-    }
-    pixels
-}
-
-/// Convert splatmap weights (layers 4-7) to RGBA8 pixel data for GPU upload.
-///
-/// Always returns exactly `resolution * resolution * 4` bytes. Missing
-/// texels are filled with zeros (layers 4-7 are off by default).
-pub fn splatmap_to_rgba8_b(weights: &[[f32; 8]], resolution: u32) -> Vec<u8> {
-    let count = (resolution * resolution) as usize;
-    let mut pixels = Vec::with_capacity(count * 4);
-    for i in 0..count {
-        if let Some(w) = weights.get(i) {
-            pixels.push((w[4] * 255.0).round() as u8);
-            pixels.push((w[5] * 255.0).round() as u8);
-            pixels.push((w[6] * 255.0).round() as u8);
-            pixels.push((w[7] * 255.0).round() as u8);
-        } else {
-            pixels.extend_from_slice(&[0, 0, 0, 0]);
-        }
-    }
-    pixels
 }

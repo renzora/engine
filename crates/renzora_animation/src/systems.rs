@@ -13,7 +13,7 @@ use crate::controller::Motion;
 use crate::state_machine::{AnimState, AnimationStateMachine, StateMotion};
 
 // ============================================================================
-// Rehydration: build AnimationGraph when AnimatorComponent is added
+// Rehydration: build BlendGraph when AnimatorComponent is added
 // ============================================================================
 
 /// Spawns `AnimatorState` for new `AnimatorComponent` entities and keeps
@@ -139,7 +139,7 @@ pub fn rehydrate_animators(
 /// first frame a crossfade between the default clip and the entry state.
 pub fn auto_play_default(
     mut animators: Query<(&AnimatorComponent, &mut AnimatorState)>,
-    graph_query: Query<(), With<AnimationGraphHandle>>,
+    graph_query: Query<(), With<BlendGraphHandle>>,
     sm_assets: Res<Assets<AnimationStateMachine>>,
 ) {
     for (animator, mut state) in animators.iter_mut() {
@@ -150,7 +150,7 @@ pub fn auto_play_default(
         // Check if the animation graph was removed from the player (e.g. by scene reload)
         if let Some(player_entity) = state.player_entity {
             if graph_query.get(player_entity).is_err() && state.current_clip.is_some() {
-                warn!("[animation] AnimationGraphHandle disappeared from player {:?}, re-initializing", player_entity);
+                warn!("[animation] BlendGraphHandle disappeared from player {:?}, re-initializing", player_entity);
                 state.reset_graph();
                 continue;
             }

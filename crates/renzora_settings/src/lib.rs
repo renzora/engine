@@ -45,25 +45,47 @@ impl Plugin for SettingsPlugin {
         app.add_systems(
             Update,
             (
-                overlay::manage_overlay,
-                overlay::settings_close_click,
-                sidebar::settings_tab_click,
-                sidebar::settings_plugin_click,
-                sidebar::filter_sidebar,
+                toggle_on_request
+                    .run_if(resource_exists::<renzora::core::ToggleSettingsRequested>)
+                    .before(overlay::manage_overlay),
+                // Exclusive, so a sync point for the whole schedule even when it
+                // returns at once. It has work only while the page is wanted or
+                // still on screen to tear down.
+                overlay::manage_overlay.run_if(
+                    |settings: Res<renzora_editor_framework::EditorSettings>,
+                     st: Res<state::OverlayState>| {
+                        settings.show_settings || st.root.is_some()
+                    },
+                ),
                 fonts::refresh_settings_on_font_change,
                 fonts::apply_font_settings,
-                tabs::plugins::plugin_toggle_click,
-                tabs::plugins::open_plugins_folder_click,
-                tabs::plugins::open_plugin_updates_click,
-                tabs::plugins::plugin_delete_click,
+                // The delete confirmation is a modal of its own, which can be
+                // left open after the settings page itself closes.
                 tabs::plugins::plugin_delete_confirm_click,
-                tabs::theme::theme_save_click,
-                tabs::theme::ember_theme_save_click,
                 prefs::sync_drag_value_rail_sweep,
                 prefs::sync_scroll_speed,
                 prefs::sync_console_log_limit,
             )
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        );
+        // Everything these read lives inside the settings page, which exists
+        // only while it is open, so they are skipped the rest of the time.
+        let page_open = any_with_component::<overlay::OverlayRoot>;
+        app.add_systems(
+            Update,
+            (
+                overlay::settings_close_click,
+                sidebar::settings_tab_click,
+                sidebar::settings_plugin_click,
+                sidebar::filter_sidebar,
+                tabs::plugins::plugin_toggle_click,
+                tabs::plugins::open_plugins_folder_click,
+                tabs::plugins::open_plugin_updates_click,
+                tabs::plugins::plugin_delete_click,
+                tabs::theme::theme_save_click,
+                tabs::theme::ember_theme_save_click,
+            )
+                .run_if(page_open),
         );
         // The Input tab's structural edits — each marks the overlay dirty so it
         // rebuilds with the new set of rows.
@@ -79,7 +101,7 @@ impl Plugin for SettingsPlugin {
                 tabs::input::composite_click,
                 tabs::input::input_listen_capture,
             )
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+                .run_if(page_open),
         );
         // Key/mouse-rebind capture.
         app.add_systems(
@@ -89,9 +111,24 @@ impl Plugin for SettingsPlugin {
                 tabs::shortcuts::rebind_capture,
                 tabs::shortcuts::reset_bindings_click,
             )
-                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+                // Listening for a new key only makes sense with its row on
+                // screen; a capture left armed by closing the page waits for
+                // the page to reopen instead of eating a key in the editor.
+                .run_if(page_open),
         );
     }
+}
+
+/// The Settings shortcut (Ctrl+,) and anything else that asks for the page by
+/// inserting [`renzora::core::ToggleSettingsRequested`]. Nothing read that
+/// request once the old overlay was removed, so the shortcut did nothing; the
+/// gear button worked only because it flips `show_settings` itself.
+fn toggle_on_request(
+    mut commands: Commands,
+    mut settings: ResMut<renzora_editor_framework::EditorSettings>,
+) {
+    commands.remove_resource::<renzora::core::ToggleSettingsRequested>();
+    settings.show_settings = !settings.show_settings;
 }
 
 renzora::add!(SettingsPlugin, Editor);

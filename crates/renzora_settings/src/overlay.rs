@@ -232,15 +232,21 @@ fn spawn_overlay(
             Node {
                 width: Val::Px(PANEL_W),
                 height: Val::Px(PANEL_H),
+                // Never wider or taller than the window it opens in.
+                max_width: Val::Percent(95.0),
+                max_height: Val::Percent(95.0),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::clip(),
-                border_radius: BorderRadius {
-                    top_left: Val::Px(6.0).into(),
-                    ..default()
-                },
+                // All four corners and an edge, like the other dialogs: only
+                // the top-left one was rounded, and with no border the panel's
+                // edge disappeared against a dark scene behind the scrim.
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::window_bg())),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
+            renzora_ember::widgets::elevation(8.0, 24.0),
             BLOCK,
             Name::new("settings-panel"),
         ))

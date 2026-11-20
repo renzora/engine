@@ -283,8 +283,8 @@ fn push_view(doc: &mut Value, bin: &mut Vec<u8>, data: &[u8], target: u32) -> u6
 fn bounds(data: &[u8], comps: usize) -> (Vec<f32>, Vec<f32>) {
     let mut min = vec![f32::MAX; comps];
     let mut max = vec![f32::MIN; comps];
-    for (i, chunk) in data.chunks_exact(4).enumerate() {
-        let v = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    for (i, chunk) in data.as_chunks::<4>().0.iter().enumerate() {
+        let v = f32::from_le_bytes(*chunk);
         let c = i % comps;
         min[c] = min[c].min(v);
         max[c] = max[c].max(v);

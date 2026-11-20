@@ -209,14 +209,14 @@ fn toggle_system(world: &mut World) {
 
 /// Drag-value: while the node is pressed, set the bound number from the
 /// cursor's normalized X position within the node (Bevy's
-/// `RelativeCursorPosition` — no manual rect/coordinate-space math).
+/// `UiCursor` — no manual rect/coordinate-space math).
 fn drag_value_system(world: &mut World) {
     let mut active: Vec<(String, f32, f32, Entity, f32)> = Vec::new();
     {
         let mut q = world.query::<(
             &UiInteraction,
             &DragValue,
-            &bevy::ui::RelativeCursorPosition,
+            &crate::UiCursor,
         )>();
         for (interaction, dv, rel) in q.iter(world) {
             if *interaction == UiInteraction::Pressed {
@@ -346,9 +346,12 @@ pub fn plugin(app: &mut App) {
     app.add_systems(
         Update,
         (
-            toggle_system,
-            drag_value_system,
-            value_fill_system,
+            // The three exclusive ones are sync points for the whole schedule
+            // even when they find nothing, and each walks only nodes carrying
+            // its own attribute component, so they wait for one to exist.
+            toggle_system.run_if(any_with_component::<Toggle>),
+            drag_value_system.run_if(any_with_component::<DragValue>),
+            value_fill_system.run_if(any_with_component::<ValueFill>),
             disclosure_system,
         ),
     );

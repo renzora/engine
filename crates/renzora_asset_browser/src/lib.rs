@@ -102,6 +102,7 @@ fn asset_doc_kind(path: &std::path::Path) -> Option<renzora_editor_framework::Do
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
         "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        "tgraph" => DocTabKind::TerrainGraph,
         // Not `Script`. A `.html` is a UI template, and double-clicking one
         // dropped you in the *text* editor in the Scripting workspace — the
         // visual editor for it was reachable only by dragging the file onto the

@@ -13,6 +13,28 @@ use renzora_ember::theme::{divider, rgb, text_muted, window_bg};
 use renzora_ember::widgets::{menu_item, scroll_area_keyed, Popup};
 use renzora_ember::UiInteraction;
 
+/// A status segment that invokes a shell action when clicked; see
+/// [`renzora::ShellStatusSegment::action`].
+#[derive(Component)]
+pub(crate) struct StatusSegmentAction(&'static str);
+
+/// Send a clicked segment's action, exactly as a top-bar button would.
+///
+/// Through the `Messages` resource rather than a `MessageWriter`: the message
+/// type only exists once some plugin has registered a shell action, and a shell
+/// without one must not fail to run this system.
+pub(crate) fn status_segment_click(
+    segments: Query<(&UiInteraction, &StatusSegmentAction), Changed<UiInteraction>>,
+    messages: Option<ResMut<bevy::ecs::message::Messages<renzora::ShellActionInvoked>>>,
+) {
+    let Some(mut messages) = messages else { return };
+    for (interaction, action) in &segments {
+        if *interaction == UiInteraction::Pressed {
+            messages.write(renzora::ShellActionInvoked(action.0));
+        }
+    }
+}
+
 /// Marks the status-bar theme picker's trigger so its open/closed state can be
 /// mirrored into [`ThemeMenuOpen`] each frame.
 #[derive(Component)]
@@ -215,7 +237,7 @@ fn theme_dropup(
             BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
             BorderColor::all(rgb(divider())),
             GlobalZIndex(600),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("theme-menu"),
         ))
         .id();
@@ -309,7 +331,7 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
             BorderColor::all(rgb(divider())),
             GlobalZIndex(600),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("language-menu"),
         ))
         .id();
@@ -411,8 +433,57 @@ fn status_rows(world: &Rx, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
     rows
 }
 
-/// Build a keyed snapshot from a row list.
-fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot {
+/// Segment `index` on one side, as it is now.
+fn segment(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Option<renzora::ShellStatusSegment> {
+    match status_rows(world, align).into_iter().nth(index) {
+        Some(StatusRow::Seg(s)) => Some(s),
+        _ => None,
+    }
+}
+
+/// The current text of segment `index` on one side: what a segment's text node
+/// is bound to, so a live metric updates in place.
+fn segment_text(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
+    segment(world, align, index).map(|s| s.text).unwrap_or_default()
+}
+
+/// The glyph for a segment's icon name.
+fn icon_glyph_text(icon: &str) -> String {
+    renzora_ember::font::icon_glyph(icon)
+        .unwrap_or_else(|| icon.chars().next().unwrap_or(' '))
+        .to_string()
+}
+
+/// The current icon glyph of segment `index`: what its icon node is bound to.
+/// The MCP item swaps `plugs` for `plugs-connected` on every client
+/// connection, which with the icon hashed rebuilt the segment on every call.
+fn segment_icon(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
+    segment(world, align, index).map(|s| icon_glyph_text(&s.icon)).unwrap_or_default()
+}
+
+/// The current colour of segment `index`, made legible on the bar: what its
+/// icon and text are bound to.
+fn segment_color(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Color {
+    let color = segment(world, align, index).map_or((0, 0, 0), |s| (s.color[0], s.color[1], s.color[2]));
+    rgb(legible(color, window_bg()))
+}
+
+/// Build a keyed snapshot from a row list. `align` is the side the rows come
+/// from, for segments; the Ready label passes `None`.
+///
+/// A segment's text, colour and icon glyph are NOT part of its row hash (only
+/// whether it has an icon is, since that decides its nodes). An FPS or memory
+/// readout changes several times a second, and its colour whenever it crosses
+/// a threshold (the MCP item's, on every call); with them hashed each change
+/// despawned and respawned the whole segment: new nodes, a new font, the bar's
+/// children changed. Any spawn makes Bevy walk every UI node, so each was a
+/// full re-layout of every panel. The text and colour are bound instead
+/// ([`segment_text`], [`segment_color`]), so a change re-measures or recolours
+/// one node and nothing else.
+fn rows_snapshot(
+    rows: Vec<StatusRow>,
+    align: Option<renzora::ShellStatusAlign>,
+) -> renzora_ember::reactive::KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = rows
         .iter()
@@ -437,7 +508,7 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
                             (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
                         }
                     };
-                    (1u8, &s.icon, &s.text, s.color, bar).hash(&mut h)
+                    (1u8, s.icon.is_empty(), bar, s.action).hash(&mut h)
                 }
             }
             (k.finish(), h.finish())
@@ -445,7 +516,7 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
         .collect();
     renzora_ember::reactive::KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| status_row(c, f, &rows[i])),
+        build: Box::new(move |c, f, i| status_row(c, f, &rows[i], align.map(|a| (a, i)))),
     }
 }
 
@@ -457,17 +528,17 @@ fn status_snapshot_ready(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         .and_then(|r| r.label.clone().map(|t| (t, r.color)))
         .map(|(t, c)| (t, c.map(|c| (c[0], c[1], c[2])).unwrap_or_else(text_muted)))
         .unwrap_or_else(|| (renzora::lang::t_or("status.ready", "Ready"), text_muted()));
-    rows_snapshot(vec![StatusRow::Label(label, color)])
+    rows_snapshot(vec![StatusRow::Label(label, color)], None)
 }
 
 /// Left side after Ready and the saved badge: the left-aligned plugin items.
 fn status_snapshot_left(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
-    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Left))
+    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Left), Some(renzora::ShellStatusAlign::Left))
 }
 
 /// Right side: the right-aligned metrics.
 fn status_snapshot_right(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
-    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right))
+    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right), Some(renzora::ShellStatusAlign::Right))
 }
 
 /// WCAG contrast a status segment's text must reach against the bar.
@@ -510,7 +581,14 @@ fn legible(color: (u8, u8, u8), bg: (u8, u8, u8)) -> (u8, u8, u8) {
     out
 }
 
-fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> Entity {
+/// One row of the bar. `source` is where a segment's text lives (its side and
+/// index), so the text node can be bound to it rather than rebuilt with it.
+fn status_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    row: &StatusRow,
+    source: Option<(renzora::ShellStatusAlign, usize)>,
+) -> Entity {
     match row {
         StatusRow::Label(text, color) => commands
             .spawn((
@@ -528,34 +606,53 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                     ..default()
                 })
                 .id();
+            if let Some(action) = s.action {
+                commands.entity(r).insert((
+                    UiInteraction::default(),
+                    StatusSegmentAction(action),
+                    renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                ));
+            }
             let mut kids = Vec::new();
             let color = legible((s.color[0], s.color[1], s.color[2]), window_bg());
             if !s.icon.is_empty() {
-                let glyph = renzora_ember::font::icon_glyph(&s.icon)
-                    .unwrap_or_else(|| s.icon.chars().next().unwrap_or(' '));
-                kids.push(
-                    commands
-                        .spawn((
-                            Text::new(glyph.to_string()),
-                            TextFont {
-                                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
-                                font_size: bevy::text::FontSize::Px(12.0),
-                                ..default()
-                            },
-                            TextColor(rgb(color)),
-                        ))
-                        .id(),
-                );
-            }
-            kids.push(
-                commands
+                let icon = commands
                     .spawn((
-                        Text::new(s.text.clone()),
-                        ui_font(&fonts.ui, 11.0),
+                        Text::new(icon_glyph_text(&s.icon)),
+                        TextFont {
+                            font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                            font_size: bevy::text::FontSize::Px(12.0),
+                            ..default()
+                        },
                         TextColor(rgb(color)),
                     ))
-                    .id(),
-            );
+                    .id();
+                if let Some((align, index)) = source {
+                    renzora_ember::reactive::tracked::bind_text(commands, icon, move |w| {
+                        segment_icon(w, align, index)
+                    });
+                    renzora_ember::reactive::tracked::bind_text_color(commands, icon, move |w| {
+                        segment_color(w, align, index)
+                    });
+                }
+                kids.push(icon);
+            }
+            let text = commands
+                .spawn((
+                    Text::new(s.text.clone()),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(color)),
+                ))
+                .id();
+            if let Some((align, index)) = source {
+                renzora_ember::reactive::tracked::bind_text(commands, text, move |w| {
+                    segment_text(w, align, index)
+                });
+                renzora_ember::reactive::tracked::bind_text_color(commands, text, move |w| {
+                    segment_color(w, align, index)
+                });
+            }
+            kids.push(text);
             // Sized for a 22px-tall bar: wide enough to read as progress,
             // narrow enough that a background job doesn't push the rest of the
             // status bar around.

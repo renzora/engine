@@ -109,6 +109,11 @@ fn tessellate(collider: &ResolvedCollider) -> Option<(Vec<Vec3>, Vec<[u32; 3]>, 
             let place = |v: &Vec3| collider.offset + collider.rotation * *v;
             return Some((mesh.vertices.iter().map(place).collect(), mesh.indices.clone(), false));
         }
+        ResolvedShape::Heightfield(field) => {
+            let mesh = field.triangles();
+            let place = |v: &Vec3| collider.offset + collider.rotation * *v;
+            return Some((mesh.vertices.iter().map(place).collect(), mesh.indices, false));
+        }
         ResolvedShape::Rectangle { .. } | ResolvedShape::Circle { .. } | ResolvedShape::Capsule2d { .. } => {
             return None
         }
@@ -125,7 +130,7 @@ fn tessellate(collider: &ResolvedCollider) -> Option<(Vec<Vec3>, Vec<[u32; 3]>, 
         Indices::U32(i) => i.clone(),
         Indices::U16(i) => i.iter().map(|&x| x as u32).collect(),
     };
-    let triangles = indices.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
+    let triangles = indices.as_chunks::<3>().0.to_vec();
     Some((vertices, triangles, true))
 }
 

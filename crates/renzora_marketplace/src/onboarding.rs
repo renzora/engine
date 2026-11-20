@@ -178,9 +178,13 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            poll_results,
+            // Only this system drains the channel, so an empty one means no
+            // answer to apply; a request started from the wizard still lands
+            // after the overlay has closed.
+            poll_results.run_if(|panel: Res<OnboardingPanel>| !panel.rx.is_empty()),
             auto_load.run_if(publishing),
-            clicks,
+            // The wizard's widgets are inside the overlay's Publish view.
+            clicks.run_if(any_with_component::<crate::store_overlay::StoreOverlayRoot>),
         )
             .run_if(in_state(SplashState::Editor)),
     );

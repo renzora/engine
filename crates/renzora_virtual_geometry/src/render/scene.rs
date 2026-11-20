@@ -348,6 +348,13 @@ pub(crate) struct GpuScene {
     instance_capacity: usize,
     pub instance_count: u32,
     pub pair_count: u32,
+    /// Every render layer some drawn instance is on, in [`layer_words`] form.
+    /// A view on none of them is given no visibility buffer and no cull pass.
+    /// The cull shader would drop every instance anyway, but only after a
+    /// thread per cluster pair in the scene had checked: the Shape Library's
+    /// ten thumbnail cameras each paid a full pass over the Bistro for that,
+    /// and the editor ran at 25 fps instead of 42 while they rendered.
+    pub layers: [u32; 2],
     /// Bumped whenever a buffer is replaced, so bind groups know to follow.
     pub generation: u64,
     previous: HashMap<MainEntity, [Vec4; 3]>,
@@ -543,11 +550,24 @@ pub(crate) fn prepare(
     gpu.masked_total = 0;
     gpu.instance_count = 0;
     gpu.pair_count = 0;
+    gpu.layers = [0; 2];
     gpu.skinned_vertex_count = 0;
     gpu.skin_jobs = None;
     gpu.skin_params = None;
     if scene.instances.is_empty() {
         gpu.previous.clear();
+        // Nothing converted is left (its scene closed): let go of the cluster
+        // pool and every buffer built from it, which streaming only ever
+        // frees while some instance still keeps the scene running. The
+        // generation keeps counting, so bind groups made from the old
+        // buffers can never be taken for current ones.
+        if gpu.clusters.is_some() || gpu.positions.is_some() || !gpu.meshes_built.is_empty() {
+            let generation = gpu.generation + 1;
+            *gpu = GpuScene {
+                generation,
+                ..Default::default()
+            };
+        }
         return;
     }
     let budget = settings.map_or(DEFAULT_BUDGET, |s| s.budget_bytes);
@@ -704,6 +724,8 @@ pub(crate) fn prepare(
             _pad: [0; 3],
         });
         pairs += slot.cluster_count;
+        gpu.layers[0] |= inst.layers[0];
+        gpu.layers[1] |= inst.layers[1];
     }
     gpu.prepare_skinning(&jobs, skinned_total, &device);
 

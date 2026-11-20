@@ -113,7 +113,12 @@ impl Plugin for MaterialEditorPlugin {
         app.add_plugins(drawer::MaterialDrawer);
         app.add_plugins(preview_panel::MaterialPreviewPanel);
         app.add_plugins(graph::MaterialGraphPanel);
-        app.add_systems(Update, reload_externally_edited_materials);
+        // Started only on a frame with file events: that is when its own reader
+        // has something, so `on_message` skips nothing it would have read.
+        app.add_systems(
+            Update,
+            reload_externally_edited_materials.run_if(on_message::<ProjectFileChanged>),
+        );
 
         // Register the material inspector entry
         app.register_inspector(material_inspector::material_entry());

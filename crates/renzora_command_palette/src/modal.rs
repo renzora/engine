@@ -57,8 +57,20 @@ pub(crate) fn register(app: &mut App) {
             palette_row_click,
             palette_backdrop_click,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            // Three of these are exclusive, and an exclusive system is a sync
+            // point for the whole schedule even when it returns at once. All
+            // of them act on the palette or the widgets under it, so they have
+            // work only while it is wanted open or still on screen to tear down.
+            .run_if(palette_live),
     );
+}
+
+fn palette_live(
+    state: Option<Res<CommandPaletteState>>,
+    overlays: Query<(), With<PaletteOverlay>>,
+) -> bool {
+    state.is_some_and(|s| s.open) || !overlays.is_empty()
 }
 
 fn sig_of(query: &str, len: usize, tab: PaletteTab, generation: u64) -> u64 {
@@ -112,7 +124,7 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
             GlobalZIndex(9500),
             BLOCK,
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             OverlaySurface,
             PaletteOverlay { sig: None },
             PaletteBackdrop,

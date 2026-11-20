@@ -1,0 +1,9 @@
+name = "Gaussian Blur"
+version = "2.0.0"
+description = "A plain Gaussian blur over the whole frame. A post-process effect: drop gaussian_blur.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "gaussian_blur"
+tags = ["post-processing", "shader", "blur", "gaussian"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

@@ -86,27 +86,30 @@ jobs:
       # dependencies; we just don't run their tests. New first-party crates stay
       # covered automatically via --workspace.
       #
-      # The avian excludes are gone with the vendored copy: avian2d/avian3d and
-      # their ecosystem crates come from crates.io now, so they are dependencies
-      # rather than members and `--workspace` never reaches them.
+      # Nothing built on Bevy may come from crates.io (CLAUDE.md §8): a second
+      # Bevy builds and only fails at runtime, so it is stopped here by name.
+      - name: Check every Bevy crate comes from bevy/
+        run: cargo renzora check-bevy
+
+      # Bevy (`bevy/`), avian and the other subtree crates (`vendor/avian`,
+      # `vendor/bevy_oxr`, vleue_navigator, ...) are excluded from the workspace
+      # in Cargo.toml, so `--workspace` never reaches them; only the vendored
+      # crates that are still members are listed here.
+      #
+      # `--no-fail-fast`: without it cargo stops at the first crate whose tests
+      # fail, so a run reports one broken crate and hides the rest behind it,
+      # and each fix costs another full run to find the next.
       - name: Run tests
         run: |
-          cargo test --workspace \
+          cargo test --workspace --no-fail-fast \
             --exclude bevy_args \
             --exclude bevy_firefly \
-            --exclude bevy_gauge \
             --exclude bevy_gaussian_splatting \
             --exclude bevy_hui \
             --exclude bevy_interleave \
             --exclude bevy_interleave_interface \
             --exclude bevy_interleave_macros \
-            --exclude bevy_procedural_tree \
-            --exclude bevy_silk \
-            --exclude bevy_solari \
-            --exclude vleue_navigator \
-            --exclude bevy_mod_openxr \
-            --exclude bevy_mod_xr \
-            --exclude bevy_xr_utils
+            --exclude bevy_silk
 
   wasm:
     runs-on: ubuntu-latest
@@ -206,14 +209,24 @@ jobs:
       # list rather than `--workspace`: a software-rasterized `--workspace` run
       # would take hours, and almost all of it would be tests that do not touch
       # an adapter and already ran in the `test` job.
+      #
+      # Virtual geometry's GPU tests run one process each. Under lavapipe every
+      # GPU allocation is system memory, and run back to back in one process
+      # they were killed by the runner (SIGKILL) near the end of the list, while
+      # each passes on its own and the whole set passes on a real GPU. A fresh
+      # process per test gives every one of them the runner's full memory; cargo
+      # builds once, so the cost is a process start per test.
       - name: Run GPU-backed tests
         run: |
           cargo test \
             -p renzora_test_harness \
             -p renzora_postprocess \
             -p renzora_shader \
-            -p renzora_rmip \
-            -p renzora_virtual_geometry
+            -p renzora_rmip
+          cargo test -p renzora_virtual_geometry -- --skip gpu_tests::
+          for t in $(cargo test -q -p renzora_virtual_geometry --lib -- --list gpu_tests:: 2>/dev/null | sed -n 's/: test$//p'); do
+            cargo test -q -p renzora_virtual_geometry --lib -- --exact "$t"
+          done
 
   clippy:
     runs-on: ubuntu-latest
@@ -249,12 +262,6 @@ jobs:
             --exclude bevy_interleave_interface \
             --exclude bevy_interleave_macros \
             --exclude bevy_silk \
-            --exclude bevy_solari \
-            --exclude vleue_navigator \
-            --exclude polyanya \
-            --exclude bevy_mod_openxr \
-            --exclude bevy_mod_xr \
-            --exclude bevy_xr_utils \
             -- -D warnings \
             -A clippy::too_many_arguments \
             -A clippy::type_complexity

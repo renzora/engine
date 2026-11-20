@@ -69,5 +69,9 @@ pub fn default_actions() -> Vec<InputAction> {
                 InputBinding::GamepadButton("LeftTrigger2".into()),
             ],
         ),
+        // Driving a vehicle with a gamepad: the triggers. The keyboard drives
+        // with `move` (W and S), which a vehicle reads as well.
+        InputAction::button("accelerate", vec![InputBinding::GamepadButton("RightTrigger2".into())]),
+        InputAction::button("brake", vec![InputBinding::GamepadButton("LeftTrigger2".into())]),
     ]
 }

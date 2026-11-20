@@ -1,81 +1,186 @@
-//! The Sculpt tab: the 17-brush tool grid, the per-brush Tool Settings
-//! (Flatten / Noise / Terrace / Stamp), Brush Settings and Heightmap Import.
+//! The Sculpt mode: the brushes in two labelled groups, one card with only the
+//! chosen brush's own settings, and one Brush card (size in metres, falloff
+//! curve, shape) that every sculpt brush shares.
+//!
+//! The per-brush card is built once with every setting any brush has, and each
+//! row shows only while the chosen brush reads it ([`tool_settings`]). The
+//! table is the contract: a row appears exactly when the brush code in
+//! `renzora_terrain::sculpt` reads the field behind it, so nothing on screen is
+//! a control that does nothing. Sculpt brushes have no slope or height mask in
+//! the brush code, so the Brush card has none (Paint does).
 
 use bevy::prelude::*;
 
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text_color};
-use renzora_ember::theme::*;
-use renzora_ember::widgets::collapsible;
 use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text};
+use renzora_ember::reactive::Rx;
+use renzora_ember::theme::*;
 use renzora_ember::UiInteraction;
 
 use renzora_terrain::data::{
-    BrushFalloffType, BrushShape, FlattenMode, NoiseMode, StampBlendMode, StampBrushData,
-    TerrainBrushType, TerrainSettings,
+    BrushShape, FlattenMode, NoiseMode, StampBlendMode, StampBrushData, TerrainBrushType, TerrainData, TerrainSettings,
 };
 
+use super::falloff::falloff_card_rows;
 use super::widgets::{
-    caption, enum_combo, falloff_type_button, field_row, labelled_drag, labelled_slider,
-    section_col, shape_button, wide_button,
+    button, button_parts, card, column, dropdown_row, group_label, hint, live_text, num_field, num_row, row,
+    segmented_row, unit,
 };
-use super::{
-    brush_type, set_settings, FlattenModeCombo, HeightmapExportBtn, HeightmapImportBtn,
-    NoiseModeCombo, SculptToolBtn, ShapeTarget, StampBlendCombo, StampLoadBtn, StampPresetCombo,
-};
+use super::{brush_type, set_settings, HeightPickBtn, SculptToolBtn, StampLoadBtn, StampPresetCombo};
+use crate::systems::HeightPick;
 
-const SCULPT_TOOLS: &[(TerrainBrushType, &str, &str)] = &[
+/// The Shape group: brushes that move ground into a form you choose.
+pub(crate) const SHAPE_TOOLS: &[(TerrainBrushType, &str, &str)] = &[
     (TerrainBrushType::Sculpt, "mountains", "Sculpt"),
-    (TerrainBrushType::Smooth, "waves", "Smooth"),
+    (TerrainBrushType::Raise, "arrow-up", "Raise"),
+    (TerrainBrushType::Lower, "arrow-down", "Lower"),
     (TerrainBrushType::Flatten, "equals", "Flatten"),
-    (TerrainBrushType::Ramp, "arrow-fat-line-up", "Ramp"),
-    (TerrainBrushType::Erosion, "tree", "Erosion"),
-    (TerrainBrushType::Hydro, "drop", "Hydro"),
-    (TerrainBrushType::Noise, "waveform", "Noise"),
-    (TerrainBrushType::Terrace, "stairs", "Terrace"),
-    (TerrainBrushType::Pinch, "arrows-in-cardinal", "Pinch"),
+    (TerrainBrushType::SetHeight, "ruler", "Set H"),
+    (TerrainBrushType::Ramp, "arrow-up-right", "Ramp"),
+    (TerrainBrushType::Smooth, "waves", "Smooth"),
     (TerrainBrushType::Relax, "activity", "Relax"),
-    (TerrainBrushType::Retop, "graph", "Retop"),
-    (TerrainBrushType::Cliff, "chart-bar", "Cliff"),
-    (TerrainBrushType::Raise, "arrows-out-cardinal", "Raise"),
-    (TerrainBrushType::Lower, "arrows-out-cardinal", "Lower"),
-    (TerrainBrushType::SetHeight, "equals", "Set H"),
-    (TerrainBrushType::Erase, "eraser", "Erase"),
+    (TerrainBrushType::Pinch, "arrows-in-cardinal", "Pinch"),
     (TerrainBrushType::Stamp, "stamp", "Stamp"),
+    (TerrainBrushType::Erase, "eraser", "Erase"),
+    (TerrainBrushType::Retop, "graph", "Retop"),
 ];
 
-pub(super) fn sculpt_content(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let root = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(8.0),
-            ..default()
-        })
-        .id();
+/// The Weather and detail group: brushes that add what nature would.
+pub(crate) const DETAIL_TOOLS: &[(TerrainBrushType, &str, &str)] = &[
+    (TerrainBrushType::Noise, "waveform", "Noise"),
+    (TerrainBrushType::Erosion, "wind", "Erode"),
+    (TerrainBrushType::Hydro, "cloud-rain", "Rain"),
+    (TerrainBrushType::Terrace, "stairs", "Terrace"),
+    (TerrainBrushType::Cliff, "chart-bar", "Cliff"),
+];
 
-    // Tool grid (4 columns).
-    let grid = sculpt_tool_grid(commands, fonts);
+/// One setting on the per-brush card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ToolSetting {
+    Strength,
+    /// Flatten's Both / Raise / Lower.
+    Affects,
+    /// Set Height's target, in metres, with Pick from ground.
+    TargetHeight,
+    NoiseMode,
+    NoiseScale,
+    NoiseDetail,
+    NoiseRoughness,
+    NoiseLacunarity,
+    NoiseSeed,
+    /// Only for the noise modes that read it; see [`NoiseMode::uses_warp`].
+    NoiseWarp,
+    TerraceStep,
+    TerraceSharpness,
+    StampShape,
+    StampBlend,
+    StampRotation,
+    StampHeight,
+}
 
-    // Tool Settings section.
-    let (tool_sec, tool_body) = collapsible(commands, fonts, None, "Tool Settings", true);
-    tool_settings(commands, fonts, tool_body);
+/// What the chosen brush reads, in the order the card lists it. Mirrors the
+/// fields `renzora_terrain::sculpt` reads per brush.
+pub(crate) fn tool_settings(brush: TerrainBrushType) -> &'static [ToolSetting] {
+    use ToolSetting::*;
+    match brush {
+        TerrainBrushType::Flatten => &[Strength, Affects],
+        TerrainBrushType::SetHeight => &[Strength, TargetHeight],
+        TerrainBrushType::Noise => &[
+            Strength,
+            NoiseMode,
+            NoiseScale,
+            NoiseDetail,
+            NoiseRoughness,
+            NoiseLacunarity,
+            NoiseWarp,
+            NoiseSeed,
+        ],
+        TerrainBrushType::Terrace => &[Strength, TerraceStep, TerraceSharpness],
+        TerrainBrushType::Stamp => &[StampShape, StampBlend, Strength, StampRotation, StampHeight],
+        TerrainBrushType::Raise
+        | TerrainBrushType::Lower
+        | TerrainBrushType::Sculpt
+        | TerrainBrushType::Smooth
+        | TerrainBrushType::Relax
+        | TerrainBrushType::Ramp
+        | TerrainBrushType::Pinch
+        | TerrainBrushType::Erase
+        | TerrainBrushType::Retop
+        | TerrainBrushType::Erosion
+        | TerrainBrushType::Hydro
+        | TerrainBrushType::Cliff => &[Strength],
+    }
+}
 
-    // Brush Settings section.
-    let (brush_sec, brush_body) = collapsible(commands, fonts, None, "Brush Settings", true);
-    brush_settings(commands, fonts, brush_body);
+/// One sentence on what the brush does, and what Shift does to it.
+pub(crate) fn tool_hint(brush: TerrainBrushType) -> &'static str {
+    match brush {
+        TerrainBrushType::Sculpt => "Raises the ground. Hold Shift to lower it.",
+        TerrainBrushType::Raise => "Raises the ground under the brush.",
+        TerrainBrushType::Lower => "Lowers the ground under the brush.",
+        TerrainBrushType::Flatten => "Levels the ground to the height where the stroke starts.",
+        TerrainBrushType::SetHeight => "Brings the ground to the target height.",
+        TerrainBrushType::Ramp => "Slopes from the stroke's start height out to the brush edge. Shift reverses it.",
+        TerrainBrushType::Smooth => "Rounds off bumps and ridges.",
+        TerrainBrushType::Relax => "Removes small bumps without shrinking the hills and valleys around them.",
+        TerrainBrushType::Pinch => "Sharpens ridges and creases. Shift softens them.",
+        TerrainBrushType::Stamp => "Click to stamp the shape once. The brush size sets its footprint.",
+        TerrainBrushType::Erase => "Pulls the ground back toward the level a new terrain starts at.",
+        TerrainBrushType::Retop => "A strong, wide smooth for reshaping a whole area.",
+        TerrainBrushType::Noise => "Adds natural variation. Shift smooths instead.",
+        TerrainBrushType::Erosion => "Weathers slopes so loose ground slides downhill.",
+        TerrainBrushType::Hydro => "Rain that carves gullies and carries sediment downhill.",
+        TerrainBrushType::Terrace => "Cuts the slope into level steps.",
+        TerrainBrushType::Cliff => "Builds rock ledges and outcrops. Shift smooths them.",
+    }
+}
 
-    // Heightmap Import section.
-    let (hm_sec, hm_body) = collapsible(commands, fonts, None, "Heightmap Import", false);
-    heightmap_section(commands, fonts, hm_body);
+/// The brush's name as the card heading shows it.
+pub(crate) fn tool_name(brush: TerrainBrushType) -> &'static str {
+    SHAPE_TOOLS
+        .iter()
+        .chain(DETAIL_TOOLS)
+        .find(|(b, _, _)| *b == brush)
+        .map(|(_, _, l)| *l)
+        .filter(|l| *l != "Set H")
+        .unwrap_or(brush.display_name())
+}
 
-    commands
-        .entity(root)
-        .add_children(&[grid, tool_sec, brush_sec, hm_sec]);
+fn shows(w: &Rx, setting: ToolSetting) -> bool {
+    tool_settings(brush_type(w)).contains(&setting)
+}
+
+fn ts<T: Default>(w: &Rx, f: impl Fn(&TerrainSettings) -> T) -> T {
+    w.get_resource::<TerrainSettings>().map(f).unwrap_or_default()
+}
+
+pub(super) fn sculpt_content(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity) -> Entity {
+    let root = column(commands, 10.0);
+
+    let shape = tool_group(commands, fonts, "Shape", "scroll wheel resizes", SHAPE_TOOLS);
+    let detail = tool_group(commands, fonts, "Weather and detail", "", DETAIL_TOOLS);
+    let tool = tool_card(commands, fonts, terrain);
+
+    let brush_col = column(commands, 6.0);
+    let brush_label = group_label(commands, fonts, "Brush", "shared by every sculpt brush");
+    let brush = brush_card(commands, fonts);
+    commands.entity(brush_col).add_children(&[brush_label, brush]);
+
+    commands.entity(root).add_children(&[shape, detail, tool, brush_col]);
     root
 }
 
-fn sculpt_tool_grid(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn tool_group(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    title: &str,
+    note: &str,
+    tools: &[(TerrainBrushType, &str, &str)],
+) -> Entity {
+    let col = column(commands, 6.0);
+    let label = group_label(commands, fonts, title, note);
     let grid = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -86,355 +191,298 @@ fn sculpt_tool_grid(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let mut kids = Vec::with_capacity(SCULPT_TOOLS.len());
-    for &(bt, icon, label) in SCULPT_TOOLS {
-        kids.push(sculpt_tool_button(commands, fonts, bt, icon, label));
-    }
+    let kids: Vec<Entity> = tools.iter().map(|&(b, icon, label)| tool_button(commands, fonts, b, icon, label)).collect();
     commands.entity(grid).add_children(&kids);
-    grid
+    commands.entity(col).add_children(&[label, grid]);
+    col
 }
 
-fn sculpt_tool_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    brush: TerrainBrushType,
-    icon: &str,
-    label: &str,
-) -> Entity {
-    // 4 per row: each cell is ~23% wide so 4 fit with the 4px gaps.
+/// A compact icon over a label, six to a row.
+fn tool_button(commands: &mut Commands, fonts: &EmberFonts, brush: TerrainBrushType, icon: &str, label: &str) -> Entity {
     let btn = commands
         .spawn((
             Node {
-                width: Val::Percent(23.0),
+                // Six to a row: 6 x 15.4% plus five 4 px gaps fills the width.
+                width: Val::Percent(15.4),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                row_gap: Val::Px(2.0),
+                row_gap: Val::Px(3.0),
                 padding: UiRect::vertical(Val::Px(6.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(rgb(card_bg())),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(Color::NONE),
             UiInteraction::default(),
             HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             SculptToolBtn { brush },
             Name::new(format!("terrain-tool:{label}")),
         ))
         .id();
-    bind_bg(commands, btn, move |w| {
-        if brush_type(w) == brush {
-            rgb(accent())
-        } else if matches!(
-            w.get::<UiInteraction>(btn),
-            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
-        ) {
-            rgb(popup_bg())
-        } else {
-            rgb(card_bg())
-        }
-    });
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 20.0);
-    bind_text_color(commands, ic, move |w| {
-        if brush_type(w) == brush {
-            Color::WHITE
-        } else {
-            rgb(text_primary())
-        }
-    });
+    bind_bg(commands, btn, move |w| super::widgets::choice_bg(w, btn, brush_type(w) == brush));
+    super::widgets::bind_choice_border(commands, btn, move |w| brush_type(w) == brush);
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 16.0);
+    commands.entity(ic).insert(PASS_THROUGH);
+    super::widgets::bind_choice_text(commands, ic, move |w| brush_type(w) == brush);
     let lbl = commands
         .spawn((
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            PASS_THROUGH,
         ))
         .id();
-    bind_text_color(commands, lbl, move |w| {
-        if brush_type(w) == brush {
-            rgb(text_primary())
-        } else {
-            rgb(text_muted())
-        }
-    });
+    super::widgets::bind_choice_text(commands, lbl, move |w| brush_type(w) == brush);
     commands.entity(btn).add_children(&[ic, lbl]);
     btn
 }
 
-// ── Tool Settings ────────────────────────────────────────────────────────────
+// ── The chosen brush's card ──────────────────────────────────────────────────
 
-fn tool_settings(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
-    // Strength (always present).
-    let strength = labelled_slider(
-        commands,
-        fonts,
-        "Strength",
-        0.01,
-        1.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.brush_strength).unwrap_or(0.5),
-        |w, v| set_settings(w, |s| s.brush_strength = *v),
-    );
-    commands.entity(body).add_child(strength);
+fn tool_card(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity) -> Entity {
+    let c = card(commands);
+    let heading = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            justify_content: JustifyContent::SpaceBetween,
+            align_items: AlignItems::Baseline,
+            ..default()
+        })
+        .id();
+    let name = live_text(commands, fonts, 12.5, text_primary(), |w| tool_name(brush_type(w)).to_string());
+    let kind = live_text(commands, fonts, 10.5, placeholder(), |_| "brush".to_string());
+    commands.entity(heading).add_children(&[name, kind]);
+    let about = live_text(commands, fonts, 10.5, placeholder(), |w| tool_hint(brush_type(w)).to_string());
 
-    // Flatten-specific (shown only for the Flatten brush).
-    let flatten = flatten_settings(commands, fonts);
-    bind_display(commands, flatten, |w| {
-        brush_type(w) == TerrainBrushType::Flatten
-    });
-    commands.entity(body).add_child(flatten);
-
-    // Noise-specific.
-    let noise = noise_settings(commands, fonts);
-    bind_display(commands, noise, |w| brush_type(w) == TerrainBrushType::Noise);
-    commands.entity(body).add_child(noise);
-
-    // Terrace-specific.
-    let terrace = terrace_settings(commands, fonts);
-    bind_display(commands, terrace, |w| {
-        brush_type(w) == TerrainBrushType::Terrace
-    });
-    commands.entity(body).add_child(terrace);
-
-    // Stamp-specific (the heightmap-stamp brush: procedural preset or PNG).
-    let stamp = stamp_settings(commands, fonts);
-    bind_display(commands, stamp, |w| brush_type(w) == TerrainBrushType::Stamp);
-    commands.entity(body).add_child(stamp);
-}
-
-fn flatten_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let col = section_col(commands);
-
-    // Mode combo.
-    let mode_row = field_row(commands, fonts, "Mode");
-    let combo = enum_combo(commands, fonts, FlattenModeCombo, |w| {
-        flatten_mode_label(w.get_resource::<TerrainSettings>().map(|s| s.flatten_mode).unwrap_or_default())
-    });
-    commands.entity(mode_row).add_child(combo);
-
-    // Target Height drag.
-    let target = labelled_drag(
-        commands,
-        fonts,
-        "Target Height",
-        0.0,
-        1.0,
-        0.005,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.target_height).unwrap_or(0.5),
-        |w, v| set_settings(w, |s| s.target_height = *v),
-    );
-
-    commands.entity(col).add_children(&[mode_row, target]);
-    col
-}
-
-pub(super) fn flatten_mode_label(m: FlattenMode) -> String {
-    match m {
-        FlattenMode::Both => "Both",
-        FlattenMode::Raise => "Raise",
-        FlattenMode::Lower => "Lower",
+    let mut rows = vec![heading, about];
+    for setting in [
+        ToolSetting::StampShape,
+        ToolSetting::StampBlend,
+        ToolSetting::Strength,
+        ToolSetting::Affects,
+        ToolSetting::TargetHeight,
+        ToolSetting::NoiseMode,
+        ToolSetting::NoiseScale,
+        ToolSetting::NoiseDetail,
+        ToolSetting::NoiseRoughness,
+        ToolSetting::NoiseLacunarity,
+        ToolSetting::NoiseWarp,
+        ToolSetting::NoiseSeed,
+        ToolSetting::TerraceStep,
+        ToolSetting::TerraceSharpness,
+        ToolSetting::StampRotation,
+        ToolSetting::StampHeight,
+    ] {
+        let r = setting_row(commands, fonts, setting, terrain);
+        bind_display(commands, r, move |w| {
+            shows(w, setting) && (setting != ToolSetting::NoiseWarp || ts(w, |s| s.noise_mode).uses_warp())
+        });
+        rows.push(r);
     }
-    .to_string()
+    commands.entity(c).add_children(&rows);
+    c
 }
 
-fn noise_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let col = section_col(commands);
-
-    let title = caption(commands, fonts, "Noise", text_primary());
-
-    // Mode combo.
-    let mode_row = field_row(commands, fonts, "Mode");
-    let combo = enum_combo(commands, fonts, NoiseModeCombo, |w| {
-        w.get_resource::<TerrainSettings>()
-            .map(|s| s.noise_mode.display_name().to_string())
-            .unwrap_or_default()
-    });
-    commands.entity(mode_row).add_child(combo);
-
-    let scale = labelled_drag(
-        commands, fonts, "Scale", 1.0, 500.0, 0.5,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.noise_scale).unwrap_or(30.0),
-        |w, v| set_settings(w, |s| s.noise_scale = *v),
-    );
-    let octaves = labelled_drag(
-        commands, fonts, "Octaves", 1.0, 8.0, 0.1,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.noise_octaves as f32).unwrap_or(5.0),
-        |w, v| set_settings(w, |s| s.noise_octaves = v.round().clamp(1.0, 8.0) as u32),
-    );
-    let lac = labelled_drag(
-        commands, fonts, "Lacunarity", 1.0, 4.0, 0.05,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.noise_lacunarity).unwrap_or(2.0),
-        |w, v| set_settings(w, |s| s.noise_lacunarity = *v),
-    );
-    let pers = labelled_drag(
-        commands, fonts, "Persistence", 0.1, 0.9, 0.01,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.noise_persistence).unwrap_or(0.5),
-        |w, v| set_settings(w, |s| s.noise_persistence = *v),
-    );
-    let seed = labelled_drag(
-        commands, fonts, "Seed", 0.0, 0.0, 1.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.noise_seed as f32).unwrap_or(42.0),
-        |w, v| set_settings(w, |s| s.noise_seed = v.max(0.0).round() as u32),
-    );
-
-    // Warp (only meaningful for the Warped mode).
-    let warp = labelled_slider(
-        commands, fonts, "Warp", 0.0, 5.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.warp_strength).unwrap_or(0.5),
-        |w, v| set_settings(w, |s| s.warp_strength = *v),
-    );
-    bind_display(commands, warp, |w| {
-        w.get_resource::<TerrainSettings>().map(|s| s.noise_mode).unwrap_or_default() == NoiseMode::Warped
-    });
-
-    commands
-        .entity(col)
-        .add_children(&[title, mode_row, scale, octaves, lac, pers, seed, warp]);
-    col
+fn setting_row(commands: &mut Commands, fonts: &EmberFonts, setting: ToolSetting, terrain: Entity) -> Entity {
+    match setting {
+        ToolSetting::Strength => num_row(commands, fonts, "Strength", "%", 1.0, 100.0, 0.5,
+            |w| ts(w, |s| s.brush_strength) * 100.0,
+            |w, v| set_settings(w, |s| s.brush_strength = (*v / 100.0).clamp(0.01, 1.0)),
+        ),
+        ToolSetting::Affects => segmented_row(commands, fonts, "Affects", &["Both", "Raise", "Lower"],
+            |w| match ts(w, |s| s.flatten_mode) {
+                FlattenMode::Both => 0,
+                FlattenMode::Raise => 1,
+                FlattenMode::Lower => 2,
+            },
+            |w, i| set_settings(w, |s| s.flatten_mode = [FlattenMode::Both, FlattenMode::Raise, FlattenMode::Lower][(*i).min(2)]),
+        ),
+        ToolSetting::TargetHeight => target_height_row(commands, fonts, terrain),
+        ToolSetting::NoiseMode => {
+            let names: Vec<&str> = NoiseMode::all().iter().map(|m| m.display_name()).collect();
+            dropdown_row(commands, fonts, "Pattern", &names,
+                |w| { let m = ts(w, |s| s.noise_mode); NoiseMode::all().iter().position(|x| *x == m).unwrap_or(0) },
+                |w, i| set_settings(w, |s| s.noise_mode = NoiseMode::all().get(*i).copied().unwrap_or_default()),
+            )
+        }
+        ToolSetting::NoiseScale => num_row(commands, fonts, "Feature size", "m", 1.0, 500.0, 0.5,
+            |w| ts(w, |s| s.noise_scale), |w, v| set_settings(w, |s| s.noise_scale = *v)),
+        ToolSetting::NoiseDetail => {
+            let (r, content) = row(commands, fonts, "Detail");
+            let f = num_field(commands, fonts, "", 1.0, 8.0, 0.05, Some(1.0),
+                |w| ts(w, |s| s.noise_octaves as f32),
+                |w, v| set_settings(w, |s| s.noise_octaves = v.round().clamp(1.0, 8.0) as u32));
+            let u = unit(commands, fonts, "layers");
+            commands.entity(content).add_children(&[f, u]);
+            r
+        }
+        ToolSetting::NoiseRoughness => num_row(commands, fonts, "Roughness", "%", 10.0, 90.0, 0.5,
+            |w| ts(w, |s| s.noise_persistence) * 100.0, |w, v| set_settings(w, |s| s.noise_persistence = *v / 100.0)),
+        ToolSetting::NoiseLacunarity => num_row(commands, fonts, "Lacunarity", "x", 1.0, 4.0, 0.02,
+            |w| ts(w, |s| s.noise_lacunarity), |w, v| set_settings(w, |s| s.noise_lacunarity = *v)),
+        ToolSetting::NoiseWarp => num_row(commands, fonts, "Warp", "", 0.0, 5.0, 0.02,
+            |w| ts(w, |s| s.warp_strength), |w, v| set_settings(w, |s| s.warp_strength = *v)),
+        ToolSetting::NoiseSeed => {
+            let (r, content) = row(commands, fonts, "Seed");
+            let f = num_field(commands, fonts, "", 0.0, 0.0, 1.0, Some(1.0),
+                |w| ts(w, |s| s.noise_seed as f32),
+                |w, v| set_settings(w, |s| s.noise_seed = v.max(0.0).round() as u32));
+            commands.entity(content).add_child(f);
+            r
+        }
+        ToolSetting::TerraceStep => num_row(commands, fonts, "Step height", "m", 0.25, 100.0, 0.1,
+            |w| ts(w, |s| s.terrace_height), |w, v| set_settings(w, |s| s.terrace_height = *v)),
+        ToolSetting::TerraceSharpness => num_row(commands, fonts, "Sharpness", "%", 0.0, 100.0, 0.5,
+            |w| ts(w, |s| s.terrace_sharpness) * 100.0, |w, v| set_settings(w, |s| s.terrace_sharpness = *v / 100.0)),
+        ToolSetting::StampShape => {
+            let (r, content) = row(commands, fonts, "Stamp");
+            let (pick, label) = button_parts(commands, fonts, Some("caret-down"), "Choose", false);
+            commands.entity(pick).insert(StampPresetCombo);
+            bind_text(commands, label, |w| {
+                w.get_resource::<StampBrushData>().filter(|s| s.is_loaded()).map(|s| s.name.clone()).unwrap_or_else(|| "Choose".into())
+            });
+            let load = button(commands, fonts, Some("image"), "Load PNG", false);
+            commands.entity(load).insert(StampLoadBtn);
+            commands.entity(content).add_children(&[pick, load]);
+            r
+        }
+        ToolSetting::StampBlend => {
+            let names: Vec<&str> = StampBlendMode::all().iter().map(|m| m.display_name()).collect();
+            dropdown_row(commands, fonts, "Blend", &names,
+                |w| { let m = ts(w, |s| s.stamp_blend_mode); StampBlendMode::all().iter().position(|x| *x == m).unwrap_or(0) },
+                |w, i| set_settings(w, |s| s.stamp_blend_mode = StampBlendMode::all().get(*i).copied().unwrap_or_default()),
+            )
+        }
+        // Stored in radians (apply_stamp feeds it to cos/sin); shown in degrees.
+        ToolSetting::StampRotation => num_row(commands, fonts, "Rotation", "°", 0.0, 360.0, 1.0,
+            |w| ts(w, |s| s.stamp_rotation.to_degrees()), |w, v| set_settings(w, |s| s.stamp_rotation = v.to_radians())),
+        ToolSetting::StampHeight => num_row(commands, fonts, "Height", "%", 0.0, 200.0, 1.0,
+            |w| ts(w, |s| s.stamp_height_scale) * 100.0, |w, v| set_settings(w, |s| s.stamp_height_scale = *v / 100.0)),
+    }
 }
 
-fn terrace_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let col = section_col(commands);
-    let title = caption(commands, fonts, "Terrace", text_primary());
-    let steps = labelled_drag(
-        commands, fonts, "Steps", 2.0, 32.0, 0.1,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.terrace_steps as f32).unwrap_or(8.0),
-        |w, v| set_settings(w, |s| s.terrace_steps = v.round().clamp(2.0, 32.0) as u32),
-    );
-    let sharp = labelled_slider(
-        commands, fonts, "Sharpness", 0.0, 1.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.terrace_sharpness).unwrap_or(0.8),
-        |w, v| set_settings(w, |s| s.terrace_sharpness = *v),
-    );
-    commands.entity(col).add_children(&[title, steps, sharp]);
-    col
-}
-
-fn stamp_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let col = section_col(commands);
-    let title = caption(commands, fonts, "Stamp", text_primary());
-
-    // Source: procedural preset combo (shows the loaded stamp's name, which
-    // is also the PNG filename after a Load) + a Load-PNG button.
-    let src_row = field_row(commands, fonts, "Shape");
-    let preset = enum_combo(commands, fonts, StampPresetCombo, |w| {
-        w.get_resource::<StampBrushData>()
-            .filter(|s| s.is_loaded())
-            .map(|s| s.name.clone())
-            .unwrap_or_else(|| "Choose...".to_string())
-    });
-    commands.entity(src_row).add_child(preset);
-
-    let load = wide_button(commands, fonts, Some("image"), "Load PNG...", text_muted());
-    commands.entity(load).insert(StampLoadBtn);
-
-    // Blend mode.
-    let blend_row = field_row(commands, fonts, "Blend");
-    let blend = enum_combo(commands, fonts, StampBlendCombo, |w| {
-        stamp_blend_label(
-            w.get_resource::<TerrainSettings>()
-                .map(|s| s.stamp_blend_mode)
-                .unwrap_or_default(),
-        )
-    });
-    commands.entity(blend_row).add_child(blend);
-
-    // Rotation is stored in radians (apply_stamp feeds it to cos/sin);
-    // the field speaks degrees.
-    let rotation = labelled_drag(
-        commands, fonts, "Rotation", 0.0, 360.0, 1.0,
-        |w| {
-            w.get_resource::<TerrainSettings>()
-                .map(|s| s.stamp_rotation.to_degrees())
-                .unwrap_or(0.0)
+/// Set Height's target in the terrain's own metres. The setting is stored as a
+/// fraction of the terrain's height range, which is what the brush reads, but
+/// a fraction is not a height anyone can aim for.
+fn target_height_row(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity) -> Entity {
+    let (r, content) = row(commands, fonts, "Target");
+    let range = move |w: &Rx| w.get::<TerrainData>(terrain).map(|t| (t.min_height, t.max_height)).unwrap_or((0.0, 1.0));
+    let f = num_field(commands, fonts, "", 0.0, 0.0, 0.1, None,
+        move |w| { let (lo, hi) = range(w); lo + ts(w, |s| s.target_height) * (hi - lo) },
+        move |w, v| {
+            let (lo, hi) = w.get::<TerrainData>(terrain).map(|t| (t.min_height, t.max_height)).unwrap_or((0.0, 1.0));
+            let t = ((*v - lo) / (hi - lo).max(1e-3)).clamp(0.0, 1.0);
+            set_settings(w, |s| s.target_height = t);
         },
-        |w, v| set_settings(w, |s| s.stamp_rotation = v.to_radians()),
     );
-    let height_scale = labelled_slider(
-        commands, fonts, "Height Scale", 0.0, 2.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.stamp_height_scale).unwrap_or(1.0),
-        |w, v| set_settings(w, |s| s.stamp_height_scale = *v),
-    );
-
-    let hint = commands
-        .spawn((
-            Text::new("Click to stamp once. Brush size sets the footprint."),
-            ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-
-    commands
-        .entity(col)
-        .add_children(&[title, src_row, load, blend_row, rotation, height_scale, hint]);
-    col
+    let u = unit(commands, fonts, "m");
+    let (pick, label) = button_parts(commands, fonts, Some("eyedropper"), "Pick", false);
+    commands.entity(pick).insert(HeightPickBtn);
+    bind_text(commands, label, |w| {
+        if w.get_resource::<HeightPick>().is_some_and(|p| p.armed) { "Click ground".into() } else { "Pick".into() }
+    });
+    commands.entity(content).add_children(&[f, u, pick]);
+    r
 }
 
-pub(super) fn stamp_blend_label(m: StampBlendMode) -> String {
-    match m {
-        StampBlendMode::Add => "Add",
-        StampBlendMode::Subtract => "Subtract",
-        StampBlendMode::Replace => "Replace",
-        StampBlendMode::Max => "Max",
-        StampBlendMode::Min => "Min",
-    }
-    .to_string()
+// ── Brush card ───────────────────────────────────────────────────────────────
+
+fn brush_card(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let c = card(commands);
+    let size = num_row(commands, fonts, "Size", "m", 1.0, 200.0, 0.5,
+        |w| ts(w, |s| s.brush_radius), |w, v| set_settings(w, |s| s.brush_radius = *v));
+    let falloff = falloff_card_rows(commands, fonts, super::falloff::FalloffTarget::Sculpt);
+    let shape = segmented_row(commands, fonts, "Shape", &["Circle", "Square", "Diamond"],
+        |w| shape_index(ts(w, |s| s.brush_shape)),
+        |w, i| set_settings(w, |s| s.brush_shape = shape_at(*i)),
+    );
+    let note = hint(commands, fonts, "Size is the brush radius. The scroll wheel over the viewport changes it.");
+    let mut kids = vec![size];
+    kids.extend(falloff);
+    kids.extend([shape, note]);
+    commands.entity(c).add_children(&kids);
+    c
 }
 
-// ── Brush Settings ───────────────────────────────────────────────────────────
-
-fn brush_settings(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
-    let size = labelled_slider(
-        commands, fonts, "Size", 1.0, 200.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.brush_radius).unwrap_or(20.0),
-        |w, v| set_settings(w, |s| s.brush_radius = *v),
-    );
-    let falloff = labelled_slider(
-        commands, fonts, "Falloff", 0.0, 1.0,
-        |w| w.get_resource::<TerrainSettings>().map(|s| s.falloff).unwrap_or(0.7),
-        |w, v| set_settings(w, |s| s.falloff = *v),
-    );
-
-    // Shape buttons (sculpt → TerrainSettings.brush_shape).
-    let shape_row = field_row(commands, fonts, "Shape");
-    for (shape, icon) in [
-        (BrushShape::Circle, "circle"),
-        (BrushShape::Square, "square"),
-        (BrushShape::Diamond, "diamond"),
-    ] {
-        let b = shape_button(commands, fonts, ShapeTarget::Sculpt, shape, icon, "");
-        commands.entity(shape_row).add_child(b);
+pub(super) fn shape_index(s: BrushShape) -> usize {
+    match s {
+        BrushShape::Circle => 0,
+        BrushShape::Square => 1,
+        BrushShape::Diamond => 2,
     }
-
-    // Falloff-type buttons.
-    let ft_row = field_row(commands, fonts, "Falloff Type");
-    for (ft, label) in [
-        (BrushFalloffType::Smooth, "S"),
-        (BrushFalloffType::Linear, "L"),
-        (BrushFalloffType::Spherical, "O"),
-        (BrushFalloffType::Tip, "T"),
-        (BrushFalloffType::Flat, "F"),
-    ] {
-        let b = falloff_type_button(commands, fonts, ft, label);
-        commands.entity(ft_row).add_child(b);
-    }
-
-    commands
-        .entity(body)
-        .add_children(&[size, falloff, shape_row, ft_row]);
 }
 
-// ── Heightmap Import ─────────────────────────────────────────────────────────
+pub(super) fn shape_at(i: usize) -> BrushShape {
+    match i {
+        1 => BrushShape::Square,
+        2 => BrushShape::Diamond,
+        _ => BrushShape::Circle,
+    }
+}
 
-fn heightmap_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
-    let note = commands
-        .spawn((
-            Text::new("Import a heightmap PNG or RAW16 file."),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-            Node { margin: UiRect::bottom(Val::Px(4.0)), ..default() },
-        ))
-        .id();
-    let import = wide_button(commands, fonts, Some("plus"), "Import Heightmap...", text_primary());
-    commands.entity(import).insert(HeightmapImportBtn);
-    let export = wide_button(commands, fonts, None, "Export Heightmap...", text_muted());
-    commands.entity(export).insert(HeightmapExportBtn);
-    commands.entity(body).add_children(&[note, import, export]);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every brush is in exactly one of the two groups: one missing would be a
+    /// brush you cannot pick, one listed twice a button that lies about which
+    /// group it is in.
+    #[test]
+    fn every_brush_is_in_one_group() {
+        for b in TerrainBrushType::all() {
+            let n = SHAPE_TOOLS.iter().chain(DETAIL_TOOLS).filter(|(x, _, _)| x == b).count();
+            assert_eq!(n, 1, "{b:?}");
+        }
+        assert!(SHAPE_TOOLS.len() <= 12 && DETAIL_TOOLS.len() <= 6, "six to a row, two rows at most");
+    }
+
+    #[test]
+    fn every_icon_resolves() {
+        for (_, icon, _) in SHAPE_TOOLS.iter().chain(DETAIL_TOOLS) {
+            assert!(renzora_ember::font::icon_glyph(icon).is_some(), "unknown Phosphor icon {icon:?}");
+        }
+    }
+
+    /// The card shows what the brush code reads and nothing else: Flatten
+    /// takes its target from where the stroke starts, so it has no target
+    /// field; Set Height has one; only Noise shows noise settings.
+    #[test]
+    fn each_brush_shows_only_what_it_reads() {
+        use ToolSetting::*;
+        let flatten = tool_settings(TerrainBrushType::Flatten);
+        assert!(flatten.contains(&Affects) && !flatten.contains(&TargetHeight));
+        assert!(tool_settings(TerrainBrushType::SetHeight).contains(&TargetHeight));
+        assert!(!tool_settings(TerrainBrushType::SetHeight).contains(&Affects));
+        assert!(tool_settings(TerrainBrushType::Terrace).contains(&TerraceStep));
+        assert!(tool_settings(TerrainBrushType::Stamp).contains(&StampShape));
+        for b in TerrainBrushType::all() {
+            let s = tool_settings(*b);
+            assert!(s.contains(&Strength), "{b:?} reads its strength");
+            if *b != TerrainBrushType::Noise {
+                assert!(!s.contains(&NoiseScale), "{b:?} shows noise settings it never reads");
+            }
+            if *b != TerrainBrushType::Stamp {
+                assert!(!s.contains(&StampBlend), "{b:?}");
+            }
+            assert!(!tool_hint(*b).is_empty());
+        }
+    }
+
+    #[test]
+    fn shapes_round_trip_through_their_index() {
+        for s in [BrushShape::Circle, BrushShape::Square, BrushShape::Diamond] {
+            assert_eq!(shape_at(shape_index(s)), s);
+        }
+    }
+
+    #[test]
+    fn set_height_is_named_in_full_on_the_card() {
+        assert_eq!(tool_name(TerrainBrushType::SetHeight), "Set Height");
+        assert_eq!(tool_name(TerrainBrushType::Hydro), "Rain");
+    }
 }

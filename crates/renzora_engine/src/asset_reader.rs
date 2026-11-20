@@ -12,6 +12,7 @@
 use bevy::asset::io::{
     AssetReader, AssetReaderError, AssetSourceBuilder, AssetSourceId, PathStream, Reader, VecReader,
 };
+use bevy::asset::CowArc;
 use bevy::prelude::*;
 use renzora_rpak::RpakArchive;
 use std::path::{Path, PathBuf};
@@ -38,7 +39,17 @@ impl Default for ProjectAssetPath {
 }
 
 impl ProjectAssetPath {
+    /// Point the asset reader at `path`. Nothing is taken when it already
+    /// points there.
+    ///
+    /// The write lock waits for every asset read in flight to let go of the
+    /// read side, and a scene switch touches `CurrentProject` while dozens of
+    /// loads are running: the main thread sat here for 67 ms to store the path
+    /// it already had.
     pub fn set(&self, path: PathBuf) {
+        if self.0.read().is_ok_and(|current| current.as_deref() == Some(path.as_path())) {
+            return;
+        }
         if let Ok(mut lock) = self.0.write() {
             *lock = Some(path);
         }
@@ -191,7 +202,8 @@ impl EmbeddedAssetReader {
 }
 
 impl AssetReader for EmbeddedAssetReader {
-    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read<'a>(&'a self, path: CowArc<'a, Path>) -> Result<impl Reader + 'a, AssetReaderError> {
+        let path: &Path = &path;
         // 1. Absolute paths — used for project assets (drag-and-drop, scene loads, etc.)
         if path.is_absolute() {
             if let Ok(bytes) = std::fs::read(path) {
@@ -242,7 +254,7 @@ impl AssetReader for EmbeddedAssetReader {
         Err(AssetReaderError::NotFound(path.to_path_buf()))
     }
 
-    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read_meta<'a>(&'a self, path: CowArc<'a, Path>) -> Result<impl Reader + 'a, AssetReaderError> {
         Err::<VecReader, _>(AssetReaderError::NotFound(path.to_path_buf()))
     }
 

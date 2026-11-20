@@ -1,0 +1,16 @@
+[package]
+name = "renzora_terrain_graph_editor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_editor_framework = { path = "../../renzora_editor_framework" }
+renzora_ember = { path = "../../renzora_ember" }
+renzora_undo = { path = "../../renzora_undo" }
+renzora_terrain = { path = "../../renzora_terrain" }
+renzora_terrain_graph = { path = ".." }
+
+[lints]
+workspace = true

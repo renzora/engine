@@ -20,7 +20,7 @@ use renzora::core::viewport_types::{SnapSettings, ViewportSettings, ViewportStat
 use renzora_editor_framework::{EditorCamera, EditorLocked, EditorSelection};
 
 use crate::pivot::compute_gizmo_pivot;
-use crate::ray::{translate_cursor_point, viewport_cursor_ray};
+use crate::ray::{translate_cursor_point, viewport_cursor_ray, viewport_ray_at};
 use crate::transform_space;
 use crate::types::{
     gizmo_basis, GizmoAxis, GizmoMesh, GizmoMode, GizmoRoot, GizmoSpace, GizmoState,
@@ -61,6 +61,8 @@ pub(crate) struct DragGeom<'w, 's> {
         crate::BoundsMeshes,
     >,
     children: Query<'w, 's, &'static Children>,
+    /// For taking over a press on an already-selected entity as a move.
+    box_sel: ResMut<'w, crate::types::BoxSelectionState>,
 }
 
 pub(crate) fn gizmo_drag(
@@ -142,11 +144,36 @@ pub(crate) fn gizmo_drag(
     // over a gizmo axis and the press would move the selection instead of the
     // seam (the same overhang that armed the selection box in
     // `entity_pick_system`).
-    if mouse_button.just_pressed(MouseButton::Left)
+    //
+    // Or off a press on an already-selected entity that has moved past the
+    // click threshold (`BoxSelectionState::move_on_drag`, armed by
+    // `entity_pick_system`): the selection then slides along the ground plane
+    // through its pivot, World-aligned whatever the gizmo's space, which is
+    // what dragging an object around a scene means. It is the XZ plane
+    // handle's drag, grabbed where the button went down, so the object does
+    // not jump to catch up with the cursor.
+    let body_move = gizmo_state.active_axis.is_none()
+        && mode == GizmoMode::Translate
+        && geom.box_sel.active
+        && geom.box_sel.move_on_drag
+        && mouse_button.pressed(MouseButton::Left)
+        && window_q
+            .single()
+            .ok()
+            .and_then(|w| w.cursor_position())
+            .is_some_and(|c| c.distance(geom.box_sel.start_pos) > 5.0);
+    let handle_press = mouse_button.just_pressed(MouseButton::Left)
         && gizmo_state.active_axis.is_none()
-        && !resize_in_flight(&resizing)
+        && !resize_in_flight(&resizing);
+    let start_axis = if handle_press {
+        gizmo_state.hovered_axis
+    } else if body_move {
+        Some(GizmoAxis::XZ)
+    } else {
+        None
+    };
     {
-        if let Some(axis) = gizmo_state.hovered_axis {
+        if let Some(axis) = start_axis {
             let mut starts = Vec::new();
             let mut parents = Vec::new();
             for &entity in &selected_entities {
@@ -200,17 +227,28 @@ pub(crate) fn gizmo_drag(
                 t.rotation = Quat::IDENTITY;
                 t.scale = Vec3::ONE;
             }
+            if body_move {
+                gizmo_state.drag_basis = Quat::IDENTITY;
+                // The gesture is a move now, not a box.
+                geom.box_sel.active = false;
+                geom.box_sel.pending_pick = None;
+            }
             // Reference point under the cursor on the dragged axis/plane, so
             // translate can keep it pinned to the pointer (cursor-locked drag).
+            // A move grabs where the button went down, a few pixels back.
             let pivot0 = gizmo_state.drag_pivot;
             let basis = gizmo_state.drag_basis;
+            let grab_at = body_move.then_some(geom.box_sel.start_pos);
             gizmo_state.drag_grab = camera_q
                 .single()
                 .ok()
                 .zip(window_q.single().ok())
                 .and_then(|((cam_gt, projection), window)| {
                     let vp = viewport.as_ref()?;
-                    let ray = viewport_cursor_ray(window, vp, cam_gt, projection)?;
+                    let ray = match grab_at {
+                        Some(at) => viewport_ray_at(at, vp, cam_gt, projection)?,
+                        None => viewport_cursor_ray(window, vp, cam_gt, projection)?,
+                    };
                     translate_cursor_point(&ray, pivot0, basis, axis)
                 })
                 .unwrap_or(pivot0);

@@ -20,6 +20,8 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 # so it is named directly; the version matches what `bevy_asset` resolves, and
 # cargo unifies the two into one compilation rather than forking it.
 async-channel = "2"
+# Reading the companion's listing of the project (see `index`).
+serde_json = "1"
 
 # `FileWatcher` lives behind Bevy's `file_watcher` feature, which the root
 # manifest turns on for every non-wasm target. Repeated here so that building

@@ -20,12 +20,14 @@ pub mod asset_bytes; // the project/VFS byte loader for non-AssetServer assets
 pub mod auth; // sign-in state mirrored for the title bar
 pub mod blockout_grid; // the generated "no material yet" grid textures
 pub mod bone_style; // how a skeleton is drawn, everywhere one is (not flattened)
+pub mod companion; // the queue editor crates hand companion jobs to
 pub mod components; // shared ECS components + entity-tag markers
 pub mod editor_events; // one-way events the editor fires at other crates
 pub mod entity_id; // canonical unique snake_case entity ids (Name)
 pub mod graph; // node-graph vocabulary (material / particle)
 pub mod image_formats; // which extensions load as an Image (raster + SVG)
 pub mod input_actions; // named actions + the character controller queue
+pub mod load_work; // what a freshly loaded scene still has to build
 pub mod environment_suppressed; // shading modes that show no sky
 pub mod material_nodes; // the material node catalogue, as data
 pub mod material_ref; // pointing an entity at a .material file
@@ -34,6 +36,7 @@ pub mod plugin_inventory; // what plugins were found on disk, and their state
 pub mod plugin_updates; // what the marketplace publishes for those plugins
 pub mod project_config;
 pub mod project_files; // what changed on disk under the open project
+pub mod project_index; // every file in the open project, walked once and kept current
 pub mod recoverable; // panics the engine catches, which the crash hook must not report
 pub mod settings_file; // project.toml model + editor preferences
 pub mod script_bridge; // the inboxes scripting drains each frame
@@ -47,12 +50,14 @@ pub use animation::*;
 pub use asset_bytes::*;
 pub use auth::*;
 pub use blockout_grid::*;
+pub use companion::*;
 pub use components::*;
 pub use editor_events::*;
 pub use entity_id::*;
 pub use graph::*;
 pub use image_formats::*;
 pub use input_actions::*;
+pub use load_work::*;
 pub use environment_suppressed::*;
 pub use material_nodes::*;
 pub use material_ref::*;
@@ -61,6 +66,7 @@ pub use plugin_inventory::*;
 pub use plugin_updates::*;
 pub use project_config::*;
 pub use project_files::*;
+pub use project_index::*;
 pub use script_bridge::*;
 pub use session::*;
 pub use shapes::*;

@@ -256,9 +256,31 @@ pub(crate) fn register(app: &mut App) {
                 preview_input,
                 apply_orbit,
             )
-                .chain(),
+                .chain()
+                // The preview has work only while it holds a model (`path`,
+                // which also keeps the camera on) or while the window that
+                // shows it is up. `on_staged_changed` clears `path` when the
+                // last staged model goes, and on that frame this still runs,
+                // so `sync_camera_active` switches the camera off before the
+                // group stops. The orbit ease has long converged by then, and
+                // a new model reframes with a snap.
+                .run_if(
+                    any_with_component::<crate::window::ImportRoot>
+                        .or_else(preview_loaded)
+                        .or_else(preview_camera_active),
+                ),
         )
         .add_observer(on_scene_ready);
+}
+
+/// Run condition: is a staged model loaded into the preview?
+fn preview_loaded(preview: Res<ImportPreview>) -> bool {
+    preview.path.is_some()
+}
+
+/// Run condition: is the preview camera still rendering?
+fn preview_camera_active(cameras: Query<&Camera, With<PreviewCamera>>) -> bool {
+    cameras.iter().any(|c| c.is_active)
 }
 
 /// How the preview is lit and what is behind it, which is the user's to choose.
@@ -573,8 +595,10 @@ pub(crate) fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         height: RTT_H,
         depth_or_array_layers: 1,
     };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -824,12 +848,18 @@ fn poll_gltf(
     // un-rotated model; the spin only starts once framing is done.
     commands.entity(rig.turntable).insert(Transform::default());
 
+    // Hidden until `on_scene_ready` has moved every descendant onto the preview
+    // layer. A large model spawns over several frames, and until that pass its
+    // meshes sit on layer 0, the scene's: they drew in the viewport, and Solari
+    // mirrored them into the ray-traced scene and built acceleration structures
+    // for all of them, 560 ms in one frame for a car of 650k triangles. Hidden,
+    // nothing under the root is drawn or traced until it is on its own layer.
     let child = commands
         .spawn((
             WorldAssetRoot(scene),
             Transform::default(),
-            Visibility::Visible,
-            InheritedVisibility::VISIBLE,
+            Visibility::Hidden,
+            InheritedVisibility::HIDDEN,
             ViewVisibility::default(),
             ChildOf(rig.turntable),
             RenderLayers::layer(PREVIEW_LAYER),
@@ -863,6 +893,9 @@ fn on_scene_ready(
             stack.extend(kids.iter());
         }
     }
+    // Every descendant is on the preview layer now (the inserts above apply
+    // before this one), so the model can be seen. See where the root spawns.
+    commands.entity(root).try_insert(Visibility::Visible);
     preview.scene_ready = true;
 }
 

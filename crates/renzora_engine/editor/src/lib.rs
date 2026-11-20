@@ -90,7 +90,9 @@ impl Plugin for EngineEditorPlugin {
                         camera::sync_2d_viewport_cameras,
                     )
                         .chain(),
-                    auto_switch_view_on_2d_selection,
+                    // Exclusive, so its opening comparison is the condition:
+                    // skipped outright until the selection moves.
+                    auto_switch_view_on_2d_selection.run_if(selection_moved_since_view_switch),
                 ),
             );
 
@@ -108,7 +110,11 @@ impl Plugin for EngineEditorPlugin {
                 crash_overlay::manage_crash_overlay,
                 crash_overlay::crash_overlay_buttons,
             )
-                .run_if(in_state(renzora::SplashState::Editor)),
+                .run_if(in_state(renzora::SplashState::Editor))
+                // The manager is exclusive, a sync point for the schedule even
+                // when it returns at once. Both act only while a report is to be
+                // shown or the overlay is still up to be torn down.
+                .run_if(crash_overlay::crash_overlay_live),
         );
 
         // Streaming debug panel — snapshot refresh only while the panel is the
@@ -146,6 +152,15 @@ fn on_save_current_scene(_trigger: On<renzora::SaveCurrentScene>, mut commands: 
 /// kept independent so the two systems don't fight over a shared tracker.
 #[derive(Resource, Default)]
 pub struct LastSelectionForView2dSwitch(pub Option<Entity>);
+
+/// Run condition for [`auto_switch_view_on_2d_selection`]: the same comparison
+/// the system opens with, so it starts only on a frame it would act.
+fn selection_moved_since_view_switch(
+    selection: Option<Res<renzora::EditorSelection>>,
+    last: Option<Res<LastSelectionForView2dSwitch>>,
+) -> bool {
+    selection.and_then(|s| s.get()) != last.and_then(|l| l.0)
+}
 
 /// When the selection changes to a 2D entity (Sprite, Camera2d or Node2d), flip
 /// the viewport to 2D view. When it changes to an *affirmatively 3D* entity

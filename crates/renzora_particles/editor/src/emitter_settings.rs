@@ -16,7 +16,7 @@
 //! re-points every field in place without rebuilding the panel.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::{AssetDragPayload, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
@@ -1186,7 +1186,7 @@ fn path_slot(commands: &mut Commands, fonts: &EmberFonts, slot: Slot) -> Entity 
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TexDropZone(slot),
             Name::new("vfx-path-drop"),
@@ -1223,7 +1223,7 @@ fn tex_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    zones: Query<(&RelativeCursorPosition, &TexDropZone)>,
+    zones: Query<(&UiCursor, &TexDropZone)>,
     state: Option<ResMut<VfxEditorState>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -1269,7 +1269,7 @@ fn tex_browse(
 }
 
 /// Accent a slot's border while a file it takes hovers it.
-fn tex_highlight(payload: Option<Res<AssetDragPayload>>, mut zones: Query<(&RelativeCursorPosition, &mut BorderColor, &TexDropZone)>) {
+fn tex_highlight(payload: Option<Res<AssetDragPayload>>, mut zones: Query<(&UiCursor, &mut BorderColor, &TexDropZone)>) {
     for (rcp, mut bc, zone) in &mut zones {
         let active = payload.as_ref().is_some_and(|p| p.is_detached && rcp.cursor_over && p.matches_extensions(zone.0.exts()));
         let want = BorderColor::all(rgb(if active { accent() } else { border() }));

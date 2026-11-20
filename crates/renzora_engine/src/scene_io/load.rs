@@ -36,9 +36,22 @@ pub(crate) fn deserialize_scene_lossy(
     // The interim BSN parser skips unregistered / un-deserializable components
     // itself (returning their type paths), so the old RON strip-and-retry loop
     // is unnecessary — a scene authored with a now-absent plugin still loads.
-    BsnSerializer
+    let (mut scene, skipped) = BsnSerializer
         .deserialize_lossy(text, &registry)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // What the engine adds to cameras by itself comes back from their
+    // settings; one read from an older save would never be taken away again.
+    for entity in &mut scene.entities {
+        entity.components.retain(|c| {
+            // A component read back may be a dynamic value standing in for
+            // the real type, whose own type path is the dynamic one's.
+            let path = c
+                .get_represented_type_info()
+                .map_or_else(|| c.reflect_type_path(), |info| info.type_path());
+            !super::save::is_engine_managed(path)
+        });
+    }
+    Ok((scene, skipped))
 }
 
 /// Pull the offending type path out of a Bevy/serde error message of the
@@ -557,6 +570,45 @@ pub fn load_current_scene(world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A scene saved with what anti-aliasing put on its camera loads without
+    /// it, and with everything the user set. The lines are a real save's.
+    #[test]
+    fn a_load_drops_what_anti_aliasing_put_on_a_camera() {
+        use bevy::render::camera::{MipBias, TemporalJitter};
+        let atr = AppTypeRegistry::default();
+        {
+            let mut reg = atr.write();
+            reg.register::<Name>();
+            reg.register::<Transform>();
+            reg.register::<TemporalJitter>();
+            reg.register::<MipBias>();
+        }
+        let mut world = World::new();
+        world.insert_resource(atr);
+        let text = "// renzora interim bsn v1\n\n\
+            // camera_3d\n\
+            entity 4294965210 {\n    \
+                bevy_transform::components::transform::Transform: (translation:(1.0,2.0,3.0),rotation:(0.0,0.0,0.0,1.0),scale:(1.0,1.0,1.0)),\n    \
+                bevy_render::camera::TemporalJitter: (offset:(0.0,0.0)),\n    \
+                bevy_render::camera::MipBias: (-1.0),\n    \
+                bevy_ecs::name::Name: \"camera_3d\",\n\
+            }\n";
+
+        let (scene, _) = deserialize_scene_lossy(&world, text).expect("parses");
+        let loaded: Vec<&str> = scene.entities[0]
+            .components
+            .iter()
+            .map(|c| {
+                c.get_represented_type_info()
+                    .map_or_else(|| c.reflect_type_path(), |i| i.type_path())
+            })
+            .collect();
+        assert!(loaded.iter().any(|p| p.ends_with("::Transform")), "{loaded:?}");
+        assert!(loaded.iter().any(|p| p.ends_with("::Name")), "{loaded:?}");
+        assert!(!loaded.iter().any(|p| p.ends_with("::TemporalJitter")), "{loaded:?}");
+        assert!(!loaded.iter().any(|p| p.ends_with("::MipBias")), "{loaded:?}");
+    }
 
     // ------------------------------------------------------------------
     // extract_unregistered_type

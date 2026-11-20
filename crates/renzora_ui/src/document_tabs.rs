@@ -26,6 +26,8 @@ pub enum DocTabKind {
     Particle,
     Script,
     Shader,
+    /// A `.tgraph` terrain graph, edited in the Terrain workspace's node graph.
+    TerrainGraph,
     /// A `.html` UI template, edited on the canvas rather than as text.
     ///
     /// Deliberately **not** an asset kind. Asset mode exists for editors that
@@ -55,6 +57,8 @@ impl DocTabKind {
             DocTabKind::Particle => Some("Particles"),
             DocTabKind::Script => Some("Scripting"),
             DocTabKind::Shader => Some("Shaders"),
+            // Registered by `renzora_terrain_graph_editor`, which owns its panels.
+            DocTabKind::TerrainGraph => Some("Terrain"),
             DocTabKind::Ui => Some("UI"),
             DocTabKind::Other => None,
         }
@@ -68,6 +72,7 @@ impl DocTabKind {
             DocTabKind::Material => Some("Materials-Asset"),
             DocTabKind::Script | DocTabKind::Shader => Some("Scripting-Asset"),
             DocTabKind::Particle => Some("Particles-Asset"),
+            DocTabKind::TerrainGraph => Some("Terrain-Asset"),
             // `Ui` has no asset-mode layout because it is not an asset kind —
             // see the variant's note.
             DocTabKind::Scene | DocTabKind::Ui | DocTabKind::Other => None,
@@ -84,6 +89,7 @@ impl DocTabKind {
             DocTabKind::Particle => "particle",
             DocTabKind::Script => "script",
             DocTabKind::Shader => "shader",
+            DocTabKind::TerrainGraph => "terrain_graph",
             DocTabKind::Ui => "ui",
             DocTabKind::Other => "other",
         }
@@ -101,6 +107,7 @@ impl DocTabKind {
             "particle" => DocTabKind::Particle,
             "script" => DocTabKind::Script,
             "shader" => DocTabKind::Shader,
+            "terrain_graph" => DocTabKind::TerrainGraph,
             "ui" => DocTabKind::Ui,
             _ => DocTabKind::Other,
         }
@@ -115,6 +122,7 @@ impl DocTabKind {
             DocTabKind::Particle => "sparkle",
             DocTabKind::Script => "code",
             DocTabKind::Shader => "graphics-card",
+            DocTabKind::TerrainGraph => "mountains",
             DocTabKind::Ui => "browser",
             DocTabKind::Other => "file",
         }
@@ -137,6 +145,8 @@ impl DocTabKind {
             DocTabKind::Particle => (230, 160, 90),
             DocTabKind::Script => (120, 170, 255),
             DocTabKind::Shader => (220, 120, 255),
+            // Matches the `.tgraph` tile accent in `renzora_ember::file_kind`.
+            DocTabKind::TerrainGraph => (150, 190, 110),
             // The asset browser's own colour for a Template (`native.rs:2281`),
             // which is the promise this doc-comment makes.
             DocTabKind::Ui => (230, 120, 90),
@@ -428,6 +438,7 @@ mod doc_tab_kind_tests {
         DocTabKind::Particle,
         DocTabKind::Script,
         DocTabKind::Shader,
+        DocTabKind::TerrainGraph,
         DocTabKind::Other,
     ];
 
@@ -488,6 +499,7 @@ mod doc_tab_kind_tests {
             DocTabKind::Particle,
             DocTabKind::Script,
             DocTabKind::Shader,
+            DocTabKind::TerrainGraph,
         ] {
             assert!(kind.is_asset(), "{kind:?} should be an asset kind");
         }

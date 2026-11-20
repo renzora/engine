@@ -97,7 +97,7 @@ fn a_plugin_with_no_third_party_crates_never_runs_cargo() {
     let out = deps::build(&dir, &root.join("build"), &host_toolchain())
         .expect("no deps is not an error");
     assert!(out.externs.is_empty(), "nothing to pass to rustc");
-    assert!(out.search.is_none(), "no search path either");
+    assert!(out.search.is_empty(), "no search path either");
     // The tell that cargo never ran: nothing was even written. Those path
     // dependencies point at directories that do not exist from here, so a build
     // would have failed rather than returned Ok.

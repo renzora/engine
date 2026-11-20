@@ -1,0 +1,9 @@
+name = "Sobel Edge"
+version = "2.0.0"
+description = "Sobel edge detection: the frame is replaced by its own gradient, so only edges survive. A post-process effect: drop sobel_edge.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "sobel_edge"
+tags = ["post-processing", "shader", "edge-detection", "outline"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

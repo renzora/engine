@@ -1,9 +1,10 @@
 //! Material resolver — watches entities with `MaterialRef` and resolves them
 //! to the appropriate `GraphMaterial` or `CodeShaderMaterial`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::path::Path;
+use std::sync::Arc;
 
 use bevy::prelude::*;
 use uuid::Uuid;
@@ -88,6 +89,16 @@ pub struct MaterialCache {
     /// Tracks which paths have been loaded (for future hot-reload).
     #[allow(dead_code)]
     loaded_paths: HashMap<String, u64>,
+    /// Paths whose compiled material nothing but this cache held at the last
+    /// [`MaterialCache::prune_unused`]. Dropped on the next one if still so.
+    unused: HashSet<String>,
+}
+
+/// Whether this cache's handle is the only strong one left. The asset server
+/// tracks assets through weak references, so no other holder means no entity,
+/// panel or per-tab pin is using the asset.
+fn held_only_here<A: Asset>(handle: &Handle<A>) -> bool {
+    matches!(handle, Handle::Strong(arc) if Arc::strong_count(arc) == 1)
 }
 
 /// Compile-time metadata about a master `.material` file that material
@@ -109,6 +120,41 @@ impl MaterialCache {
         self.node_line_maps.remove(path);
         self.sprite_materials.remove(path);
         self.loaded_paths.remove(path);
+        self.unused.remove(path);
+    }
+
+    /// Let go of compiled materials nothing else uses any more. Each held its
+    /// textures, so without this a closed scene's materials, and every texture
+    /// they sample, stayed in memory for the rest of the session.
+    ///
+    /// A path is dropped only once it has been unused on two calls in a row,
+    /// so a material cached for an entity whose commands have not landed yet
+    /// is never mistaken for an unused one. The
+    /// parameter metadata stays, since it is small and material instances
+    /// read it. A dropped material is compiled again when next asked for.
+    pub fn prune_unused(&mut self) -> usize {
+        let idle: HashSet<String> = self
+            .standard_materials
+            .iter()
+            .filter(|(_, h)| held_only_here(h))
+            .map(|(p, _)| p)
+            .chain(self.graph_materials.iter().filter(|(_, h)| held_only_here(h)).map(|(p, _)| p))
+            .chain(self.code_materials.iter().filter(|(_, h)| held_only_here(h)).map(|(p, _)| p))
+            .chain(self.sprite_materials.iter().filter(|(_, h)| held_only_here(h)).map(|(p, _)| p))
+            .cloned()
+            .collect();
+        let stale: Vec<String> = idle.intersection(&self.unused).cloned().collect();
+        for path in &stale {
+            self.standard_materials.remove(path);
+            self.graph_materials.remove(path);
+            self.code_materials.remove(path);
+            self.sprite_materials.remove(path);
+        }
+        self.unused = idle;
+        for path in &stale {
+            self.unused.remove(path);
+        }
+        stale.len()
     }
 
     pub(super) fn sprite_material(
@@ -148,6 +194,21 @@ impl MaterialCache {
     /// for derived material instances.
     pub fn master_meta_count(&self) -> usize {
         self.master_meta.len()
+    }
+}
+
+/// Every two seconds, drop the cached materials nothing uses any more (see
+/// [`MaterialCache::prune_unused`]). In `Last`, after every command of the
+/// frame has landed, so a handle just handed to an entity is already counted.
+fn prune_material_cache(time: Res<Time<Real>>, mut cache: ResMut<MaterialCache>, mut next: Local<f32>) {
+    let now = time.elapsed_secs();
+    if now < *next {
+        return;
+    }
+    *next = now + 2.0;
+    let dropped = cache.bypass_change_detection().prune_unused();
+    if dropped > 0 {
+        debug!("[material cache] released {dropped} unused material(s)");
     }
 }
 
@@ -196,6 +257,7 @@ impl Plugin for MaterialResolverPlugin {
             .init_resource::<renzora::diagnostics::MaterialCacheCounts>()
             .init_resource::<super::alpha_override::AlphaVariantCache>()
             .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain())
+            .add_systems(Last, prune_material_cache)
             // Overlays (terrain paint layers) wear a shared material at their
             // own alpha mode; deriving the variant has to see the handle the
             // resolver just attached, hence the explicit `after` (which is
@@ -278,6 +340,30 @@ fn authored_sources() -> std::sync::MutexGuard<'static, HashMap<Uuid, String>> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
+/// A graph material's shader id, derived from the shader's source.
+///
+/// Materials made by the same graph, which is most of an imported model's,
+/// differ only in the textures they bind, so their shaders are the same text.
+/// A fresh random id for each made Bevy compile every one of them separately,
+/// several render pipelines apiece: the Bistro's 132 materials queued 520
+/// pipelines and drew black for twelve seconds after the project opened. The
+/// same source now gets the same id, so a shader and its pipelines are compiled
+/// once and shared. A changed graph gives a changed source and so a new id,
+/// which is still what makes an edited material recompile.
+///
+/// Two differently keyed hashes make up the 128 bits, which only have to agree
+/// within one run of the editor.
+fn shader_uuid_for(source: &str) -> Uuid {
+    use std::hash::{Hash, Hasher};
+    let half = |salt: &str| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        salt.hash(&mut hasher);
+        source.hash(&mut hasher);
+        hasher.finish()
+    };
+    Uuid::from_u64_pair(half("renzora graph shader, high"), half("renzora graph shader, low"))
+}
+
 /// How many material validations are still running in the background.
 ///
 /// Zero means every material the editor holds has its verdict in
@@ -339,6 +425,14 @@ fn report_material_problems(
             .and_then(|handle| graph_materials.get(handle))
             .and_then(|m| m.extension.shader_uuid)
     };
+    // Materials with the same source share one shader id (see
+    // `shader_uuid_for`), so an id leaving one material may still be another's.
+    let in_use = |uuid: Uuid| {
+        cache
+            .graph_materials
+            .values()
+            .any(|handle| graph_materials.get(handle).and_then(|m| m.extension.shader_uuid) == Some(uuid))
+    };
 
     // Collect finished compiles. A verdict for a shader that has since been
     // replaced, or a material that left the cache, describes nothing on
@@ -374,7 +468,7 @@ fn report_material_problems(
     // assets" would delete another app's entries.
     checked.retain(|path, (uuid, _)| {
         let keep = cache.graph_materials.contains_key(path);
-        if !keep {
+        if !keep && !in_use(*uuid) {
             authored_sources().remove(uuid);
         }
         keep
@@ -404,7 +498,7 @@ fn report_material_problems(
             continue;
         }
         // A recompile replaced this path's shader; its old source is dead.
-        if let Some((old, _)) = checked.get(path).filter(|(old, _)| *old != uuid) {
+        if let Some((old, _)) = checked.get(path).filter(|(old, _)| *old != uuid && !in_use(*old)) {
             authored_sources().remove(old);
         }
         // Wait for the shader itself, which lands with the material.
@@ -458,6 +552,9 @@ fn ensure_shader_validator(
 /// System that finds entities with `MaterialRef` + `Mesh3d` that don't yet have a resolved material,
 /// loads the file, compiles it, and attaches the material handle.
 #[allow(clippy::too_many_arguments)]
+/// How long one frame may spend building materials the cache does not hold.
+const RESOLVE_BUDGET: std::time::Duration = std::time::Duration::from_millis(6);
+
 fn resolve_material_refs(
     mut commands: Commands,
     // Sprites wear a `SpriteMaterial`, resolved by `sprite_material`.
@@ -503,6 +600,15 @@ fn resolve_material_refs(
     };
     let default_reader = renzora::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
+    // Opening a scene with the Bistro in it asks for well over a hundred
+    // materials the cache has never seen, and reading and building every one
+    // in the same frame froze the editor for 600 ms. Work past the budget waits
+    // for the next frame: the entity keeps no `MaterialResolved`, so the query
+    // finds it again, and meanwhile it shows the material it was imported with.
+    // Cache hits are cheap and always run, and at least one miss runs per frame
+    // so a single slow material still makes progress.
+    let frame_start = Instant::now();
+    let mut built_one = false;
     for (entity, mat_ref) in query.iter() {
         let path = &mat_ref.0;
 
@@ -550,6 +656,11 @@ fn resolve_material_refs(
             perf.record_cache_hit(path, MaterialKind::Code);
             continue;
         }
+
+        if built_one && frame_start.elapsed() >= RESOLVE_BUDGET {
+            continue;
+        }
+        built_one = true;
 
         // Resolve asset-relative path to full filesystem path via CurrentProject.
         // Normalize to forward slashes and strip leading "./" for rpak compatibility.
@@ -1394,12 +1505,12 @@ fn assemble_graph_material(
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
 ) -> (Handle<GraphMaterial>, Vec<MaterialParam>) {
-    // Each material gets its own compiled shader, inserted at a unique
-    // `Handle::Uuid`. The UUID lives in the extension's pipeline key so
-    // `specialize()` can reconstruct the handle and swap it into the
-    // fragment stage. See `surface_ext.rs` for why we can't store the
-    // `Handle<Shader>` directly (packed-struct + non-Copy).
-    let shader_uuid = Uuid::new_v4();
+    // The compiled shader lives at a `Handle::Uuid` derived from its source.
+    // The UUID lives in the extension's pipeline key so `specialize()` can
+    // reconstruct the handle and swap it into the fragment stage. See
+    // `surface_ext.rs` for why we can't store the `Handle<Shader>` directly
+    // (packed-struct + non-Copy).
+    let shader_uuid = shader_uuid_for(&fragment_shader);
     let shader_handle: Handle<Shader> = Handle::Uuid(shader_uuid, PhantomData);
     // Codegen writes WESL. A `.material` saved before Bevy 0.20 embeds the
     // old naga_oil dialect, which `shader_source` recognises and translates,
@@ -1408,11 +1519,16 @@ fn assemble_graph_material(
     authored_sources().insert(shader_uuid, fragment_shader.clone());
     let writes_gbuffer = super::codegen::supports_deferred(&fragment_shader);
     let virtual_geometry = super::codegen::supports_virtual_geometry(&fragment_shader);
-    let shader = renzora::shader_source::shader(
-        fragment_shader,
-        format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
-    );
-    let _ = shaders.insert(&shader_handle, shader);
+    // Inserted once. Inserting again over the same handle reports the shader
+    // as changed, and Bevy then rebuilds every pipeline that uses it: each
+    // further material with this source would recompile all the earlier ones.
+    if !shaders.contains(&shader_handle) {
+        let shader = renzora::shader_source::shader(
+            fragment_shader,
+            format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
+        );
+        let _ = shaders.insert(&shader_handle, shader);
+    }
 
     let mut mat = if let Some(fb) = fallback_texture {
         new_graph_material(fb)
@@ -1438,7 +1554,7 @@ fn assemble_graph_material(
         MaterialDomain::Unlit | MaterialDomain::Sprite => {
             mat.base.unlit = true;
         }
-        MaterialDomain::Surface | MaterialDomain::Vegetation | MaterialDomain::TerrainLayer => {
+        MaterialDomain::Surface | MaterialDomain::Vegetation => {
             mat.base.unlit = false;
         }
     }
@@ -1454,20 +1570,11 @@ fn assemble_graph_material(
             continue;
         }
         let handle: Handle<Image> = asset_server.load(&tb.asset_path);
-        match (tb.kind, tb.binding) {
-            (codegen::TextureKind::D2, 0) => mat.extension.texture_0 = Some(handle),
-            (codegen::TextureKind::D2, 1) => mat.extension.texture_1 = Some(handle),
-            (codegen::TextureKind::D2, 2) => mat.extension.texture_2 = Some(handle),
-            (codegen::TextureKind::D2, 3) => mat.extension.texture_3 = Some(handle),
-            (codegen::TextureKind::D2, 4) => mat.extension.texture_4 = Some(handle),
-            (codegen::TextureKind::D2, 5) => mat.extension.texture_5 = Some(handle),
-            (codegen::TextureKind::Cube, 0) => mat.extension.cube_0 = Some(handle),
-            (codegen::TextureKind::D2Array, 0) => mat.extension.array_0 = Some(handle),
-            (codegen::TextureKind::D3, 0) => mat.extension.volume_0 = Some(handle),
-            _ => warn!(
+        if !mat.extension.set_texture(tb.kind, tb.binding, handle) {
+            warn!(
                 "Material '{}' wants more textures than the extension provides ({:?} slot {})",
                 path, tb.kind, tb.binding
-            ),
+            );
         }
     }
 
@@ -1499,5 +1606,23 @@ fn publish_cache_counts(
     };
     if *counts != current {
         *counts = current;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shader_uuid_for;
+
+    /// The point of the id: materials whose shaders are the same text share
+    /// one shader, and so one set of pipelines.
+    #[test]
+    fn the_same_source_gets_the_same_shader_id() {
+        assert_eq!(shader_uuid_for("fn a() {}"), shader_uuid_for("fn a() {}"));
+    }
+
+    /// And an edit must still recompile: a different source, a different id.
+    #[test]
+    fn a_different_source_gets_a_different_shader_id() {
+        assert_ne!(shader_uuid_for("fn a() {}"), shader_uuid_for("fn b() {}"));
     }
 }

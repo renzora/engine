@@ -202,6 +202,38 @@ fn register_spawn_config(app: &mut App) {
 
 > Inspector entries sort with `type_id == "name"` first, `"transform"` second, `"material_ref"` third, and everything else appended in registration order. `add_fn`/`remove_fn` being `Some` is what makes a component show up in the **Add Component** overlay and gain a trash button; leave them `None` to register a read-only, non-removable card.
 
+## Grouping fields
+
+A long card reads better with related settings folded away. Put them in a group:
+
+```rust
+use renzora::FieldDef;
+
+fields: vec![
+    renzora::float_field!("Intensity", MySettings, intensity, 0.01, 0.0, 8.0),
+    // A plain group: a row with a caret and the name, its fields under it.
+    FieldDef::group("Advanced", vec![
+        renzora::float_field!("Bias", MySettings, bias, 0.001, 0.0, 1.0),
+        renzora::int_field!("Steps", MySettings, steps, u32, 1.0, 4.0, 64.0),
+    ]),
+    // A toggle group: the header is the feature's on/off switch.
+    FieldDef::toggle_group(
+        renzora::bool_field!("Fog", MySettings, fog),
+        vec![renzora::float_field!("Density", MySettings, fog_density, 0.001, 0.0, 1.0)],
+    ),
+],
+```
+
+What the header shows comes from the group's own `get_fn`:
+
+| `get_fn` returns | Header |
+|---|---|
+| `None` | The whole group is hidden, like any field |
+| `Some(FieldValue::Bool(_))` | Caret, name and an on/off switch written through `set_fn` (what `toggle_group` gives) |
+| anything else | Caret and name (what `group` gives) |
+
+Groups start folded, and the inspector remembers per component type which ones the user opened. A folded group builds none of its rows, for the same reason a folded section builds nothing (below), so folding settings away saves their layout every frame, not just the scrolling. Groups can hold groups.
+
 ## Custom bevy_ui drawers
 
 When declarative fields aren't enough — conditional rows, buttons, validation warnings, a bespoke layout — register a native drawer that builds an arbitrary `bevy_ui` subtree for the component. This is the modern replacement for the old egui closure:
@@ -268,6 +300,7 @@ pub enum FieldType {
     ReadOnly,
     Asset { extensions: Vec<String> },      // drag-drop from the asset browser
     Enum  { options: &'static [&'static str] },
+    Group { fields: Vec<FieldDef> },         // foldable; see Grouping fields
 }
 ```
 

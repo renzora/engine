@@ -572,11 +572,11 @@ fn emit(flat: &Flat, units: &[Unit]) -> Vec<Item> {
 
     let text = |from: usize, to: usize| -> String {
         let mut s = String::new();
-        for i in from..to {
+        for (i, tok) in flat.toks.iter().enumerate().take(to).skip(from) {
             if let Some(ins) = insert.get(&i) {
                 s.push_str(ins);
             }
-            s.push_str(&flat.toks[i].text);
+            s.push_str(&tok.text);
         }
         s
     };

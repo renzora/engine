@@ -64,7 +64,7 @@ pub struct OpenAddComponentMenuRequest {
 }
 pub use settings::{
     CustomFonts, EditorSettings, ExternalSceneEdits, InspectorExpandDefault, MonoFont,
-    SelectionGranularity, SettingsTab, UiFont,
+    SettingsTab, UiFont,
 };
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
@@ -320,7 +320,12 @@ impl Plugin for RenzoraEditorPlugin {
             // toggles, undo/redo, etc.) under the native (bevy_ui) shell.
             .add_systems(
                 Update,
-                drain_editor_commands_native.run_if(in_state(SplashState::Editor)),
+                // Exclusive, so skipped while the queue is empty rather than
+                // started to find it so. A command pushed after the check
+                // waits one frame, as one pushed after the drain always has.
+                drain_editor_commands_native
+                    .run_if(in_state(SplashState::Editor))
+                    .run_if(|ec: Option<Res<EditorCommands>>| ec.is_some_and(|ec| !ec.is_empty())),
             )
             .add_observer(show_script_reload_toasts)
             .add_observer(show_hot_plugin_toasts)
@@ -330,7 +335,10 @@ impl Plugin for RenzoraEditorPlugin {
                 Update,
                 sync_active_tool_to_gizmo_mode.run_if(in_state(SplashState::Editor)),
             )
-            .add_systems(Update, (apply_vsync_setting, sync_dev_mode, sync_splash_effects))
+            .add_systems(
+                Update,
+                (apply_vsync_setting, apply_unfocused_throttle, sync_dev_mode, sync_splash_effects),
+            )
             .add_systems(Update, (reset_ui_scale_shortcut, apply_ui_scale_setting).chain())
             .add_systems(
                 Update,
@@ -349,7 +357,12 @@ impl Plugin for RenzoraEditorPlugin {
 
 /// What [`enforce_entity_ids`] reads per entity: its name, and the name it
 /// would have had if a rename made it unique.
-type NamedEntity<'a> = (Entity, bevy::ecs::change_detection::Ref<'a, Name>, Option<&'a renzora::BindName>);
+type NamedEntity<'a> = (
+    Entity,
+    bevy::ecs::change_detection::Ref<'a, Name>,
+    Option<&'a renzora::BindName>,
+    Has<ChildOf>,
+);
 
 /// Enforce the one-unique-`snake_case`-id-per-entity rule across the scene. Any
 /// entity `Name` that carries spaces/invalid characters is sanitized, and
@@ -362,9 +375,14 @@ type NamedEntity<'a> = (Entity, bevy::ecs::change_detection::Ref<'a, Name>, Opti
 ///   then early-outs — cheap in steady state.
 /// - Excludes UI nodes (`Without<Node>`): markup nodes use their own `#id`
 ///   naming scheme and must not be churned or de-duplicated here.
-/// - Deterministic: entities are processed in `Entity` order, so on a collision
-///   the lower-index entity keeps the base id and later ones get suffixed — ids
-///   never flip-flop between frames regardless of query iteration order.
+/// - Deterministic: top-level entities first, then everything nested, each in
+///   `Entity` order, so on a collision a top-level entity keeps the base id
+///   and the rest get suffixed: ids never flip-flop between frames regardless
+///   of query iteration order. Top level first because entity order alone is
+///   not stable across a reload: a scene's own `ground` kept its name while it
+///   happened to be created before Bistro's model node `ground`, and became
+///   `ground_1` when switching scene tabs and back created them the other way
+///   round. Top-level entities are the ones a person named.
 /// - Rewrites go through `Commands` (deferred `insert`), avoiding a read+write
 ///   conflict on `Name`; the re-inserted clean id is idempotent, so the next
 ///   frame's pass finds nothing to do.
@@ -376,17 +394,17 @@ fn enforce_entity_ids(
     names: Query<NamedEntity, (Without<bevy::ui::Node>, Without<renzora::core::HideInHierarchy>)>,
     mut commands: Commands,
 ) {
-    if !names.iter().any(|(_, n, _)| n.is_changed()) {
+    if !names.iter().any(|(_, n, ..)| n.is_changed()) {
         return;
     }
-    let mut current: Vec<(Entity, String, Option<String>)> = names
+    let mut current: Vec<(Entity, String, Option<String>, bool)> = names
         .iter()
-        .map(|(e, n, bind)| (e, n.as_str().to_string(), bind.map(|b| b.0.clone())))
+        .map(|(e, n, bind, nested)| (e, n.as_str().to_string(), bind.map(|b| b.0.clone()), nested))
         .collect();
-    current.sort_by_key(|(e, ..)| *e);
+    current.sort_by_key(|(e, _, _, nested)| (*nested, *e));
 
     let mut taken: bevy::platform::collections::HashSet<String> = Default::default();
-    for (e, raw, bind) in &current {
+    for (e, raw, bind, _) in &current {
         let clean = renzora::sanitize_id(raw);
         let unique = renzora::unique_id(&clean, |c| taken.contains(c));
         taken.insert(unique.clone());
@@ -497,25 +515,50 @@ fn sync_splash_effects(
     }
 }
 
-/// Apply the `ViewportSettings.vsync` toggle to the primary window's
-/// `present_mode`. Lives on `ViewportSettings` (not `EditorSettings`) so
-/// it persists alongside the rest of the per-project viewport prefs in
-/// `project.toml`. Runs every frame but only writes when the mode
-/// differs, so it's effectively free.
+/// Apply the game's VSync, `[window] vsync` in `project.toml`, to the editor's
+/// window. The editor is the game with chrome on top, so it runs at the frame
+/// rate the game will: there is no separate editor VSync to disagree with it.
+/// With no project open (the splash) it stays on. Runs every frame but only
+/// writes when the mode differs, so it's effectively free.
 fn apply_vsync_setting(
-    viewport: Res<renzora::core::viewport_types::ViewportSettings>,
+    project: Option<Res<renzora::CurrentProject>>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let Ok(mut window) = windows.single_mut() else {
         return;
     };
-    let desired = if viewport.vsync {
+    let vsync = project.is_none_or(|p| p.config.window.vsync);
+    let desired = if vsync {
         bevy::window::PresentMode::AutoVsync
     } else {
         bevy::window::PresentMode::AutoNoVsync
     };
     if window.present_mode != desired {
         window.present_mode = desired;
+    }
+}
+
+/// Apply `EditorSettings.throttle_when_unfocused` to the window's update mode
+/// while it is not focused: Bevy's default of waiting up to 1/60 s between
+/// frames, or continuous. The focused mode is left as it is.
+///
+/// The default throttle saves power while the editor sits behind another
+/// window, but it also caps anything measured with the editor in the
+/// background at about 60 frames a second, which read as a VSync limit in a
+/// profile taken while VSync was off.
+fn apply_unfocused_throttle(
+    settings: Res<EditorSettings>,
+    winit: Option<ResMut<bevy::winit::WinitSettings>>,
+) {
+    use bevy::winit::UpdateMode;
+    let Some(mut winit) = winit else { return };
+    let wanted = if settings.throttle_when_unfocused {
+        bevy::winit::WinitSettings::game().unfocused_mode
+    } else {
+        UpdateMode::Continuous
+    };
+    if winit.unfocused_mode != wanted {
+        winit.unfocused_mode = wanted;
     }
 }
 
@@ -1021,12 +1064,12 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
 pub struct EditorDropZone;
 
 /// Make `entity` (a native panel's content root) an asset-drop target: inserts
-/// the [`EditorDropZone`] marker plus a `RelativeCursorPosition` so the drop
-/// system can hit-test the cursor against it.
+/// the [`EditorDropZone`] marker plus a `UiCursor` so the drop system can
+/// hit-test the cursor against it.
 pub fn mark_drop_zone(commands: &mut Commands, entity: Entity) {
     commands
         .entity(entity)
-        .insert((EditorDropZone, bevy::ui::RelativeCursorPosition::default()));
+        .insert((EditorDropZone, renzora_ember::UiCursor::default()));
 }
 
 /// Map a file path to the document-tab kind it opens as, or `None` for files
@@ -1047,6 +1090,9 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
     Some(match ext {
         "bsn" | "ron" => DocTabKind::Scene,
         "lua" | "js" | "ts" | "py" => DocTabKind::Script,
+        // A terrain graph opens in the Terrain workspace's node graph
+        // (`renzora_terrain_graph_editor`).
+        "tgraph" => DocTabKind::TerrainGraph,
         // See the note on the copy of this table in `renzora_asset_browser`.
         "html" => DocTabKind::Ui,
         "wgsl" | "wesl" | "glsl" | "vert" | "frag" => DocTabKind::Shader,
@@ -1061,7 +1107,7 @@ pub fn doc_kind_for_path(path: &std::path::Path) -> Option<DocTabKind> {
 fn editor_panel_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    zones: Query<&bevy::ui::RelativeCursorPosition, With<EditorDropZone>>,
+    zones: Query<&renzora_ember::UiCursor, With<EditorDropZone>>,
     cmds: Option<Res<EditorCommands>>,
     mut commands: Commands,
 ) {
@@ -1146,6 +1192,20 @@ mod tests {
         world.run_system(pass).unwrap();
         assert_eq!(name_of(&world, second), "face_jaw_1");
         assert_eq!(bind_of(&world, second).as_deref(), Some("face_jaw"));
+    }
+
+    /// A model's node of the same name, created first (as a scene tab's
+    /// restore can), does not cost the scene's own top-level entity its name.
+    #[test]
+    fn a_top_level_entity_keeps_its_name_over_a_nested_one() {
+        let (mut world, pass) = world_with_pass();
+        let (node, authored) = in_order(&mut world);
+        let model = world.spawn(Name::new("bistro")).id();
+        world.entity_mut(node).insert((Name::new("ground"), ChildOf(model)));
+        world.entity_mut(authored).insert(Name::new("ground"));
+        world.run_system(pass).unwrap();
+        assert_eq!(name_of(&world, authored), "ground");
+        assert_eq!(name_of(&world, node), "ground_1");
     }
 
     /// A hidden helper of the same name (the Animation workspace's copy of a

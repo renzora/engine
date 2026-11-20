@@ -229,6 +229,50 @@ fn tab_kind(world: &World, id: u64) -> Option<DocTabKind> {
         .and_then(|ts| ts.tabs.iter().find(|t| t.id == id).map(|t| t.kind))
 }
 
+/// Keep the live scene of tab `save_id` for when that tab is switched back to:
+/// its entities as a snapshot, the camera, and a pin on every asset they use.
+fn save_live_scene(world: &mut World, save_id: u64) {
+    // 1. Serialize current scene entities into buffer for the live scene tab
+    let scene_ron = scene_io::serialize_scene_to_string(world).unwrap_or_else(|e| {
+        warn!("Failed to serialize scene for tab {}: {}", save_id, e);
+        "(entities: {}, resources: {})".to_string()
+    });
+
+    // 2. Save camera state
+    let (focus, distance, yaw, pitch) =
+        if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
+            (
+                orbit.focus.to_array(),
+                orbit.distance,
+                orbit.yaw,
+                orbit.pitch,
+            )
+        } else {
+            let def = OrbitCameraState::default();
+            (def.focus.to_array(), def.distance, def.yaw, def.pitch)
+        };
+
+    let snapshot = TabSceneSnapshot {
+        scene_ron,
+        camera_focus: focus,
+        camera_distance: distance,
+        camera_yaw: yaw,
+        camera_pitch: pitch,
+    };
+
+    if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
+        buffers.buffers.insert(save_id, snapshot);
+    }
+
+    // Pin every asset the leaving tab's entities currently reference so
+    // that despawning them doesn't evict their textures / materials /
+    // meshes. Without this the tab-switch-back lands on the deserialized
+    // RON but its `MaterialResolver` / `asset_server.load` calls have to
+    // re-decode textures from disk (and worse, anything outside the
+    // resolver path renders blank). See `tab_asset_cache` module doc.
+    tab_asset_cache::pin_live_tab_handles(world, save_id);
+}
+
 /// React to a document-tab switch. Only **scene** tabs own a 3D scene; asset
 /// tabs (material / particle / script / shader) edit assets *on top
 /// of* the current scene, so switching to one must NOT despawn the scene — that
@@ -270,46 +314,15 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
     // may differ from `old_id` if we're arriving from an asset tab.
     let save_id = live_scene.unwrap_or(old_id);
 
-    // 1. Serialize current scene entities into buffer for the live scene tab
-    let scene_ron = scene_io::serialize_scene_to_string(world).unwrap_or_else(|e| {
-        warn!("Failed to serialize scene for tab {}: {}", save_id, e);
-        "(entities: {}, resources: {})".to_string()
-    });
-
-    // 2. Save camera state
-    let (focus, distance, yaw, pitch) =
-        if let Some(orbit) = world.get_resource::<OrbitCameraState>() {
-            (
-                orbit.focus.to_array(),
-                orbit.distance,
-                orbit.yaw,
-                orbit.pitch,
-            )
-        } else {
-            let def = OrbitCameraState::default();
-            (def.focus.to_array(), def.distance, def.yaw, def.pitch)
-        };
-
-    let snapshot = TabSceneSnapshot {
-        scene_ron,
-        camera_focus: focus,
-        camera_distance: distance,
-        camera_yaw: yaw,
-        camera_pitch: pitch,
-    };
-
-    // Store snapshot
-    if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
-        buffers.buffers.insert(save_id, snapshot);
+    // Closing the active tab fires `TabClosed`, which releases the tab's
+    // pinned assets and snapshot, and only then asks for this switch with the
+    // closed tab as the old one. Saving it here would pin every model,
+    // material and texture of the scene just closed under an id no tab has
+    // any more, so nothing would ever release them: closing the active scene
+    // freed none of its memory.
+    if tab_kind(world, save_id).is_some() {
+        save_live_scene(world, save_id);
     }
-
-    // Pin every asset the leaving tab's entities currently reference so
-    // that despawning them doesn't evict their textures / materials /
-    // meshes. Without this the tab-switch-back lands on the deserialized
-    // RON but its `MaterialResolver` / `asset_server.load` calls have to
-    // re-decode textures from disk (and worse, anything outside the
-    // resolver path renders blank). See `tab_asset_cache` module doc.
-    tab_asset_cache::pin_live_tab_handles(world, save_id);
 
     // 3. Despawn all scene entities
     despawn_scene_entities(world);
@@ -785,6 +798,7 @@ struct SceneLoadProgress {
 /// the scene spawns, so they're the genuine remaining work. Count how many of the
 /// spawned models' material textures have actually finished, into
 /// `TextureLoadProgress` — the loading screen shows it and waits on it.
+#[allow(clippy::too_many_arguments)]
 fn tick_texture_progress(
     state: Res<State<SplashState>>,
     asset_server: Res<AssetServer>,
@@ -793,33 +807,52 @@ fn tick_texture_progress(
     std_q: Query<&MeshMaterial3d<StandardMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
     graph_q: Query<&MeshMaterial3d<GraphMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
     progress: Option<ResMut<TextureLoadProgress>>,
+    images: Res<Assets<Image>>,
 ) {
     if !matches!(state.get(), SplashState::Loading) {
         return;
     }
     let Some(mut progress) = progress else { return };
+    let count = count_scene_textures(&asset_server, &images, &std_mats, graph_mats.as_deref(), &std_q, &graph_q);
+    progress.loaded = count.loaded;
+    progress.total = count.total;
+}
 
+/// The scene's material textures, by how far each has got.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+struct TextureCount {
+    loaded: u32,
+    failed: u32,
+    total: u32,
+}
+
+impl TextureCount {
+    /// Every texture has either arrived or failed: nothing is left to wait on.
+    fn settled(self) -> bool {
+        self.loaded + self.failed >= self.total
+    }
+}
+
+/// Count the distinct textures the spawned models' materials use.
+fn count_scene_textures(
+    asset_server: &AssetServer,
+    image_assets: &Assets<Image>,
+    std_mats: &Assets<StandardMaterial>,
+    graph_mats: Option<&Assets<GraphMaterial>>,
+    std_q: &Query<&MeshMaterial3d<StandardMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
+    graph_q: &Query<&MeshMaterial3d<GraphMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
+) -> TextureCount {
     let mut images: Vec<Handle<Image>> = Vec::new();
-    for m in &std_q {
+    for m in std_q {
         if let Some(mat) = std_mats.get(&m.0) {
             tab_asset_cache::collect_standard_material_images(mat, &mut images);
         }
     }
-    if let Some(graph_mats) = &graph_mats {
-        for m in &graph_q {
+    if let Some(graph_mats) = graph_mats {
+        for m in graph_q {
             if let Some(mat) = graph_mats.get(&m.0) {
                 tab_asset_cache::collect_standard_material_images(&mat.base, &mut images);
-                for slot in [
-                    mat.extension.texture_0.as_ref(),
-                    mat.extension.texture_1.as_ref(),
-                    mat.extension.texture_2.as_ref(),
-                    mat.extension.texture_3.as_ref(),
-                    mat.extension.texture_4.as_ref(),
-                    mat.extension.texture_5.as_ref(),
-                ]
-                .into_iter()
-                .flatten()
-                {
+                for slot in mat.extension.d2_slots().into_iter().flatten() {
                     images.push(slot.clone());
                 }
             }
@@ -827,18 +860,714 @@ fn tick_texture_progress(
     }
 
     let mut seen: std::collections::HashSet<bevy::asset::AssetId<Image>> = std::collections::HashSet::new();
-    let mut total = 0u32;
-    let mut loaded = 0u32;
+    let mut count = TextureCount::default();
     for h in &images {
         if seen.insert(h.id()) {
-            total += 1;
-            if matches!(asset_server.get_load_state(h.id()), Some(bevy::asset::LoadState::Loaded)) {
-                loaded += 1;
+            count.total += 1;
+            match asset_server.get_load_state(h.id()) {
+                Some(bevy::asset::LoadState::Loaded) => count.loaded += 1,
+                Some(bevy::asset::LoadState::Failed(_)) => count.failed += 1,
+                // Made at runtime rather than read from a file, so the asset
+                // server has no load state for it: present means ready. Counted
+                // as pending, one such image kept a load waiting forever.
+                None if image_assets.get(h.id()).is_some() => count.loaded += 1,
+                _ => {}
             }
         }
     }
-    progress.loaded = loaded;
-    progress.total = total;
+    count
+}
+
+/// Give up on a load that has not settled after this long, and say what it
+/// was still waiting on: a texture that never arrives must not leave the
+/// timeline running for the rest of the session.
+const LOAD_GIVE_UP: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Frames the texture count must hold still before it is believed. Materials
+/// are resolved after their meshes spawn, so for a few frames a model can
+/// report no textures at all, which would read as "done".
+const TEXTURE_SETTLE_FRAMES: u32 = 30;
+
+/// Frames with no new stage, once the required ones are in, before the load is
+/// called finished. Gives the stages other crates record (virtual geometry,
+/// environment lighting) the chance to land in the same timeline.
+const LOAD_QUIET_FRAMES: u32 = 60;
+
+#[derive(Default)]
+struct TimelineTracker {
+    generation: u32,
+    last_count: TextureCount,
+    stable_frames: u32,
+    marks_seen: usize,
+    quiet_frames: u32,
+    last_resolved: usize,
+    resolved_stable_frames: u32,
+    pipelines_idle_frames: u32,
+    peak_pipelines: usize,
+}
+
+/// Frames the resolved-material count must hold still, every mesh resolved,
+/// before the materials are called done: meshes are handed their materials
+/// over many frames while a large model's hierarchy fills in.
+const MATERIALS_SETTLE_FRAMES: u32 = 30;
+
+/// Frames with no render pipeline queued or compiling before the shaders are
+/// called done. Short, because a compile that is still coming shows up as
+/// queued within a frame of the material that needs it.
+const PIPELINES_IDLE_FRAMES: u32 = 10;
+
+/// How many render pipelines are queued or compiling, counted in the render
+/// world and read in the main one. A mesh draws nothing until its material's
+/// pipelines exist, and every graph material has its own shader, so on a
+/// scene with many materials this is the stretch where models sit there black
+/// after the loading screen has gone.
+#[derive(Resource, Clone, Default)]
+struct PendingPipelines(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+/// Report what meshes and images hold to [`renzora::load_timeline::AssetMemory`],
+/// twice a second.
+///
+/// A mesh or image Bevy only needs on the GPU has its CPU copy dropped after
+/// upload; the rest keep both. Those CPU copies are what the editor itself
+/// holds, so they are counted separately from the ones held only on the GPU,
+/// and the images' GPU size is estimated from their format beside them.
+fn measure_asset_memory(
+    meshes: Res<Assets<Mesh>>,
+    images: Res<Assets<Image>>,
+    asset_server: Res<AssetServer>,
+    font_atlases: Option<Res<bevy::text::FontAtlasSet>>,
+    text_nodes: Query<(Entity, &ComputedNode, &bevy::ui::ComputedUiRenderTargetInfo), With<bevy::ui::widget::Text>>,
+    ancestors: Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
+    layouts: Query<(Entity, &bevy::text::TextLayoutInfo, Option<&bevy::ui::ComputedUiRenderTargetInfo>)>,
+    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    mut frames: Local<u32>,
+) {
+    use renzora::load_timeline::AssetMemoryRow;
+    *frames = frames.wrapping_add(1);
+    let Some(mut memory) = memory.filter(|_| *frames % 30 == 1) else {
+        return;
+    };
+
+    // Text keeps every glyph it has drawn in atlases, one set per font, size
+    // and smoothing, each with a CPU copy so glyphs can be added later. They
+    // are images made at runtime like any other, so without naming them they
+    // read as a mystery among the render targets.
+    let atlas_ids: std::collections::HashSet<AssetId<Image>> = font_atlases
+        .as_deref()
+        .map(|set| set.values().flatten().map(|atlas| atlas.texture.id()).collect())
+        .unwrap_or_default();
+    let atlas_keys = font_atlases.as_deref().map_or(0, |set| set.len());
+    // What the atlas sets differ in. Thousands of sets once grew without end
+    // (a UI scale of 125% crashed the editor out of GPU memory), and a count
+    // alone could not say whether it was new sizes or the same sizes for new
+    // fonts or variations; this says which.
+    let mut atlas_spread = font_atlases.as_deref().map(|set| atlas_key_spread(set.keys())).unwrap_or_default();
+    atlas_spread.push_str(&stale_text_nodes(&text_nodes, &ancestors));
+    if let Some(set) = font_atlases.as_deref() {
+        atlas_spread.push_str(&atlas_holders(set, &layouts, &ancestors));
+    }
+
+    let (mut cpu_meshes, mut cpu_mesh_bytes, mut gpu_only_meshes) = (0, 0u64, 0);
+    for (_, mesh) in meshes.iter() {
+        match mesh_cpu_bytes(mesh) {
+            Some(bytes) => {
+                cpu_meshes += 1;
+                cpu_mesh_bytes += bytes;
+            }
+            None => gpu_only_meshes += 1,
+        }
+    }
+    memory.set(AssetMemoryRow {
+        kind: "meshes (CPU copies)",
+        count: cpu_meshes,
+        bytes: cpu_mesh_bytes,
+        in_process: true,
+        note: format!("{gpu_only_meshes} more held only on the GPU"),
+    });
+
+    let (mut cpu_images, mut cpu_image_bytes, mut gpu_only_images, mut gpu_bytes) = (0, 0u64, 0, 0u64);
+    // Every CPU copy with its size, so the report can name the largest: a
+    // total alone does not say whether it is the project's textures or the
+    // editor's own environment maps and thumbnails.
+    let mut largest: Vec<(u64, AssetId<Image>)> = Vec::new();
+    // The images with no CPU copy, by the folder they were loaded from. A
+    // model's textures land here once uploaded, so this is the line that says
+    // whose textures are still on the GPU after the scene using them closed.
+    let mut gpu_only_groups: std::collections::HashMap<String, (usize, u64)> = std::collections::HashMap::new();
+    for (id, image) in images.iter() {
+        let on_gpu = image_gpu_bytes(image);
+        match &image.data {
+            Some(data) => {
+                cpu_images += 1;
+                cpu_image_bytes += data.capacity() as u64;
+                largest.push((data.capacity() as u64, id));
+            }
+            None => {
+                gpu_only_images += 1;
+                let what = match asset_server.get_path(id) {
+                    Some(path) => {
+                        let folder = path.path().parent().map_or(String::new(), |p| p.display().to_string());
+                        let label = if path.label().is_some() { " (inside a model)" } else { "" };
+                        format!("{}/{label}", folder.replace('\\', "/"))
+                    }
+                    None => {
+                        let size = image.texture_descriptor.size;
+                        format!(
+                            "made at runtime, {}x{}x{} {:?}",
+                            size.width, size.height, size.depth_or_array_layers, image.texture_descriptor.format
+                        )
+                    }
+                };
+                let group = gpu_only_groups.entry(what).or_default();
+                group.0 += 1;
+                group.1 += on_gpu;
+            }
+        }
+        gpu_bytes += on_gpu;
+    }
+    largest.sort_unstable_by_key(|(bytes, _)| std::cmp::Reverse(*bytes));
+    let from_files: u64 = largest
+        .iter()
+        .filter(|(_, id)| asset_server.get_path(*id).is_some())
+        .map(|(bytes, _)| bytes)
+        .sum();
+    let atlas_bytes: u64 = largest
+        .iter()
+        .filter(|(_, id)| atlas_ids.contains(id))
+        .map(|(bytes, _)| bytes)
+        .sum();
+    // Images made at runtime have no path, so they are described by their
+    // label, size and format, and alike ones are counted together: a hundred
+    // small thumbnails of one size say more as one line than as a hundred
+    // entries that each fall below the cut.
+    let mut groups: std::collections::HashMap<String, (usize, u64)> = std::collections::HashMap::new();
+    for (bytes, id) in &largest {
+        let font_atlas = atlas_ids.contains(id);
+        let what = match asset_server.get_path(*id) {
+            Some(path) => path.to_string(),
+            None if font_atlas => images.get(*id).map_or_else(
+                || "font atlas".to_string(),
+                |image| format!("font atlas, {}x{}", image.width(), image.height()),
+            ),
+            None => images.get(*id).map_or_else(
+                || "made at runtime".to_string(),
+                |image| {
+                    let descriptor = &image.texture_descriptor;
+                    let size = descriptor.size;
+                    let label = descriptor.label.map_or(String::new(), |label| format!(" \"{label}\""));
+                    // A render target with a CPU copy is a buffer of zeros
+                    // nothing reads, so it is worth saying which ones are.
+                    let target = if descriptor
+                        .usage
+                        .contains(bevy::render::render_resource::TextureUsages::RENDER_ATTACHMENT)
+                    {
+                        " render target"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "made at runtime{label}{target}, {}x{}x{} {:?}",
+                        size.width, size.height, size.depth_or_array_layers, descriptor.format
+                    )
+                },
+            ),
+        };
+        let group = groups.entry(what).or_default();
+        group.0 += 1;
+        group.1 += bytes;
+    }
+    let mut groups: Vec<(String, (usize, u64))> = groups.into_iter().collect();
+    groups.sort_unstable_by_key(|(_, (_, bytes))| std::cmp::Reverse(*bytes));
+    let named: Vec<String> = groups
+        .iter()
+        .take(10)
+        .map(|(what, (count, bytes))| format!("{} {what} x{count}", megabytes(*bytes)))
+        .collect();
+    memory.set(AssetMemoryRow {
+        kind: "images (CPU copies)",
+        count: cpu_images,
+        bytes: cpu_image_bytes,
+        in_process: true,
+        note: format!(
+            "{gpu_only_images} more held only on the GPU; {} from files, {} in {} font atlases for {atlas_keys} \
+             font sizes{atlas_spread}, the rest made at runtime; largest: {}",
+            megabytes(from_files),
+            megabytes(atlas_bytes),
+            atlas_ids.len(),
+            named.join(", ")
+        ),
+    });
+    memory.set(AssetMemoryRow {
+        kind: "images (on the GPU)",
+        count: cpu_images + gpu_only_images,
+        bytes: gpu_bytes,
+        in_process: false,
+        note: {
+            let mut groups: Vec<(String, (usize, u64))> = gpu_only_groups.into_iter().collect();
+            groups.sort_unstable_by_key(|(_, (_, bytes))| std::cmp::Reverse(*bytes));
+            let named: Vec<String> = groups
+                .iter()
+                .take(8)
+                .map(|(what, (count, bytes))| format!("{} {what} x{count}", megabytes(*bytes)))
+                .collect();
+            format!(
+                "from each image's size, format and mip count; largest held only on the GPU: {}",
+                named.join(", ")
+            )
+        },
+    });
+}
+
+/// Report the material assets alive, and how many of them no mesh uses, to
+/// the memory breakdown twice a second.
+///
+/// A material holds its textures, so a scene's textures outliving the scene
+/// come down to one question: is a material still holding them, and is that
+/// material one the resolver's cache knows about. This row answers both
+/// without a debugger: the count of materials no entity draws with, the
+/// texture folders those materials point into, and the cache's own counts.
+#[allow(clippy::too_many_arguments)]
+fn measure_material_memory(
+    std_mats: Res<Assets<StandardMaterial>>,
+    graph_mats: Option<Res<Assets<GraphMaterial>>>,
+    asset_server: Res<AssetServer>,
+    cache_counts: Option<Res<renzora::diagnostics::MaterialCacheCounts>>,
+    std_users: Query<&MeshMaterial3d<StandardMaterial>>,
+    graph_users: Query<&MeshMaterial3d<GraphMaterial>>,
+    images: Res<Assets<Image>>,
+    gltf_mats: Option<Res<Assets<bevy::gltf::GltfMaterial>>>,
+    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    mut frames: Local<u32>,
+) {
+    *frames = frames.wrapping_add(1);
+    let Some(mut memory) = memory.filter(|_| *frames % 30 == 1) else {
+        return;
+    };
+    memory.set(unreferenced_file_images(
+        &images,
+        &asset_server,
+        &std_mats,
+        graph_mats.as_deref(),
+        gltf_mats.as_deref(),
+    ));
+    let used_std: std::collections::HashSet<AssetId<StandardMaterial>> = std_users.iter().map(|m| m.0.id()).collect();
+    let used_graph: std::collections::HashSet<AssetId<GraphMaterial>> = graph_users.iter().map(|m| m.0.id()).collect();
+
+    // Unused materials by the folder of the first file texture they sample.
+    let mut unused_by_folder: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut note_unused = |base: &StandardMaterial, extra: &[&Option<Handle<Image>>]| {
+        let mut slots = Vec::new();
+        tab_asset_cache::collect_standard_material_images(base, &mut slots);
+        slots.extend(extra.iter().filter_map(|s| (*s).clone()));
+        let folder = slots
+            .iter()
+            .find_map(|h| asset_server.get_path(h.id()))
+            .and_then(|p| p.path().parent().map(|f| f.display().to_string().replace('\\', "/")))
+            .unwrap_or_else(|| "no file textures".to_string());
+        *unused_by_folder.entry(folder).or_default() += 1;
+    };
+
+    let mut unused_std = 0;
+    for (id, mat) in std_mats.iter() {
+        if !used_std.contains(&id) {
+            unused_std += 1;
+            note_unused(mat, &[]);
+        }
+    }
+    let (mut graph_total, mut unused_graph) = (0, 0);
+    if let Some(graph_mats) = graph_mats.as_deref() {
+        for (id, mat) in graph_mats.iter() {
+            graph_total += 1;
+            if !used_graph.contains(&id) {
+                unused_graph += 1;
+                note_unused(&mat.base, &mat.extension.d2_slots());
+            }
+        }
+    }
+
+    let mut folders: Vec<(String, usize)> = unused_by_folder.into_iter().collect();
+    folders.sort_unstable_by_key(|(_, n)| std::cmp::Reverse(*n));
+    let folders: Vec<String> = folders.iter().take(6).map(|(f, n)| format!("{f} x{n}")).collect();
+    let cache = cache_counts.as_deref().map_or_else(
+        || "no material cache".to_string(),
+        |c| format!("the material cache holds {} standard, {} graph", c.standard, c.graph),
+    );
+    memory.set(renzora::load_timeline::AssetMemoryRow {
+        kind: "materials",
+        count: std_mats.len() + graph_total,
+        bytes: 0,
+        in_process: true,
+        note: format!(
+            "{} standard, {graph_total} graph; drawn by no entity: {unused_std} standard, {unused_graph} graph, \
+             by texture folder: {}; {cache}",
+            std_mats.len(),
+            folders.join(", ")
+        ),
+    });
+}
+
+/// The images loaded from files that no material asset references, by folder,
+/// with how many handles hold them.
+///
+/// A model's textures are meant to live exactly as long as its materials. One
+/// that outlives every material is held by something else: a cache keyed by a
+/// material that kept a copy of its texture handles, a component, a resource.
+/// That is how a closed scene's textures stayed on the GPU after closing it
+/// (the viewport's render toggles kept every material's texture handles), and
+/// it read only as "the folder is still in the GPU breakdown". This row names
+/// the folder and the holder count, so the next one shows itself the moment a
+/// tab closes. UI icons and thumbnails land here too, legitimately; they are
+/// small, and a model's folder of textures stands out among them.
+fn unreferenced_file_images(
+    images: &Assets<Image>,
+    asset_server: &AssetServer,
+    std_mats: &Assets<StandardMaterial>,
+    graph_mats: Option<&Assets<GraphMaterial>>,
+    gltf_mats: Option<&Assets<bevy::gltf::GltfMaterial>>,
+) -> renzora::load_timeline::AssetMemoryRow {
+    let mut slots: Vec<Handle<Image>> = Vec::new();
+    for (_, mat) in std_mats.iter() {
+        tab_asset_cache::collect_standard_material_images(mat, &mut slots);
+    }
+    for (_, mat) in graph_mats.into_iter().flat_map(|m| m.iter()) {
+        tab_asset_cache::collect_standard_material_images(&mat.base, &mut slots);
+        slots.extend(mat.extension.d2_slots().into_iter().flatten().cloned());
+    }
+    // A glTF's own materials hold its textures for as long as the glTF is
+    // loaded, whether or not anything was built from them.
+    for (_, mat) in gltf_mats.into_iter().flat_map(|m| m.iter()) {
+        slots.extend(
+            [
+                &mat.base_color_texture,
+                &mat.emissive_texture,
+                &mat.metallic_roughness_texture,
+                &mat.normal_map_texture,
+                &mat.occlusion_texture,
+            ]
+            .into_iter()
+            .flatten()
+            .cloned(),
+        );
+    }
+    let referenced: std::collections::HashSet<AssetId<Image>> = slots.iter().map(|h| h.id()).collect();
+
+    let (mut count, mut bytes) = (0, 0u64);
+    // Folder -> (images, GPU bytes, handles holding them).
+    let mut folders: std::collections::HashMap<String, (usize, u64, usize)> = std::collections::HashMap::new();
+    for (id, image) in images.iter() {
+        if referenced.contains(&id) {
+            continue;
+        }
+        let Some(path) = asset_server.get_path(id) else { continue };
+        // The server keeps only a weak handle of its own, so the count of the
+        // strong one it hands back, less that one, is everything else holding
+        // the image.
+        let holders = match asset_server.get_id_handle(id) {
+            Some(Handle::Strong(strong)) => std::sync::Arc::strong_count(&strong).saturating_sub(1),
+            _ => 0,
+        };
+        let on_gpu = image_gpu_bytes(image);
+        count += 1;
+        bytes += on_gpu;
+        let folder = path.path().parent().map_or(String::new(), |p| p.display().to_string().replace('\\', "/"));
+        let entry = folders.entry(folder).or_default();
+        entry.0 += 1;
+        entry.1 += on_gpu;
+        entry.2 += holders;
+    }
+    let mut folders: Vec<(String, (usize, u64, usize))> = folders.into_iter().collect();
+    folders.sort_unstable_by_key(|(_, (_, bytes, _))| std::cmp::Reverse(*bytes));
+    let named: Vec<String> = folders
+        .iter()
+        .take(8)
+        .map(|(folder, (n, bytes, holders))| format!("{} {folder}/ x{n} ({holders} handles)", megabytes(*bytes)))
+        .collect();
+    renzora::load_timeline::AssetMemoryRow {
+        kind: "file images no material uses",
+        count,
+        bytes,
+        in_process: false,
+        note: format!("on the GPU, estimated; largest: {}", named.join(", ")),
+    }
+}
+
+/// Report what the GPU allocator holds to the memory breakdown, every two
+/// seconds: what is allocated, what is reserved in memory blocks behind it,
+/// and the labels holding the most.
+///
+/// This is the one figure the editor's own rows cannot estimate. Buffers,
+/// render targets, acceleration structures and upload staging all come from
+/// these blocks, and on Windows the blocks in system memory count toward the
+/// process's committed memory, which is where most of a project load's
+/// growth was showing up with nothing in the asset rows to explain it. Not
+/// every backend can report; then the row says so.
+fn measure_gpu_allocations(
+    device: Option<Res<bevy::render::renderer::RenderDevice>>,
+    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    mut frames: Local<u32>,
+) {
+    use renzora::load_timeline::AssetMemoryRow;
+    *frames = frames.wrapping_add(1);
+    let (Some(device), Some(mut memory)) = (device, memory.filter(|_| *frames % 120 == 2)) else {
+        return;
+    };
+    let Some(report) = device.wgpu_device().generate_allocator_report() else {
+        memory.set(AssetMemoryRow {
+            kind: "GPU allocations",
+            count: 0,
+            bytes: 0,
+            in_process: false,
+            note: "this graphics backend gives no allocation report".to_string(),
+        });
+        return;
+    };
+    let mut by_label: std::collections::HashMap<&str, (usize, u64)> = std::collections::HashMap::new();
+    for allocation in &report.allocations {
+        let label = if allocation.name.is_empty() { "(no label)" } else { allocation.name.as_str() };
+        let entry = by_label.entry(label).or_default();
+        entry.0 += 1;
+        entry.1 += allocation.size;
+    }
+    let mut labels: Vec<(&str, (usize, u64))> = by_label.into_iter().collect();
+    labels.sort_unstable_by_key(|(_, (_, bytes))| std::cmp::Reverse(*bytes));
+    let largest: Vec<String> = labels
+        .iter()
+        .take(12)
+        .map(|(label, (count, bytes))| format!("{} {label} x{count}", megabytes(*bytes)))
+        .collect();
+    memory.set(AssetMemoryRow {
+        kind: "GPU allocations",
+        count: report.allocations.len(),
+        bytes: report.total_allocated_bytes,
+        in_process: false,
+        note: format!(
+            "{} reserved in {} blocks; largest: {}",
+            megabytes(report.total_reserved_bytes),
+            report.blocks.len(),
+            largest.join(", ")
+        ),
+    });
+}
+
+/// Give the load timeline a way to read the GPU allocator's totals, once the
+/// render device exists, so every stage records them beside the process's
+/// figures. Without it a stage that commits gigabytes cannot be told apart
+/// into what the GPU took and what the editor's own heap did.
+fn install_gpu_probe(
+    device: Option<Res<bevy::render::renderer::RenderDevice>>,
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+) {
+    let (Some(device), Some(mut timeline)) = (device, timeline) else { return };
+    if timeline.has_gpu_probe() {
+        return;
+    }
+    let device = device.wgpu_device().clone();
+    timeline.set_gpu_probe(Box::new(move || {
+        let report = device.generate_allocator_report()?;
+        Some(renzora::load_timeline::GpuMemory {
+            allocated: report.total_allocated_bytes,
+            reserved: report.total_reserved_bytes,
+        })
+    }));
+}
+
+/// The bytes a mesh's vertex attributes and indices hold on the CPU, or `None`
+/// for a mesh whose data has been handed to the render world.
+fn mesh_cpu_bytes(mesh: &Mesh) -> Option<u64> {
+    let attributes: u64 = mesh
+        .try_attributes()
+        .ok()?
+        .map(|(_, values)| values.get_bytes().len() as u64)
+        .sum();
+    let indices = match mesh.try_indices_option() {
+        Ok(Some(bevy::mesh::Indices::U16(v))) => (v.len() * 2) as u64,
+        Ok(Some(bevy::mesh::Indices::U32(v))) => (v.len() * 4) as u64,
+        _ => 0,
+    };
+    Some(attributes + indices)
+}
+
+/// An image's size on the GPU: every mip level of every layer, in its format's
+/// blocks.
+fn image_gpu_bytes(image: &Image) -> u64 {
+    let descriptor = &image.texture_descriptor;
+    let format = descriptor.format;
+    let (block_w, block_h) = format.block_dimensions();
+    let block_bytes = format.block_copy_size(None).unwrap_or(4) as u64;
+    let layers = descriptor.size.depth_or_array_layers.max(1) as u64;
+    (0..descriptor.mip_level_count)
+        .map(|mip| {
+            let w = (descriptor.size.width >> mip).max(1);
+            let h = (descriptor.size.height >> mip).max(1);
+            w.div_ceil(block_w) as u64 * h.div_ceil(block_h) as u64 * block_bytes * layers
+        })
+        .sum()
+}
+
+/// Record when Bevy itself finishes with a model's assets: the model, the scene
+/// inside it that gets instantiated, and the point where every texture it
+/// names has loaded too. These say where the time between "models loaded" and
+/// "model instantiated by Bevy" goes, which the editor's own stages cannot see.
+fn track_model_asset_events(
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    asset_server: Res<AssetServer>,
+    mut models: MessageReader<AssetEvent<bevy::gltf::Gltf>>,
+    mut scenes: MessageReader<AssetEvent<bevy::world_serialization::WorldAsset>>,
+) {
+    let Some(mut timeline) = timeline.filter(|t| t.is_running()) else {
+        models.clear();
+        scenes.clear();
+        return;
+    };
+    let path = |id: bevy::asset::UntypedAssetId| {
+        asset_server.get_path(id).map(|p| p.to_string()).unwrap_or_default()
+    };
+    for event in models.read() {
+        match event {
+            AssetEvent::Added { id } => timeline.mark("model asset added", path((*id).into())),
+            AssetEvent::LoadedWithDependencies { id } => {
+                timeline.mark("model loaded with dependencies", path((*id).into()))
+            }
+            _ => {}
+        }
+    }
+    for event in scenes.read() {
+        if let AssetEvent::Added { id } = event {
+            timeline.mark("model scene asset added", path((*id).into()));
+        }
+    }
+}
+
+fn count_pending_pipelines(
+    cache: Res<bevy::render::render_resource::PipelineCache>,
+    pending: Res<PendingPipelines>,
+) {
+    use bevy::render::render_resource::CachedPipelineState;
+    let count = cache
+        .pipelines()
+        .filter(|p| matches!(p.state, CachedPipelineState::Queued | CachedPipelineState::Creating(_)))
+        .count();
+    pending.0.store(count, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Follow a project load past the splash and into the editor, where textures
+/// keep arriving after the loading screen has gone, and close the timeline
+/// once everything has settled. See [`renzora::load_timeline`].
+#[allow(clippy::too_many_arguments)]
+fn track_load_timeline(
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    state: Res<State<SplashState>>,
+    time: Res<Time<Real>>,
+    asset_server: Res<AssetServer>,
+    std_mats: Res<Assets<StandardMaterial>>,
+    graph_mats: Option<Res<Assets<GraphMaterial>>>,
+    std_q: Query<&MeshMaterial3d<StandardMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
+    graph_q: Query<&MeshMaterial3d<GraphMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
+    viewport_cameras: Query<(&Camera, Has<bevy::camera::RenderTarget>), With<renzora::core::ViewportCamera>>,
+    images: Res<Assets<Image>>,
+    unresolved: Query<(), (With<renzora::core::MaterialRef>, Without<renzora::core::MaterialResolved>)>,
+    resolved: Query<(), With<renzora::core::MaterialResolved>>,
+    pending_pipelines: Option<Res<PendingPipelines>>,
+    asset_memory: Option<Res<renzora::load_timeline::AssetMemory>>,
+    mut tracker: Local<TimelineTracker>,
+) {
+    let Some(mut timeline) = timeline else { return };
+    if !timeline.is_running() {
+        return;
+    }
+    if tracker.generation != timeline.generation() {
+        *tracker = TimelineTracker { generation: timeline.generation(), ..default() };
+    }
+    timeline.note_frame(time.delta());
+
+    // Until this, the viewport has nothing to draw with and shows black.
+    if viewport_cameras.iter().any(|(camera, has_target)| camera.is_active && has_target) {
+        timeline.mark("viewport camera ready", "");
+    }
+    if matches!(state.get(), SplashState::Editor) {
+        timeline.mark("editor opened", "");
+    }
+
+    if timeline.has("models spawned") && !timeline.has("textures loaded") {
+        let count = count_scene_textures(&asset_server, &images, &std_mats, graph_mats.as_deref(), &std_q, &graph_q);
+        if count == tracker.last_count {
+            tracker.stable_frames += 1;
+        } else {
+            tracker.last_count = count;
+            tracker.stable_frames = 0;
+        }
+        if count.settled() && tracker.stable_frames >= TEXTURE_SETTLE_FRAMES {
+            let detail = if count.failed > 0 {
+                format!("{} textures, {} failed", count.total, count.failed)
+            } else {
+                format!("{} textures", count.total)
+            };
+            timeline.mark("textures loaded", detail);
+        }
+    }
+
+    if timeline.has("models spawned") && !timeline.has("materials resolved") {
+        let count = resolved.iter().count();
+        if count == tracker.last_resolved {
+            tracker.resolved_stable_frames += 1;
+        } else {
+            tracker.last_resolved = count;
+            tracker.resolved_stable_frames = 0;
+        }
+        if unresolved.is_empty() && tracker.resolved_stable_frames >= MATERIALS_SETTLE_FRAMES {
+            timeline.mark("materials resolved", format!("{count} mesh(es)"));
+        }
+    }
+
+    let pipelines = pending_pipelines
+        .as_ref()
+        .map_or(0, |p| p.0.load(std::sync::atomic::Ordering::Relaxed));
+    tracker.peak_pipelines = tracker.peak_pipelines.max(pipelines);
+    if timeline.has("materials resolved") && !timeline.has("shaders compiled") {
+        tracker.pipelines_idle_frames = if pipelines == 0 { tracker.pipelines_idle_frames + 1 } else { 0 };
+        if tracker.pipelines_idle_frames >= PIPELINES_IDLE_FRAMES {
+            timeline.mark(
+                "shaders compiled",
+                format!("up to {} pipeline(s) compiling at once", tracker.peak_pipelines),
+            );
+        }
+    }
+
+    let required = ["models spawned", "editor opened", "textures loaded", "materials resolved", "shaders compiled"];
+    if required.iter().all(|stage| timeline.has(stage)) {
+        if timeline.marks().len() == tracker.marks_seen {
+            tracker.quiet_frames += 1;
+        } else {
+            tracker.marks_seen = timeline.marks().len();
+            tracker.quiet_frames = 0;
+        }
+        if tracker.quiet_frames >= LOAD_QUIET_FRAMES {
+            if let Some(memory) = &asset_memory {
+                timeline.set_appendix(memory.report());
+            }
+            timeline.finish();
+        }
+    } else if timeline.running_for().is_some_and(|t| t >= LOAD_GIVE_UP) {
+        let mut missing: Vec<String> = required
+            .iter()
+            .filter(|stage| !timeline.has(stage))
+            .map(|stage| stage.to_string())
+            .collect();
+        if let Some(text) = missing.iter_mut().find(|s| *s == "textures loaded") {
+            let c = tracker.last_count;
+            *text = format!("textures ({} of {} loaded, {} failed)", c.loaded, c.total, c.failed);
+        }
+        if let Some(text) = missing.iter_mut().find(|s| *s == "materials resolved") {
+            *text = format!("materials ({} mesh(es) unresolved)", unresolved.iter().count());
+        }
+        if let Some(text) = missing.iter_mut().find(|s| *s == "shaders compiled") {
+            *text = format!("shaders ({pipelines} pipeline(s) still compiling)");
+        }
+        if let Some(memory) = &asset_memory {
+            timeline.set_appendix(memory.report());
+        }
+        timeline.give_up(missing.join(", "));
+    }
 }
 
 /// Forget the remembered last scene and any remembered tab whose file is no
@@ -868,6 +1597,13 @@ fn forget_missing_files(project: &mut CurrentProject) -> bool {
 
 fn load_scene_on_enter_loading(world: &mut World) {
     info!("[loading] entered Loading state, kicking off scene load");
+    let project_name = world
+        .get_resource::<CurrentProject>()
+        .map(|p| p.config.name.clone())
+        .unwrap_or_else(|| "project".to_string());
+    world
+        .get_resource_or_insert_with(renzora::load_timeline::LoadTimeline::default)
+        .begin(project_name);
 
     // Ensure the asset reader knows the project path before loading the scene.
     if let Some(project) = world.get_resource::<CurrentProject>() {
@@ -985,6 +1721,16 @@ fn load_scene_on_enter_loading(world: &mut World) {
         lb.loaded = 0;
         lb.total = total_bytes;
     }
+    if let Some(mut timeline) = world.get_resource_mut::<renzora::load_timeline::LoadTimeline>() {
+        timeline.mark(
+            "scene parsed",
+            format!(
+                "{instance_count} model instance(s), {} model file(s), {}",
+                gltf_sizes.len(),
+                megabytes(total_bytes)
+            ),
+        );
+    }
 
     // Two tasks so the user sees each phase as the bar fills:
     //   1. Asset I/O   — Gltf bytes from disk, texture decode.
@@ -1028,6 +1774,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
 /// matters for visibility — `PendingMeshInstanceRehydrate` getting removed
 /// only signals "asset arrived"; mesh entities don't appear under the
 /// SceneRoot for another frame or two while Bevy actually instantiates.
+#[allow(clippy::too_many_arguments)]
 fn tick_scene_load_progress(
     progress: Option<ResMut<SceneLoadProgress>>,
     mut tasks: ResMut<LoadingTasks>,
@@ -1041,8 +1788,16 @@ fn tick_scene_load_progress(
     loading_bytes: Option<ResMut<LoadingBytes>>,
     children_q: Query<&Children>,
     scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
+    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
 ) {
     let Some(mut progress) = progress else { return };
+    let mut timeline = timeline;
+    let total_bytes: u64 = progress.gltf_sizes.values().sum();
+    let mut mark = |stage: &str, detail: String| {
+        if let Some(timeline) = timeline.as_mut() {
+            timeline.mark(stage, detail);
+        }
+    };
 
     // Real byte progress: sum the on-disk size of every distinct GLB whose
     // instances are no longer pending (their asset finished loading).
@@ -1067,6 +1822,8 @@ fn tick_scene_load_progress(
         {
             tasks.complete(task);
         }
+        mark("models loaded", "no models".to_string());
+        mark("models spawned", "no models".to_string());
         return;
     }
 
@@ -1102,6 +1859,9 @@ fn tick_scene_load_progress(
                 }
             }
         }
+    }
+    if loaded >= total {
+        mark("models loaded", format!("{total} model instance(s), {}", megabytes(total_bytes)));
     }
 
     // ── Phase 2: scene spawn ───────────────────────────────────────────
@@ -1154,6 +1914,178 @@ fn tick_scene_load_progress(
             }
         }
     }
+    if processed >= total {
+        mark("models spawned", format!("{total} model instance(s)"));
+    }
+}
+
+fn megabytes(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+/// UI text whose node scale disagrees with its window's, for the memory report.
+///
+/// Bevy measures a text node again every frame while those two differ, and
+/// layout resets the node's scale to 1.0 on any node it did not reach. At a UI
+/// scale other than 100% such text is laid out every frame, and the layouts it
+/// churns through filled the GPU with font atlases until the editor crashed.
+/// This names where that text sits so the cause can be found. Empty when none.
+fn stale_text_nodes(
+    text_nodes: &Query<(Entity, &ComputedNode, &bevy::ui::ComputedUiRenderTargetInfo), With<bevy::ui::widget::Text>>,
+    ancestors: &Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
+) -> String {
+    use std::collections::HashMap;
+    let mut places: HashMap<String, usize> = HashMap::new();
+    let mut stale = 0;
+    for (entity, node, target) in text_nodes.iter() {
+        if (target.scale_factor() - node.inverse_scale_factor.recip()).abs() <= 1e-5 {
+            continue;
+        }
+        stale += 1;
+        // The nearest named ancestor, the topmost one, and the first ancestor
+        // that is not a UI node (which layout would never reach through).
+        let (mut nearest, mut top, mut non_ui) = (None, entity, None);
+        let mut at = entity;
+        for _ in 0..64 {
+            let Ok((parent, name, is_node)) = ancestors.get(at) else { break };
+            if nearest.is_none() && at != entity {
+                nearest = name.map(|n| n.as_str().to_string());
+            }
+            if !is_node && non_ui.is_none() {
+                non_ui = Some(name.map_or_else(|| format!("{at}"), |n| n.as_str().to_string()));
+            }
+            top = at;
+            let Some(parent) = parent else { break };
+            at = parent.parent();
+        }
+        let top_name = ancestors.get(top).ok().and_then(|(_, n, _)| n.map(|n| n.as_str().to_string()));
+        let place = format!(
+            "under {} (root {}{})",
+            nearest.unwrap_or_else(|| "?".into()),
+            top_name.unwrap_or_else(|| format!("{top}")),
+            non_ui.map(|n| format!(", non-UI ancestor {n}")).unwrap_or_default(),
+        );
+        *places.entry(place).or_default() += 1;
+    }
+    if stale == 0 {
+        return String::new();
+    }
+    let mut places: Vec<(String, usize)> = places.into_iter().collect();
+    places.sort_by_key(|p| std::cmp::Reverse(p.1));
+    let list: Vec<String> = places.iter().take(6).map(|(p, n)| format!("{p} x{n}")).collect();
+    format!("; {stale} text nodes laid out every frame: {}", list.join(", "))
+}
+
+/// Which text keeps each atlas size alive, for the memory report.
+///
+/// Ember frees an atlas set once no laid-out text points into it, so a size
+/// that outlives the change that should have retired it (a UI scale or font
+/// switch) is held by some text. Per size: how many sets, how many of those are
+/// in use, by how many texts, and where one of those texts sits and at what
+/// scale it is drawn. Empty for no atlases.
+fn atlas_holders(
+    set: &bevy::text::FontAtlasSet,
+    layouts: &Query<(Entity, &bevy::text::TextLayoutInfo, Option<&bevy::ui::ComputedUiRenderTargetInfo>)>,
+    ancestors: &Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
+) -> String {
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    // Atlas image -> the size its set is for.
+    let mut size_of: HashMap<AssetId<Image>, u32> = HashMap::new();
+    // Size -> (sets, sets in use).
+    let mut sets: BTreeMap<u32, (usize, HashSet<bevy::text::FontAtlasKey>)> = BTreeMap::new();
+    for (key, atlases) in set.iter() {
+        sets.entry(key.font_size_bits).or_default().0 += 1;
+        for atlas in atlases {
+            size_of.insert(atlas.texture.id(), key.font_size_bits);
+        }
+    }
+    let key_of: HashMap<AssetId<Image>, bevy::text::FontAtlasKey> = set
+        .iter()
+        .flat_map(|(key, atlases)| atlases.iter().map(move |a| (a.texture.id(), *key)))
+        .collect();
+    // Size -> (texts using it, one example).
+    let mut users: BTreeMap<u32, (usize, Option<String>)> = BTreeMap::new();
+    for (entity, layout, target) in layouts.iter() {
+        let mut seen = HashSet::new();
+        for glyph in &layout.glyphs {
+            let Some(bits) = size_of.get(&glyph.atlas_info.texture) else { continue };
+            if let Some(key) = key_of.get(&glyph.atlas_info.texture) {
+                if let Some((_, in_use)) = sets.get_mut(bits) {
+                    in_use.insert(*key);
+                }
+            }
+            if !seen.insert(*bits) {
+                continue;
+            }
+            let entry = users.entry(*bits).or_default();
+            entry.0 += 1;
+            if entry.1.is_none() {
+                let (mut nearest, mut top, mut at) = (None, entity, entity);
+                for _ in 0..64 {
+                    let Ok((parent, name, _)) = ancestors.get(at) else { break };
+                    if nearest.is_none() {
+                        nearest = name.map(|n| n.as_str().to_string());
+                    }
+                    top = at;
+                    let Some(parent) = parent else { break };
+                    at = parent.parent();
+                }
+                let root = ancestors
+                    .get(top)
+                    .ok()
+                    .and_then(|(_, n, _)| n.map(|n| n.as_str().to_string()))
+                    .unwrap_or_else(|| format!("{top}"));
+                let scale = target.map_or("not UI".to_string(), |t| format!("scale {:.2}", t.scale_factor()));
+                entry.1 = Some(format!("{} in {root}, {scale}", nearest.unwrap_or_else(|| format!("{entity}"))));
+            }
+        }
+    }
+    if sets.is_empty() {
+        return String::new();
+    }
+    let rows: Vec<String> = sets
+        .iter()
+        .map(|(bits, (count, in_use))| {
+            let (texts, example) = users.get(bits).cloned().unwrap_or_default();
+            format!(
+                "{:.3} px: {count} sets, {} in use by {texts} texts{}",
+                f32::from_bits(*bits),
+                in_use.len(),
+                example.map(|e| format!(" (e.g. {e})")).unwrap_or_default()
+            )
+        })
+        .collect();
+    format!("; holders: {}", rows.join("; "))
+}
+
+/// What a set of font atlas keys differ in, for the memory report: how many
+/// fonts, sizes and variation settings they cover, the size range, and the
+/// most common sizes. Empty for no keys.
+fn atlas_key_spread<'a>(keys: impl Iterator<Item = &'a bevy::text::FontAtlasKey>) -> String {
+    use std::collections::{HashMap, HashSet};
+    let mut fonts = HashSet::new();
+    let mut variations = HashSet::new();
+    let mut sizes: HashMap<u32, usize> = HashMap::new();
+    for key in keys {
+        fonts.insert((key.id, key.index));
+        variations.insert(key.variations_hash);
+        *sizes.entry(key.font_size_bits).or_default() += 1;
+    }
+    if sizes.is_empty() {
+        return String::new();
+    }
+    let px = |bits: u32| f32::from_bits(bits);
+    let (min, max) = sizes.keys().map(|b| px(*b)).fold((f32::MAX, f32::MIN), |(lo, hi), s| (lo.min(s), hi.max(s)));
+    let mut common: Vec<(u32, usize)> = sizes.iter().map(|(b, n)| (*b, *n)).collect();
+    common.sort_by(|a, b| b.1.cmp(&a.1).then(px(a.0).total_cmp(&px(b.0))));
+    let common: Vec<String> = common.iter().take(8).map(|(b, n)| format!("{:.3} px x{n}", px(*b))).collect();
+    format!(
+        " ({} fonts, {} distinct sizes from {min:.3} to {max:.3} px, {} variation settings; most common: {})",
+        fonts.len(),
+        sizes.len(),
+        variations.len(),
+        common.join(", ")
+    )
 }
 
 // ============================================================================
@@ -1624,27 +2556,47 @@ impl Plugin for ScenePlugin {
             dynamic_icon_fn: None,
         });
         app.register_inspector(scene_instance_entry());
+        let pending_pipelines = PendingPipelines::default();
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render_app
+                .insert_resource(pending_pipelines.clone())
+                .add_systems(bevy::render::Render, count_pending_pipelines);
+        }
         app.init_resource::<SceneTabBuffers>()
+            .insert_resource(pending_pipelines)
+            .init_resource::<renzora::load_timeline::LoadTimeline>()
+            .init_resource::<renzora::load_timeline::AssetMemory>()
+            .add_systems(
+                Update,
+                (
+                    track_load_timeline,
+                    track_model_asset_events,
+                    measure_asset_memory,
+                    measure_material_memory,
+                    measure_gpu_allocations,
+                    install_gpu_probe,
+                ),
+            )
             .init_resource::<SceneLoadProgress>()
             .init_resource::<EditorLoadProgress>()
             .init_resource::<TabAssetCache>()
             .init_resource::<tab_asset_cache::SceneDiagSnapshot>()
-            // Refresh the Scene Diagnostics panel's input snapshot. Exclusive
-            // system (uses a dozen queries internally via SystemState); panels
-            // only have `&World` so we cache the data in a resource they read.
+            // Refresh the Scene Diagnostics probe's input snapshot. Exclusive
+            // system (uses a dozen queries internally via SystemState), cached
+            // in a resource so the probe's report is a cheap read.
             //
             // It does several full-scene passes + clones every StandardMaterial
             // handle, so its cost scales with the scene (O(entities+materials)).
-            // That's fine for a debug panel but ruinous on a 100k+ entity scene
-            // if it runs every frame regardless of visibility — so gate it on the
-            // Scene Diagnostics panel actually being the active tab, and throttle
-            // to 4 Hz while it is. When the panel is hidden it costs nothing; the
+            // That's fine for a debug readout but ruinous on a 100k+ entity
+            // scene if it runs every frame regardless of whether anyone looks,
+            // so gate it on a companion actually watching the probe, and
+            // throttle to 4 Hz while one is. Unwatched it costs nothing; the
             // snapshot it feeds is read by nothing else (see `diagnostics`).
             .add_systems(
                 Update,
                 tab_asset_cache::update_scene_diag_snapshot
                     .run_if(in_state(SplashState::Editor))
-                    .run_if(renzora_ember::dock::panel_active("scene_diagnostics"))
+                    .run_if(renzora::probes::probe_watched(diagnostics::PROBE_ID))
                     .run_if(bevy::time::common_conditions::on_timer(
                         std::time::Duration::from_millis(250),
                     )),
@@ -1659,7 +2611,7 @@ impl Plugin for ScenePlugin {
                 Update,
                 (
                     hot_reload::collect_scene_changes,
-                    hot_reload::apply_scene_reloads,
+                    hot_reload::apply_scene_reloads.run_if(hot_reload::reloads_pending),
                     // After the reload, so a conflict raised this frame gets its
                     // prompt on the same frame rather than the next.
                     conflict_prompt::conflict_prompt_buttons,
@@ -1747,13 +2699,17 @@ impl Plugin for ScenePlugin {
                     tab_asset_cache::cache_added_mesh_instances,
                     tick_editor_load_progress,
                     detect_file_keybindings,
-                    save_scene_system,
-                    save_as_scene_system,
+                    // The six file actions are exclusive, so each is a sync
+                    // point for the whole schedule even on the frames (nearly
+                    // all of them) its request is absent. Each opens by taking
+                    // its request resource, so that resource is its condition.
+                    save_scene_system.run_if(resource_exists::<SaveSceneRequested>),
+                    save_as_scene_system.run_if(resource_exists::<SaveAsSceneRequested>),
                     thumbnail::capture_scene_thumbnail,
-                    new_scene_system,
-                    open_scene_system,
-                    open_scene_path_system,
-                    handle_tab_switch,
+                    new_scene_system.run_if(resource_exists::<NewSceneRequested>),
+                    open_scene_system.run_if(resource_exists::<OpenSceneRequested>),
+                    open_scene_path_system.run_if(resource_exists::<OpenScenePathRequested>),
+                    handle_tab_switch.run_if(resource_exists::<TabSwitchRequest>),
                 )
                     .run_if(in_state(SplashState::Editor)),
             );

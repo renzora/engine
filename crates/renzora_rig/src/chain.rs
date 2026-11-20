@@ -74,7 +74,7 @@ pub fn tessellate_along(mesh: Tessellate, axis: Vec3, max: f32) {
     for _ in 0..12 {
         // Decided before any vertex is added, from the edges as they are.
         let flags: Vec<(bool, bool, bool)> =
-            indices.chunks_exact(3).map(|t| (long(positions, t[0], t[1]), long(positions, t[1], t[2]), long(positions, t[2], t[0]))).collect();
+            indices.as_chunks::<3>().0.iter().map(|t| (long(positions, t[0], t[1]), long(positions, t[1], t[2]), long(positions, t[2], t[0]))).collect();
         if !flags.iter().any(|f| f.0 || f.1 || f.2) {
             return;
         }
@@ -95,7 +95,7 @@ pub fn tessellate_along(mesh: Tessellate, axis: Vec3, max: f32) {
         };
         let old = std::mem::take(indices);
         let mut out = Vec::with_capacity(old.len() * 2);
-        for (t, &(ab, bc, ca)) in old.chunks_exact(3).zip(&flags) {
+        for (t, &(ab, bc, ca)) in old.as_chunks::<3>().0.iter().zip(&flags) {
             let (a, b, c) = (t[0], t[1], t[2]);
             match (ab, bc, ca) {
                 (false, false, false) => out.extend([a, b, c]),

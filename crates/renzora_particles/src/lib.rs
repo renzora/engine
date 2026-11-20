@@ -181,7 +181,10 @@ impl Plugin for ParticlesPlugin {
             scene::collide_with_scene
                 .after(systems::step_effects)
                 .before(systems::write_meshes)
-                .in_set(ParticleSystems),
+                .in_set(ParticleSystems)
+                // Exclusive, so a sync point for the whole schedule even when it
+                // finds no effect to collide; with no effect at all it waits.
+                .run_if(any_with_component::<ParticleRuntime>),
         );
         #[cfg(feature = "render_3d")]
         app.add_systems(

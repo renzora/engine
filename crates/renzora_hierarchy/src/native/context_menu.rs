@@ -14,7 +14,7 @@
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::ShapeRegistry;
 use renzora_editor_framework::{EditorSelection, EntityLabelColor, InspectorRegistry, SpawnRegistry};
@@ -60,6 +60,25 @@ impl SpawnRegistries<'_> {
     }
 }
 
+/// What decides whether "Separate Parts" is offered: a part of a placed model
+/// (not the model itself) that draws meshes, or holds parts that do.
+#[derive(SystemParam)]
+pub(crate) struct ModelParts<'w, 's> {
+    meshes: Query<'w, 's, (), With<bevy::gltf::GltfMeshName>>,
+    models: Query<'w, 's, (), With<renzora::core::MeshInstanceData>>,
+    children: Query<'w, 's, &'static Children>,
+    parents: Query<'w, 's, &'static ChildOf>,
+}
+
+impl ModelParts<'_, '_> {
+    fn separable(&self, entity: Entity) -> bool {
+        let in_model = self.parents.iter_ancestors(entity).any(|a| self.models.contains(a));
+        in_model
+            && !self.models.contains(entity)
+            && (self.meshes.contains(entity) || self.children.iter_descendants(entity).any(|d| self.meshes.contains(d)))
+    }
+}
+
 /// Right-click a row → open a menu of actions for that entity. Right-click the
 /// empty space below the tree → the quick-add categories instead, so a scene can
 /// be filled without going through the header button's search overlay. The two
@@ -73,6 +92,7 @@ pub(crate) fn hier_context_menu(
     selection: Option<Res<EditorSelection>>,
     rows: Query<(&UiInteraction, &HierRowClick)>,
     props: Query<(Has<Camera3d>, Has<renzora::SceneInstance>, Has<EntityLabelColor>)>,
+    unit_props: Query<(Has<renzora::PickAsUnit>, Has<renzora::SelectionStop>, Has<Children>)>,
     ui: Query<
         (),
         Or<(
@@ -80,8 +100,9 @@ pub(crate) fn hier_context_menu(
             With<renzora_ember::game_ui::UiWidget>,
         )>,
     >,
-    list_area: Query<&RelativeCursorPosition, With<HierListArea>>,
+    list_area: Query<&UiCursor, With<HierListArea>>,
     registries: SpawnRegistries,
+    model_parts: ModelParts,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -139,6 +160,34 @@ pub(crate) fn hier_context_menu(
     }
     if multi {
         kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
+    }
+    // Whether a viewport click on any part of this selects the whole thing
+    // (`renzora::PickAsUnit`, read by `renzora_gizmo::picking`). Offered on
+    // anything with children, which is anything it can make a difference to;
+    // not on an entity whose code already makes it pick as one
+    // (`SelectionStop`, a terrain), which the toggle could not undo.
+    let (is_unit, is_stop, has_children) = unit_props.get(target).unwrap_or((false, false, false));
+    if !is_ui && has_children && !is_stop {
+        let (icon, key) = if is_unit {
+            ("squares-four", "hierarchy.context.select_parts")
+        } else {
+            ("cube", "hierarchy.context.select_as_one")
+        };
+        kids.push(menu_item(&mut commands, &fonts, icon, &renzora::lang::t(key), move |w| {
+            let Ok(mut e) = w.get_entity_mut(target) else { return };
+            if is_unit {
+                e.remove::<renzora::PickAsUnit>();
+            } else {
+                e.insert(renzora::PickAsUnit);
+            }
+        }));
+    }
+    // Split merged pieces of a model part (both wheels of an axle) into nodes
+    // of their own. A rewrite of the model file, done by the rig tools.
+    if !is_ui && model_parts.separable(target) {
+        kids.push(menu_item(&mut commands, &fonts, "scissors", &renzora::lang::t("hierarchy.context.separate_parts"), move |w| {
+            w.trigger(renzora::core::SeparateModelParts { entity: target });
+        }));
     }
 
     // Make a new project asset (and, for scripts, attach it here).

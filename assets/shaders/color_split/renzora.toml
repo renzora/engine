@@ -1,0 +1,9 @@
+name = "Color Split"
+version = "2.0.0"
+description = "Directional RGB split. A post-process effect: drop color_split.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "color_split"
+tags = ["post-processing", "shader", "rgb-split", "glitch"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

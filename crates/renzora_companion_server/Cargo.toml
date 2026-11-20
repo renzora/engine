@@ -1,0 +1,39 @@
+[package]
+name = "renzora_companion_server"
+version = "0.1.0"
+edition = "2021"
+description = "The standalone companion: the editor's job queue, project cache and (later) profiler in a small executable with no engine in it."
+
+[[bin]]
+name = "renzora-companion"
+path = "src/main.rs"
+
+# NO BEVY, directly or through any dependency. This executable exists because
+# the companion did not need the engine it carried; one `bevy` line here, or a
+# `renzora_*` crate that links it, puts all of it back. `cargo renzora
+# check-bevy` fails if any Bevy crate appears in this package's graph.
+#
+# The engine crates below are used with `default-features = false`, which is
+# what turns their Bevy off. That only holds when this package is built on its
+# own: in a `--workspace` build cargo unifies features across every member, and
+# the engine's own use of these crates turns `bevy` back on. So xtask builds
+# this package in an invocation of its own (see `xtask::build`).
+[dependencies]
+renzora_companion_proto = { path = "../renzora_companion_proto" }
+renzora_plugin_build = { path = "../renzora_plugin_build" }
+renzora_rmip = { path = "../renzora_rmip", default-features = false, features = ["bake"] }
+renzora_rvg = { path = "../renzora_rvg", default-features = false, features = ["bake"] }
+renzora_svg = { path = "../renzora_svg", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Texture thumbnails: the same decoders and resize the editor's companion used.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp", "hdr"] }
+# The project watcher. The version Bevy's own file watcher already resolves.
+notify = "8"
+# The window. OpenGL (glow) rather than wgpu: the window is a few lists and,
+# later, the profiler's timeline, and a GL context is far lighter than a wgpu
+# device. Not built on Bevy, so it comes from crates.io like any plain crate.
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+
+[lints]
+workspace = true

@@ -25,18 +25,35 @@ fn ssr_entry() -> InspectorEntry {
                 .entity_mut(entity)
                 .remove::<(SsrSettings, ScreenSpaceReflections)>();
         }),
+        // While Solari lights the camera SSR is stood down (see
+        // `renzora_ssr::sync_ssr`), so the switch reads off and does nothing.
+        // The stored setting is left alone and returns when Solari goes off.
         is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<SsrSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
+            !renzora_ssr::stood_down_by_solari(world, entity)
+                && world.get::<SsrSettings>(entity).is_some_and(|s| s.enabled)
         }),
         set_enabled_fn: Some(|world, entity, val| {
+            if renzora_ssr::stood_down_by_solari(world, entity) {
+                return;
+            }
             if let Some(mut s) = world.get_mut::<SsrSettings>(entity) {
                 s.enabled = val;
             }
         }),
         fields: vec![
+            renzora::FieldDef {
+                name: "Solari",
+                field_type: renzora::FieldType::ReadOnly,
+                get_fn: |world, entity| {
+                    renzora_ssr::stood_down_by_solari(world, entity).then(|| {
+                        renzora::FieldValue::ReadOnly(
+                            "Off while Solari ray-traced GI is on: it traces its own reflections."
+                                .to_string(),
+                        )
+                    })
+                },
+                set_fn: |_, _, _| {},
+            },
             renzora::float_field!("Thickness", SsrSettings, thickness, 0.01, 0.0, 5.0),
             renzora::int_field!("Linear Steps", SsrSettings, linear_steps, u32, 1.0, 1.0, 64.0),
             renzora::int_field!("Bisection Steps", SsrSettings, bisection_steps, u32, 1.0, 0.0, 16.0),

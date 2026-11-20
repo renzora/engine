@@ -1,0 +1,842 @@
+//! The 3D world on avian3d.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use avian3d::prelude::*;
+use bevy::ecs::system::SystemState;
+use bevy::prelude::*;
+use renzora::physics::{
+    physics_backend_selected, AppPhysicsBackendExt, BodyVelocity, Caps, CastBatch, CastHit,
+    CastShape, CollisionShapeData, Contact, JointKind, OverlapBatch, PhysicsBackend, PhysicsBodyData, PhysicsBodyType,
+    PhysicsCommand, PhysicsCommands, PhysicsContacts, PhysicsDim, PhysicsJoint, PhysicsSet,
+    PhysicsSettings, ResolvedCollider, ResolvedShape, RuntimePhysics, RuntimePhysics2d,
+};
+
+use crate::{has_body_ancestor, CommandForce};
+
+/// The name this backend registers under, and the one project settings use.
+pub const NAME: &str = "avian3d";
+
+pub struct Avian3dBackend;
+
+impl PhysicsBackend for Avian3dBackend {
+    fn name(&self) -> &str {
+        NAME
+    }
+
+    fn caps(&self) -> Caps {
+        Caps::DIM_3D
+            .union(Caps::TRIMESH)
+            .union(Caps::JOINTS)
+            .union(Caps::CCD)
+    }
+
+    fn cast(&self, world: &World, batch: &mut CastBatch) {
+        with_queries(world, |q| cast(q, batch));
+    }
+
+    fn overlap(&self, world: &World, batch: &mut OverlapBatch) {
+        with_queries(world, |q| overlap(q, batch));
+    }
+
+    fn runtime_type_prefixes(&self) -> &[&'static str] {
+        &["avian3d::"]
+    }
+
+    /// Strip every 3D entity of its avian parts and stop avian's clock, so an
+    /// unselected avian neither steps nor collides with the new backend's bodies.
+    /// Selecting it again marks the settings changed, which unpauses it.
+    fn detach(&self, world: &mut World, dim: PhysicsDim) {
+        if dim != PhysicsDim::D3 {
+            return;
+        }
+        let entities: Vec<Entity> = world
+            .query_filtered::<Entity, (With<RuntimePhysics>, Without<RuntimePhysics2d>)>()
+            .iter(world)
+            .collect();
+        for entity in entities {
+            let mut e = world.entity_mut(entity);
+            e.remove::<BodyParts>().remove::<ColliderParts>();
+            if let Some(child) = e.take::<HeightfieldChild>() {
+                if let Ok(c) = world.get_entity_mut(child.0) {
+                    c.despawn();
+                }
+            }
+        }
+        let joints: Vec<Entity> = world
+            .query_filtered::<Entity, With<PhysicsJoint>>()
+            .iter(world)
+            .collect();
+        for entity in joints {
+            world.entity_mut(entity).remove::<JointParts>();
+        }
+        if let Some(mut time) = world.get_resource_mut::<Time<Physics>>() {
+            time.pause();
+        }
+    }
+}
+
+pub struct Avian3dPlugin;
+
+impl Plugin for Avian3dPlugin {
+    fn build(&self, app: &mut App) {
+        info!("[runtime] Avian3dPlugin");
+        app.add_plugins(PhysicsPlugins::default());
+        app.add_physics_backend(Avian3dBackend);
+        // Built here, with the world in hand, so a cast later needs only `&World`.
+        let state = SystemState::<QueryParams>::new(app.world_mut());
+        app.insert_resource(QueryState(Mutex::new(state)));
+
+        let active = physics_backend_selected(NAME, PhysicsDim::D3);
+        // Before the fixed-step loop, so a pause written this frame stops the
+        // very next step.
+        app.add_systems(PreUpdate, apply_settings.run_if(active.clone()));
+        app.add_systems(
+            Update,
+            (remove_dropped_bodies, remove_dropped_colliders, sync_bodies, sync_colliders, sync_joints)
+                .chain()
+                .in_set(PhysicsSet::Sync)
+                .run_if(active.clone()),
+        );
+        app.add_systems(
+            Update,
+            (write_velocities, write_contacts)
+                .in_set(PhysicsSet::Writeback)
+                .run_if(active.clone()),
+        );
+        app.add_systems(
+            PostUpdate,
+            apply_commands.in_set(PhysicsSet::Commands).run_if(active.clone()),
+        );
+        app.add_systems(
+            FixedUpdate,
+            apply_fixed_commands.in_set(PhysicsSet::Commands).run_if(active),
+        );
+    }
+}
+
+fn apply_settings(
+    settings: Res<PhysicsSettings>,
+    mut gravity: ResMut<Gravity>,
+    mut time: ResMut<Time<Physics>>,
+    mut substeps: ResMut<SubstepCount>,
+) {
+    if !settings.is_changed() {
+        return;
+    }
+    gravity.0 = settings.gravity;
+    time.set_relative_speed(settings.time_scale);
+    substeps.0 = settings.substeps;
+    if settings.paused {
+        time.pause();
+    } else {
+        time.unpause();
+    }
+}
+
+/// Avian components that make up a body, removed by `Strip`. Split from
+/// [`ColliderParts`] because a bundle tuple stops at fifteen.
+type BodyParts = (
+    RigidBody,
+    Mass,
+    GravityScale,
+    LinearDamping,
+    AngularDamping,
+    LockedAxes,
+    LinearVelocity,
+    AngularVelocity,
+    ConstantForce,
+    ConstantTorque,
+    CommandForce,
+    SweptCcd,
+);
+
+/// Avian components that make up a collider.
+type ColliderParts = (Collider, ColliderTransform, Friction, Restitution, Sensor, CollisionLayers);
+
+/// Avian components a [`PhysicsJoint`] becomes.
+type JointParts = (
+    FixedJoint,
+    SphericalJoint,
+    RevoluteJoint,
+    PrismaticJoint,
+    DistanceJoint,
+    JointCollisionDisabled,
+);
+
+fn body_parts(body: &PhysicsBodyData) -> impl Bundle {
+    let rigid_body = match body.body_type {
+        PhysicsBodyType::RigidBody => RigidBody::Dynamic,
+        PhysicsBodyType::StaticBody => RigidBody::Static,
+        PhysicsBodyType::KinematicBody => RigidBody::Kinematic,
+    };
+    let mut locked = LockedAxes::new();
+    if body.lock_rotation_x {
+        locked = locked.lock_rotation_x();
+    }
+    if body.lock_rotation_y {
+        locked = locked.lock_rotation_y();
+    }
+    if body.lock_rotation_z {
+        locked = locked.lock_rotation_z();
+    }
+    if body.lock_translation_x {
+        locked = locked.lock_translation_x();
+    }
+    if body.lock_translation_y {
+        locked = locked.lock_translation_y();
+    }
+    if body.lock_translation_z {
+        locked = locked.lock_translation_z();
+    }
+    (
+        rigid_body,
+        Mass(body.mass),
+        GravityScale(body.gravity_scale),
+        LinearDamping(body.linear_damping),
+        AngularDamping(body.angular_damping),
+        locked,
+    )
+}
+
+/// The avian collider for a resolved shape. `None` for a 2D shape, which never
+/// reaches this world.
+fn collider_for(shape: &ResolvedShape) -> Option<Collider> {
+    Some(match shape {
+        ResolvedShape::Cuboid { half_extents } => {
+            let size = *half_extents * 2.0;
+            Collider::cuboid(size.x, size.y, size.z)
+        }
+        ResolvedShape::Sphere { radius } => Collider::sphere(*radius),
+        ResolvedShape::Capsule { radius, half_height } => Collider::capsule(*radius, half_height * 2.0),
+        ResolvedShape::Cylinder { radius, half_height } => {
+            Collider::cylinder(*radius, half_height * 2.0)
+        }
+        ResolvedShape::TriMesh(mesh) => Collider::trimesh(mesh.vertices.clone(), mesh.indices.clone()),
+        ResolvedShape::Heightfield(field) => heightfield_collider(field)?,
+        ResolvedShape::Rectangle { .. } | ResolvedShape::Circle { .. } | ResolvedShape::Capsule2d { .. } => {
+            return None
+        }
+    })
+}
+
+/// avian's heightfield for a grid, centred on its own origin, and where that
+/// origin sits in a grid that spans `0..size` from the entity's.
+///
+/// Two conventions meet here. parry's heightfield is centred on its origin,
+/// with rows along Z and columns along X, stored column-major; avian's
+/// constructor flattens its `Vec<Vec<_>>` one inner vec after another into
+/// that column-major store, which only lines up when the grid is square and
+/// the OUTER index is X. Every terrain chunk is square; a grid that is not
+/// falls back to triangles ([`collider_for`]) rather than come out transposed,
+/// and returns `None` here.
+fn heightfield_parts(field: &renzora::physics::HeightfieldData) -> Option<(Collider, Vec3)> {
+    if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
+        return None;
+    }
+    if field.columns != field.rows {
+        return None;
+    }
+    let by_x: Vec<Vec<f32>> = (0..field.columns)
+        .map(|x| (0..field.rows).map(|z| field.heights[z * field.columns + x]).collect())
+        .collect();
+    let shape = Collider::heightfield(by_x, Vec3::new(field.size.x, 1.0, field.size.y));
+    Some((shape, Vec3::new(field.size.x * 0.5, 0.0, field.size.y * 0.5)))
+}
+
+/// A heightfield as one collider, for casting a shape and for the uncommon
+/// grid that is not square. A body's own heightfield is never built this way:
+/// see [`HeightfieldPart`].
+fn heightfield_collider(field: &renzora::physics::HeightfieldData) -> Option<Collider> {
+    if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
+        return None;
+    }
+    match heightfield_parts(field) {
+        Some((shape, centre)) => Some(Collider::compound(vec![(centre, Quat::IDENTITY, shape)])),
+        None => {
+            let mesh = field.triangles();
+            Some(Collider::trimesh(mesh.vertices, mesh.indices))
+        }
+    }
+}
+
+/// The entity that carries a terrain chunk's heightfield collider, a child of
+/// the chunk placed at the grid's centre.
+///
+/// A heightfield cannot be moved off its own centre inside its shape, and the
+/// chunk's grid starts at the chunk's origin. Wrapping it in a one-shape
+/// compound to move it was tried, and rays hit it, but parry makes contacts
+/// for a compound only from convex parts: a box, a car, anything but a
+/// sphere, fell straight through the ground. A child collider is moved by its
+/// own transform and belongs to the chunk's body like any other.
+#[derive(Component)]
+struct HeightfieldPart(Entity);
+
+/// On a chunk: the [`HeightfieldPart`] carrying its collider.
+#[derive(Component)]
+struct HeightfieldChild(Entity);
+
+/// Take away an entity's heightfield child, if it has one.
+fn drop_heightfield_child(commands: &mut Commands, entity: Entity) {
+    commands.queue(move |world: &mut World| {
+        let Some(child) = world.get::<HeightfieldChild>(entity).map(|c| c.0) else {
+            return;
+        };
+        if let Ok(mut e) = world.get_entity_mut(entity) {
+            e.remove::<HeightfieldChild>();
+        }
+        if let Ok(e) = world.get_entity_mut(child) {
+            e.despawn();
+        }
+    });
+}
+
+/// The entity a collider belongs to as the engine sees it: a heightfield's
+/// owner rather than its carrier.
+fn owner_of(parts: &Query<&HeightfieldPart>, entity: Entity) -> Entity {
+    parts.get(entity).map_or(entity, |p| p.0)
+}
+
+/// The entity's collider with its offset and turn baked in.
+///
+/// Baked as a one-shape compound rather than set as a `ColliderTransform`:
+/// avian recomputes that component every step, to identity for a collider on
+/// its body's own entity, so an offset put there is silently discarded (the 2D
+/// backend found this first; see `offset_2d_collider_collides_at_offset`).
+/// Baking it also keeps a `Collider` cast honest: the shape a cast sweeps is
+/// the shape the body collides with, offset included.
+fn placed_collider(resolved: &ResolvedCollider) -> Option<Collider> {
+    let collider = collider_for(&resolved.shape)?;
+    if resolved.offset == Vec3::ZERO && resolved.rotation == Quat::IDENTITY {
+        return Some(collider);
+    }
+    Some(Collider::compound(vec![(resolved.offset, resolved.rotation, collider)]))
+}
+
+/// An entity un-wired from physics loses everything avian built for it; one
+/// that only lost its `PhysicsBodyData` loses the body and keeps its collider,
+/// which avian then treats as fixed scenery. See `PhysicsSet::Sync`.
+fn remove_dropped_bodies(
+    mut commands: Commands,
+    mut removed_runtime: RemovedComponents<RuntimePhysics>,
+    mut removed_bodies: RemovedComponents<PhysicsBodyData>,
+    wired: Query<(), With<RuntimePhysics>>,
+    has_body: Query<(), With<PhysicsBodyData>>,
+    colliders: Query<(), (With<CollisionShapeData>, Without<RuntimePhysics2d>)>,
+    parents: Query<&ChildOf>,
+) {
+    for entity in removed_runtime.read() {
+        if !wired.contains(entity) {
+            if let Ok(mut e) = commands.get_entity(entity) {
+                e.try_remove::<BodyParts>().try_remove::<ColliderParts>();
+            }
+            drop_heightfield_child(&mut commands, entity);
+        }
+    }
+    for entity in removed_bodies.read() {
+        if wired.contains(entity) && !has_body.contains(entity) {
+            if let Ok(mut e) = commands.get_entity(entity) {
+                e.try_remove::<BodyParts>();
+                // A collider left behind is still solid; see `has_body_ancestor`.
+                if colliders.contains(entity) && !has_body_ancestor(entity, &has_body, &parents) {
+                    e.try_insert(RigidBody::Static);
+                }
+            }
+        }
+    }
+}
+
+/// A collider whose `ResolvedCollider` went away (its shape became a mesh that
+/// has not loaded yet, or the engine dropped it) leaves the world too.
+fn remove_dropped_colliders(
+    mut commands: Commands,
+    mut removed: RemovedComponents<ResolvedCollider>,
+    still_has: Query<(), With<ResolvedCollider>>,
+) {
+    for entity in removed.read() {
+        if still_has.contains(entity) {
+            continue;
+        }
+        if let Ok(mut e) = commands.get_entity(entity) {
+            e.try_remove::<ColliderParts>();
+        }
+        drop_heightfield_child(&mut commands, entity);
+    }
+}
+
+fn sync_bodies(
+    mut commands: Commands,
+    bodies: Query<
+        (Entity, &PhysicsBodyData),
+        (
+            With<RuntimePhysics>,
+            Without<RuntimePhysics2d>,
+            Or<(Added<RuntimePhysics>, Changed<PhysicsBodyData>)>,
+        ),
+    >,
+    new_colliders: Query<
+        Entity,
+        (
+            Added<RuntimePhysics>,
+            Without<RuntimePhysics2d>,
+            With<CollisionShapeData>,
+            Without<PhysicsBodyData>,
+        ),
+    >,
+    all_bodies: Query<(), With<PhysicsBodyData>>,
+    parents: Query<&ChildOf>,
+) {
+    for (entity, body) in &bodies {
+        let mut e = commands.entity(entity);
+        e.try_insert(body_parts(body));
+        if body.ccd {
+            e.try_insert(SweptCcd::default());
+        } else {
+            e.try_remove::<SweptCcd>();
+        }
+    }
+    // The same explicit static body the 2D backend gives a body-less collider;
+    // see `has_body_ancestor` for what happens without it.
+    for entity in &new_colliders {
+        if !has_body_ancestor(entity, &all_bodies, &parents) {
+            commands.entity(entity).try_insert(RigidBody::Static);
+        }
+    }
+}
+
+fn sync_colliders(
+    mut commands: Commands,
+    colliders: Query<
+        (Entity, &ResolvedCollider),
+        (With<RuntimePhysics>, Without<RuntimePhysics2d>, Changed<ResolvedCollider>),
+    >,
+    heightfield_children: Query<&HeightfieldChild>,
+) {
+    for (entity, resolved) in &colliders {
+        let surface = (
+            Friction::new(resolved.friction),
+            Restitution::new(resolved.restitution),
+            CollisionLayers::from_bits(resolved.layers.memberships, resolved.layers.filters),
+        );
+        // A heightfield goes on a child; see `HeightfieldPart`.
+        let field = match &resolved.shape {
+            ResolvedShape::Heightfield(field) if resolved.offset == Vec3::ZERO && resolved.rotation == Quat::IDENTITY => {
+                heightfield_parts(field)
+            }
+            _ => None,
+        };
+        if let Some((shape, centre)) = field {
+            commands.entity(entity).try_remove::<ColliderParts>();
+            let parts = (shape, surface, Transform::from_translation(centre));
+            let child = match heightfield_children.get(entity) {
+                Ok(child) => {
+                    commands.entity(child.0).try_insert(parts);
+                    child.0
+                }
+                Err(_) => {
+                    let child = commands
+                        .spawn((parts, HeightfieldPart(entity), renzora::HideInHierarchy, ChildOf(entity)))
+                        .id();
+                    commands.entity(entity).try_insert(HeightfieldChild(child));
+                    child
+                }
+            };
+            if resolved.sensor {
+                commands.entity(child).try_insert(Sensor);
+            } else {
+                commands.entity(child).try_remove::<Sensor>();
+            }
+            continue;
+        }
+        if heightfield_children.contains(entity) {
+            drop_heightfield_child(&mut commands, entity);
+        }
+        let Some(collider) = placed_collider(resolved) else {
+            continue;
+        };
+        let mut e = commands.entity(entity);
+        e.try_insert((collider, surface));
+        // Left over from before offsets were baked into the collider.
+        e.try_remove::<ColliderTransform>();
+        if resolved.sensor {
+            e.try_insert(Sensor);
+        } else {
+            e.try_remove::<Sensor>();
+        }
+    }
+}
+
+/// Each 3D [`PhysicsJoint`] becomes the matching avian joint on the same entity.
+fn sync_joints(
+    mut commands: Commands,
+    mut removed: RemovedComponents<PhysicsJoint>,
+    joints: Query<(Entity, &PhysicsJoint), Changed<PhysicsJoint>>,
+    dims: Query<Has<RuntimePhysics2d>>,
+) {
+    for entity in removed.read() {
+        if let Ok(mut e) = commands.get_entity(entity) {
+            e.try_remove::<JointParts>();
+        }
+    }
+    for (entity, joint) in &joints {
+        if dims.get(joint.body1) == Ok(true) {
+            continue;
+        }
+        let mut e = commands.entity(entity);
+        e.try_remove::<JointParts>();
+        let (b1, b2, c) = (joint.body1, joint.body2, joint.compliance);
+        match joint.kind {
+            JointKind::Fixed => {
+                e.try_insert(
+                    FixedJoint::new(b1, b2)
+                        .with_local_anchor1(joint.anchor1)
+                        .with_local_anchor2(joint.anchor2)
+                        .with_angle_compliance(c),
+                );
+            }
+            JointKind::Spherical { twist_axis, swing_limit, twist_limit } => {
+                let mut j = SphericalJoint::new(b1, b2)
+                    .with_local_anchor1(joint.anchor1)
+                    .with_local_anchor2(joint.anchor2)
+                    .with_twist_axis(twist_axis.normalize_or(Vec3::Y))
+                    .with_swing_compliance(c)
+                    .with_twist_compliance(c);
+                if let Some(swing) = swing_limit {
+                    j = j.with_swing_limits(-swing, swing);
+                }
+                if let Some(twist) = twist_limit {
+                    j = j.with_twist_limits(-twist, twist);
+                }
+                e.try_insert(j);
+            }
+            JointKind::Revolute { axis, limits } => {
+                let mut j = RevoluteJoint::new(b1, b2)
+                    .with_local_anchor1(joint.anchor1)
+                    .with_local_anchor2(joint.anchor2)
+                    .with_hinge_axis(axis.normalize_or(Vec3::Y))
+                    .with_align_compliance(c)
+                    .with_limit_compliance(c);
+                if let Some((min, max)) = limits {
+                    j = j.with_angle_limits(min, max);
+                }
+                e.try_insert(j);
+            }
+            JointKind::Prismatic { axis, limits } => {
+                let mut j = PrismaticJoint::new(b1, b2)
+                    .with_local_anchor1(joint.anchor1)
+                    .with_local_anchor2(joint.anchor2)
+                    .with_slider_axis(axis.normalize_or(Vec3::X))
+                    .with_align_compliance(c)
+                    .with_angle_compliance(c)
+                    .with_limit_compliance(c);
+                if let Some((min, max)) = limits {
+                    j = j.with_limits(min, max);
+                }
+                e.try_insert(j);
+            }
+            JointKind::Distance { min, max } => {
+                e.try_insert(
+                    DistanceJoint::new(b1, b2)
+                        .with_local_anchor1(joint.anchor1)
+                        .with_local_anchor2(joint.anchor2)
+                        .with_limits(min, max)
+                        .with_compliance(c),
+                );
+            }
+        }
+        if !joint.collide_connected {
+            e.try_insert(JointCollisionDisabled);
+        }
+    }
+}
+
+fn write_velocities(
+    mut q: Query<
+        (Option<&LinearVelocity>, Option<&AngularVelocity>, &mut BodyVelocity),
+        Without<RuntimePhysics2d>,
+    >,
+) {
+    for (linear, angular, mut velocity) in &mut q {
+        velocity.set_if_neq(BodyVelocity {
+            linear: linear.map(|v| v.0).unwrap_or(Vec3::ZERO),
+            angular: angular.map(|v| v.0).unwrap_or(Vec3::ZERO),
+        });
+    }
+}
+
+fn write_contacts(
+    mut q: Query<(Entity, &mut PhysicsContacts, Option<&GlobalTransform>), Without<RuntimePhysics2d>>,
+    collisions: Collisions,
+    heightfield_children: Query<&HeightfieldChild>,
+    parts: Query<&HeightfieldPart>,
+) {
+    for (entity, mut contacts, transform) in &mut q {
+        // A chunk's collider is on its heightfield child, and what touches it
+        // is reported as touching the chunk.
+        let collider = heightfield_children.get(entity).map_or(entity, |c| c.0);
+        let current: Vec<Contact> = collisions
+            .collisions_with(collider)
+            .map(|pair| {
+                let first = pair.collider1 == collider;
+                let other = owner_of(&parts, if first { pair.collider2 } else { pair.collider1 });
+                // Manifold normals point from collider1 to collider2; ours points
+                // at this body, which is the opposite way when it is collider1.
+                let deepest = pair
+                    .manifolds
+                    .iter()
+                    .flat_map(|m| m.points.iter().map(move |p| (m.normal, p)))
+                    .max_by(|a, b| a.1.penetration.total_cmp(&b.1.penetration));
+                let (point, normal) = match deepest {
+                    Some((normal, p)) => (p.point, if first { -normal } else { normal }),
+                    // A sensor overlap has no manifold.
+                    None => (transform.map(|t| t.translation()).unwrap_or_default(), Vec3::ZERO),
+                };
+                Contact { entity: other, point, normal, impulse: pair.total_normal_impulse_magnitude() }
+            })
+            .collect();
+        if contacts.0 != current {
+            contacts.0 = current;
+        }
+    }
+}
+
+/// Apply this frame's commands to the 3D bodies among their targets.
+///
+/// Last frame's command forces are dropped first: a force acts through every
+/// step until the next frame's commands land, so one pushed every frame is a
+/// steady force at any frame rate, and one pushed once acts for a frame.
+fn apply_commands(
+    queue: Res<PhysicsCommands>,
+    dims: Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    previous_forces: Query<Entity, With<CommandForce>>,
+    mut forces_q: Query<Forces>,
+    mut commands: Commands,
+) {
+    for entity in &previous_forces {
+        commands
+            .entity(entity)
+            .try_remove::<(ConstantForce, ConstantTorque, CommandForce)>();
+    }
+    apply_queue(&queue, &dims, &mut forces_q, &mut commands);
+}
+
+/// What `on_fixed_update` pushed this tick, before the step that follows it.
+///
+/// No sweep of last frame's forces: that would take away the forces `on_update`
+/// scripts set on other bodies (see `PhysicsSet::Commands`). A body this tick
+/// gives a force has its `ConstantForce` replaced by the insert anyway, which is
+/// the only reset it needs.
+fn apply_fixed_commands(
+    queue: Res<PhysicsCommands>,
+    dims: Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    mut forces_q: Query<Forces>,
+    mut commands: Commands,
+) {
+    apply_queue(&queue, &dims, &mut forces_q, &mut commands);
+}
+
+fn apply_queue(
+    queue: &PhysicsCommands,
+    dims: &Query<Has<RuntimePhysics2d>, With<RuntimePhysics>>,
+    forces_q: &mut Query<Forces>,
+    commands: &mut Commands,
+) {
+    let mut forces: HashMap<Entity, (Vec3, Vec3)> = HashMap::new();
+    for command in &queue.0 {
+        let entity = command.entity();
+        if let PhysicsCommand::Strip { entity } = *command {
+            // Whatever world the entity was in: removing absent parts is a no-op.
+            if let Ok(mut e) = commands.get_entity(entity) {
+                e.try_remove::<BodyParts>().try_remove::<ColliderParts>();
+            }
+            drop_heightfield_child(commands, entity);
+            continue;
+        }
+        if dims.get(entity) != Ok(false) {
+            continue;
+        }
+        match *command {
+            PhysicsCommand::AddForce { force, .. } => {
+                forces.entry(entity).or_default().0 += force;
+            }
+            PhysicsCommand::AddTorque { torque, .. } => {
+                forces.entry(entity).or_default().1 += torque;
+            }
+            PhysicsCommand::AddImpulse { impulse, .. } => {
+                if let Ok(mut f) = forces_q.get_mut(entity) {
+                    f.apply_linear_impulse(impulse);
+                }
+            }
+            PhysicsCommand::AddAngularImpulse { impulse, .. } => {
+                if let Ok(mut f) = forces_q.get_mut(entity) {
+                    f.apply_angular_impulse(impulse);
+                }
+            }
+            PhysicsCommand::SetLinearVelocity { velocity, .. } => {
+                commands.entity(entity).try_insert(LinearVelocity(velocity));
+            }
+            PhysicsCommand::SetAngularVelocity { velocity, .. } => {
+                commands.entity(entity).try_insert(AngularVelocity(velocity));
+            }
+            PhysicsCommand::Strip { .. } => {}
+        }
+    }
+    for (entity, (force, torque)) in forces {
+        commands
+            .entity(entity)
+            .try_insert((ConstantForce(force), ConstantTorque(torque), CommandForce));
+    }
+}
+
+// ── Queries ──────────────────────────────────────────────────────────────
+
+type QueryParams = (
+    SpatialQuery<'static, 'static>,
+    Query<'static, 'static, (), With<Sensor>>,
+    Query<'static, 'static, &'static Collider>,
+    Query<'static, 'static, &'static HeightfieldPart>,
+);
+
+/// The spatial-query parameters, built once so a cast needs only `&World`.
+/// A mutex because fetching from it takes `&mut`, and casts arrive through
+/// `&self`.
+#[derive(Resource)]
+struct QueryState(Mutex<SystemState<QueryParams>>);
+
+struct Queries<'a, 'w, 's> {
+    spatial: &'a SpatialQuery<'w, 's>,
+    sensors: &'a Query<'w, 's, (), With<Sensor>>,
+    colliders: &'a Query<'w, 's, &'static Collider>,
+    /// To report a heightfield's owner, not its carrier.
+    parts: &'a Query<'w, 's, &'static HeightfieldPart>,
+}
+
+fn with_queries(world: &World, run: impl FnOnce(Queries)) {
+    // Missing only when avian's own plugins were not added; every query is
+    // then a miss, which is the same answer as an empty scene.
+    let Some(state) = world.get_resource::<QueryState>() else { return };
+    let Ok(mut state) = state.0.lock() else { return };
+    let Ok((spatial, sensors, colliders, parts)) = state.get(world) else { return };
+    run(Queries { spatial: &spatial, sensors: &sensors, colliders: &colliders, parts: &parts });
+}
+
+fn cast(q: Queries, batch: &mut CastBatch) {
+    // Shapes are shared between consecutive casts of one shape, which a burst
+    // of one emitter's particles nearly always is.
+    let mut built: Option<(ResolvedShape, Collider)> = None;
+    let CastBatch { casts, hits } = batch;
+    for (cast, hit) in casts.iter().zip(hits.iter_mut()) {
+        if cast.dim != PhysicsDim::D3 {
+            continue;
+        }
+        let Ok(dir) = Dir3::new(cast.direction) else { continue };
+        let filter = SpatialQueryFilter::from_mask(cast.collides_with)
+            .with_excluded_entities(cast.exclude.iter().copied());
+        let solid = |e: Entity| cast.include_sensors || !q.sensors.contains(e);
+        let shape = match &cast.shape {
+            CastShape::Ray => {
+                if let Some(h) = q.spatial.cast_ray_predicate(
+                    cast.origin,
+                    dir,
+                    cast.max_distance,
+                    !cast.ignore_origin_penetration,
+                    &filter,
+                    &solid,
+                ) {
+                    *hit = Some(CastHit {
+                        distance: h.distance,
+                        point: cast.origin + *dir * h.distance,
+                        normal: h.normal,
+                        entity: owner_of(q.parts, h.entity),
+                    });
+                }
+                continue;
+            }
+            CastShape::Shape(shape) => {
+                if built.as_ref().is_none_or(|(s, _)| s != shape) {
+                    built = collider_for(shape).map(|c| (shape.clone(), c));
+                }
+                match &built {
+                    Some((_, c)) => c.clone(),
+                    None => continue,
+                }
+            }
+            // The entity's own collider, offset and turn included (see
+            // `placed_collider`), so the cast is placed by the entity's pose.
+            CastShape::Collider(entity) => match q.colliders.get(*entity) {
+                Ok(c) => c.clone(),
+                Err(_) => continue,
+            },
+        };
+        let config = ShapeCastConfig {
+            max_distance: cast.max_distance,
+            ignore_origin_penetration: cast.ignore_origin_penetration,
+            ..Default::default()
+        };
+        if let Some(h) =
+            q.spatial.cast_shape_predicate(&shape, cast.origin, cast.rotation, dir, &config, &filter, &solid)
+        {
+            *hit = Some(CastHit {
+                distance: h.distance,
+                point: h.point1,
+                normal: h.normal1,
+                entity: owner_of(q.parts, h.entity),
+            });
+        }
+    }
+}
+
+fn overlap(q: Queries, batch: &mut OverlapBatch) {
+    let OverlapBatch { queries, hits } = batch;
+    for (query, found) in queries.iter().zip(hits.iter_mut()) {
+        if query.dim != PhysicsDim::D3 {
+            continue;
+        }
+        let Some(shape) = collider_for(&query.shape) else { continue };
+        let filter = SpatialQueryFilter::from_mask(query.collides_with)
+            .with_excluded_entities(query.exclude.iter().copied());
+        q.spatial.shape_intersections_callback(&shape, query.position, query.rotation, &filter, |e| {
+            if query.include_sensors || !q.sensors.contains(e) {
+                let e = owner_of(q.parts, e);
+                if !found.contains(&e) {
+                    found.push(e);
+                }
+            }
+            true
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora::physics::HeightfieldData;
+
+    /// A slope rising along X only, so a transposed grid (rows and columns
+    /// swapped between the engine's layout and avian's) would put the slope
+    /// along Z and the rays below would land at the wrong heights.
+    #[test]
+    fn a_heightfield_rises_the_way_its_grid_does() {
+        let n = 9;
+        let mut heights = vec![0.0; n * n];
+        for z in 0..n {
+            for x in 0..n {
+                heights[z * n + x] = x as f32;
+            }
+        }
+        let field = HeightfieldData { heights, columns: n, rows: n, size: Vec2::new(16.0, 16.0) };
+        let collider = heightfield_collider(&field).expect("a square grid builds");
+        let ground = |x: f32, z: f32| {
+            let (toi, _) = collider
+                .cast_ray(Vec3::ZERO, Quat::IDENTITY, Vec3::new(x, 100.0, z), Vec3::NEG_Y, 1000.0, true)
+                .expect("the ray hits the ground");
+            100.0 - toi
+        };
+        // Sample spacing is 2 m and height is the column index, so 4 m along X
+        // is height 2 whatever Z is.
+        assert!((ground(4.0, 1.0) - 2.0).abs() < 1e-3, "{}", ground(4.0, 1.0));
+        assert!((ground(4.0, 13.0) - 2.0).abs() < 1e-3, "{}", ground(4.0, 13.0));
+        assert!((ground(12.0, 6.0) - 6.0).abs() < 1e-3, "{}", ground(12.0, 6.0));
+    }
+}

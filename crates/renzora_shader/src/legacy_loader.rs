@@ -77,7 +77,8 @@ impl AssetLoader for LegacyWgslLoader {
             })
             .collect();
         for file in candidates {
-            if load_context.read_asset_bytes(AssetPath::from(file.clone())).await.is_ok() {
+            // Opening it is the existence test; nothing is read.
+            if load_context.read_asset(AssetPath::from(file.clone())).await.is_ok() {
                 shader.file_dependencies.push(load_context.load(AssetPath::from(file)));
             }
         }

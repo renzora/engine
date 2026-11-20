@@ -12,7 +12,8 @@ use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
+use bevy::ui::{ComputedNode, UiTransform};
+use renzora_ember::UiCursor;
 
 use renzora::core::keybindings::KeyBinding;
 use renzora::core::CurrentProject;
@@ -47,6 +48,7 @@ fn category_icon(category: &str) -> &'static str {
         "Procedural" => "waves",
         "Animation" => "timer",
         "Utility" => "wrench",
+        "Landscape" => "mountains",
         "Output" => "sign-out",
         _ => "circle",
     }
@@ -293,9 +295,9 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, view: Entity) -> E
     // hover wash says it is clickable, and only Apply (the one action that
     // changes anything outside this panel) is filled, in the accent.
     let add = tool_button(commands, fonts, "plus", Some("Add Node"), "Add a node (or right-click the graph)", ToolLook::Flat);
-    // `add_node_open` reads the button's `RelativeCursorPosition` to place the
+    // `add_node_open` reads the button's `UiCursor` to place the
     // add-node menu under it.
-    commands.entity(add).insert((AddNodeBtn, RelativeCursorPosition::default()));
+    commands.entity(add).insert((AddNodeBtn, UiCursor::default()));
     let apply = tool_button(commands, fonts, "check", Some("Apply"), "Apply the graph to the material", ToolLook::Primary);
     commands.entity(apply).insert(ApplyBtn);
     // Comments were reachable only through the C key with nodes selected, which
@@ -1175,7 +1177,7 @@ fn apply_click(q: Query<&UiInteraction, (With<ApplyBtn>, Changed<UiInteraction>)
 }
 
 fn add_node_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<AddNodeBtn>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode), (With<AddNodeBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Option<Res<MaterialEditorState>>,
@@ -1333,7 +1335,7 @@ fn mat_graph_image_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
     project: Option<Res<CurrentProject>>,
-    graphs: Query<(&RelativeCursorPosition, &ComputedNode, &MatGraph)>,
+    graphs: Query<(&UiCursor, &ComputedNode, &MatGraph)>,
     canvases: Query<&UiTransform>,
     state: Option<ResMut<MaterialEditorState>>,
     mut commands: Commands,

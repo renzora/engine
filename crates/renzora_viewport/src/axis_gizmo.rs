@@ -17,7 +17,8 @@ use std::sync::atomic::Ordering;
 use bevy::input::mouse::MouseMotion;
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform};
+use bevy::ui::UiTransform;
+use renzora_ember::UiCursor;
 
 use renzora::core::viewport_types::{
     CameraOrbitSnapshot, NavOverlayState, ViewAngleCommand, ViewportSettings, AXIS_NEG_X,
@@ -106,7 +107,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
                 height: Val::Px(AXIS_GIZMO_SIZE),
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlaySurface,
             UiInteraction::default(),
             AxisGizmoRoot,
@@ -271,17 +272,25 @@ fn gizmo_layout(
         orbit.as_deref().map(|o| (o.yaw, o.pitch)).unwrap_or((0.0, 0.0))
     };
 
+    // Every write below goes through `set_if_neq`. Assigning through `Mut` marks
+    // the component changed even when the value is the same, and a changed `Node`
+    // or `UiTransform` makes Bevy lay out the whole path to the window root again.
+    // Written unconditionally, a still camera cost a layout pass every frame, and
+    // with a big panel sharing the viewport's split (the Inspector beside it) that
+    // pass was most of the frame.
     for (tip, slot, mut node, mut bg, mut z) in &mut tips {
         let (yaw, pitch) = slot_orbit(slot.0);
         let (cy, sy) = (yaw.cos(), yaw.sin());
         let (cp, sp) = (pitch.cos(), pitch.sin());
         let (off, depth) = project(tip.dir, cy, sy, cp, sp);
         let d = if tip.positive { POS_D } else { NEG_D };
-        node.left = Val::Px(CENTRE + off.x - d / 2.0);
-        node.top = Val::Px(CENTRE + off.y - d / 2.0);
+        let mut placed = node.clone();
+        placed.left = Val::Px(CENTRE + off.x - d / 2.0);
+        placed.top = Val::Px(CENTRE + off.y - d / 2.0);
+        node.set_if_neq(placed);
         let alpha = if depth < -0.1 { 0.45 } else { 1.0 };
-        bg.0 = rgba(tip.color, alpha);
-        *z = ZIndex(100 + (depth * 10.0) as i32);
+        bg.set_if_neq(BackgroundColor(rgba(tip.color, alpha)));
+        z.set_if_neq(ZIndex(100 + (depth * 10.0) as i32));
     }
 
     for (line, slot, mut node, mut tf, mut bg, mut z) in &mut lines {
@@ -290,15 +299,17 @@ fn gizmo_layout(
         let (cp, sp) = (pitch.cos(), pitch.sin());
         let (off, depth) = project(line.dir, cy, sy, cp, sp);
         let len = off.length();
-        node.width = Val::Px(len);
+        let mut placed = node.clone();
+        placed.width = Val::Px(len);
         // Centre the line on the midpoint, then rotate about its own centre so it
         // spans centre -> tip.
-        node.left = Val::Px(CENTRE + off.x / 2.0 - len / 2.0);
-        node.top = Val::Px(CENTRE + off.y / 2.0 - 1.25);
-        *tf = UiTransform::from_rotation(Rot2::radians(off.y.atan2(off.x)));
+        placed.left = Val::Px(CENTRE + off.x / 2.0 - len / 2.0);
+        placed.top = Val::Px(CENTRE + off.y / 2.0 - 1.25);
+        node.set_if_neq(placed);
+        tf.set_if_neq(UiTransform::from_rotation(Rot2::radians(off.y.atan2(off.x))));
         let alpha = if depth < -0.1 { 0.4 } else { 0.9 };
-        bg.0 = rgba(line.color, alpha);
-        *z = ZIndex(10 + (depth * 10.0) as i32);
+        bg.set_if_neq(BackgroundColor(rgba(line.color, alpha)));
+        z.set_if_neq(ZIndex(10 + (depth * 10.0) as i32));
     }
 }
 
@@ -310,7 +321,7 @@ fn gizmo_backplate(
     let active = nav.is_some_and(|n| n.orbit_dragging.load(Ordering::Relaxed));
     let a = if active { 0.38 } else { 0.22 };
     for mut bg in &mut plates {
-        bg.0 = Color::srgba(0.0, 0.0, 0.0, a);
+        bg.set_if_neq(BackgroundColor(Color::srgba(0.0, 0.0, 0.0, a)));
     }
 }
 

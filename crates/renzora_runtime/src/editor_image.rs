@@ -39,6 +39,13 @@ use std::path::PathBuf;
 /// The symbol the editor image exports — see `renzora_editor::renzora_editor_install`.
 const INSTALL_SYMBOL: &[u8] = b"renzora_editor_install\0";
 
+/// The companion's entry point in the same image: see
+/// `renzora_editor::renzora_companion_install`. A second symbol rather than a
+/// flag to the first, because installing the editor and installing the
+/// companion share nothing: the companion is a small app of its own and must
+/// not pick up a single editor plugin on the way.
+const COMPANION_SYMBOL: &[u8] = b"renzora_companion_install\0";
+
 /// Its signature. A plain Rust `fn` taking `&mut App`, sound only because both
 /// sides link one shared Bevy.
 type InstallFn = fn(&mut bevy::app::App);
@@ -82,11 +89,28 @@ pub fn present() -> bool {
 /// runtime foundation — the ordering the old static call site guaranteed.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn install(app: &mut bevy::app::App) {
+    install_entry(app, INSTALL_SYMBOL, "editor");
+}
+
+/// Load the editor image and install only the companion from it: the
+/// `--companion` process the editor starts beside itself.
+///
+/// Returns whether it was installed. The companion's code lives in the editor
+/// image so a shipped game never carries it, which means a missing image has no
+/// companion to run either.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_companion(app: &mut bevy::app::App) -> bool {
+    install_entry(app, COMPANION_SYMBOL, "companion")
+}
+
+/// Load the image and call the entry point named `symbol`.
+#[cfg(not(target_arch = "wasm32"))]
+fn install_entry(app: &mut bevy::app::App, symbol: &[u8], what: &str) -> bool {
     use bevy::prelude::*;
 
-    let Some(path) = exe_dir().map(|d| d.join(image_name())) else { return };
+    let Some(path) = exe_dir().map(|d| d.join(image_name())) else { return false };
     if !path.is_file() {
-        return;
+        return false;
     }
 
     // SAFETY: loading native code, which runs the image's static initializers.
@@ -95,35 +119,43 @@ pub fn install(app: &mut bevy::app::App) {
     let lib = match unsafe { libloading::Library::new(&path) } {
         Ok(lib) => lib,
         Err(e) => {
-            error!("[editor] {} could not be loaded: {e}", path.display());
-            return;
+            error!("[{what}] {} could not be loaded: {e}", path.display());
+            return false;
         }
     };
 
-    let install: libloading::Symbol<InstallFn> = match unsafe { lib.get(INSTALL_SYMBOL) } {
+    let install: libloading::Symbol<InstallFn> = match unsafe { lib.get(symbol) } {
         Ok(f) => f,
         Err(_) => {
-            // A file by the right name that is not the editor. Leaked rather
-            // than dropped for the reason in the module docs — the image's
-            // initializers have already run.
+            // A file by the right name that is not the editor, or one built
+            // before this entry point existed. Leaked rather than dropped for
+            // the reason in the module docs: the image's initializers have
+            // already run.
             std::mem::forget(lib);
             error!(
-                "[editor] {} exports no entry point — it is not an editor image",
+                "[{what}] {} has no {what} entry point; it is not an editor image, or is older than this executable",
                 path.display()
             );
-            return;
+            return false;
         }
     };
 
     install(app);
 
-    // Held for the life of the process. Everything the editor just registered
-    // points into this image.
+    // Held for the life of the process. Everything just registered points into
+    // this image.
     std::mem::forget(lib);
-    info!("[editor] loaded {}", path.display());
+    info!("[{what}] loaded {}", path.display());
+    true
 }
 
 /// wasm has no dynamic linking, so the editor is compiled into its own bundle
 /// and installed by a direct call instead. See `renzora_editor_app`.
 #[cfg(target_arch = "wasm32")]
 pub fn install(_app: &mut bevy::app::App) {}
+
+/// No companion on the web: there is no second process to start.
+#[cfg(target_arch = "wasm32")]
+pub fn install_companion(_app: &mut bevy::app::App) -> bool {
+    false
+}

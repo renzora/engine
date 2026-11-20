@@ -5,21 +5,17 @@ behind a Rust trait, the way a mixer or a scripting language is. See
 [Audio backends](./audio-backends.md) and [Script backends](./script-backends.md),
 whose shape this mirrors.
 
-The bundled backend is the `avian_physics` plugin: an ordinary plugin, written
-the way any installed one is, that the engine ships in `plugins/avian_physics`
-and **links into the binary** (see
-[Bundled plugins](./native-plugins.md#bundled-plugins)). It registers one backend
-per avian crate, `avian3d` for the 3D world and `avian2d` for the 2D one, and is
-present whenever the engine is built with `physics_3d` or `physics_2d`. The trait
-they register through is public, so another plugin can bring a different engine.
-The `rapier_physics` plugin does, for both worlds.
+The engine's own backend is the `renzora_avian_physics` crate, linked into the
+binary. It registers one backend per avian crate, `avian3d` for the 3D world
+and `avian2d` for the 2D one, and is present whenever the engine is built with
+`physics_3d` or `physics_2d`. The trait they register through is public, so a
+plugin can bring a different engine.
 
 Physics stays removable. A lean export of a project with no physics leaves avian
 out, and so does one whose Project Settings pick another engine for every world
 with physics (the export's **Avian physics engine** toggle, the runtime's
-`avian` feature). A checkout that wants no avian at all deletes `plugins/avian_physics`
-(or runs `cargo renzora remove avian_physics`). The next build then has the API
-and no engine, and the Console says that no physics engine is installed.
+`avian` feature). A build without that feature has the API and no engine, and
+the Console says that no physics engine is installed.
 
 Everything in the engine that uses physics goes through this API, and nothing
 else: ragdolls, parkour, the navmesh's collider obstacles, `move_controller`,
@@ -83,10 +79,18 @@ contact on a start), so those mean the same on every backend.
 ### Collider shapes, layers and rotation
 
 `ResolvedShape` is one of `Cuboid`, `Sphere`, `Capsule` (upright, by radius and
-half height), `Cylinder` and `TriMesh` in 3D, and `Rectangle`, `Circle` and
-`Capsule2d` in 2D. A backend builds it at the entity's world scale, placed at
-`offset` and turned by `rotation` relative to the entity (2D reads only the turn
-about Z).
+half height), `Cylinder`, `TriMesh` and `Heightfield` in 3D, and `Rectangle`,
+`Circle` and `Capsule2d` in 2D. A backend builds it at the entity's world scale,
+placed at `offset` and turned by `rotation` relative to the entity (2D reads only
+the turn about Z).
+
+`Heightfield` is a grid of heights (`HeightfieldData`: `columns` samples along X
+by `rows` along Z, stored row by row, spanning `0..size` from the entity's
+origin). Terrain chunks collide as one: it builds and queries far faster than the
+same ground as a trimesh. A backend without a native heightfield can build
+`HeightfieldData::triangles()` instead, which is the same surface. A mesh
+collider whose entity carries a `HeightfieldSource` is resolved from it rather
+than from the entity's `Mesh3d`.
 
 `layers` is a `CollisionLayers` pair: the layers a collider is on
 (`memberships`) and the ones it collides with (`filters`). Two colliders touch
@@ -220,15 +224,15 @@ only if both run. The 3D and 2D worlds are chosen independently, in
 
 ```toml
 [physics]
-backend_3d = "rapier3d"   # leave it out for the default
-backend_2d = "rapier2d"
+backend_3d = "my_engine"   # leave it out for the default
+backend_2d = "avian2d"
 ```
 
-The default is the first backend registered for that world, which is the
-bundled avian on any build that has it. A name whose plugin is not installed
+The default is the first backend registered for that world, which is avian on
+any build that has it. A name whose plugin is not installed
 logs a warning and keeps the default, so a project opened on a machine without
 the plugin still has physics. Once the project's choice is applied, the log
-says which engine runs each world: `[Physics] running 3D on `rapier3d`, 2D on
+says which engine runs each world: `[Physics] running 3D on `my_engine`, 2D on
 `avian2d``.
 
 **Switching a live world** is `renzora_physics::switch_backend`, and the editor
@@ -244,9 +248,9 @@ A backend's `detach` must leave nothing running. Avian strips its parts from
 every entity and pauses its own clock; the engine marks `PhysicsSettings`
 changed on every switch, which is how a re-selected backend learns to unpause.
 
-## The bundled backend
+## The engine's backend
 
-`plugins/avian_physics` maps the contract onto avian: `PhysicsBodyData`
+`renzora_avian_physics` maps the contract onto avian: `PhysicsBodyData`
 onto `RigidBody`, `Mass`, `SweptCcd` and the rest, `ResolvedCollider` onto
 `Collider`, `Friction`, `Restitution`, `Sensor` and `CollisionLayers`,
 `PhysicsJoint` onto avian's joint of the same kind, commands onto
@@ -264,21 +268,16 @@ Things worth knowing about it:
 - **Avian is built with `xpbd_joints`**, its joint solver. Without it avian
   accepts joints and ignores them.
 
-## A second backend: Rapier
+## A backend with a world of its own
 
-The `rapier_physics` plugin (in the marketplace, source in
-`github.com/renzora/plugins`) is the worked example of a backend with a world of
-its own, and registers two: `rapier3d` and `rapier2d`. Each keeps rapier's
-`PhysicsWorld` in a resource and maps from `Entity` to body, collider and joint
-handles, steps on the fixed clock as avian does, and writes dynamic bodies'
-poses back into their `Transform`s. Read it beside `plugins/avian_physics` to see
-the same contract met two very different ways.
+An engine that keeps its state outside the ECS holds its world in a resource,
+maps from `Entity` to body, collider and joint handles, steps on the fixed clock
+as avian does, and writes dynamic bodies' poses back into their `Transform`s.
+Such a backend needs to get three things right:
 
-Details from it that any such backend needs:
-
-- **Teleports are told apart from its own writes.** It records the transform it
-  last wrote to each body; a `Transform` that changed and does not match was
-  moved by the editor or a script, and the body is placed there.
+- **Teleports are told apart from its own writes.** Record the transform last
+  written to each body; a `Transform` that changed and does not match was moved
+  by the editor or a script, and the body is placed there.
 - **New entities are placed from their local transforms**, composed up the
   hierarchy, not from `GlobalTransform`, which is only propagated in
   `PostUpdate` and still reads identity for a scene spawned this frame.
@@ -286,8 +285,3 @@ Details from it that any such backend needs:
   bones are each other's children; composing a bone against its parent's
   `GlobalTransform`, which is a step old, would leave every bone a step behind
   the one above it.
-
-Where Rapier and avian differ, by how the engines work rather than by anything
-missing: Rapier joints are rigid (it softens joints with springs, not
-compliance), a distance joint keeps only its maximum, and a ball joint's swing
-limit is a box rather than a cone.

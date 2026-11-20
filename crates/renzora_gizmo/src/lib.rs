@@ -34,6 +34,7 @@ mod lines;
 mod material;
 mod meshes;
 pub mod modal_transform;
+mod pick_list;
 mod picker_2d;
 mod picking;
 mod pivot;
@@ -176,6 +177,27 @@ impl Plugin for GizmoPlugin {
             .init_resource::<skeleton_gizmo::DrawnBones>()
             .init_resource::<modal_transform::ModalTransformState>()
             .init_resource::<renzora::core::ModalTransformHud>()
+            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
+            // The right-click list of everything under the cursor (see
+            // `pick_list`). Between right presses it only drains the mouse
+            // motion it measures a press by.
+            .add_systems(
+                Update,
+                pick_list::pick_list_system
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
+            )
+            // After the hover test and the drag have settled this frame's
+            // handle state, which is what the signal compares.
+            .add_systems(
+                Update,
+                hover::signal_overlay_changes
+                    .after(drag::gizmo_drag)
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
+            )
             // `Last`, so a borrower reading `drag_started` / `drag_ended` in
             // `Update` sees them whatever order the two systems ended up in.
             .add_systems(Last, clear_gizmo_target_edges)
@@ -222,7 +244,7 @@ impl Plugin for GizmoPlugin {
                     skeleton_gizmo::draw_skeleton_gizmo,
                     // A resize handle overhangs the content it sizes, and the
                     // viewport decides a press is its own purely geometrically
-                    // (`RelativeCursorPosition`) — so the global bottom panel's
+                    // (`UiCursor`), so the global bottom panel's
                     // grip band, which straddles its own top edge, reads as a
                     // press in the scene and armed a selection box that then
                     // stretched across the viewport for the whole drag. A run

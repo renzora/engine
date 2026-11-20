@@ -222,13 +222,30 @@ const RETIRED_PANELS: &[&str] = &[
     // The blueprint graph and its properties: visual scripting was removed.
     "blueprint_graph",
     "blueprint_properties",
+    // The debug panels: probes in the companion's Debug screen now. A panel
+    // that changed every frame cost the editor a full UI relayout per frame.
+    "performance",
+    "render_stats",
+    "ecs_stats",
+    "memory_profiler",
+    "system_profiler",
+    "camera_debug",
+    "culling_debug",
+    "material_resolver_diag",
+    "scripting_diag",
+    "ui_reactivity",
+    "ui_layout",
+    "render_toggles",
+    "scene_diagnostics",
+    // Never had content: it opened to its own title.
+    "physics_debug",
 ];
 
 /// Workspace names that used to be built in and no longer are, dropped from a
 /// saved layout on load for the same reason as [`RETIRED_PANELS`]: with its
 /// panels retired, the Blueprints workspace would otherwise linger in the ribbon
-/// as a lone console.
-const RETIRED_WORKSPACES: &[&str] = &["Blueprints"];
+/// as a lone console. The Debug workspace went with the debug panels.
+const RETIRED_WORKSPACES: &[&str] = &["Blueprints", "Debug"];
 
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
 /// recognized by console being tabbed together with another strip panel —

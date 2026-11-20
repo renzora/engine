@@ -217,8 +217,19 @@ pub(crate) fn register(app: &mut App) {
                 animate_lights,
                 animate_motes,
                 sync_chamber_material,
-            ),
+            )
+                // The scene is only wanted in `Splash`, and `manage_chamber`
+                // tears it down on the first frame outside it. The second arm
+                // keeps the group alive for that teardown pass; after it the
+                // chamber entities and the `ChamberView` (under `SplashRoot`)
+                // are gone, both arms are false and the group stops for good.
+                .run_if(in_state(SplashState::Splash).or_else(chamber_built)),
         );
+}
+
+/// Run condition: is the chamber scene still standing?
+fn chamber_built(scene: Res<ChamberScene>) -> bool {
+    scene.built
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -262,7 +273,9 @@ fn manage_chamber(
 
 fn make_target(size: UVec2) -> Image {
     let extent = Extent3d { width: size.x, height: size.y, depth_or_array_layers: 1 };
-    let mut img = Image { data: Some(vec![0u8; (extent.width * extent.height * 4) as usize]), ..default() };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
+    let mut img = Image { data: None, ..default() };
     img.texture_descriptor.size = extent;
     img.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
     img.texture_descriptor.usage =

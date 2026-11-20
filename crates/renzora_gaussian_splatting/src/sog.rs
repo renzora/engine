@@ -151,7 +151,11 @@ fn decode_sog(bytes: &[u8]) -> Result<PlanarGaussian3d, String> {
         let mut data = Vec::with_capacity(file.size() as usize);
         file.read_to_end(&mut data)
             .map_err(|e| format!("corrupt SOG bundle entry: {e}"))?;
-        files.insert(file.name().to_string(), data);
+        let name = file
+            .name()
+            .map_err(|e| format!("corrupt SOG bundle entry name: {e}"))?
+            .into_owned();
+        files.insert(name, data);
     }
 
     let meta_bytes = files.get("meta.json").ok_or_else(|| {

@@ -120,7 +120,7 @@ An effect file is one fullscreen fragment pass over the current picture. Anythin
 | Phase | Image | Typical use |
 |---|---|---|
 | `Gi` | HDR, after the main 3D pass, before temporal AA | global illumination, reflections |
-| `HdrPost` | HDR, after temporal AA | bloom, depth of field, motion blur |
+| `HdrPost` | HDR, after temporal AA and DLSS upscaling, before tonemapping | bloom, depth of field, motion blur, sun glare |
 | `LdrPost` | LDR, after tonemapping | colour grading, stylisation (where effect files run) |
 | `Overlay` | final, after AA | letterboxing, UI-adjacent effects |
 

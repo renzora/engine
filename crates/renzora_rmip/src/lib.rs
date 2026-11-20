@@ -34,12 +34,16 @@
 //! ## Crate layout
 //!
 //! - `RmipFormat`, `MAGIC`, `VERSION` — the spec.
-//! - `RmipAssetLoader` — Bevy `AssetLoader` for runtime/editor.
-//! - `bake::*` (feature `bake`) — encoder used by the import pipeline.
+//! - `RmipAssetLoader` (feature `bevy`, on by default): Bevy `AssetLoader`
+//!   for runtime/editor.
+//! - `bake::*` (feature `bake`): encoder used by the import pipeline. Needs
+//!   no Bevy, so the standalone companion bakes with `bevy` off.
 
 pub mod dds;
+#[cfg(feature = "bevy")]
 mod loader;
-pub use loader::{RmipAssetLoader, RmipLoadError};
+#[cfg(feature = "bevy")]
+pub use loader::{preview_image, RmipAssetLoader, RmipLoadError};
 
 #[cfg(feature = "bake")]
 pub mod bake;

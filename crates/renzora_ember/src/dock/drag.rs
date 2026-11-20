@@ -261,7 +261,7 @@ pub(crate) fn divider_drag(
 ///   follows the cursor until release (see
 ///   [`crate::dock::DockWindowRequest::grab`]).
 /// - A plain drag re-docks **across windows**: while the cursor is inside the
-///   source window the usual `RelativeCursorPosition` machinery resolves the
+///   source window the usual `UiCursor` machinery resolves the
 ///   drop; once it leaves (the pressed window holds the mouse capture, so no
 ///   other window receives cursor events) the drop target is resolved manually
 ///   from [`GlobalCursor`] against each window's leaf rects.
@@ -278,26 +278,26 @@ pub(crate) fn tab_drag(
     ),
     windows: Query<&Window>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
-    tabs: Query<(Entity, &UiInteraction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
+    tabs: Query<(Entity, &UiInteraction, &DockTab, &crate::UiCursor)>,
     grips: Query<(&UiInteraction, &LeafGrip)>,
     // Bundled into one tuple param so `tab_drag` stays under Bevy's 16-param
     // system cap: `.0` = tab bars (drop-onto-bar targeting), `.1` = tab strips
     // (in-place reorder re-sorts the strip's tab children).
     bars: (
-        Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
+        Query<(Entity, &TabBarOf, &crate::UiCursor)>,
         Query<(Entity, &TabScrollStrip)>,
     ),
     mut leaves: Query<(
         Entity,
         &mut DockLeaf,
-        &bevy::ui::RelativeCursorPosition,
+        &crate::UiCursor,
         &bevy::ui::ComputedNode,
         &bevy::ui::UiGlobalTransform,
     )>,
     areas: Query<
         (
             Entity,
-            &bevy::ui::RelativeCursorPosition,
+            &crate::UiCursor,
             &bevy::ui::ComputedNode,
             Option<&FloatingDockArea>,
         ),
@@ -586,7 +586,7 @@ pub(crate) fn tab_drag(
     let mut new_marker: Option<(Entity, bool)> = None;
 
     if cursor.is_some() {
-        // ── In-window drop resolution (`RelativeCursorPosition` machinery).
+        // ── In-window drop resolution (`UiCursor` machinery).
         // Only nodes in the cursor's window report `cursor_over`, so this
         // naturally scopes to the window the drag is currently inside.
 
@@ -696,7 +696,7 @@ pub(crate) fn tab_drag(
     } else if let Some(gpos) = global.pos {
         // ── Cross-window drop resolution. The source window holds the mouse
         // capture, so windows under the cursor receive no cursor events and
-        // their `RelativeCursorPosition` never updates — hit-test dock leaves
+        // their `UiCursor` never updates — hit-test dock leaves
         // manually in physical screen space instead. Only the PRIMARY window
         // is a target: floating windows are chromeless single-panel hosts (no
         // tab bar), so extra tabs dropped into one would be unreachable.

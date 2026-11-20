@@ -34,7 +34,7 @@
 //! (document ops), [`systems`].
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::interaction::PASS_THROUGH;
@@ -127,7 +127,10 @@ impl Plugin for CodeEditorPlugin {
             (
                 // Runs first so a doc switch reloads the buffer (and stores the
                 // previous frame's edits) before input/render see it.
-                binding::code_sync,
+                //
+                // Exclusive, so a sync point for the schedule even when it walks
+                // nothing; it touches only bound editors, so it waits for one.
+                binding::code_sync.run_if(any_with_component::<binding::CodeBinding>),
                 // Recompute derived metrics (and measure the font advance) before
                 // anything reads char_w / line_h this frame.
                 systems::code_metrics,
@@ -396,7 +399,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
                 ..default()
             },
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             CodeViewport { editor: root },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Text),
             Name::new("code-viewport"),

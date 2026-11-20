@@ -1,0 +1,9 @@
+name = "Tilt Shift"
+version = "2.0.0"
+description = "Blurs the top and bottom of the frame, leaving a sharp band in the middle, which reads as a miniature. A post-process effect: drop tilt_shift.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "tilt_shift"
+tags = ["post-processing", "shader", "depth-of-field", "blur", "camera"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

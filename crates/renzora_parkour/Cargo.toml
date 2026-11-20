@@ -35,7 +35,7 @@ renzora_animation = { path = "../renzora_animation", default-features = false }
 # named here: whichever physics plugin is installed answers them.
 #
 # The traversal tests need a real 3D world, so they live with a physics engine,
-# beside the avian_physics plugin, rather than here.
+# beside it in renzora_avian_physics, rather than here.
 renzora_physics = { path = "../renzora_physics", default-features = false }
 
 [lints]

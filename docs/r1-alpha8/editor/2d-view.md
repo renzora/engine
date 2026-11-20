@@ -38,7 +38,7 @@ Position and size are saved with the scene.
 
 **Flip X** and **Flip Y** on the Sprite Image component mirror the sprite. This is a render-side flip, so unlike a negative scale it leaves child entities, colliders and gizmos untouched.
 
-**Sprite Sheet** crops the texture into a grid. **H Frames** and **V Frames** slice the image into columns and rows, and **Frame** picks which cell shows, row-major. The Frame field is animatable, so you can key it to play a flipbook. See [Sprite Animation](/docs/r1-alpha8/editor/sprite-animation).
+**Sprite Sheet** crops the texture into a grid. **H Frames** and **V Frames**, in the Sprite Image card's **Sheet** group, slice the image into columns and rows, and **Frame** picks which cell shows, row-major. The Frame field is animatable, so you can key it to play a flipbook. See [Sprite Animation](/docs/r1-alpha8/editor/sprite-animation).
 
 ## Sprite materials
 
@@ -48,7 +48,7 @@ A sprite can wear a material graph: make one with **Add ▸ Sprite Material** in
 
 For top-down scenes where a character should walk behind a tree when above it and in front when below it, switch on **Y Sort** on the Sprite Image component.
 
-It derives draw order from world Y every frame: lower on screen means drawn in front.
+It derives draw order from world Y every frame: lower on screen means drawn in front. **Y Sort** is a group in the Sprite Image card: its switch is in the group's row, and these settings are inside it once it is on.
 
 | Field | What it does |
 |---|---|

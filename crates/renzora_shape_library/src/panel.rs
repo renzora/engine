@@ -518,8 +518,8 @@ fn shape_tile(
                 Node { width: Val::Px(size), height: Val::Px(size), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
             ))
             .id(),
-        // Only until the registry has been read; the image exists before its
-        // render does, so this is a one-frame state at most.
+        // Until its picture has loaded, which is a few frames when it is
+        // cached and a few seconds when it has to be rendered first.
         None => {
             let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), size * 0.5);
             commands.entity(ic).insert(Node {

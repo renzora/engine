@@ -75,6 +75,9 @@ pub fn inspector_entry() -> InspectorEntry {
                     }
                 },
             },
+            // How the mesh is built from the scene; most volumes keep the
+            // defaults, so they fold away.
+            FieldDef::group("Build", vec![
             FieldDef {
                 name: "Upward Shift",
                 field_type: FieldType::Float {
@@ -135,7 +138,9 @@ pub fn inspector_entry() -> InspectorEntry {
                     }
                 },
             },
-            FieldDef {
+            ]),
+            // The switch heads the group; how terrain is walked folds under it.
+            FieldDef::toggle_group(FieldDef {
                 name: "Include Terrain",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
@@ -150,7 +155,7 @@ pub fn inspector_entry() -> InspectorEntry {
                         }
                     }
                 },
-            },
+            }, vec![
             FieldDef {
                 name: "Max Slope (degrees)",
                 field_type: FieldType::Float {
@@ -191,6 +196,7 @@ pub fn inspector_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
             FieldDef {
                 name: "Debug Draw",
                 field_type: FieldType::Bool,

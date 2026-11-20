@@ -477,6 +477,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             m.occlusion_texture = None;
             m.opacity_texture = None;
             m.specular_texture = None;
+            m.metallic_roughness_texture = None;
             m.advanced.clearcoat_texture = None;
             m.advanced.clearcoat_roughness_texture = None;
             m.advanced.clearcoat_normal_texture = None;
@@ -1326,7 +1327,7 @@ fn append_indices(
     mirrored: bool,
     buckets: &mut [Vec<u32>],
 ) {
-    for (tri, bucket) in tri_indices.chunks_exact(3).zip(tri_bucket) {
+    for (tri, bucket) in tri_indices.as_chunks::<3>().0.iter().zip(tri_bucket) {
         let Some(out) = buckets.get_mut(*bucket) else {
             continue;
         };
@@ -1536,6 +1537,19 @@ fn collect_materials(
             .and_then(|t| tex_index.get(&t.element.element_id).copied())
     };
 
+    // Decided once for the whole model rather than per texture. A packed
+    // texture can be grey: the Bistro's glass is roughness 0 and metallic 0,
+    // all black, which on its own reads as a "dull" specular mask and gave
+    // the windows a roughness of 0.55, so they reflected a dim blur instead
+    // of the street. An exporter writes one convention for every material,
+    // so one coloured texture settles it for all of them.
+    let model_packs_specular = scene.materials.iter().any(|mat| {
+        tex_of(&mat.pbr.specular_color)
+            .or_else(|| tex_of(&mat.pbr.specular_factor))
+            .and_then(|i| bundle.textures.get(i))
+            .is_some_and(|t| holds_packed_channels(std::path::Path::new(&t.uri)))
+    });
+
     for mat in &scene.materials {
         let pbr = &mat.pbr;
 
@@ -1554,6 +1568,20 @@ fn collect_materials(
         // Prefer the specular color map; fall back to the scalar specular
         // factor map if that's where the reflectivity mask is bound.
         let specular_texture = tex_of(&pbr.specular_color).or_else(|| tex_of(&pbr.specular_factor));
+        // That slot holds one of two different things, and only the pixels
+        // say which. A legacy Phong specular map is a grey "bright is shiny"
+        // mask. A game-engine export (the Bistro is one) puts a packed
+        // metal-rough texture there instead: roughness in green, metallic in
+        // blue, occlusion in red. Read as a mask, its red channel became the
+        // roughness, near zero on the Bistro, and every cobblestone shone.
+        // Packed, it goes where glTF puts one, and the factors become 1 below
+        // because glTF multiplies them in. See `model_packs_specular` for why
+        // this is asked of the model and not of this one texture.
+        let packed = specular_texture.filter(|_| model_packs_specular);
+        let (specular_texture, metallic_roughness_texture) = match packed {
+            Some(i) => (None, Some(i)),
+            None => (specular_texture, None),
+        };
 
         // Emissive factor: emission_color × emission_factor (so night-side
         // city lights etc. carry their authored intensity even with a texture).
@@ -1602,12 +1630,16 @@ fn collect_materials(
         };
         let double_sided = lower.contains("doublesided") || lower.contains("double_sided");
 
-        let metallic = if pbr.metalness.has_value {
+        let metallic = if metallic_roughness_texture.is_some() {
+            1.0
+        } else if pbr.metalness.has_value {
             pbr.metalness.value_vec4.x as f32
         } else {
             0.0
         };
-        let roughness = if pbr.roughness.has_value {
+        let roughness = if metallic_roughness_texture.is_some() {
+            1.0
+        } else if pbr.roughness.has_value {
             pbr.roughness.value_vec4.x as f32
         } else {
             0.8
@@ -1690,6 +1722,7 @@ fn collect_materials(
             specular_texture,
             roughness_texture: None,
             metallic_texture: None,
+            metallic_roughness_texture,
             alpha,
             double_sided,
             advanced,
@@ -1763,6 +1796,41 @@ fn texture_may_have_alpha(path: &std::path::Path) -> bool {
             .and_then(|b| renzora_rmip::dds::probe(&b, false).ok())
             .is_some_and(|d| d.has_alpha()),
         // JPEG has no alpha; anything unrecognized is assumed not to.
+        _ => false,
+    }
+}
+
+/// Whether a texture bound as a specular map is really a packed metal-rough
+/// texture: its channels differ, where a specular mask is grey. See where
+/// `collect_materials` calls it.
+///
+/// A DDS is judged from its compressed blocks without decoding
+/// (`renzora_rmip::dds::is_grayscale`); the common image formats from a small
+/// decoded copy. Anything that cannot be read cheaply answers no, which keeps
+/// the mask reading every specular map had before.
+fn holds_packed_channels(path: &std::path::Path) -> bool {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    match ext.to_ascii_lowercase().as_str() {
+        "dds" => std::fs::read(path)
+            .ok()
+            .and_then(|b| renzora_rmip::dds::is_grayscale(&b))
+            .is_some_and(|grey| !grey),
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" => image::open(path)
+            .ok()
+            .map(|img| img.thumbnail(64, 64).to_rgb8())
+            .is_some_and(|img| {
+                let n = (img.width() * img.height()).max(1) as u64;
+                let spread: u64 = img
+                    .pixels()
+                    .map(|p| {
+                        let [r, g, b] = p.0;
+                        (r.max(g).max(b) - r.min(g).min(b)) as u64
+                    })
+                    .sum();
+                spread / n > renzora_rmip::dds::GREY_SPREAD
+            }),
         _ => false,
     }
 }

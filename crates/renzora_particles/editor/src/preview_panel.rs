@@ -17,7 +17,7 @@
 //! which reads on any backdrop without greying the effect behind it.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -342,7 +342,7 @@ fn emitter_chip(commands: &mut Commands, fonts: &EmberFonts, index: usize, name:
     let chip = pill(commands);
     commands.entity(chip).insert((
         UiInteraction::default(),
-        RelativeCursorPosition::default(),
+        UiCursor::default(),
         EmitterChip(index),
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         HoverTooltip::new("Click to edit this emitter"),

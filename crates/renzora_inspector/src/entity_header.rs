@@ -23,7 +23,7 @@
 //! change, but the host they hang under can and does.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::{
     entity_icon_name, ComponentIconRegistry, EntityIcon, EntityLabelColor, FieldValue,
@@ -187,17 +187,7 @@ fn parse_hex(s: &str) -> Option<[u8; 3]> {
     Some([byte(0)?, byte(2)?, byte(4)?])
 }
 
-/// Read visibility through the viewport gate.
-///
-/// `ViewportGateHidden` means the scene is force-hidden because no viewport
-/// panel is showing, and it stashes the *authored* value. Reading `Visibility`
-/// directly in that state reports every entity in the scene as hidden, which
-/// the old Visibility section did, so in a viewport-less layout its checkbox was
-/// unanimously wrong and un-fixable by clicking it.
 fn visibility_get(world: &World, entity: Entity) -> Option<FieldValue> {
-    if let Some(gate) = world.get::<renzora::core::ViewportGateHidden>(entity) {
-        return Some(FieldValue::Bool(gate.0 != Visibility::Hidden));
-    }
     world
         .get::<Visibility>(entity)
         .map(|v| FieldValue::Bool(matches!(*v, Visibility::Inherited | Visibility::Visible)))
@@ -210,12 +200,6 @@ fn visibility_set(world: &mut World, entity: Entity, val: FieldValue) {
     } else {
         Visibility::Hidden
     };
-    // Gated: write the stash, so the gate restores the user's choice when a
-    // viewport comes back rather than overwriting it with the pre-gate value.
-    if let Some(mut gate) = world.get_mut::<renzora::core::ViewportGateHidden>(entity) {
-        gate.0 = next;
-        return;
-    }
     if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
         *vis = next;
     }
@@ -368,9 +352,6 @@ pub(crate) fn build_entity_header(
 /// Whether `entity` has anything the eye toggle could act on.
 pub(crate) fn has_visibility(world: &World, entity: Entity) -> bool {
     world.get::<Visibility>(entity).is_some()
-        || world
-            .get::<renzora::core::ViewportGateHidden>(entity)
-            .is_some()
 }
 
 /// The icon tile: the entity's glyph on a wash of its label colour, with a
@@ -392,7 +373,7 @@ fn icon_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Ent
             BLOCK,
             // The popover is aimed from the tile's own rect, recovered from the
             // cursor and its normalized position inside the tile.
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
                 "inspector.icon_and_colour",
@@ -548,12 +529,9 @@ fn visibility_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity
         EntityVisibilityBtn { entity },
         Node { padding: UiRect::all(Val::Px(3.0)), ..default() },
     ));
-    // Reads the same gate-aware accessor the setter writes through, so the glyph
-    // can never disagree with what a click would do.
     let visible_now = move |w: &Rx| {
-        w.get::<renzora::core::ViewportGateHidden>(entity)
-            .map(|g| g.0 != Visibility::Hidden)
-            .or_else(|| w.get::<Visibility>(entity).map(|v| *v != Visibility::Hidden))
+        w.get::<Visibility>(entity)
+            .map(|v| *v != Visibility::Hidden)
             .unwrap_or(true)
     };
     bind_text(commands, eye, move |w| {
@@ -707,7 +685,7 @@ pub(crate) fn entity_icon_menu_open(
         (
             &UiInteraction,
             &EntityIconBtn,
-            &RelativeCursorPosition,
+            &UiCursor,
             &bevy::ui::ComputedNode,
         ),
         Changed<UiInteraction>,

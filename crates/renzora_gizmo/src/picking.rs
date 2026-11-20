@@ -1,24 +1,172 @@
-//! Click-to-select: the raycast, and the granularity walk that turns a hit mesh
-//! into the entity a click should actually select.
+//! Click-to-select: the raycast, and the walk that turns a hit mesh into the
+//! entity a click should actually select.
+//!
+//! **What a click selects.** The mesh it hits, unless something above that mesh
+//! is marked to pick as one object ([`renzora::PickAsUnit`], the user's choice
+//! from the hierarchy menu, or [`renzora::SelectionStop`], which code puts on
+//! things like a terrain whose chunks are its own machinery); then the outermost
+//! such ancestor. A locked entity, or anything under one, is passed through:
+//! the click selects whatever is behind it. The rule is the same for a click,
+//! a box selection and the right-click pick list ([`PickResolver`]).
+//!
+//! This replaced a global setting whose default picked "the topmost named
+//! ancestor below the model root". That depended on every exporter's wrapper
+//! nodes being recognised and hidden, and each one that was not (`scene0`,
+//! Sketchfab's `root`) swallowed every click on the model: a car's wheel
+//! selected the wrapper. Picking the hit mesh needs no knowledge of wrappers,
+//! and grouping became something the user says per model.
 //!
 //! The press does not commit a selection. It arms [`BoxSelectionState`] with a
 //! *pending* pick and `box_select.rs` decides on release whether the gesture was
 //! a click or a drag — that is what lets a drag-select start on an entity as
-//! well as on empty space.
+//! well as on empty space. A press on an entity that is already selected arms a
+//! move instead of a box (`drag.rs`).
 
-use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
+use bevy::camera::visibility::{RenderLayers, VisibilityRange};
+use bevy::ecs::system::SystemParam;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, RayCastVisibility};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use renzora::core::viewport_types::{NavOverlayState, ViewportState};
-use renzora::SelectionStop;
-use renzora_editor_framework::{
-    EditorCamera, EditorSettings, HideInHierarchy, SelectionGranularity,
-};
+use renzora::{EditorLocked, PickAsUnit, SelectionStop};
+use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::modal_transform;
 use crate::types::{BoxSelectionState, GizmoMesh, GizmoMode, GizmoRoot, GizmoState};
 
+/// What [`SceneRay`] reads of a mesh with a distance band.
+type RangedMesh = (
+    &'static VisibilityRange,
+    &'static GlobalTransform,
+    Option<&'static bevy::camera::primitives::Aabb>,
+);
+
+/// The transform gizmo's own meshes, which a scene pick never counts.
+type GizmoParts = Or<(With<GizmoMesh>, With<GizmoRoot>)>;
+
+/// The scene meshes along a ray, nearest first, as a click can reach them.
+#[derive(SystemParam)]
+pub(crate) struct SceneRay<'w, 's> {
+    ray_cast: MeshRayCast<'w, 's>,
+    /// For keeping the ray to the scene's render layer.
+    layers: Query<'w, 's, &'static RenderLayers>,
+    /// For skipping detail levels the camera is too near or too far to show.
+    ranges: Query<'w, 's, RangedMesh>,
+    gizmo_meshes: Query<'w, 's, (), GizmoParts>,
+    hidden: Query<'w, 's, (), With<HideInHierarchy>>,
+}
+
+impl SceneRay<'_, '_> {
+    /// Every scene mesh `ray` passes through, nearest first, with its
+    /// distance. Not gizmo handles, not hidden helpers.
+    ///
+    /// Anything shown in the scene, not what the camera saw last frame. Bevy's
+    /// default (`VisibleInView`) asks the camera's last visibility pass, and a
+    /// viewport idling under render-on-change runs none, so every mesh read as
+    /// unseen: a click on an idle viewport hit nothing. The layer test is one
+    /// part of `VisibleInView` worth keeping: offscreen preview rigs on their
+    /// own render layers are never under the cursor.
+    ///
+    /// The distance band is the other. A model with baked LODs carries every
+    /// detail level as a sibling subtree in the same place, each shown only
+    /// within its `VisibilityRange` of the camera; without the band test the
+    /// ray would hit the copy the camera is not drawing. Measured the way Bevy
+    /// measures it (`check_visibility_ranges`): from the camera to the mesh's
+    /// bounds centre when the range asks for that, else its origin.
+    pub(crate) fn hits(&mut self, ray: Ray3d, cam_pos: Vec3) -> Vec<(Entity, f32)> {
+        let layers = &self.layers;
+        let ranges = &self.ranges;
+        let shown = |entity: Entity| {
+            let on_layer = match layers.get(entity) {
+                Ok(l) => l.intersects(&RenderLayers::layer(0)),
+                // No `RenderLayers` is layer 0.
+                Err(_) => true,
+            };
+            let in_range = match ranges.get(entity) {
+                Ok((range, gt, aabb)) => {
+                    let at = match (range.use_aabb, aabb) {
+                        (true, Some(aabb)) => gt.transform_point(aabb.center.into()),
+                        _ => gt.translation(),
+                    };
+                    range.is_visible_at_all(cam_pos.distance(at))
+                }
+                // No band: shown at every distance.
+                Err(_) => true,
+            };
+            on_layer && in_range
+        };
+        let settings = MeshRayCastSettings::default()
+            .with_visibility(RayCastVisibility::Visible)
+            .with_filter(&shown)
+            .never_early_exit();
+        let hits: Vec<(Entity, f32)> = self
+            .ray_cast
+            .cast_ray(ray, &settings)
+            .iter()
+            .map(|(e, hit)| (*e, hit.distance))
+            .collect();
+        hits.into_iter()
+            .filter(|(e, _)| !self.gizmo_meshes.contains(*e) && !self.hidden.contains(*e))
+            .collect()
+    }
+}
+
+/// The hierarchy rules a pick goes through: which entity a hit mesh stands for,
+/// what is grouped, what is locked. Shared by the click, the box selection and
+/// the pick list so the three agree.
+#[derive(SystemParam)]
+pub(crate) struct PickResolver<'w, 's> {
+    named: Query<'w, 's, (Has<SelectionStop>, Has<PickAsUnit>), With<Name>>,
+    parents: Query<'w, 's, &'static ChildOf>,
+    hidden: Query<'w, 's, (), With<HideInHierarchy>>,
+    locked: Query<'w, 's, (), With<EditorLocked>>,
+}
+
+impl PickResolver<'_, '_> {
+    /// The nearest entity at or above `entity` that the hierarchy shows: the
+    /// hit mesh itself, or its nearest named, visible ancestor when the mesh
+    /// is an unnamed or hidden helper.
+    pub(crate) fn leaf(&self, entity: Entity) -> Option<Entity> {
+        self.chain(entity).find(|&e| self.shown(e))
+    }
+
+    /// The outermost entity at or above `entity` that picks as one object.
+    pub(crate) fn unit(&self, entity: Entity) -> Option<Entity> {
+        self.chain(entity)
+            .filter(|&e| self.shown(e))
+            .filter(|&e| self.named.get(e).is_ok_and(|(stop, unit)| stop || unit))
+            .last()
+    }
+
+    /// What a click on `entity` selects: its unit if it is in one, else the
+    /// leaf.
+    pub(crate) fn target(&self, entity: Entity) -> Option<Entity> {
+        self.unit(entity).or_else(|| self.leaf(entity))
+    }
+
+    /// Whether `entity` or anything above it is locked. A lock on a model
+    /// locks its parts, which is what locking a model in the hierarchy means.
+    pub(crate) fn is_locked(&self, entity: Entity) -> bool {
+        self.chain(entity).any(|e| self.locked.contains(e))
+    }
+
+    /// The shown entities above `entity`, nearest first, not counting itself.
+    pub(crate) fn ancestors(&self, entity: Entity) -> Vec<Entity> {
+        self.chain(entity).skip(1).filter(|&e| self.shown(e)).collect()
+    }
+
+    fn shown(&self, entity: Entity) -> bool {
+        self.named.contains(entity) && !self.hidden.contains(entity)
+    }
+
+    /// `entity` and every ancestor up to the scene root.
+    fn chain(&self, entity: Entity) -> impl Iterator<Item = Entity> + '_ {
+        std::iter::successors(Some(entity), |&e| self.parents.get(e).ok().map(|c| c.parent()))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn entity_pick_system(
     gizmo_state: Res<GizmoState>,
     mode: Res<GizmoMode>,
@@ -27,19 +175,13 @@ pub(crate) fn entity_pick_system(
     viewport: Option<Res<ViewportState>>,
     nav_overlay: Option<Res<NavOverlayState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
-    settings: Res<EditorSettings>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform, &Projection), With<EditorCamera>>,
-    mut mesh_ray_cast: MeshRayCast,
-    named_entities: Query<(Entity, Has<SelectionStop>), With<Name>>,
-    parent_query: Query<&ChildOf>,
-    gizmo_meshes: Query<(), Or<(With<GizmoMesh>, With<GizmoRoot>)>>,
-    // Bundled: a system takes at most sixteen parameters.
-    (hidden_entities, pick_proxies, drawn_bones): (
-        Query<(), With<HideInHierarchy>>,
-        Query<(Entity, &GlobalTransform, &renzora::PickProxy)>,
-        Res<crate::skeleton_gizmo::DrawnBones>,
-    ),
+    mut scene_ray: SceneRay,
+    resolver: PickResolver,
+    pick_proxies: Query<(Entity, &GlobalTransform, &renzora::PickProxy)>,
+    drawn_bones: Res<crate::skeleton_gizmo::DrawnBones>,
+    selection: Res<EditorSelection>,
     mut box_sel: ResMut<BoxSelectionState>,
 ) {
     if !mouse_button.just_pressed(MouseButton::Left) {
@@ -144,38 +286,25 @@ pub(crate) fn entity_pick_system(
             box_sel.start_pos = cursor;
             box_sel.current_pos = cursor;
             box_sel.pending_pick = Some(bone);
+            box_sel.move_on_drag = false;
         }
         return;
     }
 
-    // Raycast and find the topmost selectable entity (if any). We do NOT
-    // commit the selection yet — we arm `box_sel` with this entity as a
-    // pending pick and wait for mouse-up to decide click vs drag.
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
+    // Raycast and find the nearest pickable entity (if any). We do NOT commit
+    // the selection yet: we arm `box_sel` with this entity as a pending pick and
+    // wait for mouse-up to decide click vs drag. A locked hit is passed
+    // through, so the click selects what is behind it.
+    let cam_pos = cam_gt.translation();
     let mut pending: Option<Entity> = None;
     let mut pending_dist = f32::INFINITY;
-    for (entity, hit) in hits.iter() {
-        if gizmo_meshes.get(*entity).is_ok() {
+    for (entity, distance) in scene_ray.hits(ray, cam_pos) {
+        if resolver.is_locked(entity) {
             continue;
         }
-        if hidden_entities.get(*entity).is_ok() {
-            continue;
-        }
-
-        if let Some(target) = resolve_pick(
-            *entity,
-            settings.selection_granularity,
-            &named_entities,
-            &parent_query,
-            &hidden_entities,
-        ) {
-            // `resolve_pick` already skips hidden named ancestors, so `target`
-            // is a visible row — this guard is a belt-and-braces no-op.
-            if hidden_entities.get(target).is_ok() {
-                continue;
-            }
+        if let Some(target) = resolver.target(entity) {
             pending = Some(target);
-            pending_dist = hit.distance;
+            pending_dist = distance;
             break;
         }
     }
@@ -185,9 +314,12 @@ pub(crate) fn entity_pick_system(
     // it selects. The radius never drops below a few pixels' worth at the hit
     // distance, so a small effect far away is still something you can hit.
     for (entity, gt, proxy) in &pick_proxies {
-        if hidden_entities.get(entity).is_ok() {
+        if resolver.is_locked(entity) {
             continue;
         }
+        let Some(target) = resolver.target(entity) else {
+            continue;
+        };
         let centre = gt.translation();
         let to = centre - ray.origin;
         let along = to.dot(*ray.direction);
@@ -197,7 +329,7 @@ pub(crate) fn entity_pick_system(
         let radius = proxy.radius.max(along * 0.025);
         let miss = (to - *ray.direction * along).length();
         if miss <= radius && along < pending_dist {
-            pending = Some(entity);
+            pending = Some(target);
             pending_dist = along;
         }
     }
@@ -213,73 +345,12 @@ pub(crate) fn entity_pick_system(
         box_sel.start_pos = cursor;
         box_sel.current_pos = cursor;
         box_sel.pending_pick = pending;
-    }
-}
-
-/// Resolve a raycast-hit entity to the entity a click should select, per the
-/// configured [`SelectionGranularity`].
-///
-/// Walking up from the hit mesh toward the scene root, three candidates fall
-/// out of a single pass:
-///   - `leaf`  — the nearest named ancestor (the clicked mesh itself)
-///   - `group` — the topmost named ancestor still *below* a `SelectionStop`
-///     boundary (the clicked mesh's own sub-root within an imported model)
-///   - `root`  — the `SelectionStop` bearer (the whole imported model), or the
-///     topmost named ancestor when the chain has no stop.
-///
-/// `SelectionStop` marks a compound boundary (an imported model root, terrain
-/// root, etc.) whose internals are selected as a unit under `EntireRoot`.
-///
-/// Entities tagged [`HideInHierarchy`] are transparent here: an imported model
-/// often carries a named-but-hidden GLTF wrapper (`RootNode`, `Scene`, …) that
-/// `hide_gltf_wrappers` flagged when flatten couldn't collapse it. The hierarchy
-/// panel hides those rows and re-parents their children to the nearest visible
-/// ancestor, so the click resolution must mirror that — otherwise `MeshRoot`
-/// could land on a hidden wrapper and the caller would reject it, selecting
-/// nothing.
-pub(crate) fn resolve_pick(
-    entity: Entity,
-    granularity: SelectionGranularity,
-    named: &Query<(Entity, Has<SelectionStop>), With<Name>>,
-    parents: &Query<&ChildOf>,
-    hidden: &Query<(), With<HideInHierarchy>>,
-) -> Option<Entity> {
-    let mut leaf: Option<Entity> = None;
-    let mut group: Option<Entity> = None;
-    let mut root: Option<Entity> = None;
-    let mut current = entity;
-    loop {
-        if let Ok((e, stop)) = named.get(current) {
-            let visible = hidden.get(e).is_err();
-            if visible {
-                if leaf.is_none() {
-                    leaf = Some(e);
-                }
-                if !stop {
-                    group = Some(e);
-                }
-            }
-            if stop {
-                // A `SelectionStop` is a boundary even if the bearer is hidden,
-                // but only a *visible* stop is a valid `EntireRoot` target.
-                if visible {
-                    root = Some(e);
-                }
-                break;
-            }
-        }
-        match parents.get(current) {
-            Ok(child_of) => current = child_of.parent(),
-            Err(_) => break,
-        }
-    }
-    // No `SelectionStop` in the chain: the whole-model root is just the topmost
-    // visible named ancestor, which is exactly `group`.
-    let root = root.or(group);
-    match granularity {
-        SelectionGranularity::Mesh => leaf,
-        SelectionGranularity::MeshRoot => group.or(leaf),
-        SelectionGranularity::EntireRoot => root.or(leaf),
+        // Pressing on something already selected and dragging moves it, rather
+        // than starting a box: the same gesture as dragging a handle, without
+        // having to find the handle (`drag::gizmo_drag`). Translate mode only,
+        // which is the mode a selection switches to.
+        box_sel.move_on_drag = *mode == GizmoMode::Translate
+            && pending.is_some_and(|e| selection.is_selected(e));
     }
 }
 
@@ -288,93 +359,88 @@ mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
 
-    fn run_resolve_pick(
-        world: &mut World,
-        start: Entity,
-        g: SelectionGranularity,
-    ) -> Option<Entity> {
-        world
-            .run_system_once(
-                move |named: Query<(Entity, Has<SelectionStop>), With<Name>>,
-                      parents: Query<&ChildOf>,
-                      hidden: Query<(), With<HideInHierarchy>>| {
-                    resolve_pick(start, g, &named, &parents, &hidden)
-                },
-            )
-            .unwrap()
+    fn target(world: &mut World, start: Entity) -> Option<Entity> {
+        world.run_system_once(move |r: PickResolver| r.target(start)).unwrap()
     }
 
-    #[test]
-    fn resolve_pick_no_stop_returns_leaf_or_topmost() {
-        let mut world = World::new();
-        let root = world.spawn(Name::new("Root")).id();
-        let mesh = world.spawn((Name::new("Mesh"), ChildOf(root))).id();
-        use SelectionGranularity::*;
-        // Without a SelectionStop boundary, Mesh = the clicked mesh; MeshRoot
-        // and EntireRoot both bubble to the topmost named ancestor.
-        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
-        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(root));
-        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(root));
-
-        // An unnamed child resolves to its nearest named ancestor.
-        let unnamed = world.spawn(ChildOf(mesh)).id();
-        assert_eq!(run_resolve_pick(&mut world, unnamed, Mesh), Some(mesh));
+    fn locked(world: &mut World, start: Entity) -> bool {
+        world.run_system_once(move |r: PickResolver| r.is_locked(start)).unwrap()
     }
 
+    /// The car case this design exists for: a click on a part selects the part,
+    /// however many named nodes sit above it.
     #[test]
-    fn resolve_pick_distinguishes_granularity_at_stop_boundary() {
-        // model (SelectionStop) → group → mesh
+    fn a_click_selects_the_part_it_hits() {
         let mut world = World::new();
-        let model = world.spawn((Name::new("Model"), SelectionStop)).id();
-        let group = world.spawn((Name::new("Building"), ChildOf(model))).id();
-        let mesh = world.spawn((Name::new("Wall"), ChildOf(group))).id();
-        use SelectionGranularity::*;
-        // Mesh = clicked leaf; MeshRoot = topmost named below the stop (the
-        // sub-object); EntireRoot = the whole model at the stop.
-        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
-        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(group));
-        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(model));
+        let car = world.spawn(Name::new("Car")).id();
+        let wrapper = world.spawn((Name::new("root"), ChildOf(car))).id();
+        let wheel = world.spawn((Name::new("Wheel"), ChildOf(wrapper))).id();
+        let tyre = world.spawn((Name::new("Tyre"), ChildOf(wheel))).id();
+        assert_eq!(target(&mut world, tyre), Some(tyre));
+        assert_eq!(target(&mut world, wheel), Some(wheel));
+
+        // An unnamed mesh stands for its nearest named ancestor.
+        let unnamed = world.spawn(ChildOf(tyre)).id();
+        assert_eq!(target(&mut world, unnamed), Some(tyre));
     }
 
+    /// A model marked to pick as one object selects the model from any part;
+    /// the outermost mark wins, so a group of grouped models picks as the
+    /// group.
     #[test]
-    fn resolve_pick_flat_model_meshroot_is_mesh() {
-        // model (SelectionStop) → mesh directly. MeshRoot collapses to the mesh
-        // since there is no intermediate group below the stop.
+    fn a_unit_picks_as_one_object() {
         let mut world = World::new();
-        let model = world.spawn((Name::new("Car"), SelectionStop)).id();
-        let mesh = world.spawn((Name::new("Wheel"), ChildOf(model))).id();
-        use SelectionGranularity::*;
-        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
-        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(mesh));
-        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(model));
+        let car = world.spawn((Name::new("Car"), PickAsUnit)).id();
+        let wheel = world.spawn((Name::new("Wheel"), ChildOf(car))).id();
+        assert_eq!(target(&mut world, wheel), Some(car));
+
+        let fleet = world.spawn((Name::new("Fleet"), PickAsUnit)).id();
+        world.entity_mut(car).insert(ChildOf(fleet));
+        assert_eq!(target(&mut world, wheel), Some(fleet));
     }
 
+    /// Code-made compounds (a terrain and its chunks) pick as one object
+    /// without the user choosing it.
     #[test]
-    fn resolve_pick_skips_hidden_wrapper_between_root_and_mesh() {
-        // model (SelectionStop) → RootNode (named + HideInHierarchy) → mesh.
-        // The hidden wrapper must be transparent: MeshRoot resolves to the mesh
-        // (the topmost VISIBLE named below the stop), not the hidden wrapper —
-        // otherwise the caller rejects the hidden target and nothing selects.
+    fn a_selection_stop_picks_as_one_object() {
         let mut world = World::new();
-        let model = world.spawn((Name::new("Model"), SelectionStop)).id();
+        let terrain = world.spawn((Name::new("Terrain"), SelectionStop)).id();
+        let chunk = world.spawn((Name::new("Chunk"), ChildOf(terrain))).id();
+        assert_eq!(target(&mut world, chunk), Some(terrain));
+    }
+
+    /// Hidden wrappers are transparent, as they are in the hierarchy panel:
+    /// a hidden unit is not a unit, and a hidden mesh stands for the nearest
+    /// shown ancestor.
+    #[test]
+    fn hidden_entities_are_transparent() {
+        let mut world = World::new();
+        let model = world.spawn(Name::new("Model")).id();
         let wrapper = world
-            .spawn((Name::new("RootNode"), HideInHierarchy, ChildOf(model)))
+            .spawn((Name::new("RootNode"), HideInHierarchy, PickAsUnit, ChildOf(model)))
             .id();
-        let mesh = world.spawn((Name::new("Wall"), ChildOf(wrapper))).id();
-        use SelectionGranularity::*;
-        assert_eq!(run_resolve_pick(&mut world, mesh, Mesh), Some(mesh));
-        assert_eq!(run_resolve_pick(&mut world, mesh, MeshRoot), Some(mesh));
-        assert_eq!(run_resolve_pick(&mut world, mesh, EntireRoot), Some(model));
+        let wall = world.spawn((Name::new("Wall"), ChildOf(wrapper))).id();
+        assert_eq!(target(&mut world, wall), Some(wall));
+        let helper = world.spawn((Name::new("Helper"), HideInHierarchy, ChildOf(wall))).id();
+        assert_eq!(target(&mut world, helper), Some(wall));
+    }
+
+    /// A lock on a model locks its parts.
+    #[test]
+    fn a_lock_covers_everything_under_it() {
+        let mut world = World::new();
+        let car = world.spawn(Name::new("Car")).id();
+        let wheel = world.spawn((Name::new("Wheel"), ChildOf(car))).id();
+        assert!(!locked(&mut world, wheel));
+        world.entity_mut(car).insert(EditorLocked);
+        assert!(locked(&mut world, wheel));
     }
 
     #[test]
-    fn resolve_pick_unnamed_chain_returns_none() {
+    fn an_unnamed_chain_selects_nothing() {
         let mut world = World::new();
         let root = world.spawn_empty().id();
         let child = world.spawn(ChildOf(root)).id();
-        assert_eq!(
-            run_resolve_pick(&mut world, child, SelectionGranularity::MeshRoot),
-            None
-        );
+        assert_eq!(target(&mut world, child), None);
     }
 }

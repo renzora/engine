@@ -100,7 +100,7 @@ pub(crate) fn hamburger_menu_item(commands: &mut Commands, font: &bevy::text::Fo
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TopMenu(TopMenuKind::Main),
             Name::new("menu:main"),
@@ -380,7 +380,7 @@ fn top_menu_open(
         (
             &UiInteraction,
             &TopMenu,
-            &bevy::ui::RelativeCursorPosition,
+            &renzora_ember::UiCursor,
             &bevy::ui::ComputedNode,
         ),
         Changed<UiInteraction>,
@@ -431,7 +431,7 @@ fn top_menu_hover(
     q: Query<(
         &UiInteraction,
         &TopMenu,
-        &bevy::ui::RelativeCursorPosition,
+        &renzora_ember::UiCursor,
         &bevy::ui::ComputedNode,
     )>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
@@ -487,7 +487,7 @@ fn top_menu_sync(
 /// coordinate ambiguity). Used to anchor button dropdowns just under the button.
 fn anchor_below(
     windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
-    rcp: &bevy::ui::RelativeCursorPosition,
+    rcp: &renzora_ember::UiCursor,
     cn: &bevy::ui::ComputedNode,
 ) -> Option<Vec2> {
     let cursor = windows.iter().next().and_then(|w| w.cursor_position())?;

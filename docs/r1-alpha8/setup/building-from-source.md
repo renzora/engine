@@ -25,7 +25,7 @@ Renzora is a single Bevy 0.20 Cargo workspace with exactly **one binary**: `renz
 
 **Docker** is needed only for [cross-compiling](#cross-compiling-for-other-platforms) and for running the test suite on Windows.
 
-> The pinned Rust version lives in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.97.1-bookworm`, container). They must move together. Bevy 0.20 needs at least Rust 1.97.1.
+> The pinned Rust version lives in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.100.0-bookworm`, container). They must move together. The Bevy `main` in `bevy/` needs at least Rust 1.100.0.
 
 ## Clone and run
 
@@ -121,7 +121,7 @@ cargo install renzora     # the CLI that drives the images
 renzora init              # pull the toolchain images
 ```
 
-Every cross-platform target builds inside the engine's Docker toolchain, split into a shared base plus one image per platform (all under **`ghcr.io/renzora/*`**). The base (`docker/base/Dockerfile`, `FROM rust:1.97.1-bookworm`) is the single source of truth for the Rust version and carries the linux-gnu targets + `mold`/`clang`/`lld` linkers + LLVM-19; each platform image builds `FROM` it and adds its cross toolchain: `windows` (xwin/MSVC), `macos` & `ios` (osxcross + SDKs), `android` (NDK r27c), `wasm` (`wasm-bindgen` + `binaryen`), `linux` (dual-arch cross-gcc + `appimagetool` + UPX). The host only needs Docker, and the CLI pulls just the images a command needs; the GPU editor/game still runs natively from `dist/`.
+Every cross-platform target builds inside the engine's Docker toolchain, split into a shared base plus one image per platform (all under **`ghcr.io/renzora/*`**). The base (`docker/base/Dockerfile`, `FROM rust:1.100.0-bookworm`) is the single source of truth for the Rust version and carries the linux-gnu targets + `mold`/`clang`/`lld` linkers + LLVM-19; each platform image builds `FROM` it and adds its cross toolchain: `windows` (xwin/MSVC), `macos` & `ios` (osxcross + SDKs), `android` (NDK r27c), `wasm` (`wasm-bindgen` + `binaryen`), `linux` (dual-arch cross-gcc + `appimagetool` + UPX). The host only needs Docker, and the CLI pulls just the images a command needs; the GPU editor/game still runs natively from `dist/`.
 
 ```bash
 # Build specific platforms into ./dist

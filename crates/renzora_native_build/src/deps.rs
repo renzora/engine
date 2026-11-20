@@ -76,8 +76,14 @@ pub struct Deps {
     /// Everything transitive is found through [`Deps::search`] instead, the same
     /// way the SDK's own metadata files are.
     pub externs: Vec<(String, PathBuf)>,
-    /// The `-L dependency=` path holding every rlib cargo produced.
-    pub search: Option<PathBuf>,
+    /// The `-L dependency=` paths holding every artifact cargo produced, read
+    /// from cargo's own artifact report.
+    ///
+    /// A list, and not `target/release/deps`: since Rust 1.100 cargo keeps each
+    /// crate's output in its own `target/release/build/<crate>/<hash>/out/`, and
+    /// `deps/` is no longer written at all. Asking cargo where it put things is
+    /// right under either layout.
+    pub search: Vec<PathBuf>,
 }
 
 /// Crates the SDK already provides, which are stripped from the synthesized
@@ -157,7 +163,7 @@ pub fn build(plugin_dir: &Path, build_dir: &Path, toolchain: &str) -> Result<Dep
     write_manifest(&dir, &wanted)?;
 
     reject_engine_crates(&dir, &pinned)?;
-    let artifacts = compile(&dir, &pinned)?;
+    let (artifacts, search) = compile(&dir, &pinned)?;
 
     // Match cargo's artifacts back to the DIRECT dependency names. Cargo reports
     // a crate name, which is the dependency name with hyphens turned into
@@ -170,7 +176,7 @@ pub fn build(plugin_dir: &Path, build_dir: &Path, toolchain: &str) -> Result<Dep
             externs.push((name, rlib));
         }
     }
-    Ok(Deps { externs, search: Some(dir.join("target").join("release").join("deps")) })
+    Ok(Deps { externs, search })
 }
 
 /// A cargo pinned to one Rust toolchain, and the `rustc` it must drive.
@@ -266,12 +272,11 @@ impl Pinned {
 
     /// Drop a `target/` left behind by a different toolchain.
     ///
-    /// A successful build deletes `deps/` wholesale (see the note in
-    /// `renzora_plugin_build`), so this only ever sees what a **failed** one
-    /// left — and a failure is precisely when the tree is most likely to have
-    /// been built by the wrong compiler. Without this, fixing the toolchain and
-    /// building again reuses those rlibs and fails identically, which reads as
-    /// the fix not having worked.
+    /// The tree is kept between builds (see the note in `renzora_plugin_build`),
+    /// and a tree built by another compiler is useless to this one: rustc
+    /// refuses its rlibs. Without this, fixing the toolchain and building again
+    /// reuses those rlibs and fails identically, which reads as the fix not
+    /// having worked.
     ///
     /// Keyed on a stamp of our own rather than on cargo's `.rustc_info.json`:
     /// that file is cargo's private format, and cargo's own invalidation did not
@@ -572,15 +577,19 @@ fn reject_engine_crates(dir: &Path, pinned: &Pinned) -> Result<(), String> {
 /// reason: `target/release/deps/` accumulates several `-C metadata` variants of
 /// one crate, and picking by name produces a set that looks right and then fails
 /// to compile.
-fn compile(dir: &Path, pinned: &Pinned) -> Result<Vec<(String, PathBuf)>, String> {
+/// What [`compile`] found: the crate-named rlibs, and every directory cargo
+/// wrote an artifact into (the `-L dependency=` paths; see [`Deps::search`]).
+type Compiled = (Vec<(String, PathBuf)>, Vec<PathBuf>);
+
+fn compile(dir: &Path, pinned: &Pinned) -> Result<Compiled, String> {
     // `stderr` is PIPED, not inherited: an inherited stderr is what forces a
     // console to exist for the child, which is the window `hide_console` is
     // suppressing. Cargo's progress lines go into the pipe and are dropped; its
     // diagnostics still reach the caller through the non-zero exit below.
-    // `--target-dir` is passed EXPLICITLY, and it is not a preference. The caller
-    // reports `<dir>/target/release/deps` as the `-L dependency=` search path,
-    // and without this that is an assumption about cargo's default rather than a
-    // fact: cargo discovers config by walking up from the working directory, so
+    // `--target-dir` is passed EXPLICITLY, and it is not a preference. The search
+    // paths come from cargo's report, but stale output from a previous run must
+    // not sit in a directory nobody controls: cargo discovers config by walking
+    // up from the working directory, so
     // any `.cargo/config.toml` above the plugin — anywhere, including one a user
     // put beside their own plugins — can set `build.target-dir` and silently
     // redirect the output.
@@ -611,9 +620,20 @@ fn compile(dir: &Path, pinned: &Pinned) -> Result<Vec<(String, PathBuf)>, String
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut found = Vec::new();
+    let mut search: Vec<PathBuf> = Vec::new();
     for line in text.lines() {
         if !line.contains("\"reason\":\"compiler-artifact\"") {
             continue;
+        }
+        let files = json::string_array(line, "filenames");
+        // Every artifact's directory, proc-macros included: rustc resolves a
+        // transitive dependency by searching these, whichever crate it is.
+        for f in &files {
+            if let Some(parent) = Path::new(f).parent() {
+                if !search.iter().any(|s| s == parent) {
+                    search.push(parent.to_path_buf());
+                }
+            }
         }
         // The first `"name"` in a compiler-artifact line is the TARGET's, which
         // is the crate name — what `--extern` has to be keyed by, and what
@@ -621,9 +641,9 @@ fn compile(dir: &Path, pinned: &Pinned) -> Result<Vec<(String, PathBuf)>, String
         let Some(name) = json::string(line, "name") else {
             continue;
         };
-        if let Some(rlib) = json::string_array(line, "filenames").into_iter().find(|f| f.ends_with(".rlib")) {
+        if let Some(rlib) = files.into_iter().find(|f| f.ends_with(".rlib")) {
             found.push((name, PathBuf::from(rlib)));
         }
     }
-    Ok(found)
+    Ok((found, search))
 }

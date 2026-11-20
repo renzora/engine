@@ -352,7 +352,15 @@ pub(crate) fn close_doc_tab_by_id(
     // The active document's id before the close, used as `old` for the switch
     // so `handle_tab_switch` despawns the current scene before loading the next.
     let prev_active_id = state.active_tab_id();
-    if state.close_tab(idx).is_some() && was_active {
+    let closed = state.close_tab(idx).is_some();
+    if closed {
+        // Per-tab caches let go of the tab on this: the scene's pinned models,
+        // materials and textures, and its snapshot. Nothing fired it after the
+        // egui tab bar was replaced, so every scene opened in a session stayed
+        // in memory, GPU textures included, until the editor quit.
+        commands.trigger(renzora::core::TabClosed { tab_id: id });
+    }
+    if closed && was_active {
         if let (Some(old), Some(new)) = (prev_active_id, state.active_tab_id()) {
             if old != new {
                 commands.insert_resource(renzora::TabSwitchRequest {

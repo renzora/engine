@@ -39,17 +39,34 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            native_auth_poll,
-            manage_auth_modal,
-            rebuild_auth_modal,
-            focus_auth_field,
-            auth_submit_click,
-            auth_link_click,
-            auth_backdrop_click,
-            auth_close_click,
-            auth_escape,
+            // A result can only arrive for a request that set `loading`, and
+            // only the result clears it. Ungated this exclusive system also
+            // took `AuthSession` out and put it back every frame, which flagged
+            // the session as changed on every frame for everything watching it.
+            native_auth_poll.run_if(|auth: Option<Res<AuthState>>| auth.is_some_and(|a| a.loading)),
+            // The rest is the modal: spawning, rebuilding and dismissing it, and
+            // its clicks. All of it is idle unless the window is wanted open or a
+            // modal is still on screen to be torn down.
+            (
+                manage_auth_modal,
+                rebuild_auth_modal,
+                focus_auth_field,
+                auth_submit_click,
+                auth_link_click,
+                auth_backdrop_click,
+                auth_close_click,
+                auth_escape,
+            )
+                .run_if(modal_live),
         ),
     );
+}
+
+/// Run condition for the modal's systems: the window is open (so it may need
+/// spawning, rebuilding or closing on Escape), or a backdrop is still up (so it
+/// may need despawning).
+fn modal_live(auth: Option<Res<AuthState>>, backdrops: Query<(), With<AuthBackdrop>>) -> bool {
+    auth.is_some_and(|a| a.window_open) || !backdrops.is_empty()
 }
 
 // ── Async result polling ─────────────────────────────────────────────────────
@@ -129,7 +146,7 @@ fn spawn_modal(commands: &mut Commands) {
             GlobalZIndex(9400),
             BLOCK,
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             OverlaySurface,
             AuthBackdrop,
             Name::new("auth-modal"),

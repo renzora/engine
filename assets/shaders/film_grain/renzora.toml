@@ -1,0 +1,9 @@
+name = "Film Grain"
+version = "2.0.0"
+description = "Animated film grain over the finished frame. A post-process effect: drop film_grain.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "film_grain"
+tags = ["post-processing", "shader", "film-grain", "analogue", "cinematic"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

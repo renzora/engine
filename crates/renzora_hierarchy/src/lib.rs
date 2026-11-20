@@ -80,7 +80,12 @@ impl Plugin for HierarchyPanelPlugin {
             (
                 detect_selection_keybindings,
                 cache::mark_hierarchy_dirty,
-                cache::update_hierarchy_cache.after(cache::mark_hierarchy_dirty),
+                // An exclusive system is a sync point for the whole schedule
+                // even when it returns at once, so it is skipped outright
+                // while nothing has dirtied the tree.
+                cache::update_hierarchy_cache
+                    .after(cache::mark_hierarchy_dirty)
+                    .run_if(|dirty: bevy::prelude::Res<cache::HierarchyDirty>| dirty.0),
                 auto_select_first_hierarchy_entity.after(cache::update_hierarchy_cache),
             )
                 .run_if(bevy::prelude::in_state(renzora::SplashState::Editor)),

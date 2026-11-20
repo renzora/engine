@@ -16,7 +16,8 @@
 
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
-use bevy::ui::{GlobalZIndex, RelativeCursorPosition, UiScale};
+use bevy::ui::{GlobalZIndex, UiScale};
+use crate::UiCursor;
 use bevy::window::PrimaryWindow;
 
 use crate::UiInteraction;
@@ -75,7 +76,7 @@ fn dnd_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     ui_scale: Res<UiScale>,
     items: Query<(Entity, &UiInteraction, &DragItem)>,
-    zones: Query<(&DropZone, &RelativeCursorPosition)>,
+    zones: Query<(&DropZone, &UiCursor)>,
     child_of: Query<&ChildOf>,
     canvases: Query<(), With<UiCanvas>>,
     mut nodes: Query<&mut Node>,

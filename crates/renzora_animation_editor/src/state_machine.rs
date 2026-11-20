@@ -29,7 +29,8 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_animation::{
     blend_tree::{Blend1DEntry, BlendSpaceEntry, BlendTree},
@@ -1323,7 +1324,7 @@ fn combo_box(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             marker,
         ))
         .id();
@@ -1729,7 +1730,7 @@ fn trash_transition_click(
 
 /// Compute the top-left of a clicked combo so the popup drops just beneath it.
 fn combo_top_left(
-    rcp: &RelativeCursorPosition,
+    rcp: &UiCursor,
     cn: &ComputedNode,
     cursor: Vec2,
 ) -> Vec2 {
@@ -1740,7 +1741,7 @@ fn combo_top_left(
 
 fn state_clip_combo_open(
     q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &StateClipCombo),
+        (&UiInteraction, &UiCursor, &ComputedNode, &StateClipCombo),
         Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
@@ -1780,7 +1781,7 @@ fn state_clip_combo_open(
 
 fn trans_from_combo_open(
     q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &TransFromCombo),
+        (&UiInteraction, &UiCursor, &ComputedNode, &TransFromCombo),
         Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
@@ -1815,7 +1816,7 @@ fn trans_from_combo_open(
 
 fn trans_to_combo_open(
     q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &TransToCombo),
+        (&UiInteraction, &UiCursor, &ComputedNode, &TransToCombo),
         Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
@@ -1850,7 +1851,7 @@ fn trans_to_combo_open(
 
 fn cond_kind_combo_open(
     q: Query<
-        (&UiInteraction, &RelativeCursorPosition, &ComputedNode, &CondKindCombo),
+        (&UiInteraction, &UiCursor, &ComputedNode, &CondKindCombo),
         Changed<UiInteraction>,
     >,
     windows: Query<&Window>,
@@ -1895,7 +1896,7 @@ fn animator_clips(anim_state: &AnimationEditorState, animators: &Query<&Animator
 }
 
 fn motion_kind_combo_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &MotionKindCombo), Changed<UiInteraction>>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode, &MotionKindCombo), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     anim_state: Option<Res<AnimationEditorState>>,
@@ -1934,7 +1935,7 @@ fn motion_kind_combo_open(
 }
 
 fn entry_clip_combo_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &EntryClipCombo), Changed<UiInteraction>>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode, &EntryClipCombo), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     anim_state: Option<Res<AnimationEditorState>>,

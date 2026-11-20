@@ -70,13 +70,32 @@ impl Plugin for UndoPlugin {
             // that running first.
             .init_resource::<renzora_editor_framework::EditorActionHooks>()
             .add_systems(Update, route_undo_context)
-            .add_systems(Update, (shortcut_input, handle_undo, handle_redo).chain())
+            // The four exclusive systems below are each a sync point for their
+            // whole schedule even on a frame they return at once, which is
+            // nearly every frame. Each condition is the system's own opening
+            // check, so they start only on a frame they would act.
+            .add_systems(
+                Update,
+                (
+                    shortcut_input,
+                    handle_undo.run_if(|m: Option<Res<Messages<RequestUndo>>>| {
+                        m.is_some_and(|m| m.iter_current_update_messages().next().is_some())
+                    }),
+                    handle_redo.run_if(|m: Option<Res<Messages<RequestRedo>>>| {
+                        m.is_some_and(|m| m.iter_current_update_messages().next().is_some())
+                    }),
+                )
+                    .chain(),
+            )
             // Seal after all recording systems (which run in Update) so the
             // gesture that just ended can't merge with the next one.
-            .add_systems(PostUpdate, seal_gesture)
+            .add_systems(PostUpdate, seal_gesture.run_if(gesture_ended))
             // Turn the flag a `Scene` record leaves into the document tab's
             // modified state — including one a plugin left, which is the point.
-            .add_systems(PostUpdate, drain_scene_edited);
+            .add_systems(
+                PostUpdate,
+                drain_scene_edited.run_if(|s: Option<Res<UndoStacks>>| s.is_some_and(|s| s.scene_edited)),
+            );
 
         // Register undo/redo as late-bound hooks so the editor framework's
         // title bar / menu handlers can invoke them without taking a
@@ -105,6 +124,17 @@ fn can_redo_active(world: &World) -> bool {
         .unwrap_or(false)
 }
 
+/// Run condition for [`seal_gesture`]: a gesture ended this frame. A left-mouse
+/// release ends a scrub, slider or paint gesture; Enter or Escape commits or
+/// cancels a field edit. Kept out of the system so the exclusive seal is not a
+/// sync point on the frames (nearly all of them) where nothing ended.
+fn gesture_ended(mouse: Option<Res<ButtonInput<MouseButton>>>, keys: Option<Res<ButtonInput<KeyCode>>>) -> bool {
+    mouse.is_some_and(|m| m.just_released(MouseButton::Left))
+        || keys.is_some_and(|k| {
+            k.just_pressed(KeyCode::Enter) || k.just_pressed(KeyCode::NumpadEnter) || k.just_pressed(KeyCode::Escape)
+        })
+}
+
 /// Seal the active undo stack at gesture boundaries so consecutive edits become
 /// distinct undo steps. A left-mouse release ends a scrub/slider/paint gesture;
 /// Enter/Escape commits or cancels a text or numeric field edit. Recording
@@ -113,17 +143,6 @@ fn can_redo_active(world: &World) -> bool {
 /// is why scrubbing a value, releasing, then scrubbing it again yields two undo
 /// steps instead of one merged step. Harmless when there's nothing to seal.
 fn seal_gesture(world: &mut World) {
-    let ended = world
-        .get_resource::<ButtonInput<MouseButton>>()
-        .is_some_and(|m| m.just_released(MouseButton::Left))
-        || world.get_resource::<ButtonInput<KeyCode>>().is_some_and(|k| {
-            k.just_pressed(KeyCode::Enter)
-                || k.just_pressed(KeyCode::NumpadEnter)
-                || k.just_pressed(KeyCode::Escape)
-        });
-    if !ended {
-        return;
-    }
     let ctx = world.resource::<UndoStacks>().active.clone();
     seal(world, &ctx);
 }

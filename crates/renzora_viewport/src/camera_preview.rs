@@ -76,8 +76,10 @@ pub fn setup_camera_preview(
         depth_or_array_layers: 1,
     };
 
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -184,6 +186,23 @@ type PreviewableCameraFilter = (
     Without<IsolatedCamera>,
 );
 
+/// Whether the preview already shows `source`'s projection.
+///
+/// `Projection` has no `PartialEq`, so the fields the user authors are compared
+/// by hand. The aspect ratio is left out on purpose: Bevy's `camera_system`
+/// rewrites it to the preview's own target, so it never matches the scene
+/// camera's and comparing it would bring back the write every frame. An
+/// orthographic camera always reads as different (its `ScalingMode` has no
+/// `PartialEq` either), which is the old behaviour for that rarer case.
+fn same_projection(preview: &Projection, source: &Projection) -> bool {
+    match (preview, source) {
+        (Projection::Perspective(a), Projection::Perspective(b)) => {
+            a.fov == b.fov && a.near == b.near && a.far == b.far && a.near_clip_plane == b.near_clip_plane
+        }
+        _ => false,
+    }
+}
+
 pub fn update_camera_preview(
     mut commands: Commands,
     selection: Res<EditorSelection>,
@@ -277,8 +296,15 @@ pub fn update_camera_preview(
 
         match existing_preview {
             Some((entity, mut preview_transform, mut preview_proj)) => {
-                *preview_transform = cam_transform;
-                *preview_proj = cam_projection.clone();
+                // Both compared before writing. This runs every frame the
+                // panel is mounted, and a blind write through `Mut` marks the
+                // preview camera moved even while the scene camera is still,
+                // which kept transform propagation and the frustum update
+                // busy every idle frame.
+                preview_transform.set_if_neq(cam_transform);
+                if !same_projection(&preview_proj, cam_projection) {
+                    *preview_proj = cam_projection.clone();
+                }
                 // Sync sky + IBL every frame so the preview tracks the
                 // primary's atmosphere bake.
                 if let Some(ref skybox) = preview_skybox {

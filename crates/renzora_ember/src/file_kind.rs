@@ -61,6 +61,7 @@ pub fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         // The node-graph effect. Its own glyph so a project holding both kinds
         // tells them apart at a glance; same family as the old sparkle.
         "vfx" => "magic-wand",
+        "tgraph" => "mountains",
         "ply" | "gcloud" | "sog" | "ssog" => "cloud",
         "html" => "browser",
         "toml" => "brackets-curly",
@@ -90,6 +91,7 @@ pub fn type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
         "animsm" => ((90, 215, 205), "State Machine"),
         "particle" => ((230, 160, 90), "Particle"),
         "vfx" => ((255, 140, 70), "Particle Effect"),
+        "tgraph" => ((150, 190, 110), "Terrain Graph"),
         "ply" | "gcloud" | "sog" | "ssog" => ((190, 150, 255), "Gaussian Splat"),
         "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
         "html" => ((230, 120, 90), "UI Template"),

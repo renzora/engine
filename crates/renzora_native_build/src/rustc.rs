@@ -167,7 +167,7 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
     for (name, rlib) in &extra.externs {
         push!("--extern", format!("{name}={}", rlib.display()));
     }
-    if let Some(search) = &extra.search {
+    for search in &extra.search {
         push!("-L", format!("dependency={}", search.display()));
     }
 

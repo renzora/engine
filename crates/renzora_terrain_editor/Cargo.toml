@@ -9,10 +9,25 @@ renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_terrain = { path = "../renzora_terrain" }
+# Alpine Landscape's texture paths and builder, for supplying a project with
+# the default landscape material (`surface_ui`).
+renzora_shader = { path = "../renzora_shader" }
+# The MCP's `build_graph` terrain tool (`operations`) builds a terrain graph.
+renzora_terrain_graph = { path = "../renzora_terrain_graph" }
+# The Manage tab's generator card builds through it and reads its parsed
+# graphs (`GraphFiles`). The dependency runs this way only.
+renzora_terrain_graph_editor = { path = "../renzora_terrain_graph/editor" }
 # The Foliage tab in the Terrain component is built by this crate. The
 # dependency runs this way only: foliage knows nothing of the terrain editor.
 renzora_foliage_editor = { path = "../renzora_foliage_editor" }
 renzora_undo = { path = "../renzora_undo" }
+# Builds terrain chunks into virtual geometry clusters (`cluster_bake`). The
+# builder is editor-only: a game reads the files and builds nothing.
+renzora_rvg = { path = "../renzora_rvg", features = ["bake"] }
+# Bakes the default landscape textures to mipmapped, block-compressed `.rmip`
+# as it writes them into a project (`surface_ui`). Already compiled with
+# `bake` for the importer, so it adds nothing to the build.
+renzora_rmip = { path = "../renzora_rmip", features = ["bake"] }
 serde_json = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

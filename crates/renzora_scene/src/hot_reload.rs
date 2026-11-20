@@ -54,6 +54,13 @@ use renzora_editor_framework::ExternalSceneEdits;
 #[derive(Resource, Default)]
 pub(crate) struct PendingSceneReloads(Vec<(std::path::PathBuf, bool)>);
 
+/// Run condition for [`apply_scene_reloads`]: a reload is queued. The same test
+/// the system opens with; the system is exclusive, so skipping it outright
+/// keeps it from being a sync point for the schedule on every other frame.
+pub(crate) fn reloads_pending(pending: Res<PendingSceneReloads>) -> bool {
+    !pending.0.is_empty()
+}
+
 /// Scenes whose file changed while the editor had unsaved changes, awaiting an
 /// answer from the user.
 ///

@@ -15,9 +15,22 @@
 //! column count depends on the panel width, so the panel doesn't declare any of
 //! that. Instead [`update_virtual_metrics`] reads the *laid-out* children each
 //! frame and derives the row stride and column count from their actual
-//! positions. Until it has seen at least two rows it renders everything (the
-//! first-frame fallback), then windows from the measurement — so it adapts to
-//! zoom, DPI and resizes for free.
+//! positions, so it adapts to zoom, DPI and resizes for free.
+//!
+//! ### Before the first measurement
+//! A list has nothing to measure until some rows are laid out, and every pane
+//! is rebuilt when its tab or workspace is shown, so every list starts
+//! unmeasured. It used to build *every* item until two rows had been laid out:
+//! the hierarchy with a 1,024-chunk terrain expanded built ~18,000 nodes on a
+//! workspace switch and tore all but a screenful down again a frame later,
+//! which was most of the switch's hitch. Now an unmeasured list builds a small
+//! probe batch of [`PROBE_ITEMS`] plus one spacer standing in for the rest, and
+//! windows from the next frame's measurement.
+//!
+//! The spacer is deliberately too tall ([`PROBE_ITEM_HEIGHT`] per item). The
+//! scroll area restores a remembered offset the first frame its content has any
+//! height, clamped to that height; a content height shorter than the real list
+//! would clamp a saved position further down and lose it.
 
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform};
@@ -32,6 +45,15 @@ use crate::reactive::tracked::{keyed_list};
 /// its own diff map anyway.
 const SPACER_TOP_KEY: u64 = u64::MAX;
 const SPACER_BOT_KEY: u64 = u64::MAX - 1;
+
+/// Items an unmeasured list builds to measure its rows from: enough for two
+/// rows of the widest grid a panel shows.
+const PROBE_ITEMS: usize = 48;
+/// Height reserved per unbuilt item while probing, in logical px. More than any
+/// list's per-item height (a single-column row is ~26 px, an asset tile row
+/// ~150 px shared by three or more columns), so the reserved total is never
+/// shorter than the real list. See the module docs for why that matters.
+const PROBE_ITEM_HEIGHT: f32 = 64.0;
 
 /// Marks a content node as a virtualized list. Added by [`virtual_scroll`].
 #[derive(Component, Clone, Copy)]
@@ -122,10 +144,31 @@ fn virtual_scroll_impl<F>(
         let full = snapshot(world);
         let total = full.items.len();
 
-        // Render everything until we've measured a real row stride (first
-        // frames, or a list short enough to never wrap to a second row).
-        if !m.measured || m.row_h <= 0.0 || m.columns == 0 || m.viewport_h <= 0.0 || total == 0 {
+        if total == 0 {
             return full;
+        }
+        if !m.measured || m.row_h <= 0.0 || m.columns == 0 || m.viewport_h <= 0.0 {
+            // A short list is built whole, and so is one whose probe batch all
+            // landed in a single row: there is no second row to measure from,
+            // and building only the probe would hide the rest for good.
+            if total <= PROBE_ITEMS || m.columns >= PROBE_ITEMS {
+                return full;
+            }
+            let rest_h = (total - PROBE_ITEMS) as f32 * PROBE_ITEM_HEIGHT;
+            let mut items: Vec<(u64, u64)> = Vec::with_capacity(PROBE_ITEMS + 1);
+            items.extend_from_slice(&full.items[..PROBE_ITEMS]);
+            items.push((SPACER_BOT_KEY, rest_h.to_bits() as u64));
+            let inner = full.build;
+            return KeyedSnapshot {
+                items,
+                build: Box::new(move |c, f, i| {
+                    if i < PROBE_ITEMS {
+                        inner(c, f, i)
+                    } else {
+                        spacer(c, rest_h)
+                    }
+                }),
+            };
         }
 
         let cols = m.columns;
@@ -133,7 +176,16 @@ fn virtual_scroll_impl<F>(
         let total_rows = total.div_ceil(cols);
 
         let first_row = (m.offset / row_h).floor().max(0.0) as usize;
-        let start_row = first_row.saturating_sub(overscan);
+        // The window moves in steps of `overscan` rows, not one row at a time.
+        // Every row entering or leaving the window is a spawn or a despawn, and
+        // each of those makes Bevy walk every UI node, so a window that slid a
+        // row per frame made scrolling a long list a full layout walk on nearly
+        // every frame. Snapped, scrolling within a step changes nothing at all.
+        // Coverage holds: the snap moves the start back by less than a step, so
+        // the start is never above `first_row - 2 * overscan + 1`, and the end
+        // (start + rows in view + 2 * overscan) still reaches past the view.
+        let step = overscan.max(1);
+        let start_row = (first_row.saturating_sub(overscan) / step) * step;
         let rows_in_view = (m.viewport_h / row_h).ceil() as usize + 1;
         let end_row = (start_row + rows_in_view + overscan * 2).min(total_rows);
 

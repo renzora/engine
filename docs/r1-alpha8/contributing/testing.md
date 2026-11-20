@@ -160,11 +160,9 @@ Cross-crate tests go in a crate's `tests/` directory (`crates/<crate>/tests/*.rs
 |---|---|
 | `crates/renzora_native_plugin/tests/load_plugin.rs` | A plugin compiles against the staged SDK and loads into a real `App`. The one test that proves the whole install path, end to end. |
 | `crates/renzora_net/tests/round_trip.rs` | The whole HTTP chain end to end — `fetch` on a background thread → queue → frame pump → the backend → events → back to the parked thread — against a table-driven fake backend, so there are no sockets to flake. |
-| `plugins/avian_physics/tests/avian2d_collision.rs` | A dynamic 2D body driven by `LinearVelocity` is blocked by a static collider-only entity, the shape a tilemap's merged colliders take. A regression here is "the player walks through walls". |
-| `plugins/avian_physics/tests/contract.rs` | The physics API end to end on the bundled backend: landing and collision events, forces, impulses, velocities, pausing, stripping, collide-and-slide, mesh colliders, layers, turned colliders, joints, overlaps and removing physics data. A second backend is held to the same scenarios. |
-| `plugins/avian_physics/tests/traversal.rs` | The parkour controller against real colliders: a rail is vaulted over and a platform climbed onto. It lives beside the physics engine because it needs one. |
-
-A bundled plugin (`plugins/<name>/`) is a workspace member, so its tests run the same way: `cargo test --profile dist -p avian_physics`.
+| `crates/renzora_avian_physics/tests/avian2d_collision.rs` | A dynamic 2D body driven by `LinearVelocity` is blocked by a static collider-only entity, the shape a tilemap's merged colliders take. A regression here is "the player walks through walls". |
+| `crates/renzora_avian_physics/tests/contract.rs` | The physics API end to end on the engine's backend: landing and collision events, forces, impulses, velocities, pausing, stripping, collide-and-slide, mesh colliders, layers, turned colliders, joints, overlaps and removing physics data. A second backend is held to the same scenarios. |
+| `crates/renzora_avian_physics/tests/traversal.rs` | The parkour controller against real colliders: a rail is vaulted over and a platform climbed onto. It lives beside the physics engine because it needs one. |
 | `crates/renzora_bsn/tests/raw_roundtrip.rs` | The scene format survives a serialize → deserialize round-trip. |
 | `crates/renzora_ember/tests/parse_templates.rs` | Every shipped `.html` UI template parses through bevy_hui's parser — markup syntax errors are caught in CI without a GPU. |
 | `crates/renzora_ember/tests/inspector_writeback.rs` | The inspector → `.html` writeback round-trip patches the source file on disk and keeps the span cache coherent. |
@@ -179,7 +177,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use renzora_physics::PhysicsPlugin;
-use avian_physics::AvianPhysicsPlugin;
+use renzora_avian_physics::AvianPhysicsPlugin;
 
 fn physics_app() -> App {
     let mut app = App::new();
@@ -227,7 +225,7 @@ fn pump_until_loaded(app: &mut App, handle: &Handle<HtmlTemplate>) {
 
 ## What CI runs
 
-`.github/workflows/test.yml` runs on every push and pull request to `main`. Both jobs run **inside the shared base toolchain image** `ghcr.io/renzora/base:latest`: native Linux `cargo test`/`clippy` need only rustc 1.97 and the Linux dev libs, which the base carries (the per-platform cross toolchains aren't needed to test first-party crates). There is nothing to install on the runner.
+`.github/workflows/test.yml` runs on every push and pull request to `main`. Both jobs run **inside the shared base toolchain image** `ghcr.io/renzora/base:latest`: native Linux `cargo test`/`clippy` need only rustc 1.100 and the Linux dev libs, which the base carries (the per-platform cross toolchains aren't needed to test first-party crates). There is nothing to install on the runner.
 
 Two jobs:
 
@@ -258,7 +256,7 @@ Notes on the clippy lane:
 - `too_many_arguments` and `type_complexity` are allowed because they are inherent to Bevy systems and queries (Bevy allows them too).
 - The image deliberately ships without the `clippy` component (it would race the parallel docker build lanes on the rustup download), so the job adds it with `rustup component add clippy`.
 
-> CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps; only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the pinned Rust version: `docker/base/Dockerfile` (`rust:1.97.1-bookworm`) for the container, mirrored by `rust-toolchain.toml` for native `cargo renzora` builds.
+> CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps; only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the pinned Rust version: `docker/base/Dockerfile` (`rust:1.100.0-bookworm`) for the container, mirrored by `rust-toolchain.toml` for native `cargo renzora` builds.
 
 ## The test harness — start here
 

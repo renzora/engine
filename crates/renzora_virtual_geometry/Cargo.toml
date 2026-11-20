@@ -6,7 +6,10 @@ description = "Virtual geometry: clustered meshes with per-cluster LOD, culled a
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# `render_3d` for the 3D-only contract types it reads (`SolariShadedTransparent`).
+# Without it the crate built only when another crate in the same build turned
+# the feature on.
+renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }
 renzora_rvg = { path = "../renzora_rvg" }
 # Plain-old-data GPU structs. Already in the lockfile through Bevy.
 bytemuck = { version = "1", features = ["derive"] }
@@ -21,7 +24,7 @@ renzora_rvg = { path = "../renzora_rvg", features = ["bake", "model"] }
 serde_json = "1"
 # And render a real compiled node-graph material, which is registered for
 # virtual geometry by the runtime rather than by this crate.
-renzora_shader = { path = "../renzora_shader" }
+renzora_shader = { path = "../renzora_shader", features = ["editor"] }
 # And trace a model with Solari, through Renzora's own plugin, the way the
 # editor does: what Solari traces for a converted mesh is decided between the
 # two crates.
@@ -29,6 +32,9 @@ renzora_solari = { path = "../renzora_solari" }
 # Which of those can run here: CI's GPU job has a software Vulkan with no ray
 # tracing, so the Solari tests ask the adapter before they build an app.
 wgpu = { version = "30", default-features = false }
+# A headless app whose shader libraries the terrain shader test compiles
+# against, and the validator it compiles with (`editor`).
+renzora_test_harness = { path = "../renzora_test_harness" }
 
 [lints]
 workspace = true

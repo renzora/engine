@@ -1,356 +1,54 @@
-//! Bevy-native (ember) Scene Diagnostics panel — a faithful port of the egui
-//! `SceneDiagnosticsPanel`: six collapsible sections (materials & textures, tab
-//! asset cache, asset inventory, entity health, cameras, recent warnings) read
-//! from `SceneDiagSnapshot` / `TabAssetCache` / `recent_warnings()`. Every value
-//! is a binding; the variable-length sections are `keyed_list`s.
-
-use std::hash::{Hash, Hasher};
+//! The Scene Diagnostics probe: the editor's scene health readout, shown in
+//! the companion instead of a dock panel.
+//!
+//! It used to be an ember panel with six collapsible sections, every value a
+//! reactive binding and the warning feed a `keyed_list`. Each of those was
+//! UI the editor had to lay out again whenever a value moved, and the warning
+//! feed alone (up to 200 multi-line rows) was enough to keep `ui_layout_system`
+//! busy every frame it stayed open. As a probe the same readout is plain data
+//! built a few times a second while the companion watches it, and costs the
+//! editor's own UI nothing.
+//!
+//! The data still comes from [`SceneDiagSnapshot`] (filled by
+//! `update_scene_diag_snapshot`, gated on [`renzora::probes::probe_watched`]
+//! with this probe's id), [`TabAssetCache`] and [`recent_warnings`]. The
+//! colours the panel drew map onto [`ProbeLevel`]: its green is `Good`, its
+//! red is `Bad`, its amber is `Warn`, its muted grey `Muted`.
 
 use bevy::prelude::*;
 
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{KeyedSnapshot};
-use renzora_ember::reactive::Rx;
-use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, keyed_list};
-use renzora_ember::theme::*;
-use renzora_ember::widgets::collapsible;
+use renzora::probes::{ProbeDef, ProbeItem, ProbeLevel, ProbeReport, RegisterProbe};
 
 use crate::runtime_warnings::{recent_warnings, CapturedWarning, WarningLevel};
 use crate::tab_asset_cache::{CameraEntry, SceneDiagSnapshot, TabAssetCache, TabPinSnapshot};
 
-const SECONDARY: (u8, u8, u8) = (170, 170, 180);
-const OK: (u8, u8, u8) = (120, 200, 120);
-const BAD: (u8, u8, u8) = (230, 110, 110);
+/// The probe's id. The snapshot system in `lib.rs` gates on the same string,
+/// so the walk over every mesh only runs while a companion is showing it.
+pub const PROBE_ID: &str = "scene_diagnostics";
 
-/// Registers the bevy-native Scene Diagnostics content.
+/// Registers the Scene Diagnostics probe.
 pub struct SceneDiagnostics;
 
 impl Plugin for SceneDiagnostics {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("scene_diagnostics", true, build);
+        app.register_probe(ProbeDef {
+            id: PROBE_ID,
+            title: "Scene Diagnostics",
+            icon: "first-aid",
+            category: "World",
+            build: build_report,
+            act: None,
+        });
     }
 }
 
-fn snap<R: Default>(w: &Rx, f: impl FnOnce(&SceneDiagSnapshot) -> R) -> R {
-    w.get_resource::<SceneDiagSnapshot>().map(f).unwrap_or_default()
-}
-
-fn ok_or_bad(n: usize) -> Color {
+/// A count that should be zero: green when it is, red when it is not. The
+/// panel's `ok_or_bad`, kept so every health counter reads the same way.
+fn ok_or_bad(n: usize) -> ProbeLevel {
     if n == 0 {
-        rgb(OK)
+        ProbeLevel::Good
     } else {
-        rgb(BAD)
-    }
-}
-
-fn hash_str(s: &str) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    s.hash(&mut h);
-    h.finish()
-}
-
-// ── Small builders ───────────────────────────────────────────────────────────
-
-/// A `label …… value` row (label left, mono value right, both bindings).
-fn stat_row<V, C>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V, color: C) -> Entity
-where
-    V: Fn(&Rx) -> String + Send + Sync + 'static,
-    C: Fn(&Rx) -> Color + Send + Sync + 'static,
-{
-    let row = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            width: Val::Percent(100.0),
-            column_gap: Val::Px(8.0),
-            ..default()
-        })
-        .id();
-    let l = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 12.0), TextColor(rgb(SECONDARY))))
-        .id();
-    let gap = commands
-        .spawn(Node {
-            flex_grow: 1.0,
-            ..default()
-        })
-        .id();
-    let v = commands
-        .spawn((Text::new(""), ui_font(&fonts.mono, 12.0), TextColor(rgb(text_primary()))))
-        .id();
-    bind_text(commands, v, value);
-    bind_text_color(commands, v, color);
-    commands.entity(row).add_children(&[l, gap, v]);
-    row
-}
-
-/// A static `label …… value` row with a fixed color (no binding).
-fn neutral_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
-where
-    V: Fn(&Rx) -> String + Send + Sync + 'static,
-{
-    stat_row(commands, fonts, label, value, |_| rgb(SECONDARY))
-}
-
-fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str, color: (u8, u8, u8)) -> Entity {
-    commands
-        .spawn((Text::new(text), ui_font(&fonts.ui, 11.0), TextColor(rgb(color))))
-        .id()
-}
-
-fn spacer(commands: &mut Commands, h: f32) -> Entity {
-    commands
-        .spawn(Node {
-            height: Val::Px(h),
-            ..default()
-        })
-        .id()
-}
-
-// ── Panel ────────────────────────────────────────────────────────────────────
-
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let root = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            flex_shrink: 0.0,
-            padding: UiRect::all(Val::Px(8.0)),
-            row_gap: Val::Px(2.0),
-            ..default()
-        })
-        .id();
-
-    let (m, m_body) = collapsible(commands, fonts, Some("palette"), "Materials & textures", true);
-    materials_section(commands, fonts, m_body);
-
-    let (t, t_body) = collapsible(commands, fonts, Some("stack"), "Tab asset cache", false);
-    keyed_list(commands, t_body, tabs_snapshot);
-
-    let (a, a_body) = collapsible(commands, fonts, Some("database"), "Asset inventory", false);
-    assets_section(commands, fonts, a_body);
-
-    let (e, e_body) = collapsible(commands, fonts, Some("tree-structure"), "Entity health", true);
-    entities_section(commands, fonts, e_body);
-
-    let (c, c_body) = collapsible(commands, fonts, Some("video-camera"), "Cameras", false);
-    keyed_list(commands, c_body, cameras_snapshot);
-
-    let (w, w_body) = collapsible(commands, fonts, Some("warning"), "Recent runtime warnings", true);
-    keyed_list(commands, w_body, warnings_snapshot);
-
-    commands.entity(root).add_children(&[m, t, a, e, c, w]);
-    root
-}
-
-fn materials_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
-    let rows = [
-        neutral_row(commands, fonts, "Entities w/ StandardMaterial", |w| snap(w, |s| s.material.entities_with_std_mat).to_string()),
-        neutral_row(commands, fonts, "Unique materials", |w| snap(w, |s| s.material.unique_std_mats).to_string()),
-        neutral_row(commands, fonts, "Materials loaded", |w| snap(w, |s| s.material.mats_loaded).to_string()),
-        neutral_row(commands, fonts, "Materials without textures", |w| snap(w, |s| s.material.mats_with_no_textures).to_string()),
-        spacer(commands, 4.0),
-        neutral_row(commands, fonts, "Image handles seen", |w| snap(w, |s| s.material.image_handles_seen).to_string()),
-        stat_row(commands, fonts, "Images alive", |w| snap(w, |s| s.material.images_alive).to_string(), |_| rgb(OK)),
-        stat_row(commands, fonts, "Images MISSING", |w| snap(w, |s| s.material.images_missing).to_string(), |w| ok_or_bad(snap(w, |s| s.material.images_missing))),
-    ];
-    commands.entity(body).add_children(&rows);
-
-    let hdr = note(commands, fonts, "\u{26a0}  Sample missing paths:", BAD);
-    bind_display(commands, hdr, |w| !snap(w, |s| s.material.missing_sample_paths.is_empty()));
-    let paths = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            ..default()
-        })
-        .id();
-    keyed_list(commands, paths, missing_paths_snapshot);
-    commands.entity(body).add_children(&[hdr, paths]);
-}
-
-fn assets_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
-    let opt = |o: Option<usize>| o.map(|n| n.to_string()).unwrap_or_else(|| "n/a".to_string());
-    let rows = [
-        neutral_row(commands, fonts, "Images", |w| snap(w, |s| s.assets.images).to_string()),
-        neutral_row(commands, fonts, "Meshes", |w| snap(w, |s| s.assets.meshes).to_string()),
-        neutral_row(commands, fonts, "StandardMaterials", |w| snap(w, |s| s.assets.standard_materials).to_string()),
-        neutral_row(commands, fonts, "GraphMaterials", move |w| opt(snap(w, |s| s.assets.graph_materials))),
-        neutral_row(commands, fonts, "CodeShaderMaterials", move |w| opt(snap(w, |s| s.assets.code_shader_materials))),
-        neutral_row(commands, fonts, "Scenes", |w| snap(w, |s| s.assets.scenes).to_string()),
-        neutral_row(commands, fonts, "Gltfs", |w| snap(w, |s| s.assets.gltfs).to_string()),
-        neutral_row(commands, fonts, "Shaders", |w| snap(w, |s| s.assets.shaders).to_string()),
-        neutral_row(commands, fonts, "AnimationClips", |w| snap(w, |s| s.assets.animation_clips).to_string()),
-        neutral_row(commands, fonts, "AudioSources", move |w| opt(snap(w, |s| s.assets.audio_sources))),
-    ];
-    commands.entity(body).add_children(&rows);
-}
-
-fn entities_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
-    let total = neutral_row(commands, fonts, "Total entities", |w| snap(w, |s| s.entities.total_entities).to_string());
-    let sp = spacer(commands, 4.0);
-    // Which material lane the meshes ended up in. `MaterialRef` can resolve
-    // to either a plain StandardMaterial (trivial graph) or a GraphMaterial
-    // (procedural), and the same file swinging between the two across a
-    // reload is a bug no single counter shows.
-    let gm = neutral_row(commands, fonts, "Meshes on GraphMaterial", |w| snap(w, |s| s.entities.mesh_with_graph_mat).to_string());
-    let cm = neutral_row(commands, fonts, "Meshes on CodeShaderMaterial", |w| snap(w, |s| s.entities.mesh_with_code_mat).to_string());
-    let m = stat_row(commands, fonts, "Mesh3d without material", |w| snap(w, |s| s.entities.mesh3d_without_material).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.mesh3d_without_material)));
-    let r = stat_row(commands, fonts, "MaterialRef unresolved", |w| snap(w, |s| s.entities.materialref_unresolved).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.materialref_unresolved)));
-    let p = stat_row(commands, fonts, "PendingMeshInstanceRehydrate", |w| snap(w, |s| s.entities.pending_rehydrate).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.pending_rehydrate)));
-    let e = stat_row(commands, fonts, "Empty SceneRoots", |w| snap(w, |s| s.entities.empty_scene_roots).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.empty_scene_roots)));
-    let b = stat_row(commands, fonts, "B0004 (parent w/o GlobalTransform)", |w| snap(w, |s| s.entities.b0004_violations).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.b0004_violations)));
-    commands.entity(body).add_children(&[total, sp, gm, cm, m, r, p, e, b]);
-
-    // The count alone can't distinguish editor chrome (gizmo handles,
-    // entity labels — material types this query doesn't track) from scene
-    // geometry that genuinely lost its binding, so list the offenders.
-    let hdr = note(commands, fonts, "\u{26a0}  Meshes without material:", BAD);
-    bind_display(commands, hdr, |w| {
-        !snap(w, |s| s.entities.mesh3d_without_material_sample.is_empty())
-    });
-    let list = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            ..default()
-        })
-        .id();
-    keyed_list(commands, list, mesh_no_material_snapshot);
-    commands.entity(body).add_children(&[hdr, list]);
-}
-
-// ── Lists ────────────────────────────────────────────────────────────────────
-
-fn missing_paths_snapshot(world: &Rx) -> KeyedSnapshot {
-    let paths = snap(world, |s| s.material.missing_sample_paths.clone());
-    let items: Vec<(u64, u64)> = paths.iter().map(|p| (hash_str(p), 0)).collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| {
-            c.spawn((
-                Text::new(format!("\u{2022} {}", paths[i])),
-                ui_font(&f.mono, 11.0),
-                TextColor(rgb(BAD)),
-                Node {
-                    margin: UiRect::left(Val::Px(14.0)),
-                    ..default()
-                },
-            ))
-            .id()
-        }),
-    }
-}
-
-fn mesh_no_material_snapshot(world: &Rx) -> KeyedSnapshot {
-    let lines = snap(world, |s| s.entities.mesh3d_without_material_sample.clone());
-    let items: Vec<(u64, u64)> = lines.iter().map(|l| (hash_str(l), 0)).collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| {
-            c.spawn((
-                Text::new(format!("\u{2022} {}", lines[i])),
-                ui_font(&f.mono, 11.0),
-                TextColor(rgb(BAD)),
-                Node {
-                    margin: UiRect::left(Val::Px(14.0)),
-                    ..default()
-                },
-            ))
-            .id()
-        }),
-    }
-}
-
-fn tabs_snapshot(world: &Rx) -> KeyedSnapshot {
-    let tabs: Vec<TabPinSnapshot> = world
-        .get_resource::<TabAssetCache>()
-        .map(|c| c.snapshot_for_diagnostics())
-        .unwrap_or_default();
-    if tabs.is_empty() {
-        return note_snapshot("(no tabs pinned)");
-    }
-    let items: Vec<(u64, u64)> = tabs
-        .iter()
-        .map(|t| {
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            (t.tab_id, t.gltf_count, t.live_total).hash(&mut h);
-            (t.tab_id, h.finish())
-        })
-        .collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| tab_row(c, f, &tabs[i])),
-    }
-}
-
-fn tab_row(commands: &mut Commands, fonts: &EmberFonts, t: &TabPinSnapshot) -> Entity {
-    let col = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            margin: UiRect::bottom(Val::Px(2.0)),
-            ..default()
-        })
-        .id();
-    let head = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(4.0),
-            ..default()
-        })
-        .id();
-    let id = commands
-        .spawn((Text::new(format!("Tab {}", t.tab_id)), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
-        .id();
-    let counts = commands
-        .spawn((
-            Text::new(format!("{} GLB(s)  \u{b7}  {} live handles", t.gltf_count, t.live_total)),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-    commands.entity(head).add_children(&[id, counts]);
-    let b = &t.breakdown;
-    let sub = commands
-        .spawn((
-            Text::new(format!(
-                "{} mesh  \u{b7}  {} std-mat  \u{b7}  {} graph-mat  \u{b7}  {} scene  \u{b7}  {} image",
-                b.meshes, b.std_mats, b.graph_mats, b.scenes, b.images
-            )),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                margin: UiRect::left(Val::Px(14.0)),
-                ..default()
-            },
-        ))
-        .id();
-    commands.entity(col).add_children(&[head, sub]);
-    col
-}
-
-fn cameras_snapshot(world: &Rx) -> KeyedSnapshot {
-    let cams = snap(world, |s| s.cameras.clone());
-    if cams.is_empty() {
-        return note_snapshot("(no cameras)");
-    }
-    let items: Vec<(u64, u64)> = cams
-        .iter()
-        .map(|c| {
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            (
-                c.is_active, c.is_3d, c.is_2d, c.hdr, c.normal_prepass, c.depth_prepass,
-                c.motion_prepass, c.atmosphere, c.atmosphere_env_light, c.env_map_light,
-            )
-                .hash(&mut h);
-            (c.entity.to_bits(), h.finish() ^ hash_str(&c.name))
-        })
-        .collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| camera_row(c, f, &cams[i])),
+        ProbeLevel::Bad
     }
 }
 
@@ -362,219 +60,305 @@ fn yesno(b: bool) -> &'static str {
     }
 }
 
-fn camera_row(commands: &mut Commands, fonts: &EmberFonts, c: &CameraEntry) -> Entity {
-    let col = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            margin: UiRect::bottom(Val::Px(3.0)),
-            ..default()
-        })
-        .id();
-    let kind = if c.is_3d {
-        "3D"
-    } else if c.is_2d {
-        "2D"
-    } else {
-        "?"
-    };
-    let head = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(4.0),
-            ..default()
-        })
-        .id();
-    let dot = icon_text(commands, &fonts.phosphor, "circle", SECONDARY, 10.0);
-    let name = commands
-        .spawn((Text::new(c.name.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
-        .id();
-    let meta = commands
-        .spawn((
-            Text::new(format!("({}, {:?})", kind, c.entity)),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-    commands.entity(head).add_children(&[dot, name, meta]);
+/// Build the whole report from the world. Reads only: a missing resource (a
+/// build without the scene cache, or before the first snapshot) shows zeros
+/// rather than failing, the way the panel did.
+fn build_report(world: &mut World) -> ProbeReport {
+    let mut report = ProbeReport::default();
+    let empty = SceneDiagSnapshot::default();
+    let snap = world.get_resource::<SceneDiagSnapshot>().unwrap_or(&empty);
 
-    let active_color = if c.is_active { rgb(OK) } else { rgb(text_muted()) };
-    let line1 = commands
-        .spawn((
-            Text::new(format!(
-                "{}  \u{b7}  target: {}  \u{b7}  hdr: {}",
-                if c.is_active { "active" } else { "inactive" },
-                c.render_target.label(),
-                yesno(c.hdr),
-            )),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(active_color),
-            Node {
-                margin: UiRect::left(Val::Px(14.0)),
-                ..default()
-            },
+    materials_section(&mut report, snap);
+
+    let tabs = world
+        .get_resource::<TabAssetCache>()
+        .map(|c| c.snapshot_for_diagnostics())
+        .unwrap_or_default();
+    tabs_section(&mut report, &tabs);
+
+    assets_section(&mut report, snap);
+    entities_section(&mut report, snap);
+    cameras_section(&mut report, &snap.cameras);
+    warnings_section(&mut report, &recent_warnings());
+    report
+}
+
+fn materials_section(report: &mut ProbeReport, snap: &SceneDiagSnapshot) {
+    let m = &snap.material;
+    report
+        .section("Materials & textures")
+        .item(ProbeItem::stat("Entities w/ StandardMaterial", m.entities_with_std_mat))
+        .item(ProbeItem::stat("Unique materials", m.unique_std_mats))
+        .item(ProbeItem::stat("Materials loaded", m.mats_loaded))
+        .item(ProbeItem::stat("Materials without textures", m.mats_with_no_textures))
+        .item(ProbeItem::stat("Image handles seen", m.image_handles_seen))
+        .item(ProbeItem::stat_at("Images alive", m.images_alive, ProbeLevel::Good))
+        .item(ProbeItem::stat_at("Images MISSING", m.images_missing, ok_or_bad(m.images_missing)));
+    // The snapshot already caps this at five, so it is shown whole.
+    if !m.missing_sample_paths.is_empty() {
+        report.item(ProbeItem::note("Sample missing paths:", ProbeLevel::Bad));
+        for path in &m.missing_sample_paths {
+            report.item(ProbeItem::note(format!("\u{2022} {path}"), ProbeLevel::Bad));
+        }
+    }
+}
+
+fn tabs_section(report: &mut ProbeReport, tabs: &[TabPinSnapshot]) {
+    report.section("Tab asset cache");
+    if tabs.is_empty() {
+        report.item(ProbeItem::note("(no tabs pinned)", ProbeLevel::Muted));
+        return;
+    }
+    let rows = tabs
+        .iter()
+        .map(|t| {
+            let b = &t.breakdown;
+            vec![
+                t.tab_id.to_string(),
+                t.gltf_count.to_string(),
+                t.live_total.to_string(),
+                b.meshes.to_string(),
+                b.std_mats.to_string(),
+                b.graph_mats.to_string(),
+                b.scenes.to_string(),
+                b.images.to_string(),
+            ]
+        })
+        .collect();
+    report.item(ProbeItem::table(
+        &["Tab", "GLBs", "Live handles", "Mesh", "Std-mat", "Graph-mat", "Scene", "Image"],
+        rows,
+    ));
+}
+
+fn assets_section(report: &mut ProbeReport, snap: &SceneDiagSnapshot) {
+    let a = &snap.assets;
+    // `None` is an asset type this build does not register, which is not the
+    // same as zero of them; the panel said "n/a" for it and so does this.
+    let opt = |o: Option<usize>| o.map(|n| n.to_string()).unwrap_or_else(|| "n/a".to_string());
+    report
+        .section("Asset inventory")
+        .item(ProbeItem::stat("Images", a.images))
+        .item(ProbeItem::stat("Meshes", a.meshes))
+        .item(ProbeItem::stat("StandardMaterials", a.standard_materials))
+        .item(ProbeItem::stat("GraphMaterials", opt(a.graph_materials)))
+        .item(ProbeItem::stat("CodeShaderMaterials", opt(a.code_shader_materials)))
+        .item(ProbeItem::stat("Scenes", a.scenes))
+        .item(ProbeItem::stat("Gltfs", a.gltfs))
+        .item(ProbeItem::stat("Shaders", a.shaders))
+        .item(ProbeItem::stat("AnimationClips", a.animation_clips))
+        .item(ProbeItem::stat("AudioSources", opt(a.audio_sources)));
+}
+
+fn entities_section(report: &mut ProbeReport, snap: &SceneDiagSnapshot) {
+    let e = &snap.entities;
+    // Which material lane the meshes ended up in. `MaterialRef` can resolve
+    // to either a plain StandardMaterial (trivial graph) or a GraphMaterial
+    // (procedural), and the same file swinging between the two across a
+    // reload is a bug no single counter shows.
+    report
+        .section("Entity health")
+        .item(ProbeItem::stat("Total entities", e.total_entities))
+        .item(ProbeItem::stat("Meshes on GraphMaterial", e.mesh_with_graph_mat))
+        .item(ProbeItem::stat("Meshes on CodeShaderMaterial", e.mesh_with_code_mat))
+        .item(ProbeItem::stat_at(
+            "Mesh3d without material",
+            e.mesh3d_without_material,
+            ok_or_bad(e.mesh3d_without_material),
         ))
-        .id();
-    let line2 = commands
-        .spawn((
-            Text::new(format!(
-                "prepass: {}{}{}  \u{b7}  atmo: {}  \u{b7}  atmo-env: {}  \u{b7}  env-map: {}",
+        .item(ProbeItem::stat_at(
+            "MaterialRef unresolved",
+            e.materialref_unresolved,
+            ok_or_bad(e.materialref_unresolved),
+        ))
+        .item(ProbeItem::stat_at(
+            "PendingMeshInstanceRehydrate",
+            e.pending_rehydrate,
+            ok_or_bad(e.pending_rehydrate),
+        ))
+        .item(ProbeItem::stat_at("Empty SceneRoots", e.empty_scene_roots, ok_or_bad(e.empty_scene_roots)))
+        .item(ProbeItem::stat_at(
+            "B0004 (parent w/o GlobalTransform)",
+            e.b0004_violations,
+            ok_or_bad(e.b0004_violations),
+        ));
+
+    // The count alone can't distinguish editor chrome (gizmo handles, entity
+    // labels: material types the snapshot's query doesn't track) from scene
+    // geometry that genuinely lost its binding, so list the offenders. The
+    // snapshot caps the sample; say so when there are more, so a short list
+    // is not read as the whole story.
+    let sample = &e.mesh3d_without_material_sample;
+    if !sample.is_empty() {
+        report.item(ProbeItem::note("Meshes without material:", ProbeLevel::Bad));
+        for line in sample {
+            report.item(ProbeItem::note(format!("\u{2022} {line}"), ProbeLevel::Bad));
+        }
+        if e.mesh3d_without_material > sample.len() {
+            report.item(ProbeItem::note(
+                format!("(showing {} of {})", sample.len(), e.mesh3d_without_material),
+                ProbeLevel::Muted,
+            ));
+        }
+    }
+}
+
+fn cameras_section(report: &mut ProbeReport, cameras: &[CameraEntry]) {
+    report.section("Cameras");
+    if cameras.is_empty() {
+        report.item(ProbeItem::note("(no cameras)", ProbeLevel::Muted));
+        return;
+    }
+    let rows = cameras
+        .iter()
+        .map(|c| {
+            let kind = if c.is_3d {
+                "3D"
+            } else if c.is_2d {
+                "2D"
+            } else {
+                "?"
+            };
+            // N, D, M for the normal, depth and motion-vector prepasses, a dot
+            // for each one missing: the panel's compact form, which keeps three
+            // flags in one narrow column.
+            let prepass = format!(
+                "{}{}{}",
                 if c.normal_prepass { "N" } else { "\u{b7}" },
                 if c.depth_prepass { "D" } else { "\u{b7}" },
                 if c.motion_prepass { "M" } else { "\u{b7}" },
-                yesno(c.atmosphere),
-                yesno(c.atmosphere_env_light),
-                yesno(c.env_map_light),
-            )),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                margin: UiRect::left(Val::Px(14.0)),
-                ..default()
-            },
-        ))
-        .id();
-    commands.entity(col).add_children(&[head, line1, line2]);
-    col
-}
-
-fn warnings_snapshot(world: &Rx) -> KeyedSnapshot {
-    let _ = world;
-    let warnings = recent_warnings();
-    if warnings.is_empty() {
-        return note_snapshot("(no warnings or errors captured this session)");
-    }
-    // Newest first.
-    let list: Vec<CapturedWarning> = warnings.into_iter().rev().collect();
-    // Key by CONTENT, never by position. The list is newest-first, so a single
-    // incoming warning shifts every existing entry down one slot — with a
-    // positional key that changed the content behind all ~200 keys at once and
-    // the keyed list despawned and rebuilt every row (~7 entities each, most of
-    // them multi-line text). That churn is exactly what `keyed_list` exists to
-    // avoid, and it pinned `ui_layout_system` at ~22 ms on EVERY frame while the
-    // warnings kept coming. Hashing (level, target, message) keeps a row's
-    // identity fixed as it slides down, so an arrival spawns one row and a
-    // repeat only re-renders one badge.
-    //
-    // `count` is the content hash rather than part of the key, for the same
-    // reason: a coalesced repeat must update the row in place, not replace it.
-    let items: Vec<(u64, u64)> = list
-        .iter()
-        .map(|wn| {
-            let mut key = std::collections::hash_map::DefaultHasher::new();
-            (wn.level as u8, &wn.target, &wn.message).hash(&mut key);
-            let mut content = std::collections::hash_map::DefaultHasher::new();
-            wn.count.hash(&mut content);
-            (key.finish(), content.finish())
+            );
+            vec![
+                c.name.clone(),
+                format!("{:?}", c.entity),
+                kind.to_string(),
+                if c.is_active { "active" } else { "inactive" }.to_string(),
+                c.render_target.label().to_string(),
+                yesno(c.hdr).to_string(),
+                prepass,
+                yesno(c.atmosphere).to_string(),
+                yesno(c.atmosphere_env_light).to_string(),
+                yesno(c.env_map_light).to_string(),
+            ]
         })
         .collect();
-    KeyedSnapshot {
-        items,
-        build: Box::new(move |c, f, i| warning_row(c, f, &list[i])),
-    }
+    report.item(ProbeItem::table(
+        &["Camera", "Entity", "Kind", "State", "Target", "HDR", "Prepass", "Atmo", "Atmo-env", "Env-map"],
+        rows,
+    ));
 }
 
-/// A small rounded `×N` pill shown when a warning repeated. Same shape and
-/// palette as the console's badge (`renzora_console::panel::count_badge`) so
-/// the two feeds read as one system; kept as a local copy rather than a shared
-/// helper because the console is a separate crate this one doesn't depend on.
-fn count_badge(commands: &mut Commands, fonts: &EmberFonts, count: u32) -> Entity {
-    let badge = commands
-        .spawn((
-            Node {
-                padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)),
-                margin: UiRect::left(Val::Px(4.0)),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(7.0)),
-                ..default()
-            },
-            BackgroundColor(Color::srgb_u8(70, 78, 92)),
-        ))
-        .id();
-    let label = commands
-        .spawn((
-            Text::new(format!("\u{d7}{count}")),
-            ui_font(&fonts.mono, 10.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    commands.entity(badge).add_child(label);
-    badge
-}
-
-fn warning_row(commands: &mut Commands, fonts: &EmberFonts, wn: &CapturedWarning) -> Entity {
-    let (icon, color) = match wn.level {
-        WarningLevel::Warn => ("warning", (230, 180, 80)),
-        WarningLevel::Error => ("warning-circle", BAD),
-    };
-    let age = wn.age();
-    let age_label = if age.as_secs() < 60 {
-        format!("{}s ago", age.as_secs())
-    } else if age.as_secs() < 3600 {
-        format!("{}m ago", age.as_secs() / 60)
+fn age_label(wn: &CapturedWarning) -> String {
+    let secs = wn.age().as_secs();
+    if secs < 60 {
+        format!("{secs}s ago")
+    } else if secs < 3600 {
+        format!("{}m ago", secs / 60)
     } else {
-        format!("{}h ago", age.as_secs() / 3600)
-    };
-
-    let col = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            margin: UiRect::bottom(Val::Px(2.0)),
-            ..default()
-        })
-        .id();
-    let head = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            width: Val::Percent(100.0),
-            column_gap: Val::Px(4.0),
-            ..default()
-        })
-        .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, color, 12.0);
-    let target = commands
-        .spawn((Text::new(wn.target.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
-        .id();
-    let gap = commands
-        .spawn(Node {
-            flex_grow: 1.0,
-            ..default()
-        })
-        .id();
-    let age_e = commands
-        .spawn((Text::new(age_label), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_muted()))))
-        .id();
-    let mut head_kids = vec![ic, target];
-    // Repeat-count badge, mirroring the console's `×N` pill. A system that emits
-    // the same warning every frame now occupies one row whose badge ticks up,
-    // instead of flooding the buffer and evicting every other warning.
-    if wn.count > 1 {
-        head_kids.push(count_badge(commands, fonts, wn.count));
+        format!("{}h ago", secs / 3600)
     }
-    head_kids.extend_from_slice(&[gap, age_e]);
-    commands.entity(head).add_children(&head_kids);
-    let msg = commands
-        .spawn((
-            Text::new(wn.message.clone()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(SECONDARY)),
-            Node {
-                margin: UiRect::left(Val::Px(18.0)),
-                ..default()
-            },
-        ))
-        .id();
-    commands.entity(col).add_children(&[head, msg]);
-    col
 }
 
-fn note_snapshot(text: &'static str) -> KeyedSnapshot {
-    KeyedSnapshot {
-        items: vec![(u64::MAX, 0)],
-        build: Box::new(move |c, f, _| note(c, f, text, text_muted())),
+/// One note per warning, newest first. Notes rather than a table because a
+/// note carries a level, and the panel's whole point here was that an error
+/// reads red and a warning amber at a glance. The capture buffer is capped at
+/// `MAX_WARNINGS` and coalesces repeats into one entry with a count, so this
+/// cannot grow without bound.
+fn warnings_section(report: &mut ProbeReport, warnings: &[CapturedWarning]) {
+    report.section("Recent runtime warnings");
+    if warnings.is_empty() {
+        report.item(ProbeItem::note(
+            "(no warnings or errors captured this session)",
+            ProbeLevel::Muted,
+        ));
+        return;
+    }
+    for wn in warnings.iter().rev() {
+        let level = match wn.level {
+            WarningLevel::Warn => ProbeLevel::Warn,
+            WarningLevel::Error => ProbeLevel::Bad,
+        };
+        let repeat = if wn.count > 1 { format!("  \u{d7}{}", wn.count) } else { String::new() };
+        report.item(ProbeItem::note(
+            format!("{}{repeat}  ({}): {}", wn.target, age_label(wn), wn.message),
+            level,
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora::probes::{ProbeRegistry, ProbeSection};
+
+    fn section<'a>(report: &'a ProbeReport, title: &str) -> &'a ProbeSection {
+        report
+            .sections
+            .iter()
+            .find(|s| s.title == title)
+            .unwrap_or_else(|| panic!("no section {title}"))
+    }
+
+    fn stat_level(section: &ProbeSection, label: &str) -> ProbeLevel {
+        section
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ProbeItem::Stat { label: l, level, .. } if l == label => Some(*level),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no stat {label}"))
+    }
+
+    #[test]
+    fn an_empty_world_still_builds_every_section() {
+        let report = build_report(&mut World::new());
+        let titles: Vec<&str> = report.sections.iter().map(|s| s.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            [
+                "Materials & textures",
+                "Tab asset cache",
+                "Asset inventory",
+                "Entity health",
+                "Cameras",
+                "Recent runtime warnings",
+            ]
+        );
+        assert_eq!(stat_level(section(&report, "Entity health"), "Mesh3d without material"), ProbeLevel::Good);
+    }
+
+    #[test]
+    fn problems_read_red_and_list_their_offenders() {
+        let mut world = World::new();
+        let mut snap = SceneDiagSnapshot::default();
+        snap.material.images_missing = 2;
+        snap.material.missing_sample_paths = vec!["textures/a.png".into()];
+        snap.entities.mesh3d_without_material = 20;
+        snap.entities.mesh3d_without_material_sample = vec!["Cube: no MaterialRef".into()];
+        world.insert_resource(snap);
+
+        let report = build_report(&mut world);
+        let mats = section(&report, "Materials & textures");
+        assert_eq!(stat_level(mats, "Images MISSING"), ProbeLevel::Bad);
+        assert!(mats.items.iter().any(|i| matches!(
+            i,
+            ProbeItem::Note { text, level: ProbeLevel::Bad } if text.contains("textures/a.png")
+        )));
+
+        let health = section(&report, "Entity health");
+        assert_eq!(stat_level(health, "Mesh3d without material"), ProbeLevel::Bad);
+        assert!(health.items.iter().any(|i| matches!(
+            i,
+            ProbeItem::Note { text, .. } if text == "(showing 1 of 20)"
+        )));
+    }
+
+    #[test]
+    fn the_plugin_registers_the_probe() {
+        let mut app = App::new();
+        app.add_plugins(SceneDiagnostics);
+        let registry = app.world().resource::<ProbeRegistry>();
+        assert!(registry.0.iter().any(|p| p.id == PROBE_ID && p.category == "World"));
     }
 }

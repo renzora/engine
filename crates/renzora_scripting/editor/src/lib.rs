@@ -1,12 +1,14 @@
 //! Editor-only half of `renzora_scripting` — the inspector entry for the
 //! `ScriptComponent` (a renzora editor-contract `InspectorEntry` with a Phosphor
-//! icon).
+//! icon), and the prompt that offers to install Rust when a script needs it.
 //!
 //! `renzora_scripting` compiles lean (no `editor` feature, no egui-phosphor). This
 //! crate holds the inspector entry (which reads/writes the `pub`
 //! `renzora_scripting::ScriptComponent` runtime component), registered
 //! `renzora::add!(ScriptingEditorPlugin, Editor)`, linked only by the editor
 //! bundle. The native (bevy_ui / ember) drawer lives in `renzora_inspector`.
+
+mod toolchain_prompt;
 
 use bevy::prelude::*;
 use renzora::{AppEditorExt, InspectorEntry};
@@ -62,6 +64,19 @@ impl Plugin for ScriptingEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ScriptingEditorPlugin");
         app.register_inspector(script_component_entry());
+        // The Rust script builder registers these too; `add_message` and
+        // `init_resource` are idempotent, and doing it here keeps the prompt
+        // from panicking in a build where that plugin bowed out early.
+        app.init_resource::<renzora::RustToolchain>()
+            .add_message::<renzora::RustToolchainAnswer>()
+            .add_systems(
+                Update,
+                (
+                    toolchain_prompt::spawn_prompt
+                        .run_if(in_state(renzora::SplashState::Editor)),
+                    toolchain_prompt::prompt_buttons,
+                ),
+            );
     }
 }
 

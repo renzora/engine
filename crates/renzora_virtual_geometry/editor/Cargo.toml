@@ -11,6 +11,8 @@ renzora_virtual_geometry = { path = ".." }
 # The builder. Pulls meshoptimizer, which is why it lives in the editor half:
 # a shipped game only ever reads `.rvg` files.
 renzora_rvg = { path = "../../renzora_rvg", features = ["bake"] }
+# Reading a bake's outcome back from the companion.
+serde_json = "1"
 # The confirmation before converting a project's models to `.rvg`.
 renzora_ember = { path = "../../renzora_ember" }
 

@@ -144,7 +144,6 @@ Every material has a domain that decides what it is for. Pick this when you crea
 | Domain | Use it for |
 |---|---|
 | Surface | Props, walls, characters. Standard PBR, and the default. |
-| Terrain Layer | A paintable layer on terrain |
 | Vegetation | Surfaces that sway in the wind |
 | Unlit | Flat colour with no lighting |
 | Sprite | A 2D sprite. Made with **Add ▸ Sprite Material**; see [Sprite materials](/docs/r1-alpha8/api/material#sprite-materials) |
@@ -186,6 +185,8 @@ The model file itself holds no reference to them. The link is rebuilt each time 
 This matters most for models exported from the older specular-glossiness workflow, common on asset sites. The engine converts those on import, and the converted result lives only in the `.material`. Re-import a model if its look ever regresses to flat white.
 
 A spec-gloss model imported before 2026-10-19 has its glossiness routed through a maths node in each graph, which renders correctly but costs a generated shader per material. Re-importing it bakes the glossiness into a real roughness texture instead, so its materials become plain StandardMaterials, and surfaces whose specular is black (brick, plaster) come out matte as authored.
+
+An FBX file's specular slot can hold either of two things, and the engine reads the image to tell them apart. A grey image is a classic specular mask, where bright means shiny. A coloured one is a packed metal-rough texture as game engines export it, with roughness in green and metallic in blue, and it is read that way. Models such as the Bistro use the packed kind; one imported before 2026-11-18 read it as a mask and came out too glossy, which re-importing corrects.
 
 ## Supported image formats
 

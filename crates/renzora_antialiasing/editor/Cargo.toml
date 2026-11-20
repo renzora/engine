@@ -2,7 +2,7 @@
 name = "renzora_antialiasing_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only inspectors for renzora_antialiasing (FXAA/SMAA/TAA/CAS). Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only inspectors for renzora_antialiasing (Anti-Aliasing, Sharpening). Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
 
 [dependencies]
 bevy = { workspace = true }

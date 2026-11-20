@@ -14,7 +14,8 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora::AnimMarker;
 use renzora_animation::AnimatorComponent;
@@ -183,7 +184,7 @@ pub(super) fn update_anim_play_icon(
 // ── Picking ──────────────────────────────────────────────────────────────────
 
 /// Cursor position in the lanes layer's pixel space, or `None` when outside.
-pub(super) fn lane_cursor(lane: &Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>) -> Option<Vec2> {
+pub(super) fn lane_cursor(lane: &Query<(&UiCursor, &ComputedNode), With<KeyLane>>) -> Option<Vec2> {
     let (rcp, cn) = lane.iter().next()?;
     if !rcp.cursor_over {
         return None;
@@ -195,7 +196,7 @@ pub(super) fn lane_cursor(lane: &Query<(&RelativeCursorPosition, &ComputedNode),
 
 /// Like [`lane_cursor`] but unclamped to "over": the position keeps tracking
 /// while a drag strays outside the lanes.
-fn lane_cursor_any(lane: &Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>) -> Option<Vec2> {
+fn lane_cursor_any(lane: &Query<(&UiCursor, &ComputedNode), With<KeyLane>>) -> Option<Vec2> {
     let (rcp, cn) = lane.iter().next()?;
     let n = rcp.normalized?;
     let size = cn.size() * cn.inverse_scale_factor();
@@ -464,7 +465,7 @@ pub(super) fn ruler_hit(p: Vec2, state: &AnimationEditorState, dur: f32, ruler_h
 pub(super) fn timeline_pan(
     mut drag: ResMut<KeyDragState>,
     buttons: Res<ButtonInput<MouseButton>>,
-    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+    lane: Query<(&UiCursor, &ComputedNode), With<KeyLane>>,
     state: Option<Res<AnimationEditorState>>,
     runs: Res<KeyRuns>,
     mut layout: ResMut<TrackLayout>,
@@ -534,8 +535,8 @@ pub(super) fn timeline_pan(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn timeline_cursor(
     drag: Res<KeyDragState>,
-    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
-    pane: Query<(&RelativeCursorPosition, &ComputedNode), With<PaneLayer>>,
+    lane: Query<(&UiCursor, &ComputedNode), With<KeyLane>>,
+    pane: Query<(&UiCursor, &ComputedNode), With<PaneLayer>>,
     theme: Option<Res<renzora_ember::style::Theme>>,
     state: Option<Res<AnimationEditorState>>,
     runs: Res<KeyRuns>,
@@ -614,7 +615,7 @@ pub(super) fn key_drag(
     mut drag: ResMut<KeyDragState>,
     buttons: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+    lane: Query<(&UiCursor, &ComputedNode), With<KeyLane>>,
     windows: Query<&Window>,
     state: Option<Res<AnimationEditorState>>,
     runs: Res<KeyRuns>,
@@ -862,7 +863,7 @@ fn finish_move(cache: &mut TimelineClip, selected: &mut SelectedKey, all: &mut S
 pub(super) fn ruler_drag(
     mut drag: ResMut<KeyDragState>,
     buttons: Res<ButtonInput<MouseButton>>,
-    pane: Query<(&RelativeCursorPosition, &ComputedNode), With<PaneLayer>>,
+    pane: Query<(&UiCursor, &ComputedNode), With<PaneLayer>>,
     theme: Option<Res<renzora_ember::style::Theme>>,
     state: Option<ResMut<AnimationEditorState>>,
     mut cache: ResMut<TimelineClip>,
@@ -1090,7 +1091,7 @@ pub(super) fn track_context_menu(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn key_context_menu(
     buttons: Res<ButtonInput<MouseButton>>,
-    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+    lane: Query<(&UiCursor, &ComputedNode), With<KeyLane>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Option<Res<AnimationEditorState>>,
@@ -1327,7 +1328,7 @@ pub(super) fn unused_clip_name(world: &World, entity: Entity, base: &str) -> Str
 #[allow(clippy::too_many_arguments)]
 pub(super) fn timeline_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
-    root: Query<&RelativeCursorPosition, With<AnimTimeline>>,
+    root: Query<&UiCursor, With<AnimTimeline>>,
     state: Option<ResMut<AnimationEditorState>>,
     cache: Option<Res<TimelineClip>>,
     bridge: Option<Res<AnimEditorBridge>>,
@@ -1405,7 +1406,7 @@ pub(super) fn timeline_shortcuts(
 /// the cursor is over the timeline, so pressing Delete removes the keys
 /// instead of the selected entity (the global entity-delete shortcut honors it).
 pub(super) fn timeline_delete_guard(
-    root: Query<&RelativeCursorPosition, With<AnimTimeline>>,
+    root: Query<&UiCursor, With<AnimTimeline>>,
     selected: Res<SelectedKey>,
     all: Res<SelectedKeys>,
     focus: Option<ResMut<renzora::InputFocusState>>,
@@ -1426,8 +1427,8 @@ pub(super) fn timeline_delete_guard(
 pub(super) fn timeline_wheel(
     mut wheel: MessageReader<MouseWheel>,
     keys: Res<ButtonInput<KeyCode>>,
-    root: Query<&RelativeCursorPosition, With<AnimTimeline>>,
-    lane: Query<(&RelativeCursorPosition, &ComputedNode), With<KeyLane>>,
+    root: Query<&UiCursor, With<AnimTimeline>>,
+    lane: Query<(&UiCursor, &ComputedNode), With<KeyLane>>,
     state: Option<Res<AnimationEditorState>>,
     mut layout: ResMut<TrackLayout>,
     cache: Res<TimelineClip>,

@@ -35,7 +35,7 @@ fn settled(asset_server: &AssetServer, id: impl Into<bevy::asset::UntypedAssetId
     matches!(asset_server.get_load_state(id), Some(LoadState::Loaded) | Some(LoadState::Failed(_)) | None)
 }
 
-/// Once all clips are loaded, build the AnimationGraph and wire up the player.
+/// Once all clips are loaded, build the BlendGraph and wire up the player.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn initialize_animation_graphs(
     mut commands: Commands,
@@ -44,7 +44,7 @@ pub fn initialize_animation_graphs(
     prop_clips: Res<Assets<PropertyClip>>,
     skeletons: Res<Assets<SourceSkeleton>>,
     state_machines: Res<Assets<AnimationStateMachine>>,
-    mut graphs: ResMut<Assets<AnimationGraph>>,
+    mut graphs: ResMut<Assets<BlendGraph>>,
     mut animators: Query<(Entity, &AnimatorComponent, &mut AnimatorState)>,
     children_query: Query<&Children>,
     player_query: Query<Entity, With<AnimationPlayer>>,
@@ -224,7 +224,7 @@ pub fn initialize_animation_graphs(
         // thinks is main each frame, so it must not be on the player.
         commands
             .entity(player_entity)
-            .insert(AnimationGraphHandle(graph_handle))
+            .insert(BlendGraphHandle(graph_handle))
             .remove::<AnimationTransitions>();
         // A rebuild (a clip added or removed) renumbers the graph's nodes, but
         // the player keeps whatever it was already running under the OLD

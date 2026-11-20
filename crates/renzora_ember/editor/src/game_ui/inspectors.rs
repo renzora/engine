@@ -27,10 +27,13 @@ pub(crate) fn register(app: &mut App) {
         Update,
         (
             stroke_side_click,
-            rebuild_dropdown,
+            // Both rebuilds are exclusive, a sync point for the schedule even
+            // when they find nothing, and each walks only its own root; with no
+            // such drawer in the inspector there is nothing to rebuild.
+            rebuild_dropdown.run_if(any_with_component::<DropdownRoot>),
             dropdown_add_click,
             dropdown_remove_click,
-            rebuild_fill,
+            rebuild_fill.run_if(any_with_component::<FillRoot>),
             fill_add_stop_click,
             fill_remove_stop_click,
         )
@@ -262,8 +265,8 @@ fn build_dropdown_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity
     rows.push(inspector_row(commands, &fonts.ui, "Selected", dd));
 
     // One text input per option.
-    for i in 0..data.options.len() {
-        let ti = text_input(commands, &fonts.ui, "", &data.options[i]);
+    for (i, option) in data.options.iter().enumerate() {
+        let ti = text_input(commands, &fonts.ui, "", option);
         bind_text_input(
             commands,
             ti,

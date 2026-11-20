@@ -188,7 +188,7 @@ pub(crate) fn is_descendant_of(parents: &Query<&ChildOf>, mut e: Entity, ancesto
 /// and the answer differs.
 pub(crate) fn track_hover(
     mut state: ResMut<NativeCanvasState>,
-    hit: Query<&bevy::ui::RelativeCursorPosition, With<crate::game_ui::overlay::CanvasHitLayer>>,
+    hit: Query<&renzora_ember::UiCursor, With<crate::game_ui::overlay::CanvasHitLayer>>,
 ) {
     let want = hit
         .iter()

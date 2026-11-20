@@ -6,7 +6,10 @@ use bevy::prelude::*;
 use renzora_editor_framework::SettingsTab;
 use renzora_input::InputAction;
 
-pub(crate) const PANEL_W: f32 = 880.0;
+// The content column is this minus the sidebar and padding (about 540px):
+// room for a label beside the fixed control slot (`rows::CONTROL_W`). At 880
+// the slot sat far from its label across an empty middle.
+pub(crate) const PANEL_W: f32 = 760.0;
 pub(crate) const PANEL_H: f32 = 620.0;
 // Wide enough that no category label wraps to a second line. The usable text
 // width is this minus the icon (14), the two gaps (10 + 10) and the horizontal

@@ -30,6 +30,12 @@ impl ToastQueue {
     }
 }
 
+/// Run condition for [`forward_toasts`]: only a frame with a toast queued has
+/// anything to hand on.
+pub(crate) fn has_pending(queue: Res<ToastQueue>) -> bool {
+    !queue.pending.is_empty()
+}
+
 /// Hand this frame's toasts to ember, which shows them.
 pub(crate) fn forward_toasts(
     mut queue: ResMut<ToastQueue>,

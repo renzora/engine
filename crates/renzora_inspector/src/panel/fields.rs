@@ -9,14 +9,14 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown, text_input, toggle_switch, DragRange,
+    bind_text_input, drag_value, dropdown, dropdown_with_warnings, text_input, toggle_switch, DragRange,
 };
 use renzora_ember::UiInteraction;
 
 use super::assets::build_asset_field;
 use super::section::{AddKeyframeBtn, FieldButton, ResetBtn};
 use super::spec::{field_label_loc, format_value, tracked_read, FieldInit, FieldKind, FieldSpec};
-use super::{c, phosphor_glyph, record_field_change, GetFn, SetFn};
+use super::{c, phosphor_glyph, record_field_change};
 
 pub(super) fn build_field_row(
     commands: &mut Commands,
@@ -24,6 +24,19 @@ pub(super) fn build_field_row(
     field: &FieldSpec,
     entity: Entity,
     type_id: &'static str,
+) -> Entity {
+    build_field_row_with_label(commands, fonts, field, entity, type_id, None)
+}
+
+/// [`build_field_row`] with the label text built by the caller (a group header
+/// puts its caret in it), or the field's own name when `None`.
+pub(super) fn build_field_row_with_label(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    field: &FieldSpec,
+    entity: Entity,
+    type_id: &'static str,
+    label_text: Option<Entity>,
 ) -> Entity {
     // The field's control(s) sit in a value container, then the shared
     // `inspector_row` adds a left-aligned label column — so declarative fields
@@ -68,7 +81,15 @@ pub(super) fn build_field_row(
     // Skipped for kinds that have no value to reset (action buttons, read-only
     // text) — resetting those would be meaningless.
     if field_is_resettable(field.kind) {
-        let reset = build_reset_button(commands, fonts, field.name, field.get_fn.clone(), field.set_fn.clone(), entity);
+        let btn = ResetBtn {
+            get_fn: field.get_fn.clone(),
+            set_fn: field.set_fn.clone(),
+            entity,
+            field_name: field.name,
+            type_id,
+            cid: field.cid,
+        };
+        let reset = build_reset_button(commands, fonts, btn);
         commands.entity(value).add_child(reset);
     }
     // An action button already says what it does, and the label column beside
@@ -89,8 +110,13 @@ pub(super) fn build_field_row(
         commands.entity(row).add_child(value);
         return row;
     }
-    let label = field_label_loc(field.name);
-    let row = renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value);
+    let row = match label_text {
+        Some(lbl) => renzora_ember::inspector::inspector_row_with_label(commands, lbl, value),
+        None => {
+            let label = field_label_loc(field.name);
+            renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value)
+        }
+    };
     // A field whose value reads as `None` is not applicable right now, and
     // `collect` leaves it out of a section it builds. One that stops applying
     // after the section is built (Solari's DLSS Mode, once the denoiser is
@@ -110,21 +136,18 @@ pub(super) fn build_field_row(
 /// what the slot's own ✕ already does, so the two sat side by side doing the
 /// same thing and the reset read as a "reload" that wasn't one.
 fn field_is_resettable(kind: FieldKind) -> bool {
-    !matches!(kind, FieldKind::Button { .. } | FieldKind::ReadOnly | FieldKind::Asset)
+    // A plain group's header has no value of its own. (A switch group's
+    // header is built as a `Bool` row, so its switch does get one.)
+    !matches!(
+        kind,
+        FieldKind::Button { .. } | FieldKind::ReadOnly | FieldKind::Asset | FieldKind::Group { .. }
+    )
 }
 
-/// A small icon button that resets a field to its type-appropriate default
-/// (via [`FieldValue::type_default`]). Reads the field's current value only to
-/// learn its `FieldValue` variant, then writes the matching default back; the
-/// field's two-way binding refreshes the widget on the next frame.
-fn build_reset_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    field_name: &'static str,
-    get_fn: GetFn,
-    set_fn: SetFn,
-    entity: Entity,
-) -> Entity {
+/// A small icon button that resets a field to the value its component starts
+/// with (see `reset::default_value`); the field's two-way binding refreshes
+/// the widget on the next frame.
+fn build_reset_button(commands: &mut Commands, fonts: &EmberFonts, btn: ResetBtn) -> Entity {
     let btn = commands
         .spawn((
             Node {
@@ -139,7 +162,7 @@ fn build_reset_button(
             UiInteraction::default(),
             BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            ResetBtn { get_fn, set_fn, entity, field_name },
+            btn,
             Name::new("field-reset"),
         ))
         .id();
@@ -341,6 +364,9 @@ fn build_field_value(
         FieldKind::Bool => {
             let init = matches!(field.init, FieldInit::Bool(true));
             let sw = toggle_switch(commands, init);
+            // A group's header row folds on a press; the switch in it must
+            // keep that press to itself. Harmless on an ordinary row.
+            commands.entity(sw).insert(BLOCK);
             let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
             let get_r = get_fn.clone();
             bind_2way(
@@ -440,6 +466,58 @@ fn build_field_value(
             renzora_ember::inspector::fill_control(commands, dd);
             commands.entity(value_parent).add_child(dd);
         }
+        FieldKind::CheckedEnum { options } => {
+            let (cur, warnings) = match field.init {
+                FieldInit::Checked(ref s, ref w) => (s.clone(), w.clone()),
+                _ => (String::new(), Vec::new()),
+            };
+            let refs: Vec<&str> = options.to_vec();
+            let sel = options.iter().position(|o| *o == cur).unwrap_or(0);
+            let dd = dropdown_with_warnings(commands, fonts, &refs, &warnings, sel);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
+            bind_2way(
+                commands,
+                dd,
+                move |w| {
+                    let cur = match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
+                        Some(FieldValue::Enum(s)) => s,
+                        _ => String::new(),
+                    };
+                    options.iter().position(|o| *o == cur).unwrap_or(0)
+                },
+                move |w, i: &usize| {
+                    if let Some(opt) = options.get(*i) {
+                        record_field_change(
+                            w,
+                            entity,
+                            name,
+                            get_fn.clone(),
+                            set_fn.clone(),
+                            FieldValue::Enum((*opt).to_string()),
+                        );
+                    }
+                },
+            );
+            renzora_ember::inspector::fill_control(commands, dd);
+            commands.entity(value_parent).add_child(dd);
+            // The selected option's warning, beside the box, so a choice that
+            // is not taking effect says so without opening the menu. Built
+            // from the snapshot: picking another option changes the section's
+            // signature (see `rebuild`), which rebuilds the row with the new one.
+            if let Some(Some(reason)) = warnings.get(sel) {
+                let warn = phosphor_glyph(commands, fonts, "warning", renzora_ember::theme::warn_amber(), 13.0);
+                commands.entity(warn).insert((
+                    Node { flex_shrink: 0.0, ..default() },
+                    // Tracked only for the tooltip; it is not a control, so it
+                    // keeps the plain arrow rather than the hand.
+                    UiInteraction::default(),
+                    renzora_ember::cursor_icon::NoAutoCursor,
+                    renzora_ember::widgets::HoverTooltip::new(reason.clone()),
+                ));
+                commands.entity(value_parent).add_child(warn);
+            }
+        }
         FieldKind::DynamicEnum => {
             let (options, selected) = if let FieldInit::DynEnum(ref o, s) = field.init {
                 (o.clone(), s)
@@ -501,6 +579,8 @@ fn build_field_value(
             ));
             commands.entity(value_parent).add_child(btn);
         }
+        // Never a row: `group::build_rows` builds a group as a group.
+        FieldKind::Group { .. } => {}
         FieldKind::ReadOnly => {
             let text = if let FieldInit::Text(ref s) = field.init {
                 s.clone()

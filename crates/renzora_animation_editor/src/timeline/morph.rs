@@ -73,6 +73,12 @@ pub(crate) fn set_morph(world: &mut World, entity: Entity, index: usize, weight:
 /// Drop the hand-set weights when the playhead or clip moved or playback runs,
 /// else put them back over what the player just wrote. PostUpdate, after
 /// the animation systems and before anything renders the weights.
+/// Run condition for [`apply_morph_pose`]: it returns before touching anything
+/// while no weight is held, so an idle editor need not start it at all.
+pub(crate) fn morph_pose_held(layer: Res<MorphLayer>) -> bool {
+    !layer.posed.is_empty()
+}
+
 pub(crate) fn apply_morph_pose(world: &mut World) {
     let previewing = world.get_resource::<AnimationEditorState>().is_some_and(|s| s.is_previewing);
     let at = playhead(world);

@@ -200,7 +200,7 @@ fn rebuild_area(
     // child-despawn above took the previous one).
     commands
         .entity(area_entity)
-        .insert(bevy::ui::RelativeCursorPosition::default());
+        .insert(crate::UiCursor::default());
     let root_overlay = commands
         .spawn((
             Node {
@@ -631,7 +631,7 @@ fn build_leaf(
             crate::widgets::ThemeShaderSurface {
                 surface: crate::widgets::ThemeSurface::Panel,
             },
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             Name::new("leaf"),
         ))
         .id();
@@ -799,7 +799,7 @@ pub(crate) fn add_panel_click(
 pub(crate) fn tab_strip_wheel(
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     mut strips: Query<
-        (&bevy::ui::RelativeCursorPosition, &mut bevy::ui::ScrollPosition),
+        (&crate::UiCursor, &mut bevy::ui::ScrollPosition),
         With<TabScrollStrip>,
     >,
 ) {
@@ -868,7 +868,7 @@ fn populate_leaf(
                     Val::Px(0.0),
                     Val::Px(4.0),
                 ),
-                bevy::ui::RelativeCursorPosition::default(),
+                crate::UiCursor::default(),
                 TabBarOf(leaf),
                 DockPart::TabBar,
                 crate::widgets::ThemeShaderSurface {
@@ -939,7 +939,7 @@ fn populate_leaf(
                         Color::NONE
                     }),
                     UiInteraction::default(),
-                    bevy::ui::RelativeCursorPosition::default(),
+                    crate::UiCursor::default(),
                     DockPart::Tab,
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                     Name::new(format!("tab:{id}")),
@@ -985,7 +985,7 @@ fn populate_leaf(
             let close = icon_text(commands, phosphor, "x", text_muted(), 11.0);
             commands.entity(close).insert((
                 TabClose,
-                bevy::ui::RelativeCursorPosition::default(),
+                crate::UiCursor::default(),
                 // Block so clicking the × closes the tab instead of selecting it.
                 BLOCK,
             ));
@@ -1040,7 +1040,7 @@ fn populate_leaf(
                     ..default()
                 },
                 bevy::ui::ScrollPosition::default(),
-                bevy::ui::RelativeCursorPosition::default(),
+                crate::UiCursor::default(),
                 TabScrollStrip { leaf },
                 Name::new("tab-strip"),
             ))

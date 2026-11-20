@@ -124,6 +124,20 @@ fn build_plugins_headless() {
     }
 }
 
+/// `--companion`: the process the editor starts beside itself for profiling and
+/// background work (see `renzora_companion`). Its code is in the editor image,
+/// so a build without one has no companion to run.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_companion() {
+    let mut app = init_app();
+    renzora_runtime::add_companion_rendering(&mut app);
+    if !renzora_runtime::editor_image::install_companion(&mut app) {
+        eprintln!("--companion needs the editor image beside the executable; exiting");
+        return;
+    }
+    app.run();
+}
+
 // ── Native entry point ───────────────────────────────────────────────────
 
 // One binary, three runtime-decided modes:
@@ -145,6 +159,15 @@ fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     if std::env::args().any(|a| a == "--build-plugins") {
         build_plugins_headless();
+        return;
+    }
+
+    // The editor's companion: a small app of its own, so none of the engine,
+    // the scene or the editor below is assembled. Before the first-run setup,
+    // because the editor that starts it has already done that work.
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::args().any(|a| a == "--companion") {
+        run_companion();
         return;
     }
 

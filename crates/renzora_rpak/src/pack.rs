@@ -497,6 +497,9 @@ where
                     refs.push(format!("{stem}.rvg"));
                 }
             }
+            // A terrain drawn as virtual geometry names the folder holding
+            // one `.rvg` per chunk, never the files themselves.
+            refs.extend(terrain_cluster_files(project_dir, text));
             if is_svg_key(&file_key) {
                 // XML allows single-quoted attributes, and Inkscape and
                 // Illustrator both write them; the double-quote scan alone
@@ -542,6 +545,35 @@ where
     }
 
     Ok(packer)
+}
+
+/// The chunk files of every terrain cluster folder `text` names
+/// (`"terrain_clusters/<id>"`, a `TerrainClusters` component in a scene). The
+/// game draws a chunk as virtual geometry only from these; one left out just
+/// draws the ordinary way, so a folder that is gone yields nothing.
+fn terrain_cluster_files(project_dir: &Path, text: &str) -> Vec<String> {
+    const PREFIX: &str = "\"terrain_clusters/";
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(PREFIX) {
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('"') else { break };
+        let dir = after[..end].trim_end_matches('/');
+        rest = &after[end..];
+        if dir.contains("..") {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(project_dir.join(dir)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.ends_with(".rvg") {
+                out.push(format!("{dir}/{name}"));
+            }
+        }
+    }
+    out
 }
 
 /// Every `.rs` script in the project, wherever it lives.
@@ -1869,6 +1901,25 @@ mod tests {
         assert!(keys.iter().any(|k| k == "models/a.rvg"), "{keys:?}");
         assert!(keys.iter().any(|k| k == "models/b.glb"), "{keys:?}");
         assert!(!keys.iter().any(|k| k == "models/b.rvg"), "{keys:?}");
+    }
+
+    /// A terrain's chunk clusters ship, though the scene names only their folder.
+    #[test]
+    fn a_terrains_cluster_folder_is_packed() {
+        let p = TempProject::new(
+            "terrain_clusters",
+            &[
+                ("project.toml", "main_scene = \"scenes/level.bsn\"\n"),
+                ("scenes/level.bsn", "entity 1 {\n TerrainClusters(dir: \"terrain_clusters/ab12\")\n}\n"),
+                ("terrain_clusters/ab12/chunk_0_0.rvg", "RVG1"),
+                ("terrain_clusters/ab12/chunk_1_0.rvg", "RVG1"),
+                ("terrain_clusters/other/chunk_0_0.rvg", "RVG1"),
+            ],
+        );
+        let keys = referenced_keys(&p.0).unwrap();
+        assert!(keys.iter().any(|k| k == "terrain_clusters/ab12/chunk_0_0.rvg"), "{keys:?}");
+        assert!(keys.iter().any(|k| k == "terrain_clusters/ab12/chunk_1_0.rvg"), "{keys:?}");
+        assert!(!keys.iter().any(|k| k.starts_with("terrain_clusters/other")), "{keys:?}");
     }
 
     /// A model stored as `.rvg` ships with what its scene references: its

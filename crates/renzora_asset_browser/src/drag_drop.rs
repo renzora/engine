@@ -160,7 +160,7 @@ pub(crate) fn asset_drag_tab_spring(
     payload: Option<Res<renzora_editor_framework::AssetDragPayload>>,
     time: Res<Time>,
     dock: Res<renzora_ember::dock::Dock>,
-    tabs: Query<(&bevy::ui::RelativeCursorPosition, &renzora_ember::dock::DockTab)>,
+    tabs: Query<(&renzora_ember::UiCursor, &renzora_ember::dock::DockTab)>,
     mut focus: ResMut<renzora_ember::dock::FocusPanelRequest>,
     // (hovered tab id, seconds dwelled on it) — reset whenever the drag ends or
     // the hovered tab changes, so each tab earns its own fresh dwell.

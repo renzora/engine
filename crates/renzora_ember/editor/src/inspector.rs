@@ -127,13 +127,28 @@ fn val_to_string(v: Val) -> String {
         Val::VMax(n) => format!("{}vmax", trim_float(n)),
         Val::Em(n) => format!("{}em", trim_float(n)),
         Val::Rem(n) => format!("{}rem", trim_float(n)),
+        // The sizing keywords, spelled as in CSS.
+        Val::MinContent => "min-content".to_string(),
+        Val::MaxContent => "max-content".to_string(),
+        Val::FitContent => "fit-content".to_string(),
+        Val::Stretch => "stretch".to_string(),
+        Val::Content => "content".to_string(),
     }
 }
 
 fn string_to_val(s: &str) -> Option<Val> {
     let s = s.trim();
-    if s.eq_ignore_ascii_case("auto") {
-        return Some(Val::Auto);
+    for (word, val) in [
+        ("auto", Val::Auto),
+        ("min-content", Val::MinContent),
+        ("max-content", Val::MaxContent),
+        ("fit-content", Val::FitContent),
+        ("stretch", Val::Stretch),
+        ("content", Val::Content),
+    ] {
+        if s.eq_ignore_ascii_case(word) {
+            return Some(val);
+        }
     }
     let (num_str, unit): (&str, &str) = if let Some(rest) = s.strip_suffix("px") {
         (rest, "px")
@@ -308,7 +323,7 @@ const ALIGN_ITEMS_OPTIONS: &[&str] = &[
 ];
 fn align_items_to_str(a: AlignItems) -> &'static str {
     match a {
-        AlignItems::Default => "default",
+        AlignItems::Normal => "default",
         AlignItems::Start => "start",
         AlignItems::End => "end",
         AlignItems::FlexStart => "flex_start",
@@ -327,7 +342,7 @@ fn align_items_to_str(a: AlignItems) -> &'static str {
 }
 fn str_to_align_items(s: &str) -> Option<AlignItems> {
     match s {
-        "default" => Some(AlignItems::Default),
+        "default" => Some(AlignItems::Normal),
         "start" => Some(AlignItems::Start),
         "end" => Some(AlignItems::End),
         "flex_start" => Some(AlignItems::FlexStart),
@@ -361,7 +376,7 @@ fn justify_content_to_str(j: JustifyContent) -> &'static str {
         JustifyContent::SpaceBetween => "space_between",
         JustifyContent::SpaceAround => "space_around",
         JustifyContent::SpaceEvenly => "space_evenly",
-        JustifyContent::Default => "start",
+        JustifyContent::Normal => "start",
         // Overflow-safe variants; see `align_items_to_str`.
         JustifyContent::StartSafe => "start",
         JustifyContent::EndSafe => "end",
@@ -403,8 +418,11 @@ fn node_entry() -> InspectorEntry {
         remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
+        // Eighteen rows of layout, grouped by what they do so a node opens at
+        // five headers instead.
         fields: vec![
             // -- Enum-pickered layout knobs --
+            FieldDef::group("Layout", vec![
             FieldDef {
                 name: "Flex Direction",
                 field_type: FieldType::Enum {
@@ -510,20 +528,28 @@ fn node_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
             // -- Val-typed sizing/position, edited as String --
             //
             // Each one is fully inlined because `FieldDef::set_fn` is a `fn`
             // pointer, not a closure — the markup identifier can't be
             // captured at runtime so we stamp it as a literal in each arm.
-            val_node_field!("Width", "width", width),
-            val_node_field!("Height", "height", height),
-            val_node_field!("Left", "left", left),
-            val_node_field!("Right", "right", right),
-            val_node_field!("Top", "top", top),
-            val_node_field!("Bottom", "bottom", bottom),
-            val_node_field!("Row Gap", "row_gap", row_gap),
-            val_node_field!("Column Gap", "column_gap", column_gap),
+            FieldDef::group("Size", vec![
+                val_node_field!("Width", "width", width),
+                val_node_field!("Height", "height", height),
+            ]),
+            FieldDef::group("Offsets", vec![
+                val_node_field!("Left", "left", left),
+                val_node_field!("Right", "right", right),
+                val_node_field!("Top", "top", top),
+                val_node_field!("Bottom", "bottom", bottom),
+            ]),
+            FieldDef::group("Gaps", vec![
+                val_node_field!("Row Gap", "row_gap", row_gap),
+                val_node_field!("Column Gap", "column_gap", column_gap),
+            ]),
             // -- UiRect-typed --
+            FieldDef::group("Box", vec![
             ui_rect_node_field!("Padding", "padding", padding),
             ui_rect_node_field!("Margin", "margin", margin),
             ui_rect_node_field!("Border", "border", border),
@@ -546,6 +572,7 @@ fn node_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
         ],
     }
 }

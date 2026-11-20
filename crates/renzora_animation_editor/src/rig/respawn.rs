@@ -19,7 +19,18 @@ use bevy::prelude::*;
 pub(crate) struct PendingRespawn(Vec<String>);
 
 pub(super) fn register(app: &mut App) {
-    app.init_resource::<PendingRespawn>().add_systems(Update, respawn_when_reloaded);
+    // Waits for a pending model or a buffered glTF event. With neither, a run
+    // would only clear an empty reader, so skipping it loses no event: any
+    // event still buffered keeps the condition true until the system has
+    // read or cleared it.
+    app.init_resource::<PendingRespawn>().add_systems(
+        Update,
+        respawn_when_reloaded.run_if(
+            |p: Res<PendingRespawn>, ev: Option<Res<Messages<AssetEvent<bevy::gltf::Gltf>>>>| {
+                !p.0.is_empty() || ev.is_some_and(|e| !e.is_empty())
+            },
+        ),
+    );
 }
 
 /// Reload `rel` and rebuild its instances once the new version has loaded.
@@ -68,6 +79,6 @@ fn respawn_when_reloaded(
         if let Some(t) = tracker.as_mut() {
             t.source_entity = None;
         }
-        renzora::core::console_log::console_info("Rig", format!("Reloaded {rel} with its rig in {count} instance(s)"));
+        renzora::core::console_log::console_info("Rig", format!("Reloaded {rel} in {count} instance(s)"));
     }
 }

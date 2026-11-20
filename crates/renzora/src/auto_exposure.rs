@@ -53,8 +53,10 @@ pub struct AutoExposureSettings {
     pub enabled: bool,
 }
 
+/// 0.55: tested on a moonlit street with lit lamps. At 0.7 the street was
+/// nearly black; at 0.2 the exposure rose until night looked like day.
 fn default_keep_dark_strength() -> f32 {
-    0.7
+    0.55
 }
 fn default_keep_dark_pivot() -> f32 {
     2.0
@@ -62,19 +64,22 @@ fn default_keep_dark_pivot() -> f32 {
 
 impl Default for AutoExposureSettings {
     fn default() -> Self {
-        // Mirrors Bevy's `AutoExposure::default()` field-for-field —
-        // these are the values the Bevy team picked after testing
-        // against real scenes.
+        // Bevy's `AutoExposure::default()` speeds and filters, with a wider
+        // metering range and the keep-dark curve tuned for day to night.
         Self {
             speed_brighten: 3.0,
             speed_darken: 1.0,
-            range_min: -8.0,
-            range_max: 8.0,
+            // Wider than Bevy's -8..8: a 120,000 lux sun meters above 8 and
+            // the exposure stopped short, leaving daylight overexposed.
+            range_min: -10.0,
+            range_max: 16.0,
             filter_low: 0.10,
             filter_high: 0.90,
             exponential_transition_distance: 1.5,
             keep_dark_strength: default_keep_dark_strength(),
             keep_dark_pivot_ev: default_keep_dark_pivot(),
+            // On: with it off the camera stays at daylight exposure, and a
+            // scene goes black the moment the sun sets.
             enabled: true,
         }
     }

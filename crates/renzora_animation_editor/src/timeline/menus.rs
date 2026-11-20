@@ -8,7 +8,8 @@
 //! reached for often enough to earn a permanent place on the bar.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora_animation::{AnimClipSlot, AnimatorComponent, AnimatorState};
 use renzora_editor_framework::EditorCommands;
@@ -48,7 +49,7 @@ pub(super) enum EmptyCard {
 // ── Clip picker ──────────────────────────────────────────────────────────────
 
 pub(super) fn clip_picker_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<ClipCombo>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode), (With<ClipCombo>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Option<Res<AnimationEditorState>>,
@@ -315,7 +316,7 @@ fn adopt_clip(world: &mut World, entity: Entity, rel: &str) {
 // ── Overflow ─────────────────────────────────────────────────────────────────
 
 pub(super) fn overflow_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode), (With<OverflowBtn>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode), (With<OverflowBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
@@ -559,7 +560,7 @@ fn card(
             Node { height: Val::Px(28.0), margin: UiRect::top(Val::Px(4.0)), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(7.0)), ..default() },
             BackgroundColor(if primary { rgb(PLAY_BLUE) } else { rgb(hover_bg()) }),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             action,
         ))
         .id();

@@ -204,10 +204,11 @@ impl RenderHostOverlay {
 /// A transparent BGRA target the size of the viewport, for the overlay camera.
 fn overlay_target(size: UVec2) -> Image {
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
-    let mut image = Image::new_fill(
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data (zero is transparent here).
+    let mut image = Image::new_uninit(
         Extent3d { width: size.x.max(1), height: size.y.max(1), depth_or_array_layers: 1 },
         TextureDimension::D2,
-        &[0, 0, 0, 0],
         TextureFormat::Bgra8UnormSrgb,
         bevy::asset::RenderAssetUsages::default(),
     );

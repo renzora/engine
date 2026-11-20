@@ -65,6 +65,18 @@ use renzora_particles::{OneShot, ParticlePlayback, ParticleSystem, PlayState};
 /// Converting in `set_fn` rather than in the drop handler keeps the inspector
 /// generic, and redo (which calls `set_fn` with the same `.particle` again)
 /// lands on the reused file rather than a second copy.
+/// Run condition for [`legacy::open_particle_documents_as_vfx`]: the active
+/// document is a particle tab, the only case its body does anything in.
+fn particle_tab_active(ctx: Option<Res<renzora_editor_framework::EditorContext>>) -> bool {
+    matches!(
+        ctx.as_deref(),
+        Some(renzora_editor_framework::EditorContext::Asset {
+            kind: renzora_editor_framework::DocTabKind::Particle,
+            ..
+        })
+    )
+}
+
 fn path_field() -> FieldDef {
     FieldDef {
         name: "Effect",
@@ -288,8 +300,12 @@ impl Plugin for ParticlesEditorPlugin {
             (
                 // First, so a `.particle` that just became the active
                 // document is already its `.vfx` when the document loads.
-                legacy::open_particle_documents_as_vfx,
-                state::load_active_document,
+                //
+                // Both are exclusive, so each is a sync point for the schedule
+                // even when it returns at once; each condition is the system's
+                // own opening check. No particle tab is the usual answer.
+                legacy::open_particle_documents_as_vfx.run_if(particle_tab_active),
+                state::load_active_document.run_if(state::active_document_unloaded),
                 state::adopt_external_changes,
                 state::observe_edits.run_if(|s: Res<state::VfxEditorState>| s.is_open()),
                 workspace::ensure_panels,

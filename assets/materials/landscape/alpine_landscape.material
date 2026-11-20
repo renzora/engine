@@ -1,0 +1,1915 @@
+{
+  "name": "Alpine Landscape",
+  "domain": "Surface",
+  "nodes": [
+    {
+      "id": 1,
+      "node_type": "output/surface",
+      "position": [
+        2860.0,
+        0.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 2,
+      "node_type": "landscape/layer_blend",
+      "position": [
+        2100.0,
+        0.0
+      ],
+      "input_values": {
+        "name_2": {
+          "String": "Rock"
+        },
+        "blend_3": {
+          "String": "Weight"
+        },
+        "height_blending": {
+          "Float": 0.8
+        },
+        "blend_0": {
+          "String": "Height"
+        },
+        "blend_2": {
+          "String": "Height"
+        },
+        "name_1": {
+          "String": "Gravel"
+        },
+        "blend_1": {
+          "String": "Height"
+        },
+        "name_0": {
+          "String": "Grass"
+        },
+        "name_3": {
+          "String": "Snow"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "node_type": "landscape/layer_blend",
+      "position": [
+        2100.0,
+        900.0
+      ],
+      "input_values": {
+        "name_1": {
+          "String": "Gravel"
+        },
+        "blend_2": {
+          "String": "Height"
+        },
+        "name_2": {
+          "String": "Rock"
+        },
+        "name_3": {
+          "String": "Snow"
+        },
+        "height_blending": {
+          "Float": 0.8
+        },
+        "blend_0": {
+          "String": "Height"
+        },
+        "blend_1": {
+          "String": "Height"
+        },
+        "blend_3": {
+          "String": "Weight"
+        },
+        "name_0": {
+          "String": "Grass"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "node_type": "landscape/layer_blend",
+      "position": [
+        2100.0,
+        1800.0
+      ],
+      "input_values": {
+        "name_3": {
+          "String": "Snow"
+        },
+        "blend_2": {
+          "String": "Height"
+        },
+        "name_1": {
+          "String": "Gravel"
+        },
+        "blend_3": {
+          "String": "Weight"
+        },
+        "name_0": {
+          "String": "Grass"
+        },
+        "height_blending": {
+          "Float": 0.8
+        },
+        "name_2": {
+          "String": "Rock"
+        },
+        "blend_0": {
+          "String": "Height"
+        },
+        "blend_1": {
+          "String": "Height"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "node_type": "landscape/layer_coords",
+      "position": [
+        0.0,
+        -380.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 12.5
+        }
+      }
+    },
+    {
+      "id": 6,
+      "node_type": "procedural/noise_fbm",
+      "position": [
+        220.0,
+        -380.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 7,
+      "node_type": "math/subtract",
+      "position": [
+        440.0,
+        -380.0
+      ],
+      "input_values": {
+        "b": {
+          "Float": 0.5
+        }
+      }
+    },
+    {
+      "id": 8,
+      "node_type": "landscape/slope",
+      "position": [
+        660.0,
+        -380.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 9,
+      "node_type": "landscape/layer_coords",
+      "position": [
+        0.0,
+        300.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 3.0
+        }
+      }
+    },
+    {
+      "id": 10,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        0.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/grass/albedo.rmip"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "node_type": "math/multiply",
+      "position": [
+        440.0,
+        0.0
+      ],
+      "input_values": {
+        "b": {
+          "Color": [
+            0.36,
+            0.64,
+            0.32,
+            1.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 12,
+      "node_type": "texture/sample_normal",
+      "position": [
+        220.0,
+        200.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/grass/normal.rmip"
+        },
+        "strength": {
+          "Float": 1.15
+        }
+      }
+    },
+    {
+      "id": 13,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        400.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/grass/arm.rmip"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        600.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/grass/height.rmip"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "node_type": "math/remap",
+      "position": [
+        440.0,
+        600.0
+      ],
+      "input_values": {
+        "out_max": {
+          "Float": 1.0
+        },
+        "in_min": {
+          "Float": 0.18944447
+        },
+        "in_max": {
+          "Float": 0.5505555
+        },
+        "out_min": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 16,
+      "node_type": "landscape/layer_coords",
+      "position": [
+        0.0,
+        1160.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 2.5
+        }
+      }
+    },
+    {
+      "id": 17,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        860.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/dirt/albedo.rmip"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "node_type": "math/multiply",
+      "position": [
+        440.0,
+        860.0
+      ],
+      "input_values": {
+        "b": {
+          "Color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 19,
+      "node_type": "texture/sample_normal",
+      "position": [
+        220.0,
+        1060.0
+      ],
+      "input_values": {
+        "strength": {
+          "Float": 1.15
+        },
+        "texture": {
+          "TexturePath": "textures/terrain/v3/dirt/normal.rmip"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        1260.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/dirt/arm.rmip"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        1460.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/dirt/height.rmip"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "node_type": "math/remap",
+      "position": [
+        440.0,
+        1460.0
+      ],
+      "input_values": {
+        "in_min": {
+          "Float": 0.18866667
+        },
+        "in_max": {
+          "Float": 0.7553333
+        },
+        "out_min": {
+          "Float": 0.0
+        },
+        "out_max": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 23,
+      "node_type": "math/multiply",
+      "position": [
+        660.0,
+        960.0
+      ],
+      "input_values": {
+        "b": {
+          "Float": 7.0
+        }
+      }
+    },
+    {
+      "id": 24,
+      "node_type": "math/add",
+      "position": [
+        880.0,
+        960.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 25,
+      "node_type": "math/smoothstep",
+      "position": [
+        1100.0,
+        960.0
+      ],
+      "input_values": {
+        "edge0": {
+          "Float": 19.0
+        },
+        "edge1": {
+          "Float": 29.0
+        }
+      }
+    },
+    {
+      "id": 26,
+      "node_type": "math/smoothstep",
+      "position": [
+        1100.0,
+        1080.0
+      ],
+      "input_values": {
+        "edge1": {
+          "Float": 45.0
+        },
+        "edge0": {
+          "Float": 35.0
+        }
+      }
+    },
+    {
+      "id": 27,
+      "node_type": "math/one_minus",
+      "position": [
+        1320.0,
+        1080.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 28,
+      "node_type": "math/multiply",
+      "position": [
+        1540.0,
+        1020.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 29,
+      "node_type": "landscape/layer_coords",
+      "position": [
+        0.0,
+        2020.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 8.0
+        }
+      }
+    },
+    {
+      "id": 30,
+      "node_type": "texture/triplanar",
+      "position": [
+        220.0,
+        1720.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/rock/albedo.rmip"
+        },
+        "scale": {
+          "Float": 0.125
+        },
+        "sharpness": {
+          "Float": 4.0
+        }
+      }
+    },
+    {
+      "id": 31,
+      "node_type": "math/multiply",
+      "position": [
+        440.0,
+        1720.0
+      ],
+      "input_values": {
+        "b": {
+          "Color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 32,
+      "node_type": "texture/sample_normal",
+      "position": [
+        220.0,
+        1920.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/rock/normal.rmip"
+        },
+        "strength": {
+          "Float": 1.15
+        }
+      }
+    },
+    {
+      "id": 33,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        2120.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/rock/arm.rmip"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        2320.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/rock/height.rmip"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "node_type": "math/remap",
+      "position": [
+        440.0,
+        2320.0
+      ],
+      "input_values": {
+        "in_min": {
+          "Float": 0.38244447
+        },
+        "out_min": {
+          "Float": 0.0
+        },
+        "in_max": {
+          "Float": 0.8935555
+        },
+        "out_max": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 36,
+      "node_type": "math/multiply",
+      "position": [
+        660.0,
+        1820.0
+      ],
+      "input_values": {
+        "b": {
+          "Float": 4.0
+        }
+      }
+    },
+    {
+      "id": 37,
+      "node_type": "math/add",
+      "position": [
+        880.0,
+        1820.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 38,
+      "node_type": "math/smoothstep",
+      "position": [
+        1100.0,
+        1820.0
+      ],
+      "input_values": {
+        "edge0": {
+          "Float": 30.0
+        },
+        "edge1": {
+          "Float": 38.0
+        }
+      }
+    },
+    {
+      "id": 39,
+      "node_type": "landscape/layer_coords",
+      "position": [
+        0.0,
+        2880.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 5.0
+        }
+      }
+    },
+    {
+      "id": 40,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        2580.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/snow/albedo.rmip"
+        }
+      }
+    },
+    {
+      "id": 41,
+      "node_type": "math/multiply",
+      "position": [
+        440.0,
+        2580.0
+      ],
+      "input_values": {
+        "b": {
+          "Color": [
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 42,
+      "node_type": "texture/sample_normal",
+      "position": [
+        220.0,
+        2780.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/snow/normal.rmip"
+        },
+        "strength": {
+          "Float": 1.15
+        }
+      }
+    },
+    {
+      "id": 43,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        2980.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/snow/arm.rmip"
+        }
+      }
+    },
+    {
+      "id": 44,
+      "node_type": "texture/sample",
+      "position": [
+        220.0,
+        3180.0
+      ],
+      "input_values": {
+        "texture": {
+          "TexturePath": "textures/terrain/v3/snow/height.rmip"
+        }
+      }
+    },
+    {
+      "id": 45,
+      "node_type": "math/remap",
+      "position": [
+        440.0,
+        3180.0
+      ],
+      "input_values": {
+        "out_max": {
+          "Float": 1.0
+        },
+        "in_max": {
+          "Float": 0.8312222
+        },
+        "in_min": {
+          "Float": 0.28677782
+        },
+        "out_min": {
+          "Float": 0.0
+        }
+      }
+    },
+    {
+      "id": 46,
+      "node_type": "math/multiply",
+      "position": [
+        660.0,
+        2680.0
+      ],
+      "input_values": {
+        "b": {
+          "Float": 9.6
+        }
+      }
+    },
+    {
+      "id": 47,
+      "node_type": "math/add",
+      "position": [
+        880.0,
+        2680.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 48,
+      "node_type": "math/smoothstep",
+      "position": [
+        1100.0,
+        2800.0
+      ],
+      "input_values": {
+        "edge0": {
+          "Float": 34.0
+        },
+        "edge1": {
+          "Float": 46.0
+        }
+      }
+    },
+    {
+      "id": 49,
+      "node_type": "math/one_minus",
+      "position": [
+        1320.0,
+        2800.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 50,
+      "node_type": "math/multiply",
+      "position": [
+        660.0,
+        2980.0
+      ],
+      "input_values": {
+        "b": {
+          "Float": 32.0
+        }
+      }
+    },
+    {
+      "id": 51,
+      "node_type": "math/add",
+      "position": [
+        880.0,
+        2980.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 52,
+      "node_type": "math/smoothstep",
+      "position": [
+        1100.0,
+        2980.0
+      ],
+      "input_values": {
+        "edge0": {
+          "Float": 170.0
+        },
+        "edge1": {
+          "Float": 210.0
+        }
+      }
+    },
+    {
+      "id": 53,
+      "node_type": "math/multiply",
+      "position": [
+        1760.0,
+        2830.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 54,
+      "node_type": "landscape/layer_coords",
+      "position": [
+        2100.0,
+        -380.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 120.0
+        }
+      }
+    },
+    {
+      "id": 55,
+      "node_type": "procedural/noise_fbm",
+      "position": [
+        2320.0,
+        -380.0
+      ],
+      "input_values": {
+        "scale": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 56,
+      "node_type": "math/remap",
+      "position": [
+        2540.0,
+        -380.0
+      ],
+      "input_values": {
+        "in_min": {
+          "Float": 0.0
+        },
+        "out_min": {
+          "Float": 0.72
+        },
+        "out_max": {
+          "Float": 1.28
+        },
+        "in_max": {
+          "Float": 1.0
+        }
+      }
+    },
+    {
+      "id": 57,
+      "node_type": "math/multiply",
+      "position": [
+        2540.0,
+        0.0
+      ],
+      "input_values": {}
+    },
+    {
+      "id": 58,
+      "node_type": "vector/split_vec3",
+      "position": [
+        2540.0,
+        1800.0
+      ],
+      "input_values": {}
+    }
+  ],
+  "connections": [
+    {
+      "from_node": 5,
+      "from_pin": "uv",
+      "to_node": 6,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 6,
+      "from_pin": "value",
+      "to_node": 7,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 9,
+      "from_pin": "uv",
+      "to_node": 10,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 10,
+      "from_pin": "color",
+      "to_node": 11,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 9,
+      "from_pin": "uv",
+      "to_node": 12,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 9,
+      "from_pin": "uv",
+      "to_node": 13,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 9,
+      "from_pin": "uv",
+      "to_node": 14,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 14,
+      "from_pin": "r",
+      "to_node": 15,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 11,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "layer_0"
+    },
+    {
+      "from_node": 15,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "height_0"
+    },
+    {
+      "from_node": 12,
+      "from_pin": "normal",
+      "to_node": 3,
+      "to_pin": "layer_0"
+    },
+    {
+      "from_node": 15,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "height_0"
+    },
+    {
+      "from_node": 13,
+      "from_pin": "color",
+      "to_node": 4,
+      "to_pin": "layer_0"
+    },
+    {
+      "from_node": 15,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "height_0"
+    },
+    {
+      "from_node": 16,
+      "from_pin": "uv",
+      "to_node": 17,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 17,
+      "from_pin": "color",
+      "to_node": 18,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 16,
+      "from_pin": "uv",
+      "to_node": 19,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 16,
+      "from_pin": "uv",
+      "to_node": 20,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 16,
+      "from_pin": "uv",
+      "to_node": 21,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 21,
+      "from_pin": "r",
+      "to_node": 22,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 7,
+      "from_pin": "result",
+      "to_node": 23,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 8,
+      "from_pin": "degrees",
+      "to_node": 24,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 23,
+      "from_pin": "result",
+      "to_node": 24,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 24,
+      "from_pin": "result",
+      "to_node": 25,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 24,
+      "from_pin": "result",
+      "to_node": 26,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 26,
+      "from_pin": "result",
+      "to_node": 27,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 25,
+      "from_pin": "result",
+      "to_node": 28,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 27,
+      "from_pin": "result",
+      "to_node": 28,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 18,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "layer_1"
+    },
+    {
+      "from_node": 22,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "height_1"
+    },
+    {
+      "from_node": 28,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "auto_1"
+    },
+    {
+      "from_node": 19,
+      "from_pin": "normal",
+      "to_node": 3,
+      "to_pin": "layer_1"
+    },
+    {
+      "from_node": 22,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "height_1"
+    },
+    {
+      "from_node": 28,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "auto_1"
+    },
+    {
+      "from_node": 20,
+      "from_pin": "color",
+      "to_node": 4,
+      "to_pin": "layer_1"
+    },
+    {
+      "from_node": 22,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "height_1"
+    },
+    {
+      "from_node": 28,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "auto_1"
+    },
+    {
+      "from_node": 30,
+      "from_pin": "color",
+      "to_node": 31,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 29,
+      "from_pin": "uv",
+      "to_node": 32,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 29,
+      "from_pin": "uv",
+      "to_node": 33,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 29,
+      "from_pin": "uv",
+      "to_node": 34,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 34,
+      "from_pin": "r",
+      "to_node": 35,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 7,
+      "from_pin": "result",
+      "to_node": 36,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 8,
+      "from_pin": "degrees",
+      "to_node": 37,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 36,
+      "from_pin": "result",
+      "to_node": 37,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 37,
+      "from_pin": "result",
+      "to_node": 38,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 31,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "layer_2"
+    },
+    {
+      "from_node": 35,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "height_2"
+    },
+    {
+      "from_node": 38,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "auto_2"
+    },
+    {
+      "from_node": 32,
+      "from_pin": "normal",
+      "to_node": 3,
+      "to_pin": "layer_2"
+    },
+    {
+      "from_node": 35,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "height_2"
+    },
+    {
+      "from_node": 38,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "auto_2"
+    },
+    {
+      "from_node": 33,
+      "from_pin": "color",
+      "to_node": 4,
+      "to_pin": "layer_2"
+    },
+    {
+      "from_node": 35,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "height_2"
+    },
+    {
+      "from_node": 38,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "auto_2"
+    },
+    {
+      "from_node": 39,
+      "from_pin": "uv",
+      "to_node": 40,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 40,
+      "from_pin": "color",
+      "to_node": 41,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 39,
+      "from_pin": "uv",
+      "to_node": 42,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 39,
+      "from_pin": "uv",
+      "to_node": 43,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 39,
+      "from_pin": "uv",
+      "to_node": 44,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 44,
+      "from_pin": "r",
+      "to_node": 45,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 7,
+      "from_pin": "result",
+      "to_node": 46,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 8,
+      "from_pin": "degrees",
+      "to_node": 47,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 46,
+      "from_pin": "result",
+      "to_node": 47,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 47,
+      "from_pin": "result",
+      "to_node": 48,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 48,
+      "from_pin": "result",
+      "to_node": 49,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 7,
+      "from_pin": "result",
+      "to_node": 50,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 8,
+      "from_pin": "height",
+      "to_node": 51,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 50,
+      "from_pin": "result",
+      "to_node": 51,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 51,
+      "from_pin": "result",
+      "to_node": 52,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 49,
+      "from_pin": "result",
+      "to_node": 53,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 52,
+      "from_pin": "result",
+      "to_node": 53,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 41,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "layer_3"
+    },
+    {
+      "from_node": 45,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "height_3"
+    },
+    {
+      "from_node": 53,
+      "from_pin": "result",
+      "to_node": 2,
+      "to_pin": "auto_3"
+    },
+    {
+      "from_node": 42,
+      "from_pin": "normal",
+      "to_node": 3,
+      "to_pin": "layer_3"
+    },
+    {
+      "from_node": 45,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "height_3"
+    },
+    {
+      "from_node": 53,
+      "from_pin": "result",
+      "to_node": 3,
+      "to_pin": "auto_3"
+    },
+    {
+      "from_node": 43,
+      "from_pin": "color",
+      "to_node": 4,
+      "to_pin": "layer_3"
+    },
+    {
+      "from_node": 45,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "height_3"
+    },
+    {
+      "from_node": 53,
+      "from_pin": "result",
+      "to_node": 4,
+      "to_pin": "auto_3"
+    },
+    {
+      "from_node": 54,
+      "from_pin": "uv",
+      "to_node": 55,
+      "to_pin": "uv"
+    },
+    {
+      "from_node": 55,
+      "from_pin": "value",
+      "to_node": 56,
+      "to_pin": "value"
+    },
+    {
+      "from_node": 2,
+      "from_pin": "result",
+      "to_node": 57,
+      "to_pin": "a"
+    },
+    {
+      "from_node": 56,
+      "from_pin": "result",
+      "to_node": 57,
+      "to_pin": "b"
+    },
+    {
+      "from_node": 4,
+      "from_pin": "rgb",
+      "to_node": 58,
+      "to_pin": "vector"
+    },
+    {
+      "from_node": 57,
+      "from_pin": "result",
+      "to_node": 1,
+      "to_pin": "base_color"
+    },
+    {
+      "from_node": 3,
+      "from_pin": "normal",
+      "to_node": 1,
+      "to_pin": "normal"
+    },
+    {
+      "from_node": 58,
+      "from_pin": "x",
+      "to_node": 1,
+      "to_pin": "ao"
+    },
+    {
+      "from_node": 58,
+      "from_pin": "y",
+      "to_node": 1,
+      "to_pin": "roughness"
+    }
+  ],
+  "next_id": 66,
+  "alpha_mode": "Opaque",
+  "double_sided": false,
+  "compiled": {
+    "wgsl": "import bevy_pbr::render::pbr_fragment::pbr_input_from_standard_material;\nimport bevy_pbr::render::pbr_functions;\n@if(MESHLET_MESH_MATERIAL_PASS) import bevy_pbr::meshlet::visibility_buffer_resolve::{VertexOutput, resolve_vertex_output};\n@if(PREPASS_PIPELINE && !MESHLET_MESH_MATERIAL_PASS) import bevy_pbr::prepass::io::VertexOutput;\n@if(PREPASS_PIPELINE) import bevy_pbr::prepass::io::FragmentOutput;\n@if(PREPASS_PIPELINE) import bevy_pbr::deferred::functions::deferred_output;\n@if(PREPASS_PIPELINE) import bevy_render::globals::Globals;\n@if(!PREPASS_PIPELINE && !MESHLET_MESH_MATERIAL_PASS) import bevy_pbr::render::forward_io::VertexOutput;\n@if(!PREPASS_PIPELINE) import bevy_pbr::render::forward_io::FragmentOutput;\n@if(!PREPASS_PIPELINE) import bevy_pbr::render::mesh_view_bindings::globals;\nimport bevy_pbr::render::mesh_view_bindings::view;\nimport bevy_pbr::render::mesh_functions;\n@if(PREPASS_PIPELINE) @group(0) @binding(1) var<uniform> globals: Globals;\n\n@group(3) @binding(101) var texture_sampler: sampler;\n@group(3) @binding(100) var texture_0: texture_2d<f32>;\n@group(3) @binding(102) var texture_1: texture_2d<f32>;\n@group(3) @binding(104) var texture_2: texture_2d<f32>;\n@group(3) @binding(106) var texture_3: texture_2d<f32>;\n@group(3) @binding(114) var texture_4: texture_2d<f32>;\n@group(3) @binding(116) var texture_5: texture_2d<f32>;\n@group(3) @binding(124) var texture_6: texture_2d<f32>;\n@group(3) @binding(125) var texture_7: texture_2d<f32>;\n@group(3) @binding(126) var texture_8: texture_2d<f32>;\n@group(3) @binding(127) var texture_9: texture_2d<f32>;\n@group(3) @binding(128) var texture_10: texture_2d<f32>;\n@group(3) @binding(129) var texture_11: texture_2d<f32>;\n@group(3) @binding(130) var texture_12: texture_2d<f32>;\n@group(3) @binding(131) var texture_13: texture_2d<f32>;\n@group(3) @binding(132) var texture_14: texture_2d<f32>;\nstruct LandscapeParams { bounds: vec4<f32>, info: vec4<f32>, channels_a: vec4<u32>, channels_b: vec4<u32>, }\n@group(3) @binding(122) var<uniform> landscape: LandscapeParams;\n@group(3) @binding(123) var landscape_weights: texture_2d_array<f32>;\nstruct SurfaceGraphParams { slots: array<vec4<f32>, 32>, }\n@group(3) @binding(118) var<uniform> material_params: SurfaceGraphParams;\n\nfn mat_hash(p: vec2<f32>) -> f32 {\n    let h = dot(p, vec2<f32>(127.1, 311.7));\n    return fract(sin(h) * 43758.5453123);\n}\n\n// Random gradient for Perlin-style noise\nfn mat_hash_grad(p: vec2<f32>) -> vec2<f32> {\n    let k = vec2<f32>(\n        dot(p, vec2<f32>(127.1, 311.7)),\n        dot(p, vec2<f32>(269.5, 183.3)),\n    );\n    return fract(sin(k) * 43758.5453) * 2.0 - 1.0;\n}\n\n// Gradient (Perlin) noise with C2-continuous quintic interpolation.\n// Returns [0, 1]. Much less grid-aligned artifact than value noise.\nfn mat_noise(p: vec2<f32>) -> f32 {\n    let i = floor(p);\n    let f = fract(p);\n    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);\n\n    let g00 = dot(mat_hash_grad(i + vec2<f32>(0.0, 0.0)), f - vec2<f32>(0.0, 0.0));\n    let g10 = dot(mat_hash_grad(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));\n    let g01 = dot(mat_hash_grad(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));\n    let g11 = dot(mat_hash_grad(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));\n\n    return mix(mix(g00, g10, u.x), mix(g01, g11, u.x), u.y) * 0.5 + 0.5;\n}\n\n// FBM with inter-octave rotation — breaks grid-aligned artifacts of basic noise\nfn mat_fbm(uv: vec2<f32>, octaves: i32, lacunarity: f32, persistence: f32) -> f32 {\n    var p = uv;\n    var value = 0.0;\n    var amplitude = 0.5;\n    let c = cos(0.77); let sn = sin(0.77);\n    let r = mat2x2<f32>(c, sn, -sn, c);\n    for (var i = 0; i < octaves; i = i + 1) {\n        value = value + mat_noise(p) * amplitude;\n        p = r * p * lacunarity + vec2<f32>(37.1, 17.3);\n        amplitude = amplitude * persistence;\n    }\n    return value;\n}\n\nstruct LandscapeLayerWeights { w: array<f32, 8>, }\n\nfn landscape_layer_weights(world: vec3<f32>) -> LandscapeLayerWeights {\n    let dims = vec2<i32>(textureDimensions(landscape_weights));\n    let size = max(landscape.bounds.zw, vec2<f32>(0.001));\n    let p = (world.xz - landscape.bounds.xy) / size * vec2<f32>(dims) - 0.5;\n    let cell = floor(p);\n    let f = p - cell;\n    let hi = max(dims - vec2<i32>(1), vec2<i32>(0));\n    let i0 = clamp(vec2<i32>(cell), vec2<i32>(0), hi);\n    let i1 = clamp(vec2<i32>(cell) + vec2<i32>(1), vec2<i32>(0), hi);\n    let a = mix(\n        mix(textureLoad(landscape_weights, i0, 0, 0), textureLoad(landscape_weights, vec2<i32>(i1.x, i0.y), 0, 0), f.x),\n        mix(textureLoad(landscape_weights, vec2<i32>(i0.x, i1.y), 0, 0), textureLoad(landscape_weights, i1, 0, 0), f.x),\n        f.y,\n    );\n    let b = mix(\n        mix(textureLoad(landscape_weights, i0, 1, 0), textureLoad(landscape_weights, vec2<i32>(i1.x, i0.y), 1, 0), f.x),\n        mix(textureLoad(landscape_weights, vec2<i32>(i0.x, i1.y), 1, 0), textureLoad(landscape_weights, i1, 1, 0), f.x),\n        f.y,\n    );\n    // Both `var`: indexing by a loop counter needs a reference, not a value.\n    var raw = array<f32, 8>(a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w);\n    var channels = array<u32, 8>(\n        landscape.channels_a.x, landscape.channels_a.y, landscape.channels_a.z, landscape.channels_a.w,\n        landscape.channels_b.x, landscape.channels_b.y, landscape.channels_b.z, landscape.channels_b.w,\n    );\n    let on = landscape.info.x > 0.5;\n    var out: LandscapeLayerWeights;\n    for (var i = 0u; i < 8u; i = i + 1u) {\n        let painted = raw[min(channels[i], 7u)];\n        out.w[i] = select(select(0.0, 1.0, i == 0u), painted, on);\n    }\n    return out;\n}\n\n@fragment\nfn fragment(\n@if(MESHLET_MESH_MATERIAL_PASS) @builtin(position) frag_coord: vec4<f32>,\n@if(!MESHLET_MESH_MATERIAL_PASS) in: VertexOutput,\n@if(!MESHLET_MESH_MATERIAL_PASS) @builtin(front_facing) is_front: bool,\n) -> FragmentOutput {\n    @if(MESHLET_MESH_MATERIAL_PASS) let in = resolve_vertex_output(frag_coord);\n    @if(MESHLET_MESH_MATERIAL_PASS) let is_front = true;\n    var pbr_input = pbr_input_from_standard_material(in, is_front);\n    @if(VERTEX_UVS_A) var mat_uv = in.uv;\n    @if(!VERTEX_UVS_A) var mat_uv = vec2<f32>(0.0, 0.0);\n    @if(VERTEX_COLORS) let mat_vertex_color = in.color;\n    @if(!VERTEX_COLORS) let mat_vertex_color = vec4<f32>(1.0, 1.0, 1.0, 1.0);\n    let land_uv_1_p = (in.world_position.xz - landscape.bounds.xy + vec2<f32>(0.000000, 0.000000)) / max(f32(3.000000), 0.0001);\n    let land_uv_1_r = radians(f32(0.000000));\n    let land_uv_1 = vec2<f32>(cos(land_uv_1_r) * land_uv_1_p.x - sin(land_uv_1_r) * land_uv_1_p.y, sin(land_uv_1_r) * land_uv_1_p.x + cos(land_uv_1_r) * land_uv_1_p.y);\n    let tex_2 = textureSample(texture_0, texture_sampler, land_uv_1);\n    let mul_3 = tex_2 * vec4<f32>(0.360000, 0.640000, 0.320000, 1.000000);\n    let land_uv_4_p = (in.world_position.xz - landscape.bounds.xy + vec2<f32>(0.000000, 0.000000)) / max(f32(2.500000), 0.0001);\n    let land_uv_4_r = radians(f32(0.000000));\n    let land_uv_4 = vec2<f32>(cos(land_uv_4_r) * land_uv_4_p.x - sin(land_uv_4_r) * land_uv_4_p.y, sin(land_uv_4_r) * land_uv_4_p.x + cos(land_uv_4_r) * land_uv_4_p.y);\n    let tex_5 = textureSample(texture_1, texture_sampler, land_uv_4);\n    let mul_6 = tex_5 * vec4<f32>(1.000000, 1.000000, 1.000000, 1.000000);\n    var tri_w_7 = pow(abs(in.world_normal), vec3<f32>(f32(4.000000)));\n    tri_w_7 = tri_w_7 / (tri_w_7.x + tri_w_7.y + tri_w_7.z);\n    let tri_8 = textureSample(texture_2, texture_sampler, (in.world_position.xyz * f32(0.125000)).yz) * tri_w_7.x + textureSample(texture_2, texture_sampler, (in.world_position.xyz * f32(0.125000)).xz) * tri_w_7.y + textureSample(texture_2, texture_sampler, (in.world_position.xyz * f32(0.125000)).xy) * tri_w_7.z;\n    let mul_9 = tri_8 * vec4<f32>(1.000000, 1.000000, 1.000000, 1.000000);\n    let land_uv_10_p = (in.world_position.xz - landscape.bounds.xy + vec2<f32>(0.000000, 0.000000)) / max(f32(5.000000), 0.0001);\n    let land_uv_10_r = radians(f32(0.000000));\n    let land_uv_10 = vec2<f32>(cos(land_uv_10_r) * land_uv_10_p.x - sin(land_uv_10_r) * land_uv_10_p.y, sin(land_uv_10_r) * land_uv_10_p.x + cos(land_uv_10_r) * land_uv_10_p.y);\n    let tex_11 = textureSample(texture_3, texture_sampler, land_uv_10);\n    let mul_12 = tex_11 * vec4<f32>(1.000000, 1.000000, 1.000000, 1.000000);\n    let land_w_13 = landscape_layer_weights(in.world_position.xyz);\n    var land_b_0_w0 = land_w_13.w[0];\n    var land_b_0_w1 = land_w_13.w[1];\n    var land_b_0_w2 = land_w_13.w[2];\n    var land_b_0_w3 = land_w_13.w[3];\n    let land_slope_14_n = normalize(in.world_normal);\n    let land_slope_14 = degrees(acos(clamp(land_slope_14_n.y, -1.0, 1.0)));\n    let land_uv_15_p = (in.world_position.xz - landscape.bounds.xy + vec2<f32>(0.000000, 0.000000)) / max(f32(12.500000), 0.0001);\n    let land_uv_15_r = radians(f32(0.000000));\n    let land_uv_15 = vec2<f32>(cos(land_uv_15_r) * land_uv_15_p.x - sin(land_uv_15_r) * land_uv_15_p.y, sin(land_uv_15_r) * land_uv_15_p.x + cos(land_uv_15_r) * land_uv_15_p.y);\n    let fbm_16 = mat_fbm(land_uv_15 * f32(1.000000), i32(f32(4.000000)), f32(2.000000), f32(0.500000));\n    let sub_17 = fbm_16 - f32(0.500000);\n    let mul_18 = sub_17 * f32(7.000000);\n    let add_19 = land_slope_14 + mul_18;\n    let ss_20 = smoothstep(f32(19.000000), f32(29.000000), add_19);\n    let ss_21 = smoothstep(f32(35.000000), f32(45.000000), add_19);\n    let om_22 = 1.0 - ss_21;\n    let mul_23 = ss_20 * om_22;\n    let land_b_0_a1 = saturate(mul_23);\n    land_b_0_w0 = land_b_0_w0 * (1.0 - land_b_0_a1);\n    land_b_0_w1 = land_b_0_w1 * (1.0 - land_b_0_a1);\n    land_b_0_w2 = land_b_0_w2 * (1.0 - land_b_0_a1);\n    land_b_0_w3 = land_b_0_w3 * (1.0 - land_b_0_a1);\n    land_b_0_w1 = land_b_0_w1 + land_b_0_a1;\n    let mul_24 = sub_17 * f32(4.000000);\n    let add_25 = land_slope_14 + mul_24;\n    let ss_26 = smoothstep(f32(30.000000), f32(38.000000), add_25);\n    let land_b_0_a2 = saturate(ss_26);\n    land_b_0_w0 = land_b_0_w0 * (1.0 - land_b_0_a2);\n    land_b_0_w1 = land_b_0_w1 * (1.0 - land_b_0_a2);\n    land_b_0_w2 = land_b_0_w2 * (1.0 - land_b_0_a2);\n    land_b_0_w3 = land_b_0_w3 * (1.0 - land_b_0_a2);\n    land_b_0_w2 = land_b_0_w2 + land_b_0_a2;\n    let mul_27 = sub_17 * f32(9.600000);\n    let add_28 = land_slope_14 + mul_27;\n    let ss_29 = smoothstep(f32(34.000000), f32(46.000000), add_28);\n    let om_30 = 1.0 - ss_29;\n    let mul_31 = sub_17 * f32(32.000000);\n    let add_32 = in.world_position.y + mul_31;\n    let ss_33 = smoothstep(f32(170.000000), f32(210.000000), add_32);\n    let mul_34 = om_30 * ss_33;\n    let land_b_0_a3 = saturate(mul_34);\n    land_b_0_w0 = land_b_0_w0 * (1.0 - land_b_0_a3);\n    land_b_0_w1 = land_b_0_w1 * (1.0 - land_b_0_a3);\n    land_b_0_w2 = land_b_0_w2 * (1.0 - land_b_0_a3);\n    land_b_0_w3 = land_b_0_w3 * (1.0 - land_b_0_a3);\n    land_b_0_w3 = land_b_0_w3 + land_b_0_a3;\n    land_b_0_w0 = land_b_0_w0 + select(0.0, 1.0, (land_b_0_w0 + land_b_0_w1 + land_b_0_w2 + land_b_0_w3) < 0.0001);\n    let land_b_0_t = max(land_b_0_w0 + land_b_0_w1 + land_b_0_w2 + land_b_0_w3, 0.0001);\n    let land_b_0_hb = saturate(f32(0.800000));\n    let land_b_0_c = 0.9 * land_b_0_hb;\n    let land_b_0_d = 0.08 + 0.4 * (1.0 - land_b_0_hb);\n    let tex_35 = textureSample(texture_4, texture_sampler, land_uv_1);\n    let remap_36 = f32(0.000000) + (tex_35.r - f32(0.189444)) / max(f32(0.550556) - f32(0.189444), 0.000001) * (f32(1.000000) - f32(0.000000));\n    let land_b_0_s0 = select(-10000.0, land_b_0_w0 + land_b_0_c * (remap_36), land_b_0_w0 > 0.0001);\n    let tex_37 = textureSample(texture_5, texture_sampler, land_uv_4);\n    let remap_38 = f32(0.000000) + (tex_37.r - f32(0.188667)) / max(f32(0.755333) - f32(0.188667), 0.000001) * (f32(1.000000) - f32(0.000000));\n    let land_b_0_s1 = select(-10000.0, land_b_0_w1 + land_b_0_c * (remap_38), land_b_0_w1 > 0.0001);\n    let land_uv_39_p = (in.world_position.xz - landscape.bounds.xy + vec2<f32>(0.000000, 0.000000)) / max(f32(8.000000), 0.0001);\n    let land_uv_39_r = radians(f32(0.000000));\n    let land_uv_39 = vec2<f32>(cos(land_uv_39_r) * land_uv_39_p.x - sin(land_uv_39_r) * land_uv_39_p.y, sin(land_uv_39_r) * land_uv_39_p.x + cos(land_uv_39_r) * land_uv_39_p.y);\n    let tex_40 = textureSample(texture_6, texture_sampler, land_uv_39);\n    let remap_41 = f32(0.000000) + (tex_40.r - f32(0.382444)) / max(f32(0.893556) - f32(0.382444), 0.000001) * (f32(1.000000) - f32(0.000000));\n    let land_b_0_s2 = select(-10000.0, land_b_0_w2 + land_b_0_c * (remap_41), land_b_0_w2 > 0.0001);\n    let land_b_0_m = max(max(land_b_0_s0, land_b_0_s1), land_b_0_s2) - land_b_0_d;\n    let land_b_0_k0 = max(land_b_0_s0 - land_b_0_m, 0.0);\n    let land_b_0_k1 = max(land_b_0_s1 - land_b_0_m, 0.0);\n    let land_b_0_k2 = max(land_b_0_s2 - land_b_0_m, 0.0);\n    let land_b_0_kt = max(land_b_0_k0 + land_b_0_k1 + land_b_0_k2, 0.00001);\n    let land_b_0_ht = land_b_0_w0 + land_b_0_w1 + land_b_0_w2;\n    var land_b_0 = ((mul_3) * (land_b_0_ht * land_b_0_k0 / land_b_0_kt) + (mul_6) * (land_b_0_ht * land_b_0_k1 / land_b_0_kt) + (mul_9) * (land_b_0_ht * land_b_0_k2 / land_b_0_kt) + (mul_12) * land_b_0_w3) / land_b_0_t;\n    let land_uv_42_p = (in.world_position.xz - landscape.bounds.xy + vec2<f32>(0.000000, 0.000000)) / max(f32(120.000000), 0.0001);\n    let land_uv_42_r = radians(f32(0.000000));\n    let land_uv_42 = vec2<f32>(cos(land_uv_42_r) * land_uv_42_p.x - sin(land_uv_42_r) * land_uv_42_p.y, sin(land_uv_42_r) * land_uv_42_p.x + cos(land_uv_42_r) * land_uv_42_p.y);\n    let fbm_43 = mat_fbm(land_uv_42 * f32(1.000000), i32(f32(4.000000)), f32(2.000000), f32(0.500000));\n    let remap_44 = f32(0.720000) + (fbm_43 - f32(0.000000)) / max(f32(1.000000) - f32(0.000000), 0.000001) * (f32(1.280000) - f32(0.720000));\n    let mul_45 = land_b_0 * vec4<f32>(remap_44, remap_44, remap_44, 1.0);\n    let tex_47 = textureSample(texture_7, texture_sampler, land_uv_1);\n    let tex_48 = textureSample(texture_8, texture_sampler, land_uv_4);\n    let tex_49 = textureSample(texture_9, texture_sampler, land_uv_39);\n    let tex_50 = textureSample(texture_10, texture_sampler, land_uv_10);\n    var land_b_46_w0 = land_w_13.w[0];\n    var land_b_46_w1 = land_w_13.w[1];\n    var land_b_46_w2 = land_w_13.w[2];\n    var land_b_46_w3 = land_w_13.w[3];\n    let land_b_46_a1 = saturate(mul_23);\n    land_b_46_w0 = land_b_46_w0 * (1.0 - land_b_46_a1);\n    land_b_46_w1 = land_b_46_w1 * (1.0 - land_b_46_a1);\n    land_b_46_w2 = land_b_46_w2 * (1.0 - land_b_46_a1);\n    land_b_46_w3 = land_b_46_w3 * (1.0 - land_b_46_a1);\n    land_b_46_w1 = land_b_46_w1 + land_b_46_a1;\n    let land_b_46_a2 = saturate(ss_26);\n    land_b_46_w0 = land_b_46_w0 * (1.0 - land_b_46_a2);\n    land_b_46_w1 = land_b_46_w1 * (1.0 - land_b_46_a2);\n    land_b_46_w2 = land_b_46_w2 * (1.0 - land_b_46_a2);\n    land_b_46_w3 = land_b_46_w3 * (1.0 - land_b_46_a2);\n    land_b_46_w2 = land_b_46_w2 + land_b_46_a2;\n    let land_b_46_a3 = saturate(mul_34);\n    land_b_46_w0 = land_b_46_w0 * (1.0 - land_b_46_a3);\n    land_b_46_w1 = land_b_46_w1 * (1.0 - land_b_46_a3);\n    land_b_46_w2 = land_b_46_w2 * (1.0 - land_b_46_a3);\n    land_b_46_w3 = land_b_46_w3 * (1.0 - land_b_46_a3);\n    land_b_46_w3 = land_b_46_w3 + land_b_46_a3;\n    land_b_46_w0 = land_b_46_w0 + select(0.0, 1.0, (land_b_46_w0 + land_b_46_w1 + land_b_46_w2 + land_b_46_w3) < 0.0001);\n    let land_b_46_t = max(land_b_46_w0 + land_b_46_w1 + land_b_46_w2 + land_b_46_w3, 0.0001);\n    let land_b_46_hb = saturate(f32(0.800000));\n    let land_b_46_c = 0.9 * land_b_46_hb;\n    let land_b_46_d = 0.08 + 0.4 * (1.0 - land_b_46_hb);\n    let land_b_46_s0 = select(-10000.0, land_b_46_w0 + land_b_46_c * (remap_36), land_b_46_w0 > 0.0001);\n    let land_b_46_s1 = select(-10000.0, land_b_46_w1 + land_b_46_c * (remap_38), land_b_46_w1 > 0.0001);\n    let land_b_46_s2 = select(-10000.0, land_b_46_w2 + land_b_46_c * (remap_41), land_b_46_w2 > 0.0001);\n    let land_b_46_m = max(max(land_b_46_s0, land_b_46_s1), land_b_46_s2) - land_b_46_d;\n    let land_b_46_k0 = max(land_b_46_s0 - land_b_46_m, 0.0);\n    let land_b_46_k1 = max(land_b_46_s1 - land_b_46_m, 0.0);\n    let land_b_46_k2 = max(land_b_46_s2 - land_b_46_m, 0.0);\n    let land_b_46_kt = max(land_b_46_k0 + land_b_46_k1 + land_b_46_k2, 0.00001);\n    let land_b_46_ht = land_b_46_w0 + land_b_46_w1 + land_b_46_w2;\n    var land_b_46 = ((tex_47) * (land_b_46_ht * land_b_46_k0 / land_b_46_kt) + (tex_48) * (land_b_46_ht * land_b_46_k1 / land_b_46_kt) + (tex_49) * (land_b_46_ht * land_b_46_k2 / land_b_46_kt) + (tex_50) * land_b_46_w3) / land_b_46_t;\n    let nraw_52 = textureSample(texture_11, texture_sampler, land_uv_1).rg * 2.0 - 1.0;\n    let nxy_53 = nraw_52 * f32(1.150000) * vec2<f32>(1.0, select(1.0, -1.0, false));\n    let ntan_54 = vec3<f32>(nxy_53, sqrt(max(0.0, 1.0 - dot(nxy_53, nxy_53))));\n    let nwn_56 = normalize(in.world_normal);\n    let nrot_57 = radians(f32(0.000000));\n    let nmap_55 = normalize(vec3<f32>(cos(nrot_57) * ntan_54.x - sin(nrot_57) * ntan_54.y + nwn_56.x, abs(ntan_54.z) * nwn_56.y, -sin(nrot_57) * ntan_54.x - cos(nrot_57) * ntan_54.y + nwn_56.z));\n    let nraw_58 = textureSample(texture_12, texture_sampler, land_uv_4).rg * 2.0 - 1.0;\n    let nxy_59 = nraw_58 * f32(1.150000) * vec2<f32>(1.0, select(1.0, -1.0, false));\n    let ntan_60 = vec3<f32>(nxy_59, sqrt(max(0.0, 1.0 - dot(nxy_59, nxy_59))));\n    let nwn_62 = normalize(in.world_normal);\n    let nrot_63 = radians(f32(0.000000));\n    let nmap_61 = normalize(vec3<f32>(cos(nrot_63) * ntan_60.x - sin(nrot_63) * ntan_60.y + nwn_62.x, abs(ntan_60.z) * nwn_62.y, -sin(nrot_63) * ntan_60.x - cos(nrot_63) * ntan_60.y + nwn_62.z));\n    let nraw_64 = textureSample(texture_13, texture_sampler, land_uv_39).rg * 2.0 - 1.0;\n    let nxy_65 = nraw_64 * f32(1.150000) * vec2<f32>(1.0, select(1.0, -1.0, false));\n    let ntan_66 = vec3<f32>(nxy_65, sqrt(max(0.0, 1.0 - dot(nxy_65, nxy_65))));\n    let nwn_68 = normalize(in.world_normal);\n    let nrot_69 = radians(f32(0.000000));\n    let nmap_67 = normalize(vec3<f32>(cos(nrot_69) * ntan_66.x - sin(nrot_69) * ntan_66.y + nwn_68.x, abs(ntan_66.z) * nwn_68.y, -sin(nrot_69) * ntan_66.x - cos(nrot_69) * ntan_66.y + nwn_68.z));\n    let nraw_70 = textureSample(texture_14, texture_sampler, land_uv_10).rg * 2.0 - 1.0;\n    let nxy_71 = nraw_70 * f32(1.150000) * vec2<f32>(1.0, select(1.0, -1.0, false));\n    let ntan_72 = vec3<f32>(nxy_71, sqrt(max(0.0, 1.0 - dot(nxy_71, nxy_71))));\n    let nwn_74 = normalize(in.world_normal);\n    let nrot_75 = radians(f32(0.000000));\n    let nmap_73 = normalize(vec3<f32>(cos(nrot_75) * ntan_72.x - sin(nrot_75) * ntan_72.y + nwn_74.x, abs(ntan_72.z) * nwn_74.y, -sin(nrot_75) * ntan_72.x - cos(nrot_75) * ntan_72.y + nwn_74.z));\n    var land_b_51_w0 = land_w_13.w[0];\n    var land_b_51_w1 = land_w_13.w[1];\n    var land_b_51_w2 = land_w_13.w[2];\n    var land_b_51_w3 = land_w_13.w[3];\n    let land_b_51_a1 = saturate(mul_23);\n    land_b_51_w0 = land_b_51_w0 * (1.0 - land_b_51_a1);\n    land_b_51_w1 = land_b_51_w1 * (1.0 - land_b_51_a1);\n    land_b_51_w2 = land_b_51_w2 * (1.0 - land_b_51_a1);\n    land_b_51_w3 = land_b_51_w3 * (1.0 - land_b_51_a1);\n    land_b_51_w1 = land_b_51_w1 + land_b_51_a1;\n    let land_b_51_a2 = saturate(ss_26);\n    land_b_51_w0 = land_b_51_w0 * (1.0 - land_b_51_a2);\n    land_b_51_w1 = land_b_51_w1 * (1.0 - land_b_51_a2);\n    land_b_51_w2 = land_b_51_w2 * (1.0 - land_b_51_a2);\n    land_b_51_w3 = land_b_51_w3 * (1.0 - land_b_51_a2);\n    land_b_51_w2 = land_b_51_w2 + land_b_51_a2;\n    let land_b_51_a3 = saturate(mul_34);\n    land_b_51_w0 = land_b_51_w0 * (1.0 - land_b_51_a3);\n    land_b_51_w1 = land_b_51_w1 * (1.0 - land_b_51_a3);\n    land_b_51_w2 = land_b_51_w2 * (1.0 - land_b_51_a3);\n    land_b_51_w3 = land_b_51_w3 * (1.0 - land_b_51_a3);\n    land_b_51_w3 = land_b_51_w3 + land_b_51_a3;\n    land_b_51_w0 = land_b_51_w0 + select(0.0, 1.0, (land_b_51_w0 + land_b_51_w1 + land_b_51_w2 + land_b_51_w3) < 0.0001);\n    let land_b_51_t = max(land_b_51_w0 + land_b_51_w1 + land_b_51_w2 + land_b_51_w3, 0.0001);\n    let land_b_51_hb = saturate(f32(0.800000));\n    let land_b_51_c = 0.9 * land_b_51_hb;\n    let land_b_51_d = 0.08 + 0.4 * (1.0 - land_b_51_hb);\n    let land_b_51_s0 = select(-10000.0, land_b_51_w0 + land_b_51_c * (remap_36), land_b_51_w0 > 0.0001);\n    let land_b_51_s1 = select(-10000.0, land_b_51_w1 + land_b_51_c * (remap_38), land_b_51_w1 > 0.0001);\n    let land_b_51_s2 = select(-10000.0, land_b_51_w2 + land_b_51_c * (remap_41), land_b_51_w2 > 0.0001);\n    let land_b_51_m = max(max(land_b_51_s0, land_b_51_s1), land_b_51_s2) - land_b_51_d;\n    let land_b_51_k0 = max(land_b_51_s0 - land_b_51_m, 0.0);\n    let land_b_51_k1 = max(land_b_51_s1 - land_b_51_m, 0.0);\n    let land_b_51_k2 = max(land_b_51_s2 - land_b_51_m, 0.0);\n    let land_b_51_kt = max(land_b_51_k0 + land_b_51_k1 + land_b_51_k2, 0.00001);\n    let land_b_51_ht = land_b_51_w0 + land_b_51_w1 + land_b_51_w2;\n    var land_b_51 = ((vec4<f32>(nmap_55, 1.0)) * (land_b_51_ht * land_b_51_k0 / land_b_51_kt) + (vec4<f32>(nmap_61, 1.0)) * (land_b_51_ht * land_b_51_k1 / land_b_51_kt) + (vec4<f32>(nmap_67, 1.0)) * (land_b_51_ht * land_b_51_k2 / land_b_51_kt) + (vec4<f32>(nmap_73, 1.0)) * land_b_51_w3) / land_b_51_t;\n\n    // Graph → PbrInput mutations\n    pbr_input.material.base_color = (mul_45) * mat_vertex_color;\n    pbr_input.material.perceptual_roughness = land_b_46.rgb.y;\n    pbr_input.diffuse_occlusion = vec3<f32>(land_b_46.rgb.x);\n    pbr_input.N = normalize(normalize(land_b_51.xyz));\n    pbr_input.world_normal = pbr_input.N;\n    pbr_input.material.base_color = pbr_functions::alpha_discard(pbr_input.material.flags, pbr_input.material.alpha_cutoff, pbr_input.material.base_color);\n\n    @if(PREPASS_PIPELINE) let out = deferred_output(in, pbr_input);\n    @if(!PREPASS_PIPELINE) var out: FragmentOutput;\n    @if(!PREPASS_PIPELINE) out.color = pbr_functions::apply_pbr_lighting(pbr_input);\n    @if(!PREPASS_PIPELINE) out.color = pbr_functions::main_pass_post_lighting_processing(pbr_input, out.color);\n    return out;\n}\n",
+    "meta": {
+      "domain": "Surface",
+      "alpha_mode": "Opaque",
+      "double_sided": false,
+      "requires_transmission": false,
+      "texture_bindings": [
+        {
+          "name": "texture_0",
+          "binding": 0,
+          "asset_path": "textures/terrain/v3/grass/albedo.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_1",
+          "binding": 1,
+          "asset_path": "textures/terrain/v3/dirt/albedo.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_2",
+          "binding": 2,
+          "asset_path": "textures/terrain/v3/rock/albedo.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_3",
+          "binding": 3,
+          "asset_path": "textures/terrain/v3/snow/albedo.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_4",
+          "binding": 4,
+          "asset_path": "textures/terrain/v3/grass/height.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_5",
+          "binding": 5,
+          "asset_path": "textures/terrain/v3/dirt/height.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_6",
+          "binding": 6,
+          "asset_path": "textures/terrain/v3/rock/height.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_7",
+          "binding": 7,
+          "asset_path": "textures/terrain/v3/grass/arm.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_8",
+          "binding": 8,
+          "asset_path": "textures/terrain/v3/dirt/arm.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_9",
+          "binding": 9,
+          "asset_path": "textures/terrain/v3/rock/arm.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_10",
+          "binding": 10,
+          "asset_path": "textures/terrain/v3/snow/arm.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_11",
+          "binding": 11,
+          "asset_path": "textures/terrain/v3/grass/normal.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_12",
+          "binding": 12,
+          "asset_path": "textures/terrain/v3/dirt/normal.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_13",
+          "binding": 13,
+          "asset_path": "textures/terrain/v3/rock/normal.rmip",
+          "kind": "D2"
+        },
+        {
+          "name": "texture_14",
+          "binding": 14,
+          "asset_path": "textures/terrain/v3/snow/normal.rmip",
+          "kind": "D2"
+        }
+      ],
+      "parameters": [],
+      "node_line_map": [
+        [
+          2,
+          149,
+          219
+        ],
+        [
+          3,
+          291,
+          334
+        ],
+        [
+          4,
+          230,
+          266
+        ],
+        [
+          5,
+          156,
+          158
+        ],
+        [
+          6,
+          159,
+          159
+        ],
+        [
+          7,
+          160,
+          160
+        ],
+        [
+          8,
+          154,
+          155
+        ],
+        [
+          9,
+          130,
+          132
+        ],
+        [
+          10,
+          133,
+          133
+        ],
+        [
+          11,
+          134,
+          134
+        ],
+        [
+          12,
+          267,
+          272
+        ],
+        [
+          13,
+          226,
+          226
+        ],
+        [
+          14,
+          201,
+          201
+        ],
+        [
+          15,
+          202,
+          202
+        ],
+        [
+          16,
+          135,
+          137
+        ],
+        [
+          17,
+          138,
+          138
+        ],
+        [
+          18,
+          139,
+          139
+        ],
+        [
+          19,
+          273,
+          278
+        ],
+        [
+          20,
+          227,
+          227
+        ],
+        [
+          21,
+          204,
+          204
+        ],
+        [
+          22,
+          205,
+          205
+        ],
+        [
+          23,
+          161,
+          161
+        ],
+        [
+          24,
+          162,
+          162
+        ],
+        [
+          25,
+          163,
+          163
+        ],
+        [
+          26,
+          164,
+          164
+        ],
+        [
+          27,
+          165,
+          165
+        ],
+        [
+          28,
+          166,
+          166
+        ],
+        [
+          29,
+          207,
+          209
+        ],
+        [
+          30,
+          140,
+          142
+        ],
+        [
+          31,
+          143,
+          143
+        ],
+        [
+          32,
+          279,
+          284
+        ],
+        [
+          33,
+          228,
+          228
+        ],
+        [
+          34,
+          210,
+          210
+        ],
+        [
+          35,
+          211,
+          211
+        ],
+        [
+          36,
+          173,
+          173
+        ],
+        [
+          37,
+          174,
+          174
+        ],
+        [
+          38,
+          175,
+          175
+        ],
+        [
+          39,
+          144,
+          146
+        ],
+        [
+          40,
+          147,
+          147
+        ],
+        [
+          41,
+          148,
+          148
+        ],
+        [
+          42,
+          285,
+          290
+        ],
+        [
+          43,
+          229,
+          229
+        ],
+        [
+          46,
+          182,
+          182
+        ],
+        [
+          47,
+          183,
+          183
+        ],
+        [
+          48,
+          184,
+          184
+        ],
+        [
+          49,
+          185,
+          185
+        ],
+        [
+          50,
+          186,
+          186
+        ],
+        [
+          51,
+          187,
+          187
+        ],
+        [
+          52,
+          188,
+          188
+        ],
+        [
+          53,
+          189,
+          189
+        ],
+        [
+          54,
+          220,
+          222
+        ],
+        [
+          55,
+          223,
+          223
+        ],
+        [
+          56,
+          224,
+          224
+        ],
+        [
+          57,
+          225,
+          330
+        ],
+        [
+          58,
+          331,
+          332
+        ]
+      ],
+      "codegen_version": 3
+    }
+  },
+  "comments": [
+    {
+      "id": 59,
+      "rect": [
+        -40.0,
+        -440.0,
+        2060.0,
+        260.0
+      ],
+      "text": "Rule inputs: breakup noise, slope and height",
+      "color": [
+        110,
+        96,
+        150
+      ]
+    },
+    {
+      "id": 60,
+      "rect": [
+        -40.0,
+        -50.0,
+        2060.0,
+        830.0
+      ],
+      "text": "Grass: textures, then its rule",
+      "color": [
+        57,
+        102,
+        51
+      ]
+    },
+    {
+      "id": 61,
+      "rect": [
+        -40.0,
+        810.0,
+        2060.0,
+        830.0
+      ],
+      "text": "Gravel: textures, then its rule",
+      "color": [
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": 62,
+      "rect": [
+        -40.0,
+        1670.0,
+        2060.0,
+        830.0
+      ],
+      "text": "Rock: textures, then its rule",
+      "color": [
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": 63,
+      "rect": [
+        -40.0,
+        2530.0,
+        2060.0,
+        830.0
+      ],
+      "text": "Snow: textures, then its rule",
+      "color": [
+        160,
+        160,
+        160
+      ]
+    },
+    {
+      "id": 64,
+      "rect": [
+        2060.0,
+        -440.0,
+        720.0,
+        260.0
+      ],
+      "text": "Macro variation",
+      "color": [
+        120,
+        120,
+        90
+      ]
+    },
+    {
+      "id": 65,
+      "rect": [
+        2060.0,
+        -60.0,
+        420.0,
+        2660.0
+      ],
+      "text": "Colour, normal and AO / roughness blends",
+      "color": [
+        70,
+        120,
+        90
+      ]
+    }
+  ],
+  "muted_slots": {}
+}

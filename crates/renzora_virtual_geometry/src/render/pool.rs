@@ -115,6 +115,22 @@ impl Pool {
         self.words_used -= u64::from(page.word_count);
     }
 
+    /// Grow the buffers once to fit this many more vertices and words than are
+    /// in use, ahead of a batch of uploads.
+    ///
+    /// A model arriving uploads every skinned mesh whole and every root group
+    /// in one frame. Left to `allocate`, the pool grew by half for each one
+    /// that did not fit, a dozen times in a row from its starting size, and
+    /// every set of buffers it replaced stayed alive until the GPU had
+    /// finished with it: a few seconds of several times the pool's final size,
+    /// right as the model appeared. Returns whether the buffers were replaced.
+    pub fn reserve_more(&mut self, device: &RenderDevice, queue: &RenderQueue, vertices: u64, words: u64) -> bool {
+        let clamp = |n: u64| n.min(u64::from(SPAN)) as u32;
+        let vertices = clamp(self.vertices_used + vertices);
+        let words = clamp(self.words_used + words);
+        self.reserve(device, queue, vertices, words)
+    }
+
     /// Make the buffers hold at least this many vertices and words. Copies the
     /// old contents into the new buffers and submits that at once, so writes
     /// queued afterwards (which wgpu applies before the next submission's

@@ -1,0 +1,104 @@
+[package]
+name = "vleue_navigator"
+version = "0.17.0"
+authors = ["François Mockers <francois.mockers@vleue.com>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+keywords = ["pathfinding", "bevy", "navmesh", "navigation"]
+readme = "README.md"
+description = "Navmesh plugin for Bevy"
+repository = "https://github.com/vleue/vleue_navigator"
+homepage = "https://github.com/vleue/vleue_navigator"
+documentation = "https://docs.rs/vleue_navigator"
+categories = ["game-development"]
+
+[dependencies]
+itertools = "0.15"
+# RENZORA: the glam polyanya is built on, to convert at the boundary. Bevy moved
+# to glam 0.34 and polyanya 0.18 (the latest) is still on 0.33, so the two
+# `Vec2`s are different types; `src/glam_bridge.rs` converts between them.
+# Drop this, and the bridge, once polyanya moves to Bevy's glam.
+polyanya_glam = { package = "glam", version = "0.33" }
+tracing = { version = "0.1", optional = true }
+log = "0.4.27"
+
+# RENZORA: Bevy and the Bevy-based crates come from Renzora's tree by path
+# (`bevy/`, `vendor/`), never crates.io. polyanya is not built on Bevy, so it
+# stays a crates.io dependency. Re-point these after a subtree pull.
+[dependencies.avian2d]
+path = "../avian/crates/avian2d"
+features = ["2d", "parry-f32"]
+default-features = false
+optional = true
+
+[dependencies.avian3d]
+path = "../avian/crates/avian3d"
+features = ["3d", "parry-f32"]
+default-features = false
+optional = true
+
+[dependencies.polyanya]
+version = "0.18"
+
+[dependencies.bevy]
+path = "../../bevy"
+features = ["bevy_mesh", "bevy_camera", "bevy_asset", "bevy_log"]
+default-features = false
+
+[dev-dependencies]
+rand = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies.polyanya]
+version = "0.18"
+features = ["serde"]
+
+# RENZORA: the same source as the regular dependency; cargo requires one.
+[dev-dependencies.bevy]
+path = "../../bevy"
+
+[lints.clippy]
+# Bevy systems routinely take many arguments and deeply nested query types.
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+[features]
+default = ["debug-with-gizmos"]
+debug-with-gizmos = ["bevy/bevy_gizmos"]
+detailed-layers = ["polyanya/detailed-layers"]
+avian2d = ["dep:avian2d"]
+avian3d = ["dep:avian3d"]
+# RENZORA: local avoidance between navigation agents (`src/avoidance.rs`).
+avoidance = []
+
+[[example]]
+name = "auto_navmesh_avian2d"
+required-features = ["avian2d"]
+
+[[example]]
+name = "auto_navmesh_avian3d"
+required-features = ["avian3d"]
+
+[[example]]
+name = "auto_navmesh_avian3d_inclined"
+required-features = ["avian3d"]
+
+[[example]]
+name = "gltf_avian3d"
+required-features = ["avian3d", "avian3d/collider-from-mesh"]
+
+[[example]]
+name = "layers"
+required-features = ["avian3d", "detailed-layers"]
+
+[[example]]
+name = "layers_basic"
+required-features = ["avian3d"]
+
+[[example]]
+name = "layers_inclined"
+required-features = ["avian3d", "detailed-layers"]
+
+[package.metadata.docs.rs]
+features = ["detailed-layers"]

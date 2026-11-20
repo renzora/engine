@@ -130,8 +130,15 @@ pub struct SolariGi {
     #[reflect(default = "legacy_toggle_default")]
     pub dlss: bool,
     /// DLSS's render scale while it is the denoiser in use.
-    #[serde(default)]
-    #[reflect(default)]
+    ///
+    /// Balanced by default, not Auto. Auto let DLSS pick from the output
+    /// resolution, and at an editor viewport's size it picked close to native,
+    /// so every Solari ray pass ran at full resolution: the Bistro on an RTX
+    /// 3060 took 57 ms of GPU a frame (13 FPS) at Auto and 24 ms (29 FPS) at
+    /// Balanced, with no difference to see. Ray Reconstruction is built to
+    /// rebuild detail from a lower-resolution trace.
+    #[serde(default = "default_solari_dlss_mode")]
+    #[reflect(default = "default_solari_dlss_mode")]
     pub dlss_mode: DlssMode,
     /// Ray trace see-through materials (alpha mode Blend: glass, clear coats,
     /// lenses), so they reflect the scene around them and show what is behind
@@ -202,9 +209,13 @@ impl SolariDenoiser {
     pub const ALL: [Self; 3] = [Self::Auto, Self::BuiltIn, Self::Off];
 
     /// The inspector dropdown labels, index for index with [`ALL`](Self::ALL).
-    /// `Auto` shows as "DLSS" because that is what choosing it asks for; the
-    /// variant keeps its name since scenes have saved it.
-    pub const LABELS: [&'static str; 3] = ["DLSS", "Built-in", "Off (raw)"];
+    ///
+    /// `Auto` was labelled plain "DLSS", which read as "DLSS is running" in a
+    /// build or on a GPU without it, while the built-in denoiser quietly did
+    /// the work. The label now says it is conditional, and the inspector puts
+    /// a warning on it where DLSS cannot run. The variant keeps its name since
+    /// scenes have saved it; only the label changed.
+    pub const LABELS: [&'static str; 3] = ["DLSS (if available)", "Built-in", "Off (raw)"];
 
     /// The inspector dropdown label.
     pub fn label(self) -> &'static str {
@@ -231,6 +242,21 @@ impl SolariDenoiser {
 /// `true`, which leaves [`SolariGi::denoiser`] in charge.
 fn legacy_toggle_default() -> bool {
     true
+}
+
+/// On a camera Solari is lighting right now: added and removed by the Solari
+/// plugin with Bevy's `SolariLighting`, so it is never on a camera where ray
+/// tracing is unavailable and Solari fell back.
+///
+/// Here so crates that must stand aside for Solari can see it without linking
+/// the Solari plugin. SSAO is one: Solari traces its own ambient occlusion, and
+/// screen-space AO on top only darkens corners a second time.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct SolariLit;
+
+/// [`SolariGi::dlss_mode`]'s default. See the field for why it is not Auto.
+fn default_solari_dlss_mode() -> DlssMode {
+    DlssMode::Balanced
 }
 
 /// DLSS's quality modes: how far below the output resolution the frame is
@@ -280,18 +306,21 @@ impl DlssMode {
 }
 
 /// What this build and this GPU can do with DLSS, written at startup by the
-/// Solari plugin and read by the inspector to say which denoiser is running.
-/// The inspector cannot see Bevy's own DLSS types: they exist only in a build
-/// compiled with the DLSS SDK.
+/// Solari plugin and read by the inspector to say which denoiser is running,
+/// and by anti-aliasing to say whether its DLSS method can run. Neither can see
+/// Bevy's own DLSS types: they exist only in a build compiled with the DLSS SDK.
 ///
 /// Absent means the Solari plugin is not in the build at all.
-#[derive(Resource, Clone, Copy, Debug, Default)]
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DlssSupport {
     /// The binary was built with the DLSS SDK.
     pub compiled: bool,
     /// The GPU, driver and renderer support DLSS Ray Reconstruction on this
     /// run.
     pub ray_reconstruction: bool,
+    /// The GPU, driver and renderer support DLSS Super Resolution (upscaling
+    /// and anti-aliasing, without Solari) on this run.
+    pub super_resolution: bool,
 }
 
 /// Solari's cost/noise preset, mapped by the Solari plugin onto the sample
@@ -358,7 +387,7 @@ impl Default for SolariGi {
             denoiser: SolariDenoiser::default(),
             denoise: legacy_toggle_default(),
             dlss: legacy_toggle_default(),
-            dlss_mode: DlssMode::default(),
+            dlss_mode: default_solari_dlss_mode(),
             glass_reflections: true,
         }
     }

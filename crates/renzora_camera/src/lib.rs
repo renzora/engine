@@ -8,6 +8,10 @@
 //! - Scroll wheel: dolly zoom (move along view direction)
 //! - Shift: move faster (2x)
 //! - Ctrl: move slower (0.25x)
+//!
+//! The orbit pivot shows as a ring while it is in use (`pivot_marker`).
+
+mod pivot_marker;
 
 use bevy::camera::primitives::Aabb;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
@@ -171,7 +175,8 @@ pub struct CameraSettings {
     pub pan_sensitivity: f32,
     pub zoom_sensitivity: f32,
     pub invert_y: bool,
-    /// Scale movement speed by distance from focus.
+    /// Scale scroll zoom by distance from focus. Flying is never scaled: it
+    /// moves at exactly `move_speed`.
     pub distance_relative_speed: bool,
 }
 
@@ -242,8 +247,9 @@ impl Plugin for CameraPlugin {
             .init_resource::<CameraVelocityState>()
             .init_resource::<PivotLock>()
             .init_resource::<OrbitMirror>()
-            .init_resource::<EditorViewportFov>()
-            .add_systems(
+            .init_resource::<EditorViewportFov>();
+        pivot_marker::install(app);
+        app.add_systems(
                 Update,
                 toggle_pivot_lock.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
@@ -282,6 +288,10 @@ impl Plugin for CameraPlugin {
                     update_camera_projection,
                     sync_orbit_snapshot,
                     apply_orbit_on_change,
+                    // After every writer of the orbit, so whatever moved the
+                    // pivot this frame shows it this frame.
+                    pivot_marker::track_pivot,
+                    pivot_marker::draw_pivot,
                     // …persist the edited angle back to the focused slot, then
                     // drive the other views from their own stored angles.
                     mirror_focused_orbit_out,
@@ -445,22 +455,37 @@ fn sync_viewport_settings(
     mut settings: ResMut<CameraSettings>,
     mut vp: ResMut<ViewportSettings>,
 ) {
-    // Sync projection mode
+    // Sync projection mode. Written only when it differs: this runs every
+    // frame, and an unconditional write marked `OrbitCameraState` changed every
+    // frame, so `apply_orbit_on_change` rewrote the camera every frame and the
+    // viewport, seeing the camera "move", never idled.
     let proj = match vp.projection_mode {
         VpProjectionMode::Perspective => ProjectionMode::Perspective,
         VpProjectionMode::Orthographic => ProjectionMode::Orthographic,
     };
-    orbit.projection_mode = proj;
+    if orbit.projection_mode != proj {
+        orbit.projection_mode = proj;
+    }
 
-    // Sync camera settings
+    // Sync camera settings, likewise only when something differs.
     let c = &vp.camera;
-    settings.move_speed = c.move_speed;
-    settings.look_sensitivity = c.look_sensitivity;
-    settings.orbit_sensitivity = c.orbit_sensitivity;
-    settings.pan_sensitivity = c.pan_sensitivity;
-    settings.zoom_sensitivity = c.zoom_sensitivity;
-    settings.invert_y = c.invert_y;
-    settings.distance_relative_speed = c.distance_relative_speed;
+    let current = &*settings;
+    if current.move_speed != c.move_speed
+        || current.look_sensitivity != c.look_sensitivity
+        || current.orbit_sensitivity != c.orbit_sensitivity
+        || current.pan_sensitivity != c.pan_sensitivity
+        || current.zoom_sensitivity != c.zoom_sensitivity
+        || current.invert_y != c.invert_y
+        || current.distance_relative_speed != c.distance_relative_speed
+    {
+        settings.move_speed = c.move_speed;
+        settings.look_sensitivity = c.look_sensitivity;
+        settings.orbit_sensitivity = c.orbit_sensitivity;
+        settings.pan_sensitivity = c.pan_sensitivity;
+        settings.zoom_sensitivity = c.zoom_sensitivity;
+        settings.invert_y = c.invert_y;
+        settings.distance_relative_speed = c.distance_relative_speed;
+    }
 
     // Apply pending view angle — guard so DerefMut only fires when we
     // actually have a command to consume. Otherwise the blind `.take()`
@@ -882,9 +907,15 @@ fn handle_camera_view_request(
     commands.remove_resource::<renzora::core::CameraViewRequest>();
 }
 
-/// Move the camera's orbit pivot to the point under the mouse cursor (ground
-/// plane intersection). Keeps the camera's world position unchanged — only
-/// the pivot/distance/yaw/pitch are recomputed.
+/// Move the camera's orbit pivot to the point under the mouse cursor: the
+/// scene surface there, or the ground plane where there is none. Keeps the
+/// camera's world position unchanged; only the pivot/distance/yaw/pitch are
+/// recomputed.
+///
+/// The surface comes first because the plane alone put the pivot underground
+/// on anything raised: over a 300 m mountain it landed hundreds of metres
+/// below the slope you pointed at, and orbit and zoom took that distance.
+#[allow(clippy::too_many_arguments)]
 fn camera_to_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
@@ -896,6 +927,7 @@ fn camera_to_cursor(
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    mut surface: SurfaceAhead,
 ) {
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
@@ -936,13 +968,13 @@ fn camera_to_cursor(
         return;
     };
     let dir = ray.direction.as_vec3();
-    if dir.y.abs() <= 1e-6 {
+    let on_plane = || {
+        let t = -ray.origin.y / dir.y;
+        (dir.y.abs() > 1e-6 && t > 0.0 && t <= 10_000.0).then_some(t)
+    };
+    let Some(t) = surface.distance(ray).or_else(on_plane) else {
         return;
-    }
-    let t = -ray.origin.y / dir.y;
-    if t <= 0.0 || t > 10_000.0 {
-        return;
-    }
+    };
     let target = ray.origin + dir * t;
 
     let current_cam_pos = orbit.calculate_position();
@@ -995,7 +1027,12 @@ impl SurfaceAhead<'_, '_> {
                     && layers.is_none_or(|l| l.intersects(&bevy::camera::visibility::RenderLayers::layer(0)))
             })
         };
-        let settings = bevy::picking::mesh_picking::ray_cast::MeshRayCastSettings::default().with_filter(&scene_only);
+        // `Visible`, not Bevy's default `VisibleInView`: an idle viewport runs
+        // no visibility pass, so the default saw every mesh as unseen and the
+        // first scroll step after idling found no surface ahead.
+        let settings = bevy::picking::mesh_picking::ray_cast::MeshRayCastSettings::default()
+            .with_visibility(bevy::picking::mesh_picking::ray_cast::RayCastVisibility::Visible)
+            .with_filter(&scene_only);
         self.ray_cast.cast_ray(ray, &settings).first().map(|(_, hit)| hit.distance)
     }
 }
@@ -1091,7 +1128,13 @@ fn camera_controller(
         * (settings.move_speed / CameraSettings::default().move_speed)
         * slow_mult
         * distance_mult;
-    let move_speed = settings.move_speed * slow_mult * distance_mult;
+    // Flying moves at exactly the camera speed set, in units a second, never
+    // scaled by the orbit distance. Scaled, the toolbar's number said nothing
+    // about how fast WASD would go: after framing a whole level the same
+    // setting flew dozens of times faster, with nothing on screen to say why.
+    // Scrolling keeps the distance scale, since a step proportional to how far
+    // away you are is what makes scrolling usable at every scale.
+    let move_speed = settings.move_speed * slow_mult;
     let delta = time.delta_secs();
 
     // --- WASD smoothed velocity ---
@@ -1531,6 +1574,36 @@ fn goto_selected_camera(
 /// plane this close costs no visible depth precision.
 const EDITOR_NEAR_CLIP: f32 = 0.01;
 
+/// Whether `projection` already is what [`apply_projection`] would make it.
+///
+/// Callers check this before taking the projection mutably. Writing it
+/// through a mutable reference marks it changed even when every value is the
+/// same, and the viewport reads a changed projection as the camera moving: it
+/// was written every frame for every viewport camera, so the viewport never
+/// idled and rendered the whole scene each frame with nothing moving.
+fn projection_matches(
+    projection: &Projection,
+    mode: ProjectionMode,
+    distance: f32,
+    aspect: f32,
+    fov: f32,
+) -> bool {
+    match (mode, projection) {
+        (ProjectionMode::Perspective, Projection::Perspective(p)) => {
+            p.aspect_ratio == aspect && p.near == EDITOR_NEAR_CLIP && p.far == 100_000.0 && p.fov == fov
+        }
+        (ProjectionMode::Orthographic, Projection::Orthographic(o)) => {
+            let viewport_height = 2.0 * distance * (fov * 0.5).tan();
+            o.scale == 1.0
+                && matches!(
+                    o.scaling_mode,
+                    bevy::camera::ScalingMode::FixedVertical { viewport_height: h } if h == viewport_height
+                )
+        }
+        _ => false,
+    }
+}
+
 fn apply_projection(
     projection: &mut Projection,
     mode: ProjectionMode,
@@ -1600,7 +1673,9 @@ fn update_camera_projection(
         .map(|v| v.screen_size.x / v.screen_size.y)
         .unwrap_or(16.0 / 9.0);
 
-    apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect, fov.0);
+    if !projection_matches(&projection, orbit.projection_mode, orbit.distance, aspect, fov.0) {
+        apply_projection(&mut projection, orbit.projection_mode, orbit.distance, aspect, fov.0);
+    }
 }
 
 // ── Multi-viewport plumbing ─────────────────────────────────────────────────
@@ -1782,8 +1857,14 @@ fn apply_secondary_viewport_cameras(
         // controller via `mirror_focused_orbit_out`, so the focused camera
         // still tracks live input — but no camera ever reads a shared value,
         // which makes it structurally impossible for the views to converge.
-        *transform = orbit.calculate_transform();
-        apply_projection(&mut projection, mode, slot.distance, slot.aspect(), fov.0);
+        //
+        // Written only when different: this runs every frame, and an
+        // unconditional write marked every viewport camera as moved, which
+        // kept render-on-change from ever idling.
+        transform.set_if_neq(orbit.calculate_transform());
+        if !projection_matches(&projection, mode, slot.distance, slot.aspect(), fov.0) {
+            apply_projection(&mut projection, mode, slot.distance, slot.aspect(), fov.0);
+        }
     }
 }
 
@@ -1796,7 +1877,7 @@ fn apply_orbit_on_change(
         return;
     }
     for mut transform in &mut cameras {
-        *transform = orbit.calculate_transform();
+        transform.set_if_neq(orbit.calculate_transform());
     }
 }
 
@@ -2193,6 +2274,23 @@ mod tests {
                 panic!("a perspective projection");
             };
             assert!(perspective.near <= 0.02, "near plane at {} m", perspective.near);
+        }
+    }
+
+    /// Once applied, the projection matches, so the per-frame systems leave it
+    /// alone and the viewport can idle. If `projection_matches` drifted from
+    /// what `apply_projection` writes, every frame would rewrite the camera.
+    #[test]
+    fn an_applied_projection_matches_so_it_is_not_rewritten() {
+        for mode in [ProjectionMode::Perspective, ProjectionMode::Orthographic] {
+            let mut projection = Projection::Perspective(PerspectiveProjection::default());
+            assert!(!projection_matches(&projection, mode, 4.0, 1.5, FRAC_PI_4));
+            apply_projection(&mut projection, mode, 4.0, 1.5, FRAC_PI_4);
+            assert!(projection_matches(&projection, mode, 4.0, 1.5, FRAC_PI_4), "{mode:?}");
+            assert!(
+                !projection_matches(&projection, mode, 4.0, 1.8, std::f32::consts::FRAC_PI_3),
+                "{mode:?}"
+            );
         }
     }
 }

@@ -55,7 +55,7 @@ The remaining `renzora.exe` now launches straight into your game. Everything els
 
 ## Why the build runs in Docker
 
-The canonical Windows build runs inside the pinned `ghcr.io/renzora/windows` image via the `renzora` CLI. It is required for cross-platform/release, and it is what guarantees a matching `bevy_dylib`/engine build hash. A native (no-Docker) Windows build is also supported via `cargo renzora` (source-first, so the host and its plugins share one `bevy_dylib`). The compiler version is pinned in `docker/base/Dockerfile` (currently **Rust 1.97.1**, shared by every platform image) and mirrored in `rust-toolchain.toml` for native builds; for the container path you don't install it yourself: the host needs only Docker + Git (Rust just to install the CLI):
+The canonical Windows build runs inside the pinned `ghcr.io/renzora/windows` image via the `renzora` CLI. It is required for cross-platform/release, and it is what guarantees a matching `bevy_dylib`/engine build hash. A native (no-Docker) Windows build is also supported via `cargo renzora` (source-first, so the host and its plugins share one `bevy_dylib`). The compiler version is pinned in `docker/base/Dockerfile` (currently **Rust 1.100.0**, shared by every platform image) and mirrored in `rust-toolchain.toml` for native builds; for the container path you don't install it yourself: the host needs only Docker + Git (Rust just to install the CLI):
 
 ```bash
 renzora build       # binary + editor bundle + plugins into dist/windows-x64/

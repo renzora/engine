@@ -443,20 +443,33 @@ pub(crate) struct SwitchPromptCancel;
 
 /// Handle a pending [`ProjectSwitchRequest`]: switch immediately when nothing is
 /// dirty, otherwise open the save-confirmation prompt.
+///
+/// [`renzora::RequestSwitchProject`] is the same request made from outside the
+/// shell (the MCP plugin reopening a project to time its load), and is treated
+/// exactly as File > Recent Projects, so it gets the same prompt.
 pub(crate) fn process_project_switch_request(
     req: Option<Res<ProjectSwitchRequest>>,
+    external: Option<Res<renzora::RequestSwitchProject>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
     fonts: Option<Res<EmberFonts>>,
     open: Query<(), With<SwitchPromptRoot>>,
     mut commands: Commands,
 ) {
-    let Some(req) = req else { return };
     // A prompt is already up — leave the request until it's resolved.
     if !open.is_empty() {
         return;
     }
-    let switch = req.0.clone();
-    commands.remove_resource::<ProjectSwitchRequest>();
+    let switch = match (req, external) {
+        (Some(req), _) => {
+            commands.remove_resource::<ProjectSwitchRequest>();
+            req.0.clone()
+        }
+        (None, Some(external)) => {
+            commands.remove_resource::<renzora::RequestSwitchProject>();
+            ProjectSwitch::Recent(external.0.clone())
+        }
+        (None, None) => return,
+    };
 
     let dirty = tabs.as_ref().is_some_and(|t| any_unsaved(t));
     // Nothing unsaved (or we can't render the prompt) → go straight there. The

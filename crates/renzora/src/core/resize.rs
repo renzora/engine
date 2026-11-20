@@ -7,9 +7,11 @@
 //! lie over whatever is docked against the perimeter. That overhang is the
 //! point, and it is also why a press meant for a handle keeps landing on the
 //! content underneath it: any consumer that decides "was this press mine?"
-//! **geometrically** — `RelativeCursorPosition::cursor_over`, or a
-//! cursor-inside-my-rect test — is pure geometry and knows nothing about what
-//! is drawn on top. It is what made dragging the hierarchy panel's edge divider
+//! **geometrically**, by a cursor-inside-my-rect test, knows nothing about
+//! what is drawn on top. (`UiCursor::cursor_over` in renzora_ember comes from
+//! picking, so a handle that blocks the pointer does clear it; the flag still
+//! covers the geometric tests, and the rest of the drag, which goes on after
+//! the cursor has left the handle.) It is what made dragging the hierarchy panel's edge divider
 //! sweep-select the rows the drag passed (GH #81), and what made dragging the
 //! global bottom panel upward arm the viewport's selection box: the grip
 //! overhangs the viewport by half its height, so the viewport read the press as

@@ -65,6 +65,21 @@ Claiming honestly matters. A backend that says it captures and then does nothing
 produces a game that is silently wrong, which is worse than one that reports a
 missing feature.
 
+### A device that will not open
+
+If `init` returns an error, the engine keeps the backend and calls `init` again
+every two seconds until it succeeds. An output device is often briefly missing,
+for example while Windows switches the default device to a headset that has just
+connected, and dropping the backend then would leave the whole session silent.
+So `init` must be safe to call again after it fails: open the device first, and
+change nothing else until that has worked.
+
+`init` runs on a thread of its own, not the main thread, and the backend is
+adopted on the first frame after it returns: opening a device can take tens of
+milliseconds, and with a missing device that was a hitch every two seconds. Your
+backend therefore moves between threads (it is `Send`, which the trait already
+requires); nothing else is called on it until `init` has returned.
+
 ## Writing one
 
 ```rust

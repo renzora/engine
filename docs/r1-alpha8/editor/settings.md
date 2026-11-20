@@ -15,9 +15,10 @@ Each category is a page holding one or more collapsible sections. Changes apply 
 | | Rendering | 3D Rendering, 2D Rendering |
 | Appearance | Interface | Fonts, Language, Display, Hierarchy, Inspector, UI Workspace |
 | | Theme | Active Theme, Semantic Colors, Surfaces, Text, Widgets, Panels, Syntax Tokens, Editor Chrome, Widget Styles |
-| Editor | General | Developer, Renderer, Import |
+| Editor | General | Developer, Import, Scenes |
+| | Renderer | Renderer |
 | | Auto-Save | Auto-Save |
-| | Viewport | Grid, Labels, Performance |
+| | Viewport | Grid, Labels |
 | | Camera | Camera |
 | | Gizmos | Gizmos |
 | | Scripting | Scripting, Code Editor |
@@ -33,13 +34,15 @@ Everything under **Project** is stored in the project's `project.toml` and trave
 
 **Project** names your game, sets its version, and picks the boot scene, which is the scene that loads when the game starts. **Global Scenes** lists scenes that load before the boot scene and stay loaded across scene changes, which is where a persistent HUD or audio manager goes.
 
-**Physics** picks the physics engine for the 3D world and the 2D world separately. **Default** is the bundled avian; a physics engine installed as a plugin appears beside it in whichever world it simulates (the Rapier plugin adds `rapier3d` to the 3D list and `rapier2d` to the 2D one). The editor moves the open scene onto the new engine straight away, and the game uses it from its next start. The Console says which engine runs each world once a project loads. See [Physics Backends](/docs/r1-alpha8/extending/physics-backends).
+**Physics** picks the physics engine for the 3D world and the 2D world separately. **Default** is the engine's own avian; a physics engine installed as a plugin appears beside it in whichever world it simulates. The editor moves the open scene onto the new engine straight away, and the game uses it from its next start. The Console says which engine runs each world once a project loads. See [Physics Backends](/docs/r1-alpha8/extending/physics-backends).
 
-**Window** is the window your shipped game opens: its size, whether it is resizable, and windowed, fullscreen or borderless.
+**Window** is the window your shipped game opens: its size, whether it is resizable, windowed, fullscreen or borderless, and **VSync**.
+
+The editor is your game with editor chrome on top, so a setting the game has is not repeated for the editor. **VSync** here and **Graphics Quality** under Rendering apply to the editor as well as the game: turn VSync off and the editor uncaps too, and the viewport renders at the same quality tier the game will ship with.
 
 **Render Resolution** is what the camera renders at before being scaled onto that window. It only takes effect once **Stretch Mode** is set to Viewport. Leave Stretch Mode off and the two are the same thing. Turn it on and set the resolution to 320x180 and you get chunky pixel art upscaled to a 1080p window.
 
-**Rendering** picks the renderer and the graphics backend, and holds the 2D settings.
+**Rendering** picks the renderer and the graphics backend, sets **Graphics Quality** and the game's **Render Scale**, and holds the 2D settings.
 
 ## Interface
 
@@ -53,15 +56,17 @@ Everything under **Project** is stored in the project's `project.toml` and trave
 
 **UI Workspace** covers what happens after you drag a panel out of the bottom panel, and whether new files start with boilerplate.
 
-## General
+## Renderer
 
 **Renderer** holds the **Graphics Backend** the editor starts with, which takes effect after a restart, and **Launcher Effects**: the launcher's 3D cinematic and the animated haze behind the loading screen. Both fill the window, so their cost grows with the display. **Auto** turns them off on ultrawide and larger-than-4K displays and leaves them on elsewhere; **Full** and **Reduced** force one or the other.
+
+**Throttle When Unfocused** (on by default) holds the editor to about 60 frames a second while another window has focus, to save power and heat. Turn it off to keep the editor at full speed in the background, for example while profiling it from another window: with it on, every measurement taken that way stops at about 16 ms a frame whatever the editor's real cost.
 
 ## Viewport, Camera and Gizmos
 
 <!-- screenshot: settings_viewport.png - the Viewport settings page showing the Grid section -->
 
-**Viewport** holds the grid, entity labels and the performance options. **Camera** holds move speed and the look, orbit, pan and zoom sensitivities. **Gizmos** picks which gizmos draw and how large they are.
+**Viewport** holds the grid and entity labels. VSync and Graphics Quality are not here: the editor follows the game's, under Project. **Realtime** is switched from the viewport's **Display > Render** menu. **Camera** holds move speed and the look, orbit, pan and zoom sensitivities. **Gizmos** picks which gizmos draw and how large they are.
 
 These are covered in context in [Viewport and Camera](/docs/r1-alpha8/editor/viewport).
 

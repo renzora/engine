@@ -73,7 +73,7 @@ pub fn slider_ranged(commands: &mut Commands, value: f32, min: f32, max: f32) ->
                 ..default()
             },
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("slider"),
         ))
@@ -134,7 +134,7 @@ pub(crate) fn slider_drag(
     mut sliders: Query<(
         &EmberSlider,
         &UiInteraction,
-        &bevy::ui::RelativeCursorPosition,
+        &crate::UiCursor,
         &mut Bound<f32>,
     )>,
 ) {

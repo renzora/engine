@@ -20,6 +20,7 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::gizmos::config::GizmoConfigStore;
 use bevy::prelude::*;
+use bevy::reflect::GetPath;
 
 use crate::modal_transform::ModalTransformState;
 use crate::OverlayGizmoGroup;
@@ -68,6 +69,29 @@ fn get_reflected_f32(world: &World, entity: Entity, type_substr: &str, field: &s
         renzora::core::PropertyValue::Int(v) => Some(v as f32),
         _ => None,
     }
+}
+
+/// `TerrainChunkData` as reflection sees it, resolved once a frame. The
+/// terrain outline visits every chunk of a terrain, and finding the type by
+/// name for each one (plus a path string allocated per field read) cost 3.5 ms
+/// a frame on a 64 x 64 chunk terrain.
+fn chunk_reflect(world: &World) -> Option<ReflectComponent> {
+    let registry = world.resource::<AppTypeRegistry>().read();
+    registry.get_with_short_type_path("TerrainChunkData")?.data::<ReflectComponent>().cloned()
+}
+
+/// A chunk field, borrowed in place rather than copied out.
+fn chunk_field<'w, T: Reflect>(chunk: &'w dyn Reflect, field: &str) -> Option<&'w T> {
+    chunk.reflect_path(field).ok()?.try_downcast_ref::<T>()
+}
+
+/// A chunk's sculpted heights, for the outline to trace. The composed
+/// `heights` buffer is what the mesh shows, but it is not reflected (it is
+/// rebuilt, never saved), so the outline reads `base_heights`: the same ground
+/// unless height layers are stacked on top. Reading `heights` here failed every
+/// time and drew the border flat at the terrain's minimum height.
+fn chunk_heights(chunk: &dyn Reflect) -> Option<&[f32]> {
+    chunk_field::<Vec<f32>>(chunk, "base_heights").map(Vec::as_slice)
 }
 
 /// Draw the wireframe bounding box around selected entities.
@@ -226,6 +250,10 @@ pub fn terrain_chunk_selection_system(
 
     let all_selected = selection.get_all();
     let primary = selection.get();
+    let Some(chunk_reflect) = chunk_reflect(world) else {
+        return;
+    };
+    let reflect_chunk = |entity: Entity| world.get_entity(entity).ok().and_then(|e| chunk_reflect.reflect(e));
 
     // Draw outer border when the parent terrain entity is selected
     for &terrain_entity in &all_selected {
@@ -276,31 +304,27 @@ pub fn terrain_chunk_selection_system(
         // Find all chunk children
         if let Ok(children) = children_query.get(terrain_entity) {
             for child in children.iter() {
-                if !is_terrain_chunk(world, child) {
+                let Some(chunk) = reflect_chunk(child) else {
+                    continue;
+                };
+                let (Some(&cx), Some(&cz)) =
+                    (chunk_field::<u32>(chunk, "chunk_x"), chunk_field::<u32>(chunk, "chunk_z"))
+                else {
+                    continue;
+                };
+                // Only the edge chunks draw anything; reading an interior
+                // chunk's heights was most of this system's cost.
+                if cx != 0 && cz != 0 && cx != chunks_x - 1 && cz != chunks_z - 1 {
                     continue;
                 }
-
-                let Some(cx) = get_reflected_u32(world, child, "TerrainChunkData", "chunk_x")
-                else {
-                    continue;
-                };
-                let Some(cz) = get_reflected_u32(world, child, "TerrainChunkData", "chunk_z")
-                else {
-                    continue;
-                };
                 let Ok(chunk_gt) = global_transforms.get(child) else {
                     continue;
                 };
                 let pos = chunk_gt.translation();
                 let y_offset = 0.15;
 
-                // Pull the heightmap so we can trace the real silhouette.
-                let heights = renzora::core::reflection::get_reflected_f32_vec(
-                    world,
-                    child,
-                    "TerrainChunkData",
-                    "heights",
-                );
+                // The heightmap, so the border traces the real silhouette.
+                let heights = chunk_heights(chunk);
 
                 // Draw outer border edges
                 if cz == 0 {
@@ -312,7 +336,7 @@ pub fn terrain_chunk_selection_system(
                         y_offset,
                         min_height,
                         height_range,
-                        heights.as_deref(),
+                        heights,
                         0,
                         color,
                     );
@@ -326,7 +350,7 @@ pub fn terrain_chunk_selection_system(
                         y_offset,
                         min_height,
                         height_range,
-                        heights.as_deref(),
+                        heights,
                         chunk_resolution - 1,
                         color,
                     );
@@ -340,7 +364,7 @@ pub fn terrain_chunk_selection_system(
                         y_offset,
                         min_height,
                         height_range,
-                        heights.as_deref(),
+                        heights,
                         0,
                         color,
                     );
@@ -354,7 +378,7 @@ pub fn terrain_chunk_selection_system(
                         y_offset,
                         min_height,
                         height_range,
-                        heights.as_deref(),
+                        heights,
                         chunk_resolution - 1,
                         color,
                     );
@@ -365,9 +389,9 @@ pub fn terrain_chunk_selection_system(
 
     // Draw per-chunk borders for individually selected chunks
     for &entity in &all_selected {
-        if !is_terrain_chunk(world, entity) {
+        let Some(chunk) = reflect_chunk(entity) else {
             continue;
-        }
+        };
 
         // Find parent terrain
         let Ok(child_of) = child_of_query.get(entity) else {
@@ -421,12 +445,7 @@ pub fn terrain_chunk_selection_system(
             Color::srgba(1.0, 1.0, 0.0, 0.8)
         };
 
-        let heights = renzora::core::reflection::get_reflected_f32_vec(
-            world,
-            entity,
-            "TerrainChunkData",
-            "heights",
-        );
+        let heights = chunk_heights(chunk);
         // Draw all 4 edges of the chunk border, tracing the heightmap silhouette.
         draw_edge_along_x(
             &mut gizmos,
@@ -436,7 +455,7 @@ pub fn terrain_chunk_selection_system(
             y_offset,
             min_height,
             height_range,
-            heights.as_deref(),
+            heights,
             0,
             color,
         );
@@ -448,7 +467,7 @@ pub fn terrain_chunk_selection_system(
             y_offset,
             min_height,
             height_range,
-            heights.as_deref(),
+            heights,
             chunk_resolution - 1,
             color,
         );
@@ -460,7 +479,7 @@ pub fn terrain_chunk_selection_system(
             y_offset,
             min_height,
             height_range,
-            heights.as_deref(),
+            heights,
             0,
             color,
         );
@@ -472,7 +491,7 @@ pub fn terrain_chunk_selection_system(
             y_offset,
             min_height,
             height_range,
-            heights.as_deref(),
+            heights,
             chunk_resolution - 1,
             color,
         );

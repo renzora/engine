@@ -112,27 +112,104 @@ fn fog_from(section: &FogSection) -> DistanceFog {
 /// crash class). Cameras without a `DistanceFog` (non-viewport utility cameras)
 /// are simply skipped.
 fn reconcile_world_environment(
-    mut fogs: Query<&mut DistanceFog>,
+    mut fogs: Query<(Entity, &mut DistanceFog)>,
     sources: Query<Ref<WorldEnvironment>>,
     routing: Res<renzora::EffectRouting>,
+    mut removed: RemovedComponents<WorldEnvironment>,
 ) {
-    let routing_changed = routing.is_changed();
+    // A World Environment deleted (or its component removed) has to take its
+    // fog with it. Before this, a camera with no source left was skipped, so
+    // the last fog stayed on it for the rest of the session: an empty scene
+    // rendered in the deleted environment's fog.
+    let lost_source = removed.read().count() > 0;
+    let routing_changed = routing.is_changed() || lost_source;
     for (target, source_list) in routing.iter() {
         // First routed source carrying a WorldEnvironment wins.
         let Some(env) = source_list.iter().find_map(|&s| sources.get(s).ok()) else {
+            if routing_changed {
+                if let Ok((_, mut fog)) = fogs.get_mut(*target) {
+                    *fog = no_fog();
+                }
+            }
             continue;
         };
         // Cheap reconcile: only rewrite the camera on an actual change.
         if !routing_changed && !env.is_changed() {
             continue;
         }
-        if let Ok(mut fog) = fogs.get_mut(*target) {
+        if let Ok((_, mut fog)) = fogs.get_mut(*target) {
             *fog = if env.fog.enabled {
                 fog_from(&env.fog)
             } else {
                 no_fog()
             };
         }
+    }
+    // A camera that dropped out of the routing altogether (its last source
+    // gone) is not in the loop above; clear it too. Utility cameras carry the
+    // resident no-op already, so for them this changes nothing.
+    if routing_changed {
+        for (camera, mut fog) in &mut fogs {
+            // Checked before writing, so clearing cameras that are already
+            // clear does not mark them changed.
+            if !routing.iter().any(|(target, _)| *target == camera) && !is_no_fog(&fog) {
+                *fog = no_fog();
+            }
+        }
+    }
+}
+
+/// Whether `fog` already draws nothing: the [`no_fog`] value, or any falloff
+/// of zero density. (Bevy's `DistanceFog` has no `PartialEq` to compare with.)
+fn is_no_fog(fog: &DistanceFog) -> bool {
+    matches!(
+        fog.falloff,
+        FogFalloff::Exponential { density } | FogFalloff::ExponentialSquared { density } if density == 0.0
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> (App, Entity, Entity) {
+        let mut app = App::new();
+        app.add_systems(Update, reconcile_world_environment);
+        let mut env = WorldEnvironment::default();
+        env.fog.enabled = true;
+        let source = app.world_mut().spawn(env).id();
+        let camera = app.world_mut().spawn(no_fog()).id();
+        app.insert_resource(renzora::EffectRouting { routes: vec![(camera, vec![source])] });
+        (app, source, camera)
+    }
+
+    fn fogged(app: &App, camera: Entity) -> bool {
+        !is_no_fog(app.world().get::<DistanceFog>(camera).unwrap())
+    }
+
+    #[test]
+    fn an_enabled_environment_fogs_its_cameras() {
+        let (mut app, _, camera) = app();
+        app.update();
+        assert!(fogged(&app, camera));
+    }
+
+    /// Deleting the World Environment takes its fog with it, whether the
+    /// camera stays routed or drops out of the routing.
+    #[test]
+    fn deleting_the_environment_clears_its_fog() {
+        let (mut app, source, camera) = app();
+        app.update();
+        app.world_mut().despawn(source);
+        app.update();
+        assert!(!fogged(&app, camera));
+
+        let (mut app, source, camera) = self::app();
+        app.update();
+        app.world_mut().despawn(source);
+        app.insert_resource(renzora::EffectRouting::default());
+        app.update();
+        assert!(!fogged(&app, camera));
     }
 }
 

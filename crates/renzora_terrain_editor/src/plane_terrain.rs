@@ -44,15 +44,13 @@ use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
 use renzora::core::{EditedMesh, EditedMeshApplied, MaterialRef, MeshInstanceData, MeshPrimitive};
 use renzora_editor_framework::{ActiveTool, EditorSelection};
 use renzora_terrain::data::{TerrainChunkData, TerrainData};
-use renzora_terrain::painter::Painter;
 
 use crate::terrain_inspector::TerrainInspectorTab;
 
 /// The strip button's icon. Deliberately *not* the `mountains` that Sculpt
 /// wears: a scene can hold a terrain and have a plane selected at the same
 /// time, which puts both buttons in the row at once, and two identical
-/// mountains would read as one button drawn twice. Not the wand either — that
-/// one is [`crate::generate_tool::TOOL_ICON`].
+/// mountains would read as one button drawn twice.
 pub const TOOL_ICON: &str = "shovel";
 
 /// How thin a mesh has to be, as a fraction of its widest horizontal span, to
@@ -266,11 +264,7 @@ fn convert(world: &mut World, entity: Entity) -> bool {
     em.remove::<MeshPrimitive>();
     em.remove::<EditedMesh>();
     em.remove::<EditedMeshApplied>();
-    em.insert((
-        terrain_data.clone(),
-        Painter::default(),
-        renzora::SelectionStop,
-    ));
+    em.insert((terrain_data.clone(), renzora::SelectionStop));
     if let Some(mut transform) = em.get_mut::<Transform>() {
         // See the module docs: the brushes read this root's translation and
         // nothing else, so rotation and scale have to be spent here or every
@@ -376,7 +370,6 @@ impl renzora_undo::UndoCommand for ConvertPlaneCmd {
             return;
         };
         em.remove::<TerrainData>();
-        em.remove::<Painter>();
         if !self.selection_stop {
             em.remove::<renzora::SelectionStop>();
         }
@@ -428,7 +421,6 @@ mod tests {
         assert!(renzora_ember::font::icon_glyph(TOOL_ICON).is_some());
         // Sharing an icon with a tool that can be on screen at the same time
         // is the failure this button was given its own icon to avoid.
-        assert_ne!(TOOL_ICON, crate::generate_tool::TOOL_ICON);
         assert_ne!(TOOL_ICON, "mountains");
     }
 

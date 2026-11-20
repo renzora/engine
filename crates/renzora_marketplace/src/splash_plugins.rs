@@ -996,6 +996,7 @@ fn install_click(
     q: Query<(&UiInteraction, &PluginInstallBtn), Changed<UiInteraction>>,
     session: Res<AuthSession>,
     mut store: ResMut<PluginStore>,
+    companion: Option<Res<renzora::CompanionJobs>>,
 ) {
     for (interaction, btn) in &q {
         if *interaction != UiInteraction::Pressed {
@@ -1010,19 +1011,31 @@ fn install_click(
         store.notice = None;
         let (tx, rx) = unbounded();
         store.jobs.push(Job { asset_id: asset.id.clone(), rx });
-        spawn_install(session, asset, tx);
+        spawn_install(session, asset, tx, companion.as_ref().map(|c| c.remote()));
     }
 }
 
+/// In the companion when one is connected: the store's install job, which
+/// installs a plugin exactly as this does (a plugin always goes to the
+/// engine's `plugins/`, so the job's destination is not used). Here otherwise.
 #[cfg(not(target_arch = "wasm32"))]
 fn spawn_install(
     session: Option<AuthSession>,
     asset: AssetSummary,
     tx: crossbeam_channel::Sender<Result<String, String>>,
+    remote: Option<renzora::CompanionRemote>,
 ) {
     std::thread::Builder::new()
         .name("renzora-splash-plugin-install".to_string())
         .spawn(move || {
+            if let Some(remote) = remote {
+                let token = session.as_ref().filter(|s| s.is_signed_in()).and_then(|s| s.access_token.clone());
+                let shared = crate::install_overlay::InstallShared::default();
+                if let Some(result) = crate::install_remote::run(&remote, token, &asset, std::path::Path::new(""), &shared) {
+                    let _ = tx.send(result);
+                    return;
+                }
+            }
             let _ = tx.send(run_install(session.as_ref(), &asset));
         })
         .ok();
@@ -1033,6 +1046,7 @@ fn spawn_install(
     _session: Option<AuthSession>,
     _asset: AssetSummary,
     tx: crossbeam_channel::Sender<Result<String, String>>,
+    _remote: Option<renzora::CompanionRemote>,
 ) {
     let _ = tx.send(Err("Installing isn't supported in the browser yet".into()));
 }

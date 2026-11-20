@@ -57,7 +57,7 @@ renzora test                     # the full suite, exactly as CI runs it (contai
 ### Toolchain
 
 - You need **Git** and **rustup**. `rust-toolchain.toml` pins the Rust version and rustup selects it automatically; the project does **not** require nightly. You will also need your platform's usual native build dependencies — a C/C++ toolchain, and on Linux the X11/Wayland/ALSA/udev dev headers (the list mirrors `docker/base/Dockerfile`).
-- The Rust version is pinned in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.97.1-bookworm`, container). A bump must edit both.
+- The Rust version is pinned in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.100.0-bookworm`, container). A bump must edit both.
 - **Docker** is needed for two things only: cross-compiling export templates (`renzora build <platform>`) and reproducing CI exactly (`renzora check` / `renzora test`).
 - Linux uses `mold` and Windows uses `rust-lld` (MSVC `link.exe` hits the 65535-object limit). `.cargo/config.toml` sets that up for native builds as well as the container, so a native link succeeds.
 - **`cargo test --profile dist -p <crate>` links and runs natively**, including on Windows, and it is the fastest way to iterate. `cargo test --workspace` is the one that doesn't: it builds *example* targets, and two vendored XR crates have examples that were never updated for current Bevy APIs (they still use the pre-0.19 `shadows_enabled`). CI never hits this because it excludes those crates: test per-crate, or use `renzora test`.
@@ -130,7 +130,7 @@ What's worth a test: new data structures (serialize/deserialize round-trips), ne
 
 ## Continuous integration
 
-CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the shared base image** `ghcr.io/renzora/base:latest`, so the runner needs nothing installed: `rustc 1.97` and the Linux dev libs are baked into the base (the per-platform cross toolchains aren't needed to test first-party crates).
+CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the shared base image** `ghcr.io/renzora/base:latest`, so the runner needs nothing installed: `rustc 1.100` and the Linux dev libs are baked into the base (the per-platform cross toolchains aren't needed to test first-party crates).
 
 > CI invokes **`cargo test` and `cargo clippy`** inside the image. The `renzora test` / `renzora check` CLI commands wrap those same cargo invocations in the container, so they reproduce CI locally — run those, not a native `cargo`.
 

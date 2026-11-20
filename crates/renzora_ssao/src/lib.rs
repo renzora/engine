@@ -51,23 +51,34 @@ fn quality_level(s: &renzora::SsaoSection) -> ScreenSpaceAmbientOcclusionQuality
 /// component directly (in sync with the bind group), so this toggle should not
 /// hit the contact-shadows specialization race; if GPU testing shows otherwise,
 /// it escalates to the resident white-AO gate.
+///
+/// **Solari stands SSAO down.** A camera carrying [`renzora::SolariLit`] gets no
+/// SSAO whatever the section says: Solari traces its own ambient occlusion, so
+/// screen-space AO on top only darkens every corner a second time, and costs a
+/// full-resolution compute pass for it. The section keeps its value, so turning
+/// Solari off (or running on a GPU that cannot trace) brings SSAO back.
 fn reconcile_ssao(
     mut commands: Commands,
     sources: Query<Ref<renzora::WorldEnvironment>>,
     routing: Res<renzora::EffectRouting>,
+    solari: Query<(), With<renzora::SolariLit>>,
+    gained_solari: Query<(), Added<renzora::SolariLit>>,
+    mut lost_solari: RemovedComponents<renzora::SolariLit>,
 ) {
     let routing_changed = routing.is_changed();
+    let lost: Vec<Entity> = lost_solari.read().collect();
     for (target, source_list) in routing.iter() {
         let Some(env) = source_list.iter().find_map(|&s| sources.get(s).ok()) else {
             continue;
         };
-        if !routing_changed && !env.is_changed() {
+        let solari_changed = gained_solari.contains(*target) || lost.contains(target);
+        if !routing_changed && !env.is_changed() && !solari_changed {
             continue;
         }
         let Ok(mut ec) = commands.get_entity(*target) else {
             continue;
         };
-        if env.ssao.enabled {
+        if env.ssao.enabled && !solari.contains(*target) {
             ec.insert(ScreenSpaceAmbientOcclusion {
                 quality_level: quality_level(&env.ssao),
                 // Negative thickness would push the occlusion test in front of
@@ -95,3 +106,41 @@ impl Plugin for SsaoPlugin {
 }
 
 renzora::add!(SsaoPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn app() -> (App, Entity) {
+        let mut app = App::new();
+        app.add_systems(Update, reconcile_ssao);
+        let env = app.world_mut().spawn(renzora::WorldEnvironment::default()).id();
+        let camera = app.world_mut().spawn_empty().id();
+        app.insert_resource(renzora::EffectRouting {
+            routes: vec![(camera, vec![env])],
+        });
+        (app, camera)
+    }
+
+    fn has_ssao(app: &App, camera: Entity) -> bool {
+        app.world().get::<ScreenSpaceAmbientOcclusion>(camera).is_some()
+    }
+
+    /// Solari traces its own occlusion: a ray-traced camera gets no SSAO, and
+    /// gets it back the moment Solari stops lighting it, with the section
+    /// untouched in between.
+    #[test]
+    fn solari_stands_ssao_down_and_hands_it_back() {
+        let (mut app, camera) = app();
+        app.update();
+        assert!(has_ssao(&app, camera), "SSAO is on by default");
+
+        app.world_mut().entity_mut(camera).insert(renzora::SolariLit);
+        app.update();
+        assert!(!has_ssao(&app, camera), "Solari should stand SSAO down");
+
+        app.world_mut().entity_mut(camera).remove::<renzora::SolariLit>();
+        app.update();
+        assert!(has_ssao(&app, camera), "SSAO should come back without Solari");
+    }
+}

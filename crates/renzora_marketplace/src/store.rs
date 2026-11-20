@@ -361,14 +361,31 @@ impl Plugin for StorePanel {
         crate::store_overlay::register(app);
         crate::install_overlay::register(app);
         crate::item_overlay::register(app);
-        // panel-systems-ungated: poll_store drains in-flight async marketplace requests
+        // The data side: the catalogue prefetch kicked on entering the editor,
+        // and draining whatever it and the UI asked for. Gated on that work
+        // existing rather than on the overlay, so the prefetch still lands
+        // (and the home shelves still chain off it) before anyone opens it.
+        app.add_systems(
+            Update,
+            (poll_store, store_init, store_home_init, store_refetch)
+                .run_if(in_state(SplashState::Editor).and_then(store_pipeline_live)),
+        );
+        // Thumbnails are requested whenever the listings change, overlay open
+        // or not, which is what the prefetch relies on to have artwork ready.
+        // `request` is idempotent, so a frame where the listings did not move
+        // would only repeat requests that are already queued or done.
+        app.add_systems(
+            Update,
+            request_store_thumbs
+                .run_if(in_state(SplashState::Editor).and_then(resource_changed::<HubStoreData>)),
+        );
+        // The UI side. Every one of these reads a widget that only exists
+        // inside the overlay (built by `store::build`, which only the overlay
+        // calls), so with the overlay closed there is nothing to click, type
+        // into or measure.
         app.add_systems(
             Update,
             (
-                poll_store,
-                store_init,
-                store_home_init,
-                store_refetch,
                 store_search_sync,
                 store_search_enter,
                 // Nested to keep the outer tuple within Bevy's 20-system cap.
@@ -389,17 +406,50 @@ impl Plugin for StorePanel {
                 store_signin_click,
                 store_topup_click,
                 store_upload_click,
-                request_store_thumbs,
+            )
+                .run_if(
+                    in_state(SplashState::Editor)
+                        .and_then(any_with_component::<crate::store_overlay::StoreOverlayRoot>),
+                ),
+        );
+        // A theme preview's download keeps going if the overlay is closed
+        // mid-fetch, so its poll is gated on the download, not the overlay.
+        // The banner buttons live in the overlay like the rest of the UI.
+        app.add_systems(
+            Update,
+            (
+                poll_preview.run_if(|preview: Res<ThemePreview>| preview.rx.is_some()),
+                (store_stop_preview_click, store_preview_install_click, store_preview_dismiss_click)
+                    .run_if(any_with_component::<crate::store_overlay::StoreOverlayRoot>),
             )
                 .run_if(in_state(SplashState::Editor)),
         );
-        // panel-systems-ungated: async store work must continue while the tab is hidden
-        app.add_systems(
-            Update,
-            (poll_preview, store_stop_preview_click, store_preview_install_click, store_preview_dismiss_click)
-                .run_if(in_state(SplashState::Editor)),
-        );
     }
+}
+
+/// Run condition for the store's data systems.
+///
+/// True while the overlay is open (the UI can mark the query dirty at any
+/// moment), until the one-time prefetch has started, while a refetch is
+/// queued, while the home shelves are waiting to be fetched off a category
+/// list that has arrived, and while any of the four channels holds an answer.
+/// Every receiver here is drained only by `poll_store`, so an empty channel
+/// means there is nothing for it to apply this frame.
+fn store_pipeline_live(
+    data: Res<HubStoreData>,
+    overlay: Query<(), With<crate::store_overlay::StoreOverlayRoot>>,
+) -> bool {
+    fn landed<T>(rx: &Option<Receiver<T>>) -> bool {
+        rx.as_ref().is_some_and(|rx| !rx.is_empty())
+    }
+    !overlay.is_empty()
+        || !data.initialized
+        || data.dirty
+        || (!data.home_loaded && !data.categories.is_empty())
+        || landed(&data.asset_rx)
+        || landed(&data.cat_rx)
+        || landed(&data.home_rx)
+        || landed(&data.update_rx)
 }
 
 #[derive(Component)]
@@ -1302,7 +1352,7 @@ fn asset_card(
             // card's state could hide itself the instant the cursor reached it,
             // and flicker. `cursor_over` is a rect test and does not care what
             // is on top.
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("store-card"),
         ))
@@ -1832,7 +1882,7 @@ fn build_section(
 /// The price it used to carry moved to the meta line as text, so nothing is
 /// hidden — only the *button* is.
 ///
-/// Bound to `card`'s [`RelativeCursorPosition`] rather than its `UiInteraction`,
+/// Bound to `card`'s [`UiCursor`](renzora_ember::UiCursor) rather than its `UiInteraction`,
 /// because this pill blocks focus and would otherwise steal the hover it depends
 /// on the moment the cursor arrived.
 fn get_pill(
@@ -1935,7 +1985,7 @@ fn get_pill(
         }
     });
     bind_display(commands, pill, move |w| {
-        w.get::<bevy::ui::RelativeCursorPosition>(card)
+        w.get::<renzora_ember::UiCursor>(card)
             .is_some_and(|r| r.cursor_over)
     });
 

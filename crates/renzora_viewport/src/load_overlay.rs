@@ -196,12 +196,31 @@ fn stripe_image() -> Image {
 }
 
 /// Slide the stripe layer left, wrapping every period.
-fn animate_stripes(time: Res<Time>, mut stripes: Query<&mut Node, With<LoadStripes>>) {
+///
+/// Only while it is on screen. Moving a hidden bar still changed a `Node` every
+/// frame, and every changed `Node` makes Bevy lay out the path to the window
+/// root again, so the idle editor paid for an animation nobody could see.
+///
+/// "On screen" is read from the hierarchy (no `Display::None` above it), not
+/// from the bar's computed size: Bevy does not lay out a hidden subtree again,
+/// so a bar hidden after its first layout keeps reporting its old size.
+fn animate_stripes(
+    time: Res<Time>,
+    mut stripes: Query<(Entity, &mut Node), With<LoadStripes>>,
+    ancestors: Query<&Node, Without<LoadStripes>>,
+    parents: Query<&ChildOf>,
+) {
     if stripes.is_empty() {
         return;
     }
     let shift = (time.elapsed_secs() * STRIPE_SPEED) % STRIPE_PERIOD as f32;
-    for mut node in &mut stripes {
+    for (entity, mut node) in &mut stripes {
+        let hidden = parents
+            .iter_ancestors(entity)
+            .any(|a| ancestors.get(a).is_ok_and(|n| n.display == Display::None));
+        if hidden {
+            continue;
+        }
         node.left = Val::Px(-shift);
     }
 }

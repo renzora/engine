@@ -272,6 +272,7 @@ fn extract_obj_materials(
                 specular_texture: None,
                 roughness_texture: roughness_map,
                 metallic_texture: metallic_map,
+                metallic_roughness_texture: None,
                 alpha,
                 double_sided: false,
                 advanced,

@@ -23,6 +23,7 @@
 //! - [`interact`] — tab switch, focus, hover, close, collapse, undock
 //! - [`components`] — what tabs/leaves/dividers carry, and the consumer seams
 //! - [`routing`] — which of the three tree kinds a dock area belongs to
+//! - [`sizing`]: side panels keep their size in pixels as the window resizes
 
 use bevy::prelude::*;
 
@@ -32,6 +33,7 @@ mod interact;
 mod os_frame;
 mod reconcile;
 mod routing;
+mod sizing;
 pub mod tree;
 pub mod windows;
 
@@ -75,6 +77,7 @@ impl Plugin for DockPlugin {
             .init_resource::<FocusedPanel>()
             .init_resource::<drag::PendingSwitch>()
             .init_resource::<drag::DraggedDivider>()
+            .init_resource::<sizing::HeldSizes>()
             .init_resource::<BottomSnapRequest>()
             .init_resource::<BottomStripMarkers>()
             .init_resource::<GrabRootDivider>()
@@ -115,6 +118,10 @@ impl Plugin for DockPlugin {
                     // Rebuild last, in the same frame the model mutates, so the
                     // dock doesn't show a stale layout for a frame (flicker).
                     reconcile::rebuild_dock,
+                    // Side panels keep their pixel size as the window resizes.
+                    // After the divider drag, so a drag this frame reads as the
+                    // user's ratio rather than one to hold against.
+                    sizing::hold_panel_sizes,
                     // Toggle per-tab pane visibility after any rebuild.
                     sync_panes,
                 )

@@ -78,6 +78,9 @@ pub mod installed;
 mod plugin_updates;
 #[cfg(not(target_arch = "wasm32"))]
 mod install_overlay;
+/// Installing in the companion process.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod install_remote;
 #[cfg(not(target_arch = "wasm32"))]
 mod item_overlay;
 #[cfg(not(target_arch = "wasm32"))]
@@ -98,14 +101,18 @@ mod store;
 mod store_overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod onboarding;
+/// Hub images, cached on disk; the companion fetches them (`thumbs::KIND`).
 #[cfg(not(target_arch = "wasm32"))]
-mod thumbs;
+pub mod thumbs;
 #[cfg(not(target_arch = "wasm32"))]
 mod toasts;
 #[cfg(not(target_arch = "wasm32"))]
 mod docs_panel;
 #[cfg(not(target_arch = "wasm32"))]
 mod upload_panel;
+/// The companion runs publishes too, through the same function.
+#[cfg(not(target_arch = "wasm32"))]
+pub use upload_panel::{run_upload, UploadJob};
 #[cfg(not(target_arch = "wasm32"))]
 mod util;
 #[cfg(not(target_arch = "wasm32"))]
@@ -149,15 +156,23 @@ impl Plugin for MarketplacePlugin {
             .init_resource::<toasts::ToastQueue>()
             .init_resource::<lightbox::Lightbox>();
 
+        // Every system below is gated on there being something for it to do, so
+        // an editor that never opens the marketplace does not pay the executor
+        // to start and immediately return from each of them every frame.
         app.add_systems(
             Update,
             (
-                avatars::request_avatars,
-                toasts::forward_toasts,
+                // Only an `AvatarUrl` on screen asks for a download.
+                avatars::request_avatars.run_if(any_with_component::<avatars::AvatarUrl>),
+                toasts::forward_toasts.run_if(toasts::has_pending),
                 // Open after close, so clicking a NEW image while a lightbox is
                 // up swaps images instead of the backdrop-close eating the press.
-                (lightbox::close_clicks, lightbox::open_clicks).chain(),
-                sign_out_cleanup,
+                (lightbox::close_clicks, lightbox::open_clicks)
+                    .chain()
+                    .run_if(lightbox::live),
+                // A sign-out is a change to the session, so a frame where the
+                // session did not change cannot be the one that ended it.
+                sign_out_cleanup.run_if(resource_changed::<auth::AuthSession>),
             )
                 .run_if(in_state(renzora::SplashState::Editor)),
         );
@@ -173,10 +188,16 @@ impl Plugin for MarketplacePlugin {
         // stays where it is.
         app.add_systems(
             Update,
-            (thumbs::poll_thumbs, avatars::poll_avatars).run_if(
-                in_state(renzora::SplashState::Editor)
-                    .or_else(in_state(renzora::SplashState::Splash)),
-            ),
+            (
+                // Nothing queued and nothing landed means nothing to start or
+                // register; a `request` refills the queue before the next check.
+                thumbs::poll_thumbs.run_if(thumbs::busy),
+                avatars::poll_avatars.run_if(avatars::downloads_landed),
+            )
+                .run_if(
+                    in_state(renzora::SplashState::Editor)
+                        .or_else(in_state(renzora::SplashState::Splash)),
+                ),
         );
 
         // The splash dashboard's Plugins page. Registered here rather than in

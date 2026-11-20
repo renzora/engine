@@ -10,7 +10,8 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
+use bevy::ui::{ComputedNode, UiTransform};
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{ui_font, EmberFonts};
@@ -239,7 +240,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                 overflow: Overflow::clip(),
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             TlLanes { root },
             Name::new("tl-viewport"),
         ))
@@ -294,7 +295,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
             BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             TlRuler { root },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("tl-ruler"),
@@ -355,7 +356,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                             },
                             BackgroundColor(rgb(track.color)),
                             UiInteraction::default(),
-                            RelativeCursorPosition::default(),
+                            UiCursor::default(),
                             TlClip { root, start, len },
                             crate::cursor_icon::HoverCursor(SystemCursorIcon::Grab),
                             Name::new("tl-clip"),
@@ -478,7 +479,7 @@ pub(crate) fn timeline_layout(
 
 pub(crate) fn timeline_zoom(
     mut wheel: MessageReader<MouseWheel>,
-    lanes: Query<(&TlLanes, &RelativeCursorPosition)>,
+    lanes: Query<(&TlLanes, &UiCursor)>,
     mut roots: Query<&mut TimelineRoot>,
 ) {
     let mut dy = 0.0;
@@ -502,7 +503,7 @@ pub(crate) fn timeline_pan(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut last: Local<Option<Vec2>>,
-    lanes: Query<(&TlLanes, &RelativeCursorPosition)>,
+    lanes: Query<(&TlLanes, &UiCursor)>,
     mut roots: Query<&mut TimelineRoot>,
 ) {
     if !mouse.pressed(MouseButton::Middle) {
@@ -528,7 +529,7 @@ pub(crate) fn timeline_pan(
 }
 
 pub(crate) fn timeline_scrub(
-    rulers: Query<(&TlRuler, &UiInteraction, &RelativeCursorPosition)>,
+    rulers: Query<(&TlRuler, &UiInteraction, &UiCursor)>,
     mut roots: Query<&mut TimelineRoot>,
 ) {
     for (ruler, interaction, rcp) in &rulers {
@@ -547,7 +548,7 @@ pub(crate) fn timeline_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     mut active: Local<Option<(Entity, Vec2, Drag)>>,
-    clip_press: Query<(Entity, &UiInteraction, &RelativeCursorPosition, &ComputedNode), With<TlClip>>,
+    clip_press: Query<(Entity, &UiInteraction, &UiCursor, &ComputedNode), With<TlClip>>,
     key_press: Query<(Entity, &UiInteraction), With<TlKey>>,
     mut clips: Query<&mut TlClip>,
     mut keys: Query<&mut TlKey>,

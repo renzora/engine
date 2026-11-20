@@ -56,7 +56,7 @@ rfd = "0.15"
 # Thumbnail, cover and avatar decoding for the shared image caches.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 # Unpacking a downloaded asset archive into the project.
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 # Parsing a downloaded theme `.toml`, and writing the installed-plugin metadata
 # sidecar (`<crate>.plugin.toml`).
 toml = "0.8"

@@ -20,7 +20,8 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 
 use renzora::core::keybindings::KeyBinding;
 use renzora_editor_framework::{AppEditorExt, ShortcutEntry, SplashState};
@@ -376,7 +377,7 @@ fn emitter_tab(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: 
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             HoverTooltip::new("Click to edit this emitter; right-click to rename, duplicate or delete"),
             EmitterTab(index),
@@ -461,7 +462,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts, view: Entity) -> V
     commands.entity(file).add_children(&[glyph, name, dirty]);
 
     let add = link_button(commands, fonts, "+ Add Node", "Add a node (or right-click the graph)", text_primary());
-    commands.entity(add).insert((ToolAction::AddNode, RelativeCursorPosition::default()));
+    commands.entity(add).insert((ToolAction::AddNode, UiCursor::default()));
     let comment = link_button(commands, fonts, "Comment", "Group the selected nodes in a comment box, or add an empty one (C)", text_primary());
     commands.entity(comment).insert(ViewOpBtn { op: ViewOp::Comment, view });
     let new = link_button(commands, fonts, "Templates", "Make a new effect from a template", text_primary());
@@ -892,7 +893,7 @@ fn toolbar_click(q: Query<(&UiInteraction, &ToolAction), Changed<UiInteraction>>
 }
 
 fn add_node_open(
-    q: Query<(&UiInteraction, &ToolAction, &RelativeCursorPosition, &ComputedNode), Changed<UiInteraction>>,
+    q: Query<(&UiInteraction, &ToolAction, &UiCursor, &ComputedNode), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
@@ -1013,7 +1014,7 @@ fn tab_click(q: Query<(&UiInteraction, &EmitterTab), Changed<UiInteraction>>, mu
 /// Right-click a tab: Rename, Duplicate, Delete.
 fn tab_context_menu(
     mouse: Res<ButtonInput<MouseButton>>,
-    tabs: Query<(&RelativeCursorPosition, &EmitterTab)>,
+    tabs: Query<(&UiCursor, &EmitterTab)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Res<VfxEditorState>,

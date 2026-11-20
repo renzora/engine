@@ -34,6 +34,7 @@ pub(crate) fn box_selection_system(
             With<renzora_lighting::Sun>,
         )>,
     >,
+    resolver: crate::picking::PickResolver,
 ) {
     if collider_edit.map(|c| c.active).unwrap_or(false) {
         box_sel.active = false;
@@ -118,6 +119,17 @@ pub(crate) fn box_selection_system(
             continue;
         }
         if box_select_excluded.get(entity).is_ok() {
+            continue;
+        }
+        // Same rules as a click: a locked entity is left out, and a part of
+        // something that picks as one object selects that object.
+        if resolver.is_locked(entity) {
+            continue;
+        }
+        let Some(entity) = resolver.target(entity) else {
+            continue;
+        };
+        if entities_in_box.contains(&entity) {
             continue;
         }
 

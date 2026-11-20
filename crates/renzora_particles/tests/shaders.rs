@@ -16,8 +16,9 @@ const SHADER_SURFACE: &str = include_str!("../src/shaders/particle_surface.wesl"
 
 /// Libraries the particle shaders import, waited for the way the material
 /// validator's own test waits: they stream in over several frames.
-const REQUIRED_LIBRARIES: [&str; 18] = [
+const REQUIRED_LIBRARIES: [&str; 19] = [
     "bevy_pbr::render::mesh_functions",
+    "bevy_pbr::render::mesh_bindings",
     "bevy_pbr::render::mesh_view_bindings",
     "bevy_pbr::render::view_transformations",
     "bevy_pbr::render::pbr_functions",

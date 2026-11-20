@@ -256,7 +256,7 @@ fn drive_base(state: &mut AnimatorState, player: &mut AnimationPlayer, clips: &A
 
     if current.needs_start {
         let restart = matches!(current.motion, Motion::Clip(_));
-        let start = |node: AnimationNodeIndex, player: &mut AnimationPlayer| {
+        let start = |node: BlendNodeIndex, player: &mut AnimationPlayer| {
             let anim = if restart || !player.is_playing_animation(node) { player.start(node) } else { player.play(node) };
             anim.set_repeat(repeat_of(current.looping)).set_speed(current.speed);
         };
@@ -278,7 +278,7 @@ fn drive_base(state: &mut AnimatorState, player: &mut AnimationPlayer, clips: &A
     // speed that makes it last as long as the weighted mix, so a walk and a
     // run blended together plant their feet together.
     if let Motion::Tree(_) = current.motion {
-        let durations: Vec<(AnimationNodeIndex, f32, f32)> = weights
+        let durations: Vec<(BlendNodeIndex, f32, f32)> = weights
             .current
             .iter()
             .filter_map(|(name, w)| {

@@ -14,7 +14,7 @@
 //! untouched would invite edits that do nothing.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{menu_item, screen_menu};
@@ -48,7 +48,7 @@ pub fn is_keyed(state: &VfxEditorState, pin: &AnimatablePin) -> bool {
 pub fn pin_context_menu(
     buttons: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
-    cells: Query<(&RelativeCursorPosition, &AnimatablePin)>,
+    cells: Query<(&UiCursor, &AnimatablePin)>,
     state: Res<VfxEditorState>,
     fonts: Option<Res<EmberFonts>>,
     mut press: Local<Option<Vec2>>,

@@ -61,11 +61,20 @@
 //!
 //! - the spec: [`RvgFile`], [`RvgMesh`] and friends, [`RvgFile::to_bytes`] and
 //!   [`RvgFile::from_bytes`];
-//! - [`RvgLoader`], the Bevy `AssetLoader`;
+//! - [`RvgLoader`], the Bevy `AssetLoader` (feature `bevy`, on by default);
 //! - [`bake`] (feature `bake`), the builder the importer and the converter call.
+//!
+//! With `bevy` off, the format and the builder are plain Rust and
+//! [`RvgFile`] is not an asset: what the standalone companion links to bake
+//! `.rvg` files without linking the engine.
 
+mod error;
+pub use error::RvgLoadError;
+
+#[cfg(feature = "bevy")]
 mod loader;
-pub use loader::{RvgLoadError, RvgLoader};
+#[cfg(feature = "bevy")]
+pub use loader::RvgLoader;
 
 mod residency;
 pub use residency::GroupGraph;
@@ -98,7 +107,9 @@ pub mod bake;
 
 use std::sync::Arc;
 
+#[cfg(feature = "bevy")]
 use bevy::asset::Asset;
+#[cfg(feature = "bevy")]
 use bevy::reflect::TypePath;
 
 pub const MAGIC: [u8; 4] = *b"RVG1";
@@ -360,7 +371,8 @@ pub fn octahedral_decode(word: u32) -> [f32; 3] {
 /// that could be converted, and (for a model imported as `.rvg`) the model's
 /// scene. A primitive that is missing from `meshes` renders as ordinary
 /// geometry.
-#[derive(Asset, TypePath, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "bevy", derive(Asset, TypePath))]
 pub struct RvgFile {
     pub builder_version: u32,
     pub source_hash: u64,
@@ -376,6 +388,35 @@ pub struct RvgFile {
 }
 
 impl RvgFile {
+    /// The bytes this file holds in memory: every mesh's vertex arrays and
+    /// clusters, and the embedded scene. Capacities, not lengths, since that
+    /// is what is allocated.
+    pub fn heap_bytes(&self) -> u64 {
+        fn of<T>(v: &Vec<T>) -> u64 {
+            (v.capacity() * std::mem::size_of::<T>()) as u64
+        }
+        let meshes: u64 = self
+            .meshes
+            .iter()
+            .map(|m| {
+                of(&m.positions)
+                    + of(&m.normals)
+                    + of(&m.uv0)
+                    + of(&m.tangents)
+                    + of(&m.uv1)
+                    + of(&m.colors)
+                    + of(&m.joints)
+                    + of(&m.weights)
+                    + of(&m.clusters)
+                    + of(&m.cluster_vertices)
+                    + of(&m.cluster_triangles)
+                    + of(&m.groups)
+                    + of(&m.nodes)
+            })
+            .sum();
+        meshes + self.scene.as_ref().map_or(0, |s| s.capacity() as u64)
+    }
+
     /// Whether this file was built from `source` by the current builder.
     pub fn is_current(&self, source: &[u8]) -> bool {
         self.builder_version == BUILDER_VERSION && self.source_hash == source_hash(source)
@@ -580,7 +621,9 @@ fn read_mesh(r: &mut Reader) -> Result<RvgMesh, RvgLoadError> {
     if a.has(Attributes::SKIN) {
         let raw = r.take(n * 8)?;
         m.joints = raw
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|c| {
                 let j = |i: usize| u16::from_le_bytes([c[i * 2], c[i * 2 + 1]]);
                 [j(0), j(1), j(2), j(3)]
@@ -772,7 +815,9 @@ impl<'a> Reader<'a> {
     fn arrays<const N: usize>(&mut self, n: usize) -> Result<Vec<[f32; N]>, RvgLoadError> {
         let words = self.shuffled(n.checked_mul(N).ok_or(RvgLoadError::Truncated)?)?;
         Ok(words
-            .chunks_exact(N)
+            .as_chunks::<N>()
+            .0
+            .iter()
             .map(|c| std::array::from_fn(|i| f32::from_bits(c[i])))
             .collect())
     }

@@ -32,8 +32,39 @@ fn inspector_entry() -> InspectorEntry {
             renzora::float_field!("Illuminance", Sun, illuminance, 100.0, 0.0, f32::MAX),
             renzora::float_field!("Angular Diameter", Sun, angular_diameter, 0.01, 0.0, 10.0),
             renzora::float_field!("Disk Intensity", Sun, sun_disk_intensity, 0.01, 0.0, 10.0),
+            renzora::float_field!("Glare", Sun, glare_intensity, 0.01, 0.0, 10.0),
+            renzora::float_field!("Glare Size", Sun, glare_size, 0.1, 0.1, 45.0),
             renzora::bool_field!("Shadows", Sun, shadows_enabled),
-            renzora::bool_field!("Contact Shadows", Sun, contact_shadows),
+            // The switch is the group's header; its settings fold under it.
+            renzora::FieldDef::toggle_group(
+                renzora::bool_field!("Contact Shadows", Sun, contact_shadows),
+                vec![
+                    renzora::float_field!("Length", Sun, contact_shadow_length, 0.01, 0.01, 5.0),
+                    renzora::float_field!("Thickness", Sun, contact_shadow_thickness, 0.005, 0.001, 1.0),
+                    renzora::int_field!(
+                        "Steps",
+                        Sun,
+                        contact_shadow_steps,
+                        u32,
+                        1.0,
+                        *renzora::sun::CONTACT_SHADOW_STEPS.start() as f32,
+                        *renzora::sun::CONTACT_SHADOW_STEPS.end() as f32
+                    ),
+                ],
+            ),
+            renzora::FieldDef::group(
+                "Moon",
+                vec![
+                    renzora::float_field!("Moonlight", Sun, moon_illuminance, 1.0, 0.0, 1000.0),
+                    renzora::vec3_color_field!("Moon Color", Sun, moon_color),
+                    renzora::bool_field!("Follows Calendar", Sun, moon_follows_calendar),
+                    renzora::float_field!("Moon Day", Sun, moon_day, 0.1, 0.0, 29.5),
+                    renzora::vec3_color_field!("Moon Tint", Sun, moon_tint),
+                    renzora::float_field!("Eclipse", Sun, moon_eclipse, 0.01, 0.0, 1.0),
+                    renzora::float_field!("Moon Glow", Sun, moon_glow, 0.05, 0.0, 10.0),
+                    renzora::float_field!("Moon Size", Sun, moon_size, 0.05, 0.1, 20.0),
+                ],
+            ),
         ],
     }
 }

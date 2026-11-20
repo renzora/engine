@@ -15,15 +15,15 @@ pub struct BloomSettings {
 
 impl Default for BloomSettings {
     fn default() -> Self {
-        // Tuned to match Bevy's `Bloom::NATURAL` preset more closely:
-        // intensity 0.15 ≈ NATURAL, threshold 0.5 lets a bit more of the
-        // mid-bright content bloom (the previous 0.8 was very strict and
-        // killed the "emissive feel" on most lit surfaces).
+        // Lights bloom, lit surfaces do not. At threshold 0.5 a sunlit wall
+        // bloomed too, which lifted the whole frame into a haze; 1.5 keeps
+        // the glow to lamps, bulbs and signs. Intensity 0.2: at 0.3 the halos
+        // fogged the frame at night, once auto exposure opened up.
         Self {
-            intensity: 0.15,
+            intensity: 0.2,
             low_frequency_boost: 0.5,
             high_pass_frequency: 0.8,
-            threshold: 0.5,
+            threshold: 1.5,
             threshold_softness: 0.3,
             enabled: true,
         }
@@ -93,6 +93,19 @@ impl Plugin for BloomEffectPlugin {
         info!("[runtime] BloomEffectPlugin");
         app.register_type::<BloomSettings>();
         app.add_systems(Update, (sync_bloom, cleanup_bloom));
+
+        // HDR render passes run before bloom, not in whatever order the
+        // schedule happens to pick: both sit before tonemapping in
+        // `PostProcess`. The sun glare pass is what needs it. It hands bloom a
+        // frame with the sun disc's overflowing pixels brought back into
+        // range, and bloom that ran first read those infinities, turned them
+        // into NaN and flashed every few frames.
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render_app.configure_sets(
+                bevy::core_pipeline::Core3d,
+                renzora::RenderPhase::HdrPost.before(bevy::post_process::bloom::bloom),
+            );
+        }
     }
 }
 

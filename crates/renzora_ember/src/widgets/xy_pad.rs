@@ -29,7 +29,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("xy-pad"),
         ))
@@ -57,7 +57,7 @@ pub fn xy_pad(commands: &mut Commands, x: f32, y: f32) -> Entity {
 }
 
 pub(crate) fn xy_pad_drag(
-    pads: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &EmberXyPad)>,
+    pads: Query<(&UiInteraction, &crate::UiCursor, &EmberXyPad)>,
     mut nodes: Query<&mut Node>,
 ) {
     for (interaction, rcp, pad) in &pads {

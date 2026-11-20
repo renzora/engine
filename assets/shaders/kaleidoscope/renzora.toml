@@ -1,0 +1,9 @@
+name = "Kaleidoscope"
+version = "2.0.0"
+description = "Mirrors one wedge of the frame around the centre, so the picture repeats into a kaleidoscope. A post-process effect: drop kaleidoscope.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "kaleidoscope"
+tags = ["post-processing", "shader", "distortion", "kaleidoscope", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

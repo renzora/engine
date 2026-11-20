@@ -15,7 +15,7 @@ The two editor front-ends are separate, editor-only plugins: `renzora_material_e
 
 A material is a **node graph** (`MaterialGraph`) saved to a `.material` file (JSON). At resolve time the compiler:
 
-1. Finds the graph's single output node (`output/surface`, `output/terrain_layer`, `output/vegetation`, or `output/unlit`).
+1. Finds the graph's single output node (`output/surface`, `output/vegetation`, `output/unlit` or `output/sprite`).
 2. Walks **backwards** through the connections, visiting each upstream node.
 3. Dispatches on the node's `node_type` string to emit a small WGSL snippet, naming intermediate variables and inserting type casts as needed.
 4. Composes the snippets into a complete, Bevy-compatible material shader and hands it to the resolver, which builds a `GraphMaterial` (a `StandardMaterial` extension).
@@ -77,7 +77,8 @@ Every node is identified by a namespaced `node_type` string (e.g. `"math/add"`, 
 | Control | `control/` | `control/if`, `control/static_switch`, comparisons (`greater_than`, `equal`, …), boolean ops |
 | Scene | `scene/` | `scene/pixel_depth`, `scene/scene_depth`, `scene/screen_uv`, `scene/env_map_sample`, `scene/motion_vector` |
 | Custom | `custom/` | `custom/code` (inline-WGSL escape hatch) |
-| Output | `output/` | `output/surface`, `output/terrain_layer`, `output/vegetation`, `output/unlit` |
+| Landscape | `landscape/` | `landscape/layer_coords`, `landscape/layer_blend`, `landscape/layer_sample`, `landscape/slope` |
+| Output | `output/` | `output/surface`, `output/vegetation`, `output/unlit`, `output/sprite` |
 
 Look up a definition at runtime with `nodes::node_def(node_type)` or list a category with `nodes::nodes_in_category(category)`.
 

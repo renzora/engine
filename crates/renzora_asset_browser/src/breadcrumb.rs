@@ -21,7 +21,8 @@ use std::path::{Path, PathBuf};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use renzora_ember::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::cursor_icon::HoverCursor;
@@ -181,7 +182,7 @@ fn level(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &Path, c
     if current {
         commands
             .entity(chip)
-            .insert((CrumbMenuBtn(path.to_path_buf()), RelativeCursorPosition::default()));
+            .insert((CrumbMenuBtn(path.to_path_buf()), UiCursor::default()));
     }
     // The drag tint binds on every chip, the current one included: it is the
     // folder you are looking at, and still a place to drop things.
@@ -261,7 +262,7 @@ fn chevron(commands: &mut Commands, fonts: &EmberFonts, path: &Path) -> Entity {
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             CrumbMenuBtn(path.to_path_buf()),
             Name::new("crumb-chevron"),
@@ -302,7 +303,7 @@ fn ellipsis(commands: &mut Commands, fonts: &EmberFonts, folded: &[PathBuf]) -> 
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
                 "assets.crumb.hidden",
@@ -458,7 +459,7 @@ fn navigate(world: &mut World, path: PathBuf) {
 /// subfolders under it. The one on the path to the folder on screen is ticked,
 /// so the menu also says where you came through.
 pub(crate) fn crumb_menu_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &CrumbMenuBtn), Changed<UiInteraction>>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode, &CrumbMenuBtn), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     state: Res<NativeAssets>,
@@ -512,7 +513,7 @@ pub(crate) fn crumb_menu_open(
 /// "…" pressed: the folded levels as a menu, indented in path order, to jump
 /// straight to any of them.
 pub(crate) fn crumb_ellipsis_open(
-    q: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &CrumbEllipsisBtn), Changed<UiInteraction>>,
+    q: Query<(&UiInteraction, &UiCursor, &ComputedNode, &CrumbEllipsisBtn), Changed<UiInteraction>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,

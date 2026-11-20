@@ -459,14 +459,7 @@ pub fn apply_exclusions(staged: &StagedImport) -> Vec<String> {
 /// directory, after the exclusions are applied, so what is built is exactly
 /// the model accepted, and no GLB ever lands in the project on the way.
 pub fn build_model_file(glb_path: &Path) -> std::io::Result<&'static str> {
-    let glb = std::fs::read(glb_path)?;
-    let (bytes, extension) = renzora_import::model_file(&glb);
-    let path = glb_path.with_extension(extension);
-    std::fs::write(&path, bytes)?;
-    if path != glb_path {
-        std::fs::remove_file(glb_path)?;
-    }
-    Ok(extension)
+    renzora_import::remote::build_model_file(glb_path)
 }
 
 /// Accept a staged tree into the project: move the files, and hand back the

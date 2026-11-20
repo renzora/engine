@@ -65,6 +65,19 @@ pub struct ViewportCamera(pub usize);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ViewportCamera2d(pub usize);
 
+/// The camera that draws one 3D viewport slot's overlay: the transform gizmo,
+/// the light, collider and skeleton gizmos, the on-top selection box and
+/// labels (render layer 1 and the slot's own gizmo layer).
+///
+/// Split off the slot's [`ViewportCamera`], which draws the scene alone, so a
+/// handle lighting up under the cursor redraws a few lines into a transparent
+/// image over the last scene frame instead of the whole scene. It is a plain
+/// LDR camera with no prepass of its own; anything that equips every
+/// `Camera3d` for the scene (a deferred prepass, contact shadows, ray tracing)
+/// should leave it alone.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ViewportOverlayCamera(pub usize);
+
 /// Marker for viewport slot 0's camera specifically. Unlike [`EditorCamera`]
 /// (which follows focus), this never moves off slot 0 — used as the stable
 /// "default focus" view.
@@ -98,6 +111,17 @@ pub struct ViewportRedrawDemand {
     /// Render at least this many frames after each change.
     pub settle_frames: u32,
 }
+
+/// On a scene entity whose changes do not wake the viewport's redraw gate
+/// (`renzora_viewport::redraw`).
+///
+/// For things that animate on their own every frame, which the gate promises to
+/// hold still while the viewport is idle: the cloud dome's material moves with
+/// the wind every frame, and without this it kept the viewport rendering the
+/// whole scene forever. What drives them (the World Environment's settings)
+/// still wakes it, since that is a separate entity.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ViewportRedrawExempt;
 
 /// Marker component tagging an entity as a 2D scene node.
 ///
@@ -366,20 +390,6 @@ pub enum RenderPhase {
     Overlay,
 }
 
-/// Editor viewport gate: this scene entity was force-hidden because no
-/// viewport panel is visible, and the stored value is its *authored*
-/// `Visibility` (the slot-0 editor camera must stay active for the
-/// atmosphere/IBL probe, so hiding the scene is how a viewport-less workspace
-/// stops paying for shadow maps, GI and mesh extraction — see
-/// `renzora_viewport::gate_scene_visibility`).
-///
-/// Deliberately NOT `Reflect`: it must never serialize into a scene file.
-/// Scene saves restore the stored value before extracting so the authored
-/// visibility is what lands on disk (see `renzora_engine::scene_io`); the
-/// hierarchy panel's eye icon reads it for the same reason.
-#[derive(Component, Clone, Copy)]
-pub struct ViewportGateHidden(pub Visibility);
-
 /// Marker component — entity persists across scene loads (e.g. loader UI root).
 /// `process_pending_scene_loads` and similar despawn-the-world logic must skip these.
 ///
@@ -461,12 +471,38 @@ pub struct EntityIcon(pub String);
 #[reflect(Component)]
 pub struct EntityLabelColor(pub [u8; 3]);
 
-/// Marker component — viewport picking stops at this entity instead of walking
-/// past it to a higher-up named ancestor. Apply to compound entities (terrains,
-/// prefab roots, etc.) that own many named children but should be selectable
-/// as a unit.
+/// Sort order for root-level entities in the hierarchy panel. Lower values
+/// appear first.
+///
+/// Saved with the scene, which is why it is here and `Reflect`. It used to be
+/// an editor-only type that never reached the file, and the hierarchy fell
+/// back to the order it first saw each root in, which it took from the
+/// entity's index. A scene load recycles indices in no particular order, so
+/// the same scene came back in a different order every time it was opened,
+/// and an order made by dragging was lost on reload. The hierarchy now gives
+/// every root one as it appears, so the order on screen is the order saved.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[reflect(Component, Default)]
+pub struct HierarchyOrder(pub u32);
+
+/// Marker component: an entity whose children are its own machinery, so a
+/// viewport click on any of them selects this entity. Put there by the code
+/// that builds the entity (a terrain and its chunks), never chosen by the user,
+/// and not saved; the user's version of the same thing is [`PickAsUnit`].
 #[derive(Component, Default, Clone, Copy, Debug)]
 pub struct SelectionStop;
+
+/// The user's choice that a viewport click anywhere on this entity or its
+/// children selects this entity, so the model or group picks as one object.
+///
+/// A click selects the mesh it hits by default; this is the opt-in, set from
+/// the hierarchy's right-click menu. The outermost such ancestor wins, so a
+/// group of grouped models picks as the whole group. The parts stay reachable
+/// from the hierarchy and from the viewport's right-click list of everything
+/// under the cursor. Saved with the scene.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug)]
+#[reflect(Component, Default)]
+pub struct PickAsUnit;
 
 /// Marker component — camera should be excluded from scene-wide effects (skybox, post-processing).
 #[derive(Component)]
@@ -865,19 +901,23 @@ impl EditedMesh {
         let n = self.positions.len() / 3;
         let positions: Vec<[f32; 3]> = self
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|c| [c[0], c[1], c[2]])
             .collect();
         let normals: Vec<[f32; 3]> = if self.normals.len() == self.positions.len() {
             self.normals
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|c| [c[0], c[1], c[2]])
                 .collect()
         } else {
             vec![[0.0, 1.0, 0.0]; n]
         };
         let uvs: Vec<[f32; 2]> = if self.uvs.len() == n * 2 {
-            self.uvs.chunks_exact(2).map(|c| [c[0], c[1]]).collect()
+            self.uvs.as_chunks::<2>().0.iter().map(|c| [c[0], c[1]]).collect()
         } else {
             vec![[0.0, 0.0]; n]
         };
@@ -1001,7 +1041,10 @@ pub enum PbrAlphaMode {
 ///
 /// Defaults mirror the glTF 2.0 spec so a material that omits a channel renders
 /// identically to one that never had it (e.g. `ior = 1.5`, no clearcoat).
-#[derive(Clone, Debug)]
+///
+/// Serializable because an import converted in the companion process sends
+/// its materials back to the editor as JSON.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PbrAdvanced {
     /// `KHR_materials_clearcoat` clearcoatFactor — strength of the lacquer layer.
     pub clearcoat: f32,

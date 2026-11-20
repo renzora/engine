@@ -103,7 +103,7 @@ impl FromWorld for DefaultGridTexture {
         // and "fresh untextured shape" share one image; otherwise build it
         // from the same contract-crate source of truth.
         if let Some(shared) = world.get_resource::<renzora::core::GridTexture>() {
-            return Self(shared.0.clone());
+            return Self(shared.color.clone());
         }
         let image = renzora::core::build_grid_image();
         let mut assets = world.resource_mut::<Assets<Image>>();
@@ -167,6 +167,10 @@ fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
         | VisualizationMode::VgLod
         | VisualizationMode::VgInstances
         | VisualizationMode::VgResidency => None,
+        // Drawn by the SSIL pass in place of the frame, the same way.
+        VisualizationMode::SsilLight
+        | VisualizationMode::SsilOcclusion
+        | VisualizationMode::SsilHistory => None,
     }
 }
 
@@ -266,9 +270,19 @@ pub fn update_render_toggles(
         || last_state.viz != Some(viz)
         || last_state.editing != Some(editing);
 
-    let new_materials = material_events
-        .read()
-        .any(|e| matches!(e, AssetEvent::Added { .. }));
+    // A saved state holds the material's texture handles, so it has to go when
+    // the material does. Kept, it is the only thing left holding a closed
+    // scene's textures, every one of them, for as long as the editor runs.
+    let mut new_materials = false;
+    for event in material_events.read() {
+        match event {
+            AssetEvent::Added { .. } => new_materials = true,
+            AssetEvent::Removed { id } => {
+                original_states.states.remove(id);
+            }
+            _ => {}
+        }
+    }
 
     // When the viz-swap path is active, StandardMaterial is handled by the debug
     // shader — don't mutate it here. Only the visualization modes swap now;
@@ -456,6 +470,23 @@ fn apply_swap_generic<M: Material>(
     }
 }
 
+/// Drop the cached debug material of each source material that has been
+/// removed.
+///
+/// The cache is keyed by the source material and its debug material holds
+/// that material's metallic/roughness texture, so an entry outliving its
+/// material keeps the texture of a scene that has since closed.
+pub fn forget_removed_materials<M: Material>(
+    mut cache: ResMut<DebugMaterialCache<M>>,
+    mut events: MessageReader<AssetEvent<M>>,
+) {
+    for event in events.read() {
+        if let AssetEvent::Removed { id } = event {
+            cache.map.remove(id);
+        }
+    }
+}
+
 /// Viz-swap system for `StandardMaterial` — textures-off and lighting are both
 /// handled by mutating the material in place in `update_render_toggles` (strip
 /// texture maps / set `unlit`), so this swap only fires for visualization modes.
@@ -553,69 +584,273 @@ fn nearest_lights(camera: Option<Vec3>, lights: impl Iterator<Item = (Entity, Ve
     scored.into_iter().take(n).map(|(e, _)| e).collect()
 }
 
-/// Apply the viewport shadow toggle, and, when shadows are on, enforce a
-/// budget so only the nearest [`MAX_SHADOW_CASTING_POINT_LIGHTS`] point lights
-/// and [`MAX_SHADOW_CASTING_SPOT_LIGHTS`] spot lights cast shadows. Runs every
-/// frame (cheap for a few dozen lights) so the budget follows the camera; the
-/// per-light guard avoids re-marking lights whose shadow state didn't actually
-/// change, which would thrash shadow-map alloc.
+/// The lights allowed to cast shadows this frame: the shadow toggle and the
+/// budgets below, decided in the main world and applied in the render world by
+/// [`apply_shadow_budget`].
+///
+/// The budget used to be written into each light's own `shadow_maps_enabled`,
+/// every frame. That made the field mean "the budget picked this one" rather
+/// than what the user set: every light was a candidate whatever it said, so a
+/// street of 28 shadowless lamps still got 4 cube shadow maps plus 8 spot maps
+/// (32 renders of the whole Bistro a frame, 7 FPS), and switching Shadows off
+/// on a light in the Inspector was undone the next frame. A scene saved then
+/// also stored the budget's choice in place of the author's. Now a light's own
+/// setting is never touched; only the lights that ask for shadows compete for
+/// the budget, and the losers are switched off in their extracted copies.
+#[derive(Resource, Clone, Default, bevy::render::extract_resource::ExtractResource)]
+#[extract_app(bevy::render::RenderApp)]
+pub struct ShadowBudget {
+    /// Whether any budget applies. `false` until the first decision, so a
+    /// frame before it suppresses nothing.
+    active: bool,
+    allowed: HashSet<Entity>,
+}
+
+impl ShadowBudget {
+    pub(crate) fn allows(&self, entity: Entity) -> bool {
+        !self.active || self.allowed.contains(&entity)
+    }
+}
+
+/// Decide which lights cast shadows: none while the viewport's shadow toggle is
+/// off, otherwise only lights whose own Shadows is on, and of those the
+/// brightest [`MAX_SHADOW_CASTING_DIRECTIONAL_LIGHTS`] directional lights and
+/// the nearest [`MAX_SHADOW_CASTING_POINT_LIGHTS`] point and
+/// [`MAX_SHADOW_CASTING_SPOT_LIGHTS`] spot lights to the camera. Runs every
+/// frame so the budget follows the camera.
+///
+/// **No shadows while nothing renders.** When 3D cameras exist but none is
+/// active this frame (the viewport idling under render-on-change, or no
+/// viewport on screen), no light is allowed shadows. Point and spot light
+/// shadow maps belong to no camera, and Bevy renders them every frame whether
+/// or not a camera will read them: the apartment's five shadowed lights cost
+/// about 4 ms of GPU and 110 command buffers a frame with nothing on screen
+/// changing. The frame a camera wakes, this runs after the activation systems,
+/// lets the lights back in and marks them changed, so they are re-extracted
+/// and their shadow maps rendered before that frame's cameras read them.
+///
+/// A light let back into the budget is marked changed, and that is the only
+/// write to a light it makes; the value stays the same. Bevy re-extracts a
+/// light only when one of its components changes, so the extracted copy
+/// [`apply_shadow_budget`] switched off would otherwise stay off: walk
+/// towards a lamp with Shadows on and it never got them back until something
+/// else about it was edited. Marking it re-extracts it with its own setting.
+///
+/// The viewport overlay cameras do not count as rendering: they draw gizmos
+/// and read no shadow map. Counting them let every gizmo hover bring the
+/// shadows back and mark the lights changed, which is a scene change, so the
+/// scene rendered too.
 pub fn update_shadow_settings(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
+    cameras_3d: Query<
+        &Camera,
+        (With<Camera3d>, Without<renzora::core::ViewportOverlayCamera>),
+    >,
     settings: Res<ViewportSettings>,
     mut directional_lights: Query<(Entity, &mut DirectionalLight)>,
     mut point_lights: Query<(Entity, &GlobalTransform, &mut PointLight)>,
     mut spot_lights: Query<(Entity, &GlobalTransform, &mut SpotLight)>,
+    mut budget: ResMut<ShadowBudget>,
 ) {
-    let shadows_on = settings.render_toggles.shadows;
-    let cam = camera.iter().next().map(|t| t.translation());
-
-    let spot_casters = if shadows_on {
-        nearest_lights(cam, spot_lights.iter().map(|(e, xf, _)| (e, xf.translation())), MAX_SHADOW_CASTING_SPOT_LIGHTS)
-    } else {
-        HashSet::new()
-    };
-    for (entity, _, mut light) in spot_lights.iter_mut() {
-        let want = spot_casters.contains(&entity);
-        if light.shadow_maps_enabled != want {
-            light.shadow_maps_enabled = want;
-        }
-    }
-
-    // Directional lights: only the brightest casts shadows (avoids paying for
-    // a redundant second sun's full cascade set).
-    let dir_casters: HashSet<Entity> = if shadows_on {
-        let mut scored: Vec<(Entity, f32)> = directional_lights
+    // With no 3D camera at all there is nothing to save, so the budget stands.
+    let nothing_renders = !cameras_3d.is_empty() && !cameras_3d.iter().any(|c| c.is_active);
+    let mut allowed = HashSet::new();
+    if settings.render_toggles.shadows && !nothing_renders {
+        let cam = camera.iter().next().map(|t| t.translation());
+        allowed.extend(nearest_lights(
+            cam,
+            spot_lights
+                .iter()
+                .filter(|(_, _, l)| l.shadow_maps_enabled)
+                .map(|(e, xf, _)| (e, xf.translation())),
+            MAX_SHADOW_CASTING_SPOT_LIGHTS,
+        ));
+        allowed.extend(nearest_lights(
+            cam,
+            point_lights
+                .iter()
+                .filter(|(_, _, l)| l.shadow_maps_enabled)
+                .map(|(e, xf, _)| (e, xf.translation())),
+            MAX_SHADOW_CASTING_POINT_LIGHTS,
+        ));
+        // Directional lights: only the brightest casts shadows (avoids paying
+        // for a redundant second sun's full cascade set).
+        let mut suns: Vec<(Entity, f32)> = directional_lights
             .iter()
+            .filter(|(_, l)| l.shadow_maps_enabled)
             .map(|(e, l)| (e, l.illuminance))
             .collect();
-        // Brightest first.
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored
-            .into_iter()
-            .take(MAX_SHADOW_CASTING_DIRECTIONAL_LIGHTS)
-            .map(|(e, _)| e)
-            .collect()
-    } else {
-        HashSet::new()
-    };
-    for (entity, mut light) in directional_lights.iter_mut() {
-        let want = dir_casters.contains(&entity);
-        if light.shadow_maps_enabled != want {
-            light.shadow_maps_enabled = want;
+        suns.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        allowed.extend(suns.into_iter().take(MAX_SHADOW_CASTING_DIRECTIONAL_LIGHTS).map(|(e, _)| e));
+    }
+    if budget.active && budget.allowed == allowed {
+        return;
+    }
+    // Before the first decision nothing was switched off, so nothing needs
+    // handing back.
+    if budget.active {
+        for &entity in allowed.difference(&budget.allowed) {
+            if let Ok((_, mut light)) = directional_lights.get_mut(entity) {
+                light.set_changed();
+            } else if let Ok((_, _, mut light)) = point_lights.get_mut(entity) {
+                light.set_changed();
+            } else if let Ok((_, _, mut light)) = spot_lights.get_mut(entity) {
+                light.set_changed();
+            }
         }
     }
+    budget.active = true;
+    budget.allowed = allowed;
+}
 
-    // Point lights: pick the nearest N to the camera as shadow casters.
-    let casters: HashSet<Entity> = if shadows_on {
-        nearest_lights(cam, point_lights.iter().map(|(e, xf, _)| (e, xf.translation())), MAX_SHADOW_CASTING_POINT_LIGHTS)
-    } else {
-        HashSet::new()
-    };
-
-    for (entity, _, mut light) in point_lights.iter_mut() {
-        let want = casters.contains(&entity);
-        if light.shadow_maps_enabled != want {
-            light.shadow_maps_enabled = want;
+/// Switch shadows off on the extracted copy of every light the budget left
+/// out. Before `prepare_lights`, which is what turns the flag into shadow
+/// views. Spot lights extract as `ExtractedPointLight`. The copy is kept
+/// between frames, so this only ever switches off; a light let back in is
+/// re-extracted by [`update_shadow_settings`] instead.
+pub fn apply_shadow_budget(
+    budget: Option<Res<ShadowBudget>>,
+    mut directional: Query<(&bevy::render::sync_world::MainEntity, &mut bevy::pbr::ExtractedDirectionalLight)>,
+    mut point: Query<(&bevy::render::sync_world::MainEntity, &mut bevy::pbr::ExtractedPointLight)>,
+) {
+    let Some(budget) = budget else { return };
+    for (main, mut light) in &mut directional {
+        if light.shadow_maps_enabled && !budget.allows(main.id()) {
+            light.shadow_maps_enabled = false;
         }
+    }
+    for (main, mut light) in &mut point {
+        if light.shadow_maps_enabled && !budget.allows(main.id()) {
+            light.shadow_maps_enabled = false;
+        }
+    }
+}
+
+#[cfg(test)]
+mod shadow_budget_tests {
+    use super::*;
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.init_resource::<ViewportSettings>()
+            .init_resource::<ShadowBudget>()
+            .add_systems(Update, update_shadow_settings);
+        app
+    }
+
+    fn point(app: &mut App, at: Vec3, shadows: bool) -> Entity {
+        app.world_mut()
+            .spawn((
+                PointLight {
+                    shadow_maps_enabled: shadows,
+                    ..default()
+                },
+                GlobalTransform::from_translation(at),
+            ))
+            .id()
+    }
+
+    /// Only lights that ask for shadows get any, the budget caps them, and no
+    /// light's own setting is ever rewritten: a street of shadowless lamps
+    /// used to be handed shadow maps, and a light switched off in the
+    /// Inspector was switched back on the next frame.
+    #[test]
+    fn only_lights_asking_for_shadows_compete_and_none_are_rewritten() {
+        let mut app = app();
+        let off = point(&mut app, Vec3::ZERO, false);
+        let near: Vec<Entity> = (0..MAX_SHADOW_CASTING_POINT_LIGHTS)
+            .map(|i| point(&mut app, Vec3::X * i as f32, true))
+            .collect();
+        let far = point(&mut app, Vec3::X * 1000.0, true);
+        app.update();
+
+        let budget = app.world().resource::<ShadowBudget>();
+        assert!(!budget.allows(off), "a light with Shadows off is never given them");
+        assert!(near.iter().all(|e| budget.allows(*e)));
+        assert!(!budget.allows(far), "past the budget, the furthest goes without");
+
+        let lights = app.world();
+        assert!(!lights.get::<PointLight>(off).unwrap().shadow_maps_enabled);
+        assert!(lights.get::<PointLight>(far).unwrap().shadow_maps_enabled, "the light's own setting stays");
+    }
+
+    /// A light let back into the budget is marked changed, so Bevy re-extracts
+    /// it with its own Shadows setting. Its extracted copy keeps whatever
+    /// `apply_shadow_budget` last wrote, and Bevy re-extracts only on a change,
+    /// so without this a lamp switched off by the budget stayed shadowless after
+    /// the camera came back to it.
+    #[test]
+    fn a_light_let_back_in_is_re_extracted() {
+        #[derive(Resource, Default)]
+        struct Touched(Vec<Entity>);
+        let mut app = app();
+        app.init_resource::<Touched>().add_systems(
+            Update,
+            (|lights: Query<Entity, Changed<PointLight>>, mut touched: ResMut<Touched>| {
+                touched.0 = lights.iter().collect();
+            })
+            .after(update_shadow_settings),
+        );
+        let near: Vec<Entity> = (0..MAX_SHADOW_CASTING_POINT_LIGHTS)
+            .map(|i| point(&mut app, Vec3::X * i as f32, true))
+            .collect();
+        let far = point(&mut app, Vec3::X * 1000.0, true);
+        app.update();
+        app.update();
+        assert!(!app.world().resource::<ShadowBudget>().allows(far));
+        assert!(app.world().resource::<Touched>().0.is_empty(), "a steady budget touches nothing");
+
+        app.world_mut().despawn(near[0]);
+        app.update();
+        assert!(app.world().resource::<ShadowBudget>().allows(far));
+        assert_eq!(app.world().resource::<Touched>().0, vec![far]);
+        assert!(app.world().get::<PointLight>(far).unwrap().shadow_maps_enabled);
+    }
+
+    /// While every 3D camera is idle no light gets shadows, since nothing would
+    /// read them; the frame one wakes they are back, and the lights are marked
+    /// changed so Bevy re-extracts them with their own setting.
+    #[test]
+    fn idle_cameras_render_no_shadows_and_waking_hands_them_back() {
+        #[derive(Resource, Default)]
+        struct Touched(Vec<Entity>);
+        let mut app = app();
+        app.init_resource::<Touched>().add_systems(
+            Update,
+            (|lights: Query<Entity, Changed<PointLight>>, mut touched: ResMut<Touched>| {
+                touched.0 = lights.iter().collect();
+            })
+            .after(update_shadow_settings),
+        );
+        let lit = point(&mut app, Vec3::ZERO, true);
+        let camera = app
+            .world_mut()
+            .spawn((Camera3d::default(), Camera { is_active: true, ..default() }))
+            .id();
+        app.update();
+        assert!(app.world().resource::<ShadowBudget>().allows(lit));
+
+        app.world_mut().get_mut::<Camera>(camera).unwrap().is_active = false;
+        app.update();
+        assert!(!app.world().resource::<ShadowBudget>().allows(lit), "an idle viewport renders no shadow maps");
+        assert!(app.world().resource::<Touched>().0.is_empty(), "going idle writes to no light");
+        assert!(app.world().get::<PointLight>(lit).unwrap().shadow_maps_enabled, "the light's own setting stays");
+
+        app.world_mut().get_mut::<Camera>(camera).unwrap().is_active = true;
+        app.update();
+        assert!(app.world().resource::<ShadowBudget>().allows(lit));
+        assert_eq!(app.world().resource::<Touched>().0, vec![lit], "re-extracted on waking");
+    }
+
+    /// The viewport's shadow toggle switches every light off, and nothing
+    /// stored on a light changes.
+    #[test]
+    fn the_shadow_toggle_allows_none() {
+        let mut app = app();
+        let lit = point(&mut app, Vec3::ZERO, true);
+        app.world_mut().resource_mut::<ViewportSettings>().render_toggles.shadows = false;
+        app.update();
+        assert!(!app.world().resource::<ShadowBudget>().allows(lit));
+        assert!(app.world().get::<PointLight>(lit).unwrap().shadow_maps_enabled);
     }
 }

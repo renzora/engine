@@ -112,13 +112,24 @@ fn main() -> ExitCode {
 
     println!("checking {} plugins against {triple}\n", dirs.len());
 
-    let build_root = std::env::temp_dir().join(format!("renzora-plugin-check-{}", std::process::id()));
+    // `RENZORA_PLUGIN_CHECK_DIR` keeps the builds in a folder of the caller's
+    // choosing between runs, so a second run is a warm rebuild the way an
+    // installed plugin's is, and can be timed. Unset, every run starts cold in
+    // a folder of its own and removes it after.
+    let kept = std::env::var_os("RENZORA_PLUGIN_CHECK_DIR").map(PathBuf::from);
+    let build_root = kept
+        .clone()
+        .unwrap_or_else(|| std::env::temp_dir().join(format!("renzora-plugin-check-{}", std::process::id())));
     let _ = std::fs::create_dir_all(&build_root);
 
     let mut results = Vec::new();
     for dir in &dirs {
         let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
-        let out = build_root.join(format!("{}.{ext}", name.replace('-', "_")));
+        // A folder per plugin, as installed: a build keeps its dependency and
+        // incremental caches beside its image, and two plugins sharing one
+        // folder would share, and fight over, those.
+        let out = build_root.join(&name).join(format!("{}.{ext}", name.replace('-', "_")));
+        let _ = std::fs::create_dir_all(out.parent().unwrap_or(&build_root));
         let started = Instant::now();
         let outcome = match sdk.compile(dir, &out) {
             Ok(_) if !exports_ctor(&out) => (false, format!("built but exports no {}", String::from_utf8_lossy(CTOR))),
@@ -143,7 +154,9 @@ fn main() -> ExitCode {
         );
         results.push(r);
     }
-    let _ = std::fs::remove_dir_all(&build_root);
+    if kept.is_none() {
+        let _ = std::fs::remove_dir_all(&build_root);
+    }
 
     let failed: Vec<&Outcome> = results.iter().filter(|r| !r.ok).collect();
     println!(

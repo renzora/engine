@@ -255,7 +255,9 @@ fn grid_image(size: u32, cell: u32, base: [u8; 3], line: [u8; 3], major: [u8; 3]
 
 fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
     let size = Extent3d { width: 640, height: 480, depth_or_array_layers: 1 };
-    let mut target = Image { data: Some(vec![0u8; (size.width * size.height * 4) as usize]), ..default() };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
+    let mut target = Image { data: None, ..default() };
     target.texture_descriptor.size = size;
     target.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
     target.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;

@@ -195,7 +195,7 @@ pub fn build_from(
     };
 
     let out = dist_root.join("sdk");
-    let deps_mtime = deps_dir_mtime(&from.profile_dir(repo));
+    let outputs = outputs_key(&from.profile_dir(repo), plat);
 
     // Skip BEFORE the cargo run below, not just before staging. That invocation
     // exists only to re-read a finished build, and on an already-built tree it
@@ -204,8 +204,8 @@ pub fn build_from(
     //
     // Two conditions, because one of them alone is unsound:
     //
-    // * the `deps/` directory's mtime, which moves when an artifact is added or
-    //   removed. A crate added to the workspace leaves every *existing* artifact
+    // * the final linked outputs (see [`outputs_key`]), which are relinked when a
+    //   crate is added. A crate added to the workspace leaves every *existing* artifact
     //   byte-for-byte identical, so per-file stats cannot see it — and an SDK
     //   missing a crate fails later as `can't find crate`, pointing at the
     //   plugin rather than at here.
@@ -215,7 +215,7 @@ pub fn build_from(
     // Anything unreadable or absent falls through to the real enumeration.
     if out.join("manifest.json").is_file() {
         if let Some(cached) = cache_read(&out) {
-            if cached.deps_mtime == deps_mtime && input_stamp(&cached.artifacts) == cached.stamp {
+            if cached.outputs == outputs && input_stamp(&cached.artifacts) == cached.stamp {
                 println!("[xtask] sdk: unchanged, staging skipped");
                 return Ok(out);
             }
@@ -228,7 +228,8 @@ pub fn build_from(
     // re-run resolves in a second or two and reprints the artifact list, which is
     // the only thing wanted here.
     let mut externs = Externs::default();
-    let artifacts = artifact_files(repo, from, &mut externs).map_err(|e| {
+    let mut link_search = BTreeSet::new();
+    let artifacts = artifact_files(repo, from, &mut externs, &mut link_search).map_err(|e| {
         eprintln!("[xtask] sdk build failed: {e}");
         ExitCode::FAILURE
     })?;
@@ -250,8 +251,6 @@ pub fn build_from(
         }
     }
 
-    let profile_dir = from.profile_dir(repo);
-
     // Staging wipes `deps/`, `host-deps/` and `native/` and re-links ~1000 files
     // — every run, whether or not the compiler produced anything new. The wipe
     // is load-bearing (a crate dropped from the workspace must not linger as a
@@ -266,36 +265,36 @@ pub fn build_from(
     if out.join("manifest.json").is_file() && cache_read(&out).is_some_and(|c| c.stamp == stamp) {
         println!("[xtask] sdk: unchanged, staging skipped");
     } else {
-        stage(&profile_dir, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
+        stage(&link_search, plat, &out, &artifacts, &triple, &externs).map_err(|e| {
             eprintln!("[xtask] sdk staging failed: {e}");
             ExitCode::FAILURE
         })?;
     }
     // Rewritten on every run that got this far, NOT only when staging happened.
     // Reaching here means the enumeration agreed with what is on disk, so the
-    // `deps` key recorded now is the one the early return should compare against
+    // outputs key recorded now is the one the early return should compare against
     // next time. Writing it only after a stage left the key stale whenever the
     // stamp matched but the key did not — which disarmed the fast path
     // permanently, so every later run paid the cargo enumeration to conclude
     // nothing had changed.
     //
     // Still never written on a failed stage: that path returns above.
-    cache_write(&out, &deps_mtime, &stamp, &artifacts);
+    cache_write(&out, &outputs, &stamp, &artifacts);
     Ok(out)
 }
 
 /// What the last successful staging was cut from, so the next run can tell
 /// whether to do any of it again.
 struct StageCache {
-    /// mtime of the build's `deps/` directory, which changes when an artifact is
-    /// added or removed but not when one is rewritten in place.
-    deps_mtime: String,
+    /// [`outputs_key`]: the final linked outputs, which change when a crate is
+    /// added but not when an rlib is rewritten in place.
+    outputs: String,
     /// [`input_stamp`] over `artifacts`, which catches the rewrite case.
     stamp: String,
     artifacts: Vec<(PathBuf, bool)>,
 }
 
-/// The cache file: `deps` mtime, stamp, then one `0|1<TAB>path` line per
+/// The cache file: outputs key, stamp, then one `0|1<TAB>path` line per
 /// artifact.
 fn cache_path(out: &Path) -> PathBuf {
     out.join(".stage-cache")
@@ -304,18 +303,18 @@ fn cache_path(out: &Path) -> PathBuf {
 fn cache_read(out: &Path) -> Option<StageCache> {
     let text = std::fs::read_to_string(cache_path(out)).ok()?;
     let mut lines = text.lines();
-    let deps_mtime = lines.next()?.to_string();
+    let outputs = lines.next()?.to_string();
     let stamp = lines.next()?.to_string();
     let mut artifacts = Vec::new();
     for line in lines {
         let (flag, path) = line.split_once('\t')?;
         artifacts.push((PathBuf::from(path), flag == "1"));
     }
-    Some(StageCache { deps_mtime, stamp, artifacts })
+    Some(StageCache { outputs, stamp, artifacts })
 }
 
-fn cache_write(out: &Path, deps_mtime: &str, stamp: &str, artifacts: &[(PathBuf, bool)]) {
-    let mut text = format!("{deps_mtime}\n{stamp}\n");
+fn cache_write(out: &Path, outputs: &str, stamp: &str, artifacts: &[(PathBuf, bool)]) {
+    let mut text = format!("{outputs}\n{stamp}\n");
     for (path, proc_macro) in artifacts {
         text.push_str(if *proc_macro { "1\t" } else { "0\t" });
         text.push_str(&path.to_string_lossy());
@@ -324,19 +323,39 @@ fn cache_write(out: &Path, deps_mtime: &str, stamp: &str, artifacts: &[(PathBuf,
     let _ = std::fs::write(cache_path(out), text);
 }
 
-/// The `deps/` directory's own mtime, as a string (`""` when unreadable).
+/// mtime and length of the build's final linked outputs, as one string.
 ///
-/// Used as the cheap half of the "did cargo produce anything new" test: a
-/// directory's mtime moves when an entry is added or removed, which is exactly
-/// the case per-file stats cannot see — a crate added to the workspace leaves
-/// every existing artifact untouched.
-fn deps_dir_mtime(profile_dir: &Path) -> String {
-    std::fs::metadata(profile_dir.join("deps"))
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs().to_string())
-        .unwrap_or_default()
+/// The cheap half of the "did cargo produce anything new" test. It has to see a
+/// crate added to the workspace, which leaves every existing rlib untouched so
+/// per-artifact stats cannot. Any crate a plugin can reach is linked into the
+/// executable, the editor image or one of the shared images, so adding one
+/// relinks at least one of these.
+///
+/// This used to be the mtime of the `deps/` directory. Rust 1.100's cargo no
+/// longer writes `deps/` (each crate's output lives in
+/// `build/<crate>/<hash>/out/`), so that key never moved again, and neither did
+/// the cached artifact list it guarded: the SDK stayed cut from the old
+/// toolchain while the engine beside it was rebuilt.
+fn outputs_key(profile_dir: &Path, plat: &Platform) -> String {
+    let names = [
+        format!("renzora{}", plat.exe_suffix),
+        format!("{}renzora_editor.{}", plat.lib_prefix, plat.ext),
+        format!("{}bevy_dylib.{}", plat.lib_prefix, plat.ext),
+        format!("{}renzora_dylib.{}", plat.lib_prefix, plat.ext),
+        format!("{}renzora_ember_dylib.{}", plat.lib_prefix, plat.ext),
+    ];
+    let mut key = String::new();
+    for name in names {
+        let meta = std::fs::metadata(profile_dir.join(&name)).ok();
+        let len = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let secs = meta
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        key.push_str(&format!("{name}:{len}:{secs};"));
+    }
+    key
 }
 
 /// Run the build and collect the `.rlib` / proc-macro / import-library paths it
@@ -362,6 +381,7 @@ fn artifact_files(
     repo: &Path,
     from: &From,
     externs: &mut Externs,
+    link_search: &mut BTreeSet<String>,
 ) -> Result<Vec<(PathBuf, bool)>, String> {
     // Must be the profile the engine was actually built with, or this resolves a
     // different set of artifacts and the SDK describes a build nobody has.
@@ -392,6 +412,10 @@ fn artifact_files(
         "renzora-android",
         "--exclude",
         "renzora-ios",
+        // Built in an invocation of its own (`crate::build_companion`), and no
+        // part of the SDK: it links neither Bevy nor the contract crate.
+        "--exclude",
+        crate::COMPANION_PACKAGE,
         "--message-format=json-render-diagnostics",
     ]);
     // Must match the build being staged EXACTLY. A different `--target-dir` or a
@@ -418,6 +442,14 @@ fn artifact_files(
     let text = String::from_utf8_lossy(&out.stdout);
     let mut files = BTreeSet::new();
     for line in text.lines() {
+        // Cargo reports every build script's `rustc-link-search` here, fresh or
+        // rerun, so the native library directories come from the same run as
+        // the artifacts. See [`stage_native`] for why they are not read from
+        // `target/` instead.
+        if line.contains("\"reason\":\"build-script-executed\"") {
+            link_search.extend(json_string_array(line, "linked_paths"));
+            continue;
+        }
         if !line.contains("\"reason\":\"compiler-artifact\"") {
             continue;
         }
@@ -609,7 +641,7 @@ pub(crate) fn json_string_array(text: &str, field: &str) -> Vec<String> {
 /// Copy the collected artifacts, plus the native import-library directories, and
 /// write the manifest that ties them to the engine build they belong to.
 fn stage(
-    profile_dir: &Path,
+    link_search: &BTreeSet<String>,
     plat: &Platform,
     out: &Path,
     artifacts: &[(PathBuf, bool)],
@@ -651,7 +683,7 @@ fn stage(
         }
     }
 
-    let mut native_dirs = stage_native(profile_dir, &native)?;
+    let mut native_dirs = stage_native(link_search, &native)?;
     native_dirs.extend(stage_msvc(&native, triple)?);
 
     let build_id = build_id(out, externs);
@@ -679,35 +711,25 @@ fn stage(
 /// machine that built the engine. Each is flattened to a numbered subdirectory
 /// and recorded in the manifest, so the plugin build can regenerate the
 /// `-L native=` flags from paths that exist on the machine doing the compiling.
-fn stage_native(profile_dir: &Path, native: &Path) -> std::io::Result<Vec<String>> {
-    let build = profile_dir.join("build");
+///
+/// `link_search` is cargo's own `linked_paths` from the build it just reported
+/// on. This used to scan `target/<profile>/build/*/output`, and Rust 1.100's cargo
+/// moved that file to `build/<pkg>/<hash>/run/stdout`. The scan then found
+/// nothing on a clean CI checkout, the shipped SDK had no `windows.0.5x.lib`,
+/// and every Rust script failed to link on a user's machine. A developer's
+/// machine kept working off stale old-layout directories, which hid it.
+fn stage_native(link_search: &BTreeSet<String>, native: &Path) -> std::io::Result<Vec<String>> {
     let mut sources = BTreeSet::new();
-    if let Ok(entries) = std::fs::read_dir(&build) {
-        for e in entries.flatten() {
-            let output = e.path().join("output");
-            let Ok(text) = std::fs::read_to_string(&output) else {
-                continue;
-            };
-            for line in text.lines() {
-                // Both spellings are live: `cargo:` is the classic form and
-                // `cargo::` the newer namespaced one, and a workspace this size
-                // has build scripts of both vintages.
-                let Some(rest) = line
-                    .strip_prefix("cargo::rustc-link-search=")
-                    .or_else(|| line.strip_prefix("cargo:rustc-link-search="))
-                else {
-                    continue;
-                };
-                // The `KIND=PATH` form is optional. Only `native` (and the bare
-                // default, which means native) name import-library directories.
-                let path = match rest.split_once('=') {
-                    Some(("native", p)) => p,
-                    Some((_, _)) => continue,
-                    None => rest,
-                };
-                sources.insert(path.to_string());
-            }
-        }
+    for entry in link_search {
+        // The `KIND=PATH` form is optional. Only `native` (and the bare
+        // default, which means native) name import-library directories. The
+        // bare form is a path, which on Windows has a `C:` but never a `=`.
+        let path = match entry.split_once('=') {
+            Some(("native", p)) => p,
+            Some((_, _)) => continue,
+            None => entry.as_str(),
+        };
+        sources.insert(path.to_string());
     }
 
     let mut staged = Vec::new();

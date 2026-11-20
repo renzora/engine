@@ -243,38 +243,127 @@ pub fn mark_emitting_entities(
 /// Separate from the loader because registration and readiness are different
 /// moments: the host records the descriptor during plugin init, when there is no
 /// good place to open a sound card and nothing to report a failure to.
+///
+/// A device that will not open is retried every [`REOPEN_AFTER`] seconds rather
+/// than given up on. It is usually transient: Windows reports the default device
+/// as "no longer available" for a moment while it switches to another one (a
+/// headset connecting, a monitor waking), and dropping the backend on that made
+/// the whole session silent until a restart.
+///
+/// The device is opened on a thread of its own, and adopted on the first frame
+/// after it answers. Opening one took about 11 ms on a machine whose default
+/// output was a disconnected headset: done here, every retry was an 11 ms
+/// hitch, every two seconds, for as long as the editor ran.
 pub fn adopt_backend(
     registered: Option<ResMut<AudioBackend>>,
     mut link: ResMut<AudioLink>,
     mut mixer: ResMut<MixerState>,
+    time: Res<Time<Real>>,
+    mut retry: Local<DeviceRetry>,
 ) {
     if link.is_active() {
         return;
     }
-    // Moved out of the resource rather than borrowed from it. Nothing hands it
-    // back: a linked-in mixer is part of the binary and cannot be unloaded,
-    // which is the one case the plugin version had to keep watching for.
     let Some(mut registered) = registered else { return };
-    let Some(backend) = registered.0.take() else { return };
+    let now = time.elapsed_secs_f64();
 
-    link.adopt(backend);
-    let name = link.name().unwrap_or_else(|| "?".to_string());
-    match link.init() {
-        Ok(Some(info)) => {
-            info!(
-                "[audio] backend `{name}` on `{}` at {} Hz",
-                info.device, info.sample_rate
-            );
-            // Touch the mixer so the board is pushed to the fresh backend on the
-            // same frame, rather than whenever someone next moves a fader.
-            mixer.set_changed();
+    // An attempt out on its thread: take its answer, if there is one yet.
+    if let Some(opening) = retry.opening.as_ref() {
+        let (backend, result) = match opening.try_recv() {
+            Ok(answer) => answer,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            // The thread is gone without answering, and the backend with it.
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                retry.opening = None;
+                error!("[audio] opening the output device failed without an answer; sound is off");
+                return;
+            }
+        };
+        retry.opening = None;
+        let name = backend.lock().map(|b| b.name().to_string()).unwrap_or_else(|_| "?".to_string());
+        match result {
+            Ok(info) => {
+                if retry.failures > 0 {
+                    info!("[audio] the output device opened after {} retries", retry.failures);
+                }
+                info!("[audio] backend `{name}` on `{}` at {} Hz", info.device, info.sample_rate);
+                link.adopt_opened(backend, info);
+                *retry = DeviceRetry::default();
+                // Touch the mixer so the board is pushed to the fresh backend
+                // on the same frame, rather than whenever someone next moves a
+                // fader.
+                mixer.set_changed();
+            }
+            Err(Opening::Panicked(why)) => {
+                // As `AudioLink` treats a backend that panics: not tried again.
+                error!("[audio] backend `{name}` panicked opening the device and has been disabled: {why}");
+            }
+            Err(Opening::Failed(e)) => {
+                // Said once. A device that stays away (none plugged in at all)
+                // would otherwise put a line in the Console every two seconds.
+                if retry.failures == 0 {
+                    warn!("[audio] {e}. Sound is off until an output device opens; retrying.");
+                } else {
+                    debug!("[audio] retry {}: {e}", retry.failures);
+                }
+                retry.failures += 1;
+                retry.next_attempt = now + REOPEN_AFTER;
+                // Back where it came from, for the next attempt. A linked-in
+                // mixer is part of the binary and cannot be unloaded, so
+                // nothing else ever hands it back.
+                registered.0 = Some(backend);
+            }
         }
-        Ok(None) => warn!("[audio] backend `{name}` did not answer init"),
+        return;
+    }
+
+    if registered.0.is_none() || now < retry.next_attempt {
+        return;
+    }
+    let Some(mut backend) = registered.0.take() else { return };
+    let (tx, rx) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new().name("audio-open-device".into()).spawn(move || {
+        let result = match renzora::core::recoverable::catch(|| {
+            backend.get_mut().unwrap_or_else(|p| p.into_inner()).init()
+        }) {
+            Ok(Ok(info)) => Ok(info),
+            Ok(Err(e)) => Err(Opening::Failed(e)),
+            Err(caught) => Err(Opening::Panicked(caught.to_string())),
+        };
+        let _ = tx.send((backend, result));
+    });
+    match spawned {
+        Ok(_) => retry.opening = Some(rx),
         Err(e) => {
-            error!("[audio] {e}");
-            link.release();
+            // The backend went with the closure that could not run, so there
+            // is nothing to try again with: the machine is out of threads.
+            error!("[audio] could not start a thread to open the output device ({e}); sound is off");
         }
     }
+}
+
+/// Seconds between attempts to open an output device that would not open.
+const REOPEN_AFTER: f64 = 2.0;
+
+/// Why opening the device did not give a working backend.
+enum Opening {
+    /// `init` said no: the device is missing or busy. Tried again later.
+    Failed(String),
+    /// `init` panicked. Not tried again.
+    Panicked(String),
+}
+
+/// What [`adopt_backend`]'s thread hands back: the backend, and how opening
+/// its device went.
+type Opened = (std::sync::Mutex<Box<dyn renzora::audio_backend::Backend>>, Result<renzora::audio_backend::BackendInfo, Opening>);
+
+/// [`adopt_backend`]'s memory of failed attempts to open the device, and the
+/// attempt out on its thread.
+#[derive(Default)]
+pub struct DeviceRetry {
+    next_attempt: f64,
+    failures: u32,
+    opening: Option<std::sync::mpsc::Receiver<Opened>>,
 }
 
 /// Push the mixer's board to the backend when it actually differs.
@@ -566,6 +655,97 @@ mod tests {
         assert_eq!(voices.forget(e), [VoiceId(1), VoiceId(2)]);
         assert!(voices.is_empty());
         assert_eq!(voices.len(), 0);
+    }
+
+    /// A device that will not open for its first `fails` attempts.
+    struct FlakyDevice {
+        fails: u32,
+    }
+
+    impl renzora::audio_backend::Backend for FlakyDevice {
+        fn name(&self) -> &str {
+            "flaky"
+        }
+        fn init(&mut self) -> Result<renzora::audio_backend::BackendInfo, String> {
+            if self.fails > 0 {
+                self.fails -= 1;
+                return Err("could not open the output stream: device unplugged".into());
+            }
+            Ok(renzora::audio_backend::BackendInfo {
+                sample_rate: 48_000,
+                caps: renzora::audio_backend::Caps::SPATIAL,
+                device: "flaky".into(),
+            })
+        }
+        fn load_clip(
+            &mut self,
+            _: u64,
+            _: &str,
+            _: &[u8],
+        ) -> Result<renzora::audio_backend::ClipInfo, String> {
+            Err("unused".into())
+        }
+        fn play(&mut self, _: &renzora::audio_backend::PlayRequest) -> Result<(), String> {
+            Ok(())
+        }
+        fn update(
+            &mut self,
+            _: &renzora::audio_backend::UpdateRequest,
+        ) -> renzora::audio_backend::UpdateReply {
+            Default::default()
+        }
+    }
+
+    /// The device being away at startup used to drop the backend for good, so
+    /// the session had no sound until a restart. It is kept and tried again,
+    /// on a timer rather than every frame, and each try runs on a thread of its
+    /// own, picked up by a later frame.
+    #[test]
+    fn a_device_that_would_not_open_is_retried_until_it_does() {
+        let mut world = World::new();
+        world.insert_resource(AudioBackend(Some(std::sync::Mutex::new(Box::new(
+            FlakyDevice { fails: 1 },
+        )))));
+        world.init_resource::<AudioLink>();
+        world.init_resource::<MixerState>();
+        let start = std::time::Instant::now();
+        world.insert_resource(Time::<Real>::new(start));
+        let system = world.register_system(adopt_backend);
+        let at = |world: &mut World, secs: f64| {
+            world
+                .resource_mut::<Time<Real>>()
+                .update_with_instant(start + std::time::Duration::from_secs_f64(secs));
+        };
+
+        // Frames run until `done`, as they would while a thread opens the
+        // device; the system never waits for it.
+        let frames_until = |world: &mut World, done: &dyn Fn(&World) -> bool| {
+            for _ in 0..400 {
+                world.run_system(system).unwrap();
+                if done(world) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("the device was never answered for");
+        };
+        let backend_home = |world: &World| world.resource::<AudioBackend>().0.is_some();
+
+        at(&mut world, 0.1);
+        world.run_system(system).unwrap();
+        assert!(!backend_home(&world), "taken out to be opened on a thread");
+        frames_until(&mut world, &backend_home);
+        assert!(!world.resource::<AudioLink>().is_active(), "the first open fails");
+
+        // Too soon: not tried again yet, so the backend stays where it is.
+        at(&mut world, 1.0);
+        world.run_system(system).unwrap();
+        assert!(backend_home(&world));
+        assert!(!world.resource::<AudioLink>().is_active());
+
+        at(&mut world, 0.1 + REOPEN_AFTER);
+        frames_until(&mut world, &|world| world.resource::<AudioLink>().is_active());
+        assert!(!backend_home(&world), "adopted, not handed back");
     }
 
     #[test]

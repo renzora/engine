@@ -31,6 +31,33 @@ pub fn run_import_pipeline(
     model_dir: &Path,
     project_path: &Path,
 ) -> Option<std::path::PathBuf> {
+    let done = convert_in_place(source, dest, model_dir, None)?;
+    announce_materials(world, &done, project_path);
+    Some(done.written)
+}
+
+/// What [`convert_in_place`] wrote, and the materials still to announce.
+pub struct ConvertedInPlace {
+    /// The model file written: `dest` with the extension of what was stored.
+    pub written: std::path::PathBuf,
+    pub model_dir: std::path::PathBuf,
+    pub materials: Vec<crate::ExtractedPbrMaterial>,
+}
+
+/// The half of [`run_import_pipeline`] that needs no `World`: convert `source`,
+/// write the model beside `dest` and its textures under `model_dir/textures/`.
+/// Safe on any thread. The conversion runs in the companion when `remote` has
+/// one connected (the same `model_convert` job the import window uses), and
+/// here otherwise.
+///
+/// Falls back to a plain copy to `dest` when the conversion fails, as
+/// [`run_import_pipeline`] does; `None` only when nothing could be written.
+pub fn convert_in_place(
+    source: &Path,
+    dest: &Path,
+    model_dir: &Path,
+    remote: Option<&renzora::CompanionRemote>,
+) -> Option<ConvertedInPlace> {
     use crate::{convert_to_glb, ImportSettings};
 
     // Skip mesh optimization for the drop path — these reorder triangle
@@ -43,7 +70,29 @@ pub fn run_import_pipeline(
         ..Default::default()
     };
 
-    let result = match convert_to_glb(source, &settings) {
+    let in_companion = remote.and_then(|remote| {
+        let out_dir = std::env::temp_dir().join(format!(
+            "renzora-in-place-{}-{:016x}",
+            std::process::id(),
+            renzora::SceneEntityId::new_random().0
+        ));
+        let args = crate::remote::ConvertArgs { source: source.to_path_buf(), settings: settings.clone(), out_dir: out_dir.clone() };
+        let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let answer = remote.run(crate::remote::CONVERT_KIND, name, &args, &mut |_, _| {})?;
+        let result = answer
+            .and_then(|json| serde_json::from_str::<crate::remote::Converted>(&json).map_err(|e| e.to_string()))
+            .and_then(|converted| converted.into_result().map_err(|e| e.to_string()));
+        let _ = std::fs::remove_dir_all(&out_dir);
+        match result {
+            Ok(result) => Some(Ok(result)),
+            // Converted here instead, which reports its own failure.
+            Err(why) => {
+                warn!("[import] the companion could not convert {:?} ({why}); converting it here", source);
+                None
+            }
+        }
+    });
+    let result = match in_companion.unwrap_or_else(|| convert_to_glb(source, &settings)) {
         Ok(r) => r,
         Err(e) => {
             warn!(
@@ -56,7 +105,7 @@ pub fn run_import_pipeline(
                     return None;
                 }
             }
-            return Some(dest.to_path_buf());
+            return Some(ConvertedInPlace { written: dest.to_path_buf(), model_dir: model_dir.to_path_buf(), materials: Vec::new() });
         }
     };
 
@@ -81,7 +130,19 @@ pub fn run_import_pipeline(
         }
     }
 
-    if !result.extracted_materials.is_empty() {
+    Some(ConvertedInPlace { written: dest, model_dir: model_dir.to_path_buf(), materials: result.extracted_materials })
+}
+
+/// The half of [`run_import_pipeline`] that needs the `World`: one
+/// `PbrMaterialExtracted` per material [`convert_in_place`] found, so a
+/// `.material` file is written for each.
+pub fn announce_materials(
+    world: &mut renzora::bevy::ecs::world::World,
+    done: &ConvertedInPlace,
+    project_path: &Path,
+) {
+    let model_dir = done.model_dir.as_path();
+    if !done.materials.is_empty() {
         let mat_dir = model_dir.join("materials");
         // Texture URIs from the converter are relative to the model folder
         // (e.g. `textures/diffuse.png`). The material observer wants
@@ -103,7 +164,7 @@ pub fn run_import_pipeline(
             })
         };
 
-        for mat in &result.extracted_materials {
+        for mat in &done.materials {
             world.trigger(renzora::core::PbrMaterialExtracted {
                 name: mat.name.clone(),
                 output_dir: mat_dir.clone(),
@@ -135,7 +196,39 @@ pub fn run_import_pipeline(
             });
         }
     }
-    Some(dest)
+}
+
+/// [`import_tree_in_place`] without the `World`, for a worker thread: convert
+/// every model under `root` (in the companion when `remote` has one), write
+/// the files, and replace each source with its model file. Each model's
+/// materials are passed to `done` to be announced on the main thread with
+/// [`announce_materials`].
+///
+/// A marketplace model install used to run the whole of this inside a command
+/// on the main thread, and an FBX with a few 4K textures froze the editor for
+/// seconds while it converted.
+pub fn import_tree_in_background(
+    root: &Path,
+    remote: Option<&renzora::CompanionRemote>,
+    done: &mut dyn FnMut(ConvertedInPlace),
+) {
+    let mut sources: Vec<std::path::PathBuf> = Vec::new();
+    collect_models(root, &mut sources);
+    for source in sources {
+        let Some(model_dir) = source.parent().map(Path::to_path_buf) else {
+            continue;
+        };
+        let Some(converted) = convert_in_place(&source, &source, &model_dir, remote) else {
+            continue;
+        };
+        // As in `import_tree_in_place`: the model file replaces its source.
+        if converted.written != source {
+            if let Err(e) = std::fs::remove_file(&source) {
+                warn!("[import] could not remove {}: {e}", source.display());
+            }
+        }
+        done(converted);
+    }
 }
 
 /// Put every model file under `root` through the import pipeline, in place.

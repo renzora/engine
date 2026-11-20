@@ -16,7 +16,8 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, Outline, RelativeCursorPosition, UiGlobalTransform, UiTransform, Val2};
+use bevy::ui::{ComputedNode, Outline, UiGlobalTransform, UiTransform, Val2};
+use crate::UiCursor;
 use bevy::ui_render::prelude::MaterialNode;
 use bevy::window::SystemCursorIcon;
 
@@ -103,6 +104,11 @@ pub struct NodeGraphView {
     pub pending_connect: Option<(u64, String, bool, (u8, u8, u8), u32)>,
     /// Caller sets to re-frame all nodes; cleared by the widget once applied.
     pub fit_request: bool,
+    /// Caller sets to fit the graph's WIDTH (never zooming past 1) and show
+    /// its top, for a tall graph read top to bottom, which a whole-graph fit
+    /// shrinks past reading. Replaces the opening fit when set before it.
+    /// Cleared once applied.
+    pub fit_width_request: bool,
     /// Whether this view has ever been framed. A graph's node positions belong to
     /// the *document*, not the viewport, so opening at pan 0 / zoom 1 routinely
     /// lands on empty canvas with the graph off to one side — the widget
@@ -277,7 +283,7 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
                 ..default()
             },
             BackgroundColor(rgb(window_bg())),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             NodeGraphView::default(),
             Name::new("node-graph-view"),
         ))
@@ -288,7 +294,7 @@ pub fn node_graph_view(commands: &mut Commands, _fonts: &EmberFonts) -> NodeGrap
             UiTransform::default(),
             GraphView { zoom: 1.0, pan: Vec2::ZERO },
             GraphPan,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("node-graph-view-canvas"),
         ))
         .id();
@@ -365,7 +371,7 @@ pub fn graph_node_view(
             },
             NgvNode { id: node_id, canvas, viewport },
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             ZTier(NODE_Z),
             GlobalZIndex(NODE_Z),
             // Drag-to-move node → the 4-arrow Move cursor.
@@ -560,7 +566,7 @@ fn pin_row(
             // the node's edge). Marked as an editor so a press on it scrubs
             // rather than drags the node; the empty node body around it still
             // drags. See `NgvInputEditor`.
-            commands.entity(editor).insert((NgvInputEditor, RelativeCursorPosition::default()));
+            commands.entity(editor).insert((NgvInputEditor, UiCursor::default()));
             // Grows into spare width but keeps its own minimum: with a zero
             // basis the editor counted for nothing when the node sized itself
             // to its content, so the node came out label-wide and every field
@@ -942,7 +948,7 @@ fn ngv_drag(
     views: Query<&GraphView>,
     mut nodes: Query<(&NgvNode, &mut Node)>,
     mut graphs: Query<&mut NodeGraphView>,
-    editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
+    editors: Query<&UiCursor, With<NgvInputEditor>>,
 ) {
     if active.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
@@ -1065,7 +1071,7 @@ fn ngv_connect(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     ports: Query<(&UiInteraction, &NgvPort)>,
-    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
@@ -1203,7 +1209,7 @@ fn ngv_context(
     node_blockers: Query<&UiInteraction, With<NgvNode>>,
     port_blockers: Query<&UiInteraction, With<NgvPort>>,
     comment_blockers: Query<&UiInteraction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
-    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
     mut press: Local<Option<Vec2>>,
 ) {
@@ -1247,7 +1253,7 @@ fn ngv_open_key(
     keys: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     text_inputs: Query<&crate::widgets::text_input::EmberTextInput>,
-    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
@@ -1282,7 +1288,7 @@ fn ngv_keys(
     text_inputs: Query<&EmberTextInput>,
     drag_editing: Option<Res<crate::widgets::drag_value::AnyDragValueEditing>>,
     all_nodes: Query<&NgvNode>,
-    mut graphs: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition)>,
+    mut graphs: Query<(Entity, &mut NodeGraphView, &UiCursor)>,
 ) {
     // A number field being typed into is not an `EmberTextInput`; it reports
     // through its own flag.
@@ -1333,12 +1339,12 @@ fn ngv_box(
     node_blockers: Query<&UiInteraction, With<NgvNode>>,
     port_blockers: Query<&UiInteraction, With<NgvPort>>,
     mut active: Local<Option<(Vec2, Entity, Entity, bool)>>, // (start, viewport, rect, moved)
-    mut vps: Query<(Entity, &mut NodeGraphView, &RelativeCursorPosition, &UiGlobalTransform, &ComputedNode)>,
+    mut vps: Query<(Entity, &mut NodeGraphView, &UiCursor, &UiGlobalTransform, &ComputedNode)>,
     node_rects: Query<(&NgvNode, &UiGlobalTransform, &ComputedNode)>,
     mut box_nodes: Query<&mut Node, With<NgvBoxRect>>,
     wires: Query<&NgvWire>,
     ports: Query<(&NgvPort, &UiGlobalTransform, &ComputedNode)>,
-    editors: Query<&RelativeCursorPosition, With<NgvInputEditor>>,
+    editors: Query<&UiCursor, With<NgvInputEditor>>,
     comment_blockers: Query<&UiInteraction, Or<(With<NgvComment>, With<NgvCommentTitle>, With<NgvCommentResize>, With<NgvCommentDelete>)>>,
 ) {
     if active.is_none() {
@@ -1532,11 +1538,12 @@ fn ngv_view_ops(
     for (vp, mut g, vcn, children) in &mut graphs {
         // A view nobody has framed yet fits itself once (see `framed`).
         let auto_fit = !g.framed;
-        if !auto_fit && !g.fit_request && !g.center_request && g.zoom_request.is_none() {
+        if !auto_fit && !g.fit_request && !g.fit_width_request && !g.center_request && g.zoom_request.is_none() {
             continue;
         }
         let Some(canvas) = children.iter().find(|&c| canvases.contains(c)) else {
             g.fit_request = false;
+            g.fit_width_request = false;
             g.center_request = false;
             g.zoom_request = None;
             continue;
@@ -1568,7 +1575,7 @@ fn ngv_view_ops(
             g.framed = true;
         }
 
-        if g.fit_request || g.center_request || auto_fit {
+        if g.fit_request || g.fit_width_request || g.center_request || auto_fit {
             let (mut mn, mut mx, mut any, mut unlaid) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN), false, false);
             for (n, node, ncn) in &nodes {
                 if n.viewport != vp {
@@ -1595,7 +1602,16 @@ fn ngv_view_ops(
             if any && !unlaid {
                 let bbox_c = (mn + mx) * 0.5;
                 let bbox_s = (mx - mn).max(Vec2::splat(1.0));
-                if g.fit_request || auto_fit {
+                if g.fit_width_request {
+                    let pad = 80.0;
+                    let zoom = (vp_size.x / (bbox_s.x + pad)).min(1.0).clamp(super::MIN_ZOOM, super::MAX_ZOOM);
+                    // The point to put at the viewport's centre: the graph's
+                    // middle across, and down from its top by half a screen.
+                    let focus = Vec2::new(bbox_c.x, mn.y - pad * 0.5 + vp_size.y * 0.5 / zoom);
+                    view.zoom = zoom;
+                    view.pan = (center - focus) * zoom;
+                    g.fit_width_request = false;
+                } else if g.fit_request || auto_fit {
                     let pad = 80.0;
                     let zoom = (vp_size.x / (bbox_s.x + pad)).min(vp_size.y / (bbox_s.y + pad)).clamp(super::MIN_ZOOM, super::MAX_ZOOM);
                     view.zoom = zoom;
@@ -1793,7 +1809,7 @@ fn ngv_comment_delete(changed: Query<(&UiInteraction, &NgvCommentDelete), Change
 fn ngv_comment_key(
     keys: Res<ButtonInput<KeyCode>>,
     text_inputs: Query<&EmberTextInput>,
-    mut graphs: Query<(&mut NodeGraphView, &RelativeCursorPosition, &ComputedNode, &Children)>,
+    mut graphs: Query<(&mut NodeGraphView, &UiCursor, &ComputedNode, &Children)>,
     views: Query<&GraphView>,
 ) {
     if !keys.just_pressed(KeyCode::KeyC) {

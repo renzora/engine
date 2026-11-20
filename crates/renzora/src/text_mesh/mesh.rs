@@ -89,6 +89,11 @@ pub fn build_text_mesh(
             layout_cx,
             Vec2::splat(1000.0),
             RemSize(rem),
+            // What `FontSource::Default` resolves to. Bevy's `DefaultFontSource`
+            // resource starts as exactly this and nothing in the engine changes
+            // it, so passing the value keeps this function's signature, which the
+            // installed text3d plugin calls, as it was.
+            &FontSource::default(),
         )
         .ok()?;
     let mut info = TextLayoutInfo::default();

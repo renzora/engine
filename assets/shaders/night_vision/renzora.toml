@@ -1,0 +1,9 @@
+name = "Night Vision"
+version = "2.0.0"
+description = "A night-vision scope: the frame is amplified, tinted green, and given the noise and scanlines of an image intensifier. A post-process effect: drop night_vision.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "night_vision"
+tags = ["post-processing", "shader", "night-vision", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

@@ -124,7 +124,7 @@ These are presets over the same switches the Display menu holds, so change one b
 
 **Display**, in the options menu, holds mesh, textures, lighting, shadows, the grid and the overlays.
 
-With **Shadows** on, only the lights nearest the viewport camera cast shadows: the brightest directional light, the 4 nearest point lights and the 8 nearest spot lights. The rest still light the scene, without shadows, and the choice follows the camera as it moves. Each shadow-casting light draws the whole scene again every frame, so a street with dozens of lamps would otherwise run at a few frames a second. With Solari on, shadows come from ray tracing and none of these limits apply.
+With **Shadows** on, only lights whose own **Shadows** is on cast shadows, and of those only the ones nearest the viewport camera: the brightest directional light, the 4 nearest point lights and the 8 nearest spot lights. The rest still light the scene, without shadows, and the choice follows the camera as it moves. The limit never changes a light's own setting, so what you set in the Inspector is what is saved. Each shadow-casting light draws the whole scene again every frame, so a street with dozens of lamps would otherwise run at a few frames a second. With Solari on, shadows come from ray tracing and none of these limits apply.
 
 Turning **Textures** off does not unlight the scene. Surfaces keep their real lighting and shadows and swap their maps for the blockout grid, so the scene reads as untextured geometry rather than geometry in the dark.
 
@@ -144,16 +144,31 @@ What wakes it:
 
 - Moving, adding, removing or editing anything in the scene, including the World Environment
 - Moving the camera
-- Moving the mouse or pressing a key over the viewport
+- Clicking, scrolling or pressing a key over the viewport
 - Meshes, materials and textures changing or finishing loading
 - Changing the selection or a viewport setting
 - Resizing or docking a viewport
 
-Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. The same switch is **Settings > Viewport > Performance > Realtime Viewport**, and it is saved with the project.
+Moving the mouse alone does not wake the scene. Gizmos, labels, brush cursors and the on-top selection box are drawn into a separate overlay on top of the scene image. The overlay redraws by itself when only it changes, for example when a gizmo handle lights up under the cursor or a terrain brush ring follows it. That costs a few lines rather than a full render of the scene. The overlay is not touched by the scene's anti-aliasing, upscaling, exposure or tonemapping, so its lines stay sharp and keep their exact colours. The brush rings draw on top of the terrain rather than being hidden behind it.
+
+Some things move without the scene changing, and they hold still while the viewport is idle: wind sway, water, animated clouds, and GPU particles. Switch on **Render > Realtime** in the Display menu to render every frame, as the viewport did before. It is saved with the project.
+
+While the viewport idles, lights' shadow maps are not re-rendered either, since nothing would read them; they are back in the same frame the viewport wakes.
+
+If something in the scene changes every frame, the viewport never gets to idle. After ten seconds of that the Console says so, naming the components and entities that keep changing (up to five).
+
+While you drag a divider or window edge beside a viewport, it keeps rendering at its old size and stretches to fit, then renders at the new size when you let go. With no viewport on screen at all (a workspace without one, with no game running), the scene is not rendered until one comes back.
 
 ### Visualization modes
 
 The **Visualization** row replaces every material in the viewport with one that answers a single question: Normals, Roughness, Metallic, Depth, UV Checker or Matcap. **None** puts the real materials back.
+
+Views that belong to one rendering feature sit in a submenu of their own under the same heading:
+
+- **Virtual Geometry ▸** Clusters, Triangles, LOD Level, Instances and Residency. See [Virtual Geometry](/docs/r1-alpha8/rendering/virtual-geometry).
+- **SSIL ▸** Light, Occlusion and History, which show what screen-space indirect lighting gathers. They draw only where SSIL is on. See [SSIL](/docs/r1-alpha8/rendering/ssil).
+
+Like the others, these are editor viewport views only: a game camera, the Play window and thumbnails never show them. While one is up the viewport runs without TAA or DLSS, whose jitter would shake the flat debug colours; they come back when you return to **None**.
 
 These are a view, not an edit. Nothing is written to your materials and nothing ships.
 
@@ -204,6 +219,14 @@ The same switches are in **Settings > Viewport > Gizmos**.
 ## Selecting
 
 Click an object to select it. `Ctrl+Click` adds or removes, `Shift+Click` extends a range, and dragging from empty space rubber-bands a selection. `Esc` clears it.
+
+A click selects the part you clicked: on a car, the wheel or the door, not the whole car. To have a model or group select as one object instead, right-click it in the Hierarchy and choose **Select as One Object**. A click anywhere on it then selects the whole thing. **Select Parts Separately** turns that off again. The choice is saved with the scene. If groups are nested, the outermost one is selected. A terrain always selects as one object.
+
+Locked entities (the lock icon in the Hierarchy) can't be clicked in the viewport, and neither can anything inside them. A click passes through them to whatever is behind, and rubber-band selection leaves them out.
+
+Right-click without dragging to list everything under the cursor, nearest first. The list also shows the parents of the nearest part, so a whole wheel assembly is one click from its tyre. It includes parts hidden behind others, parts inside a group, and locked entities, each labelled with why a plain click would not reach it. Choosing a row selects exactly that entity.
+
+Drag an object that is already selected to slide it along the ground. This is the same as dragging the gizmo's flat square handle, without having to find the handle. It works with the Move tool, which a selection switches to.
 
 `H` hides the selection and `Shift+H` isolates it, hiding everything else.
 
@@ -261,7 +284,7 @@ Most of the cost of a frame is fullscreen image effects, and that cost grows wit
 
 If the whole editor drags, check **Display > Render > Realtime** is off, so the viewport only renders when something changes (see [Realtime](#realtime)).
 
-Open **Settings > Viewport > Performance > Graphics Quality** and drop it a notch.
+Open **Settings > Project > Rendering > Graphics Quality** and drop it a notch. This is the game's own setting, so the game you export runs on the same tier as the viewport you see.
 
 | Tier | What it does |
 |---|---|
@@ -281,7 +304,7 @@ A gated effect keeps its component, its enable toggle and its settings, and simp
 
 <!-- screenshot: inspector_quality_gate.png - a Clouds component header showing the amber gate warning and its tooltip -->
 
-The components that can carry it are Clouds, Bloom, TAA, Auto Exposure, SSAO and Atmosphere. So if clouds are not drawing and the Clouds header has the triangle, nothing is broken: raise the tier.
+The components that can carry it are Clouds, Bloom, Auto Exposure, SSAO and Atmosphere. So if clouds are not drawing and the Clouds header has the triangle, nothing is broken: raise the tier. Anti-aliasing is the exception: Low stops only its TAA method, so the warning sits on **TAA** in the Camera section's Anti-Aliasing dropdown instead (see [Anti-aliasing](/docs/r1-alpha8/rendering/camera#anti-aliasing)).
 
 ## Related pages
 

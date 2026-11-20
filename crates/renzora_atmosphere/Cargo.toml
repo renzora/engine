@@ -9,7 +9,8 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false }
+# `postprocess` for the sun glare's render pass (`glare.rs`).
+renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
 
 [lints]
 workspace = true

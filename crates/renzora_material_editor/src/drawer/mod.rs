@@ -64,36 +64,57 @@ impl Plugin for MaterialDrawer {
         app.add_systems(
             Update,
             (
-                build::rebuild_material,
                 // Only ticks while a picker popup exists. The rows themselves are
                 // a keyed list driven by `MaterialIndex.generation`, so a walk
                 // that lands here is picked up by the next snapshot.
-                // The list is maintained whether or not the picker is open, and
-                // costs a message-buffer read to do it. Only the opening walk is
-                // gated, and that runs once per project.
-                index::track_material_files.before(index::refresh_material_index),
+                // The list is maintained whether or not the picker is open.
+                // `on_message` starts it only on a frame with file events, which
+                // is the same frame its own reader would find them, so nothing
+                // is skipped (see `track_material_files`). Only the opening walk
+                // is gated on the picker, and that runs once per project.
+                index::track_material_files
+                    .run_if(on_message::<renzora::core::project_files::ProjectFileChanged>)
+                    .before(index::refresh_material_index),
                 index::refresh_material_index.run_if(any_with_component::<picker::MatPickerPanel>),
-                overrides::flush_overrides,
-                drop::mat_slot_drop,
-                drop::mat_slot_drop_highlight,
-                drop::mat_edit_click,
-                create::mat_create_click,
-                create::mat_create_focus,
-                create::mat_create_overlay_buttons,
-                drop::mat_clear_click,
-                picker::mat_picker_toggle,
-                picker::mat_picker_select,
-                overrides::mat_revert_click,
-                textures::tex_slot_drop,
-                textures::tex_slot_highlight,
-                textures::tex_slot_browse,
-                textures::tex_slot_mute,
-                textures::tex_slot_clear,
-                textures::tex_slots_expand,
+                // The condition is the system's own first check: nothing to
+                // write unless an override edit marked the cache dirty.
+                overrides::flush_overrides.run_if(overrides_dirty),
+                // The "New material" overlay is root-spawned, outside the
+                // drawer, and both systems start by returning when its
+                // resource is absent.
+                (create::mat_create_focus, create::mat_create_overlay_buttons)
+                    .run_if(resource_exists::<create::PendingMatCreate>),
+                // Everything else reads widgets the drawer builds under its
+                // `MatRoot` (slot, picker tray, texture rows, override rows),
+                // and `rebuild_material` only walks `MatRoot`s. With no Material
+                // component on screen in the inspector there is nothing here.
+                (
+                    build::rebuild_material,
+                    drop::mat_slot_drop,
+                    drop::mat_slot_drop_highlight,
+                    drop::mat_edit_click,
+                    create::mat_create_click,
+                    drop::mat_clear_click,
+                    picker::mat_picker_toggle,
+                    picker::mat_picker_select,
+                    overrides::mat_revert_click,
+                    textures::tex_slot_drop,
+                    textures::tex_slot_highlight,
+                    textures::tex_slot_browse,
+                    textures::tex_slot_mute,
+                    textures::tex_slot_clear,
+                    textures::tex_slots_expand,
+                )
+                    .run_if(any_with_component::<MatRoot>),
             )
                 .run_if(in_state(SplashState::Editor)),
         );
     }
+}
+
+/// Run condition: has an override edit left [`MatCache`] waiting to be written?
+fn overrides_dirty(cache: Option<Res<MatCache>>) -> bool {
+    cache.is_some_and(|c| c.dirty)
 }
 
 // ── State ────────────────────────────────────────────────────────────────────

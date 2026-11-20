@@ -17,17 +17,14 @@ use renzora_ember::widgets::{toggle_switch, Section};
 use renzora_ember::UiInteraction;
 
 use super::cull::SectionCull;
-use super::fields::build_field_row;
 use super::reorder::{build_grip, InspectorSectionRoot};
 use super::spec::{comp_name_loc, tracked_read, FieldSpec, SectionSpec};
 use super::undo::EnableToggleCmd;
 use super::{empty_label, phosphor_glyph, GetFn, InspectorSectionHeader, Mutate, SetFn};
 
 /// The tooltip behind a header's amber gate glyph: which tier is in force, what
-/// it did to this effect, and where to change it. It names the *viewport* tier
-/// specifically, because the project's `[rendering] graphics_quality` is a
-/// separate setting for the shipped game and a user who finds that one set to
-/// High has every reason to read an empty viewport as a bug.
+/// it did to this effect, and where to change it. The tier is the project's
+/// `[rendering] graphics_quality`, which the viewport and the game share.
 fn quality_gate_tooltip(
     tier: renzora::core::viewport_types::GraphicsQuality,
     gate: renzora::core::viewport_types::QualityGate,
@@ -70,6 +67,12 @@ pub(super) struct ResetBtn {
     pub(super) set_fn: SetFn,
     pub(super) entity: Entity,
     pub(super) field_name: &'static str,
+    /// The section the field is in, for its Add Component default (see
+    /// `reset::default_value`).
+    pub(super) type_id: &'static str,
+    /// The section's component, tried first when looking for the field's
+    /// default.
+    pub(super) cid: Option<bevy::ecs::component::ComponentId>,
 }
 
 /// Marks a per-field "add keyframe" button. Carries the reflection path the
@@ -113,10 +116,8 @@ fn fill_section_rows(
     type_id: &'static str,
     body: Entity,
 ) {
-    for field in fields {
-        let r = build_field_row(commands, fonts, field, entity, type_id);
-        commands.entity(body).add_child(r);
-    }
+    let rows = super::group::build_rows(commands, fonts, fields, entity, type_id, None);
+    commands.entity(body).add_children(&rows);
 }
 
 /// Corner radius of a component card.
@@ -200,13 +201,18 @@ pub(super) fn reconcile_section_bodies(
         let Some(spec) = world.get::<SectionBodySpec>(body) else {
             continue;
         };
-        let (fields, ent, type_id, drawer, custom) = (
+        let (mut fields, ent, type_id, drawer, custom) = (
             spec.fields.clone(),
             spec.entity,
             spec.type_id,
             spec.native_drawer,
             spec.custom,
         );
+        // The list was collected when the section was built; groups folded or
+        // unfolded since must come back the way the user left them.
+        if let Some(groups) = world.get_resource::<super::InspectorGroupsOpen>() {
+            super::group::refresh_open(&mut fields, groups, type_id);
+        }
         // A despawned inspected entity outlives its rows here (selection can
         // change in the same frame a section is toggled) — skip rather than
         // build rows whose accessors would miss.

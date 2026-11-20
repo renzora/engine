@@ -2,7 +2,8 @@
 //! cursor. Left-click anywhere closes it.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use crate::UiCursor;
 
 use crate::font::EmberFonts;
 
@@ -26,7 +27,7 @@ pub fn context_menu(
                 align_items: AlignItems::FlexStart,
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("context-menu"),
         ))
         .id();
@@ -38,7 +39,7 @@ pub fn context_menu(
 
 pub(crate) fn context_menu_open(
     mouse: Res<ButtonInput<MouseButton>>,
-    targets: Query<(&RelativeCursorPosition, &ComputedNode, &EmberContextTarget)>,
+    targets: Query<(&UiCursor, &ComputedNode, &EmberContextTarget)>,
     mut nodes: Query<&mut Node>,
 ) {
     let right = mouse.just_pressed(MouseButton::Right);

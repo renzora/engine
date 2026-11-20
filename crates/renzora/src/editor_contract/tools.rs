@@ -133,4 +133,10 @@ impl EditorCommands {
     pub fn drain(&self) -> Vec<Box<dyn FnOnce(&mut World) + Send>> {
         std::mem::take(&mut *self.queue.lock().unwrap())
     }
+
+    /// Whether nothing is queued. The drain is an exclusive system, so it is
+    /// skipped on this rather than started to find an empty queue.
+    pub fn is_empty(&self) -> bool {
+        self.queue.lock().map(|q| q.is_empty()).unwrap_or(false)
+    }
 }

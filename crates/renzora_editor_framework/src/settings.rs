@@ -68,37 +68,6 @@ impl ExternalSceneEdits {
     }
 }
 
-/// What a viewport click resolves to when the raycast hits a mesh inside a
-/// larger imported hierarchy. The picker walks up from the hit mesh toward the
-/// scene root; this decides where it stops.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum SelectionGranularity {
-    /// The exact leaf mesh the ray hit — never bubbles up to a parent.
-    Mesh,
-    /// The root of the clicked mesh's own sub-tree: the topmost named ancestor
-    /// still *below* the model boundary (`SelectionStop`). For a flat model
-    /// whose meshes sit directly under the root this is the mesh itself; for a
-    /// nested scene it's the top-level sub-object (e.g. a whole building).
-    #[default]
-    MeshRoot,
-    /// The entire imported model as one unit — bubbles all the way up to the
-    /// model root (the `SelectionStop` bearer).
-    EntireRoot,
-}
-
-impl SelectionGranularity {
-    pub const ALL: &'static [SelectionGranularity] =
-        &[Self::Mesh, Self::MeshRoot, Self::EntireRoot];
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Mesh => "Mesh",
-            Self::MeshRoot => "Mesh Root",
-            Self::EntireRoot => "Entire Model",
-        }
-    }
-}
-
 /// Which inspector component sections start expanded when the inspector is
 /// (re)built for a freshly selected entity.
 ///
@@ -252,8 +221,6 @@ pub struct EditorSettings {
     /// to be on the next launch.
     #[serde(skip)]
     pub settings_tab: SettingsTab,
-    /// What a viewport click selects within an imported model hierarchy
-    pub selection_granularity: SelectionGranularity,
     /// How to resolve the open scene's file changing on disk while the editor
     /// has unsaved changes to it. Irrelevant with a clean scene, which always
     /// reloads.
@@ -294,6 +261,12 @@ pub struct EditorSettings {
     /// Launcher cinematic and loading-screen haze: on, off, or decided by the
     /// display (see [`renzora::SplashEffects`]).
     pub splash_effects: renzora::SplashEffects,
+    /// Hold the editor to about 60 frames a second while its window is not
+    /// focused (Bevy's `WinitSettings::game()` unfocused mode). On by default to
+    /// save power and heat while you work in another window; off runs the
+    /// editor at full speed whatever has focus, which is what a profile taken
+    /// with the editor in the background needs.
+    pub throttle_when_unfocused: bool,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
     /// New scripts and UI templates are created with commented boilerplate
@@ -397,7 +370,6 @@ impl Default for EditorSettings {
     fn default() -> Self {
         Self {
             settings_tab: SettingsTab::default(),
-            selection_granularity: SelectionGranularity::default(),
             external_scene_edits: ExternalSceneEdits::default(),
             selection_boundary_on_top: false,
             font_size: 17.0,
@@ -412,6 +384,7 @@ impl Default for EditorSettings {
             drag_value_rail_sweep: true,
             renderer_backend: renzora::RendererBackend::default(),
             splash_effects: renzora::SplashEffects::default(),
+            throttle_when_unfocused: true,
             // Off: the backdrop needs a viewport panel on screen to have
             // anything to show — an undocked viewport slot renders at 64×64 —
             // and the UI workspace ships without one.

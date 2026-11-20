@@ -5,7 +5,11 @@ edition = "2021"
 description = "Renzora Mipmapped Texture (.rmip) — pre-baked GPU-ready texture container with full mipmap chain. Loader is always available; the baker is gated behind the `bake` feature so runtime crates don't pull in `image`."
 
 [features]
-default = []
+default = ["bevy"]
+# The asset loader, the only part of this crate built on Bevy. On by default;
+# the standalone companion turns it off and keeps the format and the baker,
+# which are plain Rust, so baking a texture there links no engine.
+bevy = ["dep:bevy"]
 # Pulls in the `image` crate so import-side code can encode .rmip files.
 # Editor/runtime crates only need the loader and stay lightweight without
 # this feature.
@@ -18,7 +22,7 @@ default = []
 bake = ["dep:image", "dep:intel_tex_2"]
 
 [dependencies]
-bevy = { workspace = true }
+bevy = { workspace = true, optional = true }
 thiserror = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"], optional = true }
 

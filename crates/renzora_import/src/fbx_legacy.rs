@@ -155,32 +155,40 @@ fn parse_property(r: &mut Cursor<&[u8]>) -> Result<FbxProp, ImportError> {
         b'f' => {
             let data = read_array_data(r, 4)?;
             let arr: Vec<f32> = data
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| f32::from_le_bytes(*c))
                 .collect();
             Ok(FbxProp::ArrF32(arr))
         }
         b'd' => {
             let data = read_array_data(r, 8)?;
             let arr: Vec<f64> = data
-                .chunks_exact(8)
-                .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| f64::from_le_bytes(*c))
                 .collect();
             Ok(FbxProp::ArrF64(arr))
         }
         b'i' => {
             let data = read_array_data(r, 4)?;
             let arr: Vec<i32> = data
-                .chunks_exact(4)
-                .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| i32::from_le_bytes(*c))
                 .collect();
             Ok(FbxProp::ArrI32(arr))
         }
         b'l' => {
             let data = read_array_data(r, 8)?;
             let arr: Vec<i64> = data
-                .chunks_exact(8)
-                .map(|c| i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| i64::from_le_bytes(*c))
                 .collect();
             Ok(FbxProp::ArrI64(arr))
         }

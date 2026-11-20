@@ -81,7 +81,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             MeshComboBtn,
         ))
         .id();
@@ -144,7 +144,7 @@ fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
 }
 
 fn mesh_combo_open(
-    q: Query<(&UiInteraction, &bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode), (With<MeshComboBtn>, Changed<UiInteraction>)>,
+    q: Query<(&UiInteraction, &renzora_ember::UiCursor, &bevy::ui::ComputedNode), (With<MeshComboBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,

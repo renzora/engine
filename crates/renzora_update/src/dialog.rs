@@ -27,9 +27,14 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            manage_modal,
-            rebuild_version_list,
-            rebuild_plugin_updates,
+            // The three exclusive systems are each a sync point for the whole
+            // schedule even on a frame they return at once. The manager acts
+            // only while the dialog is wanted or still up to tear down (with
+            // neither, every arm of its match is a no-op); each rebuild walks
+            // its own list, which the dialog or the splash Updates page builds.
+            manage_modal.run_if(update_modal_live),
+            rebuild_version_list.run_if(any_with_component::<VersionList>),
+            rebuild_plugin_updates.run_if(any_with_component::<PluginUpdateList>),
             plugin_updates_click,
             version_row_click,
             action_label_sync,
@@ -41,6 +46,12 @@ pub(crate) fn register(app: &mut App) {
             close_click,
         ),
     );
+}
+
+/// Run condition for [`manage_modal`]: the dialog is wanted, or its root is
+/// still on screen.
+fn update_modal_live(state: Option<Res<UpdateState>>, roots: Query<(), With<UpdateRoot>>) -> bool {
+    state.is_some_and(|s| s.visible) || !roots.is_empty()
 }
 
 // ── Markers ──────────────────────────────────────────────────────────────────

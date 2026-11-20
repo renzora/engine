@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use bevy::animation::animation_curves::{AnimatableCurve, WeightsCurve};
+use bevy::animation::animation_curves::{BlendableCurve, WeightsCurve};
 use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::curve::iterable::IterableCurve;
 use bevy::curve::UnevenSampleAutoCurve;
@@ -109,13 +109,13 @@ pub fn to_animation_clip(anim_clip: &AnimClip) -> AnimationClip {
             [] => {}
             [(_, v)] => clip.add_curve_to_target(
                 target,
-                AnimatableCurve::new(animated_field!(Transform::translation), ConstantCurve::new(span, *v)),
+                BlendableCurve::new(animated_field!(Transform::translation), ConstantCurve::new(span, *v)),
             ),
             _ => match SplineCurve::eased(track.channel_spline(0)) {
-                Some(curve) => clip.add_curve_to_target(target, AnimatableCurve::new(animated_field!(Transform::translation), Vec3Spline(curve))),
+                Some(curve) => clip.add_curve_to_target(target, BlendableCurve::new(animated_field!(Transform::translation), Vec3Spline(curve))),
                 None => {
                     if let Ok(curve) = UnevenSampleAutoCurve::new(translations) {
-                        clip.add_curve_to_target(target, AnimatableCurve::new(animated_field!(Transform::translation), curve));
+                        clip.add_curve_to_target(target, BlendableCurve::new(animated_field!(Transform::translation), curve));
                     }
                 }
             },
@@ -126,13 +126,13 @@ pub fn to_animation_clip(anim_clip: &AnimClip) -> AnimationClip {
             [] => {}
             [(_, q)] => clip.add_curve_to_target(
                 target,
-                AnimatableCurve::new(animated_field!(Transform::rotation), ConstantCurve::new(span, *q)),
+                BlendableCurve::new(animated_field!(Transform::rotation), ConstantCurve::new(span, *q)),
             ),
             _ => match SplineCurve::eased(track.channel_spline(1)) {
-                Some(curve) => clip.add_curve_to_target(target, AnimatableCurve::new(animated_field!(Transform::rotation), QuatSpline(curve))),
+                Some(curve) => clip.add_curve_to_target(target, BlendableCurve::new(animated_field!(Transform::rotation), QuatSpline(curve))),
                 None => {
                     if let Ok(curve) = UnevenSampleAutoCurve::new(rotations) {
-                        clip.add_curve_to_target(target, AnimatableCurve::new(animated_field!(Transform::rotation), curve));
+                        clip.add_curve_to_target(target, BlendableCurve::new(animated_field!(Transform::rotation), curve));
                     }
                 }
             },
@@ -143,13 +143,13 @@ pub fn to_animation_clip(anim_clip: &AnimClip) -> AnimationClip {
             [] => {}
             [(_, v)] => clip.add_curve_to_target(
                 target,
-                AnimatableCurve::new(animated_field!(Transform::scale), ConstantCurve::new(span, *v)),
+                BlendableCurve::new(animated_field!(Transform::scale), ConstantCurve::new(span, *v)),
             ),
             _ => match SplineCurve::eased(track.channel_spline(2)) {
-                Some(curve) => clip.add_curve_to_target(target, AnimatableCurve::new(animated_field!(Transform::scale), Vec3Spline(curve))),
+                Some(curve) => clip.add_curve_to_target(target, BlendableCurve::new(animated_field!(Transform::scale), Vec3Spline(curve))),
                 None => {
                     if let Ok(curve) = UnevenSampleAutoCurve::new(scales) {
-                        clip.add_curve_to_target(target, AnimatableCurve::new(animated_field!(Transform::scale), curve));
+                        clip.add_curve_to_target(target, BlendableCurve::new(animated_field!(Transform::scale), curve));
                     }
                 }
             },

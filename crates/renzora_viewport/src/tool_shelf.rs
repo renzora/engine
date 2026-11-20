@@ -103,7 +103,7 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
             // must not also reach the picker underneath — that would select
             // whatever object happened to be behind it.
             OverlaySurface,
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             UiInteraction::default(),
             ShelfContainer,
             Name::new("vp-tool-shelf"),
@@ -134,6 +134,12 @@ pub(crate) fn place_shelf(
             n.top = want;
         }
     }
+}
+
+/// Run condition for [`populate_shelf`]: a shelf still waits to be filled.
+/// Once it is, the exclusive pass (and its schedule-wide sync point) stops.
+pub(crate) fn shelf_unpopulated(q: Query<(), (With<ShelfContainer>, Without<ToolsPopulated>)>) -> bool {
+    !q.is_empty()
 }
 
 /// Fill an empty `ShelfContainer` from the registry's [`ToolSection::Shelf`]

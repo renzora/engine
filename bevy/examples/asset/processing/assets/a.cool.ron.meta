@@ -1,0 +1,13 @@
+(
+    meta_format_version: "1.0",
+    asset: Process(
+        processor: "LoadTransformAndSave<CoolTextLoader, CoolTextTransformer, CoolTextSaver>",
+        settings: (
+            loader_settings: (),
+            transformer_settings: (
+                appended: "X",
+            ),
+            saver_settings: (),
+        ),
+    ),
+)

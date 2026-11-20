@@ -60,6 +60,14 @@ pub fn renzora_editor_install(app: &mut renzora::bevy::app::App) {
     install(app);
 }
 
+/// The second entry point: the companion process (`renzora --companion`), and
+/// nothing else from this image. See `renzora_companion`.
+#[cfg(all(feature = "editor", not(target_arch = "wasm32")))]
+#[unsafe(no_mangle)]
+pub fn renzora_companion_install(app: &mut renzora::bevy::app::App) {
+    renzora_companion::install_companion(app);
+}
+
 /// Install the whole editor into `app`.
 ///
 /// Reached by symbol through [`renzora_editor_install`] on native, and called

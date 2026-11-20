@@ -214,7 +214,7 @@ pub(crate) fn build_row(
             },
             // Whole-row hit box for asset drops — wider than the click layer
             // below, which stops short of the eye/lock strip.
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             HierRowArea { entity: s.entity },
             Name::new("hier-row"),
         ))
@@ -489,7 +489,7 @@ pub(crate) fn build_row(
                 ..default()
             },
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             HierRowClick { entity: s.entity },
             Name::new("hier-row-hit"),

@@ -253,6 +253,18 @@ impl Streaming {
         }
         let pool = self.pool.get_or_insert_with(|| Pool::new(device));
         let mut old: HashMap<MeshKey, StreamedMesh> = self.meshes.drain(..).collect();
+        // Room for every new skinned mesh, which uploads whole below, in one
+        // growth rather than one per mesh (see `Pool::reserve_more`).
+        let (mut whole_vertices, mut whole_words) = (0u64, 0u64);
+        for (key, mesh) in wanted {
+            if !old.contains_key(key) && mesh.attributes.has(Attributes::SKIN) {
+                whole_vertices += mesh.positions.len() as u64;
+                whole_words += mesh.cluster_vertices.len() as u64 + (mesh.cluster_triangles.len() as u64).div_ceil(4);
+            }
+        }
+        if whole_vertices > 0 && pool.reserve_more(device, queue, whole_vertices, whole_words) {
+            self.generation += 1;
+        }
         let mut meshes = Vec::with_capacity(wanted.len());
         for (key, mesh) in wanted {
             let streamed = match old.remove(key) {
@@ -372,6 +384,20 @@ impl Streaming {
         let roots: Vec<u32> = (0..groups as u32)
             .filter(|&g| self.pinned[g as usize] && !self.resident[g as usize])
             .collect();
+        // Room for all of them at once, for the same reason as the skinned
+        // meshes above. An upper bound: a vertex shared by two clusters of a
+        // page is counted twice.
+        let (mut root_vertices, mut root_words) = (0u64, 0u64);
+        for &g in &roots {
+            let (vertices, words) = self.group_size(g);
+            root_vertices += vertices;
+            root_words += words;
+        }
+        if let Some(pool) = self.pool.as_mut() {
+            if root_vertices > 0 && pool.reserve_more(device, queue, root_vertices, root_words) {
+                self.generation += 1;
+            }
+        }
         for g in roots {
             self.load(g, device, queue);
         }
@@ -445,6 +471,23 @@ impl Streaming {
             .iter()
             .map(|c| u64::from(c.vertex_count) * 32 + u64::from(c.triangle_count) * 3)
             .sum()
+    }
+
+    /// Vertices and index words a group's page could take, at most: each
+    /// cluster's vertex list, and its triangles' bytes packed four to a word.
+    fn group_size(&self, group: u32) -> (u64, u64) {
+        let (mesh_index, local) = self.owner[group as usize];
+        let m = &self.meshes[mesh_index as usize].1;
+        let Residency::Grouped { graph, .. } = &m.residency else {
+            return (0, 0);
+        };
+        let range = graph.clusters[local as usize].clone();
+        m.mesh.clusters[range.start as usize..range.end as usize]
+            .iter()
+            .fold((0, 0), |(vertices, words), c| {
+                let list = u64::from(c.vertex_count);
+                (vertices + list, words + list + (u64::from(c.triangle_count) * 3).div_ceil(4))
+            })
     }
 
     /// Read whatever feedback has arrived, then load and evict.

@@ -159,73 +159,57 @@ macro_rules! plugin {
 /// defines each of them fifty times and the link fails. The lean exporter turns
 /// this feature on and calls `add_plugins` on the plugin type directly, which
 /// needs no symbol at all.
-///
-/// A **bundled** plugin (one in the engine checkout's `plugins/`, linked into
-/// every build by `cargo renzora`) cannot use that switch: it would also be on
-/// in the SDK an installed plugin compiles against, and every installed plugin
-/// would lose its entry point and be skipped. So the symbols are additionally
-/// gated on the *plugin's own* `bundled` feature. That `cfg` is written into
-/// the expansion on purpose, which is what makes it read the calling crate's
-/// features rather than this one's, and the `allow` keeps the check-cfg lint
-/// quiet in the installed plugins that declare no such feature.
 #[doc(hidden)]
 #[cfg(not(feature = "static_plugins"))]
 #[macro_export]
 macro_rules! __native_plugin_entry {
     ($plugin:expr, $scope:ident) => {
-        #[allow(unexpected_cfgs)]
-        const _: () = {
-            /// The one symbol the loader looks up. Unmangled so it can be found
-            /// by string; see [`plugin!`] for why hand-writing this is a trap.
-            #[cfg(not(feature = "bundled"))]
-            #[unsafe(no_mangle)]
-            pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
-                ::std::boxed::Box::new($plugin)
-            }
+        /// The one symbol the loader looks up. Unmangled so it can be found by
+        /// string; see [`plugin!`] for why hand-writing this is a trap.
+        #[unsafe(no_mangle)]
+        pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
+            ::std::boxed::Box::new($plugin)
+        }
 
-            /// Where this plugin may load, as a byte the loader reads by symbol.
-            ///
-            /// A plain `u8` rather than an enum, because this crosses a `dlopen`
-            /// boundary: a `#[repr(Rust)]` enum has no guaranteed layout, and the
-            /// loader would be reading whichever bytes the compiler happened to
-            /// choose. The absence of the symbol reads as `Editor`, so a plugin
-            /// built before this existed keeps its old behaviour rather than
-            /// silently appearing in someone's game.
-            #[cfg(not(feature = "bundled"))]
-            #[unsafe(no_mangle)]
-            pub extern "C" fn renzora_native_plugin_scope() -> u8 {
-                $crate::NativePluginScope::$scope as u8
-            }
+        /// Where this plugin may load, as a byte the loader reads by symbol.
+        ///
+        /// A plain `u8` rather than an enum, because this crosses a `dlopen`
+        /// boundary: a `#[repr(Rust)]` enum has no guaranteed layout, and the
+        /// loader would be reading whichever bytes the compiler happened to
+        /// choose. The absence of the symbol reads as `Editor`, so a plugin
+        /// built before this existed keeps its old behaviour rather than
+        /// silently appearing in someone's game.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn renzora_native_plugin_scope() -> u8 {
+            $crate::NativePluginScope::$scope as u8
+        }
 
-            /// Which engine build this plugin binds to, written into the image
-            /// so the loader can read it off the file before mapping it.
-            ///
-            /// `RENZORA_PLUGIN_ABI` is set by the compiler driver to the SDK
-            /// stamp the plugin is being compiled against; it is evaluated
-            /// here, in the plugin's own compilation, which is the only place
-            /// that knows the answer. A plugin built by a bare `rustc` with the
-            /// variable unset records an empty stamp, which no engine build
-            /// matches, so it is refused rather than guessed at — see
-            /// [`native_plugin_abi_record`](crate::native_plugin_abi_record).
-            ///
-            /// A `static` of bytes rather than a function: the loader must not
-            /// map an image to find out whether mapping it is sound (an
-            /// incompatible image runs its initialisers against the wrong
-            /// contract crate the moment it is opened), so the record is found
-            /// by a byte search over the file, the same way the constructor
-            /// symbol is. `#[used]` keeps it in the object and `no_mangle` keeps
-            /// the linker from discarding it.
-            #[cfg(not(feature = "bundled"))]
-            #[used]
-            #[unsafe(no_mangle)]
-            // Named like the exported symbol beside it, not like a Rust constant.
-            #[allow(non_upper_case_globals)]
-            pub static renzora_native_plugin_abi: [u8; $crate::NATIVE_PLUGIN_ABI_RECORD_LEN] =
-                $crate::native_plugin_abi_record(match ::core::option_env!("RENZORA_PLUGIN_ABI") {
-                    ::core::option::Option::Some(stamp) => stamp,
-                    ::core::option::Option::None => "",
-                });
-        };
+        /// Which engine build this plugin binds to, written into the image so
+        /// the loader can read it off the file before mapping it.
+        ///
+        /// `RENZORA_PLUGIN_ABI` is set by the compiler driver to the SDK stamp
+        /// the plugin is being compiled against; it is evaluated here, in the
+        /// plugin's own compilation, which is the only place that knows the
+        /// answer. A plugin built by a bare `rustc` with the variable unset
+        /// records an empty stamp, which no engine build matches, so it is
+        /// refused rather than guessed at: see
+        /// [`native_plugin_abi_record`](crate::native_plugin_abi_record).
+        ///
+        /// A `static` of bytes rather than a function: the loader must not map
+        /// an image to find out whether mapping it is sound (an incompatible
+        /// image runs its initialisers against the wrong contract crate the
+        /// moment it is opened), so the record is found by a byte search over
+        /// the file, the same way the constructor symbol is. `#[used]` keeps it
+        /// in the object and `no_mangle` keeps the linker from discarding it.
+        #[used]
+        #[unsafe(no_mangle)]
+        // Named like the exported symbol beside it, not like a Rust constant.
+        #[allow(non_upper_case_globals)]
+        pub static renzora_native_plugin_abi: [u8; $crate::NATIVE_PLUGIN_ABI_RECORD_LEN] =
+            $crate::native_plugin_abi_record(match ::core::option_env!("RENZORA_PLUGIN_ABI") {
+                ::core::option::Option::Some(stamp) => stamp,
+                ::core::option::Option::None => "",
+            });
     };
 }
 

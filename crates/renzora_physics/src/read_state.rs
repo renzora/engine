@@ -64,8 +64,14 @@ pub fn update_physics_read_state(
 ) {
     for (mut rs, velocity) in &mut q {
         let v = velocity.map(|v| v.linear).unwrap_or(Vec3::ZERO);
-        rs.velocity = v;
-        rs.speed = v.length();
+        // Only through `DerefMut` when the value moved: writing an identical
+        // value still marks the component changed, and the viewport's
+        // render-on-change gate then saw a body at rest (a terrain chunk) as a
+        // change every frame and never idled.
+        if rs.velocity != v {
+            rs.velocity = v;
+            rs.speed = v.length();
+        }
         // `grounded` + `ground_normal` are written by the kinematic slide each
         // time one runs.
     }
@@ -131,6 +137,12 @@ pub fn update_collision_read_state(
         for &other in rs.prev.difference(&current) {
             commands.trigger(CollisionEnded { entity, other });
         }
+        // Same contacts as last frame and no enter/exit to clear: leave it
+        // untouched, so a body at rest does not read as changed every frame
+        // (see `update_physics_read_state`).
+        if current == rs.prev && !rs.entered && !rs.exited {
+            continue;
+        }
         diff_collision_state(&mut rs, current, &names);
     }
 }
@@ -153,4 +165,37 @@ fn diff_collision_state(
     rs.entered_name = name_of(entered.first());
     rs.exited_name = name_of(exited.first());
     rs.prev = current;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Resource, Default)]
+    struct Changed(Vec<bool>);
+
+    fn record(q: Query<(Ref<PhysicsReadState>, Ref<CollisionReadState>)>, mut seen: ResMut<Changed>) {
+        for (rs, cs) in &q {
+            seen.0.push(rs.is_changed() || cs.is_changed());
+        }
+    }
+
+    /// A body at rest with no contacts is refreshed every frame, but must not
+    /// read as changed after the first, or the viewport never idles.
+    #[test]
+    fn a_body_at_rest_is_not_marked_changed_every_frame() {
+        let mut app = App::new();
+        app.init_resource::<Changed>().add_systems(
+            Update,
+            (update_physics_read_state, update_collision_read_state, record).chain(),
+        );
+        app.world_mut()
+            .spawn((PhysicsReadState::default(), CollisionReadState::default(), BodyVelocity::default()));
+        app.update(); // first frame: freshly added, so changed
+        app.update();
+        app.update();
+        let seen = &app.world().resource::<Changed>().0;
+        assert_eq!(seen.len(), 3);
+        assert!(!seen[1] && !seen[2], "resting body marked changed: {seen:?}");
+    }
 }

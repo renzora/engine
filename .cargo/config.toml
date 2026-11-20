@@ -239,11 +239,15 @@ rustflags = [
 #
 # Both variables, because `meshopt`'s build script compiles its `.cpp` files
 # without marking them C++ (MSVC goes by the extension), so `cc` reads CFLAGS.
+#
+# Spelled `-D`, not `/D`. `cl.exe` and `clang-cl` take either, but `ring`
+# compiles its C with plain `clang` on Windows ARM64, which reads `/D...` as a
+# file name and fails (`clang: error: no such file or directory`).
 [env]
-CFLAGS_x86_64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
-CXXFLAGS_x86_64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
-CFLAGS_aarch64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
-CXXFLAGS_aarch64_pc_windows_msvc = "/D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CFLAGS_x86_64_pc_windows_msvc = "-D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CXXFLAGS_x86_64_pc_windows_msvc = "-D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CFLAGS_aarch64_pc_windows_msvc = "-D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
+CXXFLAGS_aarch64_pc_windows_msvc = "-D_ALLOW_RUNTIME_LIBRARY_MISMATCH"
 
 # Windows ARM64: same reasoning as x86_64 above, one target triple over. This
 # triple is NEVER produced by the Docker toolchain — xwin can only redistribute

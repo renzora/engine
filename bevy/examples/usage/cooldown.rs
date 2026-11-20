@@ -1,0 +1,202 @@
+//! Demonstrates implementing a cooldown in UI.
+//!
+//! You might want a system like this for abilities, buffs or consumables.
+//! We create four food buttons to eat with 2, 1, 10, and 4 seconds cooldown.
+
+use bevy::{
+    color::palettes::tailwind::{SLATE_400, SLATE_50},
+    image::TextureAtlasTemplate,
+    prelude::*,
+    ui_widgets::{Activate, Button},
+};
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup)
+        .add_systems(
+            Update,
+            animate_cooldowns.run_if(any_with_component::<ActiveCooldown>),
+        )
+        .add_observer(on_activate_start_cooldown)
+        .run();
+}
+
+fn setup(mut commands: Commands, mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>) {
+    let layout = TextureAtlasLayout::from_grid(UVec2::splat(64), 7, 7, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+
+    commands.spawn(Camera2d);
+
+    // The food items
+    commands.spawn_scene(bsn! {
+        Node {
+            width: percent(100),
+            height: percent(100),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            column_gap: px(15),
+        }
+        Children [
+            { food_items_scene_list(texture_atlas_layout) }
+        ]
+    });
+
+    // Status text
+    commands.spawn_scene(bsn! {
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(12),
+            left: px(12),
+        }
+        Children [
+            Text("*Click some food to eat it*")
+        ]
+    });
+}
+
+// Returns the scene list of food items.
+fn food_items_scene_list(texture_atlas_layout: Handle<TextureAtlasLayout>) -> impl SceneList {
+    let foods = [
+        FoodItem {
+            name: "an apple",
+            cooldown: 2.,
+            index: 2,
+        },
+        FoodItem {
+            name: "a burger",
+            cooldown: 1.,
+            index: 23,
+        },
+        FoodItem {
+            name: "chocolate",
+            cooldown: 10.,
+            index: 32,
+        },
+        FoodItem {
+            name: "cherries",
+            cooldown: 4.,
+            index: 41,
+        },
+    ];
+
+    foods
+        .into_iter()
+        .map(|food| {
+            build_ability(
+                food,
+                "textures/food_kenney.png".into(),
+                texture_atlas_layout.clone(),
+            )
+        })
+        .collect::<Vec<_>>()
+}
+
+struct FoodItem {
+    name: &'static str,
+    cooldown: f32,
+    index: usize,
+}
+
+// Returns a scene of this food item as a button.
+fn build_ability(
+    food: FoodItem,
+    texture: String,
+    layout: Handle<TextureAtlasLayout>,
+) -> impl Scene {
+    let FoodItem {
+        name,
+        cooldown,
+        index,
+    } = food;
+
+    // Every food item is a button with a child node.
+    // The child node's height will be animated to be at 100% at the beginning
+    // of a cooldown, effectively graying out the whole button, and then getting smaller over time.
+    bsn! {
+        Node {
+            width: px(80),
+            height: px(80),
+            flex_direction: FlexDirection::ColumnReverse,
+        }
+        BackgroundColor(SLATE_400)
+        Button
+        ImageNode {
+            image: texture,
+            texture_atlas: texture_atlas_template(layout, index),
+        }
+        Cooldown(Timer::from_seconds(cooldown, TimerMode::Once))
+        Name(name)
+        Children [
+            Node {
+                width: percent(100),
+                height: percent(0),
+            }
+            BackgroundColor({SLATE_50.with_alpha(0.5)})
+        ]
+    }
+}
+
+// Ensure the texture_atlas in the ImageNode can be set correctly.
+fn texture_atlas_template(
+    layout: Handle<TextureAtlasLayout>,
+    index: usize,
+) -> TextureAtlasTemplate {
+    TextureAtlasTemplate {
+        layout: layout.into(),
+        index,
+    }
+}
+
+#[derive(Component, Clone, Default)]
+struct Cooldown(Timer);
+
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct ActiveCooldown;
+
+/// Observer that starts the cooldown whenever a food item button is activated.
+fn on_activate_start_cooldown(
+    event: On<Activate>,
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (Entity, &mut Cooldown, &Name, Option<&ActiveCooldown>),
+        With<Button>,
+    >,
+    mut text: Query<&mut Text>,
+) -> Result {
+    if let Ok((entity, mut cooldown, name, on_cooldown)) = interaction_query.get_mut(event.entity) {
+        if on_cooldown.is_none() {
+            cooldown.0.reset();
+            commands.entity(entity).insert(ActiveCooldown);
+            **text.single_mut()? = format!("You ate {name}");
+        } else {
+            **text.single_mut()? = format!(
+                "You can eat {name} again in {} seconds.",
+                cooldown.0.remaining_secs().ceil()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn animate_cooldowns(
+    time: Res<Time>,
+    mut commands: Commands,
+    buttons: Query<(Entity, &mut Cooldown, &Children), With<ActiveCooldown>>,
+    mut nodes: Query<&mut Node>,
+) -> Result {
+    for (entity, mut timer, children) in buttons {
+        timer.0.tick(time.delta());
+        let cooldown = children.first().ok_or("No child")?;
+        if timer.0.just_finished() {
+            commands.entity(entity).remove::<ActiveCooldown>();
+            nodes.get_mut(*cooldown)?.height = percent(0);
+        } else {
+            nodes.get_mut(*cooldown)?.height = percent((1. - timer.0.fraction()) * 100.);
+        }
+    }
+
+    Ok(())
+}

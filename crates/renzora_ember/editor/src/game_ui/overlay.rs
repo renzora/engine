@@ -115,7 +115,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &renzora_ember::font::EmberF
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             // Above the backdrop (0) + UI render (1) so handles are visible/clickable.
             ZIndex(5),
             CanvasHitLayer,

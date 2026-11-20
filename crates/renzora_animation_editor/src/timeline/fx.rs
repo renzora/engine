@@ -389,6 +389,14 @@ pub(super) struct FxClock {
 /// seeks, well under anything visible.
 const DRIFT: f32 = 0.1;
 
+/// Run condition for [`drive_fx_clock`]: an effect is shown, or the clip
+/// cache was just written (which is how the effect goes away). The second
+/// half lets the clock run once more after the effect leaves, to hand the
+/// effect's own clock back; with no effect and no change it has nothing to do.
+pub(super) fn fx_clock_live(cache: Res<TimelineClip>) -> bool {
+    cache.fx.is_some() || cache.is_changed()
+}
+
 /// Drive the shown effect from the timeline's clock (see the module docs).
 ///
 /// It holds the clock through `ParticlePlayback::editor_clock`, which is

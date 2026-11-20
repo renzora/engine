@@ -1,0 +1,9 @@
+name = "Distortion"
+version = "2.0.0"
+description = "Animated wave distortion: the picture is displaced by a scrolling noise field. A post-process effect: drop distortion.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "distortion"
+tags = ["post-processing", "shader", "distortion", "animated"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

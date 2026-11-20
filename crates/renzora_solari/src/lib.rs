@@ -43,13 +43,14 @@
 //! shadow casters standing in the middle of the level. See
 //! [`in_raytraced_scene`].
 
+use bevy::light::AtmosphereEnvironmentMapLight;
 use bevy::prelude::*;
 use bevy::camera::visibility::{InheritedVisibility, RenderLayers, VisibilitySystems};
 use bevy::camera::CameraMainTextureUsages;
 use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::ecs::system::SystemParam;
 use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight, PointLight, SpotLight, VolumetricLight};
-use bevy::mesh::{Indices, MeshVertexAttributeId, PrimitiveTopology};
+use bevy::mesh::{Indices, MeshRaytracingFlags, MeshVertexAttributeId, PrimitiveTopology};
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::pbr::{
     prepare_lights, DefaultOpaqueRendererMethod, ExtractedDirectionalLight, ExtractedPointLight,
@@ -61,6 +62,7 @@ use bevy::render::view::Msaa;
 use bevy::solari::realtime::SolariLighting;
 use bevy::solari::scene::RaytracingMesh3d;
 use bevy::solari::SolariPlugins;
+use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
 use renzora::{
     EffectRouting, GpuRaytracing, SolariGi, SolariShadedTransparent, SolariQuality, TracedGeometry, TracedGeometryWanted,
     TracedStandIn, TracedStandInsWanted,
@@ -92,10 +94,9 @@ impl Plugin for SolariPlugin {
                  Solari is inert. (Needs an RT-capable GPU on the Vulkan/DX12/Metal \
                  backend; see renzora::GpuRaytracing.)"
             );
-            app.insert_resource(renzora::DlssSupport {
-                compiled: cfg!(feature = "dlss"),
-                ray_reconstruction: false,
-            });
+            // Still report DLSS: Super Resolution, the anti-aliasing method,
+            // needs no ray tracing, so it can run where Solari cannot.
+            dlss::register_support(app, false);
             return;
         }
 
@@ -123,6 +124,7 @@ impl Plugin for SolariPlugin {
         // without a deferred prepass (or without the STORAGE_BINDING texture)
         // before a lagging system could fix it, and Bevy crashes hard on that.
         app.add_observer(on_solari_lighting_inserted);
+        app.add_observer(on_solari_lighting_removed);
         app.add_observer(on_camera3d_inserted);
         app.add_systems(
             Update,
@@ -131,6 +133,7 @@ impl Plugin for SolariPlugin {
                 manage_solari_render_mode,
                 sync_shadow_map_suppression,
                 reset_history_on_sun_change,
+                restore_filtered_sky_probe,
             ),
         );
         app.init_resource::<SuppressShadowMaps>();
@@ -198,7 +201,68 @@ fn on_solari_lighting_inserted(trigger: On<Insert<SolariLighting>>, mut commands
     commands.entity(trigger.entity).try_insert((
         Msaa::Off,
         CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING),
+        // Tells crates that stand aside for Solari (SSAO) that this camera is
+        // ray traced, however `SolariLighting` got here.
+        renzora::SolariLit,
     ));
+}
+
+/// Undo what Solari did to a camera when it stops lighting it: the
+/// [`renzora::SolariLit`] marker goes, and the sky probe is filtered again.
+///
+/// Bevy's Solari switches a camera's `AtmosphereEnvironmentMapLight` to
+/// unfiltered while it runs (it reads the raw cube) and never switches it back.
+/// Left that way, the ordinary renderer took the raw sky cube as both its
+/// specular and its diffuse map once Solari was off: every rough wall mirrored
+/// a sharp sky and looked wet, and the sky light skipped the irradiance
+/// convolution it is meant to have. Re-inserting with `filtered: true` makes
+/// Bevy's observer rebuild the filtered maps, the way the camera started.
+fn on_solari_lighting_removed(
+    trigger: On<Remove<SolariLighting>>,
+    probes: Query<&AtmosphereEnvironmentMapLight>,
+    mut commands: Commands,
+) {
+    let Ok(mut ec) = commands.get_entity(trigger.entity) else {
+        return;
+    };
+    ec.try_remove::<renzora::SolariLit>();
+    if let Ok(probe) = probes.get(trigger.entity) {
+        if !probe.filtered {
+            ec.try_insert(AtmosphereEnvironmentMapLight {
+                filtered: true,
+                ..probe.clone()
+            });
+        }
+    }
+}
+
+/// Put the sky probe back to filtered on any camera Solari is not lighting.
+///
+/// [`on_solari_lighting_removed`] does this the moment `SolariLighting` goes,
+/// but it can lose a race: Bevy's Solari makes the probe unfiltered with a
+/// queued command, and when `SolariLighting` came and went within a frame or
+/// two (a scene switch from a Solari scene to one without), the observer read
+/// the probe as still filtered, did nothing, and the queued command then landed.
+/// The probe stayed unfiltered with Solari off, and every rough surface mirrored
+/// the raw sky: the apartment's satin chairs showed sharp blue and beige
+/// patches. A per-frame check cannot be outrun that way, and costs a query.
+fn restore_filtered_sky_probe(
+    // The reference path tracer wants the raw cube too (the quality tests use
+    // it); left out, or the two would rebuild the probe every frame.
+    probes: Query<
+        (Entity, &AtmosphereEnvironmentMapLight),
+        (Without<SolariLighting>, Without<bevy::solari::pathtracer::Pathtracer>),
+    >,
+    mut commands: Commands,
+) {
+    for (entity, probe) in &probes {
+        if !probe.filtered {
+            commands.entity(entity).try_insert(AtmosphereEnvironmentMapLight {
+                filtered: true,
+                ..probe.clone()
+            });
+        }
+    }
 }
 
 /// While Solari is active, give any newly-inserted `Camera3d` (play camera,
@@ -210,13 +274,23 @@ fn on_solari_lighting_inserted(trigger: On<Insert<SolariLighting>>, mut commands
 ///
 /// A camera that already has a deferred prepass is left alone and NOT marked, so
 /// going idle never strips a prepass the engine put there itself.
+///
+/// The viewport overlay cameras are left out (here and in
+/// [`manage_solari_render_mode`]): they see only gizmo lines and the
+/// alpha-blended gizmo handles, never a deferred material, so the panic cannot
+/// happen there, and a deferred prepass would add a full-screen lighting pass
+/// to every overlay redraw.
 fn on_camera3d_inserted(
     trigger: On<Insert<Camera3d>>,
     state: Res<SolariActive>,
     has_deferred: Query<Has<DeferredPrepass>>,
+    overlays: Query<(), With<renzora::core::ViewportOverlayCamera>>,
     mut commands: Commands,
 ) {
-    if state.0 && !has_deferred.get(trigger.entity).unwrap_or(false) {
+    if state.0
+        && !has_deferred.get(trigger.entity).unwrap_or(false)
+        && !overlays.contains(trigger.entity)
+    {
         commands
             .entity(trigger.entity)
             .try_insert((DeferredPrepass, Msaa::Off, SolariForcedDeferred));
@@ -360,6 +434,14 @@ fn same_preset(current: &SolariLighting, wanted: &SolariLighting) -> bool {
             == wanted.world_cache_cell_updates_soft_target
 }
 
+/// 3D cameras Solari may give a deferred prepass: not ones with one already,
+/// and not the viewport overlay cameras (see [`on_camera3d_inserted`]).
+type UnforcedCameras = (
+    With<Camera3d>,
+    Without<DeferredPrepass>,
+    Without<renzora::core::ViewportOverlayCamera>,
+);
+
 /// Marker on cameras we forced into the deferred prepass while Solari is active,
 /// so they can be reverted when it goes idle.
 #[derive(Component)]
@@ -387,7 +469,7 @@ fn manage_solari_render_mode(
     // Cameras with no deferred prepass yet. One that already has one, such as
     // the editor camera in a Deferred project, is the engine's and must not be
     // marked, or going idle would strip its prepass.
-    unforced_cameras: Query<Entity, (With<Camera3d>, Without<DeferredPrepass>)>,
+    unforced_cameras: Query<Entity, UnforcedCameras>,
     forced_cameras: Query<Entity, With<SolariForcedDeferred>>,
 ) {
     if !active.is_empty() {
@@ -621,6 +703,7 @@ fn mirror_raytracing_meshes(
     if active.is_empty() {
         return;
     }
+    let budget = PrepareBudget::start();
     for (entity, mesh3d, geometry, (material, visibility, layers)) in &candidates {
         // Anything but a definite yes is left alone WITHOUT `SolariMeshSkip`:
         // ineligible is re-checked every frame, and a still-loading material is
@@ -628,10 +711,14 @@ fn mirror_raytracing_meshes(
         if is_raytraceable_instance(&materials, material, visibility, layers) != Some(true) {
             continue;
         }
+        // Loaded: `is_raytraceable_instance` answered from it.
+        let Some(kind) = materials.get(&material.0).map(blas_kind) else {
+            continue;
+        };
         let Some(source) = traced_source(mesh3d, geometry) else {
             continue;
         };
-        match traceable_mesh(source, &mut meshes, &mut proxies) {
+        match traceable_mesh(source, kind, &mut meshes, &mut proxies, &budget) {
             // try_insert: the entity may despawn between this query and command
             // apply (scene reloads / asset streaming churn entities constantly
             // in the editor); a plain insert would panic on the dead entity.
@@ -690,8 +777,22 @@ struct SolariTracedTwin;
 /// One twin, and what it was built from, so a change to either respawns it.
 struct Twin {
     entity: Entity,
+    /// What it traces: the source's geometry, or a copy of it.
     mesh: AssetId<Mesh>,
     material: AssetId<StandardMaterial>,
+    /// The source's geometry and the BLAS its material wanted, for
+    /// [`sync_traced_twins`]'s check that nothing has changed.
+    source: AssetId<Mesh>,
+    kind: MeshRaytracingFlags,
+    /// The source's `GlobalTransform` when the twin was last placed.
+    ///
+    /// Compared against instead of the twin's own `GlobalTransform`: the twin
+    /// is placed through a `Transform` decomposed from the source's, and
+    /// propagation rebuilds its global from that, which comes back slightly
+    /// different (exactly so for non-uniform scale under a rotation). Compared
+    /// against the twin, every such twin was rewritten every frame, which kept
+    /// the viewport's render-on-change from ever idling with Solari on.
+    placed_from: GlobalTransform,
 }
 
 /// Source mesh entity to its twin.
@@ -743,7 +844,6 @@ fn sync_traced_twins(
     materials: Res<Assets<StandardMaterial>>,
     active: Query<(), With<SolariLighting>>,
     sources: Query<TwinSource, Without<MeshMaterial3d<StandardMaterial>>>,
-    placed: Query<&GlobalTransform, With<SolariTracedTwin>>,
 ) {
     if active.is_empty() {
         for (_, twin) in twins.0.drain() {
@@ -752,6 +852,7 @@ fn sync_traced_twins(
         return;
     }
 
+    let budget = PrepareBudget::start();
     let mut live: HashSet<Entity> = HashSet::new();
     for (source, mesh3d, geometry, stand_in, transform, visibility, layers) in &sources {
         if !in_raytraced_scene(visibility, layers) {
@@ -771,9 +872,33 @@ fn sync_traced_twins(
             continue;
         }
         let source_mesh = traced_source(mesh3d, geometry);
-        let traced = match source_mesh.map(|m| traceable_mesh(m, &mut trace.meshes, &mut trace.proxies)) {
+        let kind = blas_kind(material);
+
+        // Nothing changed since its twin was made: follow it and move on.
+        // Asking `traceable_mesh` again for every source every frame cost
+        // 13 ms a frame with Bistro in the scene, for an answer that had not
+        // changed. Still checked here: the geometry (a stale copy is dropped
+        // from `copies`, so a twin tracing one is rebuilt) and the BLAS kind,
+        // which an edit to the stand-in's alpha mode changes.
+        if let (Some(twin), Some(src)) = (existing, source_mesh) {
+            let traces_current = twin.mesh == src.id()
+                || trace.proxies.copies.get(&src.id()).is_some_and(|copy| copy.as_ref().is_some_and(|h| h.id() == twin.mesh));
+            if twin.source == src.id() && twin.material == stand_in.0.id() && twin.kind == kind && traces_current {
+                live.insert(source);
+                if twin.placed_from != *transform {
+                    commands.entity(twin.entity).try_insert((Transform::from(*transform), *transform));
+                    if let Some(twin) = twins.0.get_mut(&source) {
+                        twin.placed_from = *transform;
+                    }
+                }
+                continue;
+            }
+        }
+
+        let traced = match source_mesh.map(|m| traceable_mesh(m, kind, &mut trace.meshes, &mut trace.proxies, &budget)) {
             Some(Traceable::Ready(handle)) => handle,
-            // Waiting on full detail is like waiting on an asset.
+            // Waiting on full detail is like waiting on an asset, and so is
+            // waiting for a frame with budget left.
             None | Some(Traceable::Loading) => {
                 if existing.is_some() {
                     live.insert(source);
@@ -789,10 +914,13 @@ fn sync_traced_twins(
         {
             // Written only on a change: a moved `GlobalTransform` is what makes
             // Solari re-upload the instance's transform.
-            if placed.get(twin.entity).is_ok_and(|at| at != transform) {
+            if twin.placed_from != *transform {
                 commands
                     .entity(twin.entity)
                     .try_insert((Transform::from(*transform), *transform));
+                if let Some(twin) = twins.0.get_mut(&source) {
+                    twin.placed_from = *transform;
+                }
             }
             continue;
         }
@@ -817,6 +945,10 @@ fn sync_traced_twins(
                 entity: twin,
                 mesh: traced.id(),
                 material: stand_in.0.id(),
+                // `traced` came from a source, so there is one.
+                source: source_mesh.map_or(traced.id(), Handle::id),
+                kind,
+                placed_from: *transform,
             },
         );
     }
@@ -832,17 +964,61 @@ fn sync_traced_twins(
     });
 }
 
+/// How long [`mirror_raytracing_meshes`] and [`sync_traced_twins`] may each
+/// spend in a frame changing meshes for the ray tracer.
+///
+/// Turning Solari on with Bistro Exterior in the scene froze the editor for
+/// 5.6 seconds: every mesh in the scene was given tangents, 32-bit indices or a
+/// stripped copy in the one frame, and each mesh changed then had to be
+/// uploaded again, which cost the next frame 136 ms more. Within a budget the
+/// same work spreads over a few seconds of smooth frames, and the scene fills
+/// into the ray tracer as it goes.
+const PREPARE_BUDGET: std::time::Duration = std::time::Duration::from_millis(3);
+
+/// One frame's share of [`PREPARE_BUDGET`].
+struct PrepareBudget {
+    until: bevy::platform::time::Instant,
+}
+
+impl PrepareBudget {
+    fn start() -> Self {
+        Self { until: bevy::platform::time::Instant::now() + PREPARE_BUDGET }
+    }
+
+    /// Whether this frame's time is used up. Checked before a mesh's work
+    /// starts, so each frame does at least one mesh however large.
+    fn spent(&self) -> bool {
+        bevy::platform::time::Instant::now() >= self.until
+    }
+}
+
 /// What [`traceable_mesh`] made of a mesh.
 enum Traceable {
     /// The geometry to hand Solari: the source itself, or a stripped copy.
     Ready(Handle<Mesh>),
-    /// The asset hasn't loaded; ask again next frame.
+    /// The asset hasn't loaded, or this frame's [`PrepareBudget`] is spent;
+    /// ask again next frame.
     Loading,
     /// The geometry can never be traced (see [`SolariMeshSkip`]).
     Never,
 }
 
-/// Geometry Solari's BLAS builder will accept for the mesh `handle`.
+/// Which BLAS a mesh drawn with `material` needs: Solari builds an opaque one,
+/// and a non-opaque one whose hits are alpha tested for masked materials
+/// (foliage, fences). A blended material is traced through an opaque BLAS:
+/// only the see-through pass's rays reach it, and they shade the blend
+/// themselves. The same split Solari's binder makes, so a mesh declares the
+/// BLAS its material will look for.
+fn blas_kind(material: &StandardMaterial) -> MeshRaytracingFlags {
+    match material.alpha_mode {
+        AlphaMode::Mask(_) | AlphaMode::AlphaToCoverage => MeshRaytracingFlags::NON_OPAQUE,
+        _ => MeshRaytracingFlags::OPAQUE,
+    }
+}
+
+/// Geometry Solari's BLAS builder will accept for the mesh `handle`, declaring
+/// the `kind` of BLAS its material needs ([`blas_kind`]). A mesh shared by
+/// opaque and masked materials ends up declaring both.
 ///
 /// Two routes. Prefer repairing the source in place (it costs no extra memory
 /// and is all most GLBs need), and fall back to a stripped copy for meshes whose
@@ -850,8 +1026,10 @@ enum Traceable {
 /// shared asset without breaking the rasterized draw.
 fn traceable_mesh(
     handle: &Handle<Mesh>,
+    kind: MeshRaytracingFlags,
     meshes: &mut Assets<Mesh>,
     proxies: &mut RaytracingProxies,
+    budget: &PrepareBudget,
 ) -> Traceable {
     let Some(mesh) = meshes.get(handle) else {
         return Traceable::Loading;
@@ -865,47 +1043,125 @@ fn traceable_mesh(
         // borrow (and trigger asset re-extraction) when there's work to do.
         let needs_tangents = mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none();
         let needs_u32 = matches!(mesh.indices(), Some(Indices::U16(_)));
-        let needs_flag = !mesh.enable_raytracing;
+        let needs_flag = !mesh.raytracing.contains(kind);
 
-        if needs_tangents || needs_u32 || needs_flag {
-            let Some(mut mesh) = meshes.get_mut(handle) else {
+        if needs_tangents || needs_u32 {
+            return conform_in_background(handle, kind, meshes, proxies, budget);
+        }
+        if needs_flag {
+            // Even a flag alone costs: the change uploads the mesh again.
+            if budget.spent() {
                 return Traceable::Loading;
-            };
-            if needs_u32 {
-                promote_indices_to_u32(&mut mesh);
             }
-            // Generate tangents from UV+normals (the base checks guarantee
-            // both, plus indexed TriangleList). Most imported GLBs lack
-            // tangents, and without them the ray-tracing scene is near-empty
-            // and the whole view renders almost black, so generate rather
-            // than skip. Where the UVs are degenerate, tangents come from the
-            // normals instead.
-            if needs_tangents && mesh.generate_tangents().is_err() {
-                let Some(tangents) = tangents_from_normals(&mesh) else {
-                    return Traceable::Never;
-                };
-                mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
+            if let Some(mut mesh) = meshes.get_mut(handle) {
+                mesh.raytracing |= kind;
             }
-            mesh.enable_raytracing = true;
         }
         return Traceable::Ready(handle.clone());
     }
 
-    if let Some(cached) = proxies.0.get(&handle.id()).cloned() {
+    if let Some(task) = proxies.copying.get_mut(&handle.id()) {
+        let Some(done) = block_on(poll_once(task)) else {
+            return Traceable::Loading;
+        };
+        proxies.copying.remove(&handle.id());
+        let Some(mut proxy) = done else {
+            warn!("[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be built");
+            proxies.copies.insert(handle.id(), None);
+            return Traceable::Never;
+        };
+        proxy.raytracing = kind;
+        let proxy = meshes.add(proxy);
+        proxies.copies.insert(handle.id(), Some(proxy.clone()));
+        return Traceable::Ready(proxy);
+    }
+
+    if let Some(cached) = proxies.copies.get(&handle.id()).cloned() {
         // A cached `None` is a source we already failed to convert; don't
         // retry (and re-warn about) it every frame.
-        return cached.map_or(Traceable::Never, Traceable::Ready);
+        let Some(proxy) = cached else {
+            return Traceable::Never;
+        };
+        // The copy was made for the first material that used it; a second
+        // material may need the other kind of BLAS as well. Checked before the
+        // mutable borrow, which would re-extract the mesh every frame.
+        if meshes.get(&proxy).is_some_and(|m| !m.raytracing.contains(kind)) {
+            if budget.spent() {
+                return Traceable::Loading;
+            }
+            if let Some(mut m) = meshes.get_mut(&proxy) {
+                m.raytracing |= kind;
+            }
+        }
+        return Traceable::Ready(proxy);
     }
-    // `build_raytracing_proxy` returns an owned mesh, which ends the immutable
-    // borrow of `meshes` that `mesh` holds, so the insert below is allowed.
-    let Some(proxy) = build_raytracing_proxy(mesh) else {
-        warn!("[solari] mesh excluded from ray tracing: no BLAS-compatible copy could be built");
-        proxies.0.insert(handle.id(), None);
-        return Traceable::Never;
+    if budget.spent() {
+        return Traceable::Loading;
+    }
+    // The copy is built on a worker thread from a copy of the source, and
+    // picked up above on a later frame.
+    let source = mesh.clone();
+    let task = AsyncComputeTaskPool::get().spawn(async move { build_raytracing_proxy(&source) });
+    proxies.copying.insert(handle.id(), task);
+    Traceable::Loading
+}
+
+/// Give the mesh `handle` the tangents and 32-bit indices the BLAS builder
+/// needs, on a worker thread, and swap the result in when it is done.
+///
+/// On the main thread, a large mesh's tangents took about 300 ms, all in one
+/// frame however the frame was budgeted: Bistro's biggest meshes made a frame
+/// of 300 to 800 ms each when Solari came on. Here the frame only copies the
+/// mesh out (counted against the [`PrepareBudget`]) and later moves the
+/// finished one back in.
+///
+/// Generating the tangents from UVs and normals rather than skipping the mesh:
+/// most imported GLBs lack tangents, and without them the ray-traced scene is
+/// near empty and renders almost black. Where the UVs are degenerate, tangents
+/// come from the normals instead.
+fn conform_in_background(
+    handle: &Handle<Mesh>,
+    kind: MeshRaytracingFlags,
+    meshes: &mut Assets<Mesh>,
+    proxies: &mut RaytracingProxies,
+    budget: &PrepareBudget,
+) -> Traceable {
+    let id = handle.id();
+    if let Some(task) = proxies.conforming.get_mut(&id) {
+        let Some(done) = block_on(poll_once(task)) else {
+            return Traceable::Loading;
+        };
+        proxies.conforming.remove(&id);
+        let Some(mut conformed) = done else {
+            return Traceable::Never;
+        };
+        let Some(mut mesh) = meshes.get_mut(handle) else {
+            return Traceable::Loading;
+        };
+        conformed.raytracing |= mesh.raytracing | kind;
+        *mesh = conformed;
+        return Traceable::Ready(handle.clone());
+    }
+    if budget.spent() {
+        return Traceable::Loading;
+    }
+    let Some(source) = meshes.get(handle).cloned() else {
+        return Traceable::Loading;
     };
-    let proxy = meshes.add(proxy);
-    proxies.0.insert(handle.id(), Some(proxy.clone()));
-    Traceable::Ready(proxy)
+    let task = AsyncComputeTaskPool::get().spawn(async move { conform(source) });
+    proxies.conforming.insert(id, task);
+    Traceable::Loading
+}
+
+/// `mesh` with 32-bit indices and tangents, or `None` when no tangents can be
+/// made for it at all.
+fn conform(mut mesh: Mesh) -> Option<Mesh> {
+    promote_indices_to_u32(&mut mesh);
+    if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
+        let tangents = tangents_from_normals(&mesh)?;
+        mesh.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
+    }
+    Some(mesh)
 }
 
 /// Throw away a cached proxy when its source mesh changes, and un-mirror the
@@ -925,16 +1181,30 @@ fn invalidate_stale_proxies(
     mut proxies: ResMut<RaytracingProxies>,
     mirrored: Query<(Entity, &Mesh3d, Option<&TracedGeometry>), Decided>,
 ) {
-    let stale: Vec<AssetId<Mesh>> = events
+    let changed: Vec<(AssetId<Mesh>, bool)> = events
         .read()
         .filter_map(|event| match event {
-            AssetEvent::Modified { id } | AssetEvent::Removed { id } => Some(*id),
+            AssetEvent::Modified { id } => Some((*id, false)),
+            AssetEvent::Removed { id } => Some((*id, true)),
             _ => None,
         })
+        .collect();
+    let mut stale: Vec<AssetId<Mesh>> = Vec::new();
+    for (id, removed) in changed {
+        // A mesh gone has no use for work in progress on it. One only
+        // modified keeps its work: meshes are modified all the time (this
+        // crate's own repairs, streaming), and dropping the job on each
+        // would starve it.
+        if removed {
+            proxies.conforming.remove(&id);
+            proxies.copying.remove(&id);
+        }
         // Only meshes we actually made a copy of; everything else is either
         // repaired in place or was never traced.
-        .filter(|id| proxies.0.remove(id).is_some())
-        .collect();
+        if proxies.copies.remove(&id).is_some() {
+            stale.push(id);
+        }
+    }
     if stale.is_empty() {
         return;
     }
@@ -988,9 +1258,12 @@ fn unmirror_when_idle(
         return;
     }
     // Dropping the handles frees the duplicated vertex buffers; they are rebuilt
-    // if Solari is switched back on.
-    if !proxies.0.is_empty() {
-        proxies.0.clear();
+    // if Solari is switched back on. Work still out on a worker thread is
+    // dropped too, which cancels it: nothing would collect it.
+    if !proxies.copies.is_empty() || !proxies.conforming.is_empty() || !proxies.copying.is_empty() {
+        proxies.copies.clear();
+        proxies.conforming.clear();
+        proxies.copying.clear();
     }
     for e in &mirrored {
         commands.entity(e).try_remove::<RaytracingMesh3d>();
@@ -1111,10 +1384,19 @@ struct SuppressShadowMaps(bool);
 /// Suppression needs *both* halves to be true. Solari being active isn't enough
 /// on its own, because the toggle exists precisely so you can keep raster
 /// shadows and compare.
+///
+/// When suppression ends, every light is marked changed (its value untouched).
+/// Bevy re-extracts a light only when one of its components changes, and the
+/// extracted copy keeps the `false` [`suppress_shadow_maps`] wrote, so turning
+/// Solari off used to leave every light without shadows until it was edited.
+/// Marking them re-extracts each with its own setting.
 fn sync_shadow_map_suppression(
     active: Query<(), With<SolariLighting>>,
     sources: Query<&SolariGi>,
     mut suppress: ResMut<SuppressShadowMaps>,
+    mut directional: Query<&mut DirectionalLight>,
+    mut point: Query<&mut PointLight>,
+    mut spot: Query<&mut SpotLight>,
 ) {
     let want = !active.is_empty()
         && sources
@@ -1124,6 +1406,11 @@ fn sync_shadow_map_suppression(
     // needless write would mark it changed for every consumer.
     if suppress.0 != want {
         suppress.0 = want;
+        if !want {
+            directional.iter_mut().for_each(|mut l| l.set_changed());
+            point.iter_mut().for_each(|mut l| l.set_changed());
+            spot.iter_mut().for_each(|mut l| l.set_changed());
+        }
     }
 }
 
@@ -1142,8 +1429,11 @@ fn sync_shadow_map_suppression(
 /// per-light mesh culling, which is a bigger saving, but those components are
 /// serialized, so a scene saved while Solari happened to be on would silently
 /// persist shadows-off and stay broken after Solari was turned back off. The
-/// extracted copies are rebuilt from scratch every frame and never written to
-/// disk, so acting on them is free of that whole class of problem.
+/// extracted copies are never written to disk, so acting on them is free of
+/// that whole class of problem. They are kept between frames, though, and
+/// re-extracted only when a light changes, which is why
+/// [`sync_shadow_map_suppression`] marks every light changed when suppression
+/// ends.
 ///
 /// Solari's own lighting is unaffected: its binder reads colour, illuminance,
 /// transform and sun-disk size from `ExtractedDirectionalLight`, never
@@ -1204,8 +1494,11 @@ struct SolariLightProxy;
 #[derive(Resource, Default)]
 struct LightProxies {
     sphere: Option<Handle<Mesh>>,
-    /// light entity -> (proxy entity, its emissive material)
-    proxies: HashMap<Entity, (Entity, Handle<StandardMaterial>)>,
+    /// light entity -> (proxy entity, its emissive material, where it was last
+    /// placed). The placement is compared against rather than the proxy's own
+    /// `GlobalTransform`, which propagation rebuilds from the `Transform` and
+    /// can come back a little different; see `Twin::placed_from`.
+    proxies: HashMap<Entity, (Entity, Handle<StandardMaterial>, GlobalTransform)>,
 }
 
 /// The smallest sphere we will stand in for a light, in metres.
@@ -1247,7 +1540,7 @@ fn build_proxy_sphere() -> Option<Mesh> {
     if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
         return None;
     }
-    mesh.enable_raytracing = true;
+    mesh.raytracing = MeshRaytracingFlags::OPAQUE;
     Some(mesh)
 }
 
@@ -1287,7 +1580,7 @@ fn sync_light_proxies(
     let wanted = !active.is_empty() && sources.iter().any(|gi| gi.enabled && gi.light_proxies);
     if !wanted {
         if !store.proxies.proxies.is_empty() {
-            for (proxy, _) in store.proxies.proxies.values() {
+            for (proxy, _, _) in store.proxies.proxies.values() {
                 commands.entity(*proxy).try_despawn();
             }
             store.proxies.proxies.clear();
@@ -1337,7 +1630,7 @@ fn sync_light_proxies(
     }
 
     // Drop proxies whose light was deleted, hidden, or moved off layer 0.
-    store.proxies.proxies.retain(|light, (proxy, _)| {
+    store.proxies.proxies.retain(|light, (proxy, _, _)| {
         let keep = live.contains(light);
         if !keep {
             commands.entity(*proxy).try_despawn();
@@ -1387,22 +1680,26 @@ fn upsert_light_proxy(
     // Scale the unit sphere to the light's radius, positioned where it is.
     let placement = transform.mul_transform(Transform::from_scale(Vec3::splat(radius)));
 
-    match store.proxies.proxies.get(&light) {
-        Some((proxy, material_handle)) => {
-            if let Some(mut material) = store.materials.get_mut(material_handle) {
-                // Guarded so a static light doesn't mark its material changed
-                // every frame: Solari re-uploads every `StandardMaterial` that
-                // does.
-                if material.emissive != emissive {
+    match store.proxies.proxies.get_mut(&light) {
+        Some((proxy, material_handle, placed)) => {
+            // Read before taking it mutably: `get_mut` alone marks the asset
+            // modified, so a static light re-uploaded its material every frame
+            // (Solari re-uploads every `StandardMaterial` that changes) and the
+            // viewport never idled.
+            if store.materials.get(&*material_handle).is_some_and(|m| m.emissive != emissive) {
+                if let Some(mut material) = store.materials.get_mut(&*material_handle) {
                     material.emissive = emissive;
                 }
             }
-            // Written every frame: a moving lamp has to drag its light with it,
+            // Only when the light moved: a moving lamp drags its proxy with it,
             // and `GlobalTransform` too, because ours is a root entity whose
             // propagation has already run by the time we get here.
-            commands
-                .entity(*proxy)
-                .try_insert((Transform::from(placement), placement));
+            if *placed != placement {
+                commands
+                    .entity(*proxy)
+                    .try_insert((Transform::from(placement), placement));
+                *placed = placement;
+            }
         }
         None => {
             let material = store.materials.add(StandardMaterial {
@@ -1422,7 +1719,7 @@ fn upsert_light_proxy(
                     placement,
                 ))
                 .id();
-            store.proxies.proxies.insert(light, (proxy, material));
+            store.proxies.proxies.insert(light, (proxy, material, placement));
         }
     }
     true
@@ -1511,6 +1808,10 @@ fn warn_unsupported_lights(
 /// to give, so the baked map is black by design, and telling the user to turn
 /// on an environment map that is already on sent them looking for a fault
 /// every time a day/night cycle reached dusk.
+/// How long the sky must stay missing before [`warn_missing_sky_light`] says so:
+/// half a second at 60 FPS, longer than any environment swap takes.
+const SKY_MISSING_FRAMES: u32 = 30;
+
 fn warn_missing_sky_light(
     sky: Query<
         (
@@ -1523,10 +1824,16 @@ fn warn_missing_sky_light(
     suns: Query<&renzora::Sun>,
     mut warned_sky: Local<bool>,
     mut warned_ambient: Local<bool>,
+    // Frames in a row the sky has been missing. Deleting or replacing the
+    // World Environment takes the sky light away a frame or two before Solari
+    // leaves the camera, and warning on that passing moment told the user to
+    // turn on an environment map that was about to stop mattering.
+    mut missing_for: Local<u32>,
 ) {
     if sky.is_empty() {
         *warned_sky = false;
         *warned_ambient = false;
+        *missing_for = 0;
         return;
     }
     let night = !suns.is_empty() && suns.iter().all(|sun| sun.elevation <= 0.0);
@@ -1536,10 +1843,11 @@ fn warn_missing_sky_light(
         (None, Some(map)) => map.intensity > 0.0,
         (None, None) => false,
     });
+    *missing_for = if has_sky { 0 } else { missing_for.saturating_add(1) };
     if has_sky {
         // Re-arm, so switching the sky off again later warns again.
         *warned_sky = false;
-    } else if !night && !*warned_sky {
+    } else if !night && !*warned_sky && *missing_for >= SKY_MISSING_FRAMES {
         *warned_sky = true;
         warn!(
             "[solari] no sky light: Solari lights the sky from the environment map, and this \
@@ -1589,7 +1897,7 @@ fn log_solari_coverage(
         .count();
     let now = (
         mirrored.iter().count(),
-        proxies.0.values().flatten().count(),
+        proxies.copies.values().flatten().count(),
         skipped.iter().count(),
         excluded,
         twins.0.len(),
@@ -1738,7 +2046,9 @@ fn build_raytracing_proxy(source: &Mesh) -> Option<Mesh> {
         let tangents = tangents_from_normals(&proxy)?;
         proxy.insert_attribute(Mesh::ATTRIBUTE_TANGENT, tangents);
     }
-    proxy.enable_raytracing = true;
+    // The caller declares the kind of BLAS (`traceable_mesh`); opaque unless
+    // told otherwise.
+    proxy.raytracing = MeshRaytracingFlags::OPAQUE;
     Some(proxy)
 }
 
@@ -1761,13 +2071,23 @@ fn tangents_from_normals(mesh: &Mesh) -> Option<Vec<[f32; 4]>> {
     )
 }
 
-/// Ray-tracing-only copies of meshes that can't be repaired in place, keyed by
-/// the source asset so every instance of a mesh shares one copy.
-///
-/// A `None` entry records a source we already failed to convert, so a mesh with
-/// degenerate UVs isn't retried (and re-warned about) every single frame.
+/// What [`traceable_mesh`] keeps between frames: the copies it made, and the
+/// meshes being repaired on a worker thread.
 #[derive(Resource, Default)]
-struct RaytracingProxies(HashMap<AssetId<Mesh>, Option<Handle<Mesh>>>);
+struct RaytracingProxies {
+    /// Ray-tracing-only copies of meshes that can't be repaired in place,
+    /// keyed by the source asset so every instance of a mesh shares one copy.
+    ///
+    /// A `None` entry records a source we already failed to convert, so a mesh
+    /// with degenerate UVs isn't retried (and re-warned about) every frame.
+    copies: HashMap<AssetId<Mesh>, Option<Handle<Mesh>>>,
+    /// Meshes being given tangents and 32-bit indices on a worker thread, by
+    /// the asset they will replace. `None` from a task means the mesh can
+    /// never be traced.
+    conforming: HashMap<AssetId<Mesh>, Task<Option<Mesh>>>,
+    /// Copies being built on a worker thread, by their source asset.
+    copying: HashMap<AssetId<Mesh>, Task<Option<Mesh>>>,
+}
 
 
 #[cfg(test)]
@@ -1904,13 +2224,65 @@ mod tests {
     /// The exact rule `bevy_solari`'s BLAS builder applies, replicated here so
     /// the test fails if our copy ever drifts from it.
     fn bevy_would_build_a_blas(mesh: &Mesh) -> bool {
-        mesh.enable_raytracing
+        !mesh.raytracing.is_empty()
             && mesh.primitive_topology() == PrimitiveTopology::TriangleList
             && mesh
                 .attributes()
                 .map(|(attribute, _)| attribute.id)
                 .eq(BLAS_ATTRIBUTES)
             && matches!(mesh.indices(), Some(Indices::U32(..)))
+    }
+
+    /// Frames calling `traceable_mesh` until it answers other than `Loading`,
+    /// as the systems do while a worker thread prepares the mesh.
+    fn frames_until_answered(
+        handle: &Handle<Mesh>,
+        meshes: &mut Assets<Mesh>,
+        proxies: &mut RaytracingProxies,
+    ) -> Traceable {
+        for _ in 0..500 {
+            let budget = PrepareBudget::start();
+            match traceable_mesh(handle, MeshRaytracingFlags::OPAQUE, meshes, proxies, &budget) {
+                Traceable::Loading => std::thread::sleep(std::time::Duration::from_millis(2)),
+                answer => return answer,
+            }
+        }
+        panic!("the mesh was never prepared");
+    }
+
+    /// Mesh work starts only in a frame with budget left and is done on a
+    /// worker thread, the mesh untouched until it is swapped in; a mesh that
+    /// needs nothing is ready even with the budget spent, so a scene already
+    /// prepared never waits.
+    #[test]
+    fn mesh_work_waits_for_budget_and_runs_off_the_frame() {
+        bevy::tasks::AsyncComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
+        let mut meshes = Assets::<Mesh>::default();
+        let mut proxies = RaytracingProxies::default();
+        let spent = PrepareBudget { until: bevy::platform::time::Instant::now() };
+        let kind = MeshRaytracingFlags::OPAQUE;
+
+        let needs_tangents = meshes.add(mesh_with(&["position", "normal", "uv0"]));
+        assert!(matches!(traceable_mesh(&needs_tangents, kind, &mut meshes, &mut proxies, &spent), Traceable::Loading));
+        assert!(proxies.conforming.is_empty(), "no budget, so no job started");
+        assert!(matches!(traceable_mesh(&needs_tangents, kind, &mut meshes, &mut proxies, &PrepareBudget::start()), Traceable::Loading));
+        assert!(meshes.get(&needs_tangents).unwrap().attribute(Mesh::ATTRIBUTE_TANGENT).is_none(), "untouched meanwhile");
+        assert!(matches!(frames_until_answered(&needs_tangents, &mut meshes, &mut proxies), Traceable::Ready(_)));
+        let prepared = meshes.get(&needs_tangents).unwrap();
+        assert!(prepared.attribute(Mesh::ATTRIBUTE_TANGENT).is_some() && prepared.raytracing.contains(kind));
+
+        // Prepared: nothing left to do, so no wait.
+        assert!(matches!(traceable_mesh(&needs_tangents, kind, &mut meshes, &mut proxies, &spent), Traceable::Ready(_)));
+
+        // A copy is building work too, and lands as a new asset.
+        let needs_copy = meshes.add(mesh_with(&["position", "normal", "uv0", "color"]));
+        assert!(matches!(traceable_mesh(&needs_copy, kind, &mut meshes, &mut proxies, &spent), Traceable::Loading));
+        assert!(proxies.copying.is_empty() && proxies.copies.is_empty());
+        match frames_until_answered(&needs_copy, &mut meshes, &mut proxies) {
+            Traceable::Ready(copy) => assert_ne!(copy.id(), needs_copy.id()),
+            _ => panic!("the copy should be ready"),
+        }
+        assert_eq!(proxies.copies.len(), 1);
     }
 
     #[test]
@@ -2196,6 +2568,16 @@ mod tests {
         assert_eq!(
             world.get::<GlobalTransform>(twin).map(|t| t.translation()),
             Some(Vec3::new(1.0, 2.0, 3.0))
+        );
+
+        // Unchanged but moved: the same twin follows, without being rebuilt.
+        app.world_mut().entity_mut(source).insert(GlobalTransform::from_xyz(4.0, 5.0, 6.0));
+        app.update();
+        app.update();
+        assert_eq!(app.world().resource::<TracedTwins>().0.get(&source).map(|t| t.entity), Some(twin));
+        assert_eq!(
+            app.world().get::<GlobalTransform>(twin).map(|t| t.translation()),
+            Some(Vec3::new(4.0, 5.0, 6.0))
         );
 
         app.world_mut().entity_mut(camera).remove::<SolariLighting>();

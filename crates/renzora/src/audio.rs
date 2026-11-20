@@ -108,6 +108,15 @@ impl AudioLink {
         self.poisoned = false;
     }
 
+    /// Adopt a backend whose device is already open, with what its `init`
+    /// reported. For a device opened off the main thread: opening one can
+    /// take tens of milliseconds, and a frame should not wait for it.
+    pub fn adopt_opened(&mut self, backend: std::sync::Mutex<Box<dyn Backend>>, info: BackendInfo) {
+        self.backend = Some(backend);
+        self.info = Some(info);
+        self.poisoned = false;
+    }
+
     /// Forget the backend.
     ///
     /// Nothing calls this in a normal build any more — a linked-in mixer cannot
@@ -116,6 +125,17 @@ impl AudioLink {
     pub fn release(&mut self) {
         self.backend = None;
         self.info = None;
+    }
+
+    /// Hand the backend back, unused, so it can be adopted again later.
+    ///
+    /// For a backend whose `init` failed because no output device would open:
+    /// the device can come back (headphones plugged in again, Windows finishing a
+    /// default-device switch), and [`Self::release`] would drop the only mixer
+    /// there is, leaving the session silent until a restart.
+    pub fn detach(&mut self) -> Option<std::sync::Mutex<Box<dyn Backend>>> {
+        self.info = None;
+        self.backend.take()
     }
 
     /// Allocate the next sound handle.

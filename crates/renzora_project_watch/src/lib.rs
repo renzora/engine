@@ -97,8 +97,12 @@ impl Plugin for ProjectWatchPlugin {
             // debounce.
             .init_resource::<renzora::core::project_files::ExtraWatchRoots>()
             .add_systems(PreUpdate, (sync_roots, drain).chain());
+        // The project index, kept from the same events (see `index`).
+        index::build(app);
     }
 }
+
+mod index;
 
 renzora::add!(ProjectWatchPlugin, Editor);
 

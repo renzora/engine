@@ -24,7 +24,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Scene / editing
     ("hierarchy", "Hierarchy", "tree-structure", "Scene"),
     ("inspector", "Inspector", "sliders-horizontal", "Editing"),
-    ("scene_diagnostics", "Scene Diagnostics", "first-aid", "Debug"),
     ("streaming_debug", "Streaming", "broadcast", "Debug"),
     ("assets", "Assets", "folder-open", "Assets"),
     ("shape_library", "Shapes", "shapes", "Assets"),
@@ -86,7 +85,9 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // `register_shell_panel`, the same way the marketplace panels above are —
     // so an editor without that plugin shows no entries for panels that cannot
     // open, rather than a Debug category full of dead menu items.
-    ("physics_debug", "Physics Debug", "atom", "Debug"),
+    // No `physics_debug` row: nothing ever filled that panel, so it opened to
+    // its own title and nothing else. Debug readouts are probes in the
+    // companion now (`renzora::probes`).
     ("resources", "Resources", "database", "Debug"),
     // Plugins
     ("plugin_resources", "Plugin Resources", "puzzle-piece", "Tools"),

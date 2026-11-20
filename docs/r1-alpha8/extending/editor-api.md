@@ -119,7 +119,11 @@ app.register_inspector(InspectorEntry {
 
 Older names still land somewhere sensible, so a plugin built before the pages existed keeps working: `"transform"`, `"general"` and `"component"` go to Object, `"effects"` to Particles, `"gameplay"` to Scripting, and a `"rendering"` entry whose `type_id` names a sky, fog, cloud or water component goes to Environment (SSAO and SSR to Post Process). Anything unrecognised goes to Object. Camera-page components are offered in Add Component only on a camera.
 
-The field types available: `Float { speed, min, max }`, `Int { min, max }`, `Vec3 { speed }`, `Bool`, `Color`, `ColorRgba`, `String`, `ReadOnly`, `Asset { extensions }`, `AssetCreatable { extensions, create_fn }`, `Enum { options }`, `DynamicEnum { options }`, and `Button { icon }`.
+The field types available: `Float { speed, min, max }`, `Int { min, max }`, `Vec3 { speed }`, `Bool`, `Color`, `ColorRgba`, `String`, `ReadOnly`, `Asset { extensions }`, `AssetCreatable { extensions, create_fn }`, `Enum { options }`, `DynamicEnum { options }`, `CheckedEnum { options, warning }`, and `Button { icon }`.
+
+`CheckedEnum` is an `Enum` (it speaks labels, `FieldValue::Enum`) whose options can each carry a warning. `warning` is `fn(&World, Entity, usize) -> Option<String>`, asked once per option index: an option it answers `Some(reason)` for gets an amber warning icon in the dropdown with `reason` as its tooltip, and the same icon shows beside the box while that option is selected. The options stay selectable, because a warning describes the world as it is now and that can change after the choice is made. The answers are re-read every frame, so a warning that depends on other entities (the rendering mode, an effect elsewhere on the camera) appears and clears by itself. The Camera section's Anti-Aliasing row is the example (`crates/renzora_antialiasing/editor`).
+
+`app.extend_inspector(type_id, fields)` adds rows to a section another crate owns, without that crate depending on yours. The rows land at the end of the section's settings, above any buttons that close it (the Camera section's Snap to Viewport stays last), whichever plugin builds first, and a row with a name already there replaces it. The Camera section's Anti-Aliasing and Tonemapping rows are added this way, from their own crates; each reads and writes its own component, so only where the setting is drawn changes.
 
 Three of those have traps worth naming. **`Int` is not cosmetic** — a `set_fn` that rounds into an integer field *must* pair with `FieldType::Int`, or the widget's fractional drag model and your rounded re-read fight each other and the value visibly stutters mid-drag. **`Button` has no value**: its `get_fn` should return `None`, and a click calls `set_fn` with `FieldValue::Bool(true)` as the press signal. **`DynamicEnum` speaks indices**, not labels — `FieldValue::Float(idx)` — which is what makes it keyframeable.
 
@@ -174,6 +178,18 @@ app.register_scene_starter(SceneStarter {
 ```
 
 `spawn_fn` may spawn any number of entities, insert resources, or switch workspace. Re-registering an existing id is ignored rather than replacing.
+
+### Adding to a new World Environment
+
+When the editor spawns a World Environment (the preset, or the New Environment starter), it triggers `renzora::WorldEnvironmentSpawned` on the new entity. Observe it to put your part of the sky on the entity; this is how the engine's clouds get there without the preset naming them:
+
+```rust
+app.add_observer(|spawned: On<renzora::WorldEnvironmentSpawned>, mut commands: Commands| {
+    commands.entity(spawned.entity).insert(MyHaze::default());
+});
+```
+
+`outdoor_daylight` is set for the New Environment starter's clear mid-morning look, so a component with a look of its own can match it. A scene being loaded does not fire it; it already carries what it was saved with.
 
 ### Hierarchy icons
 

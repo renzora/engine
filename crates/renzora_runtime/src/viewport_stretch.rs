@@ -96,11 +96,12 @@ fn setup_stretch(
     // game camera renders into it) plus TEXTURE_BINDING (the blit
     // camera samples it). COPY_DST mirrors what `Image::new_target_texture`
     // would set — keeps options open for tonemapping / postprocess
-    // passes that might want to copy into the texture later.
-    let mut image = Image::new_fill(
+    // passes that might want to copy into the texture later. No CPU copy:
+    // only the GPU draws into or samples it, and wgpu zero-fills a texture
+    // created without data.
+    let mut image = Image::new_uninit(
         size,
         TextureDimension::D2,
-        &[0, 0, 0, 0],
         TextureFormat::Bgra8UnormSrgb,
         bevy::asset::RenderAssetUsages::default(),
     );

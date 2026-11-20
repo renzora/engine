@@ -90,7 +90,7 @@ pub(crate) fn tab_context_menu(
     windows: Query<&Window>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
     wins: Res<DockWindows>,
-    tabs: Query<(&DockTab, &bevy::ui::RelativeCursorPosition)>,
+    tabs: Query<(&DockTab, &crate::UiCursor)>,
     leaves: Query<(&DockLeaf, &bevy::ui::ComputedNode)>,
     global: Res<GlobalCursor>,
     mut commands: Commands,
@@ -219,14 +219,14 @@ pub(crate) fn tab_context_menu(
 /// Track which panel the user last clicked into as [`FocusedPanel`]. A left
 /// press over a leaf makes that leaf's visible panel the focused one. Panel
 /// content nodes block picking (`BLOCK`), so the press lands on them rather
-/// than on the leaf and leaf `UiInteraction` is unreliable here; we test the leaf's own `RelativeCursorPosition`, which
+/// than on the leaf and leaf `UiInteraction` is unreliable here; we test the leaf's own `UiCursor`, which
 /// is true whenever the cursor is anywhere inside that leaf. Tab switches and
 /// programmatic focus update [`FocusedPanel`] separately (see
 /// [`apply_tab_switch`] / [`apply_focus_request`]).
 pub(crate) fn track_focused_panel(
     mouse: Res<ButtonInput<MouseButton>>,
     mut focused: ResMut<FocusedPanel>,
-    leaves: Query<(&DockLeaf, &bevy::ui::RelativeCursorPosition)>,
+    leaves: Query<(&DockLeaf, &crate::UiCursor)>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -346,7 +346,7 @@ pub(crate) fn tab_hover(
 
 /// A tab's close × reddens while the cursor is over it.
 pub(crate) fn tab_close_hover(
-    mut closes: Query<(&bevy::ui::RelativeCursorPosition, &mut TextColor), With<TabClose>>,
+    mut closes: Query<(&crate::UiCursor, &mut TextColor), With<TabClose>>,
 ) {
     for (rcp, mut color) in &mut closes {
         let target = rgb(if rcp.cursor_over { close_red() } else { text_muted() });
@@ -360,7 +360,7 @@ pub(crate) fn tab_close_hover(
 /// floating window's; closing a floating window's last tab closes the window).
 pub(crate) fn tab_close_click(
     mouse: Res<ButtonInput<MouseButton>>,
-    closes: Query<(&bevy::ui::RelativeCursorPosition, &ChildOf), With<TabClose>>,
+    closes: Query<(&crate::UiCursor, &ChildOf), With<TabClose>>,
     tabs: Query<&DockTab>,
     leaves: Query<&DockLeaf>,
     mut dock: ResMut<Dock>,

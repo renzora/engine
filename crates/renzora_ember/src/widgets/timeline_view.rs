@@ -21,7 +21,8 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
+use bevy::ui::{ComputedNode, UiTransform};
+use crate::UiCursor;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::reactive::{KeyedSnapshot, Rx};
@@ -375,7 +376,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             // A plain cursor by default. A grab hand over the whole surface
             // said "drag me" over empty space where a drag does not move
             // anything; a caller that hit-tests its keys sets `Grab` over them.
@@ -641,7 +642,7 @@ fn timeline_view_playhead(
 
 /// Map cursor-x on the scrub layer → time, written to `scrub_out` for the caller.
 fn timeline_view_scrub(
-    scrubs: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &TlScrub)>,
+    scrubs: Query<(&UiInteraction, &UiCursor, &ComputedNode, &TlScrub)>,
     mut views: Query<&mut TimelineView>,
 ) {
     for (interaction, rcp, cn, s) in &scrubs {

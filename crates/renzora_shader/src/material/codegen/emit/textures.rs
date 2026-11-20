@@ -1,8 +1,9 @@
 //! `texture/*` node emitters.
 //!
-//! Every 2D sampler allocates its own binding slot; the cubemap, array and
-//! volume samplers share one fixed binding each, which is why they set a
-//! `uses_*` flag rather than incrementing a counter.
+//! Every 2D sampler takes the slot of the image it reads
+//! ([`Ctx::alloc_d2_texture`], which shares a slot between nodes reading the
+//! same image); the cubemap, array and volume samplers share one fixed binding
+//! each, which is why they set a `uses_*` flag rather than allocating.
 //!
 //! The normal-map arm carries the most history: it derives Z from XY rather
 //! than reading blue (the import pipeline bakes normal maps to two-channel
@@ -14,79 +15,50 @@ use super::super::super::graph::{MaterialDomain, MaterialNode, NodeId, PinValue}
 use super::super::ctx::Ctx;
 use super::super::{TextureBinding, TextureKind};
 
+/// The image a texture node reads, or empty for none (the slot then keeps the
+/// fallback white).
+fn texture_path(node: &MaterialNode) -> String {
+    match node.input_values.get("texture") {
+        Some(PinValue::TexturePath(s)) => s.clone(),
+        _ => String::new(),
+    }
+}
+
 impl Ctx<'_> {
+    /// `uv` when it is wired, the mesh UV otherwise (the common case).
+    fn uv_or_mesh(&mut self, node: &MaterialNode) -> String {
+        if self.graph.connection_to(node.id, "uv").is_some() {
+            self.input(node, "uv")
+        } else {
+            "mat_uv".to_string()
+        }
+    }
+
+    /// The standard set of colour outputs every sampler exposes.
+    fn set_color_outs(&mut self, id: NodeId, v: &str) {
+        self.set_out(id, "color", v.to_string());
+        self.set_out(id, "rgb", format!("{v}.rgb"));
+        self.set_out(id, "r", format!("{v}.r"));
+        self.set_out(id, "g", format!("{v}.g"));
+        self.set_out(id, "b", format!("{v}.b"));
+        self.set_out(id, "a", format!("{v}.a"));
+    }
+
     pub(crate) fn gen_texture_node(&mut self, node: &MaterialNode, id: NodeId) {
         match node.node_type.as_str() {
             "texture/sample" => {
-                // Use in.uv when UV pin is unconnected (most common case)
-                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
-                    self.input(node, "uv")
-                } else {
-                    "mat_uv".to_string()
-                };
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
-
-                let slot = self.next_texture_binding;
-                let tex_name = format!("texture_{slot}");
-                self.next_texture_binding += 1;
-
-                self.texture_bindings.push(TextureBinding {
-                    name: tex_name.clone(),
-                    binding: slot,
-                    asset_path: path,
-                    kind: TextureKind::D2,
-                });
-
+                let uv = self.uv_or_mesh(node);
+                let tex_name = self.alloc_d2_texture(texture_path(node));
                 let v = self.next_var("tex");
                 let sample = self.sample_call(&tex_name, &uv);
                 self.emit(format!("    let {v} = {sample};"));
-                self.set_out(id, "color", v.clone());
-                self.set_out(id, "rgb", format!("{v}.rgb"));
-                self.set_out(id, "r", format!("{v}.r"));
-                self.set_out(id, "g", format!("{v}.g"));
-                self.set_out(id, "b", format!("{v}.b"));
-                self.set_out(id, "a", format!("{v}.a"));
+                self.set_color_outs(id, &v);
             }
 
             "texture/sample_normal" => {
-                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
-                    self.input(node, "uv")
-                } else {
-                    "mat_uv".to_string()
-                };
+                let uv = self.uv_or_mesh(node);
                 let strength = self.input(node, "strength");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
-
-                let slot = self.next_texture_binding;
-                let tex_name = format!("texture_{slot}");
-                self.next_texture_binding += 1;
-
-                self.texture_bindings.push(TextureBinding {
-                    name: tex_name.clone(),
-                    binding: slot,
-                    asset_path: path,
-                    kind: TextureKind::D2,
-                });
+                let tex_name = self.alloc_d2_texture(texture_path(node));
 
                 let flip = self.input(node, "flip_green");
                 let raw = self.next_var("nraw");
@@ -96,7 +68,7 @@ impl Ctx<'_> {
                 let sample = self.sample_call(&tex_name, &uv);
                 // Read X and Y only and *derive* Z, rather than trusting the
                 // blue channel. The import pipeline bakes normal maps to
-                // `Bc5RgUnorm` — two channels, no blue — because that is the
+                // `Bc5RgUnorm` (two channels, no blue) because that is the
                 // right GPU format for them. Sampling `.b` off one of those
                 // returns 0, which decodes to z = -1: a normal pointing
                 // straight *into* the surface, so the model lights inside-out.
@@ -104,7 +76,7 @@ impl Ctx<'_> {
                 // with its `TWO_COMPONENT_NORMAL_MAP` flag; codegen has no
                 // material flags to consult and does not need them, because a
                 // tangent-space normal is a unit vector with z > 0 and Z is
-                // therefore recoverable from XY — exactly, for a three-channel
+                // therefore recoverable from XY: exactly, for a three-channel
                 // map just as much as for a two-channel one.
                 self.emit(format!("    let {raw} = {sample}.rg * 2.0 - 1.0;"));
                 // DirectX normal maps store green inverted relative to OpenGL.
@@ -116,14 +88,14 @@ impl Ctx<'_> {
                     "    let {nxy} = {raw} * {strength} * vec2<f32>(1.0, select(1.0, -1.0, {flip}));"
                 ));
                 // `max(0.0, ..)` because a strength above 1 can push the pair
-                // outside the unit disc, and `sqrt` of a negative is NaN — one
+                // outside the unit disc, and `sqrt` of a negative is NaN; one
                 // NaN normal poisons the whole lighting result.
                 self.emit(format!(
                     "    let {nt} = vec3<f32>({nxy}, sqrt(max(0.0, 1.0 - dot({nxy}, {nxy}))));"
                 ));
 
                 // That decode is a *tangent-space* normal, but the Surface
-                // Output `normal` pin is world-space — which is the whole reason
+                // Output `normal` pin is world-space, which is the whole reason
                 // `normal_from_height` has a separate `world_normal_from_height`
                 // sibling. Handing the tangent-space vector straight to
                 // `pbr_input.N` makes a flat region of a normal map, (0,0,1),
@@ -144,16 +116,34 @@ impl Ctx<'_> {
                 // Mikktspace, matching `apply_normal_mapping` exactly, so both
                 // paths shade identically. With no vertex tangents there is no
                 // frame to map through, so fall back to the interpolated vertex
-                // normal — what StandardMaterial renders for a mesh that has a
+                // normal, which is what StandardMaterial renders for a mesh that has a
                 // normal map but no tangents.
-                // A sprite is in the same position: no tangents, no
-                // `pbr_functions`, and a 2D shader reads the value as is.
-                if matches!(self.graph.domain, MaterialDomain::TerrainLayer | MaterialDomain::Sprite) {
-                    // Terrain compiles to `layer_main()`, whose `FakeIn` has no
-                    // `world_tangent` and which never imports `pbr_functions`.
-                    // Its layer shader consumes the tangent-space value
-                    // directly, so that domain stays exactly as it was.
+                //
+                // A sprite has no tangents and no `pbr_functions`, and a 2D
+                // shader reads the value as is.
+                if self.graph.domain == MaterialDomain::Sprite {
                     self.set_out(id, "normal", nt);
+                } else if let Some(coords) = self.landscape_coords_source(node) {
+                    // A normal map laid down by Landscape Layer Coords is
+                    // projected from above in world X/Z, which is not the
+                    // frame a terrain chunk's tangents describe: its UVs run
+                    // across one chunk. Oriented by the surface normal instead
+                    // (a whiteout blend, as a top-down projection is), the
+                    // lighting stays continuous across chunk seams.
+                    //
+                    // The tilt is in image space first: green points up the
+                    // image, against v, so it is `(x, -y)` in UV. The coords
+                    // turned world X/Z into UV by the node's rotation R, so the
+                    // tilt goes back to world by R's transpose.
+                    let rot = self.input(&coords, "rotation");
+                    let wn = self.next_var("nwn");
+                    let r = self.next_var("nrot");
+                    self.emit(format!("    let {wn} = normalize(in.world_normal);"));
+                    self.emit(format!("    let {r} = radians({rot});"));
+                    self.emit(format!(
+                        "    let {n} = normalize(vec3<f32>(cos({r}) * {nt}.x - sin({r}) * {nt}.y + {wn}.x, abs({nt}.z) * {wn}.y, -sin({r}) * {nt}.x - cos({r}) * {nt}.y + {wn}.z));"
+                    ));
+                    self.set_out(id, "normal", n);
                 } else {
                     let tbn = self.next_var("ntbn");
                     self.emit_if(
@@ -171,105 +161,33 @@ impl Ctx<'_> {
             }
 
             "texture/sample_lod" => {
-                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
-                    self.input(node, "uv")
-                } else {
-                    "mat_uv".to_string()
-                };
+                let uv = self.uv_or_mesh(node);
                 let lod = self.input(node, "lod");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
-
-                let slot = self.next_texture_binding;
-                let tex_name = format!("texture_{slot}");
-                self.next_texture_binding += 1;
-
-                self.texture_bindings.push(TextureBinding {
-                    name: tex_name.clone(),
-                    binding: slot,
-                    asset_path: path,
-                    kind: TextureKind::D2,
-                });
-
+                let tex_name = self.alloc_d2_texture(texture_path(node));
                 let v = self.next_var("texl");
                 self.emit(format!(
                     "    let {v} = textureSampleLevel({tex_name}, texture_sampler, {uv}, {lod});"
                 ));
-                self.set_out(id, "color", v.clone());
-                self.set_out(id, "rgb", format!("{v}.rgb"));
-                self.set_out(id, "r", format!("{v}.r"));
-                self.set_out(id, "g", format!("{v}.g"));
-                self.set_out(id, "b", format!("{v}.b"));
-                self.set_out(id, "a", format!("{v}.a"));
+                self.set_color_outs(id, &v);
             }
 
             "texture/sample_grad" => {
-                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
-                    self.input(node, "uv")
-                } else {
-                    "mat_uv".to_string()
-                };
+                let uv = self.uv_or_mesh(node);
                 let ddx = self.input(node, "ddx");
                 let ddy = self.input(node, "ddy");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
-
-                let slot = self.next_texture_binding;
-                let tex_name = format!("texture_{slot}");
-                self.next_texture_binding += 1;
-
-                self.texture_bindings.push(TextureBinding {
-                    name: tex_name.clone(),
-                    binding: slot,
-                    asset_path: path,
-                    kind: TextureKind::D2,
-                });
-
+                let tex_name = self.alloc_d2_texture(texture_path(node));
                 let v = self.next_var("texg");
                 self.emit(format!(
                     "    let {v} = textureSampleGrad({tex_name}, texture_sampler, {uv}, {ddx}, {ddy});"
                 ));
-                self.set_out(id, "color", v.clone());
-                self.set_out(id, "rgb", format!("{v}.rgb"));
-                self.set_out(id, "r", format!("{v}.r"));
-                self.set_out(id, "g", format!("{v}.g"));
-                self.set_out(id, "b", format!("{v}.b"));
-                self.set_out(id, "a", format!("{v}.a"));
+                self.set_color_outs(id, &v);
             }
 
             "texture/sample_cubemap" => {
                 self.uses_cube_0 = true;
                 let dir = self.input(node, "direction");
                 let lod = self.input(node, "lod");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
+                let path = texture_path(node);
                 if !path.is_empty() {
                     self.texture_bindings.push(TextureBinding {
                         name: "cube_0".to_string(),
@@ -287,23 +205,9 @@ impl Ctx<'_> {
 
             "texture/sample_2d_array" => {
                 self.uses_array_0 = true;
-                let uv = if self.graph.connection_to(node.id, "uv").is_some() {
-                    self.input(node, "uv")
-                } else {
-                    "mat_uv".to_string()
-                };
+                let uv = self.uv_or_mesh(node);
                 let layer = self.input(node, "layer");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
+                let path = texture_path(node);
                 if !path.is_empty() {
                     self.texture_bindings.push(TextureBinding {
                         name: "array_0".to_string(),
@@ -314,28 +218,13 @@ impl Ctx<'_> {
                 }
                 let v = self.next_var("tarr");
                 self.emit(format!("    let {v} = textureSample(array_0, texture_sampler, {uv}, i32(round({layer})));"));
-                self.set_out(id, "color", v.clone());
-                self.set_out(id, "rgb", format!("{v}.rgb"));
-                self.set_out(id, "r", format!("{v}.r"));
-                self.set_out(id, "g", format!("{v}.g"));
-                self.set_out(id, "b", format!("{v}.b"));
-                self.set_out(id, "a", format!("{v}.a"));
+                self.set_color_outs(id, &v);
             }
 
             "texture/sample_3d" => {
                 self.uses_volume_0 = true;
                 let uvw = self.input(node, "uvw");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
+                let path = texture_path(node);
                 if !path.is_empty() {
                     self.texture_bindings.push(TextureBinding {
                         name: "volume_0".to_string(),
@@ -348,43 +237,17 @@ impl Ctx<'_> {
                 self.emit(format!(
                     "    let {v} = textureSample(volume_0, texture_sampler, {uvw});"
                 ));
-                self.set_out(id, "color", v.clone());
-                self.set_out(id, "rgb", format!("{v}.rgb"));
-                self.set_out(id, "r", format!("{v}.r"));
-                self.set_out(id, "g", format!("{v}.g"));
-                self.set_out(id, "b", format!("{v}.b"));
-                self.set_out(id, "a", format!("{v}.a"));
+                self.set_color_outs(id, &v);
             }
 
             "texture/triplanar" => {
                 let scale = self.input(node, "scale");
                 let sharpness = self.input(node, "sharpness");
-                let path = node
-                    .input_values
-                    .get("texture")
-                    .and_then(|v| {
-                        if let PinValue::TexturePath(s) = v {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
-
-                let slot = self.next_texture_binding;
-                let tex_name = format!("texture_{slot}");
-                self.next_texture_binding += 1;
-
-                self.texture_bindings.push(TextureBinding {
-                    name: tex_name.clone(),
-                    binding: slot,
-                    asset_path: path,
-                    kind: TextureKind::D2,
-                });
+                let tex_name = self.alloc_d2_texture(texture_path(node));
 
                 let w = self.next_var("tri_w");
                 let v = self.next_var("tri");
-                // `var`, not `let` — WGSL has no shadowing, so the next line has to assign, not redeclare.
+                // `var`, not `let`: WGSL has no shadowing, so the next line has to assign, not redeclare.
                 self.emit(format!(
                     "    var {w} = pow(abs(in.world_normal), vec3<f32>({sharpness}));"
                 ));
@@ -398,5 +261,15 @@ impl Ctx<'_> {
 
             unknown => self.unknown_node(unknown),
         }
+    }
+
+    /// The Landscape Layer Coords node `node`'s `uv` comes straight from, if
+    /// it does: that projection is from above in world space.
+    fn landscape_coords_source(&self, node: &MaterialNode) -> Option<MaterialNode> {
+        self.graph
+            .connection_to(node.id, "uv")
+            .and_then(|c| self.graph.get_node(c.from_node))
+            .filter(|src| src.node_type == "landscape/layer_coords")
+            .cloned()
     }
 }

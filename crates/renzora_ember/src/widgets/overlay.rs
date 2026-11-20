@@ -4,7 +4,7 @@
 //! about box…). Ember dismisses it on Escape, a backdrop click, or the X.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::interaction::BLOCK;
@@ -122,7 +122,7 @@ pub fn overlay_val_parts(
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlayCard,
             Name::new("overlay-card"),
         ))
@@ -247,7 +247,7 @@ pub(crate) fn overlay_dismiss(
     keys: Res<ButtonInput<KeyCode>>,
     closes: Query<&UiInteraction, (Changed<UiInteraction>, With<OverlayClose>)>,
     overlays: Query<(Entity, Option<&GlobalZIndex>), With<Overlay>>,
-    cards: Query<&RelativeCursorPosition, With<OverlayCard>>,
+    cards: Query<&UiCursor, With<OverlayCard>>,
     mut commands: Commands,
 ) {
     if overlays.is_empty() {

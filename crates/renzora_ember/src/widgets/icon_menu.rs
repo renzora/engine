@@ -56,7 +56,7 @@ pub fn icon_menu_button(
             UiInteraction::default(),
             // Anchors the menu to the button rect (cursor − normalized offset),
             // the same scheme the asset browser's Add button uses.
-            bevy::ui::RelativeCursorPosition::default(),
+            crate::UiCursor::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             IconMenuButton {
                 option_icon: option_icon.to_string(),
@@ -74,7 +74,7 @@ pub fn icon_menu_button(
 /// Press an [`IconMenuButton`] → spawn its screen menu at the button's
 /// bottom-right corner (right-aligned for the menu's min width;
 /// `screen_menu_clamp` pulls a wider menu back on-screen). The button rect is
-/// recovered from the cursor + `RelativeCursorPosition` — the same scheme as
+/// recovered from the cursor + `UiCursor` — the same scheme as
 /// the asset browser's Add button. Pressing while a menu is open reads as a
 /// re-open: `screen_menu_dismiss` reaps the old menu on the same press.
 pub(crate) fn icon_menu_button_open(
@@ -84,7 +84,7 @@ pub(crate) fn icon_menu_button_open(
         (
             &UiInteraction,
             &IconMenuButton,
-            &bevy::ui::RelativeCursorPosition,
+            &crate::UiCursor,
             &ComputedNode,
         ),
         Changed<UiInteraction>,

@@ -38,7 +38,13 @@ struct SignInBtn;
 struct SignOutBtn;
 
 pub(crate) fn systems(app: &mut App) {
-    app.add_systems(Update, (sign_in_click, sign_out_click));
+    // Both buttons sit in the rail footer under `SplashRoot`; the editor's own
+    // sign-in lives in another crate with its own systems, so nothing here has
+    // work once the dashboard is gone.
+    app.add_systems(
+        Update,
+        (sign_in_click, sign_out_click).run_if(any_with_component::<super::SplashRoot>),
+    );
 }
 
 // ── Account row ──────────────────────────────────────────────────────────────
@@ -331,7 +337,7 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
             BackgroundColor(c(22, 24, 30)),
             BorderColor::all(border_soft()),
             GlobalZIndex(700),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("splash-language-menu"),
         ))
         .id();

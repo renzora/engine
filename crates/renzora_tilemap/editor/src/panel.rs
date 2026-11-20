@@ -24,11 +24,12 @@ use std::hash::{Hash, Hasher};
 
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, ScrollPosition};
+use bevy::ui::{ComputedNode, ScrollPosition};
 
 use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
 use renzora::{RenzoraShellExt, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
@@ -301,7 +302,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             TilemapPanelRoot,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
         ))
         .id();
 
@@ -491,7 +492,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// image hovers the panel.
 fn tileset_drop_indicator(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    root: Query<&RelativeCursorPosition, With<TilemapPanelRoot>>,
+    root: Query<&UiCursor, With<TilemapPanelRoot>>,
     mut overlays: Query<&mut Node, With<TilesetDropIndicator>>,
 ) {
     let want = payload.as_ref().is_some_and(|p| {
@@ -896,7 +897,7 @@ fn atlas_snapshot(world: &Rx) -> KeyedSnapshot {
                         ..default()
                     },
                     TilesetImageNode,
-                    RelativeCursorPosition::default(),
+                    UiCursor::default(),
                 ))
                 .id();
 
@@ -1020,7 +1021,7 @@ fn zoom_pan_atlas(
         &mut EmberScroll,
         &mut ScrollPosition,
         &ComputedNode,
-        &RelativeCursorPosition,
+        &UiCursor,
     )>,
 ) {
     let Ok(img) = atlas.single() else {
@@ -1543,7 +1544,7 @@ fn palette_collider_drag(
     brush: Res<TilemapBrush>,
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
-    atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
+    atlas: Query<&UiCursor, With<TilesetImageNode>>,
     handles: Query<(&UiInteraction, &PaletteColliderHandle)>,
     rect_node: Query<&UiInteraction, With<PaletteColliderRect>>,
     mut layers: Query<(&mut TilemapLayer, &TilesetHandle)>,
@@ -1731,7 +1732,7 @@ fn select_tiles_from_atlas(
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
-    atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
+    atlas: Query<&UiCursor, With<TilesetImageNode>>,
     thumbs: Query<&UiInteraction, With<ScrollThumb>>,
     handles: Query<&UiInteraction, With<SelectionHandle>>,
     collider_parts: Query<&UiInteraction, With<PaletteColliderPart>>,
@@ -1850,7 +1851,7 @@ fn resize_selection(
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
-    atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
+    atlas: Query<&UiCursor, With<TilesetImageNode>>,
     mut brush: ResMut<TilemapBrush>,
 ) {
     if payload.is_some() || !handles.iter().any(|i| *i == UiInteraction::Pressed) {

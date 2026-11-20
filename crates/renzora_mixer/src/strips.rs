@@ -32,12 +32,12 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 use bevy::window::PrimaryWindow;
 
 use renzora_audio::{rename_custom_bus, ChannelStrip, MixerState, BUS_COLORS};
 use renzora::SplashState;
 use renzora_ember::reactive::Rx;
+use renzora_ember::UiCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::KeyedSnapshot;
@@ -895,7 +895,7 @@ fn strip(
             // Geometry-based hit test for the right-click menu: a strip is mostly
             // covered by its own controls, so an `UiInteraction` on the root would
             // only ever fire on the gaps between them.
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             bus,
             Name::new("mixer-strip"),
         ))
@@ -1579,7 +1579,7 @@ fn rename_commit(
     mut rename: ResMut<MixerRename>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    mut inputs: Query<(&mut EmberTextInput, &RelativeCursorPosition, &BusRenameInput)>,
+    mut inputs: Query<(&mut EmberTextInput, &UiCursor, &BusRenameInput)>,
     mut commands: Commands,
     mut had_focus: Local<bool>,
 ) {
@@ -1643,7 +1643,7 @@ fn strip_context_menu(
     fonts: Option<Res<EmberFonts>>,
     mixer: Option<Res<MixerState>>,
     devices: Option<Res<renzora_audio::AudioDevices>>,
-    strips: Query<(&RelativeCursorPosition, &BusRef)>,
+    strips: Query<(&UiCursor, &BusRef)>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {

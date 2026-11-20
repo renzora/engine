@@ -5,11 +5,12 @@
 //! Attach [`Popup`] to a trigger entity (the clickable element). Ember drives the
 //! `panel`'s `Node.display`: clicking the trigger toggles it, and clicking
 //! anywhere outside both the trigger and the panel closes it. The panel must
-//! carry a `RelativeCursorPosition` so outside-click can tell when the cursor is
+//! carry a `UiCursor` so outside-click can tell when the cursor is
 //! over it.
 
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform};
+use crate::UiCursor;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
@@ -123,11 +124,11 @@ pub fn screen_menu_under(commands: &mut Commands, rect: Rect, win_h: f32, est_h:
 /// cursor's normalized position *inside* the button.
 ///
 /// `UiGlobalTransform` would be the obvious source, but a press handler already
-/// has the cursor and a `RelativeCursorPosition` (needed anyway for outside-click
+/// has the cursor and a `UiCursor` (needed anyway for outside-click
 /// dismissal), and this needs no extra query. The asset browser's Add button,
 /// [`icon_menu_button`](super::icon_menu::icon_menu_button) and the Import button
 /// each had their own copy of this arithmetic before it moved here.
-pub fn trigger_rect(cursor: Vec2, rcp: &RelativeCursorPosition, cn: &ComputedNode) -> Rect {
+pub fn trigger_rect(cursor: Vec2, rcp: &UiCursor, cn: &ComputedNode) -> Rect {
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
     Rect::from_corners(top_left, top_left + size)
@@ -215,7 +216,7 @@ fn screen_menu_anchored(
             // `Added` system) races with menus that are despawned the same frame
             // (e.g. hover-switching a menu bar), crashing on the dead entity.
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("screen-menu"),
         ))
         .id();
@@ -252,7 +253,7 @@ pub struct PointerOverOverlay(pub bool);
 /// and any open modal.
 pub(crate) fn update_pointer_over_overlay(
     mut res: ResMut<PointerOverOverlay>,
-    surfaces: Query<(&RelativeCursorPosition, &Node), With<OverlaySurface>>,
+    surfaces: Query<(&UiCursor, &Node), With<OverlaySurface>>,
     modals: Query<(), With<super::overlay::ModalSurface>>,
 ) {
     let over = !modals.is_empty()
@@ -265,7 +266,7 @@ pub(crate) fn update_pointer_over_overlay(
 }
 
 /// Tag every [`Popup`]'s panel as an [`OverlaySurface`] (and give it a
-/// `RelativeCursorPosition` if it lacks one) so it blocks pass-through.
+/// `UiCursor` if it lacks one) so it blocks pass-through.
 /// `try_insert`: a popup spawned inside a UI subtree that is torn down the
 /// same frame (keyed-list/inspector rebuilds) has a dead panel by the time
 /// this command applies — same race the `screen_menu` spawn-time tagging
@@ -277,7 +278,7 @@ pub(crate) fn tag_popup_panels(q: Query<&Popup, Added<Popup>>, mut commands: Com
         // baked into the scene as leaked UI).
         commands.entity(p.panel).try_insert((
             OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora::HideInHierarchy,
         ));
     }
@@ -350,10 +351,7 @@ pub(crate) fn menu_row_visual(
             Name::new("menu-item"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => menu_hover_bg(),
-        _ => Color::NONE,
-    });
+    bind_bg(commands, row, move |w| if row_lit(w, row) { menu_hover_bg() } else { Color::NONE });
     let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
     let t = commands
         .spawn((
@@ -379,12 +377,22 @@ pub(crate) fn menu_row_hover_text(
     text: Entity,
     rest: (u8, u8, u8),
 ) {
-    bind_text_color(commands, text, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) if rest == text_muted() => {
+    bind_text_color(commands, text, move |w| {
+        if rest == text_muted() && row_lit(w, row) {
             rgb(text_primary())
+        } else {
+            rgb(rest)
         }
-        _ => rgb(rest),
     });
+}
+
+/// Whether a menu row is drawn highlighted: hovered, pressed, or holding the
+/// keyboard focus (see [`menu_nav`](super::menu_nav)). One test for every row
+/// kind, so a row reached with the arrow keys looks exactly like one under the
+/// pointer.
+pub(crate) fn row_lit(w: &crate::reactive::Rx, row: Entity) -> bool {
+    matches!(w.get::<UiInteraction>(row), Some(UiInteraction::Hovered | UiInteraction::Pressed))
+        || w.get_resource::<super::menu_nav::MenuKeyFocus>().is_some_and(|f| f.0 == Some(row))
 }
 
 /// A rich menu row for picking a *kind* of thing: the type's icon in a rounded
@@ -426,10 +434,7 @@ where
             Name::new("menu-card"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
-        _ => Color::NONE,
-    });
+    bind_bg(commands, row, move |w| if row_lit(w, row) { rgb(hover_bg()) } else { Color::NONE });
 
     // The icon tile: the type's colour as a faint wash behind the glyph in
     // full colour, so the row reads as its type at a glance.
@@ -561,8 +566,8 @@ pub(crate) fn menu_action_run(
 /// Press outside an open [`ScreenMenu`] → close it.
 pub(crate) fn screen_menu_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
-    menus: Query<(Entity, &RelativeCursorPosition, Ref<ScreenMenu>)>,
-    submenus: Query<(&RelativeCursorPosition, &Node), With<super::submenu::SubPanel>>,
+    menus: Query<(Entity, &UiCursor, Ref<ScreenMenu>)>,
+    submenus: Query<(&UiCursor, &Node), With<super::submenu::SubPanel>>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Left) && !mouse.just_pressed(MouseButton::Right) {
@@ -634,7 +639,7 @@ pub(crate) fn screen_menu_clamp(
 }
 
 /// Marks a trigger that opens/closes `panel`. Build the panel with
-/// `display: Display::None` + a `RelativeCursorPosition`.
+/// `display: Display::None` + a `UiCursor`.
 #[derive(Component)]
 pub struct Popup {
     pub panel: Entity,
@@ -649,7 +654,7 @@ impl Popup {
 
 /// The floating panel a toolbar/icon [`Popup`] opens: the standard popup
 /// surface (popup background, hairline border, 6px radius), starting hidden and
-/// already tagged [`OverlaySurface`] + `RelativeCursorPosition`.
+/// already tagged [`OverlaySurface`] + `UiCursor`.
 ///
 /// Use this instead of spawning your own panel node. A hand-rolled panel is
 /// invisible to `correct_pointer_state`, so clicks on its rows *also* reach
@@ -697,7 +702,7 @@ pub fn popup_panel_aligned(commands: &mut Commands, kids: &[Entity], align: Popu
             BorderColor::all(rgb(border())),
             GlobalZIndex(600),
             OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("popup-panel"),
         ))
         .id();
@@ -870,7 +875,7 @@ pub(crate) fn popup_position(
 /// Press anywhere outside an open popup's trigger + panel → close it.
 pub(crate) fn popup_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
-    cursor: Query<&RelativeCursorPosition>,
+    cursor: Query<&UiCursor>,
     submenus: Query<Entity, With<super::submenu::SubPanel>>,
     mut triggers: Query<(&UiInteraction, &mut Popup)>,
     mut nodes: Query<&mut Node>,

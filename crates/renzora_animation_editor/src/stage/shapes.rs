@@ -399,7 +399,7 @@ fn enter(world: &mut World, root: Entity) {
             points.members[p as usize].push((pi as u32, v as u32));
             points.group[p as usize] = groups.get(at - world_rest.len() + v).copied().unwrap_or(0) as usize;
         }
-        for t in indices.chunks_exact(3) {
+        for t in indices.as_chunks::<3>().0 {
             let (Some(&a), Some(&b), Some(&c)) = (part.point.get(t[0] as usize), part.point.get(t[1] as usize), part.point.get(t[2] as usize)) else { continue };
             if a != b && b != c && a != c {
                 points.triangles.push([a, b, c]);

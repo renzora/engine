@@ -68,7 +68,18 @@ pub(super) fn register(app: &mut App) {
     app.init_resource::<ControlsState>();
     app.add_systems(
         Update,
-        (follow_subject, zero_on_scrub, flush).run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        (
+            // With no subject the path it wants is `None`; it has work only
+            // when that differs from the path it holds.
+            follow_subject.run_if(|s: Option<Res<crate::AnimationEditorState>>, c: Res<ControlsState>| {
+                s.is_some_and(|s| s.selected_entity.is_some()) || c.path.is_some()
+            }),
+            // Clears slider state, so it waits until there is some.
+            zero_on_scrub.run_if(|c: Res<ControlsState>| c.at.is_some() || !c.values.is_empty()),
+            // Writes only an unsaved set.
+            flush.run_if(|c: Res<ControlsState>| c.unsaved.is_some()),
+        )
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
 }
 

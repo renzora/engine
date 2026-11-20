@@ -1,0 +1,34 @@
+[package]
+name = "bevy_mod_xr"
+description = "semi generic Xr Api for Community Driven XR in Bevy"
+version = "0.5.0"
+edition = "2024"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/awtterpip/bevy_oxr"
+keywords = ["gamedev", "bevy", "Xr", "Vr"]
+
+[features]
+default = ["gizmos"]
+gizmos = ["dep:bevy_gizmos", "dep:bevy_color"]
+reflect = ["dep:bevy_reflect"]
+
+[dependencies]
+# RENZORA: Bevy comes from Renzora's `bevy/` by path, never crates.io.
+bevy_ecs = { path = "../../../../bevy/crates/bevy_ecs", default-features = false }
+bevy_math = { path = "../../../../bevy/crates/bevy_math", default-features = false }
+bevy_render = { path = "../../../../bevy/crates/bevy_render", default-features = false }
+# 0.20 port: the `ExtractComponent`/`ExtractResource` derives expand to paths in
+# `bevy_extract`, which this crate must therefore name directly.
+bevy_extract = { path = "../../../../bevy/crates/bevy_extract", default-features = false }
+bevy_app = { path = "../../../../bevy/crates/bevy_app", default-features = false }
+bevy_reflect = { path = "../../../../bevy/crates/bevy_reflect", default-features = false, optional = true }
+bevy_log = { path = "../../../../bevy/crates/bevy_log", default-features = false }
+bevy_gizmos = { path = "../../../../bevy/crates/bevy_gizmos", default-features = false, optional = true }
+bevy_color = { path = "../../../../bevy/crates/bevy_color", default-features = false, optional = true }
+bevy_transform = { path = "../../../../bevy/crates/bevy_transform", default-features = false }
+bevy_camera = { path = "../../../../bevy/crates/bevy_camera", default-features = false }
+bevy_derive = { path = "../../../../bevy/crates/bevy_derive", default-features = false }
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"

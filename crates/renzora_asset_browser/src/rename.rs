@@ -91,7 +91,7 @@ pub(crate) fn rename_shortcut(keys: Res<ButtonInput<KeyCode>>, mut state: ResMut
 /// the key in an earlier schedule sidesteps the ordering entirely.
 pub(crate) fn asset_delete_shortcut(
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    roots: Query<&bevy::ui::RelativeCursorPosition, With<AssetRoot>>,
+    roots: Query<&renzora_ember::UiCursor, With<AssetRoot>>,
     state: Res<NativeAssets>,
     mut commands: Commands,
 ) {

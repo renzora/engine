@@ -8,7 +8,7 @@
 //! the live tree before handing ember the new one.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{glyph, ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -193,7 +193,7 @@ pub(crate) fn build_bottom_set_menu(commands: &mut Commands, fonts: &EmberFonts)
             // `correct_pointer_state`, so a click on one of its rows *also*
             // lands in whatever panel is behind it.
             renzora_ember::widgets::OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             // Same reason as the trigger: the panel's own background hangs over
             // the dock header's resize filler.
             BLOCK,
@@ -304,7 +304,7 @@ fn bottom_set_row(
             // The reorder drag hit-tests in the cursor's own space rather than
             // against node centres, which drift under UI scaling — the lesson
             // `ribbon_interact` and the document tabs both learned the hard way.
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("bottom-set-row"),
         ))
@@ -621,14 +621,14 @@ pub(crate) fn bottom_set_drag(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     rename: Res<BottomSetRename>,
     pressed: Query<(&BottomSetItem, &UiInteraction)>,
-    items: Query<(&BottomSetItem, &RelativeCursorPosition)>,
+    items: Query<(&BottomSetItem, &UiCursor)>,
     mut nodes: Query<&mut Node>,
     mut sets: ResMut<BottomPanelSets>,
     mut fixed: ResMut<renzora_ember::dock::FixedDock>,
     triggers: Query<Entity, With<BottomSetTrigger>>,
     mut commands: Commands,
 ) {
-    let hide_markers = |items: &Query<(&BottomSetItem, &RelativeCursorPosition)>,
+    let hide_markers = |items: &Query<(&BottomSetItem, &UiCursor)>,
                         nodes: &mut Query<&mut Node>| {
         for (it, _) in items {
             if let Ok(mut n) = nodes.get_mut(it.marker) {

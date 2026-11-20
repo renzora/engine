@@ -97,7 +97,7 @@ pub fn register_native_hierarchy(app: &mut App) {
                 // Scene-asset drop target: dropping a `.bsn` / `.ron` here spawns
                 // it as a nested instance (handled in `scene_drop`).
                 scene_drop::HierRoot,
-                bevy::ui::RelativeCursorPosition::default(),
+                renzora_ember::UiCursor::default(),
             ))
             .id();
 
@@ -168,7 +168,7 @@ pub fn register_native_hierarchy(app: &mut App) {
         // Hit-test target for the right-click quick-add menu (see `context_menu`).
         commands.entity(scroll).insert((
             context_menu::HierListArea,
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
         ));
         // Parent-stacking overlay: pinned ancestor headers over the top of the
         // scroll viewport (toggled by EditorSettings.hierarchy_parent_stacking).

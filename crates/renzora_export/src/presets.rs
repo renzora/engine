@@ -50,6 +50,8 @@ pub struct ExportPreset {
     pub window_height: u32,
     #[serde(default)]
     pub console_logging: bool,
+    #[serde(default)]
+    pub allow_profiling: bool,
     #[serde(default = "default_compression")]
     pub compression_level: i32,
     #[serde(default)]
@@ -123,6 +125,7 @@ impl ExportPreset {
             window_width: default_width(),
             window_height: default_height(),
             console_logging: false,
+            allow_profiling: false,
             compression_level: default_compression(),
             upx_compress: false,
             icon_path: None,
@@ -152,6 +155,7 @@ impl ExportPreset {
             window_width: state.window_width,
             window_height: state.window_height,
             console_logging: state.console_logging,
+            allow_profiling: state.allow_profiling,
             compression_level: state.compression_level,
             upx_compress: state.upx_compress,
             icon_path: state.icon_path.clone(),
@@ -207,6 +211,7 @@ impl ExportPreset {
         state.window_width = self.window_width;
         state.window_height = self.window_height;
         state.console_logging = self.console_logging;
+        state.allow_profiling = self.allow_profiling;
         state.compression_level = self.compression_level;
         state.upx_compress = self.upx_compress;
         state.icon_path = self.icon_path.clone();

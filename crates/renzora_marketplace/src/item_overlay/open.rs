@@ -3,7 +3,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use crate::auth::marketplace::AssetSummary;
 use crate::auth::session::AuthSession;
@@ -145,7 +145,7 @@ fn build_overlay(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSumma
             // OverlaySurface + a cursor probe so ember counts this as a modal
             // surface and confines wheel/pointer to it (panels behind go inert).
             OverlaySurface,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             UiInteraction::default(),
             ItemBackdrop,
             Name::new("item-overlay"),

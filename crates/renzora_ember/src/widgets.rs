@@ -20,6 +20,8 @@ mod segmented;
 mod slider;
 mod stepper;
 mod popup;
+// Arrow keys, Enter and Escape for menus and dropdowns.
+mod menu_nav;
 mod text_input;
 mod toggle;
 mod toggle_switch;
@@ -86,6 +88,7 @@ mod avatar;
 mod chip;
 pub mod clipboard;
 mod file_image;
+mod gpu_image;
 mod web_image;
 mod folder_picker;
 mod grid;
@@ -203,6 +206,7 @@ pub use pagination::*;
 pub use avatar::*;
 pub use chip::*;
 pub use file_image::*;
+pub use gpu_image::{add_gpu_image, GpuImageSizes};
 pub use web_image::*;
 pub use folder_picker::*;
 pub use grid::*;
@@ -250,7 +254,7 @@ pub use drag_window::{drag_grip, DragHandle};
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
-pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_styled};
+pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_parts_sized, menu_submenu_styled};
 // The scene front-end below takes the `EmberDropdown` name, so the widget's own
 // state is reachable crate-wide under another one (`inspector_row` checks for it).
 pub(crate) use dropdown::EmberDropdown as DropdownState;
@@ -271,6 +275,7 @@ impl Plugin for WidgetsPlugin {
         // Component front-ends for the builder widgets, so BSN and scenes can
         // name a widget rather than having to call a function.
         scene::register_types(app);
+        menu_nav::plugin(app);
         app.init_resource::<popup::PointerOverOverlay>();
         app.init_resource::<drag_value::WheelOverDragValue>();
         app.init_resource::<drag_value::WheelGesture>();
@@ -278,6 +283,13 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::AnyDragValueEditing>();
         app.init_resource::<file_image::FileImages>();
         app.init_resource::<web_image::WebImages>();
+        app.init_resource::<gpu_image::GpuImageSizes>();
+        // Before Bevy measures image nodes, so a GPU-only image is laid out at
+        // its own size in the frame its node gets it.
+        app.add_systems(
+            PostUpdate,
+            gpu_image::size_gpu_images.before(bevy::ui::UiSystems::Content),
+        );
         app.init_resource::<markdown::MarkdownBaseUrl>();
         app.init_resource::<scroll_area::ScrollMemory>();
         app.init_resource::<scroll_area::DraggedThumb>();

@@ -121,7 +121,7 @@ fn piece_under(world: &World, ray: Ray3d) -> Vec<Vec<usize>> {
     let posed: Vec<Vec<Vec3>> = edit.meshes.iter().map(|m| skinned_positions(world, m)).collect();
     let mut best: Option<(f32, usize, u32)> = None;
     for (mi, (m, pos)) in edit.meshes.iter().zip(&posed).enumerate() {
-        for tri in m.indices.chunks_exact(3) {
+        for tri in m.indices.as_chunks::<3>().0 {
             let (Some(a), Some(b), Some(c)) = (pos.get(tri[0] as usize), pos.get(tri[1] as usize), pos.get(tri[2] as usize)) else { continue };
             if let Some(t) = ray_triangle(ray, *a, *b, *c) {
                 if best.is_none_or(|(bt, ..)| t < bt) {

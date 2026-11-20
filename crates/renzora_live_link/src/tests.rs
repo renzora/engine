@@ -141,47 +141,6 @@ fn a_removed_component_is_removed_on_the_other_side() {
     assert!(b.get::<Visibility>(crate_b).is_none());
 }
 
-/// The editor's viewport gate shows a hidden scene while no viewport is on
-/// screen and keeps the real visibility aside; the link must deal in the real
-/// one both ways.
-#[test]
-fn a_gated_entity_reports_and_receives_its_real_visibility() {
-    use renzora::ViewportGateHidden;
-
-    // Reporting: the gate shows Hidden, the real value is Inherited.
-    let (mut a, crate_a) = scene();
-    a.entity_mut(crate_a)
-        .insert((Visibility::Hidden, ViewportGateHidden(Visibility::Inherited)));
-    let ta = Tracker::baseline(&mut a);
-    let vis = Visibility::type_path();
-    let baseline = &ta.known()[&1][vis];
-    assert!(baseline.contains("Inherited"), "the baseline took the gate's Hidden: {baseline}");
-
-    // Receiving: the other side hid it; that is the real value now, and the
-    // gate keeps showing Hidden over it.
-    let (mut b, crate_b) = scene();
-    b.entity_mut(crate_b)
-        .insert((Visibility::Hidden, ViewportGateHidden(Visibility::Inherited)));
-    let mut tb = Tracker::baseline(&mut b);
-    let hidden = {
-        let registry = b.resource::<AppTypeRegistry>().read();
-        ron::ser::to_string(&bevy::reflect::serde::TypedReflectSerializer::new(
-            &Visibility::Visible,
-            &registry,
-        ))
-        .unwrap()
-    };
-    apply(
-        &mut b,
-        vec![LinkMessage::Set { id: 1, ty: vis.into(), value: hidden }],
-        &mut tb,
-        &mut Quiet,
-        &mut HashSet::new(),
-    );
-    assert_eq!(b.get::<ViewportGateHidden>(crate_b).unwrap().0, Visibility::Visible);
-    assert_eq!(b.get::<Visibility>(crate_b), Some(&Visibility::Hidden), "the gate's cover was lifted");
-}
-
 #[test]
 fn entity_references_are_found_wherever_they_sit() {
     let mut w = world();

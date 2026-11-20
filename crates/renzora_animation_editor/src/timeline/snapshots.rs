@@ -338,7 +338,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, kind: RowKind, select
                     Node { flex_grow: 1.0, min_width: Val::Px(0.0), height: Val::Px((th - 4.0).max(14.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
                     BackgroundColor(rgb(faint_bg())),
                     UiInteraction::default(),
-                    bevy::ui::RelativeCursorPosition::default(),
+                    renzora_ember::UiCursor::default(),
                     PropTrackCombo(*track),
                 ))
                 .id();
@@ -609,8 +609,8 @@ pub(super) fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
         }
     };
 
-    for row in first..last {
-        match layout.rows[row].kind {
+    for (row, r) in layout.rows.iter().enumerate().take(last).skip(first) {
+        match r.kind {
             RowKind::Summary => {
                 // The bar marks where some track keys continuously (every
                 // frame or two); the diamonds are the key times themselves,

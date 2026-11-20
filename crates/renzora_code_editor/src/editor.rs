@@ -17,10 +17,10 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::{AssetDragPayload, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
@@ -70,7 +70,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(window_bg())),
             CodeContentRoot,
             // Detects an asset-drag release over the panel (drop-to-open).
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("native-code-editor"),
         ))
         .id();
@@ -354,7 +354,7 @@ fn save_shortcut(keys: Res<ButtonInput<KeyCode>>, mounted: Query<(), With<CodeCo
 fn code_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    panel: Query<&RelativeCursorPosition, With<CodeContentRoot>>,
+    panel: Query<&UiCursor, With<CodeContentRoot>>,
     mut commands: Commands,
     state: Option<ResMut<CodeEditorState>>,
 ) {

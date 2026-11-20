@@ -11,13 +11,24 @@ On the **World Environment**, the **Solari Ray-Traced GI** component has:
 
 | Setting | What it does |
 |---|---|
-| **Denoiser** | **DLSS**, the default, uses DLSS Ray Reconstruction wherever it can run and the built-in denoiser everywhere else. **Built-in** always uses the built-in denoiser. **Off (raw)** shows Solari's undenoised image. |
-| **DLSS Mode** | Shown only while DLSS is running, so its absence with **DLSS** chosen means this machine fell back to the built-in denoiser (see below). How far below the output resolution Solari renders before DLSS reconstructs it: **Auto**, **DLAA** (native resolution, no upscaling), **Quality** (about 67%), **Balanced** (about 58%), **Performance** (50%) or **Ultra Performance** (about 33%). |
+| **Denoiser** | **DLSS (if available)**, the default, uses DLSS Ray Reconstruction wherever it can run and the built-in denoiser everywhere else. Where DLSS cannot run, the choice carries an amber warning icon, and its tooltip says why (no DLSS in this build, or no supported GPU) and that the built-in denoiser is running. **Built-in** always uses the built-in denoiser. **Off (raw)** shows Solari's undenoised image. |
+| **DLSS Mode** | Shown only while DLSS is running. How far below the output resolution Solari renders before DLSS reconstructs it: **Auto**, **DLAA** (native resolution, no upscaling), **Quality** (about 67%), **Balanced** (about 58%), **Performance** (50%) or **Ultra Performance** (about 33%). New scenes start on **Balanced**: at an editor viewport's size **Auto** renders close to native, which on a mid-range GPU more than halves the frame rate for no visible gain. |
 
 Choosing **Built-in**, or running where DLSS is unavailable, hands the image
-back to the built-in denoiser on the next frame. TAA is taken off a camera while DLSS
-runs on it, since DLSS anti-aliases the image itself, and comes back when DLSS
+back to the built-in denoiser on the next frame. The camera's own anti-aliasing
+(TAA, or the DLSS method below) is held off while Ray Reconstruction runs on it,
+since Ray Reconstruction anti-aliases the image itself, and comes back when it
 stops.
+
+## DLSS without Solari
+
+DLSS also works as a plain anti-aliasing method, without ray tracing: set
+**Anti-Aliasing** in the camera's Camera section to **DLSS** (see
+[Anti-aliasing](./camera.md#anti-aliasing)). That is DLSS Super Resolution,
+which upscales and anti-aliases the frame; its **AA Quality** dropdown has the same
+modes as **DLSS Mode** above. It needs the same build, GPU and renderer as below,
+but not a GPU that can run Solari, and the Anti-Aliasing dropdown puts a warning on
+**DLSS** when any of them is missing.
 
 ## When DLSS runs
 

@@ -203,7 +203,7 @@ pub struct TerrainGenSettings {
     pub octaves: u32,
     pub lacunarity: f32,
     pub persistence: f32,
-    /// Only read by [`NoiseMode::Warped`].
+    /// Only read by the modes [`NoiseMode::uses_warp`] names.
     pub warp_strength: f32,
     pub seed: u32,
     /// Raises the normalized noise to this power before it becomes a height.
@@ -241,11 +241,10 @@ impl Default for TerrainGenSettings {
             heightmap_normalize: true,
             heightmap_invert: false,
             heightmap_fit: HeightmapFit::Stretch,
-            // Hybrid is ridged noise with FBM mixed back in: ridges give the
-            // sharp crest lines that read as mountains, the FBM keeps the
-            // flanks from looking machined. It is the mode this feature exists
-            // for, so it is the one you get without choosing.
-            mode: NoiseMode::Hybrid,
+            // Eroded: warped ridges with spurs and derivative damped detail,
+            // so the first Generate already reads as weathered mountains.
+            // Hybrid, the old default, made straight-faceted pyramids.
+            mode: NoiseMode::Eroded,
             scale: 120.0,
             octaves: 6,
             lacunarity: 2.0,

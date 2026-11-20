@@ -238,8 +238,20 @@ copy_shared_libs() {
     local WANT=""
     [ -n "$HOST_BIN" ] && [ -f "$HOST_BIN" ] && \
         WANT=$(grep -aoE "(lib)?bevy_dylib-[0-9a-f]+\.$EXT" "$HOST_BIN" 2>/dev/null | head -1)
+    # Since Rust 1.100 cargo no longer writes `deps/`: each crate's output is in
+    # `build/<crate>/<hash>/out/`, and the final dylib is placed in `$SRC`. A
+    # `deps/` from an older toolchain may still be lying in a warm cache, so it
+    # is only the last resort; copying from it shipped a `bevy_dylib` that
+    # imported the previous toolchain's std.
     local BEVY_DLL=""
-    [ -n "$WANT" ] && BEVY_DLL=$(ls "$SRC"/deps/"$WANT" 2>/dev/null | head -1)
+    if [ -n "$WANT" ]; then
+        BEVY_DLL=$(ls "$SRC/$WANT" 2>/dev/null | head -1)
+        [ -z "$BEVY_DLL" ] && BEVY_DLL=$(ls -t "$SRC"/build/bevy_dylib/*/out/"$WANT" 2>/dev/null | head -1 || true)
+        [ -z "$BEVY_DLL" ] && BEVY_DLL=$(ls "$SRC"/deps/"$WANT" 2>/dev/null | head -1)
+    fi
+    # The unhashed name, which is what the binary imports when cargo gave the
+    # dylib no hash suffix.
+    [ -z "$BEVY_DLL" ] && BEVY_DLL=$(ls "$SRC/libbevy_dylib.$EXT" "$SRC/bevy_dylib.$EXT" 2>/dev/null | head -1 || true)
     # Fallback to newest-by-mtime only if the import name couldn't be read.
     [ -z "$BEVY_DLL" ] && BEVY_DLL=$(ls -t "$SRC"/deps/libbevy_dylib-*."$EXT" "$SRC"/deps/bevy_dylib-*."$EXT" 2>/dev/null | head -1 || true)
     [ -n "$BEVY_DLL" ] && cp "$BEVY_DLL" "$OUT/"
@@ -441,10 +453,14 @@ build_desktop() {
     #
     # `renzora-android` (cdylib) and `renzora-ios` (staticlib) are
     # workspace members but mobile-only; exclude them from desktop.
+    # `renzora_companion_server` is the editor's standalone companion: this
+    # lane ships no editor, so it has no use for it, and a `--workspace` build
+    # would link it against Bevy anyway (`xtask::build_companion` says why).
     echo "=== Building $PLATFORM ($FEATURE) ==="
     if [ "$FEATURE" = "editor" ]; then
         cargo build --profile "$PROFILE" --workspace \
             --exclude renzora-android --exclude renzora-ios \
+            --exclude renzora_companion_server \
             $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     else
         cargo build --profile "$PROFILE" --bin renzora --no-default-features \

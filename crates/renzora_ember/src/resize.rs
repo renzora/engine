@@ -9,7 +9,7 @@
 //! shouldn't:
 //!
 //! - Panels that decide "was this press mine?" **geometrically** — testing
-//!   `RelativeCursorPosition::cursor_over` on their content node — see the press
+//!   `UiCursor::cursor_over` on their content node — see the press
 //!   as landing in their own empty space, because that test is pure geometry and
 //!   knows nothing about what's drawn on top. This is what made dragging the
 //!   hierarchy panel's edge divider also sweep-select the rows the drag passed

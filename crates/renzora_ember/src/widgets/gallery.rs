@@ -1,7 +1,5 @@
 //! The gallery panels — a live catalog showcasing every ember component.
 
-use bevy::prelude::*;
-
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::{
     border, popup_bg, rgb, ACCENT_BLUE, CLOSE_RED, HEADER_BG, PLAY_GREEN, TAB_HOVER_BG, TEXT_MUTED,

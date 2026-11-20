@@ -121,26 +121,31 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let cluster = vg_clusters[entry.y];
 
     var world: array<vec3<f32>, 3>;
-    var ndc: array<vec3<f32>, 3>;
     for (var i = 0u; i < 3u; i++) {
-        let w = vg_world_position(instance, vg_triangle_vertex(cluster, triangle, i));
-        let clip = view.clip_from_world * vec4(w, 1.0);
-        world[i] = w;
-        ndc[i] = clip.xyz / clip.w;
+        world[i] = vg_world_position(instance, vg_triangle_vertex(cluster, triangle, i));
     }
 
     @if(DEPTH_TEST) {
-        // Depth in normalized device coordinates is affine across a
-        // triangle on screen, so 2D barycentrics give it exactly.
+        // The triangle's depth here comes from where this pixel's ray meets
+        // its plane. Interpolating the corners' projected depths across the
+        // screen is exact on paper, but a corner beside or behind the camera
+        // has a clip w near zero, and dividing by it gives coordinates so
+        // large that 32-bit floats lose the depth entirely: big triangles
+        // near the camera (a wall beside it, the street under it) failed the
+        // test below and were greyed out whenever the camera moved close.
         let p = (in.position.xy - view.viewport.xy) / view.viewport.zw * vec2(2.0, -2.0) + vec2(-1.0, 1.0);
-        let e0 = ndc[1].xy - ndc[0].xy;
-        let e1 = ndc[2].xy - ndc[0].xy;
-        let d = p - ndc[0].xy;
-        let det = e0.x * e1.y - e0.y * e1.x;
-        if abs(det) > 1e-12 {
-            let b1 = (d.x * e1.y - d.y * e1.x) / det;
-            let b2 = (e0.x * d.y - e0.y * d.x) / det;
-            let depth = ndc[0].z + b1 * (ndc[1].z - ndc[0].z) + b2 * (ndc[2].z - ndc[0].z);
+        let on_near = view.world_from_clip * vec4(p, 1.0, 1.0);
+        let origin = on_near.xyz / on_near.w;
+        var direction = origin - view.world_position;
+        if view.clip_from_view[3][3] == 1.0 {
+            direction = -view.world_from_view[2].xyz;
+        }
+        let plane = cross(world[1] - world[0], world[2] - world[0]);
+        let facing_ray = dot(plane, direction);
+        if abs(facing_ray) > 1e-20 {
+            let hit = origin + direction * (dot(plane, world[0] - origin) / facing_ray);
+            let clip = view.clip_from_world * vec4(hit, 1.0);
+            let depth = clip.z / clip.w;
             // Reversed z: nearer is larger. Something in front means the
             // prepass depth is clearly larger than this surface's.
             let front = textureLoad(prepass_depth, coord, 0);

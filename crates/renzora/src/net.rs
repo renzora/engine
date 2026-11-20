@@ -58,7 +58,32 @@ use crate::net_backend::{Event, EventKind};
 /// being called from inside a system (the frame cannot advance while you block
 /// in it) and the app shutting down with a request in flight. Both used to be
 /// indistinguishable from a slow server; now they are a message in two seconds.
+///
+/// Only for a thread that can be running a system: see [`stall_limit`].
 const WATCHDOG: Duration = Duration::from_secs(2);
+
+/// How long a thread of the caller's own goes without a tick before giving up.
+///
+/// Long, because from such a thread a stalled pump is not a deadlock: it is a
+/// slow frame, and the editor's first frames are routinely seconds long while
+/// plugins load and pipelines compile. The 2 s watchdog applied to every thread
+/// failed the sign-in check and the update check on each launch, from threads
+/// spawned at startup that were doing exactly what the module docs ask. Still
+/// bounded, so a build with no pump at all reports it instead of hanging.
+const STALL_LIMIT: Duration = Duration::from_secs(30);
+
+/// How long `thread` may wait with the pump making no progress.
+///
+/// Systems run on the main thread and on Bevy's compute pool, so those are the
+/// threads a fetch can deadlock: the frame it waits for cannot advance while it
+/// blocks. They get the short [`WATCHDOG`]. Every other thread is one somebody
+/// spawned, where blocking is the intended use, and gets [`STALL_LIMIT`].
+fn stall_limit(thread: Option<&str>) -> Duration {
+    match thread {
+        Some(name) if name == "main" || name.starts_with("Compute Task Pool") => WATCHDOG,
+        _ => STALL_LIMIT,
+    }
+}
 
 /// The request timeout when a caller does not name one.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -108,7 +133,7 @@ impl std::fmt::Display for Error {
                 "no network backend is loaded — this build has no HTTP client (plugins/http)",
             ),
             Self::NoPump => {
-                f.write_str("the frame loop is not running — was this called from a system?")
+                f.write_str("the frame loop is not running; was this called from a system?")
             }
             Self::Transport(e) | Self::Decode(e) => f.write_str(e),
         }
@@ -567,16 +592,24 @@ impl Shared {
 /// blocking inside a system, and the second should not take sixty seconds to
 /// report. So this wakes regularly and checks whether the pump has ticked since
 /// the last look: a frame loop that is running makes the wait effectively
-/// unbounded, and one that is not fails in two seconds.
+/// unbounded, and one that is not fails after [`stall_limit`].
 fn wait_for(events: &Receiver<Event>) -> Result<Event, Error> {
     let shared = shared();
+    let limit = stall_limit(std::thread::current().name());
     let mut last_tick = shared.ticks.load(Ordering::Relaxed);
+    let mut stalled = Duration::ZERO;
     loop {
         match events.recv_timeout(WATCHDOG) {
             Ok(event) => return Ok(event),
             Err(RecvTimeoutError::Timeout) => {
                 let tick = shared.ticks.load(Ordering::Relaxed);
-                if tick == last_tick {
+                if tick != last_tick {
+                    last_tick = tick;
+                    stalled = Duration::ZERO;
+                    continue;
+                }
+                stalled += WATCHDOG;
+                if stalled >= limit {
                     // Logged rather than left to the caller. This is a bug in
                     // the calling code, not a network condition, and it is
                     // exactly the kind a caller swallows: `renzora_auth` read a
@@ -584,13 +617,12 @@ fn wait_for(events: &Receiver<Event>) -> Result<Event, Error> {
                     // saved session, so the editor asked for a sign-in on every
                     // launch and nothing in the log said why.
                     bevy::log::error!(
-                        "[net] a request was made with no frame loop running — \
+                        "[net] a request was made with no frame loop running: \
                          `renzora_net::fetch` blocks its own thread and cannot be \
                          called from a system or from `Plugin::build`. Spawn a thread."
                     );
                     return Err(Error::NoPump);
                 }
-                last_tick = tick;
             }
             // The sender was dropped without a terminal event. `fail_all` sends
             // a reason first in every case it handles, so reaching here means
@@ -807,15 +839,33 @@ mod tests {
     /// The watchdog: nothing pumping at all (the deadlock a caller creates by
     /// fetching from inside a system) fails with a message in seconds rather
     /// than parking the thread for the full request timeout.
+    ///
+    /// Run on a thread named `main`, because that is where the short limit
+    /// applies: see `stall_limit`.
     #[test]
     fn a_request_with_no_frame_loop_reports_it_rather_than_hanging() {
         let _guard = exclusive();
         let started = std::time::Instant::now();
-        let err = fetch(Request::get("https://example.com/never")).unwrap_err();
+        let err = std::thread::Builder::new()
+            .name("main".into())
+            .spawn(|| fetch(Request::get("https://example.com/never")).unwrap_err())
+            .unwrap()
+            .join()
+            .unwrap();
 
         assert_eq!(err, Error::NoPump);
         // Comfortably under the 60 s default request timeout, which is the
         // failure mode this replaces.
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    /// A thread that runs systems gets the short watchdog; a thread a caller
+    /// spawned rides out a long startup frame instead of failing.
+    #[test]
+    fn only_threads_that_run_systems_get_the_short_watchdog() {
+        assert_eq!(stall_limit(Some("main")), WATCHDOG);
+        assert_eq!(stall_limit(Some("Compute Task Pool (3)")), WATCHDOG);
+        assert_eq!(stall_limit(Some("auth-refresh")), STALL_LIMIT);
+        assert_eq!(stall_limit(None), STALL_LIMIT);
     }
 }

@@ -1,6 +1,6 @@
 //! Canvas interaction: click-to-select, drag-to-move, resize (8 handles),
 //! rotate, and marquee (rubber-band) multi-select. Everything is computed in
-//! **design space** from the hit layer's `RelativeCursorPosition` (`normalized`
+//! **design space** from the hit layer's `UiCursor` (`normalized`
 //! is centered −0.5..0.5; design px = `(norm + 0.5) * reference`). bevy_ui keeps
 //! `normalized` populated even when the cursor is *outside* the frame (the value
 //! just runs past ±0.5), so the same mapping covers marquees that start on the
@@ -29,7 +29,8 @@
 
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform};
+use bevy::ui::UiTransform;
+use renzora_ember::UiCursor;
 
 use renzora::{EditorSelection, SplashState};
 use renzora_ember::UiInteraction;
@@ -88,7 +89,7 @@ fn canvas_interact(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     mut active: Local<Option<Mode>>,
-    hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
+    hit: Query<&UiCursor, With<CanvasHitLayer>>,
     handles: Query<(&UiInteraction, &CanvasHandle)>,
     background: Query<&UiInteraction, With<CanvasBackground>>,
     parents: Query<&ChildOf>,

@@ -19,6 +19,14 @@ use super::{
 /// is up, and only for a path that is actually inside the open project. A pick
 /// left behind by the marketplace's install dialog must not silently repoint an
 /// import.
+///
+/// "Inside the project" was not narrow enough on its own. The New Material
+/// dialog's picker leaves its pick in the project's `materials/`, and the frame
+/// the import window opened, before its own picker had seeded the resource,
+/// this read that pick as the user's choice: a model imported from the MCP went
+/// into `materials/` and the window then claimed its settings had changed. Only
+/// a pick made since this system last ran counts, and the window's own picker
+/// makes one when it spawns, so whatever another dialog left behind never does.
 pub(super) fn dest_folder_sync(
     pick: Option<Res<renzora_ember::widgets::FolderPick>>,
     project: Option<Res<renzora::core::CurrentProject>>,
@@ -27,7 +35,7 @@ pub(super) fn dest_folder_sync(
     let (Some(pick), Some(project), Some(state)) = (pick, project, state.as_mut()) else {
         return;
     };
-    if !state.visible {
+    if !state.visible || !pick.is_changed() {
         return;
     }
     let Some(path) = pick.0.as_deref() else { return };

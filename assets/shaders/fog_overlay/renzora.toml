@@ -1,0 +1,9 @@
+name = "Fog Overlay"
+version = "2.0.0"
+description = "A cheap height-fade over the finished picture. A post-process effect: drop fog_overlay.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "fog_overlay"
+tags = ["post-processing", "shader", "fog", "atmosphere"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

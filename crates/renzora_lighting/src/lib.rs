@@ -4,7 +4,9 @@
 //! systems that keep the underlying Bevy `DirectionalLight` in lockstep.
 
 use bevy::light::{ShadowFilteringMethod, SunDisk};
+use bevy::pbr::ContactShadows;
 use bevy::prelude::*;
+use renzora::sun::CONTACT_SHADOW_STEPS;
 
 // ============================================================================
 // Sun component
@@ -35,9 +37,61 @@ pub use renzora::Sun;
 /// horizon the procedural sky cubemap is dark anyway, and applying the
 /// same horizon fade ensures no residual ambient leaks in.
 pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
-    const FADE_START_DEG: f32 = -1.0;
-    const FADE_END_DEG: f32 = 5.0;
-    ((elevation_deg - FADE_START_DEG) / (FADE_END_DEG - FADE_START_DEG)).clamp(0.0, 1.0)
+    renzora::sun::horizon_factor(elevation_deg)
+}
+
+/// How far the moon has risen, 0 to 1: nothing while the sun is up, rising as
+/// the sun sinks from 1 to 7 degrees below the horizon.
+///
+/// It starts where [`sun_horizon_factor`] has finished, so the two never light
+/// the scene at once: the light is the sun's until the sun is gone, then the
+/// moon's. Twilight between them is the sky's.
+pub fn moon_factor(elevation_deg: f32) -> f32 {
+    renzora::sun::moon_factor(elevation_deg)
+}
+
+/// What the scene's one directional light should be for this `Sun`: the sun
+/// while it is up, the moon once it has set.
+///
+/// One light rather than a second moon entity, so every scene with a sun
+/// already has a moon and nothing new is saved into it. Below the horizon the
+/// sun used to fade to nothing and take the sky light with it, leaving a night
+/// scene pitch black except for whatever glowed.
+pub struct SunLight {
+    pub color: Color,
+    pub illuminance: f32,
+    pub direction: Vec3,
+    /// Whether anything is lighting the scene, so shadows are worth casting.
+    pub lit: bool,
+}
+
+pub fn sun_light(sun: &Sun) -> SunLight {
+    let day = sun_horizon_factor(sun.elevation);
+    if day > 0.0 {
+        return SunLight {
+            color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
+            illuminance: sun.illuminance * day,
+            direction: sun.direction(),
+            lit: true,
+        };
+    }
+    let night = moon_factor(sun.elevation);
+    // A thin crescent lights far less than a full moon, but never nothing:
+    // a new-moon night still keeps some sky glow to read the scene by.
+    let phase = 0.15 + 0.85 * sun.moon_lit_fraction();
+    // In the Earth's shadow the moon only gets light bent red through the
+    // Earth's atmosphere: dim and coppery.
+    let eclipse = sun.moon_eclipse.clamp(0.0, 1.0);
+    let dimming = 1.0 - 0.9 * eclipse;
+    let red = Vec3::ONE.lerp(Vec3::new(1.0, 0.4, 0.25), eclipse);
+    let illuminance = sun.moon_illuminance.max(0.0) * night * phase * dimming;
+    let c = sun.moon_color * red;
+    SunLight {
+        color: Color::srgb(c.x, c.y, c.z),
+        illuminance,
+        direction: sun.moon_direction(),
+        lit: illuminance > 0.0,
+    }
 }
 
 fn sync_sun(
@@ -48,21 +102,21 @@ fn sync_sun(
     >,
 ) {
     for (entity, sun, mut light, mut transform) in &mut query {
-        // Below the horizon, fade illuminance and disable shadows. Keeps
-        // the authored `sun.illuminance` value intact in the inspector
-        // while the *effective* light goes to 0 — matches the physical
-        // model where the sun is below the horizon and the scene goes
-        // dark (until a moon / other key light fills in).
-        let factor = sun_horizon_factor(sun.elevation);
-        light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
-        light.illuminance = sun.illuminance * factor;
-        light.shadow_maps_enabled = sun.shadows_enabled && factor > 0.0;
-        light.contact_shadows_enabled = sun.contact_shadows && factor > 0.0;
+        // The authored `sun.illuminance` stays as typed in the inspector; the
+        // light carries the effective value, sun or moon. See `sun_light`.
+        let state = sun_light(sun);
+        light.color = state.color;
+        light.illuminance = state.illuminance;
+        light.shadow_maps_enabled = sun.shadows_enabled && state.lit;
+        light.contact_shadows_enabled = sun.contact_shadows && state.lit;
         *transform =
-            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
+            Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, state.direction));
+        // The disc is the sun's only. Bevy draws it where the light points, so
+        // at night it would sit where the moon is, but as a flat untextured
+        // spot; `renzora_atmosphere::moon` draws the moon itself.
         commands.entity(entity).try_insert(SunDisk {
             angular_size: sun.angular_diameter.to_radians(),
-            intensity: sun.sun_disk_intensity * factor,
+            intensity: sun.sun_disk_intensity * sun_horizon_factor(sun.elevation),
         });
     }
 }
@@ -167,11 +221,53 @@ fn size_light_clusters(settings: Option<ResMut<bevy::light::cluster::GlobalClust
     gpu.initial_index_list_capacity = gpu.initial_index_list_capacity.max(INDICES);
 }
 
+/// The `ContactShadows` a camera should carry for `sun`: its reach, thickness
+/// and steps, with the steps held to [`CONTACT_SHADOW_STEPS`] and the lengths
+/// kept positive (a zero-length ray divides by zero in the march).
+fn contact_shadows_for(sun: &Sun) -> ContactShadows {
+    ContactShadows {
+        linear_steps: sun
+            .contact_shadow_steps
+            .clamp(*CONTACT_SHADOW_STEPS.start(), *CONTACT_SHADOW_STEPS.end()),
+        thickness: sun.contact_shadow_thickness.max(0.001),
+        length: sun.contact_shadow_length.max(0.01),
+    }
+}
+
+/// Copy the Sun's contact-shadow settings onto every camera that draws them.
+///
+/// Bevy keeps these on the camera, but they are about the light, and the
+/// switch that turns them on is on the Sun; a camera holding its own copy
+/// would mean setting them once per camera, and the editor's viewport cameras
+/// cannot be selected at all. `renzora_engine` decides which cameras carry
+/// `ContactShadows`; this only fills in its values, and writes a camera only
+/// when they differ so a still scene does not re-specialize anything.
+fn sync_contact_shadow_settings(
+    suns: Query<&Sun>,
+    mut cameras: Query<&mut ContactShadows>,
+) {
+    let Some(sun) = suns.iter().next() else {
+        return;
+    };
+    let want = contact_shadows_for(sun);
+    for mut current in &mut cameras {
+        let same = current.linear_steps == want.linear_steps
+            && current.thickness == want.thickness
+            && current.length == want.length;
+        if !same {
+            *current = want;
+        }
+    }
+}
+
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] LightingPlugin");
         app.add_systems(Startup, size_light_clusters);
-        app.add_systems(Update, (sync_sun, match_shadow_filtering));
+        app.add_systems(
+            Update,
+            (sync_sun, match_shadow_filtering, sync_contact_shadow_settings),
+        );
         app.add_observer(handle_sun_script_actions);
     }
 }
@@ -190,6 +286,61 @@ mod tests {
             a,
             (a - b).length(),
         );
+    }
+
+    /// The Sun's values reach every camera that draws contact shadows, and a
+    /// camera without them is left alone.
+    #[test]
+    fn contact_shadow_settings_reach_the_cameras() {
+        let mut app = App::new();
+        app.add_systems(Update, sync_contact_shadow_settings);
+        app.world_mut().spawn(Sun {
+            contact_shadow_length: 1.5,
+            contact_shadow_thickness: 0.25,
+            contact_shadow_steps: 32,
+            ..default()
+        });
+        let camera = app.world_mut().spawn(ContactShadows::default()).id();
+        let other = app.world_mut().spawn(Transform::default()).id();
+        app.update();
+        let cs = app.world().get::<ContactShadows>(camera).unwrap();
+        assert_eq!((cs.length, cs.thickness, cs.linear_steps), (1.5, 0.25, 32));
+        assert!(app.world().get::<ContactShadows>(other).is_none());
+    }
+
+    #[test]
+    fn contact_shadow_settings_are_clamped() {
+        let wild = Sun {
+            contact_shadow_length: 0.0,
+            contact_shadow_thickness: -1.0,
+            contact_shadow_steps: 100_000,
+            ..default()
+        };
+        let cs = contact_shadows_for(&wild);
+        assert!(cs.length > 0.0 && cs.thickness > 0.0);
+        assert_eq!(cs.linear_steps, *CONTACT_SHADOW_STEPS.end());
+    }
+
+    /// A scene saved before the settings existed still loads, with the
+    /// defaults. Scenes load through `FromReflect`, which fails the whole
+    /// component on a missing field without a default.
+    #[test]
+    fn a_scene_without_contact_shadow_settings_reconstructs_by_reflection() {
+        use bevy::reflect::structs::DynamicStruct;
+        use bevy::reflect::FromReflect;
+        let mut old = DynamicStruct::default();
+        old.insert("azimuth", 200.0_f32);
+        old.insert("elevation", 40.0_f32);
+        old.insert("color", Vec3::ONE);
+        old.insert("illuminance", 100_000.0_f32);
+        old.insert("shadows_enabled", true);
+        old.insert("contact_shadows", true);
+        old.insert("angular_diameter", 0.53_f32);
+        old.insert("sun_disk_intensity", 1.0_f32);
+        let sun = Sun::from_reflect(&old).expect("old scene loads");
+        assert_eq!(sun.azimuth, 200.0);
+        assert_eq!(sun.contact_shadow_length, renzora::sun::default_contact_shadow_length());
+        assert_eq!(sun.contact_shadow_steps, renzora::sun::default_contact_shadow_steps());
     }
 
     #[test]
@@ -271,14 +422,45 @@ mod tests {
 
     #[test]
     fn default_sun_matches_documented_values() {
-        // Defaults committed in 420b457 — locking these so a future tweak
-        // either updates the test or notices it changed the contract.
+        // Locked so a future tweak either updates the test or notices it
+        // changed the contract. Mid-morning since 2026-11-04 (was 90/25).
         let sun = Sun::default();
-        assert_eq!(sun.azimuth, 90.0);
-        assert_eq!(sun.elevation, 25.0);
-        assert_eq!(sun.illuminance, 40_000.0);
+        assert_eq!(sun.azimuth, 245.5);
+        assert_eq!(sun.elevation, 38.5);
+        assert_eq!(sun.illuminance, 120_000.0);
         assert!(sun.shadows_enabled);
+        assert!(sun.contact_shadows);
         assert_eq!(sun.angular_diameter, 0.53);
+    }
+
+    /// The light is the sun's while it is up and the moon's once it has set,
+    /// never both, and a night is lit rather than black.
+    #[test]
+    fn the_light_hands_over_from_sun_to_moon() {
+        let at = |elevation| sun_light(&Sun { elevation, ..Sun::default() });
+
+        let day = at(40.0);
+        assert_eq!(day.illuminance, 120_000.0);
+        assert!(day.direction.y < 0.0, "sunlight comes down");
+
+        // Just set: the sun has faded and the moon has not yet risen.
+        let dusk = at(-1.0);
+        assert_eq!(dusk.illuminance, 0.0);
+        assert!(!dusk.lit);
+
+        // A full moon, so the phase does not scale the light.
+        let night = sun_light(&Sun {
+            elevation: -30.0,
+            moon_follows_calendar: false,
+            moon_day: renzora::sun::SYNODIC_MONTH_DAYS * 0.5,
+            ..Sun::default()
+        });
+        assert!((night.illuminance - Sun::default().moon_illuminance).abs() < 0.01);
+        assert!(night.lit);
+        assert!(night.direction.y < 0.0, "moonlight comes down, not up from below the ground");
+
+        let unlit = sun_light(&Sun { elevation: -30.0, moon_illuminance: 0.0, ..Sun::default() });
+        assert!(!unlit.lit, "a moonlight of 0 keeps nights unlit");
     }
 
     fn filtering_app() -> (App, Entity) {

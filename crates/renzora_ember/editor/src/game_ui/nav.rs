@@ -8,7 +8,8 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform, Val2};
+use bevy::ui::{UiTransform, Val2};
+use renzora_ember::UiCursor;
 use bevy::window::PrimaryWindow;
 
 use renzora::SplashState;
@@ -48,7 +49,7 @@ fn canvas_pan(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut last: Local<Option<Vec2>>,
-    hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
+    hit: Query<&UiCursor, With<CanvasHitLayer>>,
     background: Query<&UiInteraction, With<crate::game_ui::interaction::CanvasBackground>>,
     mut state: ResMut<NativeCanvasState>,
 ) {
@@ -81,7 +82,7 @@ fn canvas_pan(
 fn canvas_wheel(
     mut wheel: MessageReader<MouseWheel>,
     keys: Res<ButtonInput<KeyCode>>,
-    hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
+    hit: Query<&UiCursor, With<CanvasHitLayer>>,
     background: Query<&UiInteraction, With<crate::game_ui::interaction::CanvasBackground>>,
     mut state: ResMut<NativeCanvasState>,
 ) {

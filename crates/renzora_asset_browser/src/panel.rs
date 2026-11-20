@@ -53,7 +53,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 min_height: Val::Px(0.0),
                 ..default()
             },
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             AssetRoot,
         ))
         .id();
@@ -74,7 +74,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // marquee, as it does in the grid.
     commands
         .entity(tree_scroll)
-        .insert((TreeArea, bevy::ui::RelativeCursorPosition::default()));
+        .insert((TreeArea, renzora_ember::UiCursor::default()));
     let tree_pane = commands
         .spawn((
             Node {
@@ -233,7 +233,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let grid_scroll = scroll_view(commands, grid);
     // Mark the grid viewport so the marquee knows when a press lands in empty
     // grid space (vs. on a tile or the tree).
-    commands.entity(grid_scroll).insert((GridArea, bevy::ui::RelativeCursorPosition::default()));
+    commands.entity(grid_scroll).insert((GridArea, renzora_ember::UiCursor::default()));
 
     let footer = build_footer(commands, fonts);
 
@@ -370,7 +370,7 @@ fn import_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             HoverCursor(SystemCursorIcon::Pointer),
             AddMenuBtn,
             TreeAddBtn,
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             Name::new("assets-import"),
         ))
         .id();
@@ -511,7 +511,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     commands
         .entity(sort_btn)
-        .insert((SortMenuBtn, bevy::ui::RelativeCursorPosition::default()));
+        .insert((SortMenuBtn, renzora_ember::UiCursor::default()));
     ghost(commands, sort_btn);
     bind_text(commands, sort_label, |w: &Rx| {
         w.get_resource::<NativeAssets>().map(|s| s.sort.label()).unwrap_or_default()

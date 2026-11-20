@@ -219,34 +219,12 @@ impl ProjectFileChanged {
     }
 }
 
-/// Directories the watcher never reports from.
-///
-/// Not a performance tweak. `target/` alone can hold hundreds of thousands of
-/// files that change constantly during a build, and a script or shader rebuild
-/// writing into it would feed its own output straight back in as change events.
-/// The same list is used by the project walks (`collect_project_scripts` and
-/// friends), and the two must agree or a file will be compiled by one and
-/// ignored by the other.
-pub const IGNORED_DIRS: &[&str] = &[
-    "target",
-    ".git",
-    ".renzora",
-    "node_modules",
-    "dist",
-    ".svn",
-    ".hg",
-];
-
-/// Is this project-relative path inside an ignored directory, or hidden?
-///
-/// Takes the forward-slashed relative form, which is what [`ProjectFileChanged`]
-/// carries. Leading-dot components are ignored wholesale: editors and tools
-/// scribble in them constantly and nothing in a project is authored there.
-pub fn is_ignored(relative: &str) -> bool {
-    relative.split('/').any(|part| {
-        IGNORED_DIRS.contains(&part) || (part.starts_with('.') && part.len() > 1)
-    })
-}
+// What counts as a project file. Defined in `renzora_companion_proto`, which
+// links no Bevy, because the standalone companion walks and watches the project
+// by the same rules; re-exported so every path that names them still works.
+pub use renzora_companion_proto::project_files::{
+    cached_thumbnail, is_ignored, is_transient, thumbnail_cache_dir, IGNORED_DIRS,
+};
 
 /// Directories to watch besides the open project.
 ///
@@ -276,55 +254,6 @@ impl ExtraWatchRoots {
     pub fn paths(&self) -> &[PathBuf] {
         &self.0
     }
-}
-
-/// Is this file name an editor's scratch file rather than a real one?
-///
-/// Almost nothing writes a file in place. The safe way to save is to write a
-/// temporary file beside the target and rename it over the top, so the reader
-/// either sees the old contents or the new ones and never a half-written file.
-/// That is what an editor, `git`, and most tooling actually does, and the
-/// watcher sees every step of it.
-///
-/// A real save observed through the watcher looks like this:
-///
-/// ```text
-/// added    particles/x.particle.tmp.20124.8ed8f24b3cfd
-/// modified particles/x.particle.tmp.20124.8ed8f24b3cfd
-/// removed  particles/x.particle
-/// renamed  ...tmp... -> particles/x.particle
-/// ```
-///
-/// Publishing the first two helps nobody and actively hurts: the scratch file
-/// exists for a few milliseconds, it is half-written for most of them, and a
-/// consumer that reacted by parsing it would be reading a truncated file. Every
-/// consumer would otherwise need this same filter, and the one that forgot would
-/// fail rarely and confusingly.
-///
-/// The `removed` / `renamed` pair still comes through, which is correct: those
-/// are about the real file. [`ProjectFileChanged::still_missing`] is what stops
-/// the removal half being mistaken for a deletion.
-pub fn is_transient(relative: &str) -> bool {
-    let name = relative.rsplit('/').next().unwrap_or(relative);
-    // `.tmp.` rather than a suffix test: the atomic-write convention puts the
-    // real extension first and its own junk last (`x.particle.tmp.<pid>.<hash>`),
-    // so the marker is in the middle and the file classifies as whatever
-    // trailing garbage it happens to end with.
-    name.contains(".tmp.")
-        || name.ends_with(".tmp")
-        || name.ends_with(".temp")
-        // Emacs and gedit backups; vim swap files; VS Code's crash-recovery
-        // scratch; partial downloads.
-        || name.ends_with('~')
-        || name.ends_with(".swp")
-        || name.ends_with(".swo")
-        || name.ends_with(".swx")
-        || name.ends_with(".crswap")
-        || name.ends_with(".part")
-        || name.ends_with(".crdownload")
-        // Emacs auto-save, `#file#`. Its lock file is `.#file`, already dropped
-        // by `is_ignored` along with every other dot-prefixed name.
-        || (name.starts_with('#') && name.ends_with('#'))
 }
 
 /// What the editor itself last wrote to or read from a file.
@@ -454,36 +383,4 @@ mod tests {
         assert_eq!(AssetKind::from_path(Path::new("LICENSE")), AssetKind::Other);
     }
 
-    #[test]
-    fn build_output_is_ignored() {
-        assert!(is_ignored("target/dist/thing.rs"));
-        assert!(is_ignored("scripts/.hidden/x.rs"));
-        assert!(!is_ignored("scripts/fps.rs"));
-    }
-
-    #[test]
-    fn an_atomic_saves_scratch_file_is_transient() {
-        // The exact shape observed from a real save.
-        assert!(is_transient(
-            "particles/watch_test.particle.tmp.20124.8ed8f24b3cfd"
-        ));
-        assert!(is_transient("scenes/a.bsn~"));
-        assert!(is_transient("x.swp"));
-        assert!(is_transient("#notes.txt#"));
-    }
-
-    #[test]
-    fn a_real_file_is_not_transient() {
-        assert!(!is_transient("particles/watch_test.particle"));
-        assert!(!is_transient("scripts/spinner.rs"));
-        // A directory legitimately called `temp` must not make its contents
-        // invisible: the check is on the file name, not the path.
-        assert!(!is_transient("temp/real.bsn"));
-    }
-
-    #[test]
-    fn a_dotfile_name_is_not_a_hidden_directory() {
-        // "." alone is a path component the walker produces, not a hidden dir.
-        assert!(!is_ignored("."));
-    }
 }

@@ -50,6 +50,11 @@ pub enum NoiseMode {
     Billow,
     Warped,
     Hybrid,
+    /// Mountains that look weathered before any erosion runs: a warped, soft
+    /// crested ridged multifractal for the ranges, with derivative damped
+    /// detail that thins out on steep flanks and in valley floors. See
+    /// [`crate::sculpt::eroded_noise`].
+    Eroded,
 }
 
 impl NoiseMode {
@@ -60,11 +65,20 @@ impl NoiseMode {
             Self::Billow => "Billow",
             Self::Warped => "Warped",
             Self::Hybrid => "Hybrid",
+            Self::Eroded => "Eroded",
         }
     }
 
+    /// Whether the mode reads `warp_strength`.
+    pub fn uses_warp(&self) -> bool {
+        matches!(self, Self::Warped | Self::Eroded)
+    }
+
+    /// Every mode, in the order the dropdowns list them. Eroded leads because
+    /// it is the one that reads as real ground.
     pub fn all() -> &'static [NoiseMode] {
         &[
+            Self::Eroded,
             Self::Fbm,
             Self::Ridge,
             Self::Billow,
@@ -192,13 +206,12 @@ pub struct TerrainData {
     pub chunk_resolution: u32,
     pub max_height: f32,
     pub min_height: f32,
-    /// When `true`, chunk *residency* streams by camera distance in a running
-    /// game (and editor play/simulate): chunks beyond `stream_radius` drop
-    /// their mesh + collider (the big memory — heightmap data stays on the
-    /// entity) and rebuild when the camera approaches. Editor edit mode keeps
-    /// every chunk resident for sculpting. `#[serde(default)]` /
-    /// `#[reflect(default)]` so terrains saved before these fields existed
-    /// still deserialize.
+    /// When `true`, chunk *residency* streams by camera distance, in the
+    /// editor (following the viewport camera) as in a game: chunks beyond
+    /// `stream_radius` drop their mesh, collider and detail (the heightmap
+    /// stays) and are drawn by a coarse stand-in until the camera comes back
+    /// (see `streaming`). On for a new terrain; a terrain saved without the
+    /// field loads with it off, as it was.
     #[serde(default)]
     #[reflect(default)]
     pub stream_chunks: bool,
@@ -208,10 +221,31 @@ pub struct TerrainData {
     #[serde(default = "default_stream_radius")]
     #[reflect(default = "default_stream_radius")]
     pub stream_radius: f32,
+    /// Coarser versions of each chunk drawn as it gets farther away, each
+    /// with half the vertices per side of the one before (see `lod`). 0 draws
+    /// every chunk at full detail at any distance.
+    #[serde(default = "default_lod_levels")]
+    #[reflect(default = "default_lod_levels")]
+    pub lod_levels: u32,
+    /// Scales the distances at which each coarser level takes over. Above 1
+    /// keeps detail farther out; below 1 drops it sooner.
+    #[serde(default = "default_lod_distance")]
+    #[reflect(default = "default_lod_distance")]
+    pub lod_distance: f32,
 }
 
+/// Far enough that the switch to a stand-in happens past where virtual
+/// geometry and the levels of detail have already thinned a chunk out.
 fn default_stream_radius() -> f32 {
-    256.0
+    512.0
+}
+
+fn default_lod_levels() -> u32 {
+    4
+}
+
+fn default_lod_distance() -> f32 {
+    1.0
 }
 
 impl Default for TerrainData {
@@ -227,8 +261,10 @@ impl Default for TerrainData {
             // editor grid plane.
             max_height: 40.0,
             min_height: -10.0,
-            stream_chunks: false,
+            stream_chunks: true,
             stream_radius: default_stream_radius(),
+            lod_levels: default_lod_levels(),
+            lod_distance: default_lod_distance(),
         }
     }
 }
@@ -267,13 +303,19 @@ impl TerrainData {
 /// is the composed result (base + Σ enabled edit layers) and is what the mesh
 /// and GPU upload read. Sculpt brushes always read/write the base; the
 /// composition system recomputes `heights` when anything upstream changes.
+///
+/// Saved through its serde form (`reflect(Serialize, Deserialize)`), not field
+/// by field through reflection, so `base_heights` can be written packed (see
+/// [`packed_heights`]). Reflection read the old float list one boxed value at a
+/// time: a 2 km terrain is 17 million heights, 180 MB of text, and took ten
+/// seconds to load before anything drew.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component)]
+#[reflect(Component, Serialize, Deserialize)]
 pub struct TerrainChunkData {
     pub chunk_x: u32,
     pub chunk_z: u32,
     /// User's manual sculpt layer. Sculpt brushes write here.
-    #[serde(default, alias = "heights")]
+    #[serde(default, alias = "heights", with = "packed_heights")]
     pub base_heights: Vec<f32>,
     /// Composed buffer: base + all enabled height layer deltas. Read by mesh/GPU.
     /// Rebuilt by the composition system whenever `dirty` is set.
@@ -349,6 +391,96 @@ impl TerrainChunkData {
     }
 }
 
+/// How a chunk's heights are saved: a 16-bit heightmap, the precision Unreal
+/// and most terrain tools store, as a string `u16d1:<base64>`.
+///
+/// Each height is quantized to `0..=65535` across the terrain's height range
+/// (5 mm steps on a 350 m range), stored as the difference from the height
+/// before it, and deflated. Ground is smooth, so neighbouring heights differ
+/// by little and the differences compress to a small fraction: a flat chunk to
+/// almost nothing. Quantizing is idempotent, so saving again changes nothing.
+///
+/// Reading also takes the old form, a plain list of floats, so every scene
+/// saved before this loads; it is written packed the next time it is saved.
+pub mod packed_heights {
+    use base64::Engine;
+    use serde::de::{self, SeqAccess, Visitor};
+    use serde::{Deserializer, Serializer};
+    use std::io::{Read, Write};
+
+    /// Format tag, versioned so the encoding can change without guessing.
+    const TAG: &str = "u16d1:";
+
+    pub fn encode(heights: &[f32]) -> String {
+        let mut raw = Vec::with_capacity(heights.len() * 2);
+        let mut previous = 0u16;
+        for &h in heights {
+            let q = (h.clamp(0.0, 1.0) * 65535.0).round() as u16;
+            raw.extend_from_slice(&q.wrapping_sub(previous).to_le_bytes());
+            previous = q;
+        }
+        let mut deflate = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        // Writing to a Vec cannot fail.
+        let _ = deflate.write_all(&raw);
+        let packed = deflate.finish().unwrap_or_default();
+        format!("{TAG}{}", base64::engine::general_purpose::STANDARD.encode(packed))
+    }
+
+    pub fn decode(text: &str) -> Result<Vec<f32>, String> {
+        let body = text
+            .strip_prefix(TAG)
+            .ok_or_else(|| format!("unknown height encoding `{}`", text.chars().take(8).collect::<String>()))?;
+        let packed = base64::engine::general_purpose::STANDARD.decode(body).map_err(|e| e.to_string())?;
+        let mut raw = Vec::new();
+        flate2::read::DeflateDecoder::new(packed.as_slice())
+            .read_to_end(&mut raw)
+            .map_err(|e| e.to_string())?;
+        if raw.len() % 2 != 0 {
+            return Err("height data has an odd byte count".into());
+        }
+        let mut previous = 0u16;
+        Ok(raw
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| {
+                previous = previous.wrapping_add(u16::from_le_bytes(*pair));
+                previous as f32 / 65535.0
+            })
+            .collect())
+    }
+
+    pub fn serialize<S: Serializer>(heights: &[f32], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&encode(heights))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<f32>, D::Error> {
+        struct Either;
+
+        impl<'de> Visitor<'de> for Either {
+            type Value = Vec<f32>;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("packed heights or a list of floats")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Vec<f32>, E> {
+                decode(v).map_err(E::custom)
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<f32>, A::Error> {
+                let mut out = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+                while let Some(h) = seq.next_element::<f32>()? {
+                    out.push(h);
+                }
+                Ok(out)
+            }
+        }
+
+        deserializer.deserialize_any(Either)
+    }
+}
+
 /// Links a chunk entity back to its parent terrain entity.
 #[derive(Component)]
 pub struct TerrainChunkOf(pub Entity);
@@ -386,7 +518,12 @@ pub struct TerrainSettings {
     pub warp_strength: f32,
 
     // Terrace
-    pub terrace_steps: u32,
+    /// Height of one terrace step, in metres. A count of steps over the
+    /// terrain's whole height range made the step size change whenever the
+    /// range did, and on a tall terrain eight steps were 40 m cliffs.
+    pub terrace_height: f32,
+    /// 0..1: how much of each step is riser. 0 is a gentle ramp between
+    /// treads, 1 a short steep riser (never vertical: see the brush).
     pub terrace_sharpness: f32,
 
     // Stamp
@@ -414,7 +551,7 @@ impl Default for TerrainSettings {
             noise_seed: 42,
             noise_mode: NoiseMode::Fbm,
             warp_strength: 0.5,
-            terrace_steps: 8,
+            terrace_height: 4.0,
             terrace_sharpness: 0.8,
             stamp_blend_mode: StampBlendMode::Add,
             stamp_rotation: 0.0,
@@ -738,6 +875,51 @@ mod tests {
         chunk.ensure_composed_buffer();
         assert_eq!(chunk.heights[0], 0.9);
         assert!(!chunk.dirty);
+    }
+
+    #[test]
+    fn packed_heights_round_trip_at_16_bit_precision() {
+        let heights: Vec<f32> = (0..129 * 129).map(|i| ((i as f32 * 0.013).sin() * 0.5 + 0.5) * 0.9).collect();
+        let text = packed_heights::encode(&heights);
+        let back = packed_heights::decode(&text).unwrap();
+        assert_eq!(back.len(), heights.len());
+        for (a, b) in heights.iter().zip(&back) {
+            assert!((a - b).abs() <= 0.5 / 65535.0 + 1e-7, "{a} vs {b}");
+        }
+        // Saving what was loaded writes the same thing again.
+        assert_eq!(packed_heights::encode(&back), text);
+        // Far smaller than the floats as text, about 11 bytes each.
+        assert!(text.len() * 4 < heights.len() * 11, "{} bytes", text.len());
+        // A flat chunk is next to nothing.
+        assert!(packed_heights::encode(&vec![0.2; 129 * 129]).len() < 200);
+    }
+
+    #[test]
+    fn chunk_saves_packed_through_reflection_and_reads_the_old_float_list() {
+        use bevy::reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
+        use serde::de::DeserializeSeed;
+        let mut registry = bevy::reflect::TypeRegistry::default();
+        registry.register::<TerrainChunkData>();
+        let chunk = TerrainChunkData::new(3, 4, 3, 0.25);
+
+        // Saving goes through reflection, as a scene does.
+        let json = serde_json::to_string(&TypedReflectSerializer::new(&chunk, &registry)).unwrap();
+        assert!(json.contains("u16d1:"), "{json}");
+
+        let registration = registry.get(std::any::TypeId::of::<TerrainChunkData>()).unwrap();
+        let read = |text: &str| {
+            let value = TypedReflectDeserializer::new(registration, &registry)
+                .deserialize(&mut serde_json::Deserializer::from_str(text))
+                .unwrap();
+            <TerrainChunkData as FromReflect>::from_reflect(value.as_ref()).unwrap()
+        };
+        let loaded = read(&json);
+        assert_eq!((loaded.chunk_x, loaded.chunk_z), (3, 4));
+        assert!(loaded.base_heights.iter().all(|h| (h - 0.25).abs() < 1e-4));
+
+        // A scene saved before packing.
+        let old = read(r#"{"chunk_x":1,"chunk_z":2,"base_heights":[0.1,0.2,0.3]}"#);
+        assert_eq!(old.base_heights, vec![0.1, 0.2, 0.3]);
     }
 
     #[test]

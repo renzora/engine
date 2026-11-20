@@ -19,12 +19,14 @@ use std::sync::Arc;
 #[derive(Resource, Clone)]
 pub struct VirtualFileReader {
     reader: Arc<dyn Fn(&str) -> Option<String> + Send + Sync>,
+    disk: bool,
 }
 
 impl Default for VirtualFileReader {
     fn default() -> Self {
         Self {
             reader: Arc::new(|path| std::fs::read_to_string(path).ok()),
+            disk: true,
         }
     }
 }
@@ -34,7 +36,15 @@ impl VirtualFileReader {
     pub fn new(f: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
         Self {
             reader: Arc::new(f),
+            disk: false,
         }
+    }
+
+    /// Whether this is the plain disk reader, so a caller may list a folder
+    /// itself instead of opening each file through the reader. An archive or
+    /// web reader has no listing to offer.
+    pub fn is_disk(&self) -> bool {
+        self.disk
     }
 
     /// Read a file to string. Tries the backing store (archive or disk).
@@ -1249,12 +1259,11 @@ impl ResolvedRenderingMode {
 /// The graphics-quality tier in force **this session**, as a resource every
 /// renderer crate can read (clouds, atmosphere, IBL, the enforcement systems).
 ///
-/// One source of truth for two callers:
-/// - **Runtime:** `renzora_engine` seeds it from
-///   [`RenderingConfig::graphics_quality`] at boot.
-/// - **Editor:** `renzora_level_presets::graphics_quality` mirrors the live
-///   `ViewportSettings.graphics_quality` (Settings → Viewport → Performance)
-///   onto it every time the user changes tier.
+/// Both callers seed it from the same [`RenderingConfig::graphics_quality`]:
+/// - **Runtime:** `renzora_engine`, at boot.
+/// - **Editor:** `renzora_level_presets::graphics_quality`, every time the
+///   user changes tier in Settings > Project > Rendering. The editor has no
+///   tier of its own, so the viewport shows the cost the game will have.
 ///
 /// Defaults to `GraphicsQuality::Medium` so a crate that reads it before either
 /// seeder has run gets the safe, lighter tier rather than the full stack.
@@ -1453,6 +1462,11 @@ pub struct ProjectConfig {
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
     pub console_logging: bool,
+    /// Set by an export with "Allow profiling" on: the editor's pairing key.
+    /// The game then announces itself on the network and accepts the editor's
+    /// companion. `None` in every normal build, which never opens a port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profiling_key: Option<String>,
     /// Default UI font for the shipped game — a name resolved by the font
     /// registry, a project `fonts/` path (e.g. `"fonts/Inter.ttf"`), or a system
     /// family. Applied at runtime startup (the game's ember UI uses it); `None`
@@ -1488,6 +1502,7 @@ impl Default for ProjectConfig {
             rendering: RenderingConfig::default(),
             physics: PhysicsProjectConfig::default(),
             console_logging: false,
+            profiling_key: None,
             ui_font: None,
             network: None,
             audio: AudioConfig::default(),
@@ -1704,6 +1719,7 @@ mod tests {
             rendering: RenderingConfig::default(),
             physics: PhysicsProjectConfig::default(),
             console_logging: false,
+            profiling_key: None,
             network: None,
             audio: AudioConfig {
                 buses: vec![BusConfig {

@@ -690,6 +690,14 @@ pub fn plugin(app: &mut App) {
     // `update_name_index` first so the binding systems read a current map.
     app.add_systems(
         Update,
-        (update_name_index, update_text_bindings, update_show_bindings).chain(),
+        (
+            update_name_index,
+            // Both are exclusive, so each is a sync point for the schedule even
+            // on the frame its own first check finds no binding; that check is
+            // the condition instead.
+            update_text_bindings.run_if(any_with_component::<TextBinding>),
+            update_show_bindings.run_if(any_with_component::<ShowBinding>),
+        )
+            .chain(),
     );
 }

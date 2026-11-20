@@ -51,8 +51,8 @@ pub(crate) fn marquee_select(
     mouse: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
-    grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
-    tree: Query<&bevy::ui::RelativeCursorPosition, With<TreeArea>>,
+    grid: Query<&renzora_ember::UiCursor, With<GridArea>>,
+    tree: Query<&renzora_ember::UiCursor, With<TreeArea>>,
     tiles: Query<(&AssetTile, Sweepable), Without<TreeHit>>,
     tree_rows: Query<(&TreeHit, Sweepable)>,
     toggles: Query<&UiInteraction, With<TreeToggle>>,
@@ -241,7 +241,7 @@ pub(crate) fn marquee_autoscroll(
 /// the same `Ctrl+A`.
 pub(crate) fn select_all_shortcut(
     keys: Res<ButtonInput<KeyCode>>,
-    grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
+    grid: Query<&renzora_ember::UiCursor, With<GridArea>>,
     mut state: ResMut<NativeAssets>,
     mut claimed: ResMut<renzora::core::SelectAllClaimed>,
 ) {

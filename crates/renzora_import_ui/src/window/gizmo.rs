@@ -19,12 +19,13 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::math::Rot2;
 use bevy::prelude::*;
-use bevy::ui::{RelativeCursorPosition, UiTransform};
+use bevy::ui::UiTransform;
 
 use renzora::core::viewport_types::{
     AXIS_NEG_X, AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
+use renzora_ember::UiCursor;
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
@@ -107,8 +108,20 @@ enum ZoomBtn {
 struct GizmoDragging(bool);
 
 pub(crate) fn register(app: &mut App) {
-    app.init_resource::<GizmoDragging>()
-        .add_systems(Update, (gizmo_layout, gizmo_input, zoom_click));
+    app.init_resource::<GizmoDragging>().add_systems(
+        Update,
+        (gizmo_layout, gizmo_input, zoom_click)
+            // The gizmo and zoom buttons live in the window's preview pane,
+            // so with no window there is nothing to lay out or click. A drag
+            // latched when the window closed keeps the group alive until the
+            // button is released and `gizmo_input` clears the latch.
+            .run_if(any_with_component::<super::ImportRoot>.or_else(gizmo_dragging)),
+    );
+}
+
+/// Run condition: is a backplate drag still latched?
+fn gizmo_dragging(dragging: Res<GizmoDragging>) -> bool {
+    dragging.0
 }
 
 fn rgba((r, g, b): (u8, u8, u8), a: f32) -> Color {
@@ -200,7 +213,7 @@ fn build_gizmo(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // The node is replaced by `build`, which places it; this is only
             // here so the entity has one before its children are attached.
             Node::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlaySurface,
             UiInteraction::default(),
             // The preview camera reads its own node's `UiInteraction` to decide

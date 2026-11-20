@@ -430,7 +430,7 @@ fn paint(world: &mut World) {
         let edit = world.resource::<SkinEdit>();
         let mut best: Option<f32> = None;
         for (m, pos) in edit.meshes.iter().zip(&posed) {
-            for tri in m.indices.chunks_exact(3) {
+            for tri in m.indices.as_chunks::<3>().0 {
                 let (Some(a), Some(b), Some(c)) = (pos.get(tri[0] as usize), pos.get(tri[1] as usize), pos.get(tri[2] as usize)) else { continue };
                 if let Some(t) = ray_triangle(ray, *a, *b, *c) {
                     if best.is_none_or(|b| t < b) {

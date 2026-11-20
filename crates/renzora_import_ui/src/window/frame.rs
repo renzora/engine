@@ -54,7 +54,7 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &In
             BLOCK,
             OverlaySurface,
             renzora_ember::widgets::ModalSurface,
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             UiInteraction::default(),
             ImportRoot,
             Name::new("import-scrim"),

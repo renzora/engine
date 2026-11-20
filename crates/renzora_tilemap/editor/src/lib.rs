@@ -278,9 +278,16 @@ impl Plugin for TilemapEditorPlugin {
                 right_click_to_select,
                 sync_paint_mode,
                 sync_brush_active,
-                tilemap_stroke_begin,
+                // Both stroke ends are exclusive, so each is a sync point for
+                // the whole schedule even on the frames it returns at once.
+                // Each opens on the left button's edge, which is the condition.
+                tilemap_stroke_begin.run_if(
+                    bevy::input::common_conditions::input_just_pressed(MouseButton::Left),
+                ),
                 paint_tiles,
-                tilemap_stroke_end,
+                tilemap_stroke_end.run_if(
+                    bevy::input::common_conditions::input_just_released(MouseButton::Left),
+                ),
                 preview::update_brush_preview,
                 arm_tileset_drop,
                 commit_tileset_drop,
@@ -1531,7 +1538,7 @@ struct ArmedTilesetDrop(Option<Vec<std::path::PathBuf>>);
 /// payload exists (the release frame) the snapshot is left for the commit.
 fn arm_tileset_drop(
     payload: Option<Res<AssetDragPayload>>,
-    panel_root: Query<&bevy::ui::RelativeCursorPosition, With<panel::TilemapPanelRoot>>,
+    panel_root: Query<&renzora_ember::UiCursor, With<panel::TilemapPanelRoot>>,
     mut armed: ResMut<ArmedTilesetDrop>,
 ) {
     let Some(payload) = payload else {

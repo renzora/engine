@@ -11,11 +11,11 @@
 //! [`super::nodes`]; they are not a public API.
 
 use super::super::graph::{
-    self, MaterialFunction, MaterialGraph, MaterialNode, NodeId,
+    self, MaterialDomain, MaterialFunction, MaterialGraph, MaterialNode, NodeId,
 };
 use super::super::nodes;
 use super::{safe_fn_ident, FunctionRegistry, MaterialParam, ParamKind, TextureBinding,
-    MAX_PARAMETER_SLOTS};
+    TextureKind, MAX_PARAMETER_SLOTS};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) struct Ctx<'a> {
@@ -57,6 +57,11 @@ pub(crate) struct Ctx<'a> {
     pub(crate) uses_cube_0: bool,
     pub(crate) uses_array_0: bool,
     pub(crate) uses_volume_0: bool,
+    /// A Landscape node is in the graph: the shader declares the terrain's
+    /// weight maps and bounds (bindings 122 and 123) and the
+    /// `landscape_layer_weights` helper. Off for every other graph, whose
+    /// shader stays exactly what it was.
+    pub(crate) uses_landscape: bool,
     /// Set once the graph's `displacement` pin has been compiled into a
     /// `graph_displacement` helper — the signal for `build_pbr_shader` to
     /// emit the parallax march that rebinds `mat_uv`.
@@ -72,6 +77,14 @@ pub(crate) struct Ctx<'a> {
     /// to compile gradient instructions inside one — the same reason Bevy's
     /// own `sample_depth_map` is level-sampled.
     pub(crate) in_displacement_fn: bool,
+    /// The fragment declares `mat_uv_dx` / `mat_uv_dy` beside `mat_uv` (see
+    /// `wgsl::fragment_input_aliases`), so a texture read at the mesh UV can
+    /// sample with explicit gradients. True for every domain whose shader
+    /// takes those aliases, which is all but Sprite. Fixed at construction
+    /// from the top-level graph: `graph` is swapped while a material function
+    /// compiles, and the function's own domain says nothing about the shader
+    /// it ends up in.
+    pub(crate) uv_derivatives: bool,
     /// Named parameters discovered while walking the graph. The `Vec`'s
     /// position is the slot index in `material_params.slots[N]` — codegen
     /// emits reads keyed on that index, and the resolver writes the
@@ -147,9 +160,11 @@ impl<'a> Ctx<'a> {
             uses_cube_0: false,
             uses_array_0: false,
             uses_volume_0: false,
+            uses_landscape: false,
             uses_parallax: false,
             uses_particle: false,
             in_displacement_fn: false,
+            uv_derivatives: graph.domain != MaterialDomain::Sprite,
             parameters: Vec::new(),
             parameter_slots: HashMap::new(),
             warnings: Vec::new(),
@@ -206,6 +221,63 @@ impl<'a> Ctx<'a> {
         let name = format!("{}_{}", prefix, self.var_counter);
         self.var_counter += 1;
         name
+    }
+
+    /// The 2D texture slot for `path`, allocating one the first time the path
+    /// is seen.
+    ///
+    /// Two sample nodes reading the same image share one slot. A landscape
+    /// samples each layer's maps from several places (colour, normal and
+    /// roughness blends, a triplanar read beside a planar one), and with a slot
+    /// per node the four-layer default material alone needed more than the
+    /// extension has. Sharing is exact, not an approximation: a slot is an
+    /// image plus the one shared sampler, and both are the same.
+    ///
+    /// A graph past [`super::MAX_D2_TEXTURES`] distinct images is an error, so
+    /// it is refused at compile time instead of failing as a pipeline that
+    /// never builds.
+    pub(crate) fn alloc_d2_texture(&mut self, path: String) -> String {
+        if let Some(existing) = self
+            .texture_bindings
+            .iter()
+            .find(|t| t.kind == TextureKind::D2 && t.asset_path == path)
+        {
+            return existing.name.clone();
+        }
+        let slot = self.next_texture_binding;
+        self.next_texture_binding += 1;
+        if slot as usize == super::MAX_D2_TEXTURES {
+            self.errors.push(format!(
+                "the graph samples more than {} different textures; reuse a texture or pack maps together",
+                super::MAX_D2_TEXTURES
+            ));
+        }
+        let name = format!("texture_{slot}");
+        self.texture_bindings.push(TextureBinding {
+            name: name.clone(),
+            binding: slot,
+            asset_path: path,
+            kind: TextureKind::D2,
+        });
+        name
+    }
+
+    /// The variable holding this body's landscape weights, emitting the read
+    /// on first use.
+    ///
+    /// Memoised in `output_vars` under node id 0, which no real node has, so
+    /// it follows the same body scoping as every node output: the parallax
+    /// helper and the main body each read the weights once, in their own scope.
+    pub(crate) fn landscape_weights_var(&mut self) -> String {
+        self.uses_landscape = true;
+        let key = (0, "__landscape_weights".to_string());
+        if let Some(v) = self.output_vars.get(&key) {
+            return v.clone();
+        }
+        let v = self.next_var("land_w");
+        self.emit(format!("    let {v} = landscape_layer_weights(in.world_position.xyz);"));
+        self.output_vars.insert(key, v.clone());
+        v
     }
 
     pub(crate) fn set_out(&mut self, node: NodeId, pin: &str, expr: String) {
@@ -393,14 +465,33 @@ impl<'a> Ctx<'a> {
 
     /// A 2D texture read, level-sampled while compiling `graph_displacement`.
     ///
-    /// See [`Ctx::in_displacement_fn`] — inside the parallax loop the mip
+    /// See [`Ctx::in_displacement_fn`]: inside the parallax loop the mip
     /// level has to be supplied rather than derived, or DX12 fails to build
-    /// the pipeline. Everywhere else the derivative-based sample is what we
-    /// want, so this is a single call site's worth of branching rather than
-    /// a global change of sampling strategy.
+    /// the pipeline.
+    ///
+    /// A read at the mesh UV samples with explicit gradients, `mat_uv_dx` and
+    /// `mat_uv_dy`, which the fragment declares beside `mat_uv`. On an
+    /// ordinary mesh those are `dpdx(mat_uv)` and `dpdy(mat_uv)`, the very
+    /// values `textureSample` would have taken, so nothing changes there. They
+    /// exist for virtual geometry, whose material pass shades a fullscreen
+    /// triangle from the visibility buffer: neighbouring pixels belong to
+    /// different micro-triangles, the GPU's quad derivatives of the UV are
+    /// meaningless, and every texture picked a near-random mip per pixel. On
+    /// a normal map that is a field of sparkling highlights over every surface,
+    /// which TAA smears into a milky haze and which crawls as the camera moves.
+    /// The resolve pass computes the true UV derivatives analytically, and
+    /// `bevy_pbr`'s own material samples with them for the same reason.
+    ///
+    /// Only the untransformed mesh UV can use them. A UV the graph computed
+    /// (tiling, panning, a projection) has derivatives of its own that only
+    /// the hardware path can see, so it keeps `textureSample`. Material
+    /// functions are emitted as separate WGSL functions where `mat_uv_dx` is
+    /// not in scope, so they keep it too.
     pub(crate) fn sample_call(&self, tex_name: &str, uv: &str) -> String {
         if self.in_displacement_fn {
             format!("textureSampleLevel({tex_name}, texture_sampler, {uv}, 0.0)")
+        } else if uv == "mat_uv" && self.uv_derivatives && self.compiling_functions.is_empty() {
+            format!("textureSampleGrad({tex_name}, texture_sampler, mat_uv, mat_uv_dx, mat_uv_dy)")
         } else {
             format!("textureSample({tex_name}, texture_sampler, {uv})")
         }
@@ -550,6 +641,7 @@ impl<'a> Ctx<'a> {
             "custom" => self.gen_custom_node(node, id),
             "control" => self.gen_control_node(node, id),
             "scene" => self.gen_scene_node(node, id),
+            "landscape" => self.gen_landscape_node(node, id),
             "function" => self.gen_function_node(node, id),
             // Output nodes are handled in compile(), not here
             "output" => {}

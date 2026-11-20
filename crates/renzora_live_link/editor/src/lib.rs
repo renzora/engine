@@ -35,7 +35,9 @@ use std::net::{TcpListener, TcpStream};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{channel, Receiver, Sender};
 #[cfg(not(target_arch = "wasm32"))]
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
@@ -67,17 +69,21 @@ impl Plugin for LiveLinkEditorPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let Some((endpoint, incoming)) = listen() else {
+            let Some((endpoint, incoming, arrived)) = listen() else {
                 return;
             };
             app.insert_resource(endpoint)
                 .init_resource::<GameLink>()
                 .insert_resource(LinkServer {
                     connections: Mutex::new(incoming),
+                    arrived,
                     client: None,
                 })
-                .add_systems(PreUpdate, receive)
-                .add_systems(PostUpdate, send);
+                // Both are exclusive, so each is a sync point for its whole
+                // schedule even when it returns at once, and with no game
+                // running (every editor frame outside Play) they would.
+                .add_systems(PreUpdate, receive.run_if(receive_has_work))
+                .add_systems(PostUpdate, send.run_if(send_has_work));
         }
         #[cfg(target_arch = "wasm32")]
         let _ = app;
@@ -98,7 +104,26 @@ struct LinkServer {
     /// Connections that passed the token check, handed over by the listener
     /// thread. A `Mutex` only because a resource must be `Sync`.
     connections: Mutex<Receiver<TcpStream>>,
+    /// Raised by the listener thread after it hands over a connection, and
+    /// lowered by [`receive`] before it looks. A channel cannot be peeked
+    /// without taking from it, so this is what lets a run condition see that a
+    /// game is waiting. It is raised after the send, so a connection is never
+    /// in the channel with the flag already lowered for it.
+    arrived: Arc<AtomicBool>,
     client: Option<Client>,
+}
+
+/// Run condition for [`receive`]: a game is connected, or one has arrived.
+#[cfg(not(target_arch = "wasm32"))]
+fn receive_has_work(server: Res<LinkServer>) -> bool {
+    server.client.is_some() || server.arrived.load(Ordering::Acquire)
+}
+
+/// Run condition for [`send`]: a game to send to, or queued inputs and
+/// screenshot requests that its no-game branch has to clear or answer.
+#[cfg(not(target_arch = "wasm32"))]
+fn send_has_work(server: Res<LinkServer>, link: Res<GameLink>) -> bool {
+    server.client.is_some() || !link.inputs.is_empty() || !link.screenshot_requests.is_empty()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -162,7 +187,7 @@ impl ApplySide for Mirror<'_> {
 /// collide. Only loopback, and only a connection whose first line carries the
 /// token, is ever handed to the main thread.
 #[cfg(not(target_arch = "wasm32"))]
-fn listen() -> Option<(LiveLinkEndpoint, Receiver<TcpStream>)> {
+fn listen() -> Option<(LiveLinkEndpoint, Receiver<TcpStream>, Arc<AtomicBool>)> {
     let listener = match TcpListener::bind(("127.0.0.1", 0)) {
         Ok(l) => l,
         Err(e) => {
@@ -177,18 +202,24 @@ fn listen() -> Option<(LiveLinkEndpoint, Receiver<TcpStream>)> {
         SceneEntityId::new_random().0
     );
     let (tx, rx) = channel();
+    let arrived = Arc::new(AtomicBool::new(false));
+    let raise = arrived.clone();
     let expected = token.clone();
     std::thread::Builder::new()
         .name("live-link-listen".into())
         .spawn(move || {
             for stream in listener.incoming().flatten() {
-                if accepts(&stream, &expected) && tx.send(stream).is_err() {
+                if !accepts(&stream, &expected) {
+                    continue;
+                }
+                if tx.send(stream).is_err() {
                     break;
                 }
+                raise.store(true, Ordering::Release);
             }
         })
         .ok()?;
-    Some((LiveLinkEndpoint { port, token }, rx))
+    Some((LiveLinkEndpoint { port, token }, rx, arrived))
 }
 
 /// Whether `stream`'s first line is a hello with the right token. Bounded by a
@@ -230,6 +261,9 @@ fn read_lines(stream: TcpStream, tx: Sender<Incoming>) {
 /// Take in a new game, and what the connected one sent.
 #[cfg(not(target_arch = "wasm32"))]
 fn receive(world: &mut World) {
+    // Lowered before the channel is read, so a connection sent after this
+    // point raises it again and is picked up next frame.
+    world.resource::<LinkServer>().arrived.store(false, Ordering::Release);
     let connected = world
         .resource::<LinkServer>()
         .connections
@@ -535,7 +569,11 @@ mod tests {
         world.insert_resource(registry);
         world.insert_resource(Time::<()>::default());
         world.init_resource::<GameLink>();
-        world.insert_resource(LinkServer { connections: Mutex::new(channel().1), client: None });
+        world.insert_resource(LinkServer {
+            connections: Mutex::new(channel().1),
+            arrived: Arc::new(AtomicBool::new(false)),
+            client: None,
+        });
         let crate_e = world
             .spawn((Name::new("crate"), SceneEntityId(1), Transform::default()))
             .id();

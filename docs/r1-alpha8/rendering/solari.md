@@ -14,6 +14,9 @@ emissive meshes and directional lights, with no baking.
 
 ## How to enable
 
+A World Environment added from **+ Add Entity** already carries the Solari
+section, switched off: turn on its header toggle to enable it.
+
 1. **Build the engine.** `renzora_solari` is an in-workspace plugin, compiled
    into the binary by any ordinary `cargo renzora dist`. It sits behind
    `renzora_runtime`'s `solari` feature, so the lean exporter can leave it out
@@ -62,6 +65,18 @@ decision, which is the half no plugin can make.
   deferred/depth/motion-vector prepasses — and forces **`Msaa::Off`** (Solari
   mandates no MSAA). Disabling it removes `SolariLighting` and restores the
   default MSAA.
+- **Screen-space effects stand down.** A camera Solari lights gets no SSR and
+  no SSAO, whatever their settings say. Solari traces its own reflections and
+  occlusion; SSR composited over them flickered, and SSAO darkened every corner
+  a second time. The SSR section's switch reads off and cannot be turned on
+  while Solari is on, with a note saying why. Both keep their settings, so
+  they come back when Solari is switched off or the GPU cannot ray trace.
+- **SSR without a temporal pass reflects glossy surfaces only.** SSR reflects
+  a rough surface with one random sample per pixel, which TAA or DLSS averages
+  over frames. On a camera with neither (FXAA, SMAA or no anti-aliasing, which
+  is where a camera is once Solari is off) that showed as grain, so SSR there
+  fades out from 0.25 to 0.3 roughness and rougher surfaces use the
+  environment map. With TAA on, SSR covers Bevy's full range again.
 - **Meshes.** While Solari is active, eligible meshes are mirrored into the
   ray-tracing scene with `RaytracingMesh3d` (it coexists with the rasterized
   `Mesh3d`). Solari's BLAS builder demands `TriangleList` topology, 32-bit
@@ -90,6 +105,16 @@ decision, which is the half no plugin can make.
   normals, UVs of zero), and tangents come from the normals where the UVs can't
   give any. Only geometry that is not an indexed triangle list is marked
   skipped, so it isn't re-checked every frame, rather than crashing the builder.
+
+  The tangents, wide indices and copies are made on worker threads, and the
+  finished mesh is swapped in on a later frame; a frame only copies meshes out
+  to them, at most 3 ms of that a frame for each of the two systems that do it
+  (`PREPARE_BUDGET`). Done on the main thread, turning Solari on in a large
+  scene froze the editor for seconds (one large mesh's tangents alone took
+  300 ms); now the scene fills into the ray-traced lighting over a few seconds
+  while the editor keeps running. A mesh that needs nothing done is never held
+  back, and a traced mesh whose source, material and geometry have not changed
+  is not looked at again.
 - **What counts as "eligible".** Bevy's ray-tracing scene is global and
   unfiltered: every entity carrying `RaytracingMesh3d` goes into the TLAS at full
   ray mask, with no regard for `Visibility` or `RenderLayers`. Renzora therefore
@@ -248,12 +273,20 @@ scene comes out darker than the raster pipeline. `bevy_solari` 0.20 samples
 | `SpotLight` | Not natively. Same, but the cone is lost. |
 | `AmbientLight` | **No**, and there is no workaround |
 
+Only lights on the scene layer (render layer 0, the default) light the traced
+scene, as only they light the viewport without Solari. A light on a layer of
+its own, such as the editor's thumbnail and preview rigs, is left out. Before
+this, those preview lights lit the level too, so a night scene stayed lit as if
+by day under Solari.
+
 ### Sky light
 
 A ray that leaves the scene samples the camera's environment map, so the sky
 lights everything the sun doesn't reach. In Renzora that is the **Environment
 Map** section of the World Environment, which bakes the atmosphere into a
-cubemap.
+cubemap. When the scene has [clouds](./clouds.md), they are drawn into that
+cubemap too, so reflections show them and an overcast sky gives less light.
+Clouds are not traced against, so they cast no shadows.
 
 Two settings decide how much sky Solari gets:
 
@@ -276,7 +309,8 @@ bloom threshold, so bloom looks broken too.
 
 ### Light proxies
 
-**Point/Spot Light Proxies** (on the `SolariGi` component, on by default) fixes
+**Point/Spot Light Proxies** (on the `SolariGi` component, in its **Advanced**
+group with Suppress Shadow Maps, on by default) fixes
 this. Each point or spot light gets a small sphere in the ray-tracing scene whose
 emissive radiance is derived from the light's luminous power, and Solari samples
 that as a first-class area light — soft shadows and colour bleed included.
@@ -497,14 +531,15 @@ NVIDIA's DLSS Ray Reconstruction runs.
 The Solari Ray-Traced GI inspector's **Denoiser** setting picks what removes
 the noise:
 
-- **DLSS**, the default: DLSS Ray Reconstruction where it can run, this
-  denoiser everywhere else.
+- **DLSS (if available)**, the default: DLSS Ray Reconstruction where it can
+  run, this denoiser everywhere else.
 - **Built-in**: this denoiser, even where DLSS could run.
 - **Off (raw)**: nothing, in any mode. The raw estimate is the thing to compare
   a denoiser against when judging it.
 
-With **DLSS** chosen, the **DLSS Mode** row appears only while DLSS is actually
-running; without it, this denoiser is in use. See [DLSS](./dlss.md). A scene saved with the older separate **Denoiser** and
+Where DLSS cannot run, **DLSS (if available)** carries an amber warning icon
+whose tooltip says why and that this denoiser is running instead, and the
+**DLSS Mode** row stays hidden. See [DLSS](./dlss.md). A scene saved with the older separate **Denoiser** and
 **DLSS** toggles loads with the matching choice.
 
 How it works, in order:
@@ -597,15 +632,16 @@ blotches.
 
 ## Renzora's copy of bevy_solari
 
-The engine builds its own copy of `bevy_solari` (`crates/bevy_solari`), patched
-over the one Bevy depends on. Besides the [denoiser](#denoiser) (`denoise.wesl`,
+The engine builds Bevy from its own tree (`bevy/`, Bevy's `main`), and its
+`bevy_solari` (`bevy/crates/bevy_solari`) carries Renzora's patches on top of
+upstream's. Besides the [denoiser](#denoiser) (`denoise.wesl`,
 `denoise.rs`, and the lighting split it reads) and the diagnostics behind the
 [Ray Tracing panel](#ray-tracing-panel) (`debug.wesl`, `debug_layout.wesl`,
 `debug.rs`, and a per-thread ray count in the traced scene's `trace_ray` and
 `trace_visibility`) and the [see-through
 pass](#glass-and-other-see-through-surfaces) (`transparent.wesl`, the
 per-instance ray masks, and each material's alpha and blend mode), it differs
-from upstream in four places, each marked
+from upstream in five places, each marked
 `RENZORA PATCH` in the source:
 
 - **Roughness is floored at 0.089**, as Bevy's raster renderer floors it. Upstream
@@ -633,6 +669,14 @@ from upstream in four places, each marked
   Switching DLSS off at the same size (always, under DLAA) left them in place,
   which reads as "DLSS is denoising": the built-in denoiser stood aside, DLSS no
   longer ran, and the raw, grainy image reached the screen.
+- **A removed sun's slot is zeroed**, because the see-through pass reads every
+  directional light straight from that buffer and would otherwise go on lighting
+  glass with a sun that is gone.
+
+Several patches Renzora once carried are now upstream and were dropped in the
+move to Bevy's `main`: BLAS compaction no longer crashes when a mesh is rebuilt
+while still queued, point, spot and rect lights are traced, alpha-masked
+materials are cut out by the hardware, and rays that miss sample the sky.
 
 ## Limitations
 

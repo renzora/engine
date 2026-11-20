@@ -148,3 +148,45 @@ pub(crate) fn gizmo_hover_detect(
 
     gizmo_state.hovered_axis = best.map(|(a, _)| a);
 }
+
+/// What decides the transform gizmo's lines: the hovered handle, the dragged
+/// one, the mode, the space, and which viewport slots draw them.
+type HandleLines = (
+    Option<GizmoAxis>,
+    Option<GizmoAxis>,
+    GizmoMode,
+    GizmoSpace,
+    [bool; renzora::core::viewport_types::VIEWPORT_COUNT],
+);
+
+/// Wake the viewport overlay when what the transform gizmo draws as lines
+/// changes: the handle under the cursor, the one being dragged, the mode, the
+/// space, and which viewports draw it.
+///
+/// The rotate rings, scale lines and plane squares are immediate-mode gizmos,
+/// re-recorded every frame, so a ring lighting up under the cursor leaves no
+/// component change for the overlay's redraw gate to see. The translate handles
+/// are meshes and need none of this (their material swap is a change already),
+/// but one signal for all of it keeps the rule simple. The comparison is what
+/// keeps the overlay idle: touching the signal every frame would redraw it
+/// every frame.
+pub(crate) fn signal_overlay_changes(
+    gizmo_state: Res<GizmoState>,
+    mode: Res<GizmoMode>,
+    space: Res<GizmoSpace>,
+    per_slot: Res<crate::types::PerSlotGizmo>,
+    mut last: Local<Option<HandleLines>>,
+    mut changed: ResMut<renzora::core::viewport_types::ViewportOverlayChanged>,
+) {
+    let now = Some((
+        gizmo_state.hovered_axis,
+        gizmo_state.active_axis,
+        *mode,
+        *space,
+        per_slot.draw,
+    ));
+    if *last != now {
+        *last = now;
+        changed.set_changed();
+    }
+}

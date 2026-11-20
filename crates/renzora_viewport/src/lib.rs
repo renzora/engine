@@ -28,12 +28,15 @@ mod lit_accent;
 mod load_overlay;
 mod modal_hud;
 mod nav;
+pub mod overlay;
 mod shading;
 mod overlay_2d;
 mod panel;
+mod pivot_label;
 mod stats_overlay;
 pub mod toolbar;
 mod tool_shelf;
+mod work_card;
 pub mod particle_drop;
 pub mod persistence;
 pub mod play_mode;
@@ -89,18 +92,30 @@ impl Plugin for ViewportPlugin {
                 default_topology: bevy::pbr::wireframe::WireframeTopology::default(),
                 // 0.20: wireframes drawn through geometry. Off, as before.
                 xray_mode: false,
+                // Back faces culled, which is what the wireframe pass always
+                // did before it became a setting.
+                ..default()
             })
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
             .init_resource::<redraw::ViewportRedraw>()
+            .init_resource::<overlay::ViewportOverlays>()
+            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
+            .init_resource::<render_systems::ShadowBudget>()
+            .add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
+                render_systems::ShadowBudget,
+            >::default())
             // Owned here because the shading modes are what set it; the sky
             // crates only read it, and take it as absent when nothing does.
             .register_type::<renzora::core::EnvironmentSuppressed>()
             .init_resource::<renzora::core::EnvironmentSuppressed>()
             .init_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
             .init_resource::<CameraOrbitSnapshot>()
+            // Filled in by whatever is filling the scene in (a new terrain);
+            // shown by `work_card`.
+            .init_resource::<renzora::core::viewport_types::ViewportWork>()
             .init_resource::<renzora::core::InputFocusState>()
             .init_resource::<renzora::core::PlayModeState>()
             .init_resource::<external_runtime::ExternalRuntime>()
@@ -111,8 +126,6 @@ impl Plugin for ViewportPlugin {
             // Per-material-type viz-swap state (one of each per registered type).
             .init_resource::<render_systems::LastVizState<StandardMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<StandardMaterial>>()
-            .init_resource::<render_systems::LastVizState<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
-            .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
             .init_resource::<render_systems::LastVizState<renzora_terrain::material::TerrainCheckerboardMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::material::TerrainCheckerboardMaterial>>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
@@ -145,14 +158,23 @@ impl Plugin for ViewportPlugin {
                 render_systems::update_render_toggles,
                 (
                     render_systems::apply_visualization_mode_for::<StandardMaterial>,
-                    render_systems::apply_visualization_mode_for_custom::<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>,
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::material::TerrainCheckerboardMaterial>,
+                    render_systems::forget_removed_materials::<StandardMaterial>,
+                    render_systems::forget_removed_materials::<renzora_terrain::material::TerrainCheckerboardMaterial>,
                     // Grass is not here: it draws through its own instanced
                     // pipeline rather than a `Material`, so there is no material
                     // asset to swap for a debug view.
                 ),
-                render_systems::update_shadow_settings,
-                play_mode::handle_play_mode_transitions,
+                // After every camera's activation for this frame, so a camera
+                // waking gets its lights' shadows back in the same frame.
+                render_systems::update_shadow_settings
+                    .after(sync_viewport_camera_activation)
+                    .after(camera_preview::sync_camera_preview_activation),
+                // The four exclusive systems in this tuple are each a sync point
+                // for the whole schedule even on a frame they return at once,
+                // which is nearly every frame. Each condition is the system's
+                // own opening check.
+                play_mode::handle_play_mode_transitions.run_if(play_mode::play_request_pending),
                 (
                     external_runtime::poll_external_runtime,
                     play_mode::sync_game_launched,
@@ -162,7 +184,8 @@ impl Plugin for ViewportPlugin {
                 effect_routing::update_effect_routing,
                 (
                     model_drop::spawn_loaded_gltfs,
-                    model_flatten::flatten_pending_scenes,
+                    model_flatten::flatten_pending_scenes
+                        .run_if(any_with_component::<model_flatten::PendingFlatten>),
                     // After flatten: any wrappers that survived (e.g. a
                     // multi-child RootNode that flatten couldn't collapse)
                     // get tagged HideInHierarchy. Ordered so we don't write
@@ -171,8 +194,8 @@ impl Plugin for ViewportPlugin {
                         .after(model_flatten::flatten_pending_scenes),
                     model_drop::bind_material_refs,
                     model_drop::auto_discover_animations,
-                    model_cameras::add_imported_cameras,
-                    model_drop::mark_models_selectable_as_unit,
+                    model_cameras::add_imported_cameras
+                        .run_if(any_with_component::<model_cameras::PendingImportedCameras>),
                     model_drop::align_models_to_ground,
                 ),
                 (
@@ -215,7 +238,7 @@ impl Plugin for ViewportPlugin {
                     )
                         .chain(),
                 ),
-                shape_drop::handle_shape_spawn,
+                shape_drop::handle_shape_spawn.run_if(|s: Res<renzora_ui::ShapeDragState>| s.pending_drop.is_some()),
                 handle_view_shortcuts,
                 handle_play_shortcuts,
                 hide_cursor_for_brushes,
@@ -248,9 +271,19 @@ impl Plugin for ViewportPlugin {
                     park_primary_3d_target,
                 )
                     .chain(),
-                gate_scene_visibility,
                 camera_preview::sync_camera_preview_activation,
+                // Each slot's overlay image and camera (see `overlay`), sized
+                // after this frame's resize and shown or hidden after this
+                // frame's activation.
+                overlay::sync_overlay_targets.after(resolve_viewport_slots),
+                overlay::sync_overlay_nodes.after(sync_viewport_camera_activation),
             )
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        );
+        app.add_systems(
+            PostUpdate,
+            overlay::follow_scene_projections
+                .before(bevy::camera::CameraUpdateSystems)
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
         app.add_systems(PostUpdate, log_active_cameras);
@@ -290,11 +323,22 @@ impl Plugin for ViewportPlugin {
                 .after(renzora_ui::window_chrome::WindowActionSet),
         );
 
+        // The shadow budget's render-world half: see `ShadowBudget`.
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render_app.add_systems(
+                bevy::render::Render,
+                render_systems::apply_shadow_budget
+                    .in_set(bevy::render::RenderSystems::CreateViews)
+                    .before(bevy::pbr::prepare_lights),
+            );
+        }
+
         panel::register(app);
         game_view::register(app);
         game_panel::register(app);
         camera_preview_panel::register(app);
         modal_hud::register(app);
+        pivot_label::register(app);
         load_overlay::register(app);
         overlay_2d::register(app);
         stats_overlay::register(app);
@@ -385,11 +429,11 @@ pub(crate) fn setup_viewport(
     use renzora::core::viewport_types::VIEWPORT_COUNT;
     bevy::log::info!("[viewport] setup_viewport — creating {VIEWPORT_COUNT} render targets");
 
-    for i in 0..VIEWPORT_COUNT {
+    for (i, slot) in viewports.slots.iter_mut().enumerate() {
         let image_handle = images.add(make_render_target(DEFAULT_WIDTH, DEFAULT_HEIGHT));
 
-        viewports.slots[i].image = Some(image_handle.clone());
-        viewports.slots[i].current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        slot.image = Some(image_handle.clone());
+        slot.current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
         if i == 0 {
             render_target.image = Some(image_handle.clone());
@@ -401,14 +445,17 @@ pub(crate) fn setup_viewport(
 
 /// Build a blank off-screen render-target image suitable for a camera to draw
 /// into and a UI `ImageNode` to display.
-fn make_render_target(width: u32, height: u32) -> Image {
+pub(crate) fn make_render_target(width: u32, height: u32) -> Image {
     let size = Extent3d {
         width,
         height,
         depth_or_array_layers: 1,
     };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data. The render-host path swaps
+    // its own frame buffer in as `data`, so it never needed this one either.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -483,8 +530,18 @@ fn resolve_viewport_slots(
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut viewport_state: ResMut<ViewportState>,
     mut images: ResMut<Assets<Image>>,
+    resize_busy: Option<Res<renzora::core::resize::ResizeBusy>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    mut hidden_frames: Local<[u32; renzora::core::viewport_types::VIEWPORT_COUNT]>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // A splitter or window edge is being dragged. Every size a drag passes
+    // through used to resize the target, and DLSS starts over at every new
+    // size (35 to 40 ms each), so a drag ran at 15 fps. The target now keeps
+    // its size until the button comes up; the panel stretches the last image
+    // meanwhile, which is what it already does for the render scale.
+    let resizing = renzora::core::resize::resize_in_flight(&resize_busy);
 
     // Render-resolution scale: the target is sized at this fraction of the
     // panel and upscaled on display. `screen_size` stays the full panel size so
@@ -519,7 +576,7 @@ fn resolve_viewport_slots(
         // docked forever, which kept the slot-0 camera rendering the whole scene
         // behind empty workspaces. With that gone the absent-dock case answers
         // `true`, which is what it answered before any dock existed.
-        let docked = match ember_dock.as_ref() {
+        let shown = match ember_dock.as_ref() {
             Some(d) => renzora_ember::dock::panel_visible_anywhere(
                 VIEWPORT_PANEL_IDS[i],
                 Some(d),
@@ -528,6 +585,13 @@ fn resolve_viewport_slots(
             ),
             None => true,
         };
+        // A slot counts as gone only once it has stayed gone for a moment. The
+        // dock rebuilds its tree when a panel is added, closed or moved, and
+        // for that one frame the viewport is in no leaf: the target shrank to
+        // the placeholder and grew back, and DLSS rebuilt itself twice, a 35 ms
+        // frame each, for a viewport that never left the screen.
+        hidden_frames[i] = if shown { 0 } else { hidden_frames[i].saturating_add(1) };
+        let docked = shown || hidden_frames[i] < HIDE_GRACE_FRAMES;
         let hovered = req.hovered.load(Ordering::Relaxed) && docked && !modal_open;
         let screen_position = Vec2::new(
             f32::from_bits(req.screen_x.load(Ordering::Relaxed)),
@@ -544,21 +608,50 @@ fn resolve_viewport_slots(
         if hovered {
             newly_hovered = Some(i);
         }
+    }
 
-        // While undocked the slot still owns a live render target — and slot
-        // 0's camera stays active regardless (it hosts the atmosphere/IBL
-        // probe; see `sync_viewport_camera_activation`). Shrink the target to
-        // a token size so that always-on pass rasterizes almost nothing; the
-        // panel's resize request restores the real size on re-dock.
+    // Slot 0's camera can render with no viewport on screen: the UI canvas
+    // samples its image as a backdrop, and a running game still needs its
+    // atmosphere/IBL probe (see `sync_viewport_camera_activation`).
+    let any_docked = viewports.slots.iter().any(|s| s.docked);
+    let primary_renders_unseen = !any_docked
+        && (play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode())
+            || renzora_ember::dock::panel_visible_anywhere(
+                "ui_canvas",
+                ember_dock.as_deref(),
+                ember_fixed.as_deref(),
+                ember_windows.as_deref(),
+            ));
+
+    #[allow(clippy::needless_range_loop)] // `i` indexes the requests and slots
+    for i in 0..VIEWPORT_COUNT {
+        let req = &resize_req.slots[i];
+        let w = req.width.load(Ordering::Relaxed).clamp(64, 7680);
+        let h = req.height.load(Ordering::Relaxed).clamp(64, 4320);
+        let slot = &mut viewports.slots[i];
+        let docked = slot.docked;
+
+        // A hidden slot whose camera still renders shrinks its target to a
+        // token size, so that unseen pass rasterizes almost nothing. Every
+        // other hidden slot keeps its size, because its camera is idle and
+        // costs nothing: shrinking it anyway meant growing it back on return,
+        // and DLSS rebuilt itself for that (about 40 ms) on every workspace
+        // switch that brought a viewport back.
+        let placeholder = !docked && i == 0 && primary_renders_unseen;
         let requested = if docked {
             UVec2::new(
                 ((w as f32 * render_scale).round() as u32).max(1),
                 ((h as f32 * render_scale).round() as u32).max(1),
             )
-        } else {
+        } else if placeholder || slot.current_size == UVec2::ZERO {
             UVec2::splat(UNDOCKED_TARGET_SIZE)
+        } else {
+            slot.current_size
         };
-        if slot.current_size != requested {
+        // Held only while it already shows a real size: a slot coming back
+        // from the placeholder mid-drag still needs one.
+        let hold = resizing && docked && slot.current_size.x > UNDOCKED_TARGET_SIZE;
+        if slot.current_size != requested && !hold {
             if let Some(mut image) = slot.image.as_ref().and_then(|h| images.get_mut(h)) {
                 image.resize(Extent3d {
                     width: requested.x,
@@ -598,9 +691,16 @@ fn resolve_viewport_slots(
     viewport_state.docked = slot.docked;
 }
 
-/// Render-target edge length for undocked slots. Slot 0 keeps rendering while
-/// undocked (atmosphere/IBL probe), so this is what bounds its per-pixel cost.
+/// Render-target edge length for undocked slots. Slot 0 can keep rendering
+/// while its own panel is closed (another viewport, the UI canvas or a game
+/// still needs the atmosphere/IBL probe it hosts), so this bounds what that
+/// costs per pixel.
 const UNDOCKED_TARGET_SIZE: u32 = 64;
+
+/// Frames a viewport panel must be missing from the dock before its slot is
+/// treated as closed: long enough to cover a dock rebuild, short enough that a
+/// workspace without a viewport stops paying for one within a quarter second.
+const HIDE_GRACE_FRAMES: u32 = 15;
 
 /// Dock panel id for each viewport slot. Slot 0 keeps the historical `"viewport"`
 /// id so existing saved layouts and `contains_panel("viewport")` checks keep working.
@@ -752,20 +852,28 @@ pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the res
 // exists any more — the canvas is its own panel and samples whatever the
 // viewport is currently rendering, so there is no "came from" to remember.
 
+/// What [`log_active_cameras`] reads of each camera it lists.
+type LoggedCamera = (
+    Entity,
+    &'static Camera,
+    Option<&'static Name>,
+    Has<Camera3d>,
+    Has<renzora::core::ViewportRedrawIdle>,
+);
+
 /// Log the active cameras whenever that set changes.
 ///
 /// Every active camera runs its whole render schedule each frame, and a camera
 /// left on by a panel that is no longer visible is otherwise invisible: an idle
 /// editor was measured rendering seven 3D views that no reading of the code could
 /// account for. One line per change, never per frame.
+///
+/// The viewport overlay cameras are left out. They switch on for a frame or two
+/// each time a gizmo handle lights up or a brush cursor moves, which would be a
+/// pair of lines per hover; and one renders only lines, so it is not the
+/// expensive view this log is for.
 fn log_active_cameras(
-    cameras: Query<(
-        Entity,
-        &Camera,
-        Option<&Name>,
-        Has<Camera3d>,
-        Has<renzora::core::ViewportRedrawIdle>,
-    )>,
+    cameras: Query<LoggedCamera, Without<renzora::core::ViewportOverlayCamera>>,
     mut last: Local<Vec<Entity>>,
 ) {
     // A camera idled by render-on-change still counts as on: it wakes the
@@ -790,6 +898,14 @@ fn log_active_cameras(
     info!("[viewport] {} active cameras: {:?}", names.len(), names);
 }
 
+/// The overlay cameras, kept provably apart from the scene, 2D and UI canvas
+/// camera queries beside them in [`sync_viewport_camera_activation`].
+type OnlyOverlayCameras = (
+    Without<renzora::core::ViewportCamera>,
+    Without<renzora::core::ViewportCamera2d>,
+    Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
+);
+
 /// Toggles each viewport camera's `is_active` based on whether its panel is
 /// docked. The primary (slot 0) camera additionally follows the shared 3D / 2D
 /// / UI mode — it backs UI authoring and steps aside for the 2D camera — while
@@ -798,6 +914,7 @@ fn log_active_cameras(
 /// Cameras whose panels aren't docked stay off so unused views cost no GPU; the
 /// later optional "freeze" toggle will additionally gate the non-focused live
 /// views here.
+#[allow(clippy::too_many_arguments)]
 fn sync_viewport_camera_activation(
     settings: Option<Res<ViewportSettings>>,
     viewports: Res<renzora::core::viewport_types::Viewports>,
@@ -833,6 +950,8 @@ fn sync_viewport_camera_activation(
             Without<renzora::core::ViewportCamera2d>,
         ),
     >,
+    mut cameras_overlay: Query<(&mut Camera, &renzora::core::ViewportOverlayCamera), OnlyOverlayCameras>,
+    mut overlays: ResMut<overlay::ViewportOverlays>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
@@ -847,6 +966,10 @@ fn sync_viewport_camera_activation(
     // render sits out the frames where nothing in the scene changed.
     let realtime = settings.as_ref().is_some_and(|s| s.realtime);
     let render_ok = realtime || redraw.as_ref().is_none_or(|r| r.should_render());
+    let overlay_ok = realtime || redraw.as_ref().is_none_or(|r| r.should_render_overlay());
+    // Which slots' 3D scene cameras would render, before the redraw gate: their
+    // overlays are on show exactly then.
+    let mut scene_wants = [false; renzora::core::viewport_types::VIEWPORT_COUNT];
 
     let ui_canvas_visible = renzora_ember::dock::panel_visible_anywhere(
         "ui_canvas",
@@ -876,6 +999,19 @@ fn sync_viewport_camera_activation(
             .is_some_and(|e| kind_2d.get(e).is_ok());
     let two_d_active = view == ViewportView::Two || playing_2d_game;
 
+    // Whether anything is looking at the primary camera's output: a viewport
+    // panel, the UI canvas (it samples that image as its backdrop), or a running
+    // game. With none of them the primary idles, exactly as render-on-change
+    // idles it, and the scene costs nothing to draw.
+    //
+    // This replaced hiding every scene mesh while no viewport was on screen.
+    // That did stop the draw, but showing the meshes again rebuilt virtual
+    // geometry's scene and Solari's ray-tracing structures from nothing, 60 to
+    // 120 ms every time a workspace switch brought a viewport back.
+    let playing = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
+    let primary_seen =
+        viewports.slots.iter().any(|s| s.docked) || ui_canvas_visible || playing;
+
     for (entity, mut camera, vc, idle) in cameras_3d.iter_mut() {
         let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
         let want = if vc.0 == 0 {
@@ -886,16 +1022,18 @@ fn sync_viewport_camera_activation(
             // rendering (the external-runtime case already returned above), the
             // primary stays active as the atmosphere/IBL source — it renders to
             // its own offscreen image regardless of whether its panel is
-            // docked or the 2D view is selected. While undocked (or parked in
-            // 2D view) that image is shrunk to `UNDOCKED_TARGET_SIZE`, so the
-            // always-on pass costs almost nothing per-pixel.
+            // docked or the 2D view is selected. While it renders with no
+            // viewport on screen that image is shrunk to `UNDOCKED_TARGET_SIZE`
+            // (see `resolve_viewport_slots`), so the unseen pass costs almost
+            // nothing per pixel.
             //
             // The render-on-change gate below is the one exception. Idling the
             // primary is safe in Bevy 0.20 because the probe's bind group only
             // needs buffers that outlive a frame with no atmosphere view: the
             // atmosphere is extracted for every 3D camera, active or not, and a
             // zero-count write leaves last frame's per-view buffer in place.
-            true
+            // That same safety is what lets it sit out while nothing shows it.
+            primary_seen
         } else {
             // Secondary 3D views render only when their panel is docked AND we're
             // not in 2D view — in 2D the slot's own `Camera2d` sibling takes over
@@ -904,6 +1042,9 @@ fn sync_viewport_camera_activation(
             docked && !two_d_active
         };
         let would_render = want;
+        if let Some(slot) = scene_wants.get_mut(vc.0) {
+            *slot = would_render;
+        }
         let want = gate_redraw(&mut commands, entity, idle, want, render_ok);
         if camera.is_active != want {
             camera.is_active = want;
@@ -921,8 +1062,10 @@ fn sync_viewport_camera_activation(
                 "[viewport] 3D camera slot {} -> {} ({})",
                 vc.0,
                 if want { "ACTIVE" } else { "inactive" },
-                if vc.0 == 0 {
-                    "primary: always on, it hosts the atmosphere/IBL probe"
+                if vc.0 == 0 && want {
+                    "primary: on while a viewport, the UI canvas or a game shows it"
+                } else if vc.0 == 0 {
+                    "primary: nothing on screen shows it"
                 } else if !docked {
                     "its panel is not docked"
                 } else if two_d_active {
@@ -931,6 +1074,26 @@ fn sync_viewport_camera_activation(
                     "its panel is docked"
                 }
             );
+        }
+    }
+
+    // Each slot's overlay camera (see `overlay`): on show while its scene camera
+    // owns a docked slot image in the 3D view, and rendering only when the
+    // overlay gate lets it. Slot 0's scene camera also renders for the UI
+    // canvas and a running game with no viewport docked; nothing shows its
+    // overlay then.
+    for (mut camera, oc) in cameras_overlay.iter_mut() {
+        let i = oc.0;
+        let docked = viewports.slots.get(i).is_some_and(|s| s.docked);
+        let shown = scene_wants.get(i).copied().unwrap_or(false) && docked && !two_d_active;
+        if let Some(slot) = overlays.shown.get_mut(i) {
+            if *slot != shown {
+                *slot = shown;
+            }
+        }
+        let want = shown && overlay_ok;
+        if camera.is_active != want {
+            camera.is_active = want;
         }
     }
 
@@ -1065,110 +1228,6 @@ fn park_primary_3d_target(
     let already = matches!(&*target, bevy::camera::RenderTarget::Image(t) if t.handle == desired);
     if !already {
         *target = bevy::camera::RenderTarget::Image(desired.into());
-    }
-}
-
-/// While NO viewport panel is visible anywhere (e.g. a viewport-less
-/// workspace), hide every scene entity — remembering its authored visibility
-/// on a [`renzora::core::ViewportGateHidden`] marker — and restore the moment
-/// any viewport docks again.
-///
-/// Rationale: the slot-0 camera can't be deactivated (atmosphere/IBL probe,
-/// see `sync_viewport_camera_activation`) and its render-target shrink only
-/// removes per-pixel cost. Shadow-map passes, GI voxel work and per-view mesh
-/// extraction are resolution-independent — they only go away when nothing is
-/// visible to render.
-///
-/// Scope: named scene entities only. UI nodes, editor chrome
-/// (`HideInHierarchy` + descendants) and editor cameras are never touched,
-/// and authored-`Hidden` entities are left alone so user intent survives.
-///
-/// Self-healing while gated: scene saves restore authored visibility so the
-/// real value serializes (see `scene_io`), and the user can still toggle
-/// visibility from a hierarchy panel — so any marked entity found visible
-/// again has its marker refreshed from the current value and is re-hidden.
-fn gate_scene_visibility(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    mut commands: Commands,
-    mut candidates: Query<
-        (Entity, &mut Visibility),
-        (
-            With<Name>,
-            Without<renzora::core::ViewportGateHidden>,
-            Without<bevy::ui::Node>,
-            Without<renzora::core::HideInHierarchy>,
-            Without<renzora::core::EditorCamera>,
-            // Never gate the lights or the world environment. Hiding a
-            // `DirectionalLight`/`WorldEnvironment` and re-showing it does NOT
-            // cleanly restore Bevy's directional shadow maps or the atmosphere/IBL
-            // bake (the bake only refreshes on change), so toggling to a
-            // viewport-less / Game tab and back left shadows dead and the
-            // environment unlit — including the play camera, which shares that
-            // bake. Only the meshes (the real GPU cost) get gated.
-            Without<DirectionalLight>,
-            Without<PointLight>,
-            Without<SpotLight>,
-            Without<renzora::WorldEnvironment>,
-        ),
-    >,
-    mut gated: Query<(
-        Entity,
-        &mut Visibility,
-        &mut renzora::core::ViewportGateHidden,
-    )>,
-    parents: Query<&ChildOf>,
-    chrome: Query<(), With<renzora::core::HideInHierarchy>>,
-) {
-    // While playing, the game is rendering the scene (shown in the viewport
-    // panel), so never gate the scene to hidden out from under the game camera —
-    // even if the user has flipped to a non-viewport tab.
-    let playing = play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
-    let any_docked = viewports.slots.iter().any(|s| s.docked) || playing;
-
-    if any_docked {
-        for (entity, mut vis, gate) in &mut gated {
-            *vis = gate.0;
-            commands
-                .entity(entity)
-                .try_remove::<renzora::core::ViewportGateHidden>();
-        }
-        return;
-    }
-
-    // Hide newly-eligible entities. Editor chrome tags only its root with
-    // `HideInHierarchy`, so named descendants need the ancestor walk (same
-    // shape as scene_io's `has_hidden_ancestor`).
-    for (entity, mut vis) in &mut candidates {
-        if *vis == Visibility::Hidden {
-            continue;
-        }
-        let mut cursor = entity;
-        let mut is_chrome = false;
-        while let Ok(child_of) = parents.get(cursor) {
-            let parent = child_of.parent();
-            if chrome.get(parent).is_ok() {
-                is_chrome = true;
-                break;
-            }
-            cursor = parent;
-        }
-        if is_chrome {
-            continue;
-        }
-        commands
-            .entity(entity)
-            .try_insert(renzora::core::ViewportGateHidden(*vis));
-        *vis = Visibility::Hidden;
-    }
-
-    // Re-hide marked entities a save or hierarchy toggle made visible again,
-    // adopting the current value as the new authored state.
-    for (_, mut vis, mut gate) in &mut gated {
-        if *vis != Visibility::Hidden {
-            gate.0 = *vis;
-            *vis = Visibility::Hidden;
-        }
     }
 }
 

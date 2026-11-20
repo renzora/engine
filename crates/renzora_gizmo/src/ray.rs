@@ -17,7 +17,17 @@ pub(crate) fn viewport_cursor_ray(
     camera_transform: &GlobalTransform,
     projection: &Projection,
 ) -> Option<Ray3d> {
-    let cursor = window.cursor_position()?;
+    viewport_ray_at(window.cursor_position()?, viewport, camera_transform, projection)
+}
+
+/// The view ray through `cursor`, a point in window coordinates, or `None`
+/// when it is outside the viewport.
+pub(crate) fn viewport_ray_at(
+    cursor: Vec2,
+    viewport: &ViewportState,
+    camera_transform: &GlobalTransform,
+    projection: &Projection,
+) -> Option<Ray3d> {
     let vp_local = cursor - viewport.screen_position;
     if vp_local.x < 0.0
         || vp_local.y < 0.0

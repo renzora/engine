@@ -10,7 +10,8 @@ use bevy::input::mouse::MouseWheel;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::text::{FontSize, TextLayoutInfo};
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::ComputedNode;
+use crate::UiCursor;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::interaction::PASS_THROUGH;
@@ -179,7 +180,7 @@ pub(crate) fn code_pointer(
     time: Res<Time>,
     mouse: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    viewports: Query<(&UiInteraction, &RelativeCursorPosition, &ComputedNode, &CodeViewport)>,
+    viewports: Query<(&UiInteraction, &UiCursor, &ComputedNode, &CodeViewport)>,
     mut editors: Query<(Entity, &mut CodeEditor)>,
 ) {
     if !mouse.pressed(MouseButton::Left) {
@@ -346,7 +347,7 @@ pub(crate) fn code_input(
 
 pub(crate) fn code_scroll(
     mut wheel: MessageReader<MouseWheel>,
-    viewports: Query<(&RelativeCursorPosition, &CodeViewport)>,
+    viewports: Query<(&UiCursor, &CodeViewport)>,
     mut editors: Query<&mut CodeEditor>,
 ) {
     let mut dy = 0.0;
@@ -436,13 +437,12 @@ pub(crate) fn code_render(
         let mut per_line: Vec<Vec<(String, Color)>> = Vec::with_capacity(hi - lo + 1);
         if let Some(hl) = ed.highlighter.as_ref() {
             let mut st = 0u32;
-            for i in 0..lo {
-                st = hl(&ed.text[i], st).1;
+            for line in &ed.text[..lo] {
+                st = hl(line, st).1;
             }
-            for i in lo..=hi {
-                let (toks, ns) = hl(&ed.text[i], st);
+            for line in &ed.text[lo..=hi] {
+                let (toks, ns) = hl(line, st);
                 st = ns;
-                let line = &ed.text[i];
                 let mut out: Vec<(String, Color)> = Vec::with_capacity(toks.len());
                 let mut off = 0usize;
                 for t in toks {
@@ -458,8 +458,8 @@ pub(crate) fn code_render(
                 per_line.push(out);
             }
         } else {
-            for i in lo..=hi {
-                per_line.push(tokenize(&ed.text[i]).into_iter().map(|(s, c)| (s, rgb(c))).collect());
+            for line in &ed.text[lo..=hi] {
+                per_line.push(tokenize(line).into_iter().map(|(s, c)| (s, rgb(c))).collect());
             }
         }
         let spans_of = |line: usize| -> &Vec<(String, Color)> { &per_line[line - lo] };

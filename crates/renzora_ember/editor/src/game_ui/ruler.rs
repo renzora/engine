@@ -194,7 +194,7 @@ pub(crate) fn register(app: &mut App) {
 /// when you were reaching for an edge.
 fn position_cursor_marks(
     state: Res<NativeCanvasState>,
-    area: Query<(&ComputedNode, &bevy::ui::RelativeCursorPosition), With<RulerArea>>,
+    area: Query<(&ComputedNode, &renzora_ember::UiCursor), With<RulerArea>>,
     mut marks: Query<(&CursorMark, &mut Node, &mut Visibility)>,
 ) {
     let show = state.show_rulers && state.active_canvas.is_some();

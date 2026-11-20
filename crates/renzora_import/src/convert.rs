@@ -6,7 +6,11 @@ use crate::formats::{detect_format, ModelFormat};
 use crate::settings::ImportSettings;
 
 /// Where an [`ExtractedTexture`]'s bytes come from.
-#[derive(Clone, Debug)]
+///
+/// Serializable for the companion, which writes `Embedded` bytes to a file and
+/// sends `File` instead: an image as a JSON array of numbers is four times its
+/// size.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TextureSource {
     /// Image bytes lifted out of the source file, which stored them inline.
     Embedded(Vec<u8>),
@@ -44,7 +48,7 @@ pub enum TextureSource {
 /// A texture belonging to an imported model — either embedded in the source
 /// file or referenced by it from disk. The caller writes it to
 /// `<model_dir>/textures/<name>.<extension>`; the GLB references it by URI.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExtractedTexture {
     /// File stem (no extension), already sanitized for the filesystem.
     pub name: String,
@@ -88,7 +92,7 @@ impl ExtractedTexture {
 /// a `.material` file (and decides which on-disk format to use) — this struct
 /// is deliberately just plain data so `renzora_import` stays independent of
 /// the material graph implementation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ExtractedPbrMaterial {
     pub name: String,
     pub base_color: [f32; 4],
@@ -146,7 +150,7 @@ pub struct ExtractedPbrMaterial {
 /// Mirrors the glTF 2.0 `alphaMode` enum. Importers populate this from the
 /// source file; downstream the material resolver maps it onto Bevy's
 /// `AlphaMode` so transparency renders correctly without artist intervention.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[derive(Default)]
 pub enum ExtractedAlphaMode {
     #[default]

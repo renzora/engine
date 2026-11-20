@@ -47,7 +47,9 @@ pub(super) fn register(app: &mut App) {
             .after(crate::timeline::pose::capture_pose)
             .before(bevy::app::AnimationSystems)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-            .run_if(renzora::not_in_play_mode),
+            .run_if(renzora::not_in_play_mode)
+            // Returns at once with no limb's IK on, which is the default.
+            .run_if(|ik: Res<IkLimbs>| !ik.0.is_empty()),
     );
 }
 

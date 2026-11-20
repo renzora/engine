@@ -16,8 +16,10 @@ use renzora::core::{ShapeEntry, ShapeRegistry};
 use crate::procedural_meshes as pm;
 use crate::procedural_meshes_more as pm2;
 
-/// Build the registry the runtime inserts at startup.
-pub(crate) fn builtin_shapes() -> ShapeRegistry {
+/// Build the registry the runtime inserts at startup. Public for the
+/// companion, which renders the Shape Library's thumbnails and has no runtime
+/// plugin to insert it.
+pub fn builtin_shapes() -> ShapeRegistry {
     let mut reg = ShapeRegistry::default();
 
     // Basic

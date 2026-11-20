@@ -310,7 +310,10 @@ fn extract_zip(data: &[u8], dest: &Path, asset_name: &str) -> Result<PathBuf, St
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {e}"))?;
 
-        let entry_name = entry.name().to_string();
+        let entry_name = entry
+            .name()
+            .map_err(|e| format!("Bad zip entry name: {e}"))?
+            .into_owned();
 
         // Reject anything that would land outside `extract_dir`.
         //
@@ -570,7 +573,10 @@ fn plugin_crate_and_prefix(data: &[u8]) -> Result<(String, String), String> {
         let mut f = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {e}"))?;
-        let name = f.name().to_string();
+        let name = f
+            .name()
+            .map_err(|e| format!("Bad zip entry name: {e}"))?
+            .into_owned();
         if !name.ends_with("Cargo.toml") || name.contains("..") {
             continue;
         }
@@ -640,10 +646,16 @@ pub struct PluginInstall {
 /// installed so a fixed version can replace it.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn build_installed_plugin(path: &Path) -> Result<&'static str, String> {
+    use renzora_native_plugin::prebuild::InstalledBuild;
     match renzora_native_plugin::prebuild::build_installed(path, &mut |_| {}) {
-        Ok(true) => Ok(" It loads when the editor restarts."),
+        Ok(InstalledBuild::Built) => Ok(" It loads when the editor restarts."),
         // No SDK yet, or disabled: the launch-time pass builds it, as before.
-        Ok(false) => Ok(" It is built on the next start."),
+        Ok(InstalledBuild::Deferred) => Ok(" It is built on the next start."),
+        // Not a failure: the install itself worked, and the plugin builds on
+        // the first start after Rust is installed. Said as an outcome rather
+        // than an error, because nothing about the plugin needs fixing.
+        Ok(InstalledBuild::NeedsRust) => Ok(" It builds once Rust is installed: use Install \
+             Rust at the top of the start screen, then restart."),
         Err(e) => Err(format!("it failed to compile:\n{e}")),
     }
 }
@@ -694,7 +706,10 @@ pub fn install_plugin_source(asset_id: &str, data: &[u8]) -> Result<PluginInstal
             let mut entry = archive
                 .by_index(i)
                 .map_err(|e| format!("Failed to read zip entry: {e}"))?;
-            let raw = entry.name().to_string();
+            let raw = entry
+                .name()
+                .map_err(|e| format!("Bad zip entry name: {e}"))?
+                .into_owned();
             // See `extract_zip` for why this is `enclosed_name` and not a `..`
             // string test. The `strip_prefix` below looks like it already
             // guards this, and does for a wrapped archive, but `prefix` is ""

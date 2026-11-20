@@ -123,22 +123,26 @@ ron = "0.8"
 # `wgsl-in` is the real one: `wgsl.rs` parses and validates self-contained
 # shaders here so no other crate re-rolls it.
 naga = { version = "30", features = ["termcolor", "wgsl-in"] }
-# NOT real dependencies either: feature pins, like `naga` above. Avian (the
-# bundled `plugins/avian_physics`, or one a user installs) needs `approx` on
-# these two Bevy math crates, and nothing else in the engine asks for it. Left to
-# avian, the bundled plugin decides how Bevy itself is compiled: deleting it
+# NOT real dependencies either: feature pins, like `naga` above. Avian
+# (`renzora_avian_physics`) needs `approx` on these two Bevy math crates, and
+# nothing else in the engine asks for it. Left to avian, the physics crate
+# decides how Bevy itself is compiled: leaving it out of a build
 # flips the feature off, every Bevy crate above them gets a new build hash, and
 # the next build recompiles about 1150 crates (and restamps every installed
-# plugin) for the sake of one physics plugin. An installed avian would be refused
-# outright, since the SDK's Bevy would lack the feature. Pinned here, Bevy
+# plugin) for the sake of one crate. Pinned here, Bevy
 # compiles the same with or without it.
-bevy_curve = { version = "0.20", default-features = false, features = ["approx"] }
-bevy_shape = { version = "0.20", default-features = false, features = ["approx"] }
+bevy_curve = { path = "../../bevy/crates/bevy_curve", default-features = false, features = ["approx"] }
+bevy_shape = { path = "../../bevy/crates/bevy_shape", default-features = false, features = ["approx"] }
 # Translates pre-0.20 (naga_oil) shader text to WESL in `shader_source`. Here
 # rather than in a plugin crate because native plugins build shaders at runtime
 # too, and they can only reach the contract crate. A leaf with no dependencies
 # of its own, so it cannot introduce a cycle.
 renzora_legacy_shaders = { path = "../renzora_legacy_shaders" }
+# The companion's vocabulary: job arguments, the profiler's span events and
+# probe reports, re-exported as `job_args`, `profiling::{Edge, SpanEvent}` and
+# `probes::Probe*`. Its own crate so the standalone companion can link it
+# without Bevy. A leaf on serde alone, so it cannot introduce a cycle.
+renzora_companion_proto = { path = "../renzora_companion_proto" }
 # Editor-contract derive/attribute macros (`Inspectable`, `post_process`),
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).

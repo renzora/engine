@@ -1,0 +1,9 @@
+name = "Halftone"
+version = "2.0.0"
+description = "A halftone dot screen: brightness becomes dot size on a rotated grid, the way newsprint and comic books reproduce tone. A post-process effect: drop halftone.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "halftone"
+tags = ["post-processing", "shader", "halftone", "print", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

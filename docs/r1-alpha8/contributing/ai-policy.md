@@ -37,7 +37,7 @@ Auditing is the price of the speed-up, not an optional extra.
 Auditing is not skimming for plausibility. Concretely, before you submit:
 
 - **Every API the patch calls actually exists**, with that signature, in the
-  pinned versions this workspace uses (**Bevy 0.20**, **Rust 1.97.1**). Models
+  pinned versions this workspace uses (**Bevy `main` (0.20-dev)**, **Rust 1.100.0**). Models
   confidently invent Bevy APIs, and they blend versions: a 0.19-era name in 0.20
   code (`On<Add, X>` for `On<Add<X>>`, `#import` instead of a WESL `import`) is
   the single most common failure we see.

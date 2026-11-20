@@ -136,6 +136,29 @@ enum AnimEditorAction {
     SetLayerWeight { layer: String, weight: f32 },
 }
 
+/// Run condition for [`sync_anim_editor_bridge`]: an action is queued. The
+/// system only drains the queue, so an empty one means nothing to do. A
+/// poisoned lock counts as pending so the system still runs and reports it.
+fn bridge_pending(bridge: Res<AnimEditorBridge>) -> bool {
+    !matches!(bridge.pending.lock(), Ok(p) if p.is_empty())
+}
+
+/// Run condition for [`sync_selection`]: something is selected, or the
+/// editor still has a subject to check is alive. With both empty it would
+/// resolve `None` against `None` and change nothing.
+fn selection_live(selection: Res<renzora_editor_framework::EditorSelection>, state: Res<AnimationEditorState>) -> bool {
+    selection.get().is_some() || state.selected_entity.is_some()
+}
+
+/// Run condition for [`cache_clip_duration`]: a subject, a cached duration to
+/// clear, or an effect-only clip whose length it follows. Without any of them
+/// it would only write `None` over `None`.
+fn clip_duration_live(state: Res<AnimationEditorState>, clip: Option<Res<timeline::clip::TimelineClip>>) -> bool {
+    state.selected_entity.is_some()
+        || state.clip_duration.is_some()
+        || clip.is_some_and(|c| c.effect_only_duration().is_some())
+}
+
 /// System that applies pending mutations from the panels.
 fn sync_anim_editor_bridge(
     bridge: Res<AnimEditorBridge>,
@@ -429,24 +452,30 @@ impl Plugin for AnimationEditorPlugin {
 
         app.add_systems(PostStartup, studio_preview::setup_studio_preview);
 
+        // Each waits on the one thing it reacts to, so an idle editor (nothing
+        // selected, no clip, no preview panel) starts none of them. The
+        // conditions are below, each with why it cannot miss work.
         app.add_systems(
             Update,
             (
-                sync_selection,
-                sync_anim_editor_bridge,
-                cache_clip_duration,
-                studio_preview::sync_studio_preview_activation,
+                sync_selection.run_if(selection_live),
+                sync_anim_editor_bridge.run_if(bridge_pending),
+                cache_clip_duration.run_if(clip_duration_live),
+                studio_preview::sync_studio_preview_activation
+                    .run_if(studio_preview::studio_preview_activation_pending),
             )
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
 
         // Single owner of the preview playhead. Runs even when no Studio Preview
-        // panel is mounted and for property-only / skeleton-less entities.
+        // panel is mounted and for property-only / skeleton-less entities, but
+        // only while playing: it returns at once otherwise.
         app.add_systems(
             Update,
             advance_preview_time
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora::not_in_play_mode)
+                .run_if(|s: Res<AnimationEditorState>| s.is_previewing),
         );
 
         // The playhead's consumer on the viewport model, which is the only thing
@@ -454,13 +483,15 @@ impl Plugin for AnimationEditorPlugin {
         // It used to sit in the Studio Preview set below, so in a layout without
         // that panel the timeline's Play advanced the playhead and the model in
         // the viewport never moved. With no preview clone mounted, its preview
-        // half finds nothing and costs a query.
+        // half finds nothing and costs a query. It returns at once with no
+        // subject, so it waits for one.
         app.add_systems(
             Update,
             preview::update_animation_preview
                 .after(advance_preview_time)
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora::not_in_play_mode)
+                .run_if(|s: Res<AnimationEditorState>| s.selected_entity.is_some()),
         );
 
         // Heavy studio-preview work: only run when the Studio Preview panel or

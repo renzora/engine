@@ -1,7 +1,7 @@
 //! Sortable list — drag a row by its handle to reorder it within the list.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, EmberFonts};
@@ -26,7 +26,7 @@ pub fn sortable_list(commands: &mut Commands, fonts: &EmberFonts, items: &[&str]
                 min_width: Val::Px(180.0),
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             EmberSortable,
             Name::new("sortable"),
         ))
@@ -71,7 +71,7 @@ pub(crate) fn sortable_drag(
     mouse: Res<ButtonInput<MouseButton>>,
     mut dragging: Local<Option<(Entity, Entity)>>,
     rows: Query<(Entity, &UiInteraction, &EmberSortItem)>,
-    lists: Query<&RelativeCursorPosition, With<EmberSortable>>,
+    lists: Query<&UiCursor, With<EmberSortable>>,
     children_q: Query<&Children>,
     mut commands: Commands,
 ) {

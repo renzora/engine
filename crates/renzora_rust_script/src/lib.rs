@@ -71,6 +71,7 @@
 
 pub mod backend;
 pub mod hooks;
+pub mod toolchain;
 pub mod watch;
 
 use std::collections::HashMap;
@@ -83,7 +84,6 @@ use libloading::{Library, Symbol};
 use wasm_dl::{Library, Symbol};
 use renzora::core::console_log::console_error;
 use renzora::SplashState;
-use renzora_plugin_build::Sdk;
 use renzora_scripting::{scripts_should_run, ScriptComponent};
 
 /// `libloading`'s shape, for a platform that has no dynamic loading at all.
@@ -214,6 +214,11 @@ impl Plugin for RustScriptPlugin {
         }
         app.init_resource::<LoadedScripts>()
             .init_resource::<watch::ScriptWatcher>()
+            // The compiler check and the install prompt's answer. The prompt
+            // itself is editor UI and lives in `renzora_scripting_editor`.
+            .init_resource::<renzora::RustToolchain>()
+            .init_resource::<toolchain::ToolchainTasks>()
+            .add_message::<renzora::RustToolchainAnswer>()
             // Registered here as well as by `renzora_project_watch`, and
             // `add_message` is idempotent so the second call is free.
             //
@@ -224,6 +229,9 @@ impl Plugin for RustScriptPlugin {
             // `ScriptsActive` problem `finish` handles below, and the same worst
             // place to discover it: a shipped game rather than the editor.
             .add_message::<renzora::core::project_files::ProjectFileChanged>()
+            // Builds go to the companion when one is connected; registered
+            // here too so a game, which has none, still has the messages.
+            .add_message::<renzora::CompanionJobDone>()
             // Recompile on save. Unlike `dispatch` these are NOT gated on play
             // mode: a script should build when you save it, so the error is in
             // front of you while you are still looking at the code — not the next
@@ -250,8 +258,8 @@ impl Plugin for RustScriptPlugin {
                     // sources, so there it finds nothing to do.
                     watch::scan_on_project_open
                         .run_if(in_state(SplashState::Editor).or_else(not_editor_session)),
-                    watch::watch,
-                    watch::finish,
+                    (watch::watch, toolchain::drive).chain(),
+                    (watch::collect_remote, watch::finish.run_if(watch::builds_pending)).chain(),
                 ),
             )
             // Claims `.rs` with the engine. Not done in `build` because the
@@ -455,73 +463,28 @@ impl LoadedScripts {
         }
         self._images.push(std::mem::ManuallyDrop::new(lib));
     }
+
+    /// Another name for a script already loaded: its update function and its
+    /// lifecycle hook both, so the script behaves the same whichever name it
+    /// is looked up by.
+    pub fn alias(&mut self, name: String, f: ScriptFn, hook: Option<ScriptHookFn>) {
+        self.entries.insert(name.clone(), f);
+        match hook {
+            Some(h) => {
+                self.hooks.insert(name, h);
+            }
+            None => {
+                self.hooks.remove(&name);
+            }
+        }
+    }
 }
 
 /// Compile one `.rs` into `<project>/.renzora/scripts/`, returning the library.
-///
-/// Split from [`load_library`] so the compile — the second that matters — can run
-/// on a task pool while the load stays on the main thread. Nothing here touches
-/// the `World`, which is what makes that possible.
-///
-/// The build directory is hidden inside the project because these are derived:
-/// they belong with the project, but nobody should be asked to look at or commit
-/// them.
-pub fn build_to_path(sdk: &Sdk, project: &Path, src: &Path) -> Result<PathBuf, String> {
-    let stem = src.file_stem().and_then(|s| s.to_str()).unwrap_or("script");
-    let build = project.join(".renzora").join("scripts").join(stem);
-    let source = std::fs::read(src).map_err(|e| e.to_string())?;
-
-    // The library is named for what it was built from: this source, against this
-    // SDK. A script that has not changed since the last launch therefore finds
-    // its library already on disk and skips rustc, which used to cost about a
-    // second per script on every project open.
-    //
-    // It also keeps the old rule that a recompile writes a NEW file rather than
-    // overwriting the loaded one: on Windows the previous library is still
-    // mapped and cannot be replaced, and on every platform overwriting a mapped
-    // image is a way to crash later rather than fail now. Changed source is a
-    // different name; unchanged source is the same, already-correct file.
-    let key = build_key(&sdk.stamp(), &source);
-    let ext = &sdk.manifest().lib_ext;
-    let out = build.join(format!("{stem}-{key:016x}.{ext}"));
-    if out.is_file() {
-        return Ok(out);
-    }
-
-    // `Sdk::compile` takes a plugin-shaped DIRECTORY (`<dir>/src/lib.rs`): it
-    // generates the Cargo.toml Bevy's derives need there and takes the crate name
-    // from it. A script is one loose file, so it is staged into that shape rather
-    // than teaching the compiler a second layout.
-    std::fs::create_dir_all(build.join("src")).map_err(|e| e.to_string())?;
-    std::fs::write(build.join("src").join("lib.rs"), &source).map_err(|e| e.to_string())?;
-
-    // Built under a temporary name and renamed into place, so a build that dies
-    // halfway can never leave a file the cache check above would trust.
-    let partial = build.join(format!("{stem}-{key:016x}.partial.{ext}"));
-    sdk.compile(&build, &partial).map_err(|e| {
-        // Point at the file the author edits, not the staged copy they have never
-        // seen: a diagnostic naming `.renzora/scripts/spin/src/lib.rs` sends
-        // them to a derived file that is overwritten on every build.
-        e.to_string()
-            .replace(&build.join("src").join("lib.rs").to_string_lossy().to_string(), &src.to_string_lossy())
-    })?;
-    std::fs::rename(&partial, &out).map_err(|e| e.to_string())?;
-    Ok(out)
-}
-
-/// FNV-1a over the SDK stamp and the script source.
-///
-/// Spelled out rather than taken from `std`, whose hasher is not promised to
-/// give the same answer from one Rust release to the next; this key names files
-/// that have to be found again on the next launch.
-fn build_key(stamp: &str, source: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in stamp.as_bytes().iter().chain([0u8].iter()).chain(source) {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
+/// Defined in `renzora_plugin_build`, which has no Bevy, so the standalone
+/// companion builds scripts with the same code; split from [`load_library`] so
+/// the compile can run off the main thread.
+pub use renzora_plugin_build::script::build_to_path;
 
 /// `dlopen` a built script and find its entry point.
 ///
@@ -643,7 +606,13 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
     // One `Library` per FILE, not per key: two keys naming the same library must
     // share one image, or the second `dlopen` would map a second copy of a
     // library holding its own statics.
-    let mut opened: HashMap<String, ScriptFn> = HashMap::new();
+    //
+    // The second key gets the hook as well as the update function. Only the
+    // first used to: the index lists each script by path and by file name, and
+    // dispatch looks scripts up by file name, which is the second, so no
+    // shipped script ever received `Ready` or any other lifecycle event. A
+    // script that set itself up in `Ready` did nothing at all in an export.
+    let mut opened: HashMap<String, (ScriptFn, Option<ScriptHookFn>)> = HashMap::new();
     let mut count = 0usize;
     for line in index.lines() {
         let Some((key, file)) = line.split_once('\t') else { continue };
@@ -651,13 +620,13 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
         if key.is_empty() || file.is_empty() {
             continue;
         }
-        if let Some(f) = opened.get(file) {
-            loaded.entries.insert(key.to_string(), *f);
+        if let Some(&(f, hook)) = opened.get(file) {
+            loaded.alias(key.to_string(), f, hook);
             continue;
         }
         match load_library(&dir.join(file)) {
             Ok((f, hook, lib)) => {
-                opened.insert(file.to_string(), f);
+                opened.insert(file.to_string(), (f, hook));
                 loaded.insert(key.to_string(), f, hook, lib);
                 count += 1;
             }
@@ -821,4 +790,24 @@ pub(crate) fn describe_panic(name: &str, caught: &renzora::core::recoverable::Ca
 /// [`renzora_plugin_build::install`].
 fn exe_dir() -> Option<PathBuf> {
     renzora_plugin_build::install::root()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn update(_: &mut World, _: Entity) {}
+    fn hook(_: &mut World, _: Entity, _: &renzora::ScriptHook<'_>) {}
+
+    /// A shipped script is indexed by path and by file name, and looked up by
+    /// file name. Both names must reach its hooks, or it never hears `Ready`.
+    #[test]
+    fn a_second_name_for_a_script_reaches_its_hooks_too() {
+        let mut loaded = LoadedScripts::default();
+        loaded.alias("scripts/car.rs".into(), update, Some(hook));
+        loaded.alias("car.rs".into(), update, Some(hook));
+        assert!(loaded.is_loaded("car.rs"));
+        assert!(loaded.hook("car.rs").is_some());
+        assert!(loaded.hook("scripts/car.rs").is_some());
+    }
 }

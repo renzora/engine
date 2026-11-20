@@ -111,6 +111,115 @@ fn materials_dir_for(model_path: &str) -> String {
     }
 }
 
+/// The `.material` a mesh with the authored glTF material `material_name`
+/// binds to, or `None` when the importer never wrote one.
+///
+/// Only an imported model has a `materials/` folder: a `.glb` copied into the
+/// project by hand, by a tool or from the engine's presets renders with the
+/// materials inside it and nothing else. Binding it anyway pointed every mesh
+/// at a file that is not there, which the resolver reports as an error, once
+/// per mesh entity, so a scattered preset filled the Console with thousands
+/// of them. With no file the mesh keeps the glTF material it already wears,
+/// which is the right material for such a model.
+///
+/// `exists` answers for an asset-relative path, so the test needs no project.
+fn bound_material_path(
+    materials_dir_rel: &str,
+    material_name: &str,
+    exists: impl FnOnce(&str) -> bool,
+) -> Option<String> {
+    let path = format!(
+        "{}/{}.material",
+        materials_dir_rel,
+        sanitize_material_name(material_name)
+    );
+    exists(&path).then_some(path)
+}
+
+/// Whether the `.material` at asset-relative `path` can be read, resolved the
+/// way `renzora_shader`'s resolver resolves a `MaterialRef`, so a file this
+/// says is there is one the resolver can open: on disk in the editor, in the
+/// archive in a packed game.
+fn material_file_exists(
+    path: &str,
+    project: Option<&renzora::CurrentProject>,
+    reader: &renzora::VirtualFileReader,
+) -> bool {
+    let fs_path = match project {
+        Some(project) if !std::path::Path::new(path).is_absolute() => {
+            let raw = project.resolve_path(path).to_string_lossy().replace('\\', "/");
+            raw.strip_prefix("./").unwrap_or(&raw).to_string()
+        }
+        _ => path.to_string(),
+    };
+    reader.read_string(&fs_path).is_some()
+}
+
+/// Which `.material` files exist, remembered across the frames one load takes
+/// to bind.
+///
+/// Answering by reading each file took 700 ms in one frame when a scene with
+/// the Bistro in it opened: well over a hundred materials, each opened and read
+/// in full on the main thread just to learn that it was there, and the answers
+/// were thrown away at the end of the frame while the model kept spawning. On
+/// disk a folder is now listed once and every name in it answered from that;
+/// a reader with no listing (a packed game, the web build) is still asked per
+/// file, but only once per file per load.
+#[derive(Default)]
+pub struct MaterialFiles {
+    /// Asset-relative materials folder -> the file names in it.
+    listed: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    /// Asset-relative path -> whether the reader could open it.
+    asked: std::collections::HashMap<String, bool>,
+}
+
+impl MaterialFiles {
+    fn clear(&mut self) {
+        self.listed.clear();
+        self.asked.clear();
+    }
+
+    fn exists(
+        &mut self,
+        path: &str,
+        dir_rel: &str,
+        on_disk: bool,
+        project: Option<&renzora::CurrentProject>,
+        reader: &renzora::VirtualFileReader,
+    ) -> bool {
+        if on_disk {
+            if let Some(project) = project {
+                let names = self.listed.entry(dir_rel.to_string()).or_insert_with(|| {
+                    std::fs::read_dir(project.resolve_path(dir_rel))
+                        .map(|entries| {
+                            entries
+                                .flatten()
+                                .map(|e| file_key(&e.file_name().to_string_lossy()))
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                });
+                let file = path.rsplit_once('/').map_or(path, |(_, f)| f);
+                return names.contains(&file_key(file));
+            }
+        }
+        *self
+            .asked
+            .entry(path.to_string())
+            .or_insert_with(|| material_file_exists(path, project, reader))
+    }
+}
+
+/// A file name as the filesystem compares it: Windows ignores case, so a
+/// listing must too, or a file the old per-file read found would stop binding.
+fn file_key(name: &str) -> String {
+    if cfg!(windows) {
+        name.to_lowercase()
+    } else {
+        name.to_string()
+    }
+}
+
 /// Arm material binding for a scene that Bevy has just finished spawning.
 ///
 /// `scene_root` is the entity holding the world-asset root — the child
@@ -211,7 +320,24 @@ pub fn bind_material_refs(
         ),
     >,
     gltf_assets: Res<Assets<Gltf>>,
+    project: Option<Res<renzora::CurrentProject>>,
+    file_reader: Option<Res<renzora::VirtualFileReader>>,
+    mut files: Local<MaterialFiles>,
 ) {
+    // Forget what was learned once nothing is binding, so the next import
+    // (which writes new `.material` files) is checked afresh.
+    if pending_query.is_empty() {
+        files.clear();
+        return;
+    }
+    let default_reader = renzora::VirtualFileReader::default();
+    let reader = file_reader.as_deref().unwrap_or(&default_reader);
+    // Only the editor and a loose-folder game read the project from disk; a
+    // packed game or the web build installs its own reader, which has no
+    // directory listing, so those keep asking per file. The resource is always
+    // there (the material resolver installs the disk one), so it is the reader
+    // that says which it is, not whether one exists.
+    let on_disk = file_reader.as_deref().is_none_or(|r| r.is_disk());
     for (root_entity, pending, mesh_data) in pending_query.iter() {
         if gltf_assets.get(&pending.gltf_handle).is_none() {
             // GLB still loading. Wait — `PendingMaterialBinding` holds the
@@ -229,6 +355,10 @@ pub fn bind_material_refs(
         };
         let materials_dir_rel = materials_dir_for(model_path);
 
+        // Spans for the profiler: loading a large model (Bistro, a car with
+        // ninety materials) made this system take 600 to 800 ms in one frame,
+        // and these say whether that is the walk or the file checks.
+        let _walk = info_span!("material_binding: walk model").entered();
         // Walk descendants and bind any meshes not yet bound. The query
         // filter skips already-bound meshes, so once every descendant has
         // been processed this loop is effectively a no-op.
@@ -238,18 +368,25 @@ pub fn bind_material_refs(
                 stack.extend(kids.iter());
             }
             if let Ok((_mat, mat_name)) = mesh_mat_query.get(entity) {
-                if let Some(mat_name) = mat_name {
-                    // Bind to `<material name>.material` — the same name
-                    // `extract_glb_materials` used for the file.
-                    let safe = sanitize_material_name(&mat_name.0);
-                    let path = format!("{}/{}.material", materials_dir_rel, safe);
-                    commands
-                        .entity(entity)
-                        .insert((renzora::MaterialRef(path), MaterialBindingDone));
-                } else {
-                    // Mesh has a material but no authored glTF name. Mark it
-                    // done so we don't keep retrying it.
-                    commands.entity(entity).insert(MaterialBindingDone);
+                // Bind to `<material name>.material`, the same name
+                // `extract_glb_materials` used for the file, when that file
+                // was written. Otherwise (no authored name, or a model that
+                // was never imported) mark it done so it is not retried.
+                let bound = mat_name.and_then(|name| {
+                    bound_material_path(&materials_dir_rel, &name.0, |path| {
+                        let _check = info_span!("material_binding: file check").entered();
+                        files.exists(path, &materials_dir_rel, on_disk, project.as_deref(), reader)
+                    })
+                });
+                match bound {
+                    Some(path) => {
+                        commands
+                            .entity(entity)
+                            .insert((renzora::MaterialRef(path), MaterialBindingDone));
+                    }
+                    None => {
+                        commands.entity(entity).insert(MaterialBindingDone);
+                    }
                 }
             }
         }
@@ -279,6 +416,19 @@ mod tests {
             materials_dir_for("models\\bistro\\bistro.glb"),
             "models/bistro/materials"
         );
+    }
+
+    /// A model copied in rather than imported has no `materials/` folder, so
+    /// its meshes keep their glTF material instead of naming a missing file.
+    #[test]
+    fn binds_only_to_a_material_the_importer_wrote() {
+        let written = ["models/rock/materials/Moss_Rock.material"];
+        let exists = |path: &str| written.contains(&path);
+        assert_eq!(
+            bound_material_path("models/rock/materials", "Moss Rock", exists),
+            Some("models/rock/materials/Moss_Rock.material".to_string())
+        );
+        assert_eq!(bound_material_path("models/materials", "boulder_01", exists), None);
     }
 
     /// The binder and the importer have to agree on the filename or every

@@ -36,8 +36,26 @@ impl Plugin for AuthPlugin {
             .insert_resource(try_restore_session())
             .init_resource::<renzora::core::AuthBridge>()
             .init_resource::<SessionRefresh>()
-            .add_systems(Update, (start_session_refresh, apply_session_refresh))
-            .add_systems(Update, auth_system);
+            // The startup refresh is a one-off: once it has been started (or
+            // given up on) and its answer applied, neither system has anything
+            // left to do for the rest of the session.
+            .add_systems(
+                Update,
+                (start_session_refresh, apply_session_refresh).run_if(refresh_pending),
+            )
+            // Everything `auth_system` does is a reaction: to one of the two
+            // request markers, or to a change in the window state or session
+            // that the bridge has to mirror. A frame with none of those would
+            // write the bridge back to what it already holds.
+            .add_systems(
+                Update,
+                auth_system.run_if(
+                    resource_exists::<renzora::core::AuthToggleWindowRequest>
+                        .or_else(resource_exists::<renzora::core::AuthSignOutRequest>)
+                        .or_else(resource_changed::<AuthState>)
+                        .or_else(resource_changed::<AuthSession>),
+                ),
+            );
         // The sign-in modal.
         modal::register(app);
     }
@@ -219,6 +237,16 @@ pub struct SessionRefresh {
 /// really has expired. A few seconds at 60 Hz.
 #[cfg(not(target_arch = "wasm32"))]
 const REFRESH_WAIT_FRAMES: u32 = 300;
+
+/// Run condition for the two refresh systems: true until the refresh has been
+/// started or abandoned, and then while its answer is still to be applied.
+fn refresh_pending(refresh: Res<SessionRefresh>) -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    if refresh.rx.is_some() {
+        return true;
+    }
+    !refresh.settled
+}
 
 /// Once a network backend exists, verify the restored token on a background
 /// thread.

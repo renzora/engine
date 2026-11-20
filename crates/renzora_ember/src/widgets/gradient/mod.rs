@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
@@ -113,7 +113,7 @@ pub fn gradient_editor(commands: &mut Commands, stops: &[(f32, (u8, u8, u8))]) -
                 margin: UiRect::top(Val::Px(2.0)),
                 ..default()
             },
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("gradient-strip"),
         ))
         .id();
@@ -179,7 +179,7 @@ fn gradient_sync(
 
 fn gradient_drag(
     handles: Query<(Entity, &UiInteraction, &GradientStop)>,
-    strips: Query<&RelativeCursorPosition>,
+    strips: Query<&UiCursor>,
     mut datas: Query<&mut GradientData>,
     mut nodes: Query<&mut Node>,
 ) {

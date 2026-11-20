@@ -16,7 +16,8 @@ use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform, UiTransform, Val2};
+use bevy::ui::{ComputedNode, UiGlobalTransform, UiTransform, Val2};
+use crate::UiCursor;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
@@ -321,7 +322,7 @@ pub fn node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(rgb(border())),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             NgPart::Canvas,
             Name::new("node-graph"),
         ))
@@ -342,7 +343,7 @@ pub fn node_graph(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 pan: Vec2::ZERO,
             },
             GraphPan,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("graph-canvas"),
         ))
         .id();
@@ -589,7 +590,7 @@ pub(crate) fn graph_pan(
     windows: Query<&Window>,
     mut last: Local<Option<Vec2>>,
     mut canvases: Query<(&ChildOf, &mut GraphView, &mut UiTransform), With<GraphPan>>,
-    viewports: Query<&RelativeCursorPosition>,
+    viewports: Query<&UiCursor>,
 ) {
     // Pan with middle OR right mouse. A right *click* (no movement) still opens
     // the add-node menu — that's gated on release-without-drag in `ngv_context`.
@@ -630,7 +631,7 @@ pub(crate) fn graph_pan(
 pub(crate) fn graph_zoom(
     mut wheel: MessageReader<MouseWheel>,
     mut canvases: Query<(&mut GraphView, &mut UiTransform, &ChildOf), With<GraphPan>>,
-    viewports: Query<(&RelativeCursorPosition, &ComputedNode)>,
+    viewports: Query<(&UiCursor, &ComputedNode)>,
 ) {
     let mut dy = 0.0;
     for ev in wheel.read() {

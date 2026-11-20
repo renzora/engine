@@ -48,6 +48,32 @@ pub extern "C" fn xlength_error(_what: *const core::ffi::c_char) -> ! {
     std::process::abort()
 }
 
+/// The DLL C runtime's `_wassert`, as the same prebuilt archives import it.
+///
+/// Same cause as [`xlength_error`]: `ispc_texcomp_astc`, the ASTC half of
+/// `intel_tex_2`'s prebuilt objects, was compiled against the dynamic CRT, so
+/// its `assert`s call `_wassert` through the DLL's import slot,
+/// `__imp__wassert`. A static CRT has `_wassert` but no import slot for it.
+/// The engine's own links never pull that object in; the standalone
+/// companion's (`renzora_companion_server`), a plain executable linking this
+/// baker, does, and failed to link on exactly this one symbol.
+///
+/// An import slot is a pointer to the function, so this is a pointer to one
+/// that aborts. The asserts it serves are in the ASTC encoder, which nothing
+/// here calls (only BC formats; see `encode_block_level`): like
+/// [`xlength_error`], unreachable, and abort is the honest translation.
+///
+/// Both Windows architectures: the arm64 archives import it the same way, and
+/// the arm64 companion failed to link on it once the x64 one was fixed.
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
+#[export_name = "__imp__wassert"]
+pub static WASSERT_IMPORT: unsafe extern "C" fn(*const u16, *const u16, core::ffi::c_uint) -> ! = wassert;
+
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
+unsafe extern "C" fn wassert(_message: *const u16, _file: *const u16, _line: core::ffi::c_uint) -> ! {
+    std::process::abort()
+}
+
 /// Semantic role of a texture. Drives the sRGB-vs-linear choice and which
 /// GPU block format the data is compressed to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

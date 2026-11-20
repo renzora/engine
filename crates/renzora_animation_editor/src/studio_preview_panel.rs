@@ -7,7 +7,7 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_editor_framework::SplashState;
 use renzora_ember::reactive::Rx;
@@ -136,7 +136,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(Color::srgb(0.12, 0.12, 0.14)),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OrbitTarget,
             Name::new("studio-preview-image"),
         ))
@@ -343,7 +343,7 @@ fn orbit_drag(
 
 fn orbit_zoom(
     mut wheel: MessageReader<MouseWheel>,
-    q: Query<&RelativeCursorPosition, With<OrbitTarget>>,
+    q: Query<&UiCursor, With<OrbitTarget>>,
     orbit: Option<ResMut<StudioPreviewOrbit>>,
 ) {
     let mut dy = 0.0;

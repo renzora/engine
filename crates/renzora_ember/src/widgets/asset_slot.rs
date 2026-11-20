@@ -2,7 +2,7 @@
 //! slot field, like an inspector's texture/mesh reference.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use crate::UiCursor;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
@@ -91,7 +91,7 @@ pub fn asset_slot(commands: &mut Commands, fonts: &EmberFonts, value: &str) -> E
             },
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             Name::new("asset-slot"),
         ))
         .id();
@@ -115,7 +115,7 @@ pub(crate) fn dnd_system(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     draggables: Query<(&UiInteraction, &Draggable)>,
-    targets: Query<(&RelativeCursorPosition, &AssetSlot)>,
+    targets: Query<(&UiCursor, &AssetSlot)>,
     mut nodes: Query<&mut Node>,
     mut texts: Query<(&mut Text, &mut TextColor)>,
 ) {

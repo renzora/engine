@@ -22,7 +22,8 @@ use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
+use bevy::ui::{ComputedNode, UiGlobalTransform};
+use crate::UiCursor;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
@@ -70,6 +71,20 @@ const SUBMENU_Z_MAX: i32 = 9790;
 #[component(on_remove = submenu_row_removed)]
 pub(crate) struct SubmenuRow {
     panel: Entity,
+}
+
+impl SubmenuRow {
+    /// The floating panel this row opens.
+    pub(crate) fn panel(&self) -> Entity {
+        self.panel
+    }
+}
+
+impl SubPanel {
+    /// The row that opens this panel.
+    pub(crate) fn owner(&self) -> Entity {
+        self.owner
+    }
 }
 
 /// The panel half of a [`SubmenuRow`], tagged with the row that owns it so the
@@ -132,6 +147,22 @@ pub fn menu_submenu_parts(
     label: &str,
     icon_color: (u8, u8, u8),
 ) -> (Entity, Entity, Entity) {
+    menu_submenu_parts_sized(commands, fonts, icon, label, icon_color, MENU_TEXT, MENU_ICON)
+}
+
+/// [`menu_submenu_parts`] with the label and icon at given sizes, for a
+/// submenu row that sits among smaller rows than a context menu's: a panel of
+/// 12px option rows (the viewport's Display menu) where a 14px row with a
+/// 16px icon reads as a heading rather than one more entry.
+pub fn menu_submenu_parts_sized(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    icon_color: (u8, u8, u8),
+    text_size: f32,
+    icon_size: f32,
+) -> (Entity, Entity, Entity) {
     let row = commands
         .spawn((
             Node {
@@ -149,16 +180,13 @@ pub fn menu_submenu_parts(
             Name::new("menu-submenu"),
         ))
         .id();
-    bind_bg(commands, row, move |w| match w.get::<UiInteraction>(row) {
-        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => menu_hover_bg(),
-        _ => Color::NONE,
-    });
+    bind_bg(commands, row, move |w| if super::popup::row_lit(w, row) { menu_hover_bg() } else { Color::NONE });
 
-    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
+    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, icon_size);
     let text = commands
         .spawn((
             Text::new(label),
-            ui_font(&fonts.ui, MENU_TEXT),
+            ui_font(&fonts.ui, text_size),
             TextColor(rgb(text_primary())),
         ))
         .id();
@@ -212,7 +240,7 @@ pub fn menu_submenu_parts(
             // root does it: a menu torn down the same frame would leave the
             // deferred insert operating on a dead entity.
             BLOCK,
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             // Editor chrome, not scene content — a menu open when autosave fires
             // must not be serialized into the scene.
             renzora::HideInHierarchy,
@@ -230,7 +258,7 @@ pub fn menu_submenu_parts(
 /// menu alone when the click landed in one of its submenus (which floats outside
 /// the root's own rect, so the root reads as "not hovered").
 pub(crate) fn cursor_over_submenu(
-    panels: &Query<(&RelativeCursorPosition, &Node), With<SubPanel>>,
+    panels: &Query<(&UiCursor, &Node), With<SubPanel>>,
 ) -> bool {
     panels
         .iter()
@@ -238,10 +266,11 @@ pub(crate) fn cursor_over_submenu(
 }
 
 /// Show/hide + position every submenu panel each frame.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn submenu_reveal(
     windows: Query<&Window, With<PrimaryWindow>>,
     rows: Query<(Entity, &UiInteraction, &SubmenuRow)>,
-    panels: Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+    panels: Query<(&UiCursor, &ComputedNode, &SubPanel)>,
     parents: Query<&ChildOf>,
     // `UiGlobalTransform`, not `GlobalTransform`: bevy 0.19's layout writes the
     // node's placement here, and a UI node's `GlobalTransform` just sits at the
@@ -249,6 +278,7 @@ pub(crate) fn submenu_reveal(
     geom: Query<(&UiGlobalTransform, &ComputedNode)>,
     mut nodes: Query<&mut Node>,
     mut depths: Query<&mut GlobalZIndex>,
+    key_open: Res<super::menu_nav::KeyOpenSubmenus>,
 ) {
     if rows.is_empty() {
         return;
@@ -273,7 +303,9 @@ pub(crate) fn submenu_reveal(
                         .is_some_and(|(c, rect)| rect.contains(c))
             })
             .unwrap_or(false);
-        if *interaction != UiInteraction::None || over_panel {
+        // Opened with the Right arrow: stays open until Left or Escape closes
+        // it, wherever the pointer is.
+        if *interaction != UiInteraction::None || over_panel || key_open.0.contains(&row) {
             open.insert(row);
         }
     }
@@ -374,7 +406,7 @@ fn panel_rect(node: &Node, cn: &ComputedNode) -> Option<Rect> {
 fn nesting_depth(
     row: Entity,
     parents: &Query<&ChildOf>,
-    panels: &Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+    panels: &Query<(&UiCursor, &ComputedNode, &SubPanel)>,
 ) -> i32 {
     let mut depth = 0;
     let mut cur = row;
@@ -394,7 +426,7 @@ fn nesting_depth(
 fn owner_row(
     mut e: Entity,
     parents: &Query<&ChildOf>,
-    panels: &Query<(&RelativeCursorPosition, &ComputedNode, &SubPanel)>,
+    panels: &Query<(&UiCursor, &ComputedNode, &SubPanel)>,
 ) -> Option<Entity> {
     while let Ok(child_of) = parents.get(e) {
         let parent = child_of.parent();

@@ -5,7 +5,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::SplashState;
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -24,7 +24,13 @@ struct HubLightboxRoot;
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<HubLightbox>();
-    app.add_systems(Update, close_clicks.run_if(in_state(SplashState::Editor)));
+    // Nothing to dismiss unless a lightbox is up.
+    app.add_systems(
+        Update,
+        close_clicks.run_if(
+            in_state(SplashState::Editor).and_then(|lb: Res<HubLightbox>| lb.root.is_some()),
+        ),
+    );
 }
 
 /// Open a full-screen preview of `url`, above everything (incl. the item
@@ -73,7 +79,7 @@ fn build(commands: &mut Commands, url: &str) -> Entity {
             GlobalZIndex(9900),
             BLOCK,
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             renzora_ember::widgets::OverlaySurface,
             HubLightboxRoot,
             Name::new("hub-image-lightbox"),

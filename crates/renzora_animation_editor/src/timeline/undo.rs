@@ -42,6 +42,16 @@ fn restore_anim_clip(world: &mut World, clip: &AnimClip) {
 }
 
 pub(super) fn anim_undo_observer(world: &mut World) {
+    // Nothing written to the buffer since the last run means nothing to record.
+    // Without this, every frame with an animated entity selected cloned the
+    // whole clip and serialized it to compare against the shadow: 4 ms a frame
+    // for the Bistro's clip, with the Timeline not even open. Every edit, the
+    // selection change that reseeds, and `restore_anim_clip` all write the
+    // resource, so the comparison below still sees each of them.
+    match world.get_resource_ref::<TimelineClip>() {
+        Some(clip) if clip.is_changed() => {}
+        _ => return,
+    }
     let (cur, key) = {
         let Some(c) = world.get_resource::<TimelineClip>() else {
             return;

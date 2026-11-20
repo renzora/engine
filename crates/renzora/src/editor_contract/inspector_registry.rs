@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 /// A value that can be read from or written to a component field.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FieldValue {
     Float(f32),
     Vec3([f32; 3]),
@@ -99,6 +99,20 @@ pub enum FieldType {
     DynamicEnum {
         options: fn(&World, Entity) -> Vec<std::string::String>,
     },
+    /// Like [`Enum`](FieldType::Enum), but some options may not work in the
+    /// current setup, and the dropdown says so. `warning` is asked once per
+    /// option index; an option it answers `Some(reason)` for gets an amber
+    /// warning icon in the menu with `reason` as its tooltip, and the same icon
+    /// shows beside the box while that option is the selected one.
+    ///
+    /// The options stay selectable. A warning describes the world as it is now
+    /// (the rendering mode, which other effects are on), and that can change
+    /// after the choice is made, so the component keeps the choice and applies
+    /// it once nothing stands in its way.
+    CheckedEnum {
+        options: &'static [&'static str],
+        warning: fn(&World, Entity, usize) -> Option<std::string::String>,
+    },
     /// A full-width action button. The `FieldDef::name` is the button label and
     /// `icon` is a leading Phosphor glyph. There's no value to read — `get_fn`
     /// should return `None`; clicking invokes `set_fn` with
@@ -106,14 +120,54 @@ pub enum FieldType {
     Button {
         icon: &'static str,
     },
+    /// A foldable group of `fields` inside the section: a row with a caret and
+    /// the group's name, its fields indented under it. Build one with
+    /// [`FieldDef::group`] or [`FieldDef::toggle_group`].
+    ///
+    /// The group's own `get_fn` decides its header. `None` hides the whole
+    /// group, like any field. `Some(FieldValue::Bool(_))` puts an on/off switch
+    /// in the header, written through `set_fn`, for a feature whose settings
+    /// are the group (the Sun's Contact Shadows and their length, thickness and
+    /// steps). Any other value gives a plain header.
+    ///
+    /// A folded group builds none of its rows, the same way a folded section
+    /// builds nothing, so folding settings away saves their layout every frame
+    /// as well as the scrolling. Groups start folded and the inspector
+    /// remembers per component type which ones were opened.
+    Group {
+        fields: Vec<FieldDef>,
+    },
 }
 
 /// A single inspectable field on a component.
+#[derive(Clone, Debug)]
 pub struct FieldDef {
     pub name: &'static str,
     pub field_type: FieldType,
     pub get_fn: fn(&World, Entity) -> Option<FieldValue>,
     pub set_fn: fn(&mut World, Entity, FieldValue),
+}
+
+impl FieldDef {
+    /// A plain foldable group named `name` (see [`FieldType::Group`]).
+    pub fn group(name: &'static str, fields: Vec<FieldDef>) -> Self {
+        Self {
+            name,
+            field_type: FieldType::Group { fields },
+            get_fn: |_, _| Some(FieldValue::ReadOnly(String::new())),
+            set_fn: |_, _, _| {},
+        }
+    }
+
+    /// A group whose header is the on/off switch `switch` (a `Bool` field,
+    /// such as one from `bool_field!`), with `fields` folded under it. The
+    /// switch keeps its name, value and write; only where it is drawn changes.
+    pub fn toggle_group(switch: FieldDef, fields: Vec<FieldDef>) -> Self {
+        Self {
+            field_type: FieldType::Group { fields },
+            ..switch
+        }
+    }
 }
 
 /// Registration entry for one component type.
@@ -141,9 +195,37 @@ pub struct InspectorEntry {
 #[derive(Resource, Default)]
 pub struct InspectorRegistry {
     entries: Vec<InspectorEntry>,
+    /// Rows other crates add to an entry they do not own, by `type_id`. Kept
+    /// apart from the entries so they survive whichever order the plugins
+    /// build in, and an entry being registered again. See [`Self::extend`].
+    extensions: Vec<(&'static str, FieldDef)>,
 }
 
 impl InspectorRegistry {
+    /// Add `fields` to the end of the `type_id` entry's section, from a crate
+    /// that does not own that entry.
+    ///
+    /// Exists so a setting can be shown where a user looks for it without the
+    /// section's owner depending on it. The Camera section is the case: it lives
+    /// in the editor framework, and anti-aliasing and tonemapping are their own
+    /// crates, each adding its rows to it. The fields read and write their own
+    /// components; only where they are drawn changes.
+    ///
+    /// Works before or after the entry is registered, and a field whose name is
+    /// already there replaces it, so a plugin building twice does not draw its
+    /// rows twice.
+    pub fn extend(&mut self, type_id: &'static str, fields: Vec<FieldDef>) {
+        for field in fields {
+            match self.extensions.iter_mut().find(|(t, f)| *t == type_id && f.name == field.name) {
+                Some(slot) => slot.1 = field.clone(),
+                None => self.extensions.push((type_id, field.clone())),
+            }
+            if let Some(entry) = self.entries.iter_mut().find(|e| e.type_id == type_id) {
+                merge_field(&mut entry.fields, field);
+            }
+        }
+    }
+
     /// Register an inspector entry for a component.
     ///
     /// Ordering: `transform` is always first, `material_ref` second; everything
@@ -157,7 +239,10 @@ impl InspectorRegistry {
     /// water plugin registers it from a single place, so the second copy came
     /// from its `build` running twice in one session. The newer entry is the one to keep: if a
     /// plugin image was reloaded, its function pointers are the live ones.
-    pub fn register(&mut self, entry: InspectorEntry) {
+    pub fn register(&mut self, mut entry: InspectorEntry) {
+        for (_, field) in self.extensions.iter().filter(|(t, _)| *t == entry.type_id) {
+            merge_field(&mut entry.fields, field.clone());
+        }
         if let Some(slot) = self.entries.iter_mut().find(|e| e.type_id == entry.type_id) {
             *slot = entry;
             return;
@@ -180,6 +265,115 @@ impl InspectorRegistry {
     /// Iterate over all registered entries.
     pub fn iter(&self) -> impl Iterator<Item = &InspectorEntry> {
         self.entries.iter()
+    }
+}
+
+/// Put `field` in `fields`: in place of the one with its name, else after the
+/// section's settings but above any buttons that close it.
+///
+/// A section that ends in an action button (the Camera section's Snap to
+/// Viewport) ends with it on purpose: the button acts on the settings above
+/// it. Appending added rows after it left the button stranded in the middle of
+/// the section, between the camera's own settings and the added ones.
+fn merge_field(fields: &mut Vec<FieldDef>, field: FieldDef) {
+    if let Some(slot) = fields.iter_mut().find(|f| f.name == field.name) {
+        *slot = field;
+        return;
+    }
+    let is_button = |f: &FieldDef| matches!(f.field_type, FieldType::Button { .. });
+    let at = if is_button(&field) {
+        fields.len()
+    } else {
+        fields.len() - fields.iter().rev().take_while(|f| is_button(f)).count()
+    };
+    fields.insert(at, field);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(type_id: &'static str, fields: Vec<FieldDef>) -> InspectorEntry {
+        InspectorEntry {
+            type_id,
+            display_name: type_id,
+            icon: "",
+            category: "",
+            has_fn: |_, _| true,
+            add_fn: None,
+            remove_fn: None,
+            is_enabled_fn: None,
+            set_enabled_fn: None,
+            fields,
+        }
+    }
+
+    fn field(name: &'static str) -> FieldDef {
+        FieldDef {
+            name,
+            field_type: FieldType::ReadOnly,
+            get_fn: |_, _| None,
+            set_fn: |_, _, _| {},
+        }
+    }
+
+    fn names(r: &InspectorRegistry, type_id: &str) -> Vec<&'static str> {
+        let e = r.iter().find(|e| e.type_id == type_id).unwrap();
+        e.fields.iter().map(|f| f.name).collect()
+    }
+
+    #[test]
+    fn extension_lands_whichever_registers_first() {
+        let mut before = InspectorRegistry::default();
+        before.extend("camera", vec![field("AA")]);
+        before.register(entry("camera", vec![field("FOV")]));
+        assert_eq!(names(&before, "camera"), ["FOV", "AA"]);
+
+        let mut after = InspectorRegistry::default();
+        after.register(entry("camera", vec![field("FOV")]));
+        after.extend("camera", vec![field("AA")]);
+        assert_eq!(names(&after, "camera"), ["FOV", "AA"]);
+    }
+
+    #[test]
+    fn extension_goes_above_a_trailing_button() {
+        let button = FieldDef { field_type: FieldType::Button { icon: "" }, ..field("Snap") };
+        let mut r = InspectorRegistry::default();
+        r.register(entry("camera", vec![field("FOV"), button]));
+        r.extend("camera", vec![field("AA"), field("Tonemapping")]);
+        assert_eq!(names(&r, "camera"), ["FOV", "AA", "Tonemapping", "Snap"]);
+    }
+
+    /// A toggle group is its switch with fields under it: same name, same
+    /// read and write, so the switch behaves exactly as it did as a row.
+    #[test]
+    fn a_toggle_group_keeps_its_switch() {
+        let switch = FieldDef {
+            field_type: FieldType::Bool,
+            get_fn: |_, _| Some(FieldValue::Bool(true)),
+            ..field("Contact Shadows")
+        };
+        let group = FieldDef::toggle_group(switch, vec![field("Length"), field("Steps")]);
+        assert_eq!(group.name, "Contact Shadows");
+        let FieldType::Group { fields } = &group.field_type else {
+            panic!("not a group");
+        };
+        assert_eq!(fields.len(), 2);
+        let mut world = World::new();
+        let e = world.spawn_empty().id();
+        assert_eq!((group.get_fn)(&world, e), Some(FieldValue::Bool(true)));
+        let plain = FieldDef::group("Moon", vec![]);
+        assert!(!matches!((plain.get_fn)(&world, e), Some(FieldValue::Bool(_)) | None));
+    }
+
+    #[test]
+    fn extension_survives_reregistering_and_does_not_double() {
+        let mut r = InspectorRegistry::default();
+        r.extend("camera", vec![field("AA")]);
+        r.register(entry("camera", vec![field("FOV")]));
+        r.extend("camera", vec![field("AA")]);
+        r.register(entry("camera", vec![field("FOV")]));
+        assert_eq!(names(&r, "camera"), ["FOV", "AA"]);
     }
 }
 

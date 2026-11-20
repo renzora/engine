@@ -24,7 +24,7 @@ use std::sync::atomic::Ordering;
 
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora::core::viewport_types::{NavOverlayState, ViewportSettings};
 use renzora_editor_framework::SplashState;
@@ -139,7 +139,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ..default()
             },
             BackgroundColor(group_bg()),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             OverlaySurface,
             Name::new("nav-overlay"),
         ))

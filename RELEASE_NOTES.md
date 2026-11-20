@@ -1,8 +1,761 @@
 # Renzora Engine `r1-alpha8`
 
-## 2026-11-02 21:45
+## 2026-11-20 09:04
 - feat(plugin): a native plugin records the engine build it was compiled against inside its library, and the loader refuses one built for any other engine before mapping it, instead of trusting the stamp file beside it
 - feat(export): a copy-based export writes `plugins/engine-stamp.txt` so a shipped game, which has no SDK, can make the same check, and leaves out a plugin built for a different engine with a warning; the export and its plugin picker now settle that from the file instead of opening the library first
+
+## 2026-11-20 07:14
+- feat(rendering): a Fog Volume's card holds all its settings, including the sky light and quality that were a separate Volumetric Fog card
+- fix(rendering): volumetric fog reads as bright haze instead of darkening the scene
+- feat(rendering): a new World Environment comes with SSIL on
+
+## 2026-11-20 06:46
+- feat(rendering): a Fog Volume in Add Entity brings volumetric fog and sun shafts, turning the camera's volumetric pass on by itself while one exists
+- fix(rendering): Volumetric Fog can be added by scripts and tools, not only the inspector
+
+## 2026-11-20 06:38
+- fix(fog): deleting the World Environment clears its distance fog instead of leaving it on the viewport
+
+## 2026-11-20 06:26
+- feat(profiler): GPU pass timings include virtual geometry, SSIL, the sun glare, cloud probe and post effects, not only Bevy's own passes
+
+## 2026-11-20 06:07
+- feat(inspector): long cards fold their settings into groups, among them Clouds, the lights' Shadows, SSIL, Solari, Vehicle, NavMesh Volume, the 2D lights, Sprite Image and UI nodes, and grouped rows line up with the rest of the card
+
+## 2026-11-20 05:31
+- feat(inspector): cards can fold settings into groups, with a feature's on/off switch in the group's row; the Sun's Contact Shadows and Moon settings are the first
+
+## 2026-11-20 05:03
+- feat(lighting): the Sun sets contact shadows' length, thickness and steps, and they reach 0.8 m by default instead of 0.3
+- fix(inspector): a Sun's Shadows and Contact Shadows switches appear once, in the Sun section, instead of also in Directional Light
+
+## 2026-11-20 04:55
+- fix(lighting): Contact Shadows now work in Deferred projects, where the switch did nothing before
+
+## 2026-11-20 04:42
+- fix(viewport): the virtual geometry and SSIL debug views hold still instead of jittering under TAA
+
+## 2026-11-20 04:28
+- feat(viewport): the Visualization menu groups the virtual geometry views into their own submenu, beside a new SSIL submenu of Light, Occlusion and History views
+
+## 2026-11-19 21:19
+- feat(rendering): SSIL adds screen-space bounce light between nearby surfaces, as a Post Process component on the World Environment or a camera
+
+## 2026-11-18 21:45
+- fix(plugins): a plugin with third-party dependencies rebuilds in seconds after an engine update instead of recompiling them all
+
+## 2026-11-18 20:59
+- feat(atmosphere): the moon glows, follows the real lunar month or a chosen day, takes a tint, and can be eclipsed into a blood moon
+
+## 2026-11-18 20:38
+- feat(atmosphere): a textured moon with phases shows in the night sky
+- fix(clouds): clouds fade out at sunset instead of staying lit by the moon
+
+## 2026-11-18 19:46
+- feat(lighting): once the sun sets, its light becomes a moon, so night scenes are moonlit instead of black
+
+## 2026-11-18 19:20
+- fix(import): glass and other smooth surfaces in an FBX with packed metal-rough textures import smooth instead of rough and dull
+
+## 2026-11-18 19:09
+- feat(rendering): new scenes start with a 120,000 lux sun, AgX tonemapping, auto exposure tuned to carry from noon to night, bloom on lights only and sky light at 0.5
+
+## 2026-11-18 17:46
+- fix(import): an FBX whose specular slot holds a packed metal-rough texture imports with the right roughness instead of looking glossy
+- fix(rendering): clearcoated glass on models drawn as virtual geometry no longer renders solid white, and blended surfaces there are shaded with their own normals
+
+## 2026-11-18 17:03
+- fix(materials): textures on models drawn as virtual geometry no longer sparkle, shimmer in motion or look washed out under TAA
+
+## 2026-11-18 16:42
+- fix(solari): the Denoiser's DLSS choice reads "DLSS (if available)" and shows a warning icon where DLSS cannot run, naming the built-in denoiser that runs instead
+
+## 2026-11-18 15:15
+- feat(splash): the start screen offers to install Rust when it is missing, before any script or plugin needs it
+- fix(plugins): a plugin installed while Rust is missing builds once Rust is installed, instead of staying marked as failed
+- fix(marketplace): installing a plugin without Rust no longer says the compiler is being downloaded when nothing is
+
+## 2026-11-17 22:46
+- feat(scripting): when a Rust script needs compiling and Rust is not installed, the editor offers to install it
+
+## 2026-11-17 22:38
+- fix(sdk): Rust scripts and native plugins link again in a downloaded build, which was missing the Windows import libraries
+
+## 2026-11-17 19:45
+- security: zip archives (plugins, updates, imports and exports) are read with a zip library that is no longer open to file overwrite through a disguised archive
+
+## 2026-11-17 19:32
+- fix(ci): a nightly publishes again when its notes run past GitHub's release size limit
+
+## 2026-11-17 17:35
+- fix(build): the Windows arm64 companion links again
+
+## 2026-11-17 16:03
+- fix(build): the Windows cross-compile image builds again with the current Windows SDK
+
+## 2026-11-17 15:22
+- fix(build): the Windows arm64 editor builds again
+
+## 2026-11-17 10:01
+- fix(physics): a vehicle's wheels no longer wobble on models whose meshes are simplified in memory
+
+## 2026-11-17 09:51
+- fix(physics): a vehicle's wheels start straight even when the model poses them turned, so they steer equally both ways
+- fix(physics): a brake caliper inside a vehicle's wheel no longer spins with it
+
+## 2026-11-17 09:31
+- fix(physics): a vehicle's wheels turn about their tyre's true centre, so they no longer wobble when the model's wheel origin is off the axle
+
+## 2026-11-17 09:22
+- fix(physics): a vehicle's wheels steer and spin after its model finishes loading, instead of staying still
+
+## 2026-11-17 09:12
+- fix(physics): a vehicle's wheels spin true about their own axles, and rev up in the air or when the tyres slip
+- feat(input): a button action reports how far an analog trigger is pressed, so vehicles get part throttle
+
+## 2026-11-17 08:48
+- feat(physics): a **Vehicle** component makes a model a car the physics engine drives, with suspension and tyre grip on each wheel, steering and spinning wheels, and keyboard and gamepad input built in
+- feat(input): the default input map has `accelerate` and `brake` on the gamepad triggers
+
+## 2026-11-17 08:11
+- fix(scene): a loading screen stays up until the level is ready, with its terrain built, materials resolved and textures in, instead of coming down as soon as its models load
+
+## 2026-11-17 08:01
+- fix(physics): boxes, cars and every other non-round body rest on terrain instead of falling straight through it
+
+## 2026-11-17 07:39
+- fix(export): Rust scripts in an exported game receive `Ready` and their other lifecycle events, as they do in Play
+
+## 2026-11-17 07:04
+- feat(editor): **Separate Parts** in the Hierarchy's right-click menu splits a model part into its separate pieces, each centred on itself, such as both wheels of an axle into two wheels that turn about their own hubs
+
+## 2026-11-17 05:48
+- fix(export): a game set to High graphics quality no longer crashes on start with a `storage_view_mip_8` GPU error
+
+## 2026-11-17 05:42
+- fix(scene): scenes and exported games saved with Solari or DLSS stuck on their camera load without it, so the game no longer renders the ground black under a lit sky
+
+## 2026-11-17 05:31
+- fix(rendering): a game camera no longer flickers with ghosted reflections when a scene saved DLSS Ray Reconstruction on it with Solari off
+- fix(scene): saving no longer writes the Solari, DLSS and anti-aliasing jitter components the engine adds to cameras by itself
+
+## 2026-11-17 02:13
+- fix(web): the web editor builds again
+
+## 2026-11-17 01:29
+- fix(navmesh): a NavMesh Volume with Include Terrain cuts the steep ground out of the navmesh again
+- fix(viewport): a scene with terrain or resting physics bodies lets the viewport idle again
+- fix(terrain): Erode on a small terrain no longer wears most of it away
+
+## 2026-11-17 01:09
+- fix(scene): UI layouts saved with the old `Default` alignment load again instead of being dropped
+- fix(scene): scenes that still carry Bevy's removed `FocusPolicy` load without a skipped-component warning
+
+## 2026-11-17 00:31
+- fix(rendering): rough surfaces no longer show grain from screen-space reflections when the camera has no TAA or DLSS, such as after switching Solari off
+
+## 2026-11-16 18:03
+- fix(build): `cargo renzora` stages up-to-date shared libraries and plugin SDK again, so the editor starts after a Rust update
+- fix(plugin): a native plugin with third-party dependencies finds them under Rust 1.100's new build layout
+
+## 2026-11-16 15:56
+- chore(engine): the engine runs on Bevy `main` of 2026-11-15 and Rust 1.100.0
+- feat(ember): `UiCursor` replaces Bevy's removed `RelativeCursorPosition`, and native plugins that read the cursor over a UI node should use it
+- feat(ui): markup sizes accept `min-content`, `max-content`, `fit-content`, `stretch` and `content`
+
+## 2026-11-16 14:57
+- feat(viewport): a click selects the part it hits, and the Settings option "Click Selects" is gone
+- feat(hierarchy): "Select as One Object" in the right-click menu makes a model or group pick as a whole, and is saved with the scene
+- feat(viewport): locked entities can't be clicked or rubber-band selected, and a click passes through them
+- feat(viewport): right-click without dragging lists everything under the cursor and the nearest part's parents
+- feat(viewport): dragging an already-selected object slides it along the ground
+
+## 2026-11-16 14:26
+- fix(viewport): clicking a part of a Sketchfab model selects that part instead of its `root` or `GLTF_SceneRootNode` wrapper
+
+## 2026-11-16 14:08
+- feat(clouds): new cloud layers default to 0.45 coverage and 0.021 density
+
+## 2026-11-16 13:46
+- fix(viewport): clicking selects in an idle viewport again, and the gizmo holds steady while the camera moves
+- fix(viewport): clicking a mesh in a model selects that mesh instead of the model's unnamed glTF wrapper
+
+## 2026-11-16 13:05
+- perf(viewport): gizmos, labels and brush cursors draw in an overlay of their own, so hovering a gizmo handle or moving a brush no longer re-renders the whole scene
+- perf(viewport): moving the mouse over an idle viewport no longer wakes it
+
+## 2026-11-16 12:33
+- fix(animation): an animated model that was selected once no longer keeps the viewport rendering every frame while idle
+- fix(settings): the Settings shortcut (Ctrl+,) opens and closes the Settings page again
+
+## 2026-11-16 03:51
+- perf(editor): about 70 systems that paused every other system each frame now run only when they have work
+- perf(editor): the Settings page's systems no longer run while it is closed
+- fix(editor): idle 2D viewports and open camera, material and animation previews no longer move their cameras every frame
+
+## 2026-11-16 03:02
+- fix(hierarchy): an empty scene no longer rebuilds the hierarchy tree every frame
+- feat(profiler): PostUpdate, Last and the fixed-update loop now show in profiles as schedules of their own
+
+## 2026-11-16 01:46
+- perf(editor): the Marketplace, animation editor, terrain, material editor, import window and launcher no longer run their systems every frame while they are not in use
+
+## 2026-11-16 00:48
+- feat(profiler): the summary shows each schedule's wall time, time spent outside the main world, and how many systems each schedule holds
+
+## 2026-11-16 00:42
+- feat(settings): Throttle When Unfocused switches off the editor's 60 fps cap while another window has focus
+
+## 2026-11-16 00:26
+- fix(solari): leaving a Solari scene no longer leaves rough surfaces mirroring the sky
+
+## 2026-11-16 00:11
+- perf(solari): ray-traced copies of meshes and lights are no longer rewritten every frame, so the viewport can idle with Solari on
+- perf(viewport): a model with an animator no longer keeps the viewport rendering while nothing plays
+
+## 2026-11-16 00:03
+- perf(viewport): light shadow maps are no longer re-rendered every frame while the viewport is idle
+
+## 2026-11-15 23:34
+- fix(viewport): the viewport stops rendering when nothing changes again, instead of redrawing the whole scene every frame
+
+## 2026-11-15 23:22
+- feat(viewport): the Console names the component that keeps the viewport from idling when it renders on change
+
+## 2026-11-15 23:08
+- fix(rendering): SSR turns off while Solari lights the camera, ending the flicker, and comes back when Solari is off
+
+## 2026-11-15 22:41
+- perf(animation): selecting an entity with an Animator no longer costs several milliseconds every frame
+- perf(rendering): particle effects no longer cost an empty ray-tracing submission every frame
+- fix(hierarchy): a row's icon updates when a component is added or removed, including by undo
+
+## 2026-11-15 22:20
+- perf(viewport): showing a viewport again after a workspace switch no longer stalls while DLSS rebuilds itself
+
+## 2026-11-15 22:18
+- perf(materials): a scene with many materials fills them in over a few frames instead of freezing while it builds them all at once
+
+## 2026-11-15 22:09
+- perf(scene): material binding lists each model's materials folder once in the editor too, so the scene-open freeze is actually gone
+
+## 2026-11-15 17:47
+- perf(scene): opening a scene with large imported models no longer freezes the editor for most of a second while their materials are bound
+- perf(viewport): adding, closing or moving a panel no longer stalls the viewport for two frames
+- perf(viewport): dragging a divider beside the viewport stays smooth; the viewport takes its new size when you let go
+- perf(viewport): switching to and from a workspace without a viewport no longer stalls for a tenth of a second, and the scene stops rendering while no viewport shows it
+- perf(import): the import window opens without freezing the editor, and its preview no longer builds ray-tracing data for the model
+- fix(import): a model imported right after using another folder picker lands in the folder the import window shows, not the other picker's folder
+- perf(editor): folder pickers, such as the New Material dialog's, open faster in projects with large model folders
+- perf(hierarchy): the hierarchy no longer rebuilds itself while nothing in the scene changes
+- fix(hierarchy): the order of top-level objects is saved with the scene, so a scene reopens in the order it was left in
+- feat(assets): baked `.rmip` textures show thumbnails in the asset browser
+- fix(terrain): the terrain's material slot no longer squeezes its text into a narrow column in a narrow inspector
+- perf(text): 3D text builds its glyphs many times faster
+- perf(scene): switching scenes no longer waits on the asset reader to set the project folder it already has
+
+## 2026-11-15 17:04
+- perf(ui): font atlases no text uses any more are freed, so changing the UI scale or font no longer leaves the old sizes in memory
+
+## 2026-11-15 16:55
+- fix(ui): a UI scale other than 100% no longer slows the editor and crashes it out of GPU memory
+- feat(editor): the memory report names text being laid out every frame and what the font atlases differ in
+
+## 2026-11-15 15:58
+- fix(rendering): turning Solari on in a large scene no longer freezes the editor for seconds; the scene fills into the ray-traced lighting over a few seconds instead
+- perf(rendering): Solari no longer spends about 13 ms a frame re-checking node-graph-material meshes that have not changed
+
+## 2026-11-15 15:27
+- fix(audio): a missing output device no longer makes the editor hitch every two seconds while it retries
+
+## 2026-11-15 14:50
+- feat(editor): the companion's Debug cards pack into columns that scroll down, and the probes ticked are remembered between openings
+
+## 2026-11-15 14:39
+- fix(editor): the companion no longer grows by a megabyte or two for every thumbnail it renders
+
+## 2026-11-15 14:27
+- feat(editor): the companion renders model, material and shape thumbnails in a render worker it starts only while there are thumbnails to render, and fills in missing ones ahead of time again
+
+## 2026-11-15 14:17
+- feat(editor): the lighter companion has the profiler, with the Profiler, Render, Debug and Games screens and the MCP `profiler_*` tools
+- feat(editor): the editor starts the lighter companion by default; `RENZORA_COMPANION_SERVER=0` starts the engine companion instead
+
+## 2026-11-15 13:31
+- fix(editor): closing the lighter companion's window gives back all the memory it used, and the window opens in front of the editor
+
+## 2026-11-15 00:30
+- feat(editor): a lighter companion without the engine in it, `renzora-companion`, runs the job queue and Cache screen when `RENZORA_COMPANION_SERVER=1` is set
+
+## 2026-11-14 19:11
+- fix(editor): right-click flying moves at exactly the camera speed set, however far the pivot is
+
+## 2026-11-14 18:59
+- fix(rendering): a closed ray-traced scene's textures are freed from video memory
+
+## 2026-11-14 18:54
+- fix(rendering): a closed virtual geometry scene's textures and cluster buffers are freed from video memory
+
+## 2026-11-14 18:46
+- fix(editor): closing the scene tab you are on frees its models, materials and textures
+- fix(rendering): a virtual geometry model's full-detail meshes are freed when the model is
+
+## 2026-11-14 17:04
+- fix(editor): a closed scene's textures are freed even after a render toggle or visualization mode was used
+- feat(editor): the memory report lists the file textures no material uses, by folder, with how many handles still hold them
+
+## 2026-11-14 11:55
+- feat(editor): the memory report names the images held only on the GPU, by the folder they came from
+- feat(editor): the memory report counts the materials no entity draws with, and the textures they hold
+
+## 2026-11-14 11:42
+- fix(rendering): materials, textures and virtual geometry files no longer used by any open scene are released from memory
+
+## 2026-11-14 09:38
+- perf(rendering): the GPU memory allocator reserves smaller blocks, cutting the editor's video memory use
+- fix(editor): closing a scene tab frees its models and saved snapshot
+
+## 2026-11-12 21:25
+- fix(solari): the virtual geometry debug views keep their colours with DLSS Ray Reconstruction on
+
+## 2026-11-12 21:17
+- fix(virtual-geometry): the virtual geometry debug views no longer grey out large surfaces close to the camera
+
+## 2026-11-12 15:51
+- fix(terrain): terrain no longer draws a staircase of flat slabs underneath the ground
+
+## 2026-11-12 15:28
+- fix(terrain): a terrain on the blockout grid receives shadows and is lit correctly by point and spot lights
+
+## 2026-11-12 13:48
+- fix(terrain): a terrain on the blockout grid is no longer a mirror of the sky with Solari on
+
+## 2026-11-12 13:29
+- fix(editor): flying the viewport camera scales its speed with the orbit distance again, as it did before
+
+## 2026-11-08 21:02
+- fix(companion): store images, installs and uploads run in the companion download again instead of failing
+
+## 2026-11-04 18:00
+- perf(export): exports run in the companion, away from the editor
+- perf(marketplace): installs, plugin compiles and store images run in the companion, and store images are kept on disk between sessions
+- fix(marketplace): installing from the Library tab brings every file of the asset, and imports a model as the store does
+- perf(marketplace): an installed model is converted in the background instead of freezing the editor
+- perf(marketplace): a store audio preview is decoded in the background
+- feat(companion): texture thumbnails for SVG images
+- perf(editor): Convert Models to RVG and default terrain textures run in the companion
+- perf(animation): lip sync reads its recording in the background
+
+## 2026-11-04 17:00
+- perf(editor): the Shape Library's thumbnails are rendered by the companion and kept on disk, so the editor no longer renders them every time it starts
+- perf(editor): the Assets panel no longer loads a whole image to make its thumbnail when the companion is there to make it
+- feat(companion): texture thumbnails for HDR images
+- perf(editor): the material preview's backdrop is prepared in the background instead of holding up startup
+- perf(rendering): a panorama skybox or reflection probe image is converted in the background instead of stalling the frame it is set
+
+## 2026-11-04 16:23
+- perf(virtual-geometry): thumbnail and preview cameras no longer run the virtual geometry pass over the whole scene, so the editor stays at full speed while the Shape Library thumbnails render after a project loads
+
+## 2026-11-04 14:58
+- fix(viewport): a light with Shadows on gets its shadows back when the camera returns to it
+- fix(solari): lights get their shadows back when Solari is turned off
+
+## 2026-11-04 11:13
+- fix(viewport): a light's own Shadows setting is respected and no longer switched back by the shadow limit, so scenes full of shadowless lamps stay fast
+
+## 2026-11-04 10:51
+- fix(solari): the editor's preview lights no longer light the scene under Solari, so night scenes go dark
+
+## 2026-11-04 10:30
+- fix(solari): turning Solari off gives the camera its filtered sky lighting back, so walls no longer look wet
+- fix(clouds): without Solari the sky lighting follows the sun down instead of staying lit at the horizon
+- feat(solari): a new World Environment includes Solari, switched off
+- fix(solari): replacing the World Environment no longer logs a false "no sky light" warning
+
+## 2026-11-04 05:24
+- perf(solari): new scenes start on DLSS Balanced instead of Auto, which rendered close to native resolution
+- fix(solari): SSAO switches itself off on cameras Solari is lighting, and comes back when Solari stops
+
+## 2026-11-04 05:16
+- feat(rendering): a new World Environment starts at mid-morning with contact shadows and screen-space reflections on
+
+## 2026-11-04 04:46
+- feat(clouds): reflections and sky light include the clouds, with Solari or without
+
+## 2026-11-04 04:10
+- fix(clouds): clouds no longer show aliased patches or stacked copies of the same shape
+- fix(clouds): cloud bases are shaded by the cloud above them instead of one flat fill
+- fix(clouds): cloud undersides are frayed and uneven instead of flat, with no vertical streaks hanging from them
+- fix(clouds): clouds no longer appear as a floating half-sphere while the editor starts up
+- feat(clouds): new clouds default to white, well-defined shapes with light blue-grey bases, and the sun's glare defaults to 1.5
+
+## 2026-11-04 04:00
+- fix(rendering): bloom no longer flashes every few frames when the sun is in view
+
+## 2026-11-04 03:48
+- fix(rendering): HDR render passes run after DLSS, so DLSS no longer reprocesses them and makes them flicker
+
+## 2026-11-04 03:39
+- feat(rendering): the sun has a glare around it that fades when clouds or scenery cover it, set by the Sun's Glare and Glare Size
+- fix(clouds): clouds follow the camera's exposure like the sky, instead of turning white on a black sky at any EV but the default
+
+## 2026-11-03 20:19
+- feat(editor): docked panels keep their size when the window is resized, and the viewport takes up the difference
+
+## 2026-11-03 19:19
+- feat(settings): Renderer has its own page under Editor, and the Viewport page's Performance section is gone (Realtime stays in the viewport's Display menu)
+
+## 2026-11-03 19:04
+- fix(net): sign-in and other startup requests no longer fail with "no frame loop running" while the editor is still loading
+- fix(audio): sound comes back once an output device opens, instead of staying off all session when the device was missing at startup
+
+## 2026-11-03 18:52
+- feat(editor): the editor follows the game's VSync and Graphics Quality from Settings > Project, and its separate copies under Settings > Viewport are gone
+
+## 2026-11-03 16:32
+- fix(editor): an inspector field's reset button restores the component's default value instead of setting it to zero
+
+## 2026-11-03 15:06
+- fix(editor): an open dropdown is at least as wide as its box and has a border and shadow, so it no longer blends into the controls beneath it
+- feat(editor): an open dropdown highlights the option currently selected
+- feat(editor): Settings is a narrower window with labels on the left, fixed-width controls on the right and divider lines instead of striped rows
+
+## 2026-11-03 14:27
+- feat(editor): anti-aliasing (with an Off option) and tonemapping are set in the camera's Camera section instead of sections of their own
+- feat(editor): a plugin can add rows to another crate's inspector section with `extend_inspector`
+
+## 2026-11-03 13:47
+- fix(editor): a panel rebuilding its rows no longer logs an "Entity despawned" error from the hover cursor
+
+## 2026-11-03 13:32
+- feat(rendering): one Anti-Aliasing component on a camera picks MSAA, FXAA, SMAA, TAA or DLSS, and replaces the separate TAA, FXAA and SMAA components
+- feat(editor): the Anti-Aliasing method dropdown puts a warning icon on each method that cannot run on the camera, with the reason in its tooltip
+- feat(rendering): DLSS Super Resolution works as an anti-aliasing method without Solari
+- fix(rendering): turning TAA off, or the Low graphics tier doing it, no longer leaves the camera offset by a fraction of a pixel with over-sharp textures
+- fix(rendering): removing a camera's anti-aliasing takes it off the viewport cameras too
+
+## 2026-11-01 18:05
+- perf(atmosphere): turning the sky off removes the atmosphere completely, from the planet and every camera, so none of its passes, bindings or bakes run; turning it on restores what each camera had
+- fix(environment): sky lighting resyncs to the sun when the sky is turned back on
+
+## 2026-11-01 16:40
+- perf(terrain): chunk heights are saved as a compressed 16-bit heightmap instead of a list of floats, so a 2 km terrain loads in a fraction of the time and size
+- fix(terrain): a chunk loaded from a scene always gets a heightfield collider, never a 32 thousand triangle trimesh
+- fix(terrain): far chunks no longer get a collider built from their low detail stand-in
+
+## 2026-11-01 14:10
+- fix(export): the Files tab lists the project's files when its only scene is too large to scan
+
+## 2026-10-31 21:04
+- fix(editor): store thumbnails, avatars and images shown in markdown no longer keep a CPU copy beside their GPU texture
+
+## 2026-10-31 08:23
+- fix(editor): plugin and project thumbnails are kept at tile size on the GPU only, instead of full size in memory twice
+- feat(editor): the memory breakdown names the font atlases text has drawn into
+
+## 2026-10-31 08:11
+- feat(editor): each stage of a project load records what the GPU allocator holds beside the editor's memory
+- feat(editor): the memory breakdown groups engine-made images by label, size and format, and marks render targets
+- fix(editor): the material preview's sky no longer keeps a CPU copy beside its GPU texture
+
+## 2026-10-31 06:39
+- fix(rendering): render targets (viewports, previews, thumbnails) no longer hold a CPU buffer of zeros beside their GPU texture
+- fix(rendering): virtual geometry makes room for a newly arrived model in one step instead of growing its GPU buffers repeatedly
+- feat(editor): the memory breakdown includes what the GPU allocator holds, by label
+
+## 2026-10-31 06:10
+- fix(rendering): compressed textures no longer keep a second copy of their pixels in memory after reaching the GPU
+- fix(rendering): a panorama sky lets go of its source image once it has built the sky
+- fix(editor): the asset browser shows an image's small cached thumbnail instead of holding the whole image, and HDR images get thumbnails cached too
+- feat(editor): the memory breakdown names the largest images and says how much of their memory comes from files
+
+## 2026-10-30 21:53
+- feat(editor): a project load also logs the memory each stage allocated and what each kind of asset holds
+
+## 2026-10-30 21:05
+- fix(rendering): a project whose models share material layouts finishes drawing much sooner after it opens
+
+## 2026-10-30 20:33
+- feat(editor): every project load is timed stage by stage and logged to the terminal
+
+## 2026-10-30 19:41
+- fix(rendering): rough surfaces no longer show blue and beige blotches, and the import preview lights the shadow side of a model again
+- feat(editor): menus and dropdowns can be driven with the arrow keys, Enter and Escape
+- fix(editor): the arrow keys no longer scroll the page behind an open dropdown
+- fix(editor): the Settings window no longer lays out the whole UI every frame while it is open
+- fix(editor): a focused text field's blinking caret no longer makes the UI lay itself out again
+
+## 2026-10-30 18:22
+- fix(editor): scrolling the hierarchy and other long lists no longer drops the frame rate
+- fix(editor): status bar items no longer rebuild when their colour or icon changes
+
+## 2026-10-30 18:09
+- fix(editor): the editor no longer lays out its whole UI every frame while nothing moves, so it runs much faster with the Inspector open
+- fix(editor): the status bar's FPS and memory readouts update in place instead of rebuilding
+- fix(editor): switching workspace no longer builds every row of a long list before showing a screenful
+- fix(animation): the character picker no longer lists the terrain's generated chunks, and builds only the rows on screen
+- feat(editor): `RENZORA_UI_CHURN=1` reports, per panel, what makes the UI lay itself out again
+
+## 2026-10-30 16:57
+- fix(clouds): volumetric clouds render again, with their shaders ported to WESL
+- feat(export): a game export leaves clouds out when no scene uses them
+- refactor(physics): avian is the engine crate `renzora_avian_physics`, and the engine checkout no longer has a `plugins/` folder
+
+## 2026-10-30 16:15
+- fix(scene): scenes saved before the move to Bevy main load with their hierarchy intact instead of flattened
+
+## 2026-10-30 16:06
+- feat(clouds): volumetric clouds ship with the engine instead of as a marketplace install
+
+## 2026-10-30 16:03
+- docs(physics): the physics docs no longer point to the Rapier plugin, which has been retired; avian is the physics engine
+
+## 2026-10-30 15:09
+- build: the engine now builds against Bevy `main`, carried in-tree in `bevy/`, with every Bevy-based dependency vendored in `vendor/`
+
+## 2026-10-30 11:20
+- fix(rendering): the editor no longer crashes with "Compaction is already being prepared" when ray-traced meshes are rebuilt quickly, such as terrain streaming in
+
+## 2026-10-30 11:16
+- fix(terrain): fog now reaches terrain that wears the blockout grid
+- feat(editor): New Environment starts as a clear mid-morning with sky-lit shadows and distance haze, seen through a wider, filmic camera
+
+## 2026-10-30 10:47
+- feat(editor): New Environment's landscape is a broad flat floor in a basin of low hills, with the camera at eye height on the floor
+
+## 2026-10-30 08:25
+- fix(terrain): a large terrain fills in a few chunks a frame, nearest the camera first, instead of freezing the editor while every chunk builds
+- feat(editor): a progress card at the top of the viewport counts down a terrain being shaped and built
+- fix(editor): New Environment no longer freezes the editor for seconds, and starts the camera in the meadow
+- fix(terrain): New Environment's terrain no longer shows lines along its chunk borders
+
+## 2026-10-30 07:53
+- feat(editor): the New Environment starter builds a sculpted landscape of meadow and mountains instead of a flat tile
+
+## 2026-10-30 07:47
+- feat(editor): the camera's orbit pivot shows as a ring with its distance while you orbit, pan or zoom
+- fix(editor): Camera to Cursor (End) puts the pivot on the surface under the mouse instead of the ground plane below it
+
+## 2026-10-30 07:30
+- fix(editor): flying the viewport camera slows down near the ground and walls instead of keeping the speed of a distant orbit pivot
+
+## 2026-10-30 07:24
+- fix(editor): a selected terrain's outline follows the ground instead of lying flat at its lowest height
+- fix(editor): selecting a large terrain no longer costs several milliseconds a frame
+
+## 2026-10-29 17:07
+- fix(terrain): Alpine Landscape's textures are mipmapped and compressed, so distant ground no longer looks grainy
+- fix(terrain): generating noise over a large terrain runs on every core instead of freezing the editor
+- fix(terrain): large terrains no longer lose several milliseconds a frame to their distant stand-ins
+- feat(terrain): Alpine Landscape's graph is laid out in labelled bands, one per layer, with nothing overlapping
+
+## 2026-10-29 15:45
+- fix(terrain): growing a terrain to thousands of chunks no longer runs the GPU out of memory; only the chunks near the camera are built at full detail
+- fix(terrain): the chunk map draws crisp cells instead of a blur
+- fix(terrain): a terrain with no material no longer reads "Loading..." in its material slot
+
+## 2026-10-29 14:41
+- feat(terrain): the Terrain component is redesigned as a material slot over Manage, Sculpt, Paint and Foliage tabs, in real units throughout
+- feat(terrain): the Manage tab has a clickable chunk map with streaming state, size and streaming settings with Apply for rebuilds, and the generator graph card
+- feat(terrain): sculpt brushes are grouped, each shows only its own settings, and the falloff is a named curve with a drawn preview
+- feat(terrain): Set Height can pick its target height from the ground
+- feat(terrain): the Paint tab lists the material's layers with coverage, and exposes slope and height masks
+- feat(foliage): foliage types are tiles with blade counts, and the brush size is in metres
+- refactor(terrain): the Generate toolbar, the Resize tool and the Edit Terrain dialog are replaced by the Manage tab
+
+## 2026-10-29 14:02
+- feat(terrain): a terrain is textured by one node-graph landscape material, chosen in its new Landscape Material section
+- feat(materials): Landscape nodes (Layer Coords, Layer Blend, Layer Sample, Slope) for building terrain materials
+- feat(terrain): Alpine Landscape, the default landscape material, with grass, gravel, rock and snow placed by slope and height
+- feat(terrain): the Paint tab paints the material's layers as weights that always add up to the whole, sized in metres, with a target weight
+- feat(terrain): scenes with the old terrain Surface or painted overlay layers convert to a landscape material when opened in the editor
+- feat(materials): a material can sample up to 16 different textures, and nodes reading the same texture share one slot
+- feat(mcp): terrain tools to set a terrain's material, list its layers and paint them
+- refactor(terrain): the overlay paint meshes, the splatmap material and the Terrain Layer material domain are gone
+
+## 2026-10-29 13:44
+- feat(terrain): terrain graphs (`.tgraph`), a node graph that builds a terrain's heights and named masks from primitives, shaping, erosion and data nodes
+- feat(terrain): a Terrain workspace to edit terrain graphs, with a shaded preview on every node that updates in the background
+- feat(terrain): a Terrain Generator component builds a terrain from a graph in the background and keeps its hand sculpting on a layer above
+- feat(terrain): Highlands, Rolling Hills and Desert terrain graphs on the Assets panel's create menu
+- feat(mcp): a `build_graph` terrain tool builds a terrain graph into a terrain
+
+## 2026-10-29 13:12
+- perf(terrain): terrain chunks collide as heightfields instead of triangle meshes, so streaming chunks in no longer stalls the frame
+- feat(physics): a heightfield collider shape for the physics contract, with every backend building it
+- fix(terrain): a terrain no longer disappears after its chunks stream back in
+- fix(terrain): a streamed-out chunk no longer keeps or regrows a collider
+
+## 2026-10-29 12:00
+- feat(terrain): a new Eroded noise mode, now the Generate default, makes winding ridges, spurs and soft valleys
+- fix(terrain): Erode no longer combs slopes with parallel grooves; gullies come out metres wide with soft sediment floors
+- fix(terrain): Smooth and Relax work at a scale set by the brush size, so a big brush softens big features
+- fix(terrain): Flatten, Set Height and Ramp leave sloped banks at the brush edge instead of vertical walls
+- feat(terrain): Terrace cuts level treads with sloped risers and takes its step height in metres
+- feat(terrain): the Cliff brush builds layered rock strata instead of vertical stripes
+- fix(terrain): smoothing and levelling brushes work across chunk seams
+- fix(terrain): noise no longer jumps at lattice lines below zero coordinates
+
+## 2026-10-29 11:51
+- feat(terrain): the default Surface uses new 2k grass, gravel, rock and snow textures with height maps
+- feat(terrain): Surface textures are hex-tiled with random turns and shifts, so their repeat no longer shows
+- feat(terrain): Surface layers meet along their height maps, so grass settles into rock cracks instead of cross-fading
+- feat(terrain): the Surface adds dry and lush patches across the land and keeps distant ground from greying out
+- fix(terrain): default snow only covers ground above 190 metres instead of 60
+- fix(terrain): a Surface still on the first default textures moves to the new defaults when its scene loads
+
+## 2026-10-29 11:44
+- feat(terrain): terrain chunks stream in the editor around the viewport camera, and on by default for a new terrain
+- fix(terrain): the Erode button rains in proportion to the terrain's area, so large terrains weather as much as small ones
+- fix(terrain): a terrain Surface with anti-tiling on no longer draws black
+- feat(terrain): a streamed-out chunk is drawn by a coarse stand-in instead of disappearing, and can still be sculpted
+- fix(terrain): a new terrain wears the same blockout grid as a new shape
+- fix(terrain): changing a terrain's streaming or detail settings no longer rebuilds every chunk
+- fix(terrain): chunks streamed back in no longer show a seam line against their neighbours
+
+## 2026-10-29 11:07
+- fix(terrain): terrain drawn as virtual geometry no longer shows pinholes along chunk seams in the distance
+
+## 2026-10-29 10:41
+- feat(terrain): terrain is drawn as virtual geometry, with clusters the editor builds in the background as you sculpt and saves for exported games
+- feat(export): an exported game ships the virtual geometry of its terrains
+- fix(terrain): a new terrain shows the default checkerboard until a Surface is added
+- fix(terrain): terrain drawn as virtual geometry is shaded with its Surface instead of one flat dark colour
+
+## 2026-10-29 10:00
+- fix(terrain): steep eroded slopes no longer show black streaks under Solari
+- fix(solari): terrain is always part of the ray-traced scene, so a scene of only terrain no longer renders black
+- fix(terrain): distant terrain switches to coarser detail twice as far away, so the change is much harder to see
+- fix(terrain): chunk edges are lit the same on both sides, so seams no longer show as lines on hillsides
+- fix(terrain): a sun on the default shadow cascades casts shadows across the whole terrain when zoomed out
+- fix(terrain): the terrain inspector's action and tab buttons wrap instead of being cut off in a narrow panel
+
+## 2026-10-29 09:55
+- fix(materials): a `.glb` copied into a project without importing it keeps its own materials instead of filling the Console with missing `.material` errors
+- fix(scene): placing a model with no scene, such as the virtual geometry `.rvg` beside a `.glb`, no longer leaves the loading overlay stuck
+- fix(companion): the virtual geometry `.rvg` kept beside a `.glb` no longer gets a thumbnail of its own
+
+## 2026-10-29 09:36
+- fix(terrain): no gaps open between terrain chunks drawn at different detail, even on rough eroded ground
+- fix(terrain): smooth, flatten and the other blending brushes no longer bake height layers into the sculpted ground
+- fix(terrain): a scripted sculpt stroke moves the ground by the height asked for, and repeated passes add up
+- fix(terrain): a scripted Ramp stroke slopes from the ground at its first point to the ground at its last
+
+## 2026-10-29 03:39
+- feat(terrain): the Erosion and Hydro brushes really erode, with simulated rain carving gullies and slopes settling, across chunk seams
+- feat(terrain): an Erode button in the Generate panel weathers the whole terrain
+- feat(terrain): plugins can query ground height, sculpt, generate and erode terrain through `renzora::terrain_tools`
+- feat(engine): CC0 rocks and ground plants ship as model presets for dressing terrain
+- feat(terrain): brush size, strength and falloff show their values and can be typed
+- feat(terrain): a paint layer without a material paints dirt instead of placeholder green
+- fix(terrain): painting a layer stays interactive on large terrains
+- fix(terrain): foliage painting carries on across chunk seams
+- fix(terrain): distant terrain no longer shows dark lines between chunks of different detail
+- fix(terrain): terrain undo entries are named for the brush used
+- fix(terrain): the Generate panel's controls wrap instead of being cut off in a narrow inspector
+
+## 2026-10-29 02:51
+- feat(terrain): distant terrain chunks are drawn with fewer triangles, set by Detail Levels and Detail Distance in Edit Terrain
+- feat(terrain): the default Surface keeps grass on gentler slopes, with greener grass and greyer rock
+- fix(terrain): terrain is part of Solari's ray-traced scene, so it casts shadows and bounces light
+
+## 2026-10-29 02:32
+- feat(terrain): new terrains are textured by rule with grass, gravel, rock and snow by slope and height, editable in the Surface section
+- feat(terrain): the engine ships a default set of CC0 ground textures, copied into a project the first time a terrain uses them
+- fix(terrain): having a large terrain selected no longer drops the editor's frame rate
+- perf(editor): looking up a component by name for reflection no longer scans every registered type
+
+## 2026-10-29 01:59
+- fix(terrain): the Terrain inspector has Generate, Resize and Edit Terrain buttons again, so the terrain generator can be reached
+
+## 2026-10-29 01:42
+- feat(engine): the default shape grid is a glossier two-tone checker whose lines are fine grooves that glint in the sun
+- fix(engine): the default shape grid is sharper up close
+
+## 2026-10-29 01:07
+- feat(editor): projects open without waiting for material thumbnails, which the companion renders after loading
+- feat(companion): the companion renders material thumbnails and fills in every missing model and material thumbnail once a project opens
+
+## 2026-10-29 00:43
+- feat(engine): a project index lists every file in the open project, kept current by the file watcher, for panels to read instead of searching the disk
+- feat(companion): the companion watches the project, renders thumbnails for models as they are added or changed, and deletes them with their model
+- feat(companion): a Cache screen shows the thumbnail cache and can fill or clear it
+- feat(editor): the document switcher shows the document's name without the project's, and its headings stand out
+
+## 2026-10-29 00:23
+- fix(editor): a scene's own entity keeps its name when a model in the scene has a node with the same name, instead of becoming `_1` after switching scene tabs
+- fix(animation): the Animation workspace looks for model files on a background thread instead of stalling the editor every four seconds
+- fix(companion): the profiler's graphs no longer grow the companion's GPU memory while they draw
+- fix(companion): a profiled game that closes shows as closed rather than as a failed connection
+
+## 2026-10-28 23:58
+- fix(companion): the Debug and Jobs screens scroll with the mouse wheel when their content runs past the window
+
+## 2026-10-28 23:41
+- feat(companion): the debug panels are probes on the companion's Debug screen, and the editor's Debug workspace is gone
+- feat(engine): a plugin can offer a debug probe the companion shows, without writing any UI
+- feat(companion): model thumbnails render in the companion with the editor's own capture
+- feat(companion): every companion job waits while a profile records, with Run anyway on the Jobs screen
+- feat(companion): frames recorded while a companion job ran are greyed in the frame graph and counted in the profile summary
+
+## 2026-10-28 22:41
+- fix(companion): the Render screen's graph holds still while recording instead of rebuilding and flickering as passes swap places
+- feat(companion): the profiler's timeline scrolls up and down through its threads with the wheel over their names, Ctrl + wheel, or a drag
+
+## 2026-10-28 22:34
+- fix(companion): the Render screen's wires join the nodes they connect instead of piling up to one side
+- fix(companion): the profiler's thread lanes leave out the frame-wide wrapper bars, so more threads fit and the GPU lane stays on screen
+- fix(companion): the Jobs screen only says jobs are waiting for a recording when one is
+
+## 2026-10-28 22:04
+- fix(engine): the editor no longer crashes with a GPU validation error when a blockout shape's grid first draws
+
+## 2026-10-28 21:54
+- feat(companion): the Render screen reads top to bottom, one row per group of passes that ran together, and opens at the top at a readable zoom
+- fix(companion): the profiler's Slowest in view strip stays on screen, and overlapping span labels no longer print over each other
+- feat(editor): a node graph view can open fitted to its width at the top
+
+## 2026-10-28 21:35
+- feat(companion): model imports convert, bake their textures and build their `.rvg` in the companion when it is connected
+- feat(companion): the companion opens from a spanner beside the Settings gear instead of the status bar and the top-right chip
+- feat(editor): a plugin can add an icon-only tool button beside the Settings gear
+- fix(companion): the Render screen finds a camera's passes on every thread and lays them out by what ran at the same time
+- feat(companion): the Profiler and Render screens are a single column, with frame details in the header
+
+## 2026-10-28 21:14
+- fix(companion): the timeline lists the main thread first, then the render thread, then the pools in number order
+- fix(companion): the timeline's ruler counts from the start of the frame in view instead of repeating the same time
+- fix(companion): long names in Slowest in view are shortened instead of wrapping, and render-world wrappers are left out
+
+## 2026-10-28 21:02
+- perf(profiler): recording costs the recorded process about a third less, and frames are encoded off its main thread
+- fix(companion): a following timeline keeps its zoom and steps to the newest frame twice a second instead of jumping every redraw
+- feat(companion): the timeline has a Follow button, and zooming no longer stops following
+- feat(companion): the editor's MCP tools can start a recording and ask the companion for a summary and the causes of slow frames
+
+## 2026-10-28 20:19
+- feat(companion): the companion has a profiler with a zoomable per-thread timeline, a frame graph and GPU pass times
+- feat(companion): the companion shows the render schedule as a node graph in the order its systems ran
+- feat(companion): the companion finds games on the network, connects to them, and saves and opens captures
+- feat(companion): texture thumbnails, Rust script compiles, virtual geometry bakes and marketplace uploads run in the companion when it is connected
+- feat(export): an Allow profiling option lets the companion on this machine profile the exported game
+- fix(scripting): a script without a given hook no longer costs a context build every frame for it
+
+## 2026-10-28 19:16
+- feat(engine): the default shape grid is now light cells ruled in thin dark lines, with a heavier dark line around each 4x4 section
+- fix(engine): the default grid no longer smears into jagged lines on spheres and other curved shapes
+- fix(engine): the default grid stays sharp when the camera is close to it
+
+## 2026-10-28 19:10
+- feat(editor): a plugin's status bar text can be clickable, and clicking Companion opens the companion's window in front
+
+## 2026-10-28 18:47
+- feat(profiler): every build can record how long each system takes, ready for the companion's profiler; installed plugins rebuild once after updating
+
+## 2026-10-28 18:06
+- feat(editor): the editor starts a companion process beside itself for background work, shown in the status bar and opened from the top bar
+
+## r1-alpha8-nightly-29oct26
 
 ## 2026-10-28 17:12
 - fix(lighting): soft shadows render smooth under TAA instead of staying grainy

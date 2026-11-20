@@ -116,8 +116,8 @@ struct ModelPreview {
     is_model: bool,
     /// The asset id, used both for the cache filename and to dedup re-opens.
     asset_id: Option<String>,
-    /// In-flight byte download (native only).
-    rx: Option<Receiver<Result<Vec<u8>, String>>>,
+    /// In-flight download (native only), answering with the cached GLB's path.
+    rx: Option<Receiver<Result<std::path::PathBuf, String>>>,
     /// The GLB asset handle once bytes are cached and the load is kicked. Kept
     /// strong so the asset can't evict mid-preview.
     gltf: Option<Handle<Gltf>>,
@@ -240,7 +240,17 @@ pub(crate) fn open_model_preview(world: &mut World, asset: &AssetSummary) {
                     f.download_url
                         .ok_or_else(|| "no download URL (paid, not owned)".to_string())
                 })
-                .and_then(|url| crate::auth::marketplace::download_file(&url));
+                .and_then(|url| crate::auth::marketplace::download_file(&url))
+                // Written here, not by the system that picks the answer up: a
+                // model is megabytes, and the write was a frame's stall.
+                .and_then(|bytes| {
+                    let path = cache_glb_path(&id);
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    std::fs::write(&path, &bytes).map_err(|e| format!("couldn't cache preview GLB: {e}"))?;
+                    Ok(path)
+                });
             let _ = tx.send(result);
         });
     }
@@ -287,8 +297,10 @@ fn setup_model_viewer(mut commands: Commands, mut images: ResMut<Assets<Image>>)
         height: RTT_H,
         depth_or_array_layers: 1,
     };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -454,35 +466,23 @@ fn sync_model_camera_active(
     }
 }
 
-/// Drain the byte download: on success write the GLB to a temp cache file and
-/// kick the `Gltf` load from that absolute path (see module docs); on failure
-/// mark the preview failed so the overlay falls back to the gallery.
+/// Drain the download (the thread has already written the GLB to its temp
+/// cache file) and kick the `Gltf` load from that absolute path (see module
+/// docs); on failure mark the preview failed so the overlay falls back to the
+/// gallery.
 fn poll_model_download(mut preview: ResMut<ModelPreview>, asset_server: Res<AssetServer>) {
     let Some(rx) = preview.rx.take() else {
         return;
     };
     match rx.try_recv() {
-        Ok(Ok(bytes)) => {
-            let id = preview.asset_id.clone().unwrap_or_else(|| "preview".to_string());
-            let path = cache_glb_path(&id);
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            match std::fs::write(&path, &bytes) {
-                Ok(()) => {
-                    // Absolute path → the engine's asset reader serves it via a
-                    // direct filesystem read; `From<PathBuf>` keeps it on the
-                    // default source without drive-letter mis-parsing.
-                    let handle: Handle<Gltf> = asset_server.load(path);
-                    preview.gltf = Some(handle);
-                    preview.status = ModelStatus::Loading;
-                    preview.frames_waited = 0;
-                }
-                Err(e) => {
-                    warn!("[model_viewer] couldn't cache preview GLB: {e}");
-                    preview.status = ModelStatus::Failed;
-                }
-            }
+        Ok(Ok(path)) => {
+            // Absolute path → the engine's asset reader serves it via a direct
+            // filesystem read; `From<PathBuf>` keeps it on the default source
+            // without drive-letter mis-parsing.
+            let handle: Handle<Gltf> = asset_server.load(path);
+            preview.gltf = Some(handle);
+            preview.status = ModelStatus::Loading;
+            preview.frames_waited = 0;
         }
         Ok(Err(e)) => {
             // Paid-asset 401, a network error, etc. Fall back to the gallery.
@@ -771,7 +771,25 @@ impl Plugin for ModelViewerPlugin {
                     spin_turntable,
                 )
                     .chain()
-                    .run_if(in_state(SplashState::Editor)),
+                    .run_if(in_state(SplashState::Editor).and_then(model_preview_live)),
             );
     }
+}
+
+/// Run condition for the turntable chain.
+///
+/// While a model is on show (`active`) or its download is out, every step may
+/// have work. Otherwise the only thing left to do is turn the offscreen camera
+/// off after a close, so the chain also runs while the camera disagrees with
+/// the preview.
+///
+/// Not `is_changed()`: `poll_model_download` takes the receiver through
+/// `ResMut` on every run, which marks the resource changed, so a gate on change
+/// would keep the chain running forever once it had run once.
+fn model_preview_live(
+    preview: Option<Res<ModelPreview>>,
+    cameras: Query<&Camera, With<ModelPreviewCamera>>,
+) -> bool {
+    let Some(p) = preview else { return false };
+    p.active || p.rx.is_some() || cameras.iter().any(|c| c.is_active != p.active)
 }

@@ -32,7 +32,7 @@
 
 use bevy::prelude::*;
 
-use crate::overlay::{PackagingMode, PluginLinkMode};
+use crate::overlay::{ExportOverlayState, PackagingMode, PluginLinkMode};
 
 pub(crate) mod features;
 pub(crate) mod files;
@@ -65,8 +65,12 @@ pub(crate) fn register(app: &mut App) {
     app.add_systems(
         Update,
         (
-            lifecycle::manage_export_modal,
-            settings::rebuild_right_pane,
+            // Both are exclusive, so each is a sync point for the whole schedule
+            // even when it returns at once. The manager does nothing unless the
+            // dialog is wanted or still up to be torn down; the pane rebuild
+            // opens by returning when no dialog exists.
+            lifecycle::manage_export_modal.run_if(export_modal_live),
+            settings::rebuild_right_pane.run_if(any_with_component::<ExportRoot>),
             interaction::preset_click,
             interaction::preset_dup_click,
             interaction::preset_del_click,
@@ -94,6 +98,16 @@ pub(crate) fn register(app: &mut App) {
             interaction::features_reset_click,
         ),
     );
+}
+
+/// Run condition for [`lifecycle::manage_export_modal`]: the dialog is wanted
+/// open (every poll it drives runs only then), or its root is still on screen
+/// and needs the teardown pass.
+fn export_modal_live(
+    state: Option<Res<ExportOverlayState>>,
+    roots: Query<(), With<ExportRoot>>,
+) -> bool {
+    state.is_some_and(|s| s.visible) || !roots.is_empty()
 }
 
 // ── Dialog-only state ────────────────────────────────────────────────────────

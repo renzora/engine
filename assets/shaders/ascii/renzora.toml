@@ -1,0 +1,9 @@
+name = "ASCII"
+version = "2.0.0"
+description = "Renders the picture as ASCII characters. A post-process effect: drop ascii.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "ascii"
+tags = ["post-processing", "shader", "ascii", "retro", "stylised"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

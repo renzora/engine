@@ -316,6 +316,7 @@ pub(crate) fn open_action(path: &Path) -> Option<(&'static str, String)> {
     match renzora_editor_framework::doc_kind_for_path(path) {
         Some(DocTabKind::Material) => Some(("palette", renzora::lang::t("assets.open_in.material_editor"))),
         Some(DocTabKind::Particle) => Some(("sparkle", renzora::lang::t("assets.open_in.particle_editor"))),
+        Some(DocTabKind::TerrainGraph) => Some(("mountains", renzora::lang::t_or("assets.open_in.terrain_graph", "Open in Terrain Graph"))),
         Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
         Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
         // Without this arm a `.html` fell through to `None` and lost its
@@ -408,6 +409,7 @@ pub(crate) fn back_click(
 }
 
 /// Kick off thumbnail loads for visible tiles (each registry de-dupes).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn request_thumbnails(
     tiles: Query<&AssetTile>,
     mut cache: ResMut<ThumbnailCache>,
@@ -417,6 +419,7 @@ pub(crate) fn request_thumbnails(
     folders: Res<crate::thumbnails::FolderPreviews>,
     asset_server: Res<AssetServer>,
     project: Option<Res<renzora::core::CurrentProject>>,
+    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
 ) {
     let project = project.as_deref();
     for tile in &tiles {
@@ -425,7 +428,7 @@ pub(crate) fn request_thumbnails(
             // are ordinary image thumbnails and load through the same cache.
             if let Some(images) = folders.images(&tile.path) {
                 for image in images.iter() {
-                    cache.request(image.clone(), &asset_server, project);
+                    cache.request(image.clone(), &asset_server, project, jobs.as_deref_mut());
                 }
             }
             continue;
@@ -435,7 +438,7 @@ pub(crate) fn request_thumbnails(
         };
         match thumb_kind(name) {
             Some(ThumbKind::Image) => {
-                cache.request(tile.path.clone(), &asset_server, project);
+                cache.request(tile.path.clone(), &asset_server, project, jobs.as_deref_mut());
             }
             Some(ThumbKind::Model) => {
                 if let Some(model) = model.as_mut() {

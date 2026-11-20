@@ -253,8 +253,10 @@ fn setup_material_viewer(
         height: RTT_H,
         depth_or_array_layers: 1,
     };
+    // No CPU copy: only the GPU draws into or samples a render target, and
+    // wgpu zero-fills one created without data.
     let mut image = Image {
-        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        data: None,
         ..default()
     };
     image.texture_descriptor.size = size;
@@ -808,7 +810,27 @@ impl Plugin for MaterialViewerPlugin {
                 recompile_material,
                 spin_subject,
             )
-                .run_if(in_state(SplashState::Editor)),
+                .run_if(in_state(SplashState::Editor).and_then(material_preview_live)),
         );
     }
+}
+
+/// Run condition for the material preview's systems.
+///
+/// Every one of them acts on a material preview in progress: the source
+/// download, the compile, the shape and param controls (which only exist in an
+/// item overlay showing a material), the spin. Past that, the only work left is
+/// turning the offscreen camera off after a close, so the set also runs while
+/// the camera disagrees with what `sync_material_camera_active` would set.
+///
+/// Not `is_changed()`: `poll_material_download` takes the receiver through
+/// `ResMut` on every run, which marks the resource changed, so a gate on change
+/// would keep the set running forever once it had run once.
+fn material_preview_live(
+    preview: Option<Res<MaterialPreview>>,
+    cameras: Query<&Camera, With<MaterialPreviewCamera>>,
+) -> bool {
+    let Some(p) = preview else { return false };
+    let want = p.active && p.status != MatStatus::Failed;
+    p.active || p.rx.is_some() || cameras.iter().any(|c| c.is_active != want)
 }

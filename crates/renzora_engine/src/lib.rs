@@ -26,6 +26,7 @@ pub mod save_location;
 pub mod scene_io;
 pub mod scene_stream;
 mod shapes;
+pub use shapes::builtin_shapes;
 #[cfg(feature = "render_3d")]
 pub mod texture_stream;
 pub mod vfs;
@@ -80,6 +81,14 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
     }
 }
 
+/// The 3D cameras [`ensure_deferred_prepass_on_cameras`] still has to equip.
+#[cfg(feature = "render_3d")]
+type CamerasWithoutDeferred = (
+    With<Camera3d>,
+    Without<DeferredPrepass>,
+    Without<renzora::core::ViewportOverlayCamera>,
+);
+
 /// Safety net: when the project is in Deferred mode, every `Camera3d`
 /// in the scene needs `DeferredPrepass` so its prepass queue has the
 /// deferred opaque phase. The main editor camera attaches it explicitly
@@ -108,10 +117,14 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
 /// returned `false`, and would never be revisited. The `Without<DeferredPrepass>`
 /// filter is what makes scanning every frame cheap: as soon as the
 /// marker is on an entity, the query stops returning it.
+///
+/// The viewport overlay cameras are left out: they draw only gizmos, which
+/// are forward and on top, so a deferred prepass would only add a G-buffer and
+/// a full-screen lighting pass to every overlay redraw for nothing.
 #[cfg(feature = "render_3d")]
 fn ensure_deferred_prepass_on_cameras(
     rendering_mode: Res<ResolvedRenderingMode>,
-    cameras: Query<Entity, (With<Camera3d>, Without<DeferredPrepass>)>,
+    cameras: Query<Entity, CamerasWithoutDeferred>,
     mut commands: Commands,
 ) {
     if !rendering_mode.is_deferred() {
@@ -124,17 +137,19 @@ fn ensure_deferred_prepass_on_cameras(
     }
 }
 
-/// Attach the `ContactShadows` receiver to FORWARD cameras only.
-///
-/// Bevy 0.19's *deferred* lighting pipeline doesn't wire up contact shadows
-/// (`prepare_deferred_lighting_pipelines` never queries `Has<ContactShadows>`,
-/// so the deferred pipeline's mesh-view layout omits the contact-shadows binding
-/// and mismatches the camera's bind group — an upstream bug, see the bevy docs
-/// which claim deferred support). The *forward* mesh pipeline specializes it
-/// correctly, so we only attach the receiver when the resolved mode is forward.
-/// A light's `contact_shadows_enabled` (e.g. the Sun's toggle) then takes effect
-/// on these views. Same cheap `Without<>` scan + before-first-render timing as
+/// Attach the `ContactShadows` receiver to every main 3D camera, forward and
+/// deferred alike, so a light's `contact_shadows_enabled` (the Sun's switch)
+/// takes effect. Same cheap `Without<>` scan + before-first-render timing as
 /// [`ensure_deferred_prepass_on_cameras`].
+///
+/// Deferred cameras used to be left out. Bevy 0.19's deferred lighting
+/// pipeline built its own key and never checked `Has<ContactShadows>`, so its
+/// layout lacked binding 16 while the view's bind group carried it, and wgpu
+/// crashed; the receiver went on forward cameras only, which left the Sun's
+/// switch doing nothing in a deferred project. Bevy 0.20 specializes the
+/// deferred lighting pass with the forward pass's own view key
+/// (`ViewKeyCache`), which sets `CONTACT_SHADOWS` from `Has<ContactShadows>`,
+/// so the layout and the bind group now always agree.
 ///
 /// `Without<IsolatedCamera>` is load-bearing: contact shadows are a main-view
 /// feature, and the offscreen utility cameras (material/model thumbnails, studio
@@ -145,49 +160,46 @@ fn ensure_deferred_prepass_on_cameras(
 /// `CONTACT_SHADOWS` key (binding 16 absent), so wgpu hard-quits with a layout
 /// mismatch. `renzora_skybox`/`renzora_night_stars` exclude these same cameras.
 #[cfg(feature = "render_3d")]
-fn ensure_contact_shadows_on_forward_cameras(
-    rendering_mode: Res<ResolvedRenderingMode>,
+fn ensure_contact_shadows_on_cameras(
     add_cameras: Query<
-        Entity,
+        (Entity, Has<DeferredPrepass>),
         (
             With<Camera3d>,
             Without<bevy::pbr::ContactShadows>,
             Without<IsolatedCamera>,
-            Without<DeferredPrepass>,
         ),
     >,
-    // Cameras that must NOT keep `ContactShadows`: a deferred prepass (whose
-    // lighting pipeline omits binding 16) or an isolated utility view.
+    // A camera that must not keep `ContactShadows`, however it got there (a
+    // scene that saved the component, say): an isolated utility view, and on
+    // the web a deferred one.
     conflicting: Query<
-        Entity,
-        (
-            With<bevy::pbr::ContactShadows>,
-            Or<(With<DeferredPrepass>, With<IsolatedCamera>)>,
-        ),
+        (Entity, Has<IsolatedCamera>),
+        (With<bevy::pbr::ContactShadows>, Or<(With<IsolatedCamera>, With<DeferredPrepass>)>),
     >,
     mut commands: Commands,
 ) {
-    // Strip `ContactShadows` from any camera it conflicts with, no matter how it
-    // got there — a Forward→Deferred mode switch, a `DeferredPrepass` attached
-    // later (e.g. for SSR), or a scene that saved the component while forward.
-    // Without this, such a camera's mesh-view bind group exposes binding 16
-    // while the deferred lighting pipeline's layout omits it → wgpu hard-crash.
-    for entity in &conflicting {
-        commands
-            .entity(entity)
-            .remove::<bevy::pbr::ContactShadows>();
+    // On the web a deferred camera stays without them: WebGPU allows 12 uniform
+    // buffers per shader stage, and the deferred mesh view layout spends its
+    // last one elsewhere (see the distance-fog note in `camera.rs`).
+    let deferred_allowed = !cfg!(target_arch = "wasm32");
+    for (entity, isolated) in &conflicting {
+        if isolated || !deferred_allowed {
+            commands
+                .entity(entity)
+                .remove::<bevy::pbr::ContactShadows>();
+        }
     }
-    if rendering_mode.is_deferred() {
-        return;
-    }
-    for entity in &add_cameras {
+    for (entity, deferred) in &add_cameras {
+        if deferred && !deferred_allowed {
+            continue;
+        }
         commands
             .entity(entity)
             .try_insert(bevy::pbr::ContactShadows::default());
     }
 }
 
-/// Render-world companion to [`ensure_contact_shadows_on_forward_cameras`] that
+/// Render-world companion to [`ensure_contact_shadows_on_cameras`] that
 /// closes a one-frame wgpu crash window in Bevy 0.19's contact-shadows path.
 ///
 /// Bevy decides a mesh pipeline's `CONTACT_SHADOWS` key in
@@ -312,6 +324,12 @@ impl Plugin for RuntimePlugin {
             // editor, so a scene carrying them still loads in the shipped game.
             .register_type::<renzora::EntityIcon>()
             .register_type::<renzora::EntityLabelColor>()
+            // The hierarchy's root order, saved so a scene reopens in the
+            // order it was left in.
+            .register_type::<renzora::HierarchyOrder>()
+            // The editor's "select as one object" choice. Saved with the scene,
+            // so registered by the host for the same reason as the two above.
+            .register_type::<renzora::PickAsUnit>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::YSort>()
@@ -343,11 +361,12 @@ impl Plugin for RuntimePlugin {
         // the grid is correctly skipped).
         #[cfg(feature = "render_3d")]
         if app.world().contains_resource::<Assets<Image>>() {
-            let handle = app
-                .world_mut()
-                .resource_mut::<Assets<Image>>()
-                .add(renzora::core::build_grid_image());
-            app.insert_resource(renzora::core::GridTexture(handle));
+            let mut images = app.world_mut().resource_mut::<Assets<Image>>();
+            let grid = renzora::core::GridTexture {
+                color: images.add(renzora::core::build_grid_image()),
+                normal: images.add(renzora::core::build_grid_normal_image()),
+            };
+            app.insert_resource(grid);
         }
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -723,7 +742,7 @@ impl Plugin for RuntimePlugin {
                 PostUpdate,
                 (
                     ensure_deferred_prepass_on_cameras,
-                    ensure_contact_shadows_on_forward_cameras,
+                    ensure_contact_shadows_on_cameras,
                 ),
             );
 
@@ -747,6 +766,7 @@ impl Plugin for RuntimePlugin {
             .init_resource::<scene_io::SceneLoadState>()
             .init_resource::<scene_io::SceneReferenceCache>()
             .init_resource::<asset_progress::AssetLoadProgress>()
+            .init_resource::<renzora::core::SceneLoadWork>()
             .add_systems(
                 Update,
                 (
@@ -779,9 +799,15 @@ impl Plugin for RuntimePlugin {
         app.add_systems(
             Update,
             (
-                process_pending_scene_loads,
-                scene_stream::drive_streamed_scene_instances,
-                scene_stream::drive_scene_streams,
+                // All three are exclusive, so each is a sync point for the whole
+                // schedule even on a frame its own first check sends it home.
+                // Each condition is that first check.
+                process_pending_scene_loads
+                    .run_if(|p: Res<renzora::PendingSceneLoad>| !p.requests.is_empty()),
+                scene_stream::drive_streamed_scene_instances
+                    .run_if(scene_stream::instance_streaming_live),
+                scene_stream::drive_scene_streams
+                    .run_if(scene_stream::scene_streams_pending),
             )
                 .chain(),
         );
@@ -795,8 +821,17 @@ impl Plugin for RuntimePlugin {
             // enforce it on the play camera — the editor's tier enforcement is
             // Editor-scoped and never reaches a game, so without this the
             // exported build runs the full fullscreen-pass stack at every tier.
+            //
+            // Also in `Startup`, so the tier is the project's before the first
+            // `Update`: `rehydrate_cameras` sizes the game camera's sky probe
+            // from it in that frame, unordered against the `Update` copy. Built
+            // at the default tier and resized a frame later, the probe's
+            // filtered reflection map kept the old mip count while its sky
+            // cube took the new one, and the filter crashed the game asking
+            // for a mip the map did not have.
             #[cfg(feature = "render_3d")]
-            app.add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
+            app.add_systems(Startup, graphics_quality::sync_runtime_graphics_quality)
+                .add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
                 .add_systems(PostUpdate, graphics_quality::enforce_runtime_graphics_quality);
         }
 
@@ -1041,6 +1076,15 @@ fn sync_project_asset_path(
         return;
     };
     if !project.is_changed() {
+        return;
+    }
+    // `CurrentProject` also changes for edits to its config (a scene switch
+    // records the open scene there), which do not move the project.
+    let unchanged = asset_path
+        .0
+        .read()
+        .is_ok_and(|current| current.as_deref() == Some(project.path.as_path()));
+    if unchanged {
         return;
     }
     info!(

@@ -128,7 +128,7 @@ pub fn pin_editor(
                 ..default()
             },
             BackgroundColor(Color::NONE),
-            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::UiCursor::default(),
             marker,
         ))
         .id();

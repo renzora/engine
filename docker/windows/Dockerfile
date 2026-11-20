@@ -27,7 +27,11 @@ RUN rustup target add x86_64-pc-windows-msvc
 # image-build time. Microsoft permits this redistribution for development under
 # the VS Build Tools EULA. Combined with rustc's MSVC support, clang-cl, and
 # lld-link (from the base), this gives a fully open Linux→Windows-MSVC pipeline.
-ENV XWIN_VERSION=0.6.5
+#
+# 0.10.0 or later: Microsoft's v18 manifests renamed channels and fixed their
+# path separators, and older xwin then stops with "unable to find x86_64
+# headers for Win11SDK_10.0.26100".
+ENV XWIN_VERSION=0.10.0
 ENV XWIN_PREFIX=/xwin
 
 # xwin's release triple matches `uname -m` (x86_64 / aarch64). The splat

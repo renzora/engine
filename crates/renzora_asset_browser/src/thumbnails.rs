@@ -203,37 +203,50 @@ fn rgba8_bytes_for_encoding(image: &Image) -> Option<(u32, u32, Vec<u8>)> {
     ) {
         let data = image.data.as_ref()?;
         let mut rgba = data.clone();
-        for px in rgba.chunks_exact_mut(4) {
+        for px in rgba.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
         return Some((w, h, rgba));
     }
-    // Anything else: route through the existing converter so HDR/single
-    // channel sources get sensible greyscale thumbnails.
+    // A float image is an HDR panorama or a baked map, often 4K of 16-byte
+    // texels. Converting all of it to bytes only to shrink it to a thumbnail
+    // would be hundreds of megabytes of scratch, so the thumbnail's own pixels
+    // are sampled straight from it, tone-mapped so a bright sky does not clip
+    // to white. Without this an HDR had no cached thumbnail at all, and every
+    // session loaded the whole file again just to draw its tile.
+    if matches!(
+        format,
+        TextureFormat::Rgba32Float | TextureFormat::Rgba16Float
+    ) {
+        let (tw, th) = thumb_size(w, h);
+        let mut rgba = Vec::with_capacity((tw * th * 4) as usize);
+        for y in 0..th {
+            for x in 0..tw {
+                let sx = (u64::from(x) * u64::from(w) / u64::from(tw)) as u32;
+                let sy = (u64::from(y) * u64::from(h) / u64::from(th)) as u32;
+                let c = image.get_color_at(sx, sy).ok()?.to_linear();
+                let mapped = LinearRgba::new(
+                    c.red / (1.0 + c.red),
+                    c.green / (1.0 + c.green),
+                    c.blue / (1.0 + c.blue),
+                    1.0,
+                );
+                rgba.extend_from_slice(&Srgba::from(mapped).to_u8_array());
+            }
+        }
+        return Some((tw, th, rgba));
+    }
+    // Anything else: route through the existing converter so single channel
+    // sources get sensible greyscale thumbnails.
     let converted = convert_to_rgba8(image)?;
     let data = converted.data?;
     Some((w, h, data))
 }
 
-/// Save a downscaled 256×256 (max) PNG of `image` to `cache_path`.
-/// Best-effort — failures are logged at debug level and don't propagate;
-/// the in-memory thumbnail still works for this session and the next
-/// session will retry.
-fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) {
-    let Some((w, h, rgba)) = rgba8_bytes_for_encoding(image) else {
-        debug!(
-            "[thumbnails] format {:?} unsupported for caching {}",
-            image.texture_descriptor.format,
-            cache_path.display()
-        );
-        return;
-    };
-    let Some(buf) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(w, h, rgba) else {
-        return;
-    };
-    // Lanczos3 to match `renzora_rmip`'s mipmap baker — high-quality
-    // downscale is worth the extra ms when the result is cached forever.
-    let (target_w, target_h) = if w >= h {
+/// The cached thumbnail's size for a `w` by `h` source: at most
+/// [`CACHE_THUMB_SIZE`] on the long side, keeping the aspect ratio.
+fn thumb_size(w: u32, h: u32) -> (u32, u32) {
+    if w >= h {
         let aspect = h as f32 / w as f32;
         let tw = CACHE_THUMB_SIZE.min(w);
         (tw, ((tw as f32 * aspect).round() as u32).max(1))
@@ -241,7 +254,28 @@ fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) {
         let aspect = w as f32 / h as f32;
         let th = CACHE_THUMB_SIZE.min(h);
         (((th as f32 * aspect).round() as u32).max(1), th)
+    }
+}
+
+/// Save a downscaled 256×256 (max) PNG of `image` to `cache_path`, and say
+/// whether it was written. Best-effort: failures are logged at debug level,
+/// the in-memory thumbnail still works for this session and the next session
+/// will retry.
+fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) -> bool {
+    let Some((w, h, rgba)) = rgba8_bytes_for_encoding(image) else {
+        debug!(
+            "[thumbnails] format {:?} unsupported for caching {}",
+            image.texture_descriptor.format,
+            cache_path.display()
+        );
+        return false;
     };
+    let Some(buf) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(w, h, rgba) else {
+        return false;
+    };
+    // Lanczos3 to match `renzora_rmip`'s mipmap baker — high-quality
+    // downscale is worth the extra ms when the result is cached forever.
+    let (target_w, target_h) = thumb_size(w, h);
     let resized = image::imageops::resize(
         &buf,
         target_w,
@@ -252,7 +286,7 @@ fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) {
     if let Some(parent) = cache_path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             debug!("[thumbnails] couldn't create {}: {}", parent.display(), e);
-            return;
+            return false;
         }
     }
     if let Err(e) = resized.save(cache_path) {
@@ -261,8 +295,14 @@ fn save_thumbnail_to_disk(image: &Image, cache_path: &Path) {
             cache_path.display(),
             e
         );
+        return false;
     }
+    true
 }
+
+/// How many times, half a second apart, a thumbnail waits for its cached PNG
+/// before it gives up and keeps showing the source image.
+const SWAP_CHECKS: u32 = 40;
 
 /// Maximum number of thumbnails loaded at once (prevents loading entire projects).
 const MAX_LOADED: usize = 256;
@@ -283,6 +323,35 @@ pub struct ThumbnailCache {
     /// from the disk cache are absent here — there's nothing more to
     /// save.
     pending_disk_save: HashSet<PathBuf>,
+    /// Source paths whose tile is still drawn from the whole source image,
+    /// waiting for the small cached PNG to be written, with the checks left.
+    /// Once it is on disk the tile switches to it and the source is let go:
+    /// the source was loaded only to make the thumbnail, and a 4K HDR held
+    /// as a thumbnail was 128 MB in the editor and as much again on the GPU.
+    swap_to_cache: HashMap<PathBuf, u32>,
+    /// Sources the companion is making a thumbnail of, by job. The editor
+    /// loads nothing of these: the tile shows its icon until the small PNG is
+    /// written, and a source the companion could not read is loaded here
+    /// after all (see `update_thumbnail_cache`).
+    companion: HashMap<renzora::CompanionJobId, PathBuf>,
+    /// The same sources, for de-duplicating requests.
+    asked: HashSet<PathBuf>,
+    /// `.rmip` textures whose small mip levels are being read off the main
+    /// thread. See [`renzora_rmip::preview_image`] for why these skip the
+    /// decode-and-cache path every other image takes.
+    rmip: HashMap<PathBuf, bevy::tasks::Task<Option<Image>>>,
+}
+
+/// Whether `path` is a baked `.rmip` texture.
+fn is_rmip(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("rmip"))
+}
+
+/// Whether the companion's texture thumbnailer reads files with this
+/// extension (`renzora_companion::app::work::texture_thumbnail`).
+fn companion_decodes(path: &Path) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz")
 }
 
 impl ThumbnailCache {
@@ -302,20 +371,39 @@ impl ThumbnailCache {
     /// multi-megabyte) source. On a miss or stale cache, the source
     /// loads as before, and `update_thumbnail_cache` writes a fresh
     /// downscaled PNG so the next session can hit the cache.
+    ///
+    /// On a miss with a companion connected, a file it can read goes to it
+    /// instead, and the editor loads nothing: loading the source here only to
+    /// shrink it meant decoding the whole file and uploading it to the GPU,
+    /// 128 MB each way for a 4K HDR, for a 256 px tile.
     pub fn request(
         &mut self,
         path: PathBuf,
         asset_server: &AssetServer,
         project: Option<&CurrentProject>,
+        jobs: Option<&mut renzora::CompanionJobs>,
     ) -> bool {
         if self.handles.contains_key(&path)
             || self.loading.contains(&path)
             || self.failed.contains(&path)
+            || self.asked.contains(&path)
+            || self.rmip.contains_key(&path)
         {
             return false;
         }
-        if self.handles.len() + self.loading.len() >= MAX_LOADED {
+        if self.handles.len() + self.loading.len() + self.rmip.len() >= MAX_LOADED {
             return false;
+        }
+        // A baked texture shows its own small mip levels, read straight from
+        // the file; no decode, no cached PNG (reading them is no slower than
+        // reading a PNG would be).
+        if is_rmip(&path) {
+            let source = path.clone();
+            let task = bevy::tasks::IoTaskPool::get().spawn(async move {
+                renzora_rmip::preview_image(&source, CACHE_THUMB_SIZE).ok()
+            });
+            self.rmip.insert(path, task);
+            return true;
         }
         // Persistent cache hit: load the cached PNG instead of the
         // source. The handle this session ends up publishing points at
@@ -331,6 +419,19 @@ impl ThumbnailCache {
                         self.handles.insert(path, handle);
                         // No `pending_disk_save` insert — the cache is
                         // already on disk for this asset.
+                        return true;
+                    }
+                }
+                if companion_decodes(&path) {
+                    let args = renzora::job_args::TextureThumbnail {
+                        source: path.clone(),
+                        cache: cache_path,
+                        size: CACHE_THUMB_SIZE,
+                    };
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    if let Some(id) = jobs.and_then(|j| j.submit("texture_thumbnail", name, &args)) {
+                        self.companion.insert(id, path.clone());
+                        self.asked.insert(path);
                         return true;
                     }
                 }
@@ -614,14 +715,16 @@ fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
 /// or single-channel layouts, which causes errors on common PBR texture sets.
 ///
 /// SVG is included: it loads through the same `AssetServer` path as a PNG and
-/// lands as RGBA8, so the cache encodes it like any other source. Not the
+/// lands as RGBA8, so the cache encodes it like any other source. So is
+/// `.rmip`, which takes its own path: its small mip levels are read straight
+/// from the file and shown as they are (see `ThumbnailCache::request`). Not the
 /// shared `renzora::IMAGE_EXTENSIONS`, because this list is deliberately
-/// narrower (no EXR, KTX2, DDS or `.rmip`, for the reasons above).
+/// narrower (no EXR, KTX2 or DDS, for the reasons above).
 pub fn supports_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(
         ext.as_str(),
-        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz"
+        "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp" | "hdr" | "svg" | "svgz" | "rmip"
     )
 }
 
@@ -656,9 +759,85 @@ pub fn supports_model_thumbnail(filename: &str) -> bool {
 pub fn update_thumbnail_cache(
     asset_server: Res<AssetServer>,
     mut cache: ResMut<ThumbnailCache>,
-    images: Res<Assets<Image>>,
+    mut images: ResMut<Assets<Image>>,
     project: Option<Res<CurrentProject>>,
+    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut frames: Local<u32>,
 ) {
+    // `.rmip` previews read off the main thread: publish each as it lands. One
+    // that could not be read keeps its icon, like any other failed load.
+    if !cache.rmip.is_empty() {
+        let finished: Vec<(PathBuf, Option<Image>)> = cache
+            .rmip
+            .iter_mut()
+            .filter_map(|(path, task)| {
+                bevy::tasks::block_on(bevy::tasks::futures_lite::future::poll_once(task))
+                    .map(|image| (path.clone(), image))
+            })
+            .collect();
+        for (path, image) in finished {
+            cache.rmip.remove(&path);
+            match image {
+                Some(image) => {
+                    let handle = images.add(image);
+                    cache.handles.insert(path, handle);
+                }
+                None => {
+                    cache.failed.insert(path);
+                }
+            }
+        }
+    }
+
+    // Thumbnails the companion was asked for in `request`: show the written
+    // PNG, or load the source here when it could not make one.
+    for answer in done.read() {
+        let Some(path) = cache.companion.remove(&answer.id) else { continue };
+        cache.asked.remove(&path);
+        let written = answer.result.is_ok()
+            && project.as_deref().is_some_and(|p| {
+                let Some(cache_path) = texture_thumb_path(&path, p) else { return false };
+                let rel = p.make_asset_relative(&cache_path);
+                if Path::new(&rel).is_absolute() || !cache_path.is_file() {
+                    return false;
+                }
+                let handle: Handle<Image> = asset_server.load(rel);
+                cache.loading.insert(path.clone());
+                cache.handles.insert(path.clone(), handle);
+                true
+            });
+        if !written {
+            if let Err(why) = &answer.result {
+                debug!("[thumbnails] the companion could not make a thumbnail of {}: {why}", path.display());
+            }
+            cache.request(path, &asset_server, project.as_deref(), None);
+        }
+    }
+
+    // The resize and encode is the slow part, tens of ms for a big texture,
+    // and it ran on the main thread. A plain image file goes to the companion
+    // instead, which reads it from disk itself; anything it cannot decode
+    // (HDR, EXR, DDS, KTX2, `.rmip`) is still saved here from the loaded image.
+    // Says whether a cached PNG is written or on its way.
+    let mut save = |image: &Image, source: &Path, cache_path: &Path| -> bool {
+        let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        let plain = matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp");
+        if plain {
+            if let Some(jobs) = jobs.as_deref_mut() {
+                let args = renzora::job_args::TextureThumbnail {
+                    source: source.to_path_buf(),
+                    cache: cache_path.to_path_buf(),
+                    size: CACHE_THUMB_SIZE,
+                };
+                let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                if jobs.submit("texture_thumbnail", name, &args).is_some() {
+                    return true;
+                }
+            }
+        }
+        save_thumbnail_to_disk(image, cache_path)
+    };
     // Collect paths that are still in the loading set and check their state.
     let loading: Vec<PathBuf> = cache.loading.iter().cloned().collect();
 
@@ -677,7 +856,9 @@ pub fn update_thumbnail_cache(
                     if cache.pending_disk_save.remove(&path) {
                         if let Some(p) = project.as_deref() {
                             if let Some(cache_path) = texture_thumb_path(&path, p) {
-                                save_thumbnail_to_disk(image, &cache_path);
+                                if save(image, &path, &cache_path) {
+                                    cache.swap_to_cache.insert(path.clone(), SWAP_CHECKS);
+                                }
                             }
                         }
                     }
@@ -708,11 +889,70 @@ pub fn update_thumbnail_cache(
                 cache.pending_disk_save.remove(&path);
                 if let Some(p) = project.as_deref() {
                     if let Some(cache_path) = texture_thumb_path(&path, p) {
-                        save_thumbnail_to_disk(image, &cache_path);
+                        if save(image, &path, &cache_path) {
+                            cache.swap_to_cache.insert(path.clone(), SWAP_CHECKS);
+                        }
                     }
                 }
             }
         }
+    }
+
+    // Twice a second, move tiles whose cached PNG is now on disk over to it.
+    // The companion writes it a little later, so this checks rather than
+    // assuming; one that never appears keeps the source, as before.
+    *frames = frames.wrapping_add(1);
+    if !frames.is_multiple_of(30) || cache.swap_to_cache.is_empty() {
+        return;
+    }
+    let Some(project) = project.as_deref() else {
+        return;
+    };
+    let waiting: Vec<PathBuf> = cache.swap_to_cache.keys().cloned().collect();
+    for path in waiting {
+        let written = texture_thumb_path(&path, project).filter(|c| cached_thumb_is_fresh(c, &path));
+        let Some(cache_path) = written else {
+            if let Some(left) = cache.swap_to_cache.get_mut(&path) {
+                *left = left.saturating_sub(1);
+                if *left == 0 {
+                    cache.swap_to_cache.remove(&path);
+                }
+            }
+            continue;
+        };
+        cache.swap_to_cache.remove(&path);
+        let cache_rel = project.make_asset_relative(&cache_path);
+        if Path::new(&cache_rel).is_absolute() {
+            continue;
+        }
+        let handle: Handle<Image> = asset_server.load(cache_rel);
+        cache.loading.insert(path.clone());
+        cache.handles.insert(path, handle);
+    }
+}
+
+#[cfg(test)]
+mod hdr_thumbnail_tests {
+    use super::*;
+
+    /// An HDR image comes out at thumbnail size, not its own, and a texel far
+    /// brighter than white is tone-mapped below full scale instead of clipping.
+    #[test]
+    fn an_hdr_is_sampled_down_to_thumbnail_size() {
+        let (w, h) = (1024u32, 512u32);
+        let texel: Vec<u8> = [4.0f32, 0.0, 0.0, 1.0].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let image = Image::new_fill(
+            Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            TextureDimension::D2,
+            &texel,
+            TextureFormat::Rgba32Float,
+            default(),
+        );
+        let (tw, th, rgba) = rgba8_bytes_for_encoding(&image).expect("an HDR should encode");
+        assert_eq!((tw, th), (CACHE_THUMB_SIZE, CACHE_THUMB_SIZE / 2));
+        assert_eq!(rgba.len(), (tw * th * 4) as usize);
+        assert!(rgba[0] > 200 && rgba[0] < 255, "red was {}", rgba[0]);
+        assert_eq!(rgba[1], 0);
     }
 }
 

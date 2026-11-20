@@ -25,7 +25,7 @@
 //! The same pass fires every playing clip's markers, from the same playback
 //! steps (see [`crate::markers`]).
 
-use bevy::animation::animation_curves::AnimatableProperty;
+use bevy::animation::animation_curves::BlendableProperty;
 use bevy::animation::{animated_field, AnimationTargetId};
 use bevy::math::Affine3A;
 use bevy::prelude::*;
@@ -177,7 +177,7 @@ pub fn sample_target(clip: &AnimationClip, target: AnimationTargetId, t: f32) ->
 /// animation pass and before transforms propagate.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn post_animation(
-    graphs: Res<Assets<AnimationGraph>>,
+    graphs: Res<Assets<BlendGraph>>,
     clips: Res<Assets<AnimationClip>>,
     prop_clips: Res<Assets<PropertyClip>>,
     mut inbox: ResMut<renzora::ScriptAnimEventInbox>,
@@ -201,7 +201,7 @@ pub fn post_animation(
         let state = &mut *state;
 
         // One step per playing clip node.
-        let mut steps: Vec<(AnimationNodeIndex, PlaybackStep, f32)> = Vec::new();
+        let mut steps: Vec<(BlendNodeIndex, PlaybackStep, f32)> = Vec::new();
         let mut seen = Vec::new();
         for (&node, anim) in player.playing_animations() {
             seen.push(node);
@@ -296,9 +296,9 @@ pub fn post_animation(
     }
 }
 
-fn clip_of<'a>(graph: &AnimationGraph, clips: &'a Assets<AnimationClip>, node: AnimationNodeIndex) -> Option<&'a AnimationClip> {
+fn clip_of<'a>(graph: &BlendGraph, clips: &'a Assets<AnimationClip>, node: BlendNodeIndex) -> Option<&'a AnimationClip> {
     match &graph.get(node)?.node_type {
-        AnimationNodeType::Clip(handle) => clips.get(handle),
+        BlendNodeType::Clip(handle) => clips.get(handle),
         _ => None,
     }
 }

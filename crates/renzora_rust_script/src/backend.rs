@@ -48,6 +48,14 @@ impl ScriptBackend for RustScriptBackend {
         self.scripts_folder = path;
     }
 
+    /// None of them, from the executor's side: `crate::dispatch` and its hook
+    /// dispatch run a Rust script with the real world. Saying so keeps the
+    /// executor from building a full script context for it every frame and
+    /// every fixed tick only to call a hook that does nothing.
+    fn defines_hook(&self, _path: &Path, _hook: &str) -> Option<bool> {
+        Some(false)
+    }
+
     fn set_file_reader(&mut self, _reader: FileReader) {
         // Nothing to read: a Rust script is compiled to a library before it runs,
         // so its source is never loaded at execution time.

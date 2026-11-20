@@ -1,86 +1,73 @@
-//! The foliage tools: three collapsible sections — Foliage Types (a selectable
-//! list + Add/Remove), Brush (Paint/Erase toggle + Size/Strength/Falloff scrub
-//! fields) and Properties (the selected type's Name, Density, Height Range, Wind
-//! Strength and Enabled).
+//! The Terrain component's **Foliage** tab: the foliage types as tiles, the
+//! chosen type's properties, and the brush.
 //!
-//! **Mounted as the Terrain component's Foliage tab**, by
-//! `renzora_terrain_editor`. It was a dock panel of its own with a palette on
-//! the viewport shelf beside it, then briefly its own inspector section; both
-//! read as a separate feature when it is a third way of painting one terrain,
-//! next to Sculpt and Paint. The dependency runs terrain-editor → here only.
+//! Mounted by `renzora_terrain_editor` beside Sculpt and Paint, because it is a
+//! third way of painting one terrain, not a feature of its own. The dependency
+//! runs terrain-editor to here only.
 //!
-//! Every control writes into the resources the foliage systems read:
-//! [`FoliagePaintSettings`] and [`FoliageConfig`].
+//! Everything is in real units: brush size in metres (the brush stores a
+//! fraction of a chunk side, converted here against the terrain's chunk size),
+//! density per square metre, blade heights in metres and widths in
+//! centimetres. A type's tile shows how many blades it has on the terrain, an
+//! estimate from the painted density ([`FoliageCounts`]).
+//!
+//! Every control writes [`FoliagePaintSettings`] or [`FoliageConfig`], the
+//! resources the foliage systems read.
 
 use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
 use renzora_editor_framework::{ActiveTool, SplashState};
+use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, keyed_list};
-use renzora_ember::reactive::KeyedSnapshot;
-use renzora_ember::reactive::Rx;
+use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_with, keyed_list};
+use renzora_ember::reactive::{KeyedSnapshot, Rx};
 use renzora_ember::theme::*;
+use renzora_ember::widgets::{bind_text_input, drag_value, segmented, text_input, toggle_switch, DragRange, DragSnap};
 use renzora_ember::UiInteraction;
-use renzora_ember::widgets::{
-    bind_text_input, checkbox, collapsible, drag_value, text_input, DragRange,
-};
 
-use renzora_terrain::data::{TerrainChunkData, TerrainData};
+use renzora_terrain::data::{TerrainChunkOf, TerrainData};
 use renzora_terrain::foliage::{
-    FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType,
-    MAX_FOLIAGE_TYPES, MAX_HEIGHT_SCALE, MIN_HEIGHT_SCALE,
+    FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType, MAX_FOLIAGE_TYPES,
+    MAX_HEIGHT_SCALE, MIN_HEIGHT_SCALE,
 };
 
-use crate::systems::FoliageToolState;
-
-const LABEL_W: f32 = 96.0;
+const LABEL_W: f32 = 92.0;
+/// The brush radius limits, as the fraction of a chunk side it is stored as.
+const RADIUS_FRACTION: (f32, f32) = (0.01, 0.5);
+const MODES: [FoliageBrushType; 4] = [FoliageBrushType::Paint, FoliageBrushType::Erase, FoliageBrushType::Grow, FoliageBrushType::Trim];
 
 pub struct FoliagePanel;
 
 impl Plugin for FoliagePanel {
     fn build(&self, app: &mut App) {
-        // No panel and no inspector section of its own: `build` is mounted by
-        // `renzora_terrain_editor` as the Terrain component's **Foliage** tab.
-        // This plugin is only the systems behind those controls.
-        app.add_systems(
-                Update,
-                (
-                    foliage_type_select,
-                    foliage_add_type,
-                    foliage_remove_type,
-                    foliage_brush_select,
-                    foliage_ensure_density_maps,
-                )
-                    .run_if(in_state(SplashState::Editor)),
-            );
+        app.init_resource::<FoliageCounts>().add_systems(
+            Update,
+            (foliage_tile_click, foliage_add_type, foliage_remove_type, count_foliage).run_if(in_state(SplashState::Editor)),
+        );
     }
 }
 
-// ── State accessors (mirror the egui panel's `get_resource` reads) ───────────
-
+// ── State ────────────────────────────────────────────────────────────────────
 
 fn settings(w: &Rx) -> FoliagePaintSettings {
-    w.get_resource::<FoliagePaintSettings>()
-        .cloned()
-        .unwrap_or_default()
+    w.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default()
 }
 
 fn set_settings(w: &mut World, f: impl FnOnce(&mut FoliagePaintSettings)) {
-    let mut s = settings(&Rx::new(&*w));
+    let mut s = w.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default();
     f(&mut s);
     w.insert_resource(s);
 }
 
 fn config(w: &Rx) -> FoliageConfig {
-    w.get_resource::<FoliageConfig>()
-        .cloned()
-        .unwrap_or_default()
+    w.get_resource::<FoliageConfig>().cloned().unwrap_or_default()
 }
 
 fn set_config(w: &mut World, f: impl FnOnce(&mut FoliageConfig)) {
-    let mut c = config(&Rx::new(&*w));
+    let mut c = w.get_resource::<FoliageConfig>().cloned().unwrap_or_default();
     f(&mut c);
     w.insert_resource(c);
 }
@@ -93,55 +80,116 @@ fn hasher() -> std::collections::hash_map::DefaultHasher {
     std::collections::hash_map::DefaultHasher::new()
 }
 
-// ── Panel ────────────────────────────────────────────────────────────────────
+/// Metres per unit of brush radius: the terrain's chunk side.
+fn chunk_size(w: &Rx, terrain: Entity) -> f32 {
+    w.get::<TerrainData>(terrain).map_or(64.0, |t| t.chunk_size)
+}
 
-/// The foliage tools, built into whatever wants them. Public because the
-/// **Terrain** component mounts this as its Foliage tab — foliage is a third way
-/// of painting a terrain, not a component of its own.
-pub fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let root = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
-                padding: UiRect::all(Val::Px(6.0)),
-                ..default()
-            },
-            Name::new("native-foliage"),
-        ))
-        .id();
+/// Brush radius in metres from the stored fraction, and back.
+pub fn radius_metres(fraction: f32, chunk_size: f32) -> f32 {
+    fraction * chunk_size
+}
 
-    // No enable checkbox and no "enable to paint foliage" hint. This body only
-    // exists because the terrain it paints onto is selected, so the gate asked a
-    // question the inspector had already answered -- and answering it wrong left
-    // a section of greyed-out controls with a checkbox you had to find first.
-    // Picking a brush is the enable.
+pub fn radius_fraction(metres: f32, chunk_size: f32) -> f32 {
+    (metres / chunk_size.max(1e-3)).clamp(RADIUS_FRACTION.0, RADIUS_FRACTION.1)
+}
 
-    // ── Sections ────────────────────────────────────────────────────────────
-    let sections = commands
+/// Estimated blades on the terrain per foliage type, from the painted
+/// density. Recounted only when a density map changed.
+#[derive(Resource, Default, PartialEq)]
+pub struct FoliageCounts {
+    pub blades: [u64; MAX_FOLIAGE_TYPES],
+}
+
+/// The blades a type's painted weight stands for: mean weight over the chunk
+/// times its area times the type's density and blades per clump.
+pub fn estimate_blades(weight_sum: f32, texels: usize, chunk_area: f32, ty: &FoliageType) -> u64 {
+    if texels == 0 {
+        return 0;
+    }
+    let mean = weight_sum / texels as f32;
+    (mean * chunk_area * ty.density * ty.blades_per_clump as f32).round().max(0.0) as u64
+}
+
+fn count_foliage(
+    changed: Query<(), Changed<FoliageDensityMap>>,
+    maps: Query<(&FoliageDensityMap, &TerrainChunkOf)>,
+    terrains: Query<&TerrainData>,
+    config: Option<Res<FoliageConfig>>,
+    mut counts: ResMut<FoliageCounts>,
+) {
+    let config_changed = config.as_ref().is_some_and(|c| c.is_changed());
+    if changed.is_empty() && !config_changed {
+        return;
+    }
+    let Some(config) = config else { return };
+    let mut next = FoliageCounts::default();
+    for (map, of) in &maps {
+        let area = terrains.get(of.0).map_or(0.0, |t| t.chunk_size * t.chunk_size);
+        let mut sums = [0.0f32; MAX_FOLIAGE_TYPES];
+        for w in &map.density_weights {
+            for (s, v) in sums.iter_mut().zip(w) {
+                *s += v;
+            }
+        }
+        for (i, ty) in config.types.iter().enumerate().take(MAX_FOLIAGE_TYPES) {
+            if ty.enabled {
+                next.blades[i] += estimate_blades(sums[i], map.density_weights.len(), area, ty);
+            }
+        }
+    }
+    if *counts != next {
+        *counts = next;
+    }
+}
+
+pub fn fmt_blades(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1} M blades", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.0} k blades", n as f64 / 1_000.0)
+    } else if n == 0 {
+        "not painted".into()
+    } else {
+        format!("{n} blades")
+    }
+}
+
+// ── Layout ───────────────────────────────────────────────────────────────────
+
+/// The Foliage tab for `terrain`. Public because the Terrain component
+/// mounts it.
+pub fn build(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity) -> Entity {
+    let root = column(commands, 10.0);
+
+    let types = column(commands, 6.0);
+    let label = group_label(commands, fonts, "Types", "grass painted onto the terrain");
+    let tiles = commands
         .spawn(Node {
             width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(5.0),
+            row_gap: Val::Px(5.0),
             ..default()
         })
         .id();
+    keyed_list(commands, tiles, types_snapshot);
+    commands.entity(types).add_children(&[label, tiles]);
 
-    let types_sec = types_section(commands, fonts);
-    let brush_sec = brush_section(commands, fonts);
-    let props_sec = properties_section(commands, fonts);
-    commands
-        .entity(sections)
-        .add_children(&[types_sec, brush_sec, props_sec]);
+    let props = properties_card(commands, fonts);
 
-    commands.entity(root).add_child(sections);
+    let brush = column(commands, 6.0);
+    let blabel = group_label(commands, fonts, "Brush", "scroll wheel resizes");
+    let bcard = brush_card(commands, fonts, terrain);
+    commands.entity(brush).add_children(&[blabel, bcard]);
+
+    commands.entity(root).add_children(&[types, props, brush]);
     root
 }
 
-// ── Foliage Types section ────────────────────────────────────────────────────
-
 #[derive(Component)]
-struct TypeRow {
+struct TypeTile {
     index: usize,
 }
 #[derive(Component)]
@@ -149,242 +197,135 @@ struct AddTypeBtn;
 #[derive(Component)]
 struct RemoveTypeBtn;
 
-fn types_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, None, "Foliage Types", true);
-
-    // The reactive list of types.
-    let list = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            ..default()
-        })
-        .id();
-    keyed_list(commands, list, types_snapshot);
-
-    // Add / Remove buttons.
-    let btns = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::top(Val::Px(4.0)),
-            ..default()
-        })
-        .id();
-    let add = action_button(commands, fonts, "plus", "Add");
-    commands.entity(add).insert(AddTypeBtn);
-    // A density map carries `MAX_FOLIAGE_TYPES` weights per texel, so a ninth
-    // type could be created and named but never painted — the paint system drops
-    // any index past the end. Hide the button rather than offer a dead slot.
-    bind_display(commands, add, |w| config(w).types.len() < MAX_FOLIAGE_TYPES);
-    let remove = action_button(commands, fonts, "trash", "Remove");
-    commands.entity(remove).insert(RemoveTypeBtn);
-    // Hide Remove when only one type remains (matches egui's `len() > 1` guard).
-    bind_display(commands, remove, |w| config(w).types.len() > 1);
-    commands.entity(btns).add_children(&[add, remove]);
-
-    commands.entity(body).add_children(&[list, btns]);
-    root
-}
-
-fn types_snapshot(world: &Rx) -> KeyedSnapshot {
-    let cfg = config(world);
-    // Key + hash on STRUCTURE (index + name) — not on the live selection — so
-    // selecting a row (a bg change driven reactively) never rebuilds the list.
-    let items: Vec<(u64, u64)> = cfg
+fn types_snapshot(w: &Rx) -> KeyedSnapshot {
+    let cfg = config(w);
+    let mut items: Vec<(u64, u64)> = cfg
         .types
         .iter()
         .enumerate()
-        .map(|(i, ft)| {
+        .map(|(i, t)| {
             let mut k = hasher();
             i.hash(&mut k);
             let mut h = hasher();
-            (i, &ft.name).hash(&mut h);
+            (i, &t.name, format!("{:?}{:?}", t.color_tip, t.color_base)).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
-    let names: Vec<String> = cfg.types.iter().map(|t| t.name.clone()).collect();
+    let can_add = cfg.types.len() < MAX_FOLIAGE_TYPES;
+    if can_add {
+        items.push((u64::MAX, u64::MAX));
+    }
+    let types = cfg.types.clone();
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| type_row(c, f, i, &names[i])),
+        build: Box::new(move |c, f, i| match types.get(i) {
+            Some(t) => type_tile(c, f, i, t),
+            None => add_tile(c, f),
+        }),
     }
 }
 
-fn type_row(commands: &mut Commands, fonts: &EmberFonts, index: usize, name: &str) -> Entity {
-    let row = commands
+fn tile_node() -> Node {
+    Node {
+        // Three to a row: 3 x 31.8% plus two 5 px gaps.
+        width: Val::Percent(31.8),
+        flex_direction: FlexDirection::Column,
+        row_gap: Val::Px(4.0),
+        padding: UiRect::all(Val::Px(5.0)),
+        border: UiRect::all(Val::Px(1.0)),
+        border_radius: BorderRadius::all(Val::Px(5.0)),
+        overflow: Overflow::clip(),
+        ..default()
+    }
+}
+
+fn type_tile(commands: &mut Commands, fonts: &EmberFonts, index: usize, ty: &FoliageType) -> Entity {
+    let tile = commands
         .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(22.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: UiRect::horizontal(Val::Px(6.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
+            tile_node(),
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            TypeRow { index },
-            Name::new(format!("foliage-type:{index}")),
+            HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            TypeTile { index },
+            Name::new(format!("foliage-type:{}", ty.name)),
         ))
         .id();
-    // Selected → accent tint, hover → hover surface, else transparent.
-    bind_bg(commands, row, move |w| {
-        if active_type(w) == index {
-            rgb(accent()).with_alpha(0.25)
-        } else if matches!(
-            w.get::<UiInteraction>(row),
-            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
-        ) {
+    let chosen = move |w: &Rx| active_type(w) == index;
+    bind_bg(commands, tile, move |w| {
+        if chosen(w) {
+            rgb(accent()).with_alpha(0.22)
+        } else if matches!(w.get::<UiInteraction>(tile), Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)) {
             rgb(hover_bg())
         } else {
-            Color::NONE
+            rgb(popup_bg())
         }
     });
-    let label = commands
+    bind_with(commands, tile, move |w| if chosen(w) { rgb(accent()) } else { rgb(border()) }, |world, e, c: &Color| {
+        if let Some(mut b) = world.get_mut::<BorderColor>(e) {
+            let want = BorderColor::all(*c);
+            if *b != want {
+                *b = want;
+            }
+        }
+    });
+    // The blade colours, tip over root: what the grass looks like, which is
+    // what tells two tiles apart at a glance.
+    let swatch = commands
         .spawn((
-            Text::new(format!("{}. {}", index + 1, name)),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_primary())),
+            Node { width: Val::Percent(100.0), height: Val::Px(40.0), flex_direction: FlexDirection::Column, border_radius: BorderRadius::all(Val::Px(3.0)), overflow: Overflow::clip(), ..default() },
+            PASS_THROUGH,
         ))
         .id();
-    commands.entity(row).add_child(label);
-    row
-}
-
-// ── Brush section ────────────────────────────────────────────────────────────
-
-#[derive(Component)]
-struct BrushModeBtn {
-    mode: FoliageBrushType,
-}
-
-fn brush_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, None, "Brush", true);
-
-    // Paint / Erase toggle buttons.
-    let modes = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::bottom(Val::Px(4.0)),
-            ..default()
-        })
+    let tip = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, ..default() }, BackgroundColor(Color::from(ty.color_tip)), PASS_THROUGH)).id();
+    let base = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, ..default() }, BackgroundColor(Color::from(ty.color_base)), PASS_THROUGH)).id();
+    commands.entity(swatch).add_children(&[tip, base]);
+    let name = commands
+        .spawn((Text::new(ty.name.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), PASS_THROUGH))
         .id();
-    let paint = brush_mode_button(commands, fonts, "paint-brush", FoliageBrushType::Paint);
-    let erase = brush_mode_button(commands, fonts, "eraser", FoliageBrushType::Erase);
-    // Grow / Trim write the chunk's blade-height channel rather than the active
-    // type's density, so they sit in the same row but read as a second pair.
-    let grow = brush_mode_button(commands, fonts, "arrow-fat-line-up", FoliageBrushType::Grow);
-    let trim = brush_mode_button(commands, fonts, "scissors", FoliageBrushType::Trim);
-    commands
-        .entity(modes)
-        .add_children(&[paint, erase, grow, trim]);
-
-    let size = labelled_drag(
-        commands,
-        fonts,
-        "Size",
-        0.01,
-        0.5,
-        0.005,
-        |w| settings(w).brush_radius,
-        |w, v| set_settings(w, |s| s.brush_radius = *v),
-    );
-    let strength = labelled_drag(
-        commands,
-        fonts,
-        "Strength",
-        0.01,
-        1.0,
-        0.01,
-        |w| settings(w).brush_strength,
-        |w, v| set_settings(w, |s| s.brush_strength = *v),
-    );
-    let falloff = labelled_drag(
-        commands,
-        fonts,
-        "Falloff",
-        0.0,
-        1.0,
-        0.01,
-        |w| settings(w).brush_falloff,
-        |w, v| set_settings(w, |s| s.brush_falloff = *v),
-    );
-    // Grow and Trim both aim at this, one from below and one from above, so it
-    // is the only control either of them needs. Left visible in every mode
-    // rather than swapped in with the brush: the section is four short rows, and
-    // a row that appears and disappears under the cursor is worse than one that
-    // is simply inert for two of the four modes.
-    let height = labelled_drag(
-        commands,
-        fonts,
-        "Height",
-        MIN_HEIGHT_SCALE,
-        MAX_HEIGHT_SCALE,
-        0.05,
-        |w| settings(w).brush_height,
-        |w, v| set_settings(w, |s| s.brush_height = *v),
-    );
-
-    commands
-        .entity(body)
-        .add_children(&[modes, size, strength, falloff, height]);
-    root
+    let count = commands.spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(placeholder())), PASS_THROUGH)).id();
+    bind_text(commands, count, move |w| fmt_blades(w.get_resource::<FoliageCounts>().map_or(0, |c| c.blades[index.min(MAX_FOLIAGE_TYPES - 1)])));
+    commands.entity(tile).add_children(&[swatch, name, count]);
+    tile
 }
 
-fn brush_mode_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    icon: &str,
-    mode: FoliageBrushType,
-) -> Entity {
-    let btn = commands
+/// The last tile: add a type. Hidden at [`MAX_FOLIAGE_TYPES`], because a
+/// density map has that many weights per texel and a ninth type could be named
+/// but never painted.
+fn add_tile(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let tile = commands
         .spawn((
-            Node {
-                width: Val::Px(32.0),
-                height: Val::Px(28.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
+            Node { min_height: Val::Px(74.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..tile_node() },
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            BrushModeBtn { mode },
-            Name::new("foliage-brush-mode"),
+            HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            AddTypeBtn,
+            Name::new("foliage-add-type"),
         ))
         .id();
-    // Selected → accent tint, hover → hover surface, else transparent.
-    bind_bg(commands, btn, move |w| {
-        if settings(w).brush_type == mode {
-            rgb(accent()).with_alpha(0.30)
-        } else if matches!(
-            w.get::<UiInteraction>(btn),
-            Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed)
-        ) {
-            rgb(hover_bg())
-        } else {
-            Color::NONE
-        }
+    bind_bg(commands, tile, move |w| match w.get::<UiInteraction>(tile) {
+        Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
+        _ => Color::NONE,
     });
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 16.0);
-    commands.entity(btn).add_child(ic);
-    btn
+    let ic = icon_text(commands, &fonts.phosphor, "plus", text_muted(), 16.0);
+    commands.entity(ic).insert(PASS_THROUGH);
+    let t = commands.spawn((Text::new("Add type"), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())), PASS_THROUGH)).id();
+    commands.entity(tile).add_children(&[ic, t]);
+    tile
 }
 
-// ── Properties section ───────────────────────────────────────────────────────
+fn properties_card(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let c = card(commands);
+    let heading = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..default() })
+        .id();
+    let title = commands.spawn((Text::new(""), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())))).id();
+    bind_text(commands, title, |w| config(w).types.get(active_type(w)).map(|t| t.name.clone()).unwrap_or_default());
+    let kind = commands.spawn((Text::new("grass"), ui_font(&fonts.ui, 10.5), TextColor(rgb(placeholder())))).id();
+    commands.entity(heading).add_children(&[title, kind]);
 
-fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, None, "Properties", true);
-
-    // Name (text input bound to the active type's name).
-    let name_row = field_row(commands, fonts, "Name");
+    let (name_row, name_c) = row(commands, fonts, "Name");
     let name_in = text_input(commands, &fonts.ui, "Name", "");
     commands.entity(name_in).insert(Node {
         flex_grow: 1.0,
@@ -398,14 +339,7 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text_input(
         commands,
         name_in,
-        |w| {
-            let i = active_type(w);
-            config(w)
-                .types
-                .get(i)
-                .map(|t| t.name.clone())
-                .unwrap_or_default()
-        },
+        |w| config(w).types.get(active_type(w)).map(|t| t.name.clone()).unwrap_or_default(),
         |w, v| {
             let i = active_type(&Rx::new(&*w));
             set_config(w, |c| {
@@ -415,126 +349,26 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             });
         },
     );
-    commands.entity(name_row).add_child(name_in);
+    commands.entity(name_c).add_child(name_in);
 
-    // Density is clumps per square unit, not blades — the two multiply, so the
-    // pair sits together above the size fields they scale.
-    let density = labelled_drag(
-        commands,
-        fonts,
-        "Density",
-        1.0,
-        128.0,
-        0.5,
-        type_get(|t| t.density),
-        type_set(|t, v| t.density = v),
+    let density = num_row(commands, fonts, "Density", "/ m²", 1.0, 128.0, 0.5, None, type_get(|t| t.density), type_set(|t, v| t.density = v));
+    let clump = num_row(commands, fonts, "Blades / clump", "", 1.0, 16.0, 0.05, Some(1.0), type_get(|t| t.blades_per_clump as f32), type_set(|t, v| t.blades_per_clump = v.round().clamp(1.0, 16.0) as u32));
+    let height = pair_row(commands, fonts, "Height", "m", (0.01, 2.0, 0.01),
+        (type_get(|t| t.height_range.x), type_set(|t, v| t.height_range.x = v.min(t.height_range.y))),
+        (type_get(|t| t.height_range.y), type_set(|t, v| t.height_range.y = v.max(t.height_range.x))),
     );
-    let clump = labelled_drag(
-        commands,
-        fonts,
-        "Blades / Clump",
-        1.0,
-        16.0,
-        1.0,
-        type_get(|t| t.blades_per_clump as f32),
-        type_set(|t, v| t.blades_per_clump = v.round().clamp(1.0, 16.0) as u32),
+    let width = pair_row(commands, fonts, "Width", "cm", (0.2, 50.0, 0.1),
+        (type_get(|t| t.width_range.x * 100.0), type_set(|t, v| t.width_range.x = (v / 100.0).min(t.width_range.y))),
+        (type_get(|t| t.width_range.y * 100.0), type_set(|t, v| t.width_range.y = (v / 100.0).max(t.width_range.x))),
     );
+    let wind = num_row(commands, fonts, "Wind", "%", 0.0, 200.0, 1.0, None, type_get(|t| t.wind_strength * 100.0), type_set(|t, v| t.wind_strength = v / 100.0));
 
-    // Height Range (min / max on one row).
-    let hr_label = field_label(commands, fonts, "Height Range");
-    let hr_row = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::bottom(Val::Px(3.0)),
-            ..default()
-        })
-        .id();
-    let hr_min = num_field(
-        commands,
-        fonts,
-        "min",
-        0.01,
-        2.0,
-        0.01,
-        type_get(|t| t.height_range.x),
-        type_set(|t, v| t.height_range.x = v),
-    );
-    let hr_max = num_field(
-        commands,
-        fonts,
-        "max",
-        0.01,
-        2.0,
-        0.01,
-        type_get(|t| t.height_range.y),
-        type_set(|t, v| t.height_range.y = v),
-    );
-    commands.entity(hr_row).add_children(&[hr_min, hr_max]);
-
-    // Width Range (min / max on one row). World units — a blade this wide is a
-    // blade this wide, so it is the most direct control over how much ground the
-    // grass actually covers.
-    let wr_label = field_label(commands, fonts, "Width Range");
-    let wr_row = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::bottom(Val::Px(3.0)),
-            ..default()
-        })
-        .id();
-    let wr_min = num_field(
-        commands,
-        fonts,
-        "min",
-        0.002,
-        0.5,
-        0.002,
-        type_get(|t| t.width_range.x),
-        type_set(|t, v| t.width_range.x = v),
-    );
-    let wr_max = num_field(
-        commands,
-        fonts,
-        "max",
-        0.002,
-        0.5,
-        0.002,
-        type_get(|t| t.width_range.y),
-        type_set(|t, v| t.width_range.y = v),
-    );
-    commands.entity(wr_row).add_children(&[wr_min, wr_max]);
-
-    let wind = labelled_drag(
-        commands,
-        fonts,
-        "Wind Strength",
-        0.0,
-        2.0,
-        0.01,
-        type_get(|t| t.wind_strength),
-        type_set(|t, v| t.wind_strength = v),
-    );
-
-    // Enabled checkbox.
-    let en_row = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::top(Val::Px(2.0)),
-            ..default()
-        })
-        .id();
-    let en_box = checkbox(commands, false);
+    let (en_row, en_c) = row(commands, fonts, "Enabled");
+    let sw = toggle_switch(commands, true);
     bind_2way(
         commands,
-        en_box,
-        |w| {
-            let i = active_type(w);
-            config(w).types.get(i).map(|t| t.enabled).unwrap_or(true)
-        },
+        sw,
+        |w| config(w).types.get(active_type(w)).is_none_or(|t| t.enabled),
         |w, v: &bool| {
             let i = active_type(&Rx::new(&*w));
             set_config(w, |c| {
@@ -544,194 +378,236 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             });
         },
     );
-    let en_lbl = commands
-        .spawn((
-            Text::new("Enabled"),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-        ))
-        .id();
-    commands.entity(en_row).add_children(&[en_box, en_lbl]);
+    let sp = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
+    let remove = small_button(commands, fonts, "trash", "Remove type");
+    commands.entity(remove).insert(RemoveTypeBtn);
+    // The last type stays: the brush always has something to paint.
+    bind_display(commands, remove, |w| config(w).types.len() > 1);
+    commands.entity(en_c).add_children(&[sw, sp, remove]);
 
-    commands.entity(body).add_children(&[
-        name_row, density, clump, hr_label, hr_row, wr_label, wr_row, wind, en_row,
-    ]);
-    root
+    commands.entity(c).add_children(&[heading, name_row, density, clump, height, width, wind, en_row]);
+    c
 }
 
-// ── Shared row/field builders ────────────────────────────────────────────────
+fn brush_card(commands: &mut Commands, fonts: &EmberFonts, terrain: Entity) -> Entity {
+    let c = card(commands);
+    let (mode, mode_c) = row(commands, fonts, "Mode");
+    let seg = segmented(commands, &fonts.ui, &["Paint", "Erase", "Grow", "Trim"], 0);
+    bind_2way(
+        commands,
+        seg,
+        |w| MODES.iter().position(|m| *m == settings(w).brush_type).unwrap_or(0),
+        |w, i: &usize| {
+            set_settings(w, |s| s.brush_type = MODES[(*i).min(3)]);
+            // Picking a mode is picking up the brush: arm foliage painting.
+            if let Some(mut tool) = w.get_resource_mut::<ActiveTool>() {
+                if *tool != ActiveTool::FoliagePaint {
+                    *tool = ActiveTool::FoliagePaint;
+                }
+            }
+        },
+    );
+    commands.entity(mode_c).add_child(seg);
 
-fn field_row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
-    let row = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
-            margin: UiRect::bottom(Val::Px(3.0)),
-            ..default()
-        })
+    let size = num_row(commands, fonts, "Size", "m", 0.25, 256.0, 0.1, None,
+        move |w| radius_metres(settings(w).brush_radius, chunk_size(w, terrain)),
+        move |w, v| {
+            let cs = w.get::<TerrainData>(terrain).map_or(64.0, |t| t.chunk_size);
+            set_settings(w, |s| s.brush_radius = radius_fraction(*v, cs));
+        },
+    );
+    let strength = num_row(commands, fonts, "Strength", "%", 1.0, 100.0, 0.5, None,
+        |w| settings(w).brush_strength * 100.0, |w, v| set_settings(w, |s| s.brush_strength = (*v / 100.0).clamp(0.01, 1.0)));
+    let soft = num_row(commands, fonts, "Soft edge", "%", 0.0, 100.0, 0.5, None,
+        |w| settings(w).brush_falloff * 100.0, |w, v| set_settings(w, |s| s.brush_falloff = (*v / 100.0).clamp(0.0, 1.0)));
+    // Grow and Trim aim at this blade-height multiplier; Paint and Erase work
+    // the density and ignore it, so it only shows for those two.
+    let target = num_row(commands, fonts, "Grow to", "%", MIN_HEIGHT_SCALE * 100.0, MAX_HEIGHT_SCALE * 100.0, 1.0, None,
+        |w| settings(w).brush_height * 100.0, |w, v| set_settings(w, |s| s.brush_height = *v / 100.0));
+    bind_display(commands, target, |w| settings(w).brush_type.paints_height());
+    let note = commands
+        .spawn((Text::new("Size is the brush radius. Grow and Trim change blade height where you paint; 100% is the type's own height."), ui_font(&fonts.ui, 10.5), TextColor(rgb(placeholder()))))
         .id();
-    let lbl = commands
-        .spawn((
-            Text::new(label.to_string()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                width: Val::Px(LABEL_W),
-                flex_shrink: 0.0,
-                ..default()
-            },
-        ))
-        .id();
-    commands.entity(row).add_child(lbl);
-    row
+    commands.entity(c).add_children(&[mode, size, strength, soft, target, note]);
+    c
 }
 
-fn field_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+// ── Small builders ───────────────────────────────────────────────────────────
+//
+// The terrain editor's own builders cannot be used here (the dependency runs
+// the other way), so these match their look: same card, row, label width and
+// field.
+
+fn column(commands: &mut Commands, gap: f32) -> Entity {
+    commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(gap), ..default() }).id()
+}
+
+fn card(commands: &mut Commands) -> Entity {
     commands
         .spawn((
-            Text::new(label.to_string()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
             Node {
-                margin: UiRect::bottom(Val::Px(2.0)),
-                ..default()
-            },
-        ))
-        .id()
-}
-
-/// A labelled row: a muted caption above a single scrub field bound to state.
-fn labelled_drag<G, S>(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    label: &str,
-    min: f32,
-    max: f32,
-    step: f32,
-    get: G,
-    set: S,
-) -> Entity
-where
-    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
-    S: Fn(&mut World, &f32) + Send + Sync + 'static,
-{
-    let col = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            margin: UiRect::bottom(Val::Px(3.0)),
-            ..default()
-        })
-        .id();
-    let lbl = field_label(commands, fonts, label);
-    let field = num_field(commands, fonts, "", min, max, step, get, set);
-    commands.entity(col).add_children(&[lbl, field]);
-    col
-}
-
-/// A scrubbable numeric field bound two-way to state, clamped to `min..=max`.
-fn num_field<G, S>(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    axis: &str,
-    min: f32,
-    max: f32,
-    step: f32,
-    get: G,
-    set: S,
-) -> Entity
-where
-    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
-    S: Fn(&mut World, &f32) + Send + Sync + 'static,
-{
-    // `min` is a transient seed — `bind_2way` corrects it from the live world on
-    // its first run; the `get` closure is consumed by the binding below.
-    let dv = drag_value(commands, &fonts.ui, axis, value_text(), min, step);
-    if max > min {
-        commands.entity(dv).insert(DragRange { min, max });
-    }
-    bind_2way(commands, dv, get, set);
-    dv
-}
-
-fn action_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let b = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(4.0)),
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(6.0),
+                padding: UiRect::all(Val::Px(8.0)),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
             BackgroundColor(rgb(card_bg())),
             BorderColor::all(rgb(border())),
+        ))
+        .id()
+}
+
+fn group_label(commands: &mut Commands, fonts: &EmberFonts, title: &str, note: &str) -> Entity {
+    let r = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Baseline, ..default() })
+        .id();
+    let t = commands.spawn((Text::new(title.to_uppercase()), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())))).id();
+    let n = commands.spawn((Text::new(note.to_string()), ui_font(&fonts.ui, 10.5), TextColor(rgb(placeholder())))).id();
+    commands.entity(r).add_children(&[t, n]);
+    r
+}
+
+fn row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> (Entity, Entity) {
+    let r = commands
+        .spawn(Node { width: Val::Percent(100.0), min_height: Val::Px(24.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() })
+        .id();
+    let l = commands
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_muted())), Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, ..default() }))
+        .id();
+    let c = commands
+        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() })
+        .id();
+    commands.entity(r).add_children(&[l, c]);
+    (r, c)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn field<G, S>(commands: &mut Commands, fonts: &EmberFonts, axis: &str, min: f32, max: f32, step: f32, snap: Option<f32>, get: G, set: S) -> Entity
+where
+    G: for<'w> Fn(&Rx<'w>) -> f32 + Send + Sync + 'static,
+    S: Fn(&mut World, &f32) + Send + Sync + 'static,
+{
+    let dv = drag_value(commands, &fonts.ui, axis, value_text(), min, step);
+    commands.entity(dv).insert(DragRange { min, max });
+    if let Some(s) = snap {
+        commands.entity(dv).insert(DragSnap(s));
+    }
+    renzora_ember::inspector::fill_control(commands, dv);
+    bind_2way(commands, dv, get, move |w: &mut World, v: &f32| set(w, &v.clamp(min, max)));
+    dv
+}
+
+fn unit(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
+    commands
+        .spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_shrink: 0.0, min_width: Val::Px(14.0), ..default() }))
+        .id()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn num_row<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, unit_text: &str, min: f32, max: f32, step: f32, snap: Option<f32>, get: G, set: S) -> Entity
+where
+    G: for<'w> Fn(&Rx<'w>) -> f32 + Send + Sync + 'static,
+    S: Fn(&mut World, &f32) + Send + Sync + 'static,
+{
+    let (r, c) = row(commands, fonts, label);
+    let f = field(commands, fonts, "", min, max, step, snap, get, set);
+    commands.entity(c).add_child(f);
+    if !unit_text.is_empty() {
+        let u = unit(commands, fonts, unit_text);
+        commands.entity(c).add_child(u);
+    }
+    r
+}
+
+type Getter = Box<dyn for<'w> Fn(&Rx<'w>) -> f32 + Send + Sync>;
+type Setter = Box<dyn Fn(&mut World, &f32) + Send + Sync>;
+
+/// `[label] [min] [max] [unit]`.
+fn pair_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, unit_text: &str, (min, max, step): (f32, f32, f32), lo: (Getter, Setter), hi: (Getter, Setter)) -> Entity {
+    let (r, c) = row(commands, fonts, label);
+    let (lg, ls) = lo;
+    let (hg, hs) = hi;
+    let a = field(commands, fonts, "min", min, max, step, None, move |w| lg(w), move |w, v| ls(w, v));
+    let b = field(commands, fonts, "max", min, max, step, None, move |w| hg(w), move |w, v| hs(w, v));
+    let u = unit(commands, fonts, unit_text);
+    commands.entity(c).add_children(&[a, b, u]);
+    r
+}
+
+fn small_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
+    let b = commands
+        .spawn((
+            Node {
+                height: Val::Px(24.0),
+                padding: UiRect::horizontal(Val::Px(9.0)),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
             UiInteraction::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new(format!("foliage-action:{label}")),
+            HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new(format!("foliage-btn:{label}")),
         ))
         .id();
-    let b_for_bg = b;
-    bind_bg(commands, b, move |w| match w.get::<UiInteraction>(b_for_bg) {
+    bind_bg(commands, b, move |w| match w.get::<UiInteraction>(b) {
         Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
-        _ => rgb(card_bg()),
+        _ => rgb(popup_bg()),
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
-    let t = commands
-        .spawn((
-            Text::new(label.to_string()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
+    commands.entity(ic).insert(PASS_THROUGH);
+    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
     commands.entity(b).add_children(&[ic, t]);
     b
 }
 
-// ── Active-type get/set helpers (the egui panel's `types.get_mut(active_type)`)
-
-/// Build a getter that reads field `f` off the active foliage type.
-fn type_get<F>(f: F) -> impl Fn(&Rx) -> f32 + Send + Sync + 'static
+/// A getter for a field of the chosen type.
+fn type_get<F>(f: F) -> Getter
 where
     F: Fn(&FoliageType) -> f32 + Send + Sync + 'static,
 {
-    move |w| {
-        let i = active_type(w);
-        config(w).types.get(i).map(&f).unwrap_or(0.0)
-    }
+    Box::new(move |w| config(w).types.get(active_type(w)).map(&f).unwrap_or(0.0))
 }
 
-/// Build a setter that writes field `f` on the active foliage type. The value is
-/// passed as `f32` (booleans encoded as 0.0/1.0) so one helper serves every field.
-fn type_set<F>(f: F) -> impl Fn(&mut World, &f32) + Send + Sync + 'static
+/// A setter for a field of the chosen type.
+fn type_set<F>(f: F) -> Setter
 where
     F: Fn(&mut FoliageType, f32) + Send + Sync + 'static,
 {
-    move |w, v| {
+    Box::new(move |w, v| {
         let i = active_type(&Rx::new(&*w));
         set_config(w, |c| {
             if let Some(t) = c.types.get_mut(i) {
                 f(t, *v);
             }
         });
-    }
+    })
 }
 
-// ── Systems: selection + add/remove + density-map seeding ────────────────────
+// ── Systems ──────────────────────────────────────────────────────────────────
 
-fn foliage_type_select(
-    q: Query<(&UiInteraction, &TypeRow), Changed<UiInteraction>>,
+/// Picking a type also picks up the foliage brush.
+fn foliage_tile_click(
+    q: Query<(&UiInteraction, &TypeTile), Changed<UiInteraction>>,
     mut settings: Option<ResMut<FoliagePaintSettings>>,
+    mut active: Option<ResMut<ActiveTool>>,
 ) {
-    let Some(settings) = settings.as_mut() else {
-        return;
-    };
-    for (interaction, row) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.active_type = row.index;
+    let Some(settings) = settings.as_mut() else { return };
+    for (i, tile) in &q {
+        if *i == UiInteraction::Pressed {
+            settings.active_type = tile.index;
+            if let Some(active) = active.as_mut() {
+                if **active != ActiveTool::FoliagePaint {
+                    **active = ActiveTool::FoliagePaint;
+                }
+            }
         }
     }
 }
@@ -749,7 +625,9 @@ fn foliage_add_type(
         return;
     }
     cfg.types.push(FoliageType::default());
+    let new = cfg.types.len() - 1;
     commands.insert_resource(cfg);
+    commands.queue(move |w: &mut World| set_settings(w, |s| s.active_type = new));
 }
 
 fn foliage_remove_type(
@@ -765,65 +643,42 @@ fn foliage_remove_type(
     if cfg.types.len() <= 1 {
         return;
     }
-    let mut active = settings.map(|s| s.active_type).unwrap_or(0);
-    let idx = active.min(cfg.types.len().saturating_sub(1));
+    let idx = settings.map(|s| s.active_type).unwrap_or(0).min(cfg.types.len() - 1);
     cfg.types.remove(idx);
-    if active >= cfg.types.len() {
-        active = cfg.types.len().saturating_sub(1);
-    }
+    let active = idx.min(cfg.types.len() - 1);
     commands.insert_resource(cfg);
-    commands.queue(move |w: &mut World| {
-        set_settings(w, |s| s.active_type = active);
-    });
+    commands.queue(move |w: &mut World| set_settings(w, |s| s.active_type = active));
 }
 
-/// Picking a foliage brush also **arms foliage painting**.
-///
-/// It used to only set `brush_type`: the mode came from a separate button on the
-/// viewport shelf, which is gone now that the tools are in the terrain's
-/// inspector. Without this a brush click set what *would* be painted and left
-/// the viewport unable to paint it, which is a click that does nothing.
-///
-/// `ActiveTool` directly rather than through a tab, because foliage has no tab
-/// of its own — it is a section beside the Sculpt/Paint tabs, not one of them.
-fn foliage_brush_select(
-    q: Query<(&UiInteraction, &BrushModeBtn), Changed<UiInteraction>>,
-    mut settings: Option<ResMut<FoliagePaintSettings>>,
-    mut active: Option<ResMut<ActiveTool>>,
-) {
-    let Some(settings) = settings.as_mut() else {
-        return;
-    };
-    for (interaction, btn) in &q {
-        if *interaction == UiInteraction::Pressed {
-            settings.brush_type = btn.mode;
-            if let Some(active) = active.as_mut() {
-                if **active != ActiveTool::FoliagePaint {
-                    **active = ActiveTool::FoliagePaint;
-                }
-            }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The brush stores a fraction of a chunk side; the panel speaks metres.
+    #[test]
+    fn brush_size_round_trips_through_metres() {
+        for (f, cs) in [(0.1, 64.0), (0.25, 128.0), (0.01, 32.0)] {
+            let m = radius_metres(f, cs);
+            assert!((radius_fraction(m, cs) - f).abs() < 1e-6);
         }
+        assert_eq!(radius_fraction(1e6, 64.0), RADIUS_FRACTION.1);
+        assert_eq!(radius_fraction(0.0, 64.0), RADIUS_FRACTION.0);
     }
-}
 
-/// Mirror the egui panel: while the tool is active, seed every terrain chunk that
-/// lacks a [`FoliageDensityMap`] with one.
-fn foliage_ensure_density_maps(
-    tool: Option<Res<FoliageToolState>>,
-    mut commands: Commands,
-    chunks: Query<Entity, (With<TerrainChunkData>, Without<FoliageDensityMap>)>,
-    terrain: Query<&TerrainData>,
-) {
-    if !tool.is_some_and(|t| t.active) {
-        return;
+    #[test]
+    fn a_fully_painted_chunk_counts_density_times_area() {
+        let ty = FoliageType { density: 10.0, blades_per_clump: 2, ..default() };
+        assert_eq!(estimate_blades(4.0, 4, 100.0, &ty), 2_000);
+        assert_eq!(estimate_blades(0.0, 4, 100.0, &ty), 0);
+        assert_eq!(estimate_blades(1.0, 0, 100.0, &ty), 0);
+        assert_eq!(fmt_blades(1_200_000), "1.2 M blades");
+        assert_eq!(fmt_blades(0), "not painted");
     }
-    // Sized per metre of chunk, not a constant — see `ensure_density_maps`.
-    let Some(chunk_size) = terrain.iter().next().map(|t| t.chunk_size) else {
-        return;
-    };
-    for entity in &chunks {
-        commands
-            .entity(entity)
-            .insert(FoliageDensityMap::for_chunk(chunk_size));
+
+    #[test]
+    fn every_brush_mode_is_offered() {
+        for m in [FoliageBrushType::Paint, FoliageBrushType::Erase, FoliageBrushType::Grow, FoliageBrushType::Trim] {
+            assert!(MODES.contains(&m));
+        }
     }
 }

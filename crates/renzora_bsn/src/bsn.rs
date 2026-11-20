@@ -374,9 +374,11 @@ fn reflect_component_value(
             type_path: type_path.to_string(),
             offset,
         })?;
-    let seed = TypedReflectDeserializer::new(registration, registry);
+    let value_str = rename_legacy_variants(value_str);
+    let mut legacy = LegacyEntityBits;
+    let seed = TypedReflectDeserializer::with_processor(registration, registry, &mut legacy);
     let mut ron_de =
-        ron::Deserializer::from_str(value_str).map_err(|e| BsnError::Deserialize {
+        ron::Deserializer::from_str(&value_str).map_err(|e| BsnError::Deserialize {
             type_path: type_path.to_string(),
             message: e.to_string(),
         })?;
@@ -384,6 +386,186 @@ fn reflect_component_value(
         type_path: type_path.to_string(),
         message: e.to_string(),
     })
+}
+
+/// Enum variants Bevy renamed, as `(field, old, new)`.
+///
+/// Bevy main renamed `Default` to `Normal` on `AlignItems`, `JustifyItems`,
+/// `AlignContent` and `JustifyContent`, with no serde alias. A UI `Node`
+/// deserializes itself whole through serde, so reflection never reaches these
+/// fields to translate them: an old `align_items:Default` failed the whole
+/// `Node`, the loader skipped it, and the next save wrote the entity without
+/// its layout. Rewriting the text before it is parsed is the one place that
+/// sees the field. Saving writes the new name, so a scene converts on its
+/// first save.
+const RENAMED_VARIANTS: [(&str, &str, &str); 4] = [
+    ("align_items", "Default", "Normal"),
+    ("justify_items", "Default", "Normal"),
+    ("align_content", "Default", "Normal"),
+    ("justify_content", "Default", "Normal"),
+];
+
+/// Components Bevy deleted, which old scenes still carry.
+///
+/// They held nothing a scene needs any more (`FocusPolicy` went with Bevy's
+/// focus system, replaced by picking), so they are dropped quietly rather than
+/// reported as skipped on every load. Only consulted once the type has failed
+/// to resolve, so a game's own type that happens to share a name still loads.
+const RETIRED_BY_BEVY: [&str; 3] = [
+    "bevy_ui::focus::FocusPolicy",
+    "bevy_ui::focus::Interaction",
+    "bevy_ui::focus::RelativeCursorPosition",
+];
+
+/// Rewrite `field: Old` to `field: New` for every [`RENAMED_VARIANTS`] entry.
+///
+/// Matches the field name as a whole word followed by a single `:` (not the
+/// `::` of a path) and the variant as a whole word, so `self_align_items` and
+/// `DefaultSomething` are left alone. Borrows when there is nothing to change,
+/// which is every scene saved after the rename.
+fn rename_legacy_variants(value: &str) -> std::borrow::Cow<'_, str> {
+    let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let mut out: Option<String> = None;
+    for (field, old, new) in RENAMED_VARIANTS {
+        let src = out.as_deref().unwrap_or(value);
+        let bytes = src.as_bytes();
+        let mut edits: Vec<(usize, usize)> = Vec::new();
+        let mut from = 0;
+        while let Some(at) = src[from..].find(field) {
+            let start = from + at;
+            from = start + field.len();
+            if start > 0 && is_ident(bytes[start - 1]) {
+                continue;
+            }
+            let mut i = from;
+            while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+                i += 1;
+            }
+            if bytes.get(i) != Some(&b':') || bytes.get(i + 1) == Some(&b':') {
+                continue;
+            }
+            i += 1;
+            while bytes.get(i).is_some_and(|b| b.is_ascii_whitespace()) {
+                i += 1;
+            }
+            if src[i..].starts_with(old) && !bytes.get(i + old.len()).is_some_and(|&b| is_ident(b)) {
+                edits.push((i, i + old.len()));
+            }
+        }
+        if edits.is_empty() {
+            continue;
+        }
+        let mut rewritten = String::with_capacity(src.len());
+        let mut last = 0;
+        for (a, b) in edits {
+            rewritten.push_str(&src[last..a]);
+            rewritten.push_str(new);
+            last = b;
+        }
+        rewritten.push_str(&src[last..]);
+        out = Some(rewritten);
+    }
+    match out {
+        Some(s) => std::borrow::Cow::Owned(s),
+        None => std::borrow::Cow::Borrowed(value),
+    }
+}
+
+/// Reads an [`Entity`] in either of the forms a scene has stored it in.
+///
+/// Bevy used to write an entity inside a component value (a `ChildOf`, a
+/// joint's bodies) as its raw bits, `21474832900`, and now writes its display
+/// form, `"4004v0"`, and reads only that from a text format. Every scene saved
+/// before the change would otherwise lose every entity reference on load: each
+/// `ChildOf` was skipped, the whole hierarchy came in flat, and a terrain whose
+/// chunks were no longer its children built a second set beside them. Saving
+/// writes the new form, so a scene converts the first time it is saved.
+struct LegacyEntityBits;
+
+impl bevy::reflect::serde::ReflectDeserializerProcessor for LegacyEntityBits {
+    fn try_deserialize<'de, D>(
+        &mut self,
+        registration: &TypeRegistration,
+        _registry: &TypeRegistry,
+        deserializer: D,
+    ) -> Result<Result<Box<dyn PartialReflect>, D>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct EitherForm;
+
+        impl serde::de::Visitor<'_> for EitherForm {
+            type Value = Entity;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an entity as `{index}v{generation}` or as its raw bits")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Entity, E> {
+                v.parse().map_err(E::custom)
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Entity, E> {
+                Entity::try_from_bits(v).ok_or_else(|| E::custom(format!("invalid entity id bits {v}")))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Entity, E> {
+                u64::try_from(v)
+                    .map_err(|_| E::custom(format!("invalid entity id bits {v}")))
+                    .and_then(|v| self.visit_u64(v))
+            }
+        }
+
+        /// The one field of a newtype around an entity.
+        struct Newtype;
+
+        impl<'de> serde::de::Visitor<'de> for Newtype {
+            type Value = Entity;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a newtype around an entity")
+            }
+
+            fn visit_newtype_struct<D: serde::Deserializer<'de>>(self, d: D) -> Result<Entity, D::Error> {
+                d.deserialize_any(EitherForm)
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Entity, A::Error> {
+                struct Field;
+                impl<'de> serde::de::DeserializeSeed<'de> for Field {
+                    type Value = Entity;
+                    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Entity, D::Error> {
+                        d.deserialize_any(EitherForm)
+                    }
+                }
+                seq.next_element_seed(Field)?
+                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))
+            }
+        }
+
+        if registration.type_id() == std::any::TypeId::of::<Entity>() {
+            let entity = deserializer.deserialize_any(EitherForm)?;
+            return Ok(Ok(Box::new(entity)));
+        }
+
+        // `ChildOf` and its kind reflect with their own serde `Deserialize`, so
+        // reflection hands the whole value to serde and never reaches the
+        // entity inside. Read the field here instead and give back the value as
+        // a dynamic tuple struct, which reflection turns into the real type.
+        let bevy::reflect::TypeInfo::TupleStruct(info) = registration.type_info() else {
+            return Ok(Err(deserializer));
+        };
+        let wraps_entity = info.field_len() == 1 && info.field_at(0).is_some_and(|f| f.is::<Entity>());
+        if !wraps_entity || registration.data::<bevy::reflect::ReflectDeserialize>().is_none() {
+            return Ok(Err(deserializer));
+        }
+        let name = info.type_path_table().ident().unwrap_or("Entity");
+        let entity = deserializer.deserialize_newtype_struct(name, Newtype)?;
+        let mut value = bevy::reflect::tuple_struct::DynamicTupleStruct::default();
+        value.set_represented_type(Some(registration.type_info()));
+        value.insert(entity);
+        Ok(Ok(Box::new(value)))
+    }
 }
 
 /// A tiny hand-rolled cursor over the interim BSN grammar. The only non-trivial
@@ -588,6 +770,8 @@ impl<'a> Parser<'a> {
 
         match reflect_component_value(&type_path, &value_str, registry, path_start) {
             Ok(value) => Ok(Some(value)),
+            // Deleted from Bevy: nothing to load, and nothing worth a warning.
+            Err(BsnError::UnregisteredType { .. }) if RETIRED_BY_BEVY.contains(&type_path.as_str()) => Ok(None),
             Err(e) => match skipped {
                 Some(list) => {
                     list.push(type_path);
@@ -807,6 +991,51 @@ entity 4294967295 {
         assert_eq!(scene.entities[0].components.len(), 2);
     }
 
+    /// A parent written as raw bits (every scene saved before Bevy moved to the
+    /// `{index}v{generation}` form) and one written the new way both come back
+    /// as the right parent. The bits form used to be skipped, so a whole scene
+    /// loaded with its hierarchy flattened and only a warning to say so.
+    #[test]
+    fn child_of_loads_in_both_entity_forms() {
+        let atr = registry();
+        atr.write().register::<ChildOf>();
+        for parent_ref in ["4294967295", "\"0v0\""] {
+            let text = format!(
+                "\
+// renzora interim bsn v1
+entity 4294967295 {{
+    bevy_ecs::name::Name: \"parent\",
+}}
+entity 4294967294 {{
+    bevy_ecs::name::Name: \"child\",
+    bevy_ecs::hierarchy::ChildOf: ({parent_ref}),
+}}
+"
+            );
+            let (scene, skipped) = {
+                let reg = atr.read();
+                BsnSerializer.deserialize_lossy(&text, &reg).expect("parses")
+            };
+            assert!(skipped.is_empty(), "{parent_ref}: skipped {skipped:?}");
+
+            let mut dst = World::new();
+            dst.insert_resource(atr.clone());
+            let mut map = EntityHashMap::default();
+            scene.write_to_world(&mut dst, &mut map).expect("write");
+            let named = |name: &str| {
+                *map.values()
+                    .find(|&&e| dst.get::<Name>(e).is_some_and(|n| n.as_str() == name))
+                    .expect("entity present")
+            };
+            let (parent, child) = (named("parent"), named("child"));
+            assert_eq!(
+                dst.get::<ChildOf>(child).map(ChildOf::parent),
+                Some(parent),
+                "{parent_ref}: the child should hang off the loaded parent"
+            );
+        }
+    }
+
     /// The forms that are *nearly* right are the ones a person writes, so pin
     /// that they are rejected rather than half-accepted.
     #[test]
@@ -858,5 +1087,66 @@ entity 4294967295 {
         assert_eq!(scene.entities.len(), 1);
         // The real `Name` component survived; only the bogus one was skipped.
         assert_eq!(scene.entities[0].components.len(), 1);
+    }
+
+    #[test]
+    fn renames_only_the_whole_field_and_variant() {
+        let old = "(align_items:Default,justify_items: Default,align_content :Default,justify_content:Default,align_self:Auto)";
+        assert_eq!(
+            rename_legacy_variants(old),
+            "(align_items:Normal,justify_items: Normal,align_content :Normal,justify_content:Normal,align_self:Auto)"
+        );
+        // Lookalikes are left alone: a longer field name, a longer variant, a path.
+        for untouched in [
+            "(self_align_items:Default)",
+            "(align_items:DefaultLike)",
+            "(align_items::Default)",
+            "(align_items:FlexEnd)",
+        ] {
+            assert!(
+                matches!(rename_legacy_variants(untouched), std::borrow::Cow::Borrowed(_)),
+                "{untouched} should not change"
+            );
+        }
+    }
+
+    /// A UI `Node` saved before Bevy renamed `Default` to `Normal` loads, with
+    /// the old value read as the new one, instead of being skipped.
+    #[test]
+    fn loads_a_node_saved_with_default_alignment() {
+        let atr = registry();
+        atr.write().register::<Node>();
+        let old_scene = "\
+// renzora interim bsn v1
+entity 4294967295 {
+    bevy_ui::ui_node::Node: (align_items:Default,justify_items:Default,align_content:Default,justify_content:Default,width:Px(10.0)),
+}
+";
+        let (scene, skipped) = BsnSerializer
+            .deserialize_lossy(old_scene, &atr.read())
+            .expect("parses");
+        assert!(skipped.is_empty(), "nothing should be skipped: {skipped:?}");
+        let node = Node::from_reflect(scene.entities[0].components[0].as_ref()).expect("a Node");
+        assert_eq!(node.align_items, AlignItems::Normal);
+        assert_eq!(node.justify_content, JustifyContent::Normal);
+        assert_eq!(node.width, Val::Px(10.0));
+    }
+
+    /// `FocusPolicy` is gone from Bevy; an old scene carrying it loads without
+    /// reporting it as skipped, and keeps everything else.
+    #[test]
+    fn drops_components_bevy_deleted_without_reporting_them() {
+        let atr = registry();
+        let mut src = World::new();
+        src.insert_resource(atr.clone());
+        let e = src.spawn(Name::new("Button")).id();
+        let scene = DynamicSceneBuilder::from_world(&src).extract_entity(e).build();
+        let text = BsnSerializer.serialize(&scene, &atr.read()).expect("serialize");
+        let old_scene = text.replacen("{\n", "{\n    bevy_ui::focus::FocusPolicy: Block,\n", 1);
+        let (scene, skipped) = BsnSerializer
+            .deserialize_lossy(&old_scene, &atr.read())
+            .expect("parses");
+        assert!(skipped.is_empty(), "a retired type is not a skip: {skipped:?}");
+        assert_eq!(scene.entities[0].components.len(), 1, "the Name survives");
     }
 }

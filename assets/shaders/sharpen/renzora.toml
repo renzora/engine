@@ -1,0 +1,9 @@
+name = "Sharpen"
+version = "2.0.0"
+description = "Sharpens the frame by boosting local contrast. A post-process effect: drop sharpen.wesl on a Post Process component."
+category = "shaders"
+marketplace_id = "sharpen"
+tags = ["post-processing", "shader", "sharpen", "clarity"]
+price_credits = 0
+thumbnail = "thumbnail.webp"
+min_engine_version = "r1-alpha8"

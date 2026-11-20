@@ -51,10 +51,14 @@ pub(crate) mod assets;
 pub(crate) mod collect;
 pub(crate) mod cull;
 pub(crate) mod fields;
+pub(crate) mod group;
 pub(crate) mod order;
+
+pub(crate) use group::InspectorGroupsOpen;
 pub(crate) mod pages;
 pub(crate) mod rebuild;
 pub(crate) mod reorder;
+pub(crate) mod reset;
 pub(crate) mod reveal;
 pub(crate) mod scene_page;
 pub(crate) mod section;
@@ -231,6 +235,7 @@ pub fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<InspectorState>();
     app.init_resource::<InspectorSectionsOpen>();
+    app.init_resource::<InspectorGroupsOpen>();
     app.init_resource::<reorder::SectionDrag>();
     // Read from disk rather than defaulted: a component order the user dragged
     // into place is a per-user arrangement, like the UI editor's toolbar, and one
@@ -370,6 +375,7 @@ pub fn register(app: &mut App) {
                 scene_page::refresh_scene_stats,
                 scene_page::set_boot_scene_click,
                 scene_page::add_world_env_click,
+                group::group_header_click,
             ),
         )
             .run_if(in_state(SplashState::Editor))

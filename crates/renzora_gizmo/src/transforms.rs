@@ -97,19 +97,24 @@ pub(crate) fn update_gizmo_transforms(
         );
 
     // Toggle cone heads vs scale cubes based on mode (applies to every slot's set).
+    //
+    // Every write in this system goes through `set_if_neq`. It runs every frame,
+    // and assigning the same value through a mutable reference still marks the
+    // component changed: the viewport read the gizmo as part of the scene moving
+    // and never stopped rendering while anything was selected.
     for (part, mut vis) in gizmo_parts.iter_mut() {
         if part.is_translate_only() {
-            *vis = if mode == GizmoMode::Translate {
+            vis.set_if_neq(if mode == GizmoMode::Translate {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
-            };
+            });
         } else if part.is_scale_only() {
-            *vis = if mode == GizmoMode::Scale {
+            vis.set_if_neq(if mode == GizmoMode::Scale {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
-            };
+            });
         }
     }
 
@@ -188,7 +193,7 @@ pub(crate) fn update_gizmo_transforms(
 
         let (Some((sel_world, sel_rot)), Some(cam)) = (sel_data, cam_pos.get(i).copied().flatten())
         else {
-            *vis = Visibility::Hidden;
+            vis.set_if_neq(Visibility::Hidden);
             continue;
         };
 
@@ -221,15 +226,17 @@ pub(crate) fn update_gizmo_transforms(
             Vec3::ONE
         };
 
-        tf.translation = sel_world;
-        tf.rotation = basis;
-        tf.scale = Vec3::new(scale * signs.x, scale * signs.y, scale * signs.z);
+        tf.set_if_neq(Transform {
+            translation: sel_world,
+            rotation: basis,
+            scale: Vec3::new(scale * signs.x, scale * signs.y, scale * signs.z),
+        });
 
-        *vis = if show_meshes && docked && slot_shows {
+        vis.set_if_neq(if show_meshes && docked && slot_shows {
             Visibility::Visible
         } else {
             Visibility::Hidden
-        };
+        });
 
         per_slot.scale[i] = scale;
         per_slot.signs[i] = signs;
@@ -333,7 +340,13 @@ pub(crate) fn update_gizmo_materials(
             ),
         };
 
-        mat_handle.0 = if highlighted { highlight } else { normal };
+        // Swapped only when it differs. Assigning the same handle still marks
+        // `MeshMaterial3d` changed, Bevy then marks the part's `Mesh3d` changed
+        // too, and the viewport read every frame as the gizmo changing.
+        let wanted = if highlighted { highlight } else { normal };
+        if mat_handle.0 != wanted {
+            mat_handle.0 = wanted;
+        }
     }
 }
 

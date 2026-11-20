@@ -1,0 +1,611 @@
+//! A simple text input widget for Bevy UI.
+//!
+//! The [`EditableText`] widget is an undecorated rectangular text input field,
+//! which allows users to input and edit text within a Bevy UI application.
+//! Every [`EditableText`] component is also a [`Node`](https://docs.rs/bevy/latest/bevy/prelude/struct.Node.html) in the Bevy UI hierarchy,
+//! allowing you to position and size it using standard Bevy UI layout techniques.
+//! You can think of it as the editable equivalent of [`Text`](https://docs.rs/bevy/latest/bevy/prelude/struct.Text.html),
+//! and components such as [`TextFont`] and [`TextColor`] can be used to style it.
+//!
+//! [`EditableText`] supports the following functionality:
+//!
+//! - Text entry
+//! - Keyboard-driven cursor movement: arrow keys, Home/End, and word-level shortcuts (Ctrl/Alt+arrow)
+//! - Shift+arrow and Shift+word-arrow to extend the selection by character or word
+//! - Backspace and delete operations, both for single characters and words
+//! - Clipboard operations (copy, cut, paste) — requires the `system_clipboard` feature for OS clipboard integration
+//! - Click to place cursor; click and drag to extend the selection
+//! - Multi-click: double-click to select a word, triple-click to select a line
+//! - Optional select-all on focus via the `SelectAllOnFocus` component
+//! - Optional placeholder hint text via the [`Placeholder`] component
+//! - Per-character input filtering via the [`EditableTextFilter`] component
+//! - Password-style character masking via [`EditableText::mask`]
+//! - Max character limits via [`EditableText::max_characters`]
+//! - Cursor blinking
+//! - Newline support for multi-line input
+//! - Soft-wrapping of long lines
+//! - Vertical scrolling for multi-line input
+//! - Horizontal scrolling for long lines
+//! - Input Method Editor (IME) support for complex scripts (Japanese, Chinese, Korean, etc.)
+//! - Bidirectional text support (e.g., mixing left-to-right and right-to-left scripts)
+//! - Input consumption (preventing other systems from receiving keyboard input events when the text input is focused)
+//!
+//! You might use this widget as the basis for text input fields in forms, chat boxes, for naming characters,
+//! or any other scenario where you want to extract an unformatted text string from the user.
+//!
+//! Reusable widgets that build on top of this basic text input field (as might be found in Bevy's Feathers UI framework),
+//! will typically combine this widget with additional UI elements such as borders, backgrounds, and labels,
+//! creating a multi-entity widget that matches the semantics and visual appearance required by the application.
+//!
+//! ## Handling user input
+//!
+//! User input is handled via a plugin in `bevy_ui_widgets`:
+//! [`bevy_text`](crate) is not aware of input events directly.
+//!
+//! With the correct plugin enabled, when an [`EditableText`] entity is focused,
+//! keyboard input events are captured and processed into [`TextEdit`] actions.
+//!
+//! ## Limitations
+//!
+//! The formatting of the text is uniform throughout the entire input field.
+//! As a result, rich text-editing is out-of-scope:
+//! this widget is not intended to form the basis for a full-featured text editor.
+//!
+//! Similarly, this widget is "headless": it has no built-in styling, and is intended to be used
+//! with a themed UI framework of your choice (e.g. Feathers). This means that no text boxes, borders, or other
+//! visual elements are provided by default, and must be added separately using Bevy UI entities / components,
+//! and any reactive styling (e.g., focus/hover states) must also be implemented separately.
+//!
+//! However, the following features are planned but currently not implemented:
+//!
+//! - Undo/redo functionality
+//! - Text validation (e.g., email format, numeric input)
+//! - Mobile pop-up keyboard support
+//! - Overwrite mode (typically toggled by the `Insert` key)
+//! - AccessKit integration for screen readers and other assistive technologies
+//! - World-space text input
+//! - Text form submission handling
+//!
+//! If you require any of these features, please consider contributing it to the crate,
+//! one feature at a time!
+// Note: this logic is in `bevy_text`, rather than higher up in `bevy_ui` or `bevy_ui_widgets`,
+// because doing so allows us to process `EditableText` in the various systems provided by `bevy_text`
+// and `bevy_ui`, such as text layout and font management.
+
+use crate::{
+    scroll::TextViewport,
+    text_edit::{poll_and_apply_paste, reveal_cursor, TextEdit},
+    FontCx, FontHinting, FontStyle, FontWeight, LayoutCx, LineHeight, TextBrush, TextColor,
+    TextFont, TextLayout,
+};
+use alloc::borrow::Cow;
+use alloc::string::String;
+use alloc::sync::Arc;
+use bevy_clipboard::ClipboardRead;
+use bevy_color::{Alpha, Color};
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::{prelude::*, reflect::ReflectComponent};
+use bevy_math::Vec2;
+use bevy_reflect::prelude::*;
+use core::time::Duration;
+use parley::{FontContext, LayoutContext, PlainEditor};
+
+/// A plain-text text input field.
+///
+/// Please see this module docs for more details on usage and functionality.
+///
+/// Note that text editing operations are trickier than they might first appear,
+/// due to the complexities of Unicode text handling.
+///
+/// As a result, we store an internal [`PlainEditor`] instance,
+/// which manages both the text content and the cursor position,
+/// and provides methods for applying text edits and cursor movements correctly
+/// according to Unicode rules.
+#[derive(Component, Clone)]
+#[require(
+    TextLayout,
+    TextFont,
+    TextColor,
+    LineHeight,
+    FontHinting,
+    EditableTextGeneration,
+    TextReadWriteMode
+)]
+pub struct EditableText {
+    /// A [`parley::PlainEditor`], tracking both the text content and cursor position.
+    ///
+    /// This serves as an analogue to [`ComputedTextBlock`](crate::ComputedTextBlock) for editable text.
+    ///
+    /// In most cases, you should queue text edits via the [`EditableText::queue_edit`] method instead of directly manipulating the editor,
+    /// and then allow the [`apply_text_edits`] system to apply the edits at the appropriate time in the update cycle.
+    ///
+    /// Note that many more complex editing operations require working with [`PlainEditor::driver`].
+    /// These operations should generally be batched together to avoid redundant layout work.
+    // The B: Brush generic here must match the brush used by `ComputedTextBlock` to ensure that the font system is compatible.
+    pub editor: PlainEditor<TextBrush>,
+    /// The bounds of the visible portion of the text layout.
+    pub viewport: TextViewport,
+    /// Text edit actions that have been requested but not yet applied.
+    ///
+    /// These edits are processed in first-in, first-out order.
+    pub pending_edits: Vec<TextEdit>,
+    /// A paste operation that is awaiting clipboard I/O.
+    ///
+    /// On platforms where system clipboard reads are asynchronous (currently wasm32), a
+    /// [`TextEdit::Paste`] may not resolve in the same frame it was queued.
+    ///
+    /// While this field is `Some`, [`apply_pending_edits`](Self::apply_pending_edits) waits for this to resolve,
+    /// rather than draining further edits, so that everything after the paste stays correctly ordered *behind* it.
+    // TODO: this may cause unexpected stalls if the clipboard read takes too long. We may want to add a timeout.
+    pub pending_paste: Option<ClipboardRead>,
+    /// Cursor reveal margins as fractions of the viewport size.
+    ///
+    /// Each component is applied to both edges of its axis. Values are clamped
+    /// to `0.0..=0.5`, and non-finite values are treated as zero.
+    pub cursor_margin: Vec2,
+    /// Cursor width, relative to font size
+    pub cursor_width: f32,
+    /// Cursor blink period in seconds.
+    pub cursor_blink_period: Duration,
+    /// Maximum number of characters the text input can contain.
+    ///
+    /// Edits which would cause the length to exceed the maximum are ignored.
+    /// Does not stop setting a string longer than the maximum using `set_text`.
+    pub max_characters: Option<usize>,
+    /// Sets the input’s height in number of visible lines.
+    pub visible_lines: Option<f32>,
+    /// Sets the input's width in number of visible glyphs.
+    /// For proportional fonts the final size is the given value times the "0" advance width.
+    pub visible_width: Option<f32>,
+    /// Allow new lines
+    pub allow_newlines: bool,
+    /// Password-style masking: when `Some`, every character is displayed as
+    /// this glyph. [`value`](Self::value) still returns the entered text.
+    ///
+    /// While masked, copy is disabled, cut only deletes, IME composition is
+    /// suppressed (commit per key), and word-wise deletion without a selection
+    /// clears to the start/end. [`max_characters`](Self::max_characters) and
+    /// [`EditableTextFilter`] apply to the entered characters.
+    ///
+    /// The editor holds the glyphs, so changes to the text must go through
+    /// [`queue_edit`](Self::queue_edit) or [`clear`](Self::clear). Anything
+    /// written to [`editor`](Self::editor) directly while masked is discarded.
+    ///
+    /// Bevy's default font has no `•` (U+2022), so use `*` unless the field's
+    /// font covers it.
+    pub mask: Option<char>,
+    /// The entered text while [`mask`](Self::mask) is applied. Managed by
+    /// `bevy_text`: replacing it while masked (e.g. with the default) makes
+    /// the displayed glyphs the entered text.
+    pub mask_state: MaskState,
+}
+
+impl Default for EditableText {
+    fn default() -> Self {
+        Self {
+            // Defaults selected to match `Text::default()`
+            editor: PlainEditor::new(100.),
+            viewport: TextViewport::default(),
+            cursor_margin: Vec2::splat(0.2),
+            pending_edits: Vec::new(),
+            pending_paste: None,
+            cursor_width: 0.2,
+            cursor_blink_period: Duration::from_secs(1),
+            max_characters: None,
+            visible_lines: Some(1.),
+            visible_width: None,
+            allow_newlines: false,
+            mask: None,
+            mask_state: MaskState::default(),
+        }
+    }
+}
+
+impl EditableText {
+    /// Creates a new `EditableText` with its buffer already containing some initial text and
+    /// its cursor positioned at the end.
+    pub fn new(initial_text: impl AsRef<str>) -> Self {
+        let mut editable_text = Self::default();
+        editable_text.editor.set_text(initial_text.as_ref());
+        editable_text.queue_edit(TextEdit::TextEnd(false));
+        editable_text
+    }
+
+    /// Access the internal [`PlainEditor`].
+    pub fn editor(&self) -> &PlainEditor<TextBrush> {
+        &self.editor
+    }
+
+    /// Mutably access the internal [`PlainEditor`].
+    ///
+    pub fn editor_mut(&mut self) -> &mut PlainEditor<TextBrush> {
+        &mut self.editor
+    }
+
+    /// Get the current text input as a [`Cow<str>`].
+    ///
+    /// This is always the *entered* text: [`mask`](Self::mask) affects
+    /// display only. IME preedit (in-progress composition) is excluded.
+    ///
+    /// Borrowed as default, owned copy returned when there is a split
+    /// (e.g. IME preedit).
+    pub fn value(&self) -> Cow<'_, str> {
+        if let Some(masked) = &self.mask_state.0 {
+            return Cow::Borrowed(&masked.value);
+        }
+        let mut segments = self.editor.text().into_iter();
+        let first = segments.next().unwrap_or("");
+        let second = segments.next().unwrap_or("");
+        if second.is_empty() {
+            Cow::Borrowed(first)
+        } else {
+            Cow::Owned(alloc::format!("{first}{second}"))
+        }
+    }
+
+    /// The text in the editor's buffer, preedit excluded: the glyphs while
+    /// masked.
+    #[cfg(test)]
+    pub(crate) fn editor_text(&self) -> parley::SplitString<'_> {
+        self.editor.text()
+    }
+
+    /// Whether the editor already shows [`mask`](Self::mask) (or the plain
+    /// text when unmasked).
+    fn mask_in_sync(&self) -> bool {
+        match (self.mask, &self.mask_state.0) {
+            (None, None) => true,
+            (Some(glyph), Some(masked)) => {
+                glyph == masked.glyph && crate::masking::shows(&self.editor, masked)
+            }
+            _ => false,
+        }
+    }
+
+    /// Queue a [`TextEdit`] action to be applied later by the [`apply_text_edits`] system.
+    pub fn queue_edit(&mut self, edit: TextEdit) {
+        self.pending_edits.push(edit);
+    }
+
+    /// Applies all [`TextEdit`]s in `pending_edits` immediately, updating the [`PlainEditor`] text / cursor state accordingly.
+    ///
+    /// [`FontContext`] should be gathered from the [`FontCx`] resource, and [`LayoutContext`] should be gathered from the [`LayoutCx`] resource.
+    ///
+    /// On platforms with async clipboard reads (wasm32), a [`TextEdit::Paste`] whose
+    /// contents aren't yet available acts as a barrier: this call parks the in-flight
+    /// read on [`EditableText`] and leaves the remaining edits queued in order. Each
+    /// subsequent frame re-polls the read, and processing resumes once it resolves.
+    /// On native targets clipboard reads are synchronous, so this barrier collapses.
+    pub fn apply_pending_edits(
+        &mut self,
+        font_context: &mut FontContext,
+        layout_context: &mut LayoutContext<TextBrush>,
+        clipboard: &mut bevy_clipboard::Clipboard,
+        char_filter: impl Fn(char) -> bool,
+    ) {
+        let Self {
+            editor,
+            pending_edits,
+            pending_paste,
+            max_characters,
+            viewport,
+            cursor_margin,
+            mask,
+            mask_state,
+            ..
+        } = self;
+
+        let mut driver = editor.driver(font_context, layout_context);
+
+        // Apply `mask` changes first so the edits below see the right buffer.
+        crate::masking::sync(*mask, mask_state, &mut driver);
+
+        // Resolve any paste carried over from a previous frame. If it's still
+        // pending, hold the remaining edits (untouched in `pending_edits`) for next frame
+        // so ordering relative to the paste is preserved.
+        if let Some(mut read) = pending_paste.take() {
+            let generation = driver.editor.generation();
+            if !poll_and_apply_paste(
+                &mut read,
+                &mut driver,
+                *max_characters,
+                &char_filter,
+                mask_state.0.as_mut(),
+            ) {
+                *pending_paste = Some(read);
+                return;
+            }
+            if generation != driver.editor.generation() {
+                reveal_cursor(&mut driver, viewport, *cursor_margin);
+            }
+        }
+
+        // Drain edits one at a time. A paste that resolves synchronously (always the case
+        // on native) applies immediately, but a still-pending paste stashes its `ClipboardRead` and
+        // requeues the *remaining* edits, so this loop continually requeues the pending paste until it resolves.
+        let mut edits = core::mem::take(pending_edits).into_iter();
+        while let Some(edit) = edits.next() {
+            match edit {
+                TextEdit::Paste => {
+                    let generation = driver.editor.generation();
+                    let mut read = clipboard.fetch_text();
+                    if !poll_and_apply_paste(
+                        &mut read,
+                        &mut driver,
+                        *max_characters,
+                        &char_filter,
+                        mask_state.0.as_mut(),
+                    ) {
+                        *pending_paste = Some(read);
+                        pending_edits.extend(edits);
+                        return;
+                    }
+                    if generation != driver.editor.generation() {
+                        reveal_cursor(&mut driver, viewport, *cursor_margin);
+                    }
+                }
+                other => match mask_state.0.as_mut() {
+                    Some(masked) => crate::masking::apply_masked_edit(
+                        other,
+                        masked,
+                        &mut driver,
+                        viewport,
+                        *cursor_margin,
+                        clipboard,
+                        *max_characters,
+                        &char_filter,
+                    ),
+                    None => other.apply(
+                        &mut driver,
+                        viewport,
+                        *cursor_margin,
+                        clipboard,
+                        *max_characters,
+                        &char_filter,
+                    ),
+                },
+            }
+        }
+    }
+
+    /// Clears the input's text buffer and any pending edits, and moves the cursor to the start.
+    ///
+    /// Also drops any in-flight paste. The underlying clipboard read task
+    /// will still complete, but its result is discarded.
+    pub fn clear(&mut self) {
+        self.editor.set_text("");
+        if let Some(masked) = &mut self.mask_state.0 {
+            masked.value.clear();
+        }
+        self.pending_edits.clear();
+        self.pending_paste = None;
+        self.queue_edit(TextEdit::TextStart(false));
+    }
+
+    /// Is the IME currently composing text for this input?
+    ///
+    /// Some behavior (e.g. "submit on Enter") may want to be suppressed while the IME is active
+    /// to avoid interrupting the user's composition.
+    pub fn is_composing(&self) -> bool {
+        self.editor.is_composing()
+    }
+}
+
+/// The entered text of a masked [`EditableText`] (see [`EditableText::mask`]).
+///
+/// Opaque so struct-literal construction of [`EditableText`] keeps working
+/// with `..default()`, while only `bevy_text` can change the contents.
+#[derive(Clone, Default)]
+pub struct MaskState(pub(crate) Option<crate::masking::Masked>);
+/// Hint text shown while an [`EditableText`] is empty.
+///
+/// Laid out with the field's own editor settings and drawn as part of the
+/// field, so it clips, scrolls, layers and transforms with it. It never
+/// enters the editor's buffer: [`EditableText::value`] stays empty.
+#[derive(Component, Clone, Debug, Default, Reflect)]
+#[reflect(Component, Debug, Default, Clone)]
+pub struct Placeholder {
+    /// The hint text.
+    pub text: String,
+    /// `None` draws the hint in the field's [`TextColor`], with its alpha
+    /// scaled by [`Placeholder::DEFAULT_ALPHA`].
+    pub color: Option<Color>,
+    /// Overrides the field's [`TextFont::style`], e.g. italic hints.
+    /// Like any text, this needs a font with that face.
+    pub font_style: Option<FontStyle>,
+    /// Overrides the field's [`TextFont::weight`].
+    pub font_weight: Option<FontWeight>,
+    /// When the hint is shown, relative to focus.
+    pub mode: PlaceholderMode,
+}
+
+impl Placeholder {
+    /// Alpha multiplier on the field's [`TextColor`] when
+    /// [`color`](Self::color) is `None`.
+    pub const DEFAULT_ALPHA: f32 = 0.4;
+
+    /// A placeholder in the default color and [`PlaceholderMode`].
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            color: None,
+            font_style: None,
+            font_weight: None,
+            mode: PlaceholderMode::default(),
+        }
+    }
+
+    /// Whether the hint shows for `editable_text`. An IME preedit counts as
+    /// content, since it is drawn in the buffer.
+    pub fn is_shown(&self, editable_text: &EditableText, focused: bool) -> bool {
+        editable_text.editor.raw_text().is_empty()
+            && !(self.mode == PlaceholderMode::UnlessFocused && focused)
+    }
+
+    /// The color the hint is drawn in, for a field drawn in `text_color`.
+    pub fn resolve_color(&self, text_color: Color) -> Color {
+        self.color
+            .unwrap_or_else(|| text_color.with_alpha(text_color.alpha() * Self::DEFAULT_ALPHA))
+    }
+}
+
+/// When a [`Placeholder`] is shown, relative to focus.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Default, Debug, Clone, PartialEq)]
+pub enum PlaceholderMode {
+    /// Shown whenever the field is empty, focused or not.
+    #[default]
+    WhileEmpty,
+    /// Hidden while the field has focus.
+    UnlessFocused,
+}
+
+/// Wrapper around a `parley::Generation`. Used to track when `TextLayoutInfo` is stale and needs reupdating.
+/// The initial `Generation` of the `PlainEditor` is not equal to the default `Generation` value, so the
+/// `TextLayoutInfo` will always be given an initial update.
+#[derive(Component, PartialEq, Eq, Default, Clone, Copy, Deref, DerefMut)]
+pub struct EditableTextGeneration(parley::Generation);
+
+/// Sets a per-character filter for this text input. Insert and paste edits are ignored if the filter rejects any character.
+///
+/// The filter does not apply to characters already within the `EditableText`'s text buffer.
+#[derive(Component, Clone, Default)]
+pub struct EditableTextFilter(Option<Arc<dyn Fn(char) -> bool + Send + Sync + 'static>>);
+
+/// Indicates whether the text is editable, or is in "readonly" mode. A special "static" mode is
+/// also available, which is used by the feathers number input widget.
+#[derive(Component, Clone, Copy, Default, PartialEq, Debug)]
+pub enum TextReadWriteMode {
+    /// Text input functions normally
+    #[default]
+    Editable,
+    /// Cursor movement, selection, and copy to clipboard is still enabled, but no mutations are allowed
+    ReadOnly,
+    /// Display only, all interactions disabled - this is used by number input widget when dragging.
+    /// This disallows cursor movement and selection as well.
+    Static,
+}
+
+impl EditableTextFilter {
+    /// Create a new `EditableTextFilter` from the given filter function.
+    pub fn new(filter: impl Fn(char) -> bool + Send + Sync + 'static) -> Self {
+        Self(Some(Arc::new(filter)))
+    }
+}
+
+/// Applies pending text edit actions to all [`EditableText`] widgets.
+pub fn apply_text_edits(
+    mut query: Query<(
+        Entity,
+        &mut EditableText,
+        Option<&EditableTextFilter>,
+        &EditableTextGeneration,
+    )>,
+    mut font_context: ResMut<FontCx>,
+    mut layout_context: ResMut<LayoutCx>,
+    mut clipboard: ResMut<bevy_clipboard::Clipboard>,
+    mut commands: Commands,
+) {
+    for (entity, mut editable_text, filter, generation) in query.iter_mut() {
+        // `pending_paste` can hold a cross-frame paste even when no new edits are queued,
+        // and a `mask` change needs applying even without edits, so check for any of them
+        // before doing work.
+        if !editable_text.pending_edits.is_empty()
+            || editable_text.pending_paste.is_some()
+            || !editable_text.mask_in_sync()
+        {
+            editable_text.apply_pending_edits(
+                &mut font_context,
+                &mut layout_context.0,
+                &mut clipboard,
+                match filter {
+                    Some(EditableTextFilter(Some(filter))) => filter.as_ref(),
+                    _ => &|_| true,
+                },
+            );
+        }
+
+        if **generation != editable_text.editor.generation() {
+            commands.trigger(TextEditChange { entity });
+        }
+    }
+}
+
+/// Triggered after applying all pending [`TextEdit`]s to the [`EditableText`] by [`apply_text_edits`].
+///
+/// As [`TextEdit`] includes cursor motions, this will be emitted even if [`EditableText::value`] is unchanged.
+#[derive(EntityEvent)]
+pub struct TextEditChange {
+    entity: Entity,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::borrow::Cow;
+    use parley::FontFamilyName;
+
+    fn edit_after_clear(setup: TextEdit, edit: TextEdit) -> String {
+        let mut font_context = FontContext::new();
+        let font = crate::Font::from_bytes(include_bytes!("FiraMono-subset.ttf").to_vec());
+        font_context.collection.register_fonts(font.data, None);
+        let mut layout_context = LayoutContext::new();
+        let mut clipboard = bevy_clipboard::Clipboard::default();
+
+        let mut text = EditableText::new("hello world");
+        text.editor
+            .edit_styles()
+            .insert(FontFamilyName::Named(Cow::Borrowed("Fira Mono")).into());
+        text.queue_edit(setup);
+        text.apply_pending_edits(
+            &mut font_context,
+            &mut layout_context,
+            &mut clipboard,
+            |_| true,
+        );
+
+        text.clear();
+        text.queue_edit(edit);
+        text.apply_pending_edits(
+            &mut font_context,
+            &mut layout_context,
+            &mut clipboard,
+            |_| true,
+        );
+        text.value().to_string()
+    }
+
+    #[test]
+    fn insert_after_clear_uses_a_fresh_cursor() {
+        let value = edit_after_clear(TextEdit::TextEnd(false), TextEdit::Insert("x".into()));
+        assert_eq!(value, "x");
+    }
+
+    #[test]
+    fn delete_after_clear_ignores_the_old_selection() {
+        let value = edit_after_clear(TextEdit::SelectAll, TextEdit::Backspace);
+        assert_eq!(value, "");
+    }
+
+    #[test]
+    fn placeholder_in_bsn() {
+        use bevy_scene::{prelude::*, ScenePlugin};
+
+        let mut app = bevy_app::App::new();
+        app.add_plugins((bevy_asset::AssetPlugin::default(), ScenePlugin));
+        let world = app.world_mut();
+
+        let entity = world
+            .spawn_scene(bsn! {
+                Placeholder {
+                    text: "Search",
+                    mode: PlaceholderMode::UnlessFocused,
+                }
+            })
+            .unwrap()
+            .id();
+        let placeholder = world.entity(entity).get::<Placeholder>().unwrap();
+        assert_eq!(placeholder.text, "Search");
+        assert_eq!(placeholder.mode, PlaceholderMode::UnlessFocused);
+    }
+}

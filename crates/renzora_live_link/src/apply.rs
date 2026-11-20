@@ -4,8 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectDeserializer;
-use bevy::reflect::FromReflect;
-use renzora::{SceneEntityId, ViewportGateHidden};
+use renzora::SceneEntityId;
 use serde::de::DeserializeSeed;
 
 use crate::tracker::Tracker;
@@ -98,31 +97,11 @@ pub fn apply(
                                 .map_err(|e| e.to_string())
                         });
                     match parsed {
-                        Ok(component) => {
-                            // An entity the editor's viewport gate is hiding
-                            // shows `Hidden` and keeps its real visibility in
-                            // the gate. A value from the other side is the real
-                            // one, so it goes there; written over the live
-                            // value, the gate would bring back its own stale
-                            // copy as soon as a viewport was on screen again.
-                            let gated = registration.type_id() == std::any::TypeId::of::<Visibility>()
-                                && entity_mut.contains::<ViewportGateHidden>();
-                            let real = gated
-                                .then(|| Visibility::from_reflect(component.as_partial_reflect()))
-                                .flatten();
-                            match real {
-                                Some(real) => {
-                                    if let Some(mut gate) = entity_mut.get_mut::<ViewportGateHidden>() {
-                                        gate.0 = real;
-                                    }
-                                }
-                                None => reflect_component.insert(
-                                    &mut entity_mut,
-                                    component.as_partial_reflect(),
-                                    &registry,
-                                ),
-                            }
-                        }
+                        Ok(component) => reflect_component.insert(
+                            &mut entity_mut,
+                            component.as_partial_reflect(),
+                            &registry,
+                        ),
                         Err(e) => {
                             warn!("[live-link] could not read {ty}: {e}");
                             continue;

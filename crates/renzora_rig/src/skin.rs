@@ -128,7 +128,7 @@ pub fn apply(
                 continue;
             }
             let triangles = match glb.indices(mesh, prim)? {
-                Some(idx) => idx.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect(),
+                Some(idx) => idx.as_chunks::<3>().0.to_vec(),
                 None => (0..positions.len() as u32 / 3).map(|t| [t * 3, t * 3 + 1, t * 3 + 2]).collect(),
             };
             let surface = Surface { mesh, prim, positions, triangles };

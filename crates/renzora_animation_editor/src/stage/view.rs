@@ -17,7 +17,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use renzora_ember::UiCursor;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -166,7 +166,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
             BackgroundColor(rgb(panel_bg())),
             UiInteraction::default(),
-            RelativeCursorPosition::default(),
+            UiCursor::default(),
             StageImage,
             Name::new("stage-image"),
         ))
@@ -610,11 +610,15 @@ fn build_empty(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { margin: UiRect::bottom(Val::Px(4.0)), ..default() },
         ))
         .id();
+    // Virtualized: a project's models can run to hundreds, and the card was
+    // building a row for every one each time the Animation workspace opened,
+    // ~7,700 nodes for a switch that shows nine of them.
     let list = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), max_height: Val::Px(360.0), overflow: Overflow::scroll_y(), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() })
         .id();
-    keyed_list(commands, list, choice_list_snapshot);
-    commands.entity(card).add_children(&[title, sub, list]);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, list, 4, choice_list_snapshot);
+    let scroll = renzora_ember::widgets::scroll_area(commands, list, 360.0);
+    commands.entity(card).add_children(&[title, sub, scroll]);
     commands.entity(overlay).add_child(card);
     bind_display(commands, overlay, |w| !has_model(w) && !mode_is(w, StageMode::Logic));
     overlay
@@ -689,7 +693,7 @@ fn choice_list_snapshot(w: &Rx) -> KeyedSnapshot {
 /// sizes the render target to the picture, so a pixel on the stage is a pixel
 /// of the camera's.
 fn update_cursor(
-    images: Query<(&ComputedNode, &RelativeCursorPosition, &InheritedVisibility, &UiInteraction), With<StageImage>>,
+    images: Query<(&ComputedNode, &UiCursor, &InheritedVisibility, &UiInteraction), With<StageImage>>,
     mut preview: ResMut<StudioPreviewImage>,
     cams: Query<(&Camera, &GlobalTransform), With<StudioPreviewCamera>>,
     mut cursor: ResMut<StageCursor>,
