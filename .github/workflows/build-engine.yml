@@ -1475,7 +1475,11 @@ jobs:
             dir=$(dirname "$statement")
             lib="$dir/$(jq -r .file_name "$statement")"
             label="$(jq -r '.platform + " " + .id' "$statement")"
+            # A User-Agent of its own: renzora.com sits behind Cloudflare, whose
+            # bot protection answers curl's default one with a 403 block page
+            # before the request reaches the site.
             code=$(curl -sS -o response.json -w '%{http_code}' \
+              -A "renzora-engine-ci/$TAG" \
               -H "Authorization: Bearer $TOKEN" \
               -F "statement=<$statement" \
               -F "engine_tag=$TAG" \
