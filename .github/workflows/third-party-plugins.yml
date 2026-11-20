@@ -209,6 +209,12 @@ jobs:
           esac
           ls -lh out/sdk.tar.zst
 
+      # `.cargo/config.toml` links x86_64 Linux with clang + mold, and the
+      # hosted runner ships clang but not mold.
+      - name: Install mold
+        if: matrix.platform == 'linux-x64'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mold
+
       - name: Build the tools
         shell: bash
         run: |
@@ -329,7 +335,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build the signer
-        run: cargo build -q --profile dist -p renzora_plugin_build --example sign_prebuilt
+        run: |
+          # The same clang + mold linker setting as the sdk job's.
+          sudo apt-get update -qq && sudo apt-get install -y -qq mold
+          cargo build -q --profile dist -p renzora_plugin_build --example sign_prebuilt
 
       - uses: actions/download-artifact@v4
         with:
