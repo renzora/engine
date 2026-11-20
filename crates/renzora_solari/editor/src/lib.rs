@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use bevy::solari::realtime::SolariLighting;
 use renzora::{
     bool_field, AppEditorExt, DlssMode, DlssSupport, FieldDef, FieldType, FieldValue,
-    InspectorEntry, SolariDenoiser, SolariGi, SolariQuality,
+    InspectorEntry, SolariDenoiser, SolariGi, SolariQuality, SolariResolution,
 };
 
 /// Whether DLSS Ray Reconstruction is what actually denoises `gi` on this run,
@@ -180,6 +180,30 @@ fn solari_inspector_entry() -> InspectorEntry {
                             (DlssMode::from_label(&label), world.get_mut::<SolariGi>(entity))
                         {
                             s.dlss_mode = mode;
+                        }
+                    }
+                },
+            },
+            // The built-in denoiser's counterpart of DLSS Mode: how many pixels
+            // the lighting is traced at, the rest upsampled. Shown only while
+            // the built-in denoiser is the one running, since under DLSS or
+            // with the raw image every pixel is traced whatever this says.
+            FieldDef {
+                name: "Resolution",
+                field_type: FieldType::Enum {
+                    options: &SolariResolution::LABELS,
+                },
+                get_fn: |world, entity| {
+                    let gi = world.get::<SolariGi>(entity)?;
+                    let built_in = gi.denoiser_choice() != SolariDenoiser::Off && !dlss_running(world, gi);
+                    built_in.then(|| FieldValue::Enum(gi.resolution.label().to_string()))
+                },
+                set_fn: |world, entity, value| {
+                    if let FieldValue::Enum(label) = value {
+                        if let (Some(resolution), Some(mut s)) =
+                            (SolariResolution::from_label(&label), world.get_mut::<SolariGi>(entity))
+                        {
+                            s.resolution = resolution;
                         }
                     }
                 },

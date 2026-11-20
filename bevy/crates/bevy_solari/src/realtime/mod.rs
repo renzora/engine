@@ -57,6 +57,8 @@ pub struct SolariLightingPlugin;
 impl Plugin for SolariLightingPlugin {
     fn build(&self, app: &mut App) {
         load_shader_library!(app, "gbuffer_utils.wesl");
+        // RENZORA PATCH: before `bindings.wesl`, which imports it.
+        load_shader_library!(app, "lighting_grid.wesl");
         load_shader_library!(app, "bindings.wesl");
         load_shader_library!(app, "atmosphere.wesl");
         load_shader_library!(app, "presample_light_tiles.wesl");
@@ -298,6 +300,24 @@ pub struct SolariLighting {
     ///
     /// Defaults to `true`.
     pub see_through: bool,
+
+    /// RENZORA PATCH: the fraction of the view's width and height the lighting
+    /// is traced at, from 0.25 to 1 (`lighting_grid.wesl`). At 0.5 each ray
+    /// lights a 2x2 block of pixels, a quarter of the rays, and the built-in
+    /// denoiser upsamples the result to the full view, guided by the full-size
+    /// G-buffer: geometry and textures stay at the view's resolution and only
+    /// the lighting is coarser. Shadow edges and lighting detail finer than a
+    /// cell soften; the cost of everything per pixel in Solari falls with the
+    /// cell count.
+    ///
+    /// Applies only while the built-in denoiser runs, since it is what brings
+    /// the lighting back to full size: with [`SolariLighting::denoise`] off,
+    /// under DLSS Ray Reconstruction (which has its own resolution, through
+    /// `MainPassResolutionOverride`), or while diagnostics are on, the lighting
+    /// is traced at the full view.
+    ///
+    /// Defaults to `1.0`.
+    pub lighting_scale: f32,
 }
 
 impl Default for SolariLighting {
@@ -318,6 +338,7 @@ impl Default for SolariLighting {
             reset: true, // No temporal history on the first frame
             denoise: true,
             see_through: true,
+            lighting_scale: 1.0,
         }
     }
 }

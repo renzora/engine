@@ -391,6 +391,9 @@ roughly 40 ms a frame on `High`, against 34 ms with Solari off.
 
 Things worth knowing:
 
+- **Trace fewer pixels.** Without DLSS, the built-in denoiser's
+  [Resolution](#resolution) is the biggest saving: **Performance** traces a
+  quarter of the rays and keeps geometry and textures at full resolution.
 - **Shadow maps are suppressed while Solari is on** (`Suppress Shadow Maps` in
   the inspector, on by default). A Solari camera carries `SkipDeferredLighting`,
   so the standard lighting pass, the only consumer of a shadow map, never
@@ -542,6 +545,58 @@ whose tooltip says why and that this denoiser is running instead, and the
 **DLSS Mode** row stays hidden. See [DLSS](./dlss.md). A scene saved with the older separate **Denoiser** and
 **DLSS** toggles loads with the matching choice.
 
+### Resolution
+
+While this denoiser runs, **Resolution** sets how many of the view's pixels
+Solari traces its lighting at; the denoiser fills in the rest. It is the
+counterpart of **DLSS Mode**, with the same names and fractions:
+
+| Resolution | Width and height | Rays traced |
+|---|---|---|
+| **Native** (default) | 100% | every pixel |
+| **Quality** | about 67% | under half |
+| **Balanced** | about 58% | about a third |
+| **Performance** | 50% | a quarter |
+
+Only the lighting is coarser. Geometry and textures are still drawn at the
+view's full resolution, and the denoiser's upsampling follows their edges, so
+silhouettes and texture detail stay sharp. What softens is lighting detail
+finer than a traced cell: the shading of a normal-mapped bump, the edge of a
+thin shadow, a reflection's finest detail, most visibly while the camera moves.
+Measured against a converged path trace over seven cameras in the benchmark
+room below (lower is better):
+
+| | Error, still | Detail, still | Error, moving | Detail, moving | Flicker, moving |
+|---|---|---|---|---|---|
+| Native | 0.0187 | 0.051 | 0.0197 | 0.073 | 0.0110 |
+| Quality | 0.0200 | 0.059 | 0.0239 | 0.115 | 0.0103 |
+| Performance | 0.0212 | 0.065 | 0.0245 | 0.112 | 0.0100 |
+
+Standing still the difference is small; moving, fine lighting detail is where
+it shows. Solari's per-pixel passes (initial sampling, ReSTIR reuse and the
+denoiser's first two stages) scale with the cells traced, which is most of its
+cost; the world cache, which lives in the world rather than on screen, does
+not. In the Bistro scene on an RTX 3060, at a 1270x750 viewport:
+
+| | Ultra, ReSTIR: Solari's passes | Editor | Low, no ReSTIR: Solari's passes | Editor |
+|---|---|---|---|---|
+| Native | 26 ms | 29 fps | 12.4 ms | 47 fps |
+| Quality | 14 ms | 45 fps | | |
+| Performance | 9 ms | 56 fps | 4.6 ms | 72 fps |
+
+Each traced cell always lights the same pixel of its block, its centre. Moving
+it through the block every frame, so every pixel is traced over time, was tried
+first and was far worse: where lighting differs inside a block (a shadow edge,
+a bump) the cell's value swung from frame to frame, the denoiser took the swing
+for noise and blurred across the edge, and a sunlit patch on a glossy floor
+smeared into a glow.
+
+The row is hidden under DLSS, which has its own **DLSS Mode**, and with the
+denoiser **Off (raw)**, since both need every pixel traced. The
+[Ray Tracing panel](#ray-tracing-panel) also traces every pixel while it is
+measuring or showing a view, because its figures and views are per pixel; it
+measures Native whatever the setting says.
+
 How it works, in order:
 
 1. **Split and demodulate.** The lighting passes write diffuse and specular
@@ -572,7 +627,11 @@ How it works, in order:
    firefly, such as a sun glint off a glossy floor) is shown no brighter than
    its brightest neighbour allows, while its history keeps the true value.
 4. **Composite.** The material factors are multiplied back in and emissive is
-   added.
+   added. Below Native [Resolution](#resolution) this is also the upsampler:
+   each pixel reads the four traced cells around it, keeping only those on its
+   own surface (the same plane and facing the same way), so lighting does not
+   bleed across a silhouette, and multiplies in its own material at full
+   resolution.
 
 It is written from the published research (SVGF and the
 edge-avoiding a-trous filter); no code comes from any vendor's denoiser SDK.
@@ -605,8 +664,10 @@ the reference's own leftover noise does not decide the result. A camera that
 lands inside furniture is skipped. `RENZORA_BENCH_POSE=<n>` runs one camera
 (each renderer holds GPU memory until its process ends, so beside a running
 editor one per process is safest), `RENZORA_BENCH_RAW=1` scores the raw
-estimate, and `RENZORA_BENCH_DLSS=1` scores DLSS Ray Reconstruction, the
-comparison the built-in denoiser is aimed at:
+estimate, `RENZORA_BENCH_SCALE=<0.25..1>` traces at a [Resolution](#resolution)
+below Native (without the history figures, which need every pixel), and
+`RENZORA_BENCH_DLSS=1` scores DLSS Ray Reconstruction, the comparison the
+built-in denoiser is aimed at:
 
 | Five cameras, mean | Error, still | Detail, still | Error, moving | Detail, moving | Grain | Flicker |
 |---|---|---|---|---|---|---|
@@ -635,7 +696,9 @@ blotches.
 The engine builds Bevy from its own tree (`bevy/`, Bevy's `main`), and its
 `bevy_solari` (`bevy/crates/bevy_solari`) carries Renzora's patches on top of
 upstream's. Besides the [denoiser](#denoiser) (`denoise.wesl`,
-`denoise.rs`, and the lighting split it reads) and the diagnostics behind the
+`denoise.rs`, and the lighting split it reads), the lighting grid behind its
+[Resolution](#resolution) (`lighting_grid.wesl`, and the cell-to-pixel mapping
+it puts into `restir.wesl` and `no_restir.wesl`), and the diagnostics behind the
 [Ray Tracing panel](#ray-tracing-panel) (`debug.wesl`, `debug_layout.wesl`,
 `debug.rs`, and a per-thread ray count in the traced scene's `trace_ray` and
 `trace_visibility`) and the [see-through

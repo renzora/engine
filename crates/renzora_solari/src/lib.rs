@@ -329,6 +329,9 @@ fn sync_solari_cameras(
         // wherever DLSS is attached (see `dlss.rs`).
         let denoise = gi.is_none_or(|gi| gi.denoiser_choice().wants_built_in());
         let see_through = gi.is_none_or(|gi| gi.glass_reflections);
+        // Honoured only under the built-in denoiser; Bevy's Solari traces at
+        // full size wherever it does not run (see `SolariLighting::lighting_scale`).
+        let lighting_scale = gi.map_or(1.0, |gi| gi.resolution.scale());
         let present = cameras.get(target).is_ok();
 
         if enabled && !present {
@@ -339,6 +342,7 @@ fn sync_solari_cameras(
                     denoise,
                     restir,
                     see_through,
+                    lighting_scale,
                     ..solari_lighting_for(quality)
                 });
             }
@@ -348,6 +352,7 @@ fn sync_solari_cameras(
                     denoise,
                     restir,
                     see_through,
+                    lighting_scale,
                     ..solari_lighting_for(quality)
                 };
                 if !same_preset(&lighting, &wanted) {
@@ -424,6 +429,7 @@ fn same_preset(current: &SolariLighting, wanted: &SolariLighting) -> bool {
     current.restir == wanted.restir
         && current.denoise == wanted.denoise
         && current.see_through == wanted.see_through
+        && current.lighting_scale == wanted.lighting_scale
         && current.primary_di_samples == wanted.primary_di_samples
         && current.secondary_di_samples == wanted.secondary_di_samples
         && current.max_bounces == wanted.max_bounces

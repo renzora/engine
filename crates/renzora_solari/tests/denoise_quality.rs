@@ -45,6 +45,13 @@ fn size() -> (u32, u32) {
         .unwrap_or((320, 192))
 }
 
+/// The lighting scale the realtime path traces at: 1 (every pixel) unless
+/// `RENZORA_BENCH_SCALE=<0.25..1>` asks for the coarser grid the built-in
+/// denoiser upsamples, to measure what tracing fewer rays costs in quality.
+fn lighting_scale() -> f32 {
+    std::env::var("RENZORA_BENCH_SCALE").ok().and_then(|s| s.parse().ok()).unwrap_or(1.0)
+}
+
 /// Frames the realtime path runs before its image is taken: about two seconds
 /// at 60 fps, long enough for every temporal stage to settle.
 const REALTIME_FRAMES: usize = 120;
@@ -486,6 +493,7 @@ fn render_frames(
                 world_cache_max_temporal_samples: 64.0,
                 world_cache_direct_light_sample_count: 64,
                 world_cache_cell_updates_soft_target: 80_000,
+                lighting_scale: lighting_scale(),
                 ..default()
             });
         }
@@ -927,10 +935,14 @@ fn denoiser_benchmark() {
             continue;
         }
         for (m, (label, motion)) in [("still", Motion::Still), ("strafe", Motion::Strafe)].into_iter().enumerate() {
-            let debug = SolariDebug {
+            // The diagnostics read the lighting per view pixel, so Solari traces
+            // at full scale while they run; a scaled run goes without them, and
+            // without the history figures they give.
+            let scaled = lighting_scale() < 1.0;
+            let debug = (!scaled).then(|| SolariDebug {
                 stats: true,
                 ..default()
-            };
+            });
             // `RENZORA_BENCH_RAW=1` measures Solari's raw estimate instead, to
             // tell what the denoiser adds from what it was given.
             // `RENZORA_BENCH_DLSS=1`, in a build with the `dlss` feature and
@@ -939,24 +951,25 @@ fn denoiser_benchmark() {
             let denoise = std::env::var("RENZORA_BENCH_RAW").is_err();
             let dlss = if std::env::var("RENZORA_BENCH_DLSS").is_ok() { Dlss::On } else { Dlss::Off };
             let renderer = Renderer::Realtime { denoise, taa: true, dlss };
-            let (previous, image, stats) = render_at(pose, renderer, motion, REALTIME_FRAMES, Some(debug));
+            let (previous, image, stats) = render_at(pose, renderer, motion, REALTIME_FRAMES, debug);
             let suffix = match (denoise, dlss) {
                 (_, Dlss::On) => "_dlss",
                 (false, _) => "_raw",
+                _ if scaled => "_scaled",
                 _ => "",
             };
             let name = format!("bench_{i}_{label}{suffix}");
             write_ppm(&name, &image);
             let s = report(&name, &image, &previous, &reference);
-            let d = stats.unwrap();
-            println!("{:20} history {:.1}  rejected {:.4}", "", d.mean_history, d.rejected_fraction);
+            let (history, rejected) = stats.map_or((f32::NAN, f32::NAN), |d| (d.mean_history, d.rejected_fraction));
+            println!("{:20} history {history:.1}  rejected {rejected:.4}", "");
             for (t, v) in totals[m].iter_mut().zip([
                 s.rel_mse,
                 s.grain,
                 s.flicker,
                 s.detail_rel_mse,
-                d.mean_history as f64,
-                d.rejected_fraction as f64,
+                history as f64,
+                rejected as f64,
             ]) {
                 *t += v / poses.len() as f64;
             }

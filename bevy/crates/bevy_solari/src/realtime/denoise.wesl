@@ -24,6 +24,13 @@
 //             accurate both standing still and moving.
 //   composite multiply the material factors back in and add emissive.
 //
+// The temporal and a-trous stages run over the lighting grid
+// (`lighting_grid.wesl`), the same cells the lighting passes traced, and the
+// composite over the whole view: on a grid coarser than the view it is also
+// the upsampler, reading the four cells around each view pixel and keeping
+// only those on the pixel's own surface, so lighting does not bleed across a
+// silhouette. At full scale a cell is a pixel and every stage is as it was.
+//
 // Written from the published papers; no code is taken from any denoiser SDK.
 
 import bevy_core_pipeline::tonemapping::tonemapping_luminance as luminance;
@@ -33,6 +40,7 @@ import bevy_pbr::deferred::types::unpack_24bit_normal;
 import bevy_pbr::prepass::bindings::PreviousViewUniforms;
 import package::realtime::gbuffer_utils::gpixel_resolve;
 import package::realtime::denoise_utils::{demodulation_factors, signal_moments};
+import package::realtime::lighting_grid::{lighting_is_scaled, lighting_to_view_pixel, view_to_lighting_position};
 import package::scene::bindings::ResolvedMaterial;
 
 @group(0) @binding(0) var<uniform> view: View;
@@ -67,12 +75,15 @@ import package::scene::bindings::ResolvedMaterial;
 @group(0) @binding(3) var source_specular: texture_2d<f32>;
 @group(0) @binding(4) var destination_diffuse: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(5) var destination_specular: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var<uniform> settings: DenoiserSettings;
 }
 
 @if(DENOISE_COMPOSITE) {
 @group(0) @binding(3) var final_diffuse: texture_2d<f32>;
 @group(0) @binding(4) var final_specular: texture_2d<f32>;
 @group(0) @binding(5) var view_output: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var guide: texture_2d<u32>;
+@group(0) @binding(7) var<uniform> settings: DenoiserSettings;
 }
 
 /// Per-frame state. Must match `DenoiserUniforms` in `prepare.rs`.
@@ -80,6 +91,12 @@ struct DenoiserSettings {
     /// Nonzero on a frame whose history must not be used: the first frame, a
     /// resize, a camera cut or a lighting change big enough to reset Solari.
     reset: u32,
+    padding: u32,
+    /// The lighting grid (`lighting_grid.wesl`): its size, and the jitter of
+    /// this frame and the last. The view's size and zero at full scale.
+    lighting_size: vec2<u32>,
+    lighting_jitter: vec2<f32>,
+    previous_lighting_jitter: vec2<f32>,
 }
 
 // ── Tuning ──────────────────────────────────────────────────────────────────
@@ -151,14 +168,32 @@ const ROUGHNESS_EDGE_SHARPNESS: f32 = 20.0;
 /// noise" and the blur stops while blotches remain.
 const RELATIVE_NOISE_FLOOR: f32 = 0.05;
 
+/// How sharply the composite's upsampling stops at a normal difference. Softer
+/// than the blur's: it only has to tell surfaces apart, and too sharp a stop
+/// leaves a bumpy surface's pixels with no cell to read.
+const UPSAMPLE_NORMAL_POWER: f32 = 8.0;
+
 // ── Shared ──────────────────────────────────────────────────────────────────
 
+/// The lighting grid's size, which the temporal and a-trous stages run over.
+/// The view's own size at full scale.
 fn view_size() -> vec2<u32> {
-    return vec2<u32>(view.main_pass_viewport.zw);
+    return settings.lighting_size;
 }
 
 fn in_view(pixel: vec2<i32>) -> bool {
     return all(pixel >= vec2(0)) && all(pixel < vec2<i32>(view_size()));
+}
+
+/// The view pixel lighting cell `cell` was traced at this frame.
+fn cell_view_pixel(cell: vec2<u32>) -> vec2<u32> {
+    return lighting_to_view_pixel(cell, settings.lighting_jitter, settings.lighting_size, view.main_pass_viewport.zw);
+}
+
+/// The view pixel lighting cell `cell` was traced at last frame.
+@if(DENOISE_TEMPORAL)
+fn previous_cell_view_pixel(cell: vec2<u32>) -> vec2<u32> {
+    return lighting_to_view_pixel(cell, settings.previous_lighting_jitter, settings.lighting_size, view.main_pass_viewport.zw);
 }
 
 fn specular_max_history(perceptual_roughness: f32) -> f32 {
@@ -214,10 +249,12 @@ fn unpack_guide(texel: vec4<u32>) -> GuidePixel {
 @if(DENOISE_TEMPORAL)
 @compute @workgroup_size(8, 8, 1)
 fn temporal(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    // A lighting cell; its surface is the view pixel it was traced at.
     let pixel_id = global_id.xy;
     if any(pixel_id >= view_size()) { return; }
+    let surface_pixel = cell_view_pixel(pixel_id);
 
-    let depth = textureLoad(depth_buffer, pixel_id, 0);
+    let depth = textureLoad(depth_buffer, surface_pixel, 0);
     if depth == 0.0 {
         textureStore(history_diffuse_out, pixel_id, vec4(0.0));
         textureStore(history_specular_out, pixel_id, vec4(0.0));
@@ -227,8 +264,8 @@ fn temporal(@builtin(global_invocation_id) global_id: vec3<u32>) {
         textureStore(guide_out, pixel_id, vec4(0u));
         return;
     }
-    let gpixel = textureLoad(gbuffer, pixel_id, 0);
-    let surface = gpixel_resolve(gpixel, depth, pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
+    let gpixel = textureLoad(gbuffer, surface_pixel, 0);
+    let surface = gpixel_resolve(gpixel, depth, surface_pixel, view.main_pass_viewport.zw, view.world_from_clip);
     let view_distance = max(length(view.world_position - surface.world_position), 0.0001);
     textureStore(guide_out, pixel_id, pack_guide(surface.world_position, gpixel.a, surface.material.perceptual_roughness));
 
@@ -250,8 +287,11 @@ fn temporal(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var base = vec2(0);
     var f = vec2(0.0);
     if settings.reset == 0u {
-        let motion_vector = textureLoad(motion_vectors, pixel_id, 0).xy;
-        let previous_position = vec2<f32>(pixel_id) + 0.5 - motion_vector * view.main_pass_viewport.zw - 0.5;
+        // Where the surface was last frame, in view pixels, then on last
+        // frame's grid.
+        let motion_vector = textureLoad(motion_vectors, surface_pixel, 0).xy;
+        let previous_view_position = vec2<f32>(surface_pixel) - motion_vector * view.main_pass_viewport.zw;
+        let previous_position = view_to_lighting_position(previous_view_position, settings.previous_lighting_jitter, settings.lighting_size, view.main_pass_viewport.zw);
         base = vec2<i32>(floor(previous_position));
         f = fract(previous_position);
         let bilinear = array<f32, 4>((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
@@ -260,9 +300,10 @@ fn temporal(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let tap = base + offsets[i];
             if !in_view(tap) || bilinear[i] <= 0.0 { continue; }
             let tap_id = vec2<u32>(tap);
-            let tap_depth = textureLoad(previous_depth_buffer, tap_id, 0);
+            let tap_surface_pixel = previous_cell_view_pixel(tap_id);
+            let tap_depth = textureLoad(previous_depth_buffer, tap_surface_pixel, 0);
             if tap_depth == 0.0 { continue; }
-            let previous_surface = gpixel_resolve(textureLoad(previous_gbuffer, tap_id, 0), tap_depth, tap_id, view.main_pass_viewport.zw, previous_view.world_from_clip);
+            let previous_surface = gpixel_resolve(textureLoad(previous_gbuffer, tap_surface_pixel, 0), tap_depth, tap_surface_pixel, view.main_pass_viewport.zw, previous_view.world_from_clip);
             let plane_distance = abs(dot(surface.world_normal, previous_surface.world_position - surface.world_position));
             if plane_distance > REPROJECTION_PLANE_TOLERANCE * view_distance { continue; }
             if dot(surface.world_normal, previous_surface.world_normal) < REPROJECTION_NORMAL_COS { continue; }
@@ -294,9 +335,10 @@ fn temporal(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 let tap = center + vec2(x, y);
                 if !in_view(tap) { continue; }
                 let tap_id = vec2<u32>(tap);
-                let tap_depth = textureLoad(previous_depth_buffer, tap_id, 0);
+                let tap_surface_pixel = previous_cell_view_pixel(tap_id);
+                let tap_depth = textureLoad(previous_depth_buffer, tap_surface_pixel, 0);
                 if tap_depth == 0.0 { continue; }
-                let previous_surface = gpixel_resolve(textureLoad(previous_gbuffer, tap_id, 0), tap_depth, tap_id, view.main_pass_viewport.zw, previous_view.world_from_clip);
+                let previous_surface = gpixel_resolve(textureLoad(previous_gbuffer, tap_surface_pixel, 0), tap_depth, tap_surface_pixel, view.main_pass_viewport.zw, previous_view.world_from_clip);
                 let plane_distance = abs(dot(surface.world_normal, previous_surface.world_position - surface.world_position));
                 if plane_distance > REPROJECTION_PLANE_TOLERANCE * view_distance { continue; }
                 if dot(surface.world_normal, previous_surface.world_normal) < REPROJECTION_NORMAL_COS { continue; }
@@ -455,7 +497,7 @@ fn spatial_variance(pixel_id: vec2<u32>) -> vec2<f32> {
             let tap = vec2<i32>(pixel_id) + vec2(x, y);
             if !in_view(tap) { continue; }
             let tap_id = vec2<u32>(tap);
-            if textureLoad(depth_buffer, tap_id, 0) == 0.0 { continue; }
+            if textureLoad(depth_buffer, cell_view_pixel(tap_id), 0) == 0.0 { continue; }
             let d = signal_moments(textureLoad(noisy_diffuse, tap_id, 0).rgb);
             let s = signal_moments(textureLoad(noisy_specular, tap_id, 0).rgb);
             sum += vec4(d, s);
@@ -597,23 +639,115 @@ fn noise_deviation(variance: f32, pixel_luminance: f32) -> f32 {
 
 // ── Composite ───────────────────────────────────────────────────────────────
 
+/// Runs over the whole view, not the lighting grid.
 @if(DENOISE_COMPOSITE)
 @compute @workgroup_size(8, 8, 1)
 fn composite(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let pixel_id = global_id.xy;
-    if any(pixel_id >= view_size()) { return; }
+    if any(pixel_id >= vec2<u32>(view.main_pass_viewport.zw)) { return; }
 
     // Solari does not shade the sky; whatever drew it is left alone.
     let depth = textureLoad(depth_buffer, pixel_id, 0);
     if depth == 0.0 { return; }
     let surface = gpixel_resolve(textureLoad(gbuffer, pixel_id, 0), depth, pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
 
+    var diffuse = vec3(0.0);
+    var specular = vec3(0.0);
+    if lighting_is_scaled(settings.lighting_size, view.main_pass_viewport.zw) {
+        let upsampled = upsample(pixel_id, surface.world_position, surface.world_normal);
+        diffuse = upsampled[0];
+        specular = upsampled[1];
+    } else {
+        diffuse = textureLoad(final_diffuse, pixel_id, 0).rgb;
+        specular = textureLoad(final_specular, pixel_id, 0).rgb;
+    }
+
+    // The material factors come from this pixel's own G-buffer, at the view's
+    // full resolution, which is what keeps textures sharp on a coarse grid.
     let wo = normalize(view.world_position - surface.world_position);
     let factors = demodulation_factors(surface.material, surface.world_normal, wo);
-    let lighting = textureLoad(final_diffuse, pixel_id, 0).rgb * factors.diffuse
-        + textureLoad(final_specular, pixel_id, 0).rgb * factors.specular;
+    let lighting = diffuse * factors.diffuse + specular * factors.specular;
 
     // Emissive is added unexposed, as the lighting passes add it (see the
     // emissive patch in restir.wesl). The lighting is already exposed.
     textureStore(view_output, pixel_id, vec4(lighting + surface.material.emissive, 1.0));
+}
+
+/// The denoised diffuse ([0]) and specular ([1]) lighting at view pixel
+/// `pixel_id`, from the lighting grid.
+///
+/// A joint bilateral upsample: the four cells around the pixel, weighted
+/// bilinearly and by how well the surface each was traced at matches this
+/// pixel's (its plane, from the guide's position, and its normal). Lighting is
+/// demodulated, so it varies only with light, not texture, and what this has to
+/// keep is edges between surfaces, which the weights do. A pixel none of the
+/// four match (a thin post a cell missed) takes the best match of the nine
+/// around it, and failing that the plain bilinear average, which is wrong at
+/// worst by one cell's width of light.
+@if(DENOISE_COMPOSITE)
+fn upsample(pixel_id: vec2<u32>, world_position: vec3<f32>, world_normal: vec3<f32>) -> array<vec3<f32>, 2> {
+    let position = view_to_lighting_position(vec2<f32>(pixel_id), settings.lighting_jitter, settings.lighting_size, view.main_pass_viewport.zw);
+    let base = vec2<i32>(floor(position));
+    let f = fract(position);
+    let view_distance = max(length(view.world_position - world_position), 0.0001);
+    let last = vec2<i32>(settings.lighting_size) - 1;
+
+    let bilinear = array<f32, 4>((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+    let offsets = array<vec2<i32>, 4>(vec2(0, 0), vec2(1, 0), vec2(0, 1), vec2(1, 1));
+    var diffuse = vec3(0.0);
+    var specular = vec3(0.0);
+    var weight_sum = 0.0;
+    var plain_diffuse = vec3(0.0);
+    var plain_specular = vec3(0.0);
+    var plain_sum = 0.0;
+    for (var i = 0u; i < 4u; i++) {
+        let tap = vec2<u32>(clamp(base + offsets[i], vec2(0), last));
+        let tap_guide = textureLoad(guide, tap, 0);
+        if (tap_guide.w & GUIDE_COVERED) == 0u { continue; }
+        let tap_diffuse = textureLoad(final_diffuse, tap, 0).rgb;
+        let tap_specular = textureLoad(final_specular, tap, 0).rgb;
+        plain_diffuse += tap_diffuse * bilinear[i];
+        plain_specular += tap_specular * bilinear[i];
+        plain_sum += bilinear[i];
+        let w = bilinear[i] * surface_match(tap_guide, world_position, world_normal, view_distance);
+        diffuse += tap_diffuse * w;
+        specular += tap_specular * w;
+        weight_sum += w;
+    }
+    if weight_sum > 1e-4 {
+        return array(diffuse / weight_sum, specular / weight_sum);
+    }
+
+    let center = vec2<i32>(round(position));
+    var best = 0.0;
+    var best_tap = vec2(0u);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let tap = vec2<u32>(clamp(center + vec2(x, y), vec2(0), last));
+            let tap_guide = textureLoad(guide, tap, 0);
+            if (tap_guide.w & GUIDE_COVERED) == 0u { continue; }
+            let m = surface_match(tap_guide, world_position, world_normal, view_distance);
+            if m > best {
+                best = m;
+                best_tap = tap;
+            }
+        }
+    }
+    if best > 1e-4 {
+        return array(textureLoad(final_diffuse, best_tap, 0).rgb, textureLoad(final_specular, best_tap, 0).rgb);
+    }
+    if plain_sum > 0.0 {
+        return array(plain_diffuse / plain_sum, plain_specular / plain_sum);
+    }
+    return array(vec3(0.0), vec3(0.0));
+}
+
+/// How well the surface a guide texel describes matches this pixel's, 0 to 1:
+/// near 1 on the same surface, near 0 across a silhouette or a crease.
+@if(DENOISE_COMPOSITE)
+fn surface_match(texel: vec4<u32>, world_position: vec3<f32>, world_normal: vec3<f32>, view_distance: f32) -> f32 {
+    let tap_position = bitcast<vec3<f32>>(texel.xyz);
+    let tap_normal = octahedral_decode(unpack_24bit_normal(texel.w));
+    let plane_distance = abs(dot(world_normal, tap_position - world_position)) / view_distance;
+    return exp(-plane_distance * PLANE_EDGE_SHARPNESS) * pow(max(dot(world_normal, tap_normal), 0.0), UPSAMPLE_NORMAL_POWER);
 }

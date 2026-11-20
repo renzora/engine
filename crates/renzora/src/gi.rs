@@ -148,10 +148,70 @@ pub struct SolariGi {
     #[serde(default = "glass_reflections_default")]
     #[reflect(default = "glass_reflections_default")]
     pub glass_reflections: bool,
+    /// How many of the view's pixels the built-in denoiser's lighting is traced
+    /// at; it upsamples the rest. See [`SolariResolution`].
+    #[serde(default)]
+    #[reflect(default)]
+    pub resolution: SolariResolution,
 }
 
 fn glass_reflections_default() -> bool {
     true
+}
+
+/// The resolution Solari traces its lighting at under the built-in denoiser,
+/// which upsamples it to the view.
+///
+/// Only the lighting is coarser: geometry and textures are rasterized at the
+/// view's full resolution and the denoiser's upsampling follows their edges, so
+/// what softens is lighting detail finer than a traced cell, such as a thin
+/// shadow. Solari's cost is mostly per traced cell, so each step down saves
+/// most of what the cells it drops cost.
+///
+/// DLSS Ray Reconstruction has its own resolution ([`DlssMode`]) and ignores
+/// this; so do the raw image and the Ray Tracing panel, which need every pixel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[reflect(Default)]
+pub enum SolariResolution {
+    /// Every pixel.
+    #[default]
+    Native,
+    /// About 67% of the width and height: under half the rays.
+    Quality,
+    /// About 58%: about a third of the rays.
+    Balanced,
+    /// 50%: a quarter of the rays.
+    Performance,
+}
+
+impl SolariResolution {
+    /// Every choice, in the order the inspector lists them.
+    pub const ALL: [Self; 4] = [Self::Native, Self::Quality, Self::Balanced, Self::Performance];
+
+    /// The inspector dropdown labels, index for index with [`ALL`](Self::ALL).
+    pub const LABELS: [&'static str; 4] = ["Native", "Quality", "Balanced", "Performance"];
+
+    /// The fraction of the view's width and height the lighting is traced at.
+    /// The same fractions as DLSS's modes of the same names, so switching
+    /// between the two denoisers keeps the cost about the same.
+    pub fn scale(self) -> f32 {
+        match self {
+            Self::Native => 1.0,
+            Self::Quality => 2.0 / 3.0,
+            Self::Balanced => 0.58,
+            Self::Performance => 0.5,
+        }
+    }
+
+    /// The inspector dropdown label.
+    pub fn label(self) -> &'static str {
+        Self::LABELS[self as usize]
+    }
+
+    /// The choice with this [`label`](Self::label), if any.
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.label() == label)
+    }
 }
 
 impl SolariGi {
@@ -389,6 +449,7 @@ impl Default for SolariGi {
             dlss: legacy_toggle_default(),
             dlss_mode: default_solari_dlss_mode(),
             glass_reflections: true,
+            resolution: SolariResolution::default(),
         }
     }
 }

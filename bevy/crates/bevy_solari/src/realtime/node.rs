@@ -611,8 +611,16 @@ pub fn solari_lighting(
         timestamp_writes: None,
     });
 
-    let dx = solari_lighting_resources.view_size.x.div_ceil(8);
-    let dy = solari_lighting_resources.view_size.y.div_ceil(8);
+    // RENZORA PATCH: the lighting and the denoiser's temporal and a-trous
+    // stages run over the lighting grid (`lighting_grid.wesl`); everything that
+    // writes or reads per view pixel (the denoiser's composite, the DLSS guide
+    // resolve, see-through surfaces, the diagnostics) over the view. The two
+    // are the same at full scale, and the grid is always full scale under DLSS
+    // and the diagnostics (see `prepare_solari_lighting_resources`).
+    let dx = solari_lighting_resources.lighting_size.x.div_ceil(8);
+    let dy = solari_lighting_resources.lighting_size.y.div_ceil(8);
+    let vx = solari_lighting_resources.view_size.x.div_ceil(8);
+    let vy = solari_lighting_resources.view_size.y.div_ceil(8);
 
     pass.set_bind_group(0, scene_bind_group, &[]);
     pass.set_bind_group(
@@ -629,7 +637,7 @@ pub fn solari_lighting(
     if let Some(bind_group_resolve_dlss_rr_textures) = &bind_group_resolve_dlss_rr_textures {
         pass.set_bind_group(2, bind_group_resolve_dlss_rr_textures, &[]);
         pass.set_pipeline(resolve_dlss_rr_textures_pipeline);
-        pass.dispatch_workgroups(dx, dy, 1);
+        pass.dispatch_workgroups(vx, vy, 1);
     }
 
     let d = diagnostics.time_span(&mut pass, "solari_lighting/presample_light_tiles");
@@ -714,12 +722,12 @@ pub fn solari_lighting(
     {
         pass.set_bind_group(2, debug_group, &[]);
         pass.set_pipeline(snapshot_raw);
-        pass.dispatch_workgroups(dx, dy, 1);
+        pass.dispatch_workgroups(vx, vy, 1);
     }
 
     // RENZORA PATCH: denoise the lighting just written.
     if let Some(denoiser_dispatch) = &denoiser_dispatch {
-        denoiser_dispatch.dispatch(&mut pass, &diagnostics, dx, dy);
+        denoiser_dispatch.dispatch(&mut pass, &diagnostics, (dx, dy), (vx, vy));
     }
 
     // RENZORA PATCH: light see-through surfaces over the finished opaque image
@@ -743,7 +751,7 @@ pub fn solari_lighting(
         );
         pass.set_bind_group(2, None, &[]);
         pass.set_pipeline(see_through);
-        pass.dispatch_workgroups(dx, dy, 1);
+        pass.dispatch_workgroups(vx, vy, 1);
         d.end(&mut pass);
     }
 
@@ -766,25 +774,25 @@ pub fn solari_lighting(
         pass.set_bind_group(2, debug_group, &[]);
         if frame.reference {
             pass.set_pipeline(reference);
-            pass.dispatch_workgroups(dx, dy, 1);
+            pass.dispatch_workgroups(vx, vy, 1);
             if let Some(debug) = debug_resources {
                 debug.count_reference_sample();
             }
         }
         if frame.stats {
             pass.set_pipeline(stats);
-            pass.dispatch_workgroups(dx, dy, 1);
+            pass.dispatch_workgroups(vx, vy, 1);
         }
         // The error view reads its neighbours' finished colours, which it is
         // overwriting as it goes, so they are copied aside first (over the raw
         // copy, which this view does not show).
         if frame.view == SolariDebugView::ReferenceError {
             pass.set_pipeline(snapshot_raw);
-            pass.dispatch_workgroups(dx, dy, 1);
+            pass.dispatch_workgroups(vx, vy, 1);
         }
         if frame.view != SolariDebugView::None {
             pass.set_pipeline(debug_view);
-            pass.dispatch_workgroups(dx, dy, 1);
+            pass.dispatch_workgroups(vx, vy, 1);
         }
         d.end(&mut pass);
     }

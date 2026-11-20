@@ -6,7 +6,6 @@ use bevy_anti_alias::dlss::{
 };
 use bevy_camera::MainPassResolutionOverride;
 use bevy_diagnostic::FrameCount;
-#[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
 use bevy_ecs::query::Has;
 use bevy_ecs::{
     component::Component,
@@ -76,11 +75,52 @@ struct SolariLightingUniforms {
     /// RENZORA PATCH: written 0 here every frame; the diagnostics set it on the
     /// views they count rays for (`debug::prepare_solari_debug`).
     debug_flags: u32,
-    padding: [u32; 3],
+    padding: u32,
+    /// RENZORA PATCH: the lighting grid. See [`LightingGrid`].
+    lighting_size: [u32; 2],
+    lighting_jitter: [f32; 2],
+    previous_lighting_jitter: [f32; 2],
+}
+
+/// RENZORA PATCH: the grid the lighting is traced and denoised on
+/// (`lighting_grid.wesl`), for one view and one frame.
+///
+/// The shaders take a jitter, this frame's and last frame's, for where in its
+/// cell each cell traces; it is held at the cell's centre on every frame.
+/// Rotating it through the cell, to visit every pixel over a few frames, was
+/// tried first and was much worse: wherever lighting differs within a cell (a
+/// shadow edge, a normal-mapped bump, a reflection), the cell's value swung
+/// from frame to frame, the denoiser read the swing as noise and loosened its
+/// edge-stops, and a sunlit patch on a glossy floor smeared into a glow with
+/// its shadows gone. Tracing one fixed pixel keeps each cell's history
+/// consistent; the lighting between cells is the upsampler's to fill in.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct LightingGrid {
+    pub size: UVec2,
+    pub jitter: [f32; 2],
+    pub previous_jitter: [f32; 2],
+}
+
+/// RENZORA PATCH: the smallest lighting scale honoured. Below a quarter a cell
+/// is sixteen pixels and the lighting, upsampled, visibly loses its shadows.
+pub const MIN_LIGHTING_SCALE: f32 = 0.25;
+
+impl LightingGrid {
+    /// The grid for a view of `view_size` at `scale`. At a scale of 1 it is the
+    /// view itself with no offset, so every mapping in the shaders is the
+    /// identity and the lighting runs exactly as upstream.
+    pub fn new(view_size: UVec2, scale: f32) -> Self {
+        let scale = scale.clamp(MIN_LIGHTING_SCALE, 1.0);
+        if scale >= 1.0 {
+            return Self { size: view_size, jitter: [0.0; 2], previous_jitter: [0.0; 2] };
+        }
+        let size = (view_size.as_vec2() * scale).round().as_uvec2().max(UVec2::ONE);
+        Self { size, jitter: [0.5; 2], previous_jitter: [0.5; 2] }
+    }
 }
 
 impl SolariLightingUniforms {
-    fn new(settings: &SolariLighting, frame_count: u32, force_reset: bool) -> Self {
+    fn new(settings: &SolariLighting, frame_count: u32, force_reset: bool, grid: LightingGrid) -> Self {
         Self {
             confidence_weight_cap: settings.confidence_weight_cap,
             primary_di_samples: settings.primary_di_samples,
@@ -95,7 +135,10 @@ impl SolariLightingUniforms {
             frame_rng: frame_count.wrapping_mul(5782582),
             reset: (settings.reset || force_reset) as u32,
             debug_flags: 0,
-            padding: [0; 3],
+            padding: 0,
+            lighting_size: grid.size.to_array(),
+            lighting_jitter: grid.jitter,
+            previous_lighting_jitter: grid.previous_jitter,
         }
     }
 }
@@ -124,6 +167,10 @@ pub struct SolariLightingResources {
     pub world_cache: Buffer,
     pub world_cache_active_cells_dispatch: Buffer,
     pub view_size: UVec2,
+    /// RENZORA PATCH: the size of the grid the lighting is traced and denoised
+    /// on (`lighting_grid.wesl`), which the reservoirs and the denoiser's
+    /// buffers are sized to. `view_size` at full scale.
+    pub lighting_size: UVec2,
     /// RENZORA PATCH: the built-in denoiser's buffers. See denoise.wesl.
     pub denoiser: SolariDenoiserResources,
     /// RENZORA PATCH: the diagnostics' counters (debug_layout.wesl). Always
@@ -174,9 +221,14 @@ impl SolariDenoiserResources {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct DenoiserUniforms {
     reset: u32,
-    padding: [u32; 3],
+    padding: u32,
+    lighting_size: [u32; 2],
+    lighting_jitter: [f32; 2],
+    previous_lighting_jitter: [f32; 2],
 }
 
+/// RENZORA PATCH: `view_size` is the lighting grid's, which the denoiser's
+/// buffers are sized to; only its composite writes at the view's own size.
 fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> SolariDenoiserResources {
     let texture_of = |label: &'static str, format: TextureFormat| {
         let texture = render_device.create_texture(&TextureDescriptor {
@@ -232,7 +284,13 @@ fn create_denoiser_resources(render_device: &RenderDevice, view_size: UVec2) -> 
 /// is unusable on a frame Solari resets, on the frame the resources were made,
 /// and on the first frame after the denoiser was off, whether switched off or
 /// standing aside for DLSS.
-fn update_denoiser(render_queue: &RenderQueue, denoiser: &SolariDenoiserResources, active: bool, reset: bool) {
+fn update_denoiser(
+    render_queue: &RenderQueue,
+    denoiser: &SolariDenoiserResources,
+    active: bool,
+    reset: bool,
+    grid: LightingGrid,
+) {
     if !active {
         denoiser.frame.store(0, Ordering::Relaxed);
         return;
@@ -240,7 +298,10 @@ fn update_denoiser(render_queue: &RenderQueue, denoiser: &SolariDenoiserResource
     let previous = denoiser.frame.fetch_add(1, Ordering::Relaxed);
     let uniforms = DenoiserUniforms {
         reset: (reset || previous == 0) as u32,
-        padding: [0; 3],
+        padding: 0,
+        lighting_size: grid.size.to_array(),
+        lighting_jitter: grid.jitter,
+        previous_lighting_jitter: grid.previous_jitter,
     };
     render_queue.write_buffer(&denoiser.constants, 0, bytemuck::bytes_of(&uniforms));
 }
@@ -257,6 +318,7 @@ pub fn prepare_solari_lighting_resources(
         &SolariLighting,
         Option<&SolariLightingResources>,
         Option<&MainPassResolutionOverride>,
+        Has<super::debug::SolariDebug>,
     )>,
     #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))] query: Query<(
         Entity,
@@ -264,6 +326,7 @@ pub fn prepare_solari_lighting_resources(
         &SolariLighting,
         Option<&SolariLightingResources>,
         Option<&MainPassResolutionOverride>,
+        Has<super::debug::SolariDebug>,
         Has<Dlss<DlssRayReconstructionFeature>>,
         Has<ViewDlssRayReconstructionTextures>,
     )>,
@@ -274,7 +337,7 @@ pub fn prepare_solari_lighting_resources(
 ) {
     for query_item in &query {
         #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
-        let (entity, camera, solari_lighting, solari_lighting_resources, resolution_override) =
+        let (entity, camera, solari_lighting, solari_lighting_resources, resolution_override, has_debug) =
             query_item;
         #[cfg(any(not(feature = "dlss"), feature = "force_disable_dlss"))]
         let has_dlss_rr = false;
@@ -285,6 +348,7 @@ pub fn prepare_solari_lighting_resources(
             solari_lighting,
             solari_lighting_resources,
             resolution_override,
+            has_debug,
             has_dlss_rr,
             has_dlss_rr_textures,
         ) = query_item;
@@ -300,11 +364,21 @@ pub fn prepare_solari_lighting_resources(
             view_size = *resolution_override;
         }
 
+        // RENZORA PATCH: the lighting grid. Coarser than the view only where
+        // the built-in denoiser runs, since its composite is what brings the
+        // lighting back to the view's size; DLSS Ray Reconstruction, the raw
+        // image and the diagnostics (which read the lighting per view pixel)
+        // all get the full-size grid.
+        let lighting_scale = if denoiser_active && !has_debug { solari_lighting.lighting_scale } else { 1.0 };
+        let grid = LightingGrid::new(view_size, lighting_scale);
+
         let reusable = solari_lighting_resources.filter(|r| {
-            r.view_size == view_size && r.reservoirs.is_some() == solari_lighting.restir
+            r.view_size == view_size
+                && r.lighting_size == grid.size
+                && r.reservoirs.is_some() == solari_lighting.restir
         });
         let uniforms =
-            SolariLightingUniforms::new(solari_lighting, frame_count.0, reusable.is_none());
+            SolariLightingUniforms::new(solari_lighting, frame_count.0, reusable.is_none(), grid);
 
         if let Some(solari_lighting_resources) = reusable {
             // The constants uniform can change every frame, so always upload it.
@@ -318,6 +392,7 @@ pub fn prepare_solari_lighting_resources(
                 &solari_lighting_resources.denoiser,
                 denoiser_active,
                 uniforms.reset != 0,
+                grid,
             );
             #[cfg(all(feature = "dlss", not(feature = "force_disable_dlss")))]
             sync_dlss_rr_textures(
@@ -358,7 +433,8 @@ pub fn prepare_solari_lighting_resources(
             let reservoirs_buffer = |name| {
                 render_device.create_buffer(&BufferDescriptor {
                     label: Some(name),
-                    size: (view_size.x * view_size.y) as u64 * RESERVOIR_STRUCT_SIZE,
+                    // RENZORA PATCH: one per lighting cell, not per view pixel.
+                    size: (grid.size.x * grid.size.y) as u64 * RESERVOIR_STRUCT_SIZE,
                     usage: BufferUsages::STORAGE,
                     mapped_at_creation: false,
                 })
@@ -383,8 +459,8 @@ pub fn prepare_solari_lighting_resources(
             mapped_at_creation: false,
         });
 
-        let denoiser = create_denoiser_resources(&render_device, view_size);
-        update_denoiser(&render_queue, &denoiser, denoiser_active, true);
+        let denoiser = create_denoiser_resources(&render_device, grid.size);
+        update_denoiser(&render_queue, &denoiser, denoiser_active, true, grid);
 
         commands.entity(entity).insert(SolariLightingResources {
             constants,
@@ -394,6 +470,7 @@ pub fn prepare_solari_lighting_resources(
             world_cache,
             world_cache_active_cells_dispatch,
             view_size,
+            lighting_size: grid.size,
             denoiser,
             debug_counters: render_device.create_buffer(&BufferDescriptor {
                 label: Some("solari_debug_counters"),

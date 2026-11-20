@@ -6,7 +6,8 @@ import bevy_render::utils::octahedral_decode;
 import package::scene::brdf::{brdf_pdf, evaluate_diffuse_brdf, evaluate_specular_brdf, F_AB};
 import package::realtime::gbuffer_utils::{gpixel_resolve, permute_pixel, pixel_dissimilar};
 import package::realtime::initial_path::{generate_initial_path, InitialSamplingResult, nee_probability};
-import package::realtime::bindings::{depth_buffer, empty_reservoir, gbuffer, load_motion_vector, noisy_specular, previous_depth_buffer, previous_gbuffer, previous_view, reservoirs_a, reservoirs_b, Reservoir, constants, view, view_output};
+import package::realtime::bindings::{depth_buffer, empty_reservoir, gbuffer, lighting_scaled, lighting_view_pixel, load_motion_vector, noisy_diffuse, noisy_specular, previous_depth_buffer, previous_gbuffer, previous_lighting_view_pixel, previous_view, reservoirs_a, reservoirs_b, Reservoir, constants, view, view_output};
+import package::realtime::lighting_grid::view_to_lighting_position;
 import package::realtime::atmosphere::calculate_light_contribution;
 import package::realtime::denoise_input::write_noisy_signal;
 import package::realtime::debug_layout::{flush_ray_counts, SLOT_RAYS_INITIAL, SLOT_RAYS_REUSE};
@@ -18,27 +19,35 @@ enable wgpu_ray_query;
 
 const SPATIAL_REUSE_RADIUS_PIXELS = 30.0;
 
+// RENZORA PATCH: both passes run over the lighting grid (`lighting_grid.wesl`),
+// not the view: `global_id` is a lighting cell, reservoirs are indexed by cell,
+// and the surface a cell shades is the view pixel `lighting_view_pixel` picks
+// for it this frame. At full scale the two are the same pixel.
+
 @compute @workgroup_size(8, 8, 1)
 fn initial_and_temporal(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(global_invocation_id) global_id: vec3<u32>) {
-    if any(global_id.xy >= vec2u(view.main_pass_viewport.zw)) { return; }
+    if any(global_id.xy >= constants.lighting_size) { return; }
 
-    let pixel_index = global_id.x + global_id.y * u32(view.main_pass_viewport.z);
+    let pixel_index = global_id.x + global_id.y * constants.lighting_size.x;
     var rng = pixel_index + constants.frame_rng;
 
-    let depth = textureLoad(depth_buffer, global_id.xy, 0);
+    let view_pixel = lighting_view_pixel(global_id.xy);
+    let depth = textureLoad(depth_buffer, view_pixel, 0);
     if depth == 0.0 {
         reservoirs_b[pixel_index] = empty_reservoir();
         return;
     }
-    let surface = gpixel_resolve(textureLoad(gbuffer, global_id.xy, 0), depth, global_id.xy, view.main_pass_viewport.zw, view.world_from_clip);
+    let surface = gpixel_resolve(textureLoad(gbuffer, view_pixel, 0), depth, view_pixel, view.main_pass_viewport.zw, view.world_from_clip);
 
     let initial = generate_initial_path(surface.world_position, surface.world_normal, surface.material, workgroup_id.xy, global_id.xy, &rng);
-    textureStore(view_output, global_id.xy, vec4(initial.radiance, 0.0));
-    // RENZORA PATCH: parked here until `spatial_and_shade`, which writes the
-    // final split signal over it.
+    // RENZORA PATCH: both parts parked in the denoiser's input, by cell, until
+    // `spatial_and_shade` writes the final split signal over them. Upstream
+    // parked the total in the view's own colour, which on a coarse grid would
+    // write cells over the view's pixels, sky included.
+    textureStore(noisy_diffuse, global_id.xy, vec4(initial.radiance, 0.0));
     textureStore(noisy_specular, global_id.xy, vec4(initial.radiance_specular, 0.0));
 
-    let temporal = load_temporal_reservoir(global_id.xy, depth, surface.world_position, surface.world_normal);
+    let temporal = load_temporal_reservoir(global_id.xy, view_pixel, depth, surface.world_position, surface.world_normal);
     let previous_camera_homogeneous = previous_view.world_from_clip * (previous_view.clip_from_view * vec4(0.0, 0.0, 0.0, 1.0));
     let previous_camera_world_position = previous_camera_homogeneous.xyz / previous_camera_homogeneous.w;
     let merge_result = merge_reservoirs(initial.reservoir, surface.world_position, surface.world_normal, surface.material,
@@ -52,17 +61,18 @@ fn initial_and_temporal(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin
 
 @compute @workgroup_size(8, 8, 1)
 fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    if any(global_id.xy >= vec2u(view.main_pass_viewport.zw)) { return; }
+    if any(global_id.xy >= constants.lighting_size) { return; }
 
-    let pixel_index = global_id.x + global_id.y * u32(view.main_pass_viewport.z);
+    let pixel_index = global_id.x + global_id.y * constants.lighting_size.x;
     var rng = pixel_index + constants.frame_rng + 0x6A09E667u;
 
-    let depth = textureLoad(depth_buffer, global_id.xy, 0);
+    let view_pixel = lighting_view_pixel(global_id.xy);
+    let depth = textureLoad(depth_buffer, view_pixel, 0);
     if depth == 0.0 {
         reservoirs_a[pixel_index] = empty_reservoir();
         return;
     }
-    let surface = gpixel_resolve(textureLoad(gbuffer, global_id.xy, 0), depth, global_id.xy, view.main_pass_viewport.zw, view.world_from_clip);
+    let surface = gpixel_resolve(textureLoad(gbuffer, view_pixel, 0), depth, view_pixel, view.main_pass_viewport.zw, view.world_from_clip);
 
     let input_reservoir = reservoirs_b[pixel_index];
     let spatial = load_spatial_reservoir(global_id.xy, depth, surface.world_position, surface.world_normal, &rng);
@@ -73,11 +83,17 @@ fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let reservoir_weight = merge_result.merged_reservoir.unbiased_contribution_weight;
     var pixel_color = merge_result.selected_sample_brdf_radiance * reservoir_weight;
-    pixel_color += textureLoad(view_output, global_id.xy).rgb;
+    pixel_color += textureLoad(noisy_diffuse, global_id.xy).rgb;
 
     // RENZORA PATCH: the same estimate split into its two lobes, for the denoiser.
     let specular = merge_result.selected_sample_specular_radiance * reservoir_weight + textureLoad(noisy_specular, global_id.xy).rgb;
     write_noisy_signal(global_id.xy, pixel_color, specular, surface.material, surface.world_normal, surface.world_position);
+
+    // RENZORA PATCH: the ray-count flush comes before the view colour, which a
+    // coarse grid leaves to the denoiser's composite (it writes every view
+    // pixel; a cell here would cover only one of its cell's).
+    flush_ray_counts(SLOT_RAYS_REUSE, pixel_index);
+    if lighting_scaled() { return; }
 
     pixel_color *= view.exposure;
     // RENZORA PATCH: a directly visible emissive surface is added after
@@ -91,40 +107,43 @@ fn spatial_and_shade(@builtin(global_invocation_id) global_id: vec3<u32>) {
     pixel_color += surface.material.emissive;
     textureStore(view_output, global_id.xy, vec4(pixel_color, 1.0));
 
-    // RENZORA PATCH: the diagnostics' ray counts.
-    flush_ray_counts(SLOT_RAYS_REUSE, pixel_index);
-
     @if(VISUALIZE_WORLD_CACHE)
     textureStore(view_output, global_id.xy, vec4(query_world_cache(surface.world_position, surface.world_normal, view.world_position, RAY_T_MAX, WORLD_CACHE_CELL_LIFETIME, &rng) * view.exposure, 1.0));
 }
 
-fn load_temporal_reservoir(pixel_id: vec2<u32>, depth: f32, world_position: vec3<f32>, world_normal: vec3<f32>) -> NeighborInfo {
+/// RENZORA PATCH: `cell` is this frame's lighting cell and `view_pixel` the view
+/// pixel it shades. Last frame's reservoir is looked up by cell, and its
+/// surface read from the view pixel that cell shaded then.
+fn load_temporal_reservoir(cell: vec2<u32>, view_pixel: vec2<u32>, depth: f32, world_position: vec3<f32>, world_normal: vec3<f32>) -> NeighborInfo {
     if bool(constants.reset) {
         return NeighborInfo(empty_reservoir(), vec3(0.0), vec3(0.0), empty_material());
     }
 
-    let motion_vector = load_motion_vector(pixel_id);
-    let temporal_pixel_id_float = round(vec2<f32>(pixel_id) - (motion_vector * view.main_pass_viewport.zw));
+    let lighting_size = vec2<f32>(constants.lighting_size);
+    let motion_vector = load_motion_vector(view_pixel);
+    let previous_position = vec2<f32>(view_pixel) - (motion_vector * view.main_pass_viewport.zw);
+    let temporal_pixel_id_float = round(view_to_lighting_position(previous_position, constants.previous_lighting_jitter, constants.lighting_size, view.main_pass_viewport.zw));
 
     // If reprojection lands off-screen, fall back to this pixel's own previous reservoir rather than
     // dropping history. The dissimilarity check below still validates the surface, and a same-pixel
     // guess that passes it beats restarting from a confidence-1 reservoir at the screen edge.
-    var point_temporal_pixel_id = pixel_id;
-    if all(temporal_pixel_id_float >= vec2(0.0)) && all(temporal_pixel_id_float < view.main_pass_viewport.zw) {
+    var point_temporal_pixel_id = cell;
+    if all(temporal_pixel_id_float >= vec2(0.0)) && all(temporal_pixel_id_float < lighting_size) {
         point_temporal_pixel_id = vec2<u32>(temporal_pixel_id_float);
     }
 
     var permute_rng = constants.frame_rng;
-    let permuted_temporal_pixel_id = permute_pixel(point_temporal_pixel_id, rand_u(&permute_rng), view.main_pass_viewport.zw);
+    let permuted_temporal_pixel_id = permute_pixel(point_temporal_pixel_id, rand_u(&permute_rng), lighting_size);
 
     // Check if the pixel features have changed heavily between the current and previous frame
-    let temporal_depth = textureLoad(previous_depth_buffer, permuted_temporal_pixel_id, 0);
-    let temporal_surface = gpixel_resolve(textureLoad(previous_gbuffer, permuted_temporal_pixel_id, 0), temporal_depth, permuted_temporal_pixel_id, view.main_pass_viewport.zw, previous_view.world_from_clip);
+    let temporal_view_pixel = previous_lighting_view_pixel(permuted_temporal_pixel_id);
+    let temporal_depth = textureLoad(previous_depth_buffer, temporal_view_pixel, 0);
+    let temporal_surface = gpixel_resolve(textureLoad(previous_gbuffer, temporal_view_pixel, 0), temporal_depth, temporal_view_pixel, view.main_pass_viewport.zw, previous_view.world_from_clip);
     if pixel_dissimilar(depth, world_position, temporal_surface.world_position, world_normal, temporal_surface.world_normal, view) {
         return NeighborInfo(empty_reservoir(), vec3(0.0), vec3(0.0), empty_material());
     }
 
-    let temporal_pixel_index = permuted_temporal_pixel_id.x + permuted_temporal_pixel_id.y * u32(view.main_pass_viewport.z);
+    let temporal_pixel_index = permuted_temporal_pixel_id.x + permuted_temporal_pixel_id.y * constants.lighting_size.x;
     var temporal = NeighborInfo(reservoirs_a[temporal_pixel_index], temporal_surface.world_position, temporal_surface.world_normal, temporal_surface.material);
 
     // Check if the light selected in the previous frame no longer exists in the current frame (e.g. entity despawned)
@@ -143,21 +162,25 @@ fn load_temporal_reservoir(pixel_id: vec2<u32>, depth: f32, world_position: vec3
     return temporal;
 }
 
+/// RENZORA PATCH: `pixel_id` is a lighting cell. Neighbours are cells, within
+/// the same reach on screen as at full scale.
 fn load_spatial_reservoir(pixel_id: vec2<u32>, depth: f32, world_position: vec3<f32>, world_normal: vec3<f32>, rng: ptr<function, u32>) -> NeighborInfo {
+    let search_radius = SPATIAL_REUSE_RADIUS_PIXELS * f32(constants.lighting_size.x) / view.main_pass_viewport.z;
     for (var i = 0u; i < 5u; i++) {
-        let spatial_pixel_id = get_neighbor_pixel_id(pixel_id, SPATIAL_REUSE_RADIUS_PIXELS, rng);
+        let spatial_pixel_id = get_neighbor_pixel_id(pixel_id, search_radius, rng);
 
         if all(spatial_pixel_id == pixel_id) {
             continue;
         }
 
-        let spatial_depth = textureLoad(depth_buffer, spatial_pixel_id, 0);
-        let spatial_surface = gpixel_resolve(textureLoad(gbuffer, spatial_pixel_id, 0), spatial_depth, spatial_pixel_id, view.main_pass_viewport.zw, view.world_from_clip);
+        let spatial_view_pixel = lighting_view_pixel(spatial_pixel_id);
+        let spatial_depth = textureLoad(depth_buffer, spatial_view_pixel, 0);
+        let spatial_surface = gpixel_resolve(textureLoad(gbuffer, spatial_view_pixel, 0), spatial_depth, spatial_view_pixel, view.main_pass_viewport.zw, view.world_from_clip);
         if pixel_dissimilar(depth, world_position, spatial_surface.world_position, world_normal, spatial_surface.world_normal, view) {
             continue;
         }
 
-        let spatial_pixel_index = spatial_pixel_id.x + spatial_pixel_id.y * u32(view.main_pass_viewport.z);
+        let spatial_pixel_index = spatial_pixel_id.x + spatial_pixel_id.y * constants.lighting_size.x;
         return NeighborInfo(reservoirs_b[spatial_pixel_index], spatial_surface.world_position, spatial_surface.world_normal, spatial_surface.material);
     }
 
@@ -166,7 +189,7 @@ fn load_spatial_reservoir(pixel_id: vec2<u32>, depth: f32, world_position: vec3<
 
 fn get_neighbor_pixel_id(center_pixel_id: vec2<u32>, search_radius: f32, rng: ptr<function, u32>) -> vec2<u32> {
     var spatial_id = vec2<f32>(center_pixel_id) + sample_disk(search_radius, rng);
-    spatial_id = clamp(spatial_id, vec2(0.0), view.main_pass_viewport.zw - 1.0);
+    spatial_id = clamp(spatial_id, vec2(0.0), vec2<f32>(constants.lighting_size) - 1.0);
     return vec2<u32>(spatial_id);
 }
 

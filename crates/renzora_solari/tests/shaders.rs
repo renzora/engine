@@ -140,7 +140,7 @@ fn a_broken_shader_is_caught() {
     let validator = validator();
     let source = std::fs::read_to_string(solari_src().join("realtime/denoise.wesl")).unwrap();
     let broken = source.replacen(
-        "let depth = textureLoad(depth_buffer, pixel_id, 0);",
+        "let depth = textureLoad(depth_buffer, surface_pixel, 0);",
         "let depth = no_such_symbol;",
         1,
     );

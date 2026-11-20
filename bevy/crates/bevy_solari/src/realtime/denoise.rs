@@ -77,9 +77,13 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
                 read(),
                 write(),
                 write(),
+                // The lighting grid's size, for the bounds.
+                uniform_buffer_sized(false, None),
             ),
         ),
     );
+    // The composite also upsamples a coarse lighting grid to the view, which
+    // reads the guide for each cell's surface and the grid's size and jitter.
     let composite_layout = BindGroupLayoutDescriptor::new(
         "solari_denoiser_composite_layout",
         &BindGroupLayoutEntries::sequential(
@@ -91,6 +95,8 @@ pub fn init_denoiser_pipelines(pipeline_cache: &PipelineCache, asset_server: &As
                 read(),
                 read(),
                 write(),
+                texture_2d(TextureSampleType::Uint),
+                uniform_buffer_sized(false, None),
             ),
         ),
     );
@@ -212,6 +218,7 @@ pub fn prepare_denoiser_dispatch<'a>(
                 source.1,
                 destination.0,
                 destination.1,
+                d.constants.as_entire_binding(),
             )),
         )
     };
@@ -233,6 +240,8 @@ pub fn prepare_denoiser_dispatch<'a>(
             noisy.0,
             noisy.1,
             inputs.view_output,
+            &d.guide.default_view,
+            d.constants.as_entire_binding(),
         )),
     );
 
@@ -258,9 +267,14 @@ impl DenoiserDispatch<'_> {
     /// Record the passes. The caller has already dispatched the lighting, so
     /// `noisy_*` holds this frame's signal.
     ///
+    /// `lighting` is the workgroup count over the lighting grid, which the
+    /// temporal and a-trous stages run over, and `view` over the whole view,
+    /// which the composite writes. They are the same at full scale.
+    ///
     /// Each stage gets its own GPU time span, so a slow denoiser says which
     /// stage is slow rather than only that it is.
-    pub fn dispatch(&self, pass: &mut ComputePass, diagnostics: &impl RecordDiagnostics, dx: u32, dy: u32) {
+    pub fn dispatch(&self, pass: &mut ComputePass, diagnostics: &impl RecordDiagnostics, lighting: (u32, u32), view: (u32, u32)) {
+        let (dx, dy) = lighting;
         // Bind group 0 is the denoiser's own, and the lighting's groups 1 and 2
         // are not part of these pipelines' layouts.
         pass.set_bind_group(1, None, &[]);
@@ -283,7 +297,7 @@ impl DenoiserDispatch<'_> {
         let d = diagnostics.time_span(pass, "solari_lighting/denoise_composite");
         pass.set_pipeline(self.pipelines[6]);
         pass.set_bind_group(0, &self.composite, &[self.view_uniform_offset]);
-        pass.dispatch_workgroups(dx, dy, 1);
+        pass.dispatch_workgroups(view.0, view.1, 1);
         d.end(pass);
     }
 }

@@ -2,6 +2,7 @@ import bevy_render::view::View;
 import bevy_pbr::atmosphere::types::Atmosphere;
 import bevy_pbr::prepass::bindings::PreviousViewUniforms;
 import package::scene::sampling::{LightSample, NULL_LIGHT_ID};
+import package::realtime::lighting_grid::{lighting_is_scaled, lighting_to_view_pixel};
 
 enable wgpu_ray_query;
 
@@ -78,11 +79,31 @@ struct SolariLightingSettings {
     frame_rng: u32,
     reset: u32,
     /// RENZORA PATCH: `DEBUG_COUNT_RAYS` while the diagnostics want ray counts.
-    /// Padded to the 16 bytes a uniform struct is sized in.
     debug_flags: u32,
     padding_a: u32,
-    padding_b: u32,
-    padding_c: u32,
+    /// RENZORA PATCH: the lighting grid (`lighting_grid.wesl`): its size, and
+    /// this frame's and last frame's jitter. The view's size and zero when the
+    /// lighting runs at full scale.
+    lighting_size: vec2<u32>,
+    lighting_jitter: vec2<f32>,
+    previous_lighting_jitter: vec2<f32>,
+}
+
+/// RENZORA PATCH: the view pixel lighting cell `cell` lights this frame. See
+/// `lighting_grid.wesl`.
+fn lighting_view_pixel(cell: vec2<u32>) -> vec2<u32> {
+    return lighting_to_view_pixel(cell, constants.lighting_jitter, constants.lighting_size, view.main_pass_viewport.zw);
+}
+
+/// RENZORA PATCH: the view pixel lighting cell `cell` lit last frame, which is
+/// the surface its reservoir from last frame belongs to.
+fn previous_lighting_view_pixel(cell: vec2<u32>) -> vec2<u32> {
+    return lighting_to_view_pixel(cell, constants.previous_lighting_jitter, constants.lighting_size, view.main_pass_viewport.zw);
+}
+
+/// RENZORA PATCH: whether the lighting runs on a grid coarser than the view.
+fn lighting_scaled() -> bool {
+    return lighting_is_scaled(constants.lighting_size, view.main_pass_viewport.zw);
 }
 
 /// Don't adjust the size of this struct without also adjusting `prepare::RESOLVED_LIGHT_SAMPLE_STRUCT_SIZE`.
