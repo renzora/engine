@@ -660,9 +660,21 @@ jobs:
       # worse than a red line in the job summary. Enforcement belongs in the
       # plugins repo, where a red run costs one rerun instead of six
       # runner-hours.
+      #
+      # ── And keeps them, signed, on a publishing run ───────────────────────
+      # What it just compiled is exactly what every copy of this build would
+      # compile, so on a nightly or release it is kept as the prebuilt plugins
+      # the marketplace serves to editors of this build (see
+      # `renzora_plugin_build::prebuilt`). `--emit` writes each library with a
+      # statement signed by PREBUILT_SIGNING_KEY; the `prebuilts` job uploads
+      # them once the release exists. A run that publishes nothing, or a fork
+      # without the secret, emits nothing anyone would install.
       - name: Check the published plugins still build
         continue-on-error: true
         shell: bash
+        env:
+          PREBUILT_SIGNING_KEY: ${{ needs.setup.outputs.publish != 'none' && secrets.PREBUILT_SIGNING_KEY || '' }}
+          PUBLISHING: ${{ needs.setup.outputs.publish }}
         run: |
           set -uo pipefail
           out="dist/${{ matrix.dist_dir }}"
@@ -671,11 +683,25 @@ jobs:
             exit 0
           fi
           git clone --depth 1 https://github.com/renzora/plugins "$RUNNER_TEMP/plugins"
+          emit=()
+          if [ "$PUBLISHING" != "none" ] && [ -n "$PREBUILT_SIGNING_KEY" ]; then
+            emit=(--emit "$RUNNER_TEMP/prebuilts")
+          fi
           cargo run -q --profile "${RENZORA_PROFILE:-dist}" \
             -p renzora_plugin_build --example check_plugins -- \
             --sdk "$out/sdk" \
             --plugins "$RUNNER_TEMP/plugins" \
-            --summary "$GITHUB_STEP_SUMMARY"
+            --summary "$GITHUB_STEP_SUMMARY" \
+            "${emit[@]}"
+
+      - name: Upload the prebuilt plugins
+        if: needs.setup.outputs.publish != 'none'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilts-${{ matrix.dist_dir }}
+          path: ${{ runner.temp }}/prebuilts
+          if-no-files-found: ignore
+          retention-days: 7
 
       # Packed here because this is now the only kind of lane that has an SDK to
       # pack: the container lanes stage no editor and therefore no SDK, since an
@@ -745,6 +771,17 @@ jobs:
             fi
             dest="$app/Contents/MacOS"
           fi
+
+          # The build's stamp, beside the binary, while the SDK it is read from
+          # is still extracted. It is how an editor of this build knows which
+          # prebuilt plugins are its own without unpacking 1.9 GB of SDK first
+          # (`renzora_native_plugin::shipped_engine_stamp`), and the same value
+          # `Sdk::stamp()` gives once it is unpacked. Written before the seal
+          # below, like the archive, since it lands inside the macOS bundle.
+          stamp=$(jq -r '.build_id + "+rustc-" + .rustc' "$out/sdk/manifest.json")
+          mkdir -p "$dest/plugins"
+          printf '%s\n' "$stamp" > "$dest/plugins/engine-stamp.txt"
+          echo "engine stamp: $stamp"
 
           ( cd "$out" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
           rm -rf "$out/sdk"
@@ -1391,6 +1428,69 @@ jobs:
   #
   # Never fatal. The release is already published by the time this runs, and a
   # website that is one build stale is not a reason to redden a green release.
+  # ── Prebuilt plugins ──────────────────────────────────────────────────────
+  # Each desktop lane compiled every plugin in renzora/plugins against its own
+  # SDK and signed the results. They go to the marketplace only once the
+  # release they belong to exists, so an editor never finds a binary for a
+  # build nobody can download. The marketplace files them under the build's
+  # stamp, which is how an editor of this build, and only this build, finds
+  # them; see `renzora_plugin_build::prebuilt` for the checks it makes.
+  #
+  # Report-only like the plugin check: a plugin that fails to upload is a
+  # plugin that installs from source, which is how every plugin installed
+  # before this existed.
+  prebuilts:
+    needs: [setup, desktop, publish]
+    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the prebuilt plugins
+        uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilts-*
+          path: prebuilts
+          merge-multiple: true
+
+      - name: Upload them to the marketplace
+        continue-on-error: true
+        env:
+          # The same renzora.com token renzora/plugins publishes with. Secrets
+          # are per repository, so the engine carries its own copy.
+          TOKEN: ${{ secrets.RENZORA_MARKETPLACE_TOKEN }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::warning::RENZORA_MARKETPLACE_TOKEN is not set on this repository; prebuilt plugins were not published"
+            exit 0
+          fi
+          if [ ! -d prebuilts ]; then
+            echo "::notice::no prebuilt plugins were emitted"
+            exit 0
+          fi
+          ok=0; failed=0
+          # `<platform>/<marketplace_id>/prebuilt.json` beside its library.
+          while IFS= read -r -d '' statement; do
+            dir=$(dirname "$statement")
+            lib="$dir/$(jq -r .file_name "$statement")"
+            label="$(jq -r '.platform + " " + .id' "$statement")"
+            code=$(curl -sS -o response.json -w '%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "statement=<$statement" \
+              -F "engine_tag=$TAG" \
+              -F "engine_version=$VERSION" \
+              -F "library=@$lib" \
+              https://renzora.com/api/prebuilt-plugins/upload)
+            if [ "$code" = "200" ]; then
+              ok=$((ok + 1)); echo "uploaded $label"
+            else
+              failed=$((failed + 1)); echo "::warning::$label: HTTP $code $(cat response.json)"
+            fi
+          done < <(find prebuilts -name prebuilt.json -print0 | sort -z)
+          echo "### Prebuilt plugins for \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "$ok uploaded, $failed failed." >> "$GITHUB_STEP_SUMMARY"
+
   website:
     needs: [setup, build, publish]
     if: |

@@ -48,6 +48,9 @@ pub(crate) struct PendingInstall {
     default_dest: PathBuf,
     /// Cloned signed-in session (if any) so the download thread can authenticate.
     session: Option<AuthSession>,
+    /// The "Build from source" checkbox, on a plugin install where this engine
+    /// can take prebuilts at all.
+    from_source_box: Option<Entity>,
 }
 
 /// What an install worker publishes as it goes, read by the status-bar item.
@@ -68,6 +71,9 @@ pub(crate) struct InstallShared {
     /// finish work the worker cannot: a downloaded model still has to go through
     /// the import pipeline, and that fires events, which needs a `World`.
     pub(crate) installed: std::sync::Mutex<Option<std::path::PathBuf>>,
+    /// The user ticked "Build from source": a plugin compiles even when a
+    /// prebuilt for this engine build exists. Set before the worker starts.
+    pub(crate) from_source: std::sync::atomic::AtomicBool,
 }
 
 /// Where an install has got to.
@@ -311,6 +317,7 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // picker; everything else gets the tree.
     let mut kids = vec![header];
     let mut picker = Entity::PLACEHOLDER;
+    let mut from_source_box = None;
     if is_plugin {
         // Already installed? Say so, and say what pressing the button will do —
         // reinstalling the same asset replaces it in place rather than adding a
@@ -350,6 +357,34 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
                     rgb(text_muted()),
                 ));
             }
+        }
+        // Offered only where a prebuilt could be used: an official build that
+        // trusts a signing key. A source build of the engine always compiles,
+        // so the choice would be a box that does nothing.
+        if renzora_plugin_build::prebuilt::prebuilts_supported() {
+            let row = commands
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(8.0),
+                    margin: UiRect::top(Val::Px(4.0)),
+                    ..default()
+                })
+                .id();
+            let check = renzora_ember::widgets::checkbox(&mut commands, false);
+            let label = commands
+                .spawn((
+                    Text::new(
+                        "Build from source instead of downloading the prebuilt for this \
+                         engine build",
+                    ),
+                    ui_font(&fonts.ui, 12.0),
+                    TextColor(rgb(text_primary())),
+                ))
+                .id();
+            commands.entity(row).add_children(&[check, label]);
+            kids.push(row);
+            from_source_box = Some(check);
         }
     } else {
         kids.push(section_label(&mut commands, &fonts, "Install into"));
@@ -456,7 +491,7 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // A previous install's state would otherwise decide which face this new
     // overlay opens on.
     world.remove_resource::<OverlayInstall>();
-    world.insert_resource(PendingInstall { asset, overlay, default_dest, session });
+    world.insert_resource(PendingInstall { asset, overlay, default_dest, session, from_source_box });
 }
 
 /// Confirm / cancel the install.
@@ -467,6 +502,7 @@ fn install_buttons(
     pick: Res<FolderPick>,
     mut jobs: ResMut<InstallJobs>,
     companion: Option<Res<renzora::CompanionJobs>>,
+    checks: Query<&renzora_ember::reactive::Bound<bool>>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
@@ -492,10 +528,15 @@ fn install_buttons(
     };
     let session = pending.session.as_ref().map(clone_session);
     let overlay = pending.overlay;
+    let from_source = pending
+        .from_source_box
+        .and_then(|e| checks.get(e).ok())
+        .is_some_and(|b| b.0);
     commands.remove_resource::<PendingInstall>();
 
     let (tx, rx) = unbounded();
     let shared = Arc::new(InstallShared::default());
+    shared.from_source.store(from_source, Ordering::Relaxed);
     jobs.0.push(InstallJob {
         name: asset.name.clone(),
         category: asset.category.clone(),
@@ -765,7 +806,8 @@ pub(crate) fn run_install(
             return Err(format!("Could not finish installing '{}': {e}", done.dir_name));
         }
         shared.phase.store(Phase::Building as u8, Ordering::Relaxed);
-        let built = install::build_installed_plugin(&done.path)
+        let from_source = shared.from_source.load(Ordering::Relaxed);
+        let built = install::finish_plugin_install(token, &asset.id, &done.path, from_source, &mut on_bytes)
             .map_err(|e| format!("Installed \"{}\", but {e}", asset.name))?;
         let verb = if done.updated { "Updated" } else { "Installed" };
         // A rename is not a footnote: the plugin builds and loads under the new

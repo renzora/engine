@@ -330,6 +330,9 @@ fn spawn_worker(worker: Arc<Mutex<Shared>>) {
                 Progress::Built { name, done, total } => {
                     s.push_log(format!("Built {name}  ({done}/{total})"));
                 }
+                Progress::Fetched { name } => {
+                    s.push_log(format!("Downloaded the prebuilt {name}"));
+                }
                 Progress::Compiling { line, .. } => {
                     let line = line.trim();
                     if !line.is_empty() {
@@ -978,7 +981,9 @@ fn tick(
             // A compiler line reports what is happening, not how far along it
             // is — the bar stays where `Building` put it and only the caption
             // moves. Same reasoning as `Failed`: no fraction is not zero.
-            Progress::Compiling { .. } | Progress::Failed(_) => None,
+            // A download is one quick step with no total of its own; the bar
+            // moves when compiling, if any, starts.
+            Progress::Compiling { .. } | Progress::Fetched { .. } | Progress::Failed(_) => None,
         };
         if let (Some(frac), Ok(mut node)) = (frac, fill.single_mut()) {
             node.width = percent(frac.clamp(0.0, 1.0) * 100.0);

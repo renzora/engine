@@ -66,6 +66,9 @@ renzora_native_build = { path = "../renzora_native_build" }
 # Compiling an installed plugin straight away, on the install thread, so the
 # restart that follows has nothing left to build.
 renzora_native_plugin = { path = "../renzora_native_plugin" }
+# `prebuilt`: checking a prebuilt plugin's signature and checksum before it is
+# written where the loader will map it.
+renzora_plugin_build = { path = "../renzora_plugin_build" }
 # Native audio preview for the item overlay: the engine's Kira manager plays the
 # downloaded clip, and we name Kira's own handle/data types to drive it.
 # renzora_audio does NOT depend on this crate, so it stays acyclic.

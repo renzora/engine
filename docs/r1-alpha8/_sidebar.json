@@ -146,6 +146,7 @@
           "pages": [
             { "slug": "extending/plugins", "title": "Building Plugins" },
             { "slug": "extending/native-plugins", "title": "Native Plugins (full World)" },
+            { "slug": "extending/prebuilt-plugins", "title": "Prebuilt Plugins" },
             { "slug": "extending/panels", "title": "Editor Panels from a Plugin" },
             { "slug": "extending/probes", "title": "Debug Probes" },
             { "slug": "extending/editor-api", "title": "Editor Features from Code" },

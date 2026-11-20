@@ -40,6 +40,8 @@ renzora_native_build = { path = "../renzora_native_build" }
 # can never be opened.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading = "0.8"
+# `prebuilt_fetch`: reading the marketplace's description of a prebuilt.
+serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true

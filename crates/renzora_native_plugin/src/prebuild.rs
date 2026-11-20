@@ -75,6 +75,9 @@ pub enum Progress {
     /// caption `Building` put up. Without them the counter vanishes the moment
     /// the compiler says anything, which reads as the progress having been lost.
     Compiling { name: String, index: usize, total: usize, line: String },
+    /// Plugin `name` was brought up to this engine build by downloading its
+    /// prebuilt binary rather than compiling it (see `prebuilt_fetch`).
+    Fetched { name: String },
     /// A step failed. Setup continues — this is a report, not a stop.
     Failed(String),
 }
@@ -98,6 +101,7 @@ impl std::fmt::Display for Progress {
             Progress::Compiling { name, index, total, line } => {
                 write!(f, "[{index}/{total}] {name}: {}", line.trim())
             }
+            Progress::Fetched { name } => write!(f, "Downloaded the prebuilt {name}"),
             Progress::Failed(e) => write!(f, "{e}"),
         }
     }
@@ -110,12 +114,14 @@ pub struct Prepared {
     pub unpacked_sdk: bool,
     /// How many plugins were compiled.
     pub built: usize,
+    /// How many were brought up to date with a prebuilt download instead.
+    pub fetched: usize,
 }
 
 impl Prepared {
     /// Whether anything happened at all. `false` on every launch after the first.
     pub fn did_work(&self) -> bool {
-        self.unpacked_sdk || self.built > 0
+        self.unpacked_sdk || self.built > 0 || self.fetched > 0
     }
 }
 
@@ -170,6 +176,12 @@ pub fn needed() -> bool {
         return false;
     };
     if matches!(unpack::sdk_state(&root), SdkState::Packed { .. }) {
+        return true;
+    }
+    // A stale marketplace plugin whose prebuilt has not been tried for this
+    // build: worth opening setup for even without Rust, since a download needs
+    // none. Tried once per build (see `TRIED_FILE`), so this cannot loop.
+    if !stale_marketplace_plugins(&root).is_empty() {
         return true;
     }
     let disabled = renzora::load_disabled_plugins();
@@ -249,8 +261,84 @@ pub fn run(report: &mut impl FnMut(Progress)) -> Prepared {
         }
     }
 
+    // Before compiling, so a plugin a prebuilt brings up to date is no longer
+    // stale by the time `build_stale` looks.
+    done.fetched = refresh_prebuilts(&root, report);
     done.built = build_stale(&root, report);
     done
+}
+
+/// Marketplace plugins that are out of date with this engine build and could be
+/// brought up to date by a prebuilt download instead of a compile.
+///
+/// Every nightly is a new build stamp, so the first launch after an update finds
+/// every installed plugin stale. Compiling them all needs the SDK and Rust;
+/// downloading the binary CI built for this exact build needs neither. Only
+/// marketplace plugins (those with a sidecar naming their listing) in the
+/// writable plugins directory are candidates; anything else compiles as before.
+fn stale_marketplace_plugins(root: &Path) -> Vec<(PathBuf, String)> {
+    if !renzora_plugin_build::prebuilt::prebuilts_supported() {
+        return Vec::new();
+    }
+    let Some(stamp) = crate::expected_stamp(root) else {
+        return Vec::new();
+    };
+    let sdk = Sdk::load(crate::sdk_dir(root)).ok();
+    let writable = renzora_native_build::install::plugins_write_dir(root);
+    let disabled = renzora::load_disabled_plugins();
+    crate::plugin_entries(root)
+        .into_iter()
+        .filter(|p| p.parent() == Some(writable.as_path()))
+        .filter(|p| !disabled.iter().any(|d| d == &name_of(p)))
+        .filter(|p| is_native_source(p))
+        .filter(|p| !tried_for(p, &stamp))
+        .filter(|p| layout(p, sdk.as_ref(), Some(&stamp)).needs_build)
+        .filter_map(|p| crate::prebuilt_fetch::sidecar_asset_id(&p).map(|id| (p, id)))
+        .collect()
+}
+
+/// Records that a plugin's prebuilt was already tried for a build and was not
+/// available, so it is not tried again until the engine moves.
+///
+/// What stops a loop: [`needed`] opens the setup window for a stale marketplace
+/// plugin even without Rust, since a prebuilt needs none. Without this record a
+/// plugin with no prebuilt for the build would reopen the window on every
+/// launch, fail to download, find nothing to compile it with, and close.
+const TRIED_FILE: &str = "prebuilt-tried.txt";
+
+fn tried_for(plugin: &Path, stamp: &str) -> bool {
+    std::fs::read_to_string(plugin.join("build").join(TRIED_FILE)).is_ok_and(|s| s.trim() == stamp)
+}
+
+fn mark_tried(plugin: &Path, stamp: &str) {
+    let build = plugin.join("build");
+    let _ = std::fs::create_dir_all(&build);
+    let _ = std::fs::write(build.join(TRIED_FILE), stamp);
+}
+
+/// Bring every [`stale_marketplace_plugins`] entry up to date from its prebuilt
+/// where one exists. Returns how many were. One that has no prebuilt, or whose
+/// prebuilt fails a check, is left stale for [`build_stale`] to compile.
+fn refresh_prebuilts(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
+    let Some(stamp) = crate::expected_stamp(root) else {
+        return 0;
+    };
+    let mut fetched = 0;
+    for (plugin, asset_id) in stale_marketplace_plugins(root) {
+        let name = name_of(&plugin);
+        // Anonymous: a free plugin needs no account, and a paid one the
+        // download refuses falls back to compiling, which is what it did before.
+        match crate::prebuilt_fetch::fetch_and_install(None, &asset_id, &plugin, &stamp, &mut |_| {}) {
+            Ok(_) => {
+                fetched += 1;
+                report(Progress::Fetched { name });
+            }
+            // Not a failure: compiling it is the fallback, and it happens next.
+            // Recorded, so the next launch does not ask again for this build.
+            Err(_) => mark_tried(&plugin, &stamp),
+        }
+    }
+    fetched
 }
 
 /// Compile every plugin whose artefact is missing or stale.

@@ -112,9 +112,10 @@ pub fn start() {
 fn build_plugins_headless() {
     use renzora_runtime::renzora_native_plugin::prebuild::{self, Progress};
     let prepared = prebuild::run(&mut |p| match &p {
-        Progress::Building { .. } | Progress::Built { .. } | Progress::Failed(_) => {
-            println!("[plugins] {p}")
-        }
+        Progress::Building { .. }
+        | Progress::Built { .. }
+        | Progress::Fetched { .. }
+        | Progress::Failed(_) => println!("[plugins] {p}"),
         // Per-line compiler output stays out of the build log; a failure's
         // full text arrives in its `Failed`.
         Progress::Compiling { .. } | Progress::Unpacking { .. } => {}

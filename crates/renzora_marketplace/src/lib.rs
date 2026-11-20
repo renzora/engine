@@ -75,6 +75,8 @@ pub mod install;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod installed;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod prebuilt_install;
+#[cfg(not(target_arch = "wasm32"))]
 mod plugin_updates;
 #[cfg(not(target_arch = "wasm32"))]
 mod install_overlay;

@@ -1098,9 +1098,11 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary) -> Result<St
         let _ = std::fs::remove_dir_all(&done.path);
         return Err(format!("Could not finish installing '{}': {e}", done.dir_name));
     }
-    // Built now, so opening a project afterwards does not stop in the setup
-    // window to compile it.
-    install::build_installed_plugin(&done.path)
+    // Ready now, so opening a project afterwards does not stop in the setup
+    // window to compile it: the prebuilt for this engine build where there is
+    // one, a build from source otherwise.
+    let token = session.filter(|s| s.is_signed_in()).and_then(|s| s.access_token.as_deref());
+    install::finish_plugin_install(token, &asset.id, &done.path, false, &mut ignore)
         .map_err(|e| format!("Installed \"{}\", but {e}", asset.name))?;
 
     let verb = if done.updated { "Updated" } else { "Installed" };

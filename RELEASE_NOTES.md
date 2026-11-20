@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 20:21
+- feat(plugins): on a nightly or release, installing a plugin downloads a signed prebuilt binary for that exact engine build instead of compiling it, with an option to build from source
+- feat(plugins): after an engine update, installed marketplace plugins are brought up to date with their prebuilt binaries rather than recompiled where a binary exists
+
 ## 2026-11-20 19:57
 - fix(marketplace): a free asset installed without signing in arrives with all its files and its real file names, so a downloaded shader is a `.wesl` that drops onto a post process
 

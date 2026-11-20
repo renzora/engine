@@ -660,6 +660,45 @@ pub fn build_installed_plugin(path: &Path) -> Result<&'static str, String> {
     }
 }
 
+/// Make an installed plugin's source loadable: its prebuilt binary when the
+/// marketplace has one for this exact engine build and it passes every check,
+/// otherwise a build from source as before.
+///
+/// `from_source` skips the prebuilt, for a user who wants to compile it
+/// themselves. Returns the sentence the install's result message ends with.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn finish_plugin_install(
+    token: Option<&str>,
+    asset_id: &str,
+    path: &Path,
+    from_source: bool,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<String, String> {
+    let mut why_source = None;
+    if !from_source {
+        match crate::prebuilt_install::install(token, asset_id, path, on_bytes) {
+            crate::prebuilt_install::Outcome::Installed { version, engine_tag } => {
+                let built_for = if engine_tag.is_empty() { String::new() } else { format!(" for {engine_tag}") };
+                return Ok(format!(
+                    " Installed the prebuilt v{version}{built_for}, so nothing had to compile. \
+                     It loads when the editor restarts."
+                ));
+            }
+            crate::prebuilt_install::Outcome::Unavailable(why) => why_source = Some(why),
+        }
+    }
+    let built = build_installed_plugin(path)?;
+    // Why it compiled rather than downloading, but only where a prebuilt could
+    // have been used at all: on an engine that trusts no signing key (every
+    // source build, every fork) the answer is always the same and not news.
+    Ok(match why_source {
+        Some(why) if renzora_plugin_build::prebuilt::prebuilts_supported() => {
+            format!("{built} Built from source because {why}.")
+        }
+        _ => built.to_string(),
+    })
+}
+
 /// Install a plugin by extracting its source into `<install root>/plugins/`,
 /// ready for [`build_installed_plugin`] to compile.
 ///

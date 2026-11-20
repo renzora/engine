@@ -1,0 +1,11 @@
+# Ed25519 public keys an editor accepts prebuilt plugins from (src/prebuilt.rs).
+#
+# One lowercase hex key (64 digits) per line. The matching private key lives
+# only in the engine repository's PREBUILT_SIGNING_KEY secret, which CI signs
+# each prebuilt plugin with. With no key here every prebuilt is refused and
+# plugins install from source.
+#
+# To create a key pair, see docs/r1-alpha8/extending/prebuilt-plugins.md. To
+# rotate, add the new key, release, and only then remove the old one, so
+# binaries signed with it stay installable until they are replaced.
+99cec729ffb1f25a497047077f358b770e4b6e0f51aaaba033cc66c6da2f07db  # added unix 1795206174

@@ -75,6 +75,10 @@ use std::path::{Path, PathBuf};
 #[cfg(not(target_arch = "wasm32"))]
 pub mod prebuild;
 
+/// Fetching a plugin's prebuilt binary for this engine build. See the module.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod prebuilt_fetch;
+
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use libloading::{Library, Symbol};

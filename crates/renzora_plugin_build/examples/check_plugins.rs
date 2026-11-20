@@ -44,13 +44,27 @@
 //! drop a whole platform out of the release over one broken third-party plugin,
 //! which is a worse outcome than a red line in a report. Pass `--strict` to make
 //! failures fatal, which is what a workflow in the plugins repo itself wants.
+//!
+//! # Prebuilt plugins
+//!
+//! `--emit <dir>` keeps what it built, for the marketplace to serve to editors of
+//! this exact engine build (see `renzora_plugin_build::prebuilt`). For each
+//! plugin that built and has a `marketplace_id`, it writes
+//! `<dir>/<platform>/<marketplace_id>/` holding the library and `prebuilt.json`:
+//! the signed statement describing it. The signature uses the hex secret in
+//! `PREBUILT_SIGNING_KEY`; without it the statement is written unsigned, which
+//! the upload refuses, so a fork's run produces nothing anyone would install.
+//!
+//! A plugin is emitted only if its library carries this engine's build stamp
+//! (the ABI record `renzora::plugin!` writes), the same check an editor makes
+//! before loading it, so CI can never sign a binary the loader would refuse.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use renzora_plugin_build::Sdk;
+use renzora_plugin_build::{prebuilt, Sdk};
 
 /// The symbol `renzora::plugin!` writes and the loader searches for.
 ///
@@ -74,7 +88,7 @@ fn main() -> ExitCode {
     let sdk_dir = match flag(&argv, "--sdk") {
         Some(v) => PathBuf::from(v),
         None => {
-            eprintln!("usage: check_plugins --sdk <dir> --plugins <dir> [--summary <file>] [--strict]");
+            eprintln!("usage: check_plugins --sdk <dir> --plugins <dir> [--summary <file>] [--strict] [--emit <dir>]");
             return ExitCode::from(2);
         }
     };
@@ -97,6 +111,11 @@ fn main() -> ExitCode {
     };
     let triple = sdk.manifest().triple.clone();
     let ext = sdk.manifest().lib_ext.clone();
+    let emit = flag(&argv, "--emit").map(PathBuf::from);
+    let signing_key = std::env::var("PREBUILT_SIGNING_KEY").ok().filter(|k| !k.trim().is_empty());
+    if emit.is_some() && signing_key.is_none() {
+        println!("PREBUILT_SIGNING_KEY is not set: prebuilts will be written unsigned\n");
+    }
 
     let dirs = match plugin_dirs(&plugins_dir) {
         Ok(d) if !d.is_empty() => d,
@@ -133,7 +152,16 @@ fn main() -> ExitCode {
         let started = Instant::now();
         let outcome = match sdk.compile(dir, &out) {
             Ok(_) if !exports_ctor(&out) => (false, format!("built but exports no {}", String::from_utf8_lossy(CTOR))),
-            Ok(_) => (true, String::new()),
+            Ok(stamp) => match &emit {
+                Some(emit) => match emit_prebuilt(emit, dir, &out, &stamp, signing_key.as_deref()) {
+                    Ok(Some(id)) => (true, format!("prebuilt {id}")),
+                    Ok(None) => (true, "no marketplace_id, not emitted".to_string()),
+                    // Built fine; only the prebuilt failed. Still a failure:
+                    // a plugin that should have shipped prebuilt did not.
+                    Err(e) => (false, format!("built, but not emitted: {e}")),
+                },
+                None => (true, String::new()),
+            },
             // Only the first line. rustc's full diagnostic is worth keeping for
             // one failure and unreadable for twenty, and the log above this
             // already carries it.
@@ -196,6 +224,82 @@ fn plugin_dirs(root: &Path) -> std::io::Result<Vec<PathBuf>> {
         .collect();
     out.sort();
     Ok(out)
+}
+
+/// Write one built plugin out as a prebuilt: the library and its statement,
+/// signed when there is a key. `Ok(None)` for a plugin with no marketplace
+/// listing, which has nowhere to be served from.
+fn emit_prebuilt(
+    emit: &Path,
+    plugin_dir: &Path,
+    library: &Path,
+    stamp: &str,
+    signing_key: Option<&str>,
+) -> Result<Option<String>, String> {
+    let manifest = std::fs::read_to_string(plugin_dir.join("Cargo.toml")).map_err(|e| format!("Cargo.toml: {e}"))?;
+    let Some(id) = toml_value(&manifest, "package.metadata.renzora", "marketplace_id") else {
+        return Ok(None);
+    };
+    let version = toml_value(&manifest, "package", "version").ok_or("Cargo.toml has no package version")?;
+    let bytes = std::fs::read(library).map_err(|e| format!("reading the library: {e}"))?;
+
+    // The record the loader checks: refuse to sign a library it would refuse.
+    let record = format!("RENZORA_NATIVE_PLUGIN_ABI={stamp}\0");
+    if !bytes.windows(record.len()).any(|w| w == record.as_bytes()) {
+        return Err(format!("the library does not carry this engine's build stamp ({stamp})"));
+    }
+
+    let statement = prebuilt::Statement::for_library(&id, &version, stamp, &bytes);
+    if !statement.well_formed() {
+        return Err("its id, version or stamp is not one plain line".into());
+    }
+    let signature = match signing_key {
+        Some(key) => prebuilt::sign(&statement, key)?,
+        None => String::new(),
+    };
+
+    let dir = emit.join(prebuilt::platform_id()).join(&id);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file_name = library.file_name().ok_or("the library has no file name")?;
+    std::fs::write(dir.join(file_name), &bytes).map_err(|e| format!("writing the library: {e}"))?;
+    let json = serde_json::json!({
+        "id": statement.id,
+        "version": statement.version,
+        "platform": statement.platform,
+        "engine_stamp": statement.engine_stamp,
+        "sha256": statement.sha256,
+        "size": statement.size,
+        "file_name": file_name.to_string_lossy(),
+        "signature": signature,
+    });
+    let text = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("prebuilt.json"), text).map_err(|e| format!("writing prebuilt.json: {e}"))?;
+    Ok(Some(id))
+}
+
+/// The string value of `key` in `[section]` of a `Cargo.toml`.
+///
+/// A line scan rather than a TOML parser, which this crate does not carry: the
+/// two values it reads are always simple `key = "value"` lines in a plugin
+/// manifest, and anything fancier reads as absent, which skips the plugin
+/// rather than misreading it.
+fn toml_value(text: &str, section: &str, key: &str) -> Option<String> {
+    let mut current = String::new();
+    for line in text.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+            current = name.trim().to_string();
+            continue;
+        }
+        if current != section {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else { continue };
+        if k.trim() == key {
+            return Some(v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty());
+        }
+    }
+    None
 }
 
 /// Does the built library export the constructor, by byte search?

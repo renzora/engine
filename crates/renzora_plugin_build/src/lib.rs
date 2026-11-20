@@ -69,6 +69,11 @@ pub mod toolchain;
 /// Its one caller is `renzora_native_plugin::prebuild`, gated the same way.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod unpack;
+
+/// Prebuilt plugins: what CI signs and what an editor checks before it
+/// installs one. See the module doc.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod prebuilt;
 pub use toolchain::Toolchain;
 #[cfg(not(target_arch = "wasm32"))]
 pub use unpack::SdkState;
