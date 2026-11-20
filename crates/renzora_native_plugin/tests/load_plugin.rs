@@ -156,5 +156,17 @@ fn builds_a_source_plugin_and_rebuilds_it_when_stale() {
     assert_ne!(stamp, "definitely-not-the-current-stamp");
     assert_eq!(stamp, sdk.stamp(), "stamp is stable for one SDK");
 
+    // The same stamp has to be inside the library, where it travels with the
+    // bytes. This is the half a shipped game checks, since it has no SDK and
+    // no `stamp.txt` — and it is produced by the driver setting
+    // `RENZORA_PLUGIN_ABI` for the plugin's `renzora::plugin!` to pick up, so
+    // the whole chain is exercised by one real compile.
+    let image = std::fs::read(&out).expect("read the built library");
+    assert_eq!(
+        renzora_native_plugin::image_abi(&image),
+        renzora_native_plugin::ImageAbi::Stamped(stamp.clone()),
+        "the built library must carry the stamp it was compiled against"
+    );
+
     let _ = std::fs::remove_dir_all(&dir);
 }
