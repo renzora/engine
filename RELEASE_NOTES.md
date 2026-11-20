@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 19:57
+- fix(marketplace): a free asset installed without signing in arrives with all its files and its real file names, so a downloaded shader is a `.wesl` that drops onto a post process
+
 ## 2026-11-20 19:22
 - fix(editor): the hover tooltip, text-field context menu and loading overlay are no longer saved into the scene
 

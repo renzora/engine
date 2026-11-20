@@ -670,44 +670,56 @@ pub(crate) fn run_install(
 ) -> Result<String, String> {
     use crate::auth::marketplace as mk;
     let mut on_bytes = |n: u64| shared.bytes.store(n, Ordering::Relaxed);
-    let (bytes, filename, url) = if let Some(s) = signed_in {
-        // Resolving is a round trip of its own, and on a slow link it is a
-        // second or two of a status bar that would otherwise claim to be
-        // downloading nothing.
-        shared.phase.store(Phase::Resolving as u8, Ordering::Relaxed);
-        let dl = mk::download_asset(s, &asset.id)?;
-        // The catalogue knows the size even though the transport does not, so
-        // the bar can fill rather than sweep.
-        shared.total.store(dl.total_bytes().unwrap_or(0), Ordering::Relaxed);
-        shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
-        // An asset of several files comes as a zip of all of them, not as its
-        // first one. `download_url` points at that first file, which for a model
-        // is the mesh — so taking it delivered the geometry and silently none of
-        // the textures, and the install looked like it had worked.
-        //
-        // The `.zip` name is what makes the install extract it: `install_asset`
-        // decides by extension and magic bytes, so a zip named for its contents
-        // would be written to disk whole.
-        if dl.files.len() > 1 {
-            let url = mk::download_zip_url(&asset.id);
-            let bytes = mk::download_file_progress_auth(s, &url, &mut on_bytes)?;
-            // Only the extension matters: `install_asset` decides by that and
-            // by the leading `PK` magic, and the folder it extracts into is
-            // named from the asset, not from this.
-            (bytes, "asset.zip".to_string(), url)
-        } else {
-            let bytes = mk::download_file_progress(&dl.download_url, &mut on_bytes)?;
-            (bytes, dl.download_filename, dl.download_url)
-        }
-    } else if asset.price_credits == 0 {
-        // The install endpoint, not the preview proxy: this is a real install and
-        // has to reach the creator's download count like a signed-in one does.
-        let url = mk::install_file_url(&asset.id);
-        shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
-        let bytes = mk::download_install_file(&asset.id, &mut on_bytes)?;
-        (bytes, String::new(), url)
-    } else {
+    if signed_in.is_none() && asset.price_credits > 0 {
         return Err("Sign in to download this asset".into());
+    }
+    // Signed in or not, an install resolves through `/download`, which answers a
+    // free asset without a token. A free install once fetched `install-file`
+    // instead, which serves only an asset's first file and no name for it: a
+    // shader listed with its README arrived as the README, named after the
+    // listing with no extension ("shaders/Rain"), so nothing could tell it was
+    // a shader and it could not be dropped on a post process.
+    let token = signed_in.and_then(|s| s.access_token.as_deref());
+    // Resolving is a round trip of its own, and on a slow link it is a second
+    // or two of a status bar that would otherwise claim to be downloading
+    // nothing.
+    shared.phase.store(Phase::Resolving as u8, Ordering::Relaxed);
+    let (bytes, filename, url) = match mk::download_asset_with(token, &asset.id) {
+        Ok(dl) => {
+            // The catalogue knows the size even though the transport does not,
+            // so the bar can fill rather than sweep.
+            shared.total.store(dl.total_bytes().unwrap_or(0), Ordering::Relaxed);
+            shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
+            // An asset of several files comes as a zip of all of them, not as
+            // its first one. `download_url` points at that first file, which for
+            // a model is the mesh, so taking it delivered the geometry and
+            // silently none of the textures, and the install looked like it had
+            // worked.
+            //
+            // The `.zip` name is what makes the install extract it:
+            // `install_asset` decides by extension and magic bytes, so a zip
+            // named for its contents would be written to disk whole.
+            if dl.files.len() > 1 {
+                let url = mk::download_zip_url(&asset.id);
+                let bytes = mk::download_file_progress_maybe_auth(token, &url, &mut on_bytes)?;
+                // Only the extension matters: `install_asset` decides by that
+                // and by the leading `PK` magic, and the folder it extracts into
+                // is named from the asset, not from this.
+                (bytes, "asset.zip".to_string(), url)
+            } else {
+                let bytes = mk::download_file_progress(&dl.download_url, &mut on_bytes)?;
+                (bytes, dl.download_filename, dl.download_url)
+            }
+        }
+        // A free asset on a server that would not resolve it: the counted
+        // install endpoint, which still delivers the bytes, if not their name.
+        Err(_) if signed_in.is_none() => {
+            let url = mk::install_file_url(&asset.id);
+            shared.phase.store(Phase::Downloading as u8, Ordering::Relaxed);
+            let bytes = mk::download_install_file(&asset.id, &mut on_bytes)?;
+            (bytes, String::new(), url)
+        }
+        Err(e) => return Err(e),
     };
     shared.phase.store(Phase::Writing as u8, Ordering::Relaxed);
 

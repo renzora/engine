@@ -213,10 +213,16 @@ pub fn download_zip_url(asset_id: &str) -> String {
 
 pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadResponse, String> {
     let token = session.access_token.as_deref().ok_or("Not signed in")?;
+    download_asset_with(Some(token), asset_id)
+}
 
+/// [`download_asset`] with or without a token. The server answers a free,
+/// published asset without one, with the same file list and names a signed-in
+/// user gets, which is what lets a free install name its file and fetch every
+/// part of a multi-file asset.
+pub fn download_asset_with(token: Option<&str>, asset_id: &str) -> Result<DownloadResponse, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/download");
-
-    let response = super::client::get_json_raw(&url, Some(token))?;
+    let response = super::client::get_json_raw(&url, token)?;
     response.json().map_err(|e| e.to_string())
 }
 
@@ -330,6 +336,16 @@ pub fn download_file_progress_auth(
 ) -> Result<Vec<u8>, String> {
     let token = session.access_token.as_deref().ok_or("Not signed in")?;
     download_file_progress_inner(url, Some(token), on_bytes)
+}
+
+/// [`download_file_progress`] with the bearer token when there is one: an
+/// anonymous free install and a signed-in one fetch through the same call.
+pub fn download_file_progress_maybe_auth(
+    token: Option<&str>,
+    url: &str,
+    on_bytes: &mut dyn FnMut(u64),
+) -> Result<Vec<u8>, String> {
+    download_file_progress_inner(url, token, on_bytes)
 }
 
 fn download_file_progress_inner(
