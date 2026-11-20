@@ -8,6 +8,7 @@
 
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::prelude::*;
+use bevy::render::view::ColorGrading;
 use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_tonemapping::{DebandDitherSettings, TonemappingSettings};
 
@@ -176,6 +177,79 @@ fn deband_dither_entry() -> InspectorEntry {
     }
 }
 
+/// One slider over a nested `ColorGrading` field, such as `global.exposure` or
+/// `shadows.lift`. The shared `float_field!` takes a single field name, and
+/// grading's values sit two levels down.
+macro_rules! grading_field {
+    ($name:literal, $($path:ident).+, $speed:expr, $min:expr, $max:expr) => {
+        FieldDef {
+            name: $name,
+            field_type: FieldType::Float { speed: $speed, min: $min, max: $max },
+            get_fn: |w, e| w.get::<ColorGrading>(e).map(|g| FieldValue::Float(g.$($path).+)),
+            set_fn: |w, e, v| {
+                if let (FieldValue::Float(v), Some(mut g)) = (v, w.get_mut::<ColorGrading>(e)) {
+                    g.$($path).+ = v;
+                }
+            },
+        }
+    };
+}
+
+/// The five controls each tonal range has, folded into a group of its own.
+macro_rules! grading_range {
+    ($label:literal, $range:ident) => {
+        FieldDef::group(
+            $label,
+            vec![
+                grading_field!("Saturation", $range.saturation, 0.01, 0.0, 3.0),
+                grading_field!("Contrast", $range.contrast, 0.01, 0.0, 3.0),
+                grading_field!("Gamma", $range.gamma, 0.01, 0.1, 3.0),
+                grading_field!("Gain", $range.gain, 0.01, 0.0, 3.0),
+                grading_field!("Lift", $range.lift, 0.005, -1.0, 1.0),
+            ],
+        )
+    };
+}
+
+/// The camera's colour grading: Bevy's `ColorGrading`, which every 3D camera
+/// carries, applied with the tone curve. It had no section, so the only way to
+/// grade a scene was a script, and what a script set showed only in Play (see
+/// `sync_color_grading`, which now carries it to the viewport too).
+///
+/// No add or remove: Bevy requires the component on every 3D camera, so it is
+/// always there, and each row's reset puts its neutral value back.
+fn color_grading_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "color_grading",
+        display_name: "Color Grading",
+        icon: "palette",
+        category: "camera",
+        has_fn: |world, entity| {
+            draws_on(world, entity) && world.get::<ColorGrading>(entity).is_some()
+        },
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            // Stops, on top of the camera's exposure: what a colourist reaches
+            // for first, then white balance and overall saturation.
+            grading_field!("Exposure", global.exposure, 0.05, -5.0, 5.0),
+            // Offsets to the CIE 1931 chromaticity, where a little goes a long
+            // way: 0.02 is a warm afternoon, 0.5 turned a street solid red. A
+            // range of ±1 left all the useful values in the slider's first few
+            // pixels.
+            grading_field!("Temperature", global.temperature, 0.002, -0.2, 0.2),
+            grading_field!("Tint", global.tint, 0.002, -0.2, 0.2),
+            grading_field!("Saturation", global.post_saturation, 0.01, 0.0, 3.0),
+            grading_field!("Hue", global.hue, 0.01, -std::f32::consts::PI, std::f32::consts::PI),
+            grading_range!("Shadows", shadows),
+            grading_range!("Midtones", midtones),
+            grading_range!("Highlights", highlights),
+        ],
+    }
+}
+
 /// Editor-scope companion to `renzora_tonemapping::TonemappingPlugin`.
 #[derive(Default)]
 pub struct TonemappingEditorPlugin;
@@ -186,6 +260,7 @@ impl Plugin for TonemappingEditorPlugin {
         app.extend_inspector("camera", vec![camera_row()]);
         app.register_inspector(inspector_entry());
         app.register_inspector(deband_dither_entry());
+        app.register_inspector(color_grading_entry());
     }
 }
 

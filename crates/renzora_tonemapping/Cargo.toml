@@ -19,5 +19,9 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
 
+[dev-dependencies]
+# The format scenes are saved in, for the test that grading survives a save.
+ron = "0.8"
+
 [lints]
 workspace = true

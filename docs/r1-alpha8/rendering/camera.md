@@ -216,9 +216,27 @@ Scenes saved before 2026-11-18 keep the values they were saved with.
 
 Older scenes that carry `TonemappingSettings` on a non-camera entity (the World Environment) still show it there as its own Tonemapping section.
 
+## Color Grading
+
+Every 3D camera has a **Color Grading** section: Bevy's `ColorGrading`, applied with the tone curve. It is always there and cannot be removed; each row's reset button puts its neutral value back.
+
+| Field | Neutral | What it does |
+|---|---|---|
+| **Exposure** | 0 | Brightens or darkens the image, in stops, on top of the camera's exposure. |
+| **Temperature** | 0 | Warmer (positive) or cooler (negative), without changing brightness. |
+| **Tint** | 0 | More magenta (positive) or more green (negative). |
+| **Saturation** | 1 | Colour strength after the tone curve; 0 is greyscale. |
+| **Hue** | 0 | Rotates every colour round the colour wheel, in radians. |
+
+**Shadows**, **Midtones** and **Highlights** each fold away a group of five: Saturation, Contrast, Gamma, Gain and Lift, for that tonal range alone.
+
+The scene camera's grading shows in the editor viewport as well as in Play, as the tone curve and bloom do, and is saved with the scene. Both were once missing: grading reached the screen only in Play, and a save dropped it, because one of its values (the midtones range) had no way to be written out.
+
 ## Auto Exposure (keeping night dark)
 
 Auto exposure is on for a new camera, so a scene stays readable from noon to night; switch it off to hold the camera's EV100 instead. `AutoExposureSettings` wraps Bevy's histogram auto-exposure: it meters the scene and animates the camera's exposure so the average pixel lands on middle gray (eye adaptation). Because it *always* targets middle gray, a genuinely dark night scene gets **brightened**: physically faithful, but usually not the night look you want.
+
+Auto exposure is part of the engine, so it works in every build with nothing to install. It was briefly a marketplace plugin; a copy of that plugin still installed does no harm, since it does the same job, and can be uninstalled. In the card, the two speeds are on top, the metering range and filters fold into **Metering**, and the two fields below fold into **Night**. An exported game includes it as the **Auto Exposure** feature under post-processing, detected from any camera that has it.
 
 Two extra knobs shape the response without touching daytime, via Bevy's exposure-compensation curve:
 
