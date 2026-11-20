@@ -89,17 +89,27 @@ pub(crate) fn vehicle_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::float_field!("Engine Force (N)", Vehicle, engine_force, 100.0, 0.0, 1_000_000.0),
-            renzora::float_field!("Brake Force (N)", Vehicle, brake_force, 100.0, 0.0, 1_000_000.0),
-            renzora::float_field!("Top Speed (m/s)", Vehicle, max_speed, 0.5, 0.0, 500.0),
-            renzora::float_field!("Reverse Speed (m/s)", Vehicle, max_reverse_speed, 0.5, 0.0, 100.0),
-            renzora::float_field!("Steering (deg)", Vehicle, max_steer_degrees, 0.5, 0.0, 80.0),
-            renzora::float_field!("Suspension Travel (m)", Vehicle, suspension_travel, 0.01, 0.01, 2.0),
-            renzora::float_field!("Stiffness (N/m, 0 auto)", Vehicle, suspension_stiffness, 100.0, 0.0, 10_000_000.0),
-            renzora::float_field!("Damping (0 to 1)", Vehicle, suspension_damping, 0.01, 0.0, 1.0),
-            renzora::float_field!("Grip", Vehicle, grip, 0.01, 0.0, 5.0),
-            renzora::float_field!("Wheel Radius (m, 0 auto)", Vehicle, wheel_radius, 0.01, 0.0, 5.0),
             renzora::bool_field!("Drive With Input", Vehicle, use_input),
+            renzora::FieldDef::group(
+                "Engine",
+                vec![
+                    renzora::float_field!("Engine Force (N)", Vehicle, engine_force, 100.0, 0.0, 1_000_000.0),
+                    renzora::float_field!("Brake Force (N)", Vehicle, brake_force, 100.0, 0.0, 1_000_000.0),
+                    renzora::float_field!("Top Speed (m/s)", Vehicle, max_speed, 0.5, 0.0, 500.0),
+                    renzora::float_field!("Reverse Speed (m/s)", Vehicle, max_reverse_speed, 0.5, 0.0, 100.0),
+                    renzora::float_field!("Steering (deg)", Vehicle, max_steer_degrees, 0.5, 0.0, 80.0),
+                ],
+            ),
+            renzora::FieldDef::group(
+                "Suspension",
+                vec![
+                    renzora::float_field!("Suspension Travel (m)", Vehicle, suspension_travel, 0.01, 0.01, 2.0),
+                    renzora::float_field!("Stiffness (N/m, 0 auto)", Vehicle, suspension_stiffness, 100.0, 0.0, 10_000_000.0),
+                    renzora::float_field!("Damping (0 to 1)", Vehicle, suspension_damping, 0.01, 0.0, 1.0),
+                    renzora::float_field!("Grip", Vehicle, grip, 0.01, 0.0, 5.0),
+                    renzora::float_field!("Wheel Radius (m, 0 auto)", Vehicle, wheel_radius, 0.01, 0.0, 5.0),
+                ],
+            ),
         ],
     }
 }

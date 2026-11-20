@@ -119,10 +119,20 @@ pub fn inspector_row(
             Text::new(label),
             ui_font(font, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::no_wrap(),
-            InspectorLabelText,
         ))
         .id();
+    inspector_row_with_label(commands, lbl, control)
+}
+
+/// [`inspector_row`] with a label the caller has built: a `Text` entity, which
+/// may carry spans of its own (the inspector's field groups put their caret
+/// glyph in front of the name this way). The whole text is what the label
+/// column is fitted to, so nothing in it is clipped and the control still lands
+/// in the shared column.
+pub fn inspector_row_with_label(commands: &mut Commands, lbl: Entity, control: Entity) -> Entity {
+    commands
+        .entity(lbl)
+        .insert((bevy::text::TextLayout::no_wrap(), InspectorLabelText));
     // Starts at the fixed column; `fit_label_columns` narrows it to the
     // longest label among this row's siblings once their text is measured.
     let label_col = commands

@@ -35,6 +35,10 @@ pub(crate) enum FieldKind {
     CheckedEnum { options: &'static [&'static str] },
     Button { icon: &'static str },
     ReadOnly,
+    /// A foldable group; its fields are [`FieldSpec::children`]. `switch` puts
+    /// the group's own `Bool` in its header; `open` is whether it starts
+    /// unfolded, from [`super::InspectorGroupsOpen`].
+    Group { switch: bool, open: bool },
 }
 
 #[derive(Clone)]
@@ -74,6 +78,8 @@ pub(crate) struct FieldSpec {
     ///
     /// `None` falls back to untracked — unchanged behaviour.
     pub(crate) cid: Option<ComponentId>,
+    /// A group's fields; empty for every other kind.
+    pub(crate) children: Vec<FieldSpec>,
 }
 
 /// Call a contract `fn(&World, Entity)` while still declaring what it reads.

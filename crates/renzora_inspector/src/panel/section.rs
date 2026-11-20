@@ -17,7 +17,6 @@ use renzora_ember::widgets::{toggle_switch, Section};
 use renzora_ember::UiInteraction;
 
 use super::cull::SectionCull;
-use super::fields::build_field_row;
 use super::reorder::{build_grip, InspectorSectionRoot};
 use super::spec::{comp_name_loc, tracked_read, FieldSpec, SectionSpec};
 use super::undo::EnableToggleCmd;
@@ -117,10 +116,8 @@ fn fill_section_rows(
     type_id: &'static str,
     body: Entity,
 ) {
-    for field in fields {
-        let r = build_field_row(commands, fonts, field, entity, type_id);
-        commands.entity(body).add_child(r);
-    }
+    let rows = super::group::build_rows(commands, fonts, fields, entity, type_id, None);
+    commands.entity(body).add_children(&rows);
 }
 
 /// Corner radius of a component card.
@@ -204,13 +201,18 @@ pub(super) fn reconcile_section_bodies(
         let Some(spec) = world.get::<SectionBodySpec>(body) else {
             continue;
         };
-        let (fields, ent, type_id, drawer, custom) = (
+        let (mut fields, ent, type_id, drawer, custom) = (
             spec.fields.clone(),
             spec.entity,
             spec.type_id,
             spec.native_drawer,
             spec.custom,
         );
+        // The list was collected when the section was built; groups folded or
+        // unfolded since must come back the way the user left them.
+        if let Some(groups) = world.get_resource::<super::InspectorGroupsOpen>() {
+            super::group::refresh_open(&mut fields, groups, type_id);
+        }
         // A despawned inspected entity outlives its rows here (selection can
         // change in the same frame a section is toggled) — skip rather than
         // build rows whose accessors would miss.

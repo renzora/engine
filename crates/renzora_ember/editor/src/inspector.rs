@@ -418,8 +418,11 @@ fn node_entry() -> InspectorEntry {
         remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
+        // Eighteen rows of layout, grouped by what they do so a node opens at
+        // five headers instead.
         fields: vec![
             // -- Enum-pickered layout knobs --
+            FieldDef::group("Layout", vec![
             FieldDef {
                 name: "Flex Direction",
                 field_type: FieldType::Enum {
@@ -525,20 +528,28 @@ fn node_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
             // -- Val-typed sizing/position, edited as String --
             //
             // Each one is fully inlined because `FieldDef::set_fn` is a `fn`
             // pointer, not a closure — the markup identifier can't be
             // captured at runtime so we stamp it as a literal in each arm.
-            val_node_field!("Width", "width", width),
-            val_node_field!("Height", "height", height),
-            val_node_field!("Left", "left", left),
-            val_node_field!("Right", "right", right),
-            val_node_field!("Top", "top", top),
-            val_node_field!("Bottom", "bottom", bottom),
-            val_node_field!("Row Gap", "row_gap", row_gap),
-            val_node_field!("Column Gap", "column_gap", column_gap),
+            FieldDef::group("Size", vec![
+                val_node_field!("Width", "width", width),
+                val_node_field!("Height", "height", height),
+            ]),
+            FieldDef::group("Offsets", vec![
+                val_node_field!("Left", "left", left),
+                val_node_field!("Right", "right", right),
+                val_node_field!("Top", "top", top),
+                val_node_field!("Bottom", "bottom", bottom),
+            ]),
+            FieldDef::group("Gaps", vec![
+                val_node_field!("Row Gap", "row_gap", row_gap),
+                val_node_field!("Column Gap", "column_gap", column_gap),
+            ]),
             // -- UiRect-typed --
+            FieldDef::group("Box", vec![
             ui_rect_node_field!("Padding", "padding", padding),
             ui_rect_node_field!("Margin", "margin", margin),
             ui_rect_node_field!("Border", "border", border),
@@ -561,6 +572,7 @@ fn node_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
         ],
     }
 }

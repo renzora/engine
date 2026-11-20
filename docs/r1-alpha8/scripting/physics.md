@@ -109,6 +109,8 @@ To make one:
 2. If each axle's two wheels are one part, right-click each axle in the Hierarchy and choose **Separate Parts** (see [Assets](/docs/r1-alpha8/editor/assets)).
 3. Add a **Vehicle** and pick the **Front Axle** and **Rear Axle**. The lists show the parts whose wheels were separated.
 
+In the Vehicle card the forces, speeds and steering are in an **Engine** group, and the suspension, grip and wheel radius in **Suspension**.
+
 | Field | Default | Meaning |
 |---|---|---|
 | **Front Axle** / **Rear Axle** | none | The axles' names. Their wheels are the parts named `<axle>_part1`, `<axle>_part2`, ...; a part named just `<axle>` is one wheel. The front wheels steer. |

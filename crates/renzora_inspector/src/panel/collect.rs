@@ -18,7 +18,9 @@ use super::spec::{
     category_rgb, component_id_for, format_value, section_priority, FieldInit, FieldKind,
     FieldSpec, SectionSpec,
 };
-use super::{policy_open, InspectorSectionsOpen, InspectorState, Mutate, Pred, SetEnabled};
+use super::{
+    policy_open, InspectorGroupsOpen, InspectorSectionsOpen, InspectorState, Mutate, Pred, SetEnabled,
+};
 
 /// The sections for `entity`, limited to `page` when one is given (the
 /// filter passes `None`: a search looks across every page).
@@ -131,9 +133,61 @@ pub(crate) fn collect_sections(
             });
             continue;
         }
-        let mut fields = Vec::new();
-        for f in &entry.fields {
-            let val = (f.get_fn)(world.untracked(), entity);
+        let cid = component_id_for(world.untracked(), entry.type_id);
+        let groups_open = world.get_resource::<InspectorGroupsOpen>();
+        let fields = field_specs(world.untracked(), entity, entry.type_id, cid, groups_open, &entry.fields);
+        out.push(SectionSpec {
+            title: entry.display_name,
+            cid,
+            icon: entry.icon,
+            type_id: entry.type_id,
+            custom: false,
+            native_drawer: None,
+            remove_fn: entry.remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
+            enable: enable.clone(),
+            enabled_now,
+            header_bg,
+            accent,
+            open: section_open(entry.type_id),
+            gate: gate_for(entry.type_id),
+            fields,
+        });
+    }
+
+    // Generated sections name no category, so they belong to the entity's own
+    // page.
+    if page.is_none_or(|p| p == InspectorPage::Object) {
+        append_reflected_sections(world, entity, reg, &mut out);
+    }
+
+    // Pin the most-edited components to the top in a fixed order (Name,
+    // Transform, then Scripts, then Material) so they're always right where you
+    // expect regardless of plugin registration order. A stable sort keeps every
+    // other component in its original registry order behind them.
+    out.sort_by_key(|s| section_priority(s.title));
+
+    // Then the user's own arrangement on top of that, if they have dragged
+    // anything. It runs last and moves whole sections, so the built-in order
+    // above is what an untouched component still falls back to.
+    if let Some(order) = world.get_resource::<super::order::InspectorSectionOrder>() {
+        order.sort(&mut out);
+    }
+    out
+}
+
+/// The [`FieldSpec`]s for a section's (or a group's) `defs`, leaving out the
+/// ones that do not apply right now. Calls itself for a group's fields.
+fn field_specs(
+    world: &World,
+    entity: Entity,
+    type_id: &'static str,
+    cid: Option<bevy::ecs::component::ComponentId>,
+    groups_open: Option<&InspectorGroupsOpen>,
+    defs: &[renzora_editor_framework::FieldDef],
+) -> Vec<FieldSpec> {
+    let mut fields = Vec::new();
+    for f in defs {
+            let val = (f.get_fn)(world, entity);
             // A `None` read means "row not applicable right now" — the section's
             // component is toggled off, or the field only applies to some
             // states (e.g. occluder Width/Height on a polygon shape). Hide the
@@ -142,7 +196,17 @@ pub(crate) fn collect_sections(
             if val.is_none() && !matches!(f.field_type, FieldType::Button { .. }) {
                 continue;
             }
+            let mut children = Vec::new();
             let (kind, init) = match (&f.field_type, &val) {
+                (FieldType::Group { fields: inner }, _) => {
+                    children = field_specs(world, entity, type_id, cid, groups_open, inner);
+                    let switch = matches!(val, Some(FieldValue::Bool(_)));
+                    let open = groups_open.is_some_and(|g| g.is_open(type_id, f.name));
+                    (
+                        FieldKind::Group { switch, open },
+                        FieldInit::Bool(matches!(val, Some(FieldValue::Bool(true)))),
+                    )
+                }
                 (FieldType::Float { speed, min, max }, Some(FieldValue::Float(v))) => (
                     FieldKind::Float {
                         speed: *speed,
@@ -178,14 +242,14 @@ pub(crate) fn collect_sections(
                     FieldKind::CheckedEnum { options },
                     FieldInit::Checked(
                         s.clone(),
-                        (0..options.len()).map(|i| warning(world.untracked(), entity, i)).collect(),
+                        (0..options.len()).map(|i| warning(world, entity, i)).collect(),
                     ),
                 ),
                 // Options are computed from the world here (mapping has `world`);
                 // stored in the init so `FieldKind` stays `Copy`.
                 (FieldType::DynamicEnum { options }, Some(FieldValue::Float(v))) => (
                     FieldKind::DynamicEnum,
-                    FieldInit::DynEnum(options(world.untracked(), entity), v.round().max(0.0) as usize),
+                    FieldInit::DynEnum(options(world, entity), v.round().max(0.0) as usize),
                 ),
                 (FieldType::Asset { .. }, Some(FieldValue::Asset(_)))
                 | (FieldType::AssetCreatable { .. }, Some(FieldValue::Asset(_))) => {
@@ -216,46 +280,11 @@ pub(crate) fn collect_sections(
                 init,
                 extensions,
                 create_fn: create_fn.clone(),
-                cid: component_id_for(world.untracked(), entry.type_id),
+                cid,
+                children,
             });
-        }
-        out.push(SectionSpec {
-            title: entry.display_name,
-            cid: component_id_for(world.untracked(), entry.type_id),
-            icon: entry.icon,
-            type_id: entry.type_id,
-            custom: false,
-            native_drawer: None,
-            remove_fn: entry.remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
-            enable: enable.clone(),
-            enabled_now,
-            header_bg,
-            accent,
-            open: section_open(entry.type_id),
-            gate: gate_for(entry.type_id),
-            fields,
-        });
     }
-
-    // Generated sections name no category, so they belong to the entity's own
-    // page.
-    if page.is_none_or(|p| p == InspectorPage::Object) {
-        append_reflected_sections(world, entity, reg, &mut out);
-    }
-
-    // Pin the most-edited components to the top in a fixed order — Name,
-    // Transform, then Scripts, then Material — so they're always right where you
-    // expect regardless of plugin registration order. A stable sort keeps every
-    // other component in its original registry order behind them.
-    out.sort_by_key(|s| section_priority(s.title));
-
-    // Then the user's own arrangement on top of that, if they have dragged
-    // anything. It runs last and moves whole sections, so the built-in order
-    // above is what an untouched component still falls back to.
-    if let Some(order) = world.get_resource::<super::order::InspectorSectionOrder>() {
-        order.sort(&mut out);
-    }
-    out
+    fields
 }
 
 /// Append sections generated from `bevy_reflect` for components the hand-written
@@ -383,6 +412,7 @@ fn append_reflected_sections(
                 extensions: Vec::new(),
                 create_fn: None,
                 cid: component_id_for(world.untracked(), type_path),
+                children: Vec::new(),
             });
         }
         out.push(SectionSpec {

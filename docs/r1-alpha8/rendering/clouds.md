@@ -47,12 +47,16 @@ Clouds do not cast shadows on the ground.
 
 ## The controls
 
+The first three are on the card itself; the rest are in folded groups, named
+in the first column. **Atmosphere Lighting** is a group whose switch is in its
+own row.
+
 | Group | Field | What it does |
 |---|---|---|
-| Shape | **Coverage** | 0 is a clear sky, 1 is solid overcast. |
+| | **Coverage** | 0 is a clear sky, 1 is solid overcast. |
 | | **Density** | How opaque the cloud material is. |
 | | **Scale** | Size of the formations: lower means larger, broader systems. |
-| | **Detail Scale**, **Detail Strength** | How fine the eroding detail is, and how much of the outline it eats. |
+| Detail | **Detail Scale**, **Detail Strength** | How fine the eroding detail is, and how much of the outline it eats. |
 | | **Edge Softness** | Low gives crisp, cauliflower edges; high gives soft haze. |
 | | **Base Softness** | How far up from the base the density fades in. |
 | Deck | **Bottom Height**, **Top Height** | Altitude of the deck, in metres. |
@@ -64,9 +68,9 @@ Clouds do not cast shadows on the ground.
 | | **Absorption** | How hard the contrast between the sunlit and shadowed sides is. |
 | | **Forward Scattering**, **Backward Scattering**, **Scattering Blend** | The silver lining toward the sun, and the glow of clouds seen against it. |
 | | **Powder Effect** | Darkens thin sunlit edges, which otherwise look like cut paper. |
-| March | **Raymarch Steps**, **Shadow Steps** | Samples per view ray and per shadow ray. The main cost controls. |
-| Atmosphere | **Atmosphere Lighting** | Light the deck from the scene's atmosphere. With it on, every colour above is a noon value that the sky's state modulates. |
+| Atmosphere Lighting | (the switch) | Light the deck from the scene's atmosphere. With it on, every colour above is a noon value that the sky's state modulates. |
 | | **Horizon Color**, **Atmosphere** | The haze distant cloud fades into, and how strongly. |
+| Quality | **Raymarch Steps**, **Shadow Steps** | Samples per view ray and per shadow ray. The main cost controls. |
 
 ## In exported games
 

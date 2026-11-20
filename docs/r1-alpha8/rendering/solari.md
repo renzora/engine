@@ -309,7 +309,8 @@ bloom threshold, so bloom looks broken too.
 
 ### Light proxies
 
-**Point/Spot Light Proxies** (on the `SolariGi` component, on by default) fixes
+**Point/Spot Light Proxies** (on the `SolariGi` component, in its **Advanced**
+group with Suppress Shadow Maps, on by default) fixes
 this. Each point or spot light gets a small sphere in the ray-tracing scene whose
 emissive radiance is derived from the light's luminous power, and Solari samples
 that as a first-class area light — soft shadows and colour bleed included.

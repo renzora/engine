@@ -30,6 +30,10 @@ SSIL draws only when all of these hold:
 
 ## Settings
 
+Intensity, Occlusion and Radius are on the card. Samples, Sharpness and Normal
+Rejection fold into a **Quality** group, and the two fade distances into
+**Distance Fade**.
+
 | Field | Default | What it does |
 |---|---|---|
 | Intensity | 1.0 | How strong the bounce light is. |

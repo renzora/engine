@@ -192,6 +192,10 @@ fn solari_inspector_entry() -> InspectorEntry {
             // writes to the user's light components (see `suppress_shadow_maps`
             // in renzora_solari); it is exposed here because keeping raster
             // shadows is a legitimate thing to want while comparing backends.
+            //
+            // These two are for comparing Solari with the raster path rather
+            // than everyday tuning, so they fold away under Advanced.
+            FieldDef::group("Advanced", vec![
             bool_field!("Suppress Shadow Maps", SolariGi, suppress_shadow_maps),
             // Solari samples only directional lights and emissive meshes, and
             // its camera's `SkipDeferredLighting` removes the clustered-light
@@ -200,6 +204,7 @@ fn solari_inspector_entry() -> InspectorEntry {
             // stand-in spheres are an approximation (a spot loses its cone), and
             // because seeing Solari's raw behaviour is sometimes the point.
             bool_field!("Point/Spot Light Proxies", SolariGi, light_proxies),
+            ]),
             // Solari's realtime component (`SolariLighting`) exposes exactly one
             // runtime knob: `reset`, which clears the temporal history. Surface
             // it as a button, handy after a camera cut or when ghosting/dark

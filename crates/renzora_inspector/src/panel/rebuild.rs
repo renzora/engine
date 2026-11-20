@@ -488,34 +488,53 @@ fn hash_entity(world: &Rx, e: Entity, h: &mut impl Hasher) {
                 if let Some(is_enabled) = entry.is_enabled_fn {
                     is_enabled(world.untracked(), e).hash(h);
                 }
-                // A `DynamicEnum` field's options are computed from the
-                // world at build time, so a *mutation* that grows/shrinks
-                // the list (e.g. appending a sprite sheet) wouldn't
-                // otherwise change the signature, leaving a stale option
-                // list and an out-of-range selection (blank dropdown).
-                // Fold the options in so the list rebuilds when it changes.
-                for field in &entry.fields {
-                    if let FieldType::DynamicEnum { options } = field.field_type {
-                        for opt in options(world.untracked(), e) {
-                            opt.hash(h);
-                        }
-                    }
-                    // A `CheckedEnum`'s warnings come from the rest of the
-                    // world (the rendering mode, other effects on the camera),
-                    // so they change without this entity changing. The
-                    // selection is folded in too: the warning beside the box
-                    // belongs to the selected option, and picking a different
-                    // one has to rebuild the row for it to follow.
-                    if let FieldType::CheckedEnum { options, warning } = field.field_type {
-                        for i in 0..options.len() {
-                            warning(world.untracked(), e, i).hash(h);
-                        }
-                        if let Some(FieldValue::Enum(s)) = (field.get_fn)(world.untracked(), e) {
-                            s.hash(h);
-                        }
-                    }
+                hash_world_dependent_fields(world.untracked(), e, &entry.fields, h);
+            }
+        }
+    }
+}
+
+/// Fold in what a field shows that comes from outside its own component, so
+/// a change there rebuilds the row. Looks inside groups too.
+fn hash_world_dependent_fields(
+    world: &World,
+    e: Entity,
+    fields: &[renzora_editor_framework::FieldDef],
+    h: &mut impl Hasher,
+) {
+    for field in fields {
+        match &field.field_type {
+            // A `DynamicEnum` field's options are computed from the world at
+            // build time, so a *mutation* that grows/shrinks the list (e.g.
+            // appending a sprite sheet) wouldn't otherwise change the
+            // signature, leaving a stale option list and an out-of-range
+            // selection (blank dropdown). Fold the options in so the list
+            // rebuilds when it changes.
+            FieldType::DynamicEnum { options } => {
+                for opt in options(world, e) {
+                    opt.hash(h);
                 }
             }
+            // A `CheckedEnum`'s warnings come from the rest of the world (the
+            // rendering mode, other effects on the camera), so they change
+            // without this entity changing. The selection is folded in too:
+            // the warning beside the box belongs to the selected option, and
+            // picking a different one has to rebuild the row for it to follow.
+            FieldType::CheckedEnum { options, warning } => {
+                for i in 0..options.len() {
+                    warning(world, e, i).hash(h);
+                }
+                if let Some(FieldValue::Enum(s)) = (field.get_fn)(world, e) {
+                    s.hash(h);
+                }
+            }
+            // Whether a group is shown at all is its own `get_fn`; its fields
+            // may hold either of the above.
+            FieldType::Group { fields } => {
+                (field.get_fn)(world, e).is_some().hash(h);
+                hash_world_dependent_fields(world, e, fields, h);
+            }
+            _ => {}
         }
     }
 }

@@ -1,5 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 06:07
+- feat(inspector): long cards fold their settings into groups, among them Clouds, the lights' Shadows, SSIL, Solari, Vehicle, NavMesh Volume, the 2D lights, Sprite Image and UI nodes, and grouped rows line up with the rest of the card
+
+## 2026-11-20 05:31
+- feat(inspector): cards can fold settings into groups, with a feature's on/off switch in the group's row; the Sun's Contact Shadows and Moon settings are the first
+
 ## 2026-11-20 05:03
 - feat(lighting): the Sun sets contact shadows' length, thickness and steps, and they reach 0.8 m by default instead of 0.3
 - fix(inspector): a Sun's Shadows and Contact Shadows switches appear once, in the Sun section, instead of also in Directional Light

@@ -572,7 +572,7 @@ impl RenderPass for SsilPass {
             let pipeline = if pass + 2 < BLUR_PASSES { blur_wide } else { blur_smart };
             draw(render_context, "ssil_blur", &[output], pipeline, &blur_group(input));
         }
-        let blurred = if BLUR_PASSES % 2 == 0 { light } else { scratch };
+        let blurred = if BLUR_PASSES.is_multiple_of(2) { light } else { scratch };
 
         let frame = view_target.post_process_write();
         let composite_group = device.create_bind_group(

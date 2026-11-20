@@ -89,6 +89,12 @@ The toolbar above the cards holds **+ Add** (Add Component), a **filter box** th
 
 <!-- screenshot: inspector_add_component.png - the Add Component menu open, grouped by category -->
 
+### Groups inside a card
+
+Some cards fold related settings into a **group**: a row with a caret and a name, its settings listed under it in line with the rest of the card. Click the row to unfold it. When the group belongs to a feature, its on/off switch sits in the row itself, so the feature can be turned on or off without opening it (the Sun's **Contact Shadows** is one, with its length, thickness and steps inside).
+
+Groups start folded and stay the way you leave them for that kind of component, across selections. A folded group costs nothing, because its rows are not built.
+
 ### Rearranging
 
 Drag the grip on any header. A line shows where the section will land. The sections do not shuffle under your cursor while you drag, and dragging near an edge scrolls the list. Dragging rearranges the page you are on; the other pages keep their own order.

@@ -34,6 +34,9 @@ the config authored on the scene camera.
 
 ## Point lights
 
+The core and falloff settings fold into a **Falloff** group, and the two angles
+into **Cone**.
+
 | Field | Meaning |
 |---|---|
 | Color / Intensity | Tint and strength of the light. |
@@ -57,6 +60,10 @@ shadows only fall on sprites *below* the occluder's z — the standard top-down
 setup where a character's shadow darkens the floor but not the character.
 
 ## Camera config reference
+
+Normal Mode and Normal Attenuation fold into a **Normals** group, and Z
+Sorting, Light Bands and Lightmap Filtering into **Advanced**. (On an occluder,
+its shadow colour, opacity and Z Sorting are in a **Shadow** group.)
 
 | Field | Meaning |
 |---|---|

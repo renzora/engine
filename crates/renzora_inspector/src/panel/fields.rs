@@ -25,6 +25,19 @@ pub(super) fn build_field_row(
     entity: Entity,
     type_id: &'static str,
 ) -> Entity {
+    build_field_row_with_label(commands, fonts, field, entity, type_id, None)
+}
+
+/// [`build_field_row`] with the label text built by the caller (a group header
+/// puts its caret in it), or the field's own name when `None`.
+pub(super) fn build_field_row_with_label(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    field: &FieldSpec,
+    entity: Entity,
+    type_id: &'static str,
+    label_text: Option<Entity>,
+) -> Entity {
     // The field's control(s) sit in a value container, then the shared
     // `inspector_row` adds a left-aligned label column — so declarative fields
     // and native drawers (which also use `inspector_row`) line up identically.
@@ -97,8 +110,13 @@ pub(super) fn build_field_row(
         commands.entity(row).add_child(value);
         return row;
     }
-    let label = field_label_loc(field.name);
-    let row = renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value);
+    let row = match label_text {
+        Some(lbl) => renzora_ember::inspector::inspector_row_with_label(commands, lbl, value),
+        None => {
+            let label = field_label_loc(field.name);
+            renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value)
+        }
+    };
     // A field whose value reads as `None` is not applicable right now, and
     // `collect` leaves it out of a section it builds. One that stops applying
     // after the section is built (Solari's DLSS Mode, once the denoiser is
@@ -118,7 +136,12 @@ pub(super) fn build_field_row(
 /// what the slot's own ✕ already does, so the two sat side by side doing the
 /// same thing and the reset read as a "reload" that wasn't one.
 fn field_is_resettable(kind: FieldKind) -> bool {
-    !matches!(kind, FieldKind::Button { .. } | FieldKind::ReadOnly | FieldKind::Asset)
+    // A plain group's header has no value of its own. (A switch group's
+    // header is built as a `Bool` row, so its switch does get one.)
+    !matches!(
+        kind,
+        FieldKind::Button { .. } | FieldKind::ReadOnly | FieldKind::Asset | FieldKind::Group { .. }
+    )
 }
 
 /// A small icon button that resets a field to the value its component starts
@@ -341,6 +364,9 @@ fn build_field_value(
         FieldKind::Bool => {
             let init = matches!(field.init, FieldInit::Bool(true));
             let sw = toggle_switch(commands, init);
+            // A group's header row folds on a press; the switch in it must
+            // keep that press to itself. Harmless on an ordinary row.
+            commands.entity(sw).insert(BLOCK);
             let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
             let get_r = get_fn.clone();
             bind_2way(
@@ -553,6 +579,8 @@ fn build_field_value(
             ));
             commands.entity(value_parent).add_child(btn);
         }
+        // Never a row: `group::build_rows` builds a group as a group.
+        FieldKind::Group { .. } => {}
         FieldKind::ReadOnly => {
             let text = if let FieldInit::Text(ref s) = field.init {
                 s.clone()

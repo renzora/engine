@@ -664,11 +664,13 @@ fn sprite_image_entry() -> InspectorEntry {
                     }
                 },
             },
-            // Sheet grid — merged in from the old separate "Sprite Sheet"
-            // section (Godot's Sprite2D carries these too). Backed by the
-            // `SpriteSheet` component, which stays the data + the thing the
-            // renderer/timeline/tilemap use; setting any of these creates it on
-            // demand. `field_anim_path` maps their keyframes onto `SpriteSheet`.
+            // Sheet grid, merged in from the old separate "Sprite Sheet"
+            // section. Backed by the `SpriteSheet` component, which stays the
+            // data + the thing the renderer/timeline/tilemap use; setting any
+            // of these creates it on demand. `field_anim_path` maps their
+            // keyframes onto `SpriteSheet`. Folded into a group, since the
+            // grid is set once per sheet; Frame stays out, being what animates.
+            FieldDef::group("Sheet", vec![
             FieldDef {
                 name: "H Frames",
                 field_type: FieldType::Int {
@@ -727,6 +729,7 @@ fn sprite_image_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
             FieldDef {
                 name: "Frame",
                 field_type: FieldType::Int {
@@ -792,12 +795,12 @@ fn sprite_image_entry() -> InspectorEntry {
                     }
                 },
             },
-            // Y-sort — merged in like the sheet grid (Godot's Sprite2D keeps
-            // its y-sort knob on the sprite too). The toggle adds/removes the
-            // `YSort` component; the two fields below appear once it's on
-            // (`get_fn` → None hides them). The engine's `apply_y_sort` system
-            // owns the actual Z writes.
-            FieldDef {
+            // Y-sort, merged in like the sheet grid. The switch heads a group
+            // and adds/removes the `YSort` component; the two fields under it
+            // only read once it's on (`get_fn` gives None and hides them
+            // otherwise). The engine's `apply_y_sort` system owns the actual
+            // Z writes.
+            FieldDef::toggle_group(FieldDef {
                 name: "Y Sort",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
@@ -818,7 +821,7 @@ fn sprite_image_entry() -> InspectorEntry {
                         }
                     }
                 },
-            },
+            }, vec![
             // Where the sort point sits relative to the sprite center. A tall
             // prop wants its trunk/feet, i.e. roughly -half_height.
             FieldDef {
@@ -863,6 +866,7 @@ fn sprite_image_entry() -> InspectorEntry {
                     }
                 },
             },
+            ]),
         ],
     }
 }
@@ -1048,16 +1052,17 @@ fn directional_light_entry() -> InspectorEntry {
                     }
                 },
             },
-            // On a Sun the next two are hidden: the Sun card has the same
-            // switches (and contact shadows' reach, thickness and steps right
-            // under its own), and showing both on one entity read as two
-            // settings. A plain directional light keeps them here.
+            // On a Sun the two switches are the Sun card's: showing them on
+            // both cards of one entity read as two settings. Shadows is a
+            // group, though, whose settings are this card's alone, so on a Sun
+            // it stays as a plain header (a non-`Bool` read) rather than going.
+            // Contact Shadows has nothing under it here and simply goes.
             FieldDef {
                 name: "Shadows",
-                field_type: FieldType::Bool,
+                field_type: FieldType::Group { fields: directional_shadow_fields() },
                 get_fn: |world, entity| {
                     if world.get::<renzora::Sun>(entity).is_some() {
-                        return None;
+                        return Some(FieldValue::ReadOnly(String::new()));
                     }
                     world
                         .get::<DirectionalLight>(entity)
@@ -1098,6 +1103,14 @@ fn directional_light_entry() -> InspectorEntry {
                     }
                 },
             },
+        ],
+    }
+}
+
+/// What the Directional Light card's Shadows group holds: softness, the two
+/// biases, and the cascades in a group of their own.
+fn directional_shadow_fields() -> Vec<FieldDef> {
+    vec![
             FieldDef {
                 // One field for Bevy's `Option`: 0 is off (`None`, hard shadows),
                 // anything above is the light's size. A separate on/off switch
@@ -1123,6 +1136,7 @@ fn directional_light_entry() -> InspectorEntry {
             },
             light_field!(DirectionalLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
             light_field!(DirectionalLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
+            FieldDef::group("Cascades", vec![
             FieldDef {
                 name: "Shadow Cascades",
                 field_type: FieldType::Int { min: 1.0, max: 4.0 },
@@ -1183,8 +1197,8 @@ fn directional_light_entry() -> InspectorEntry {
                     }
                 },
             },
-        ],
-    }
+            ]),
+    ]
 }
 
 /// Bevy caps a directional light at four shadow cascades.
@@ -1332,28 +1346,18 @@ fn point_light_entry() -> InspectorEntry {
                     }
                 },
             },
-            FieldDef {
-                name: "Shadows",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<PointLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(v) = val {
-                        if let Some(mut l) = world.get_mut::<PointLight>(entity) {
-                            l.shadow_maps_enabled = v;
-                        }
-                    }
-                },
-            },
-            light_field!(PointLight, "Contact Shadows", contact_shadows_enabled, Bool),
-            light_field!(PointLight, "Soft Shadows", soft_shadows_enabled, Bool),
             light_field!(PointLight, "Radius", radius, 0.01, 0.0, 100.0),
-            light_field!(PointLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
-            light_field!(PointLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
-            light_field!(PointLight, "Shadow Near Plane", shadow_map_near_z, 0.01, 0.001, 10.0),
+            // The switch heads the group; the map's tuning folds under it.
+            FieldDef::toggle_group(
+                light_field!(PointLight, "Shadows", shadow_maps_enabled, Bool),
+                vec![
+                    light_field!(PointLight, "Soft Shadows", soft_shadows_enabled, Bool),
+                    light_field!(PointLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
+                    light_field!(PointLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
+                    light_field!(PointLight, "Shadow Near Plane", shadow_map_near_z, 0.01, 0.001, 10.0),
+                ],
+            ),
+            light_field!(PointLight, "Contact Shadows", contact_shadows_enabled, Bool),
         ],
     }
 }
@@ -1588,28 +1592,17 @@ fn spot_light_entry() -> InspectorEntry {
                     }
                 },
             },
-            FieldDef {
-                name: "Shadows",
-                field_type: FieldType::Bool,
-                get_fn: |world, entity| {
-                    world
-                        .get::<SpotLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Bool(v) = val {
-                        if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
-                            l.shadow_maps_enabled = v;
-                        }
-                    }
-                },
-            },
-            light_field!(SpotLight, "Contact Shadows", contact_shadows_enabled, Bool),
-            light_field!(SpotLight, "Soft Shadows", soft_shadows_enabled, Bool),
             light_field!(SpotLight, "Radius", radius, 0.01, 0.0, 100.0),
-            light_field!(SpotLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
-            light_field!(SpotLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
-            light_field!(SpotLight, "Shadow Near Plane", shadow_map_near_z, 0.01, 0.001, 10.0),
+            FieldDef::toggle_group(
+                light_field!(SpotLight, "Shadows", shadow_maps_enabled, Bool),
+                vec![
+                    light_field!(SpotLight, "Soft Shadows", soft_shadows_enabled, Bool),
+                    light_field!(SpotLight, "Shadow Depth Bias", shadow_depth_bias, 0.001, 0.0, 1.0),
+                    light_field!(SpotLight, "Shadow Normal Bias", shadow_normal_bias, 0.01, 0.0, 10.0),
+                    light_field!(SpotLight, "Shadow Near Plane", shadow_map_near_z, 0.01, 0.001, 10.0),
+                ],
+            ),
+            light_field!(SpotLight, "Contact Shadows", contact_shadows_enabled, Bool),
         ],
     }
 }

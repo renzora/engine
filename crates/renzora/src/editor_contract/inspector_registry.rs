@@ -120,15 +120,54 @@ pub enum FieldType {
     Button {
         icon: &'static str,
     },
+    /// A foldable group of `fields` inside the section: a row with a caret and
+    /// the group's name, its fields indented under it. Build one with
+    /// [`FieldDef::group`] or [`FieldDef::toggle_group`].
+    ///
+    /// The group's own `get_fn` decides its header. `None` hides the whole
+    /// group, like any field. `Some(FieldValue::Bool(_))` puts an on/off switch
+    /// in the header, written through `set_fn`, for a feature whose settings
+    /// are the group (the Sun's Contact Shadows and their length, thickness and
+    /// steps). Any other value gives a plain header.
+    ///
+    /// A folded group builds none of its rows, the same way a folded section
+    /// builds nothing, so folding settings away saves their layout every frame
+    /// as well as the scrolling. Groups start folded and the inspector
+    /// remembers per component type which ones were opened.
+    Group {
+        fields: Vec<FieldDef>,
+    },
 }
 
 /// A single inspectable field on a component.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FieldDef {
     pub name: &'static str,
     pub field_type: FieldType,
     pub get_fn: fn(&World, Entity) -> Option<FieldValue>,
     pub set_fn: fn(&mut World, Entity, FieldValue),
+}
+
+impl FieldDef {
+    /// A plain foldable group named `name` (see [`FieldType::Group`]).
+    pub fn group(name: &'static str, fields: Vec<FieldDef>) -> Self {
+        Self {
+            name,
+            field_type: FieldType::Group { fields },
+            get_fn: |_, _| Some(FieldValue::ReadOnly(String::new())),
+            set_fn: |_, _, _| {},
+        }
+    }
+
+    /// A group whose header is the on/off switch `switch` (a `Bool` field,
+    /// such as one from `bool_field!`), with `fields` folded under it. The
+    /// switch keeps its name, value and write; only where it is drawn changes.
+    pub fn toggle_group(switch: FieldDef, fields: Vec<FieldDef>) -> Self {
+        Self {
+            field_type: FieldType::Group { fields },
+            ..switch
+        }
+    }
 }
 
 /// Registration entry for one component type.
@@ -303,6 +342,28 @@ mod tests {
         r.register(entry("camera", vec![field("FOV"), button]));
         r.extend("camera", vec![field("AA"), field("Tonemapping")]);
         assert_eq!(names(&r, "camera"), ["FOV", "AA", "Tonemapping", "Snap"]);
+    }
+
+    /// A toggle group is its switch with fields under it: same name, same
+    /// read and write, so the switch behaves exactly as it did as a row.
+    #[test]
+    fn a_toggle_group_keeps_its_switch() {
+        let switch = FieldDef {
+            field_type: FieldType::Bool,
+            get_fn: |_, _| Some(FieldValue::Bool(true)),
+            ..field("Contact Shadows")
+        };
+        let group = FieldDef::toggle_group(switch, vec![field("Length"), field("Steps")]);
+        assert_eq!(group.name, "Contact Shadows");
+        let FieldType::Group { fields } = &group.field_type else {
+            panic!("not a group");
+        };
+        assert_eq!(fields.len(), 2);
+        let mut world = World::new();
+        let e = world.spawn_empty().id();
+        assert_eq!((group.get_fn)(&world, e), Some(FieldValue::Bool(true)));
+        let plain = FieldDef::group("Moon", vec![]);
+        assert!(!matches!((plain.get_fn)(&world, e), Some(FieldValue::Bool(_)) | None));
     }
 
     #[test]

@@ -12,9 +12,14 @@ it looks in the sky.
 | **Glare** | Strength of the bright haze around the sun when it is in view. 0 turns it off; the default is 1.5. Raise **Glare Size** with care: the wide part of the glare grows with both, and together they soon veil the whole sky. |
 | **Glare Size** | How far the glare spreads from the sun, in degrees. |
 | **Shadows**, **Contact Shadows** | Whether the sun casts shadow maps and screen-space contact shadows. |
-| **Contact Length**, **Contact Thickness**, **Contact Steps** | How contact shadows are traced: their reach, how thick surfaces are assumed to be, and how many steps each ray takes. See [Shadows](/docs/r1-alpha8/rendering/shadows). |
+| **Length**, **Thickness**, **Steps** | Inside the **Contact Shadows** group: how contact shadows are traced, their reach, how thick surfaces are assumed to be, and how many steps each ray takes. See [Shadows](/docs/r1-alpha8/rendering/shadows). |
+
+The moon's settings are folded into a **Moon** group:
+
+| Field | What it does |
+|---|---|
 | **Moonlight**, **Moon Color** | The light the sun becomes once it has set, in lux, and its colour. 0 keeps nights unlit. |
-| **Moon Follows Calendar** | On by default: the moon's phase is today's real one. Off, it uses **Moon Day**. |
+| **Follows Calendar** | On by default: the moon's phase is today's real one. Off, it uses **Moon Day**. |
 | **Moon Day** | Day of the lunar month, 0 to 29.5: 0 new, about 3 a crescent, 7.4 first quarter, 14.8 full, 22.1 last quarter, about 26 a waning crescent. |
 | **Moon Tint** | Colour of the moon's face: warm orange for a harvest moon, white for a high one. |
 | **Eclipse** | 0 to 1. The Earth's shadow sweeps across the moon; at 1 it is a dim, copper-red blood moon. The moon is drawn full during an eclipse, and the moonlight dims and reddens with it. |
