@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 22:14
+- feat(plugins): every nightly and stable release compiles third-party marketplace plugins from their uploaded source and publishes signed prebuilts for the ones that compile
+- feat(plugins): a newly published plugin release is compiled against the latest nightly and stable builds straight away, and its creator sees any failure with the compiler's output on its listing
+
 ## 2026-11-20 20:21
 - feat(plugins): on a nightly or release, installing a plugin downloads a signed prebuilt binary for that exact engine build instead of compiling it, with an option to build from source
 - feat(plugins): after an engine update, installed marketplace plugins are brought up to date with their prebuilt binaries rather than recompiled where a binary exists

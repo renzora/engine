@@ -1495,6 +1495,22 @@ jobs:
           echo "### Prebuilt plugins for \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
           echo "$ok uploaded, $failed failed." >> "$GITHUB_STEP_SUMMARY"
 
+  # ── Third-party plugins ───────────────────────────────────────────────────
+  # Every marketplace plugin not in renzora/plugins, compiled from its creator's
+  # source against this build's SDK as published in the release: a prebuilt for
+  # each one that compiles, and a recorded failure (with the compiler's output)
+  # for each one that does not. See `third-party-plugins.yml` for how untrusted
+  # code is built without access to any secret.
+  third-party:
+    needs: [setup, publish]
+    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/third-party-plugins.yml
+    with:
+      tag: ${{ needs.setup.outputs.tag }}
+    secrets: inherit
+
   website:
     needs: [setup, build, publish]
     if: |

@@ -1,0 +1,65 @@
+# A creator just published a plugin release: compile it now, against the latest
+# nightly and the latest stable build, rather than leaving them to wait for the
+# next nightly to find out whether it compiles (and their users to wait for a
+# prebuilt).
+#
+# Sent by renzora.com (`request_plugin_build` in the website's prebuilt API) as
+# a `repository_dispatch` carrying the listing's id. The building itself is
+# `third-party-plugins.yml`, which explains how untrusted source is compiled
+# without exposing anything.
+name: Plugin release
+
+on:
+  repository_dispatch:
+    types: [plugin-release]
+  workflow_dispatch:
+    inputs:
+      asset_id:
+        description: The listing's id
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  builds:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tags: ${{ steps.tags.outputs.tags }}
+      asset_id: ${{ steps.tags.outputs.asset_id }}
+    steps:
+      - name: Find the latest nightly and stable builds
+        id: tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ github.event.client_payload.asset_id || inputs.asset_id }}
+        run: |
+          set -euo pipefail
+          # Only a listing id: it reaches a job's command line, so nothing else.
+          if ! [[ "$ASSET" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+            echo "::error::not a listing id: $ASSET"; exit 1
+          fi
+          echo "asset_id=$ASSET" >> "$GITHUB_OUTPUT"
+          releases=$(gh release list -R "$GITHUB_REPOSITORY" --limit 50 --json tagName,isPrerelease)
+          nightly=$(echo "$releases" | jq -r '[.[] | select(.tagName | test("-nightly-"))][0].tagName // empty')
+          stable=$(echo "$releases" | jq -r '[.[] | select(.isPrerelease | not) | select(.tagName | test("-nightly-") | not)][0].tagName // empty')
+          tags=$(jq -cn --arg n "$nightly" --arg s "$stable" '[$n, $s] | map(select(. != "")) | unique')
+          echo "building $ASSET against $tags"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: builds
+    if: needs.builds.outputs.tags != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(needs.builds.outputs.tags) }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/third-party-plugins.yml
+    with:
+      tag: ${{ matrix.tag }}
+      asset_id: ${{ needs.builds.outputs.asset_id }}
+    secrets: inherit

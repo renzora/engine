@@ -1,0 +1,411 @@
+# Third-party plugins: compile every marketplace plugin that is not in
+# renzora/plugins against an official engine build, give the ones that compile a
+# signed prebuilt binary, and record every result (with the compiler's output
+# for the failures) on the marketplace, where each plugin's creator sees it.
+#
+# Always against an OFFICIAL build: the SDK comes from the engine's own GitHub
+# release, never from a creator, whose engine could be anything.
+#
+# Run by:
+#   - `build-engine.yml`, after every nightly and stable release is published:
+#     every third-party plugin against that build;
+#   - `plugin-release.yml`, when a creator publishes a release: just that
+#     plugin, against the latest nightly and the latest stable build;
+#   - by hand, for a given release tag and optionally one listing.
+#
+# ── Trust ────────────────────────────────────────────────────────────────────
+# Compiling a crate runs its code (`build.rs`, proc macros, its dependencies'
+# build scripts). So the jobs that compile third-party code hold NOTHING worth
+# stealing and can change nothing:
+#
+#   - `build` references no secret (GitHub gives a job only the secrets it
+#     names) and runs with `permissions: {}`, so even the automatic repository
+#     token can do nothing;
+#   - one job per plugin per platform, each on a fresh machine, so one plugin's
+#     build script cannot tamper with another plugin's binary before it is
+#     signed (on a shared machine it could, and a malicious plugin could then
+#     poison a popular plugin's signed binary for all of its users);
+#   - `publish` signs, but compiles nothing third-party, and it signs only from
+#     facts it trusts: the plugin id and version the marketplace listed, the
+#     platform of the job, the official SDK's stamp, and a hash it measures.
+#     Nothing a build job wrote about its own output is signed, so a library
+#     cannot relabel itself as another plugin.
+#
+# The signature then means "Renzora's CI built this from the source the creator
+# uploaded, against this official build": the same trust as compiling it
+# yourself, which is what installing from source already is.
+name: Third-party plugins
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Engine release whose SDKs to build against
+        type: string
+        required: true
+      asset_id:
+        description: Only this listing (empty means every third-party plugin)
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Engine release tag to build against (e.g. r1-alpha8-nightly-20nov26)
+        type: string
+        required: true
+      asset_id:
+        description: Only this listing's id (blank = every third-party plugin)
+        type: string
+        required: false
+        default: ""
+
+permissions: {}
+
+env:
+  # renzora.com is behind Cloudflare, which blocks curl's default User-Agent.
+  UA: renzora-engine-ci/third-party-plugins
+
+jobs:
+  # ── What to build ─────────────────────────────────────────────────────────
+  # Asks the marketplace which release of each plugin this engine version
+  # installs, leaves out renzora/plugins (built and signed by `build-engine.yml`
+  # already), and fetches each one's source, so no build job needs a token.
+  list:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      any: ${{ steps.list.outputs.any }}
+      matrix: ${{ steps.list.outputs.matrix }}
+      engine_version: ${{ steps.list.outputs.engine_version }}
+    steps:
+      - name: List and fetch the plugins
+        id: list
+        env:
+          TOKEN: ${{ secrets.RENZORA_MARKETPLACE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          ONLY: ${{ inputs.asset_id }}
+        run: |
+          set -euo pipefail
+          # `r1-alpha8-nightly-20nov26` and `r1-alpha8` are both engine r1-alpha8.
+          version="${TAG%%-nightly-*}"
+          echo "engine_version=$version" >> "$GITHUB_OUTPUT"
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::warning::RENZORA_MARKETPLACE_TOKEN is not set; no third-party plugins were built"
+            echo "any=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          curl -sSf -A "$UA" -H "Authorization: Bearer $TOKEN" \
+            "https://renzora.com/api/prebuilt-plugins/build-list?engine_version=$version" > list.json
+
+          # Official plugins are renzora/plugins'; they have their own job.
+          git clone -q --depth 1 https://github.com/renzora/plugins official
+          grep -h '^marketplace_id' official/*/Cargo.toml \
+            | sed -E 's/.*"([^"]+)".*/\1/' | jq -R . | jq -s . > official.json
+          jq --slurpfile off official.json --arg only "$ONLY" '
+            [ .[] | select(.marketplace_id as $m | ($off[0] | index($m)) | not)
+                  | select($only == "" or .asset_id == $only) ]' list.json > candidates.json
+          # A prebuilt is filed under, and an editor matches it by, the listing's
+          # marketplace id, so a listing that never claimed one cannot have one.
+          # Said in the summary rather than skipped silently.
+          jq '[ .[] | select(.marketplace_id != "") ]' candidates.json > expect.json
+          jq -r '.[] | select(.marketplace_id == "") | "- \(.name): no marketplace id, so it cannot have a prebuilt"' \
+            candidates.json >> "$GITHUB_STEP_SUMMARY"
+          count=$(jq length expect.json)
+          echo "$count third-party plugin(s) to build for $version"
+
+          mkdir -p sources
+          for row in $(jq -r '.[] | "\(.asset_id)/\(.release_id)"' expect.json); do
+            asset="${row%/*}"
+            curl -sSf -A "$UA" -H "Authorization: Bearer $TOKEN" \
+              "https://renzora.com/api/prebuilt-plugins/source/$row" -o "sources/$asset.zip"
+          done
+          cp expect.json sources/
+
+          # One job per plugin per platform, for the reason at the top. GitHub
+          # caps a matrix at 256 jobs, 42 plugins on 6 platforms.
+          platforms='[
+            {"platform":"linux-x64","runner":"ubuntu-latest"},
+            {"platform":"linux-arm64","runner":"ubuntu-24.04-arm"},
+            {"platform":"windows-x64","runner":"windows-latest"},
+            {"platform":"windows-arm64","runner":"windows-11-arm"},
+            {"platform":"macos-x64","runner":"macos-26-intel"},
+            {"platform":"macos-arm64","runner":"macos-latest"}]'
+          matrix=$(jq -c --argjson p "$platforms" \
+            '{include: [ .[] as $a | $p[] | {asset_id: $a.asset_id, marketplace_id: $a.marketplace_id} + . ]}' expect.json)
+          if [ "$(echo "$matrix" | jq '.include | length')" -gt 256 ]; then
+            echo "::error::more than 256 plugin builds; the matrix needs splitting"
+            exit 1
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          [ "$count" -gt 0 ] && echo "any=true" >> "$GITHUB_OUTPUT" || echo "any=false" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the sources
+        if: steps.list.outputs.any == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tp-sources
+          path: sources
+          retention-days: 3
+
+  # ── The official SDK, once per platform ──────────────────────────────────
+  # Out of the engine's own release asset, with the tools the build and publish
+  # jobs run (compiled from this repository, so trusted). Per platform because
+  # an SDK's proc macros only run on the machine kind that built them.
+  sdk:
+    needs: list
+    if: needs.list.outputs.any == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, runner: ubuntu-latest, asset: linux-x64.zip }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm, asset: linux-arm64.zip }
+          - { platform: windows-x64, runner: windows-latest, asset: windows-x64.zip }
+          - { platform: windows-arm64, runner: windows-11-arm, asset: windows-arm64.zip }
+          - { platform: macos-x64, runner: macos-26-intel, asset: macos-x64.dmg }
+          - { platform: macos-arm64, runner: macos-latest, asset: macos-arm64.dmg }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rustup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+            Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/$arch-pc-windows-msvc/rustup-init.exe" -OutFile rustup-init.exe
+            ./rustup-init.exe -y --default-toolchain none --profile minimal
+            "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
+      - name: Fetch the release's SDK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "${{ matrix.asset }}" -D release
+          mkdir -p out
+          case "${{ matrix.asset }}" in
+            *.dmg)
+              hdiutil attach -nobrowse -readonly -mountpoint /tmp/engine "release/${{ matrix.asset }}"
+              cp "/tmp/engine/Renzora Engine.app/Contents/MacOS/sdk.tar.zst" out/
+              hdiutil detach /tmp/engine ;;
+            *.zip)
+              py=$(command -v python3 || command -v python)
+              "$py" - "release/${{ matrix.asset }}" out/sdk.tar.zst <<'PY'
+          import sys, zipfile, shutil
+          z = zipfile.ZipFile(sys.argv[1])
+          name = next(n for n in z.namelist() if n.endswith("sdk.tar.zst"))
+          with z.open(name) as src, open(sys.argv[2], "wb") as dst:
+              shutil.copyfileobj(src, dst)
+          PY
+              ;;
+          esac
+          ls -lh out/sdk.tar.zst
+
+      - name: Build the tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup show >/dev/null
+          cargo build -q --profile dist -p renzora_plugin_build \
+            --example unpack_sdk --example check_plugins
+          exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
+          cp "target/dist/examples/unpack_sdk$exe" "target/dist/examples/check_plugins$exe" out/
+          # The stamp, for the publish job, which never unpacks a 1.9 GB SDK.
+          out/unpack_sdk$exe --archive out/sdk.tar.zst --root work >/dev/null
+          jq -r '.build_id + "+rustc-" + .rustc' work/sdk/manifest.json > stamp.txt
+          jq -r '.rustc' work/sdk/manifest.json > out/rustc.txt
+          cat stamp.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tp-sdk-${{ matrix.platform }}
+          path: out
+          retention-days: 3
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tp-stamp-${{ matrix.platform }}
+          path: stamp.txt
+          retention-days: 3
+
+  # ── Compile: untrusted code, no secrets, nothing writable ─────────────────
+  build:
+    needs: [list, sdk]
+    if: always() && needs.list.outputs.any == 'true' && needs.sdk.result != 'cancelled'
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJSON(needs.list.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    permissions: {}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tp-sdk-${{ matrix.platform }}
+          path: tools
+      - uses: actions/download-artifact@v4
+        with:
+          name: tp-sources
+          path: sources
+
+      - name: Install rustup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+            Invoke-WebRequest -Uri "https://static.rust-lang.org/rustup/dist/$arch-pc-windows-msvc/rustup-init.exe" -OutFile rustup-init.exe
+            ./rustup-init.exe -y --default-toolchain none --profile minimal
+            "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
+      - name: Compile ${{ matrix.marketplace_id }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
+          chmod +x tools/* 2>/dev/null || true
+          # The toolchain the SDK was built with; a plugin must match it.
+          rustc_version=$(cat tools/rustc.txt)
+          rustup toolchain install "$rustc_version" --profile minimal >/dev/null
+          export RUSTUP_TOOLCHAIN="$rustc_version"
+          "tools/unpack_sdk$exe" --archive tools/sdk.tar.zst --root work >/dev/null
+
+          # The source zip, at its crate's root (the manifest may sit one
+          # directory down, as the editor's installer also allows).
+          id="${{ matrix.marketplace_id }}"
+          py=$(command -v python3 || command -v python)
+          "$py" - "sources/${{ matrix.asset_id }}.zip" "plugins/$id" <<'PY'
+          import sys, zipfile, os
+          z = zipfile.ZipFile(sys.argv[1])
+          manifests = sorted((n for n in z.namelist() if n.endswith("Cargo.toml")), key=lambda n: n.count("/"))
+          prefix = manifests[0][: -len("Cargo.toml")] if manifests else ""
+          for n in z.namelist():
+              if not n.startswith(prefix) or n.endswith("/"):
+                  continue
+              rel = n[len(prefix):]
+              if rel.startswith("/") or ".." in rel.split("/"):
+                  continue
+              dest = os.path.join(sys.argv[2], rel)
+              os.makedirs(os.path.dirname(dest), exist_ok=True)
+              with z.open(n) as src, open(dest, "wb") as dst:
+                  dst.write(src.read())
+          PY
+
+          mkdir -p result
+          RENZORA_PLUGIN_CHECK_DIR="$PWD/built" "tools/check_plugins$exe" \
+            --sdk work/sdk --plugins plugins --results result/results.json
+          # Whatever the build left, under a fixed name: the publish job decides
+          # what it is, from facts of its own, not from this job.
+          lib=$(find built -maxdepth 2 -type f \( -name '*.dll' -o -name '*.so' -o -name '*.dylib' \) | head -1)
+          [ -n "$lib" ] && cp "$lib" "result/library.bin"
+          ls -l result
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tp-out-${{ matrix.platform }}-${{ matrix.asset_id }}
+          path: result
+          retention-days: 3
+
+  # ── Sign and publish: secrets, no third-party code ────────────────────────
+  publish:
+    needs: [list, sdk, build]
+    if: always() && needs.list.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the signer
+        run: cargo build -q --profile dist -p renzora_plugin_build --example sign_prebuilt
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tp-sources
+          path: sources
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tp-stamp-*
+          path: stamps
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tp-out-*
+          path: out
+
+      - name: Sign, upload and record
+        env:
+          PREBUILT_SIGNING_KEY: ${{ secrets.PREBUILT_SIGNING_KEY }}
+          TOKEN: ${{ secrets.RENZORA_MARKETPLACE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.list.outputs.engine_version }}
+        run: |
+          set -uo pipefail
+          api=https://renzora.com/api/prebuilt-plugins
+          ext() { case "$1" in windows-*) echo dll ;; macos-*) echo dylib ;; *) echo so ;; esac; }
+          prefix() { case "$1" in windows-*) echo "" ;; *) echo lib ;; esac; }
+          built=0; failed=0
+          echo "### Third-party plugins on \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Plugin | Platform | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
+            stamp=$(cat "stamps/tp-stamp-$platform/stamp.txt" 2>/dev/null || echo "")
+            # Trusted facts: what the marketplace listed, never what a build wrote.
+            while IFS=$'\t' read -r asset id version; do
+              dir="out/tp-out-$platform-$asset"
+              ok=false; summary=""; log=""
+              if [ -z "$stamp" ]; then
+                summary="the official SDK for this platform could not be prepared"
+              elif [ ! -f "$dir/results.json" ]; then
+                summary="the build job did not finish"
+              else
+                ok=$(jq -r '.[0].ok // false' "$dir/results.json")
+                summary=$(jq -r '.[0].detail // ""' "$dir/results.json")
+                log=$(jq -r '.[0].log // ""' "$dir/results.json")
+              fi
+              if [ "$ok" = "true" ] && [ -f "$dir/library.bin" ]; then
+                crate=$(echo "$id" | tr '-' '_')
+                lib="$RUNNER_TEMP/$(prefix "$platform")$crate.$(ext "$platform")"
+                cp "$dir/library.bin" "$lib"
+                if target/dist/examples/sign_prebuilt --library "$lib" --id "$id" --version "$version" \
+                     --platform "$platform" --stamp "$stamp" > statement.json 2> sign.err; then
+                  code=$(curl -sS -o response.json -w '%{http_code}' -A "$UA" \
+                    -H "Authorization: Bearer $TOKEN" \
+                    -F "statement=<statement.json" -F "engine_tag=$TAG" -F "engine_version=$VERSION" \
+                    -F "library=@$lib" "$api/upload")
+                  [ "$code" = "200" ] || { ok=false; summary="built, but the upload failed (HTTP $code)"; }
+                else
+                  ok=false; summary="built, but not signed: $(cat sign.err)"
+                fi
+              elif [ "$ok" = "true" ]; then
+                ok=false; summary="reported success but left no library"
+              fi
+              jq -n --arg id "$id" --arg v "$version" --arg p "$platform" --arg s "$stamp" --arg t "$TAG" \
+                    --argjson ok "$ok" --arg sum "$summary" --arg log "$log" \
+                '{marketplace_id:$id, version:$v, platform:$p, engine_stamp:$s, engine_tag:$t, ok:$ok, summary:$sum, log:$log}' \
+                > result.json
+              if [ -n "$stamp" ]; then
+                curl -sS -o /dev/null -A "$UA" -H "Authorization: Bearer $TOKEN" \
+                  -H "Content-Type: application/json" --data @result.json "$api/build-result" || true
+              fi
+              if [ "$ok" = "true" ]; then
+                built=$((built + 1))
+              else
+                failed=$((failed + 1))
+                echo "| \`$id\` $version | $platform | ${summary//|/\\|} |" >> "$GITHUB_STEP_SUMMARY"
+              fi
+            done < <(jq -r '.[] | [.asset_id, .marketplace_id, .version] | @tsv' sources/expect.json)
+          done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$built built and published, $failed failed.**" >> "$GITHUB_STEP_SUMMARY"

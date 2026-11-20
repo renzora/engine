@@ -79,6 +79,8 @@ struct Outcome {
     name: String,
     ok: bool,
     detail: String,
+    /// The compiler's whole complaint for a failure, for `--results`.
+    log: String,
     secs: f32,
 }
 
@@ -150,6 +152,7 @@ fn main() -> ExitCode {
         let out = build_root.join(&name).join(format!("{}.{ext}", name.replace('-', "_")));
         let _ = std::fs::create_dir_all(out.parent().unwrap_or(&build_root));
         let started = Instant::now();
+        let mut log = String::new();
         let outcome = match sdk.compile(dir, &out) {
             Ok(_) if !exports_ctor(&out) => (false, format!("built but exports no {}", String::from_utf8_lossy(CTOR))),
             Ok(stamp) => match &emit {
@@ -162,15 +165,19 @@ fn main() -> ExitCode {
                 },
                 None => (true, String::new()),
             },
-            // Only the first line. rustc's full diagnostic is worth keeping for
-            // one failure and unreadable for twenty, and the log above this
-            // already carries it.
-            Err(e) => (false, first_line(&e.to_string())),
+            // Only the first line on screen. rustc's full diagnostic is worth
+            // keeping for one failure and unreadable for twenty; it goes to
+            // `--results`, where the plugin's creator reads it.
+            Err(e) => {
+                log = e.to_string();
+                (false, first_line(&log))
+            }
         };
         let r = Outcome {
             name,
             ok: outcome.0,
             detail: outcome.1,
+            log,
             secs: started.elapsed().as_secs_f32(),
         };
         println!(
@@ -194,6 +201,19 @@ fn main() -> ExitCode {
     );
     for r in &failed {
         println!("  FAIL {}: {}", r.name, r.detail);
+    }
+
+    // Machine-readable outcomes, one per plugin, for CI to report each to the
+    // marketplace: `[{"name", "ok", "detail", "log"}]`.
+    if let Some(path) = flag(&argv, "--results") {
+        let json: Vec<serde_json::Value> = results
+            .iter()
+            .map(|r| serde_json::json!({ "name": r.name, "ok": r.ok, "detail": r.detail, "log": r.log }))
+            .collect();
+        let text = serde_json::to_string_pretty(&json).unwrap_or_else(|_| "[]".into());
+        if let Err(e) = std::fs::write(&path, text) {
+            eprintln!("could not write the results to {path}: {e}");
+        }
     }
 
     if let Some(path) = flag(&argv, "--summary") {

@@ -39,8 +39,12 @@ A build you made yourself with `cargo renzora` has a stamp no binary carries, so
 its editor finds none and compiles from source without being told to. That is
 correct: a prebuilt only runs on the build it was compiled against.
 
-Only plugins in renzora/plugins are prebuilt. A third-party plugin installs from
-source.
+Every marketplace plugin with a `marketplace_id` is prebuilt: the ones in
+renzora/plugins by the engine's own build lanes, and third-party ones by the
+`third-party-plugins` workflow, which compiles their uploaded source in
+isolation against the same official SDKs. See
+[From Plugin to Marketplace](./plugin-lifecycle.md#3-compiled-against-every-official-build)
+for when that happens and what a creator sees when it fails.
 
 ### After an engine update
 
@@ -100,6 +104,23 @@ build stamp is written out with a signed `prebuilt.json`. Once the release is
 published, the `prebuilts` job uploads them to `POST /api/prebuilt-plugins/upload`.
 The marketplace files each under its listing (by `marketplace_id`), platform and
 engine stamp, and stores the bytes once per SHA-256.
+
+Third-party plugins go through `.github/workflows/third-party-plugins.yml`, run
+after every published nightly and release (from `build-engine.yml`), when a
+creator publishes a release (`plugin-release.yml`, dispatched by the website),
+or by hand with a release tag. Its jobs keep untrusted code away from anything
+that matters:
+
+| Job | Secrets | Runs third-party code | Does |
+|---|---|---|---|
+| `list` | marketplace token | no | Asks `GET /build-list` which release of each plugin the engine version installs, leaves out renzora/plugins, fetches each source with `GET /source/...` |
+| `sdk` | none | no | Takes the SDK out of the official release asset and builds the `unpack_sdk` and `check_plugins` tools, once per platform |
+| `build` | none, `permissions: {}` | **yes** | One fresh machine per plugin per platform: unpack the SDK, compile, keep the library and the compiler's output |
+| `publish` | signing key, marketplace token | no | `sign_prebuilt` signs each library from the listed id and version, the job's platform, the SDK's stamp and a hash it measures (never from anything a build job wrote), uploads it, and records every result with `POST /build-result` |
+
+The website asks for a build when a plugin release is published only if it has
+`ENGINE_DISPATCH_TOKEN` (a GitHub token allowed to dispatch to the engine
+repository) in its environment; without it, new releases wait for the nightly.
 
 To build and sign them locally against your own SDK, for testing:
 
