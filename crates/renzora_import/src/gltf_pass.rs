@@ -1597,6 +1597,7 @@ mod tests {
                 specular_texture: Some(2),
                 roughness_texture: Some(3),
                 metallic_texture: Some(4),
+                metallic_roughness_texture: None,
                 alpha: crate::glb_build::AlphaKind::Blend,
                 double_sided: false,
                 advanced: renzora::core::PbrAdvanced {
