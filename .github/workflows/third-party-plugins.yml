@@ -311,11 +311,16 @@ jobs:
           mkdir -p result
           RENZORA_PLUGIN_CHECK_DIR="$PWD/built" "tools/check_plugins$exe" \
             --sdk work/sdk --plugins plugins --results result/results.json
+          status=$?
           # Whatever the build left, under a fixed name: the publish job decides
           # what it is, from facts of its own, not from this job.
           lib=$(find built -maxdepth 2 -type f \( -name '*.dll' -o -name '*.so' -o -name '*.dylib' \) | head -1)
           [ -n "$lib" ] && cp "$lib" "result/library.bin"
           ls -l result
+          # Red when the plugin does not compile, so the Actions page says so.
+          # The results are still kept (the upload below runs regardless) and
+          # the publish job still records the failure on the listing.
+          exit $status
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -364,7 +369,7 @@ jobs:
           api=https://renzora.com/api/prebuilt-plugins
           ext() { case "$1" in windows-*) echo dll ;; macos-*) echo dylib ;; *) echo so ;; esac; }
           prefix() { case "$1" in windows-*) echo "" ;; *) echo lib ;; esac; }
-          built=0; failed=0
+          built=0; skipped=0; failed=0
           echo "### Third-party plugins on \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
           echo "| Plugin | Platform | Result |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
@@ -383,6 +388,12 @@ jobs:
                 summary=$(jq -r '.[0].detail // ""' "$dir/results.json")
                 log=$(jq -r '.[0].log // ""' "$dir/results.json")
               fi
+              # `ok` is whether the plugin COMPILED, which is what its creator
+              # and the listing are told. Not getting a prebuilt out of a good
+              # compile (signing or upload failing) is this pipeline's problem,
+              # not the plugin's, so it is reported here as `unpublished` and
+              # never recorded as "does not compile".
+              unpublished=""
               if [ "$ok" = "true" ] && [ -f "$dir/library.bin" ]; then
                 crate=$(echo "$id" | tr '-' '_')
                 lib="$RUNNER_TEMP/$(prefix "$platform")$crate.$(ext "$platform")"
@@ -393,12 +404,17 @@ jobs:
                     -H "Authorization: Bearer $TOKEN" \
                     -F "statement=<statement.json" -F "engine_tag=$TAG" -F "engine_version=$VERSION" \
                     -F "library=@$lib" "$api/upload")
-                  [ "$code" = "200" ] || { ok=false; summary="built, but the upload failed (HTTP $code)"; }
+                  [ "$code" = "200" ] || unpublished="the upload failed (HTTP $code)"
                 else
-                  ok=false; summary="built, but not signed: $(cat sign.err)"
+                  # The usual cause: an engine build older than prebuilts, whose
+                  # SDK writes no build record into a plugin for the signer to
+                  # check (and whose editor could not install a prebuilt anyway).
+                  unpublished="not signed: $(cat sign.err)"
                 fi
+                summary="compiled"
+                [ -n "$unpublished" ] && summary="compiled; no prebuilt for this engine build"
               elif [ "$ok" = "true" ]; then
-                ok=false; summary="reported success but left no library"
+                ok=false; summary="the build reported success but left no library"
               fi
               jq -n --arg id "$id" --arg v "$version" --arg p "$platform" --arg s "$stamp" --arg t "$TAG" \
                     --argjson ok "$ok" --arg sum "$summary" --arg log "$log" \
@@ -408,13 +424,16 @@ jobs:
                 curl -sS -o /dev/null -A "$UA" -H "Authorization: Bearer $TOKEN" \
                   -H "Content-Type: application/json" --data @result.json "$api/build-result" || true
               fi
-              if [ "$ok" = "true" ]; then
-                built=$((built + 1))
-              else
+              if [ "$ok" != "true" ]; then
                 failed=$((failed + 1))
                 echo "| \`$id\` $version | $platform | ${summary//|/\\|} |" >> "$GITHUB_STEP_SUMMARY"
+              elif [ -n "$unpublished" ]; then
+                skipped=$((skipped + 1))
+                echo "| \`$id\` $version | $platform | compiled, but no prebuilt: ${unpublished//|/\\|} |" >> "$GITHUB_STEP_SUMMARY"
+              else
+                built=$((built + 1))
               fi
             done < <(jq -r '.[] | [.asset_id, .marketplace_id, .version] | @tsv' sources/expect.json)
           done
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**$built built and published, $failed failed.**" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$built compiled and published, $skipped compiled without a prebuilt, $failed failed to compile.**" >> "$GITHUB_STEP_SUMMARY"
