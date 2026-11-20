@@ -1,0 +1,16 @@
+[package]
+name = "renzora_auto_exposure"
+version = "0.1.0"
+edition = "2021"
+description = "Auto exposure: Bevy's histogram metering, driven by the camera's Auto Exposure settings, with a keep-dark compensation curve."
+
+# No `editor` feature: lean runtime crate. The Auto Exposure inspector entry is
+# in the nested renzora_auto_exposure_editor crate
+# (crates/renzora_auto_exposure/editor), linked only by the editor bundle.
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

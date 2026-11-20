@@ -20,6 +20,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_antialiasing_editor::AntiAliasingEditorPlugin::default());
     app.add_plugins(renzora_asset_browser::AssetBrowserPlugin::default());
     app.add_plugins(renzora_atmosphere_editor::AtmosphereEditorPlugin::default());
+    app.add_plugins(renzora_auto_exposure_editor::AutoExposureEditorPlugin::default());
     app.add_plugins(renzora_autosave::AutoSavePlugin::default());
     app.add_plugins(renzora_bloom_effect_editor::BloomEditorPlugin::default());
     app.add_plugins(renzora_camera::CameraPlugin::default());

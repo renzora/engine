@@ -339,6 +339,16 @@ pub const CAPABILITIES: &[Capability] = &[
         group: Some("postfx"),
     },
     Capability {
+        id: "auto_exposure",
+        section: "postfx",
+        label: "Auto Exposure",
+        help: "Adjusts the camera's exposure to the scene's brightness, as an eye adapts.",
+        bevy_features: &[],
+        runtime_features: &["auto_exposure"],
+        default_on: true,
+        group: Some("postfx"),
+    },
+    Capability {
         id: "ssil",
         section: "postfx",
         label: "SSIL",
@@ -997,6 +1007,9 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "ssao" => &["renzora_ssao::"],
         "ssr" => &["renzora_ssr::"],
         "ssil" => &["renzora_ssil::"],
+        // The settings stay in the contract crate, which is where a scene names
+        // them, so the crate prefix alone would never match.
+        "auto_exposure" => &["renzora_auto_exposure::", "AutoExposureSettings"],
         "dof" => &["renzora_dof::"],
         "motion_blur" => &["renzora_motion_blur::"],
         "distance_fog" => &["renzora_distance_fog::", "set_fog"],
@@ -1536,6 +1549,7 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "ssao",
     "ssr",
     "ssil",
+    "auto_exposure",
     "dof",
     "motion_blur",
     "distance_fog",

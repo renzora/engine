@@ -7535,6 +7535,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_auto_exposure"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+]
+
+[[package]]
+name = "renzora_auto_exposure_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_auto_exposure",
+]
+
+[[package]]
 name = "renzora_autosave"
 version = "0.1.0"
 dependencies = [
@@ -7775,6 +7792,7 @@ dependencies = [
  "renzora_asset_registry",
  "renzora_atmosphere",
  "renzora_atmosphere_editor",
+ "renzora_auto_exposure_editor",
  "renzora_autosave",
  "renzora_bloom_effect",
  "renzora_bloom_effect_editor",
@@ -8723,6 +8741,7 @@ dependencies = [
  "renzora_atmosphere",
  "renzora_audio",
  "renzora_audio_backend",
+ "renzora_auto_exposure",
  "renzora_avian_physics",
  "renzora_bloom_effect",
  "renzora_cloth",
@@ -9210,6 +9229,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
+ "ron 0.8.1",
  "serde",
 ]
 

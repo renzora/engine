@@ -28,6 +28,8 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_audio::AudioPlugin::default());
     #[cfg(feature = "audio")]
     app.add_plugins(renzora_audio_backend::RenzoraAudioPlugin::default());
+    #[cfg(feature = "auto_exposure")]
+    app.add_plugins(renzora_auto_exposure::AutoExposurePlugin::default());
     #[cfg(feature = "avian")]
     app.add_plugins(renzora_avian_physics::AvianPhysicsPlugin::default());
     #[cfg(feature = "bloom")]
