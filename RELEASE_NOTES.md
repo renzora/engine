@@ -1,5 +1,19 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 19:22
+- fix(editor): the hover tooltip, text-field context menu and loading overlay are no longer saved into the scene
+
+## 2026-11-20 18:52
+- fix(rendering): a camera's colour grading shows in the editor viewport, not only in Play
+- fix(scenes): a camera's colour grading is saved with the scene instead of being dropped
+- feat(inspector): 3D cameras have a Color Grading section for exposure, white balance, saturation and per-range shadows, midtones and highlights
+
+## 2026-11-20 18:31
+- feat(rendering): Solari's built-in denoiser has a Resolution setting that traces lighting at fewer pixels and upsamples it, keeping geometry and textures at full resolution
+
+## 2026-11-20 17:18
+- fix(rendering): auto exposure is built into the engine again, so a camera with it switched on no longer renders far too bright when the marketplace plugin is not installed
+
 ## 2026-11-20 09:04
 - feat(plugin): a native plugin records the engine build it was compiled against inside its library, and the loader refuses one built for any other engine before mapping it, instead of trusting the stamp file beside it
 - feat(export): a copy-based export writes `plugins/engine-stamp.txt` so a shipped game, which has no SDK, can make the same check, and leaves out a plugin built for a different engine with a warning; the export and its plugin picker now settle that from the file instead of opening the library first

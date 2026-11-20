@@ -230,6 +230,8 @@ fn spawn_loading(
         BackgroundColor(if modal { ca(8, 10, 16, 180) } else { c(3, 5, 4) }),
         GlobalZIndex(if modal { 9600 } else { 480 }),
         Name::new(if modal { "editor-loading-overlay" } else { "loading-screen" }),
+        // Editor chrome: a named root is otherwise saved as scene content.
+        renzora::HideInHierarchy,
     ));
     if modal {
         backdrop.insert((

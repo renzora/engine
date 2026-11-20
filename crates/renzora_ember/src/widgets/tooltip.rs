@@ -155,6 +155,13 @@ pub(crate) fn hover_tooltip_system(
                 Pickable::IGNORE,
                 HoverTipRoot,
                 Name::new("hover-tooltip"),
+                // Editor chrome, not scene content. A root with a `Name` and no
+                // `HideInHierarchy` is what the scene saver takes for a scene
+                // entity, and this bubble lives for the whole session once the
+                // first tooltip shows, so every later save wrote it into the
+                // scene, and loading the scene (or a game exported from it)
+                // spawned an editor tooltip.
+                renzora::HideInHierarchy,
             ))
             .id();
         let txt = commands
