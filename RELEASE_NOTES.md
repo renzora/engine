@@ -1,5 +1,21 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 05:03
+- feat(lighting): the Sun sets contact shadows' length, thickness and steps, and they reach 0.8 m by default instead of 0.3
+- fix(inspector): a Sun's Shadows and Contact Shadows switches appear once, in the Sun section, instead of also in Directional Light
+
+## 2026-11-20 04:55
+- fix(lighting): Contact Shadows now work in Deferred projects, where the switch did nothing before
+
+## 2026-11-20 04:42
+- fix(viewport): the virtual geometry and SSIL debug views hold still instead of jittering under TAA
+
+## 2026-11-20 04:28
+- feat(viewport): the Visualization menu groups the virtual geometry views into their own submenu, beside a new SSIL submenu of Light, Occlusion and History views
+
+## 2026-11-19 21:19
+- feat(rendering): SSIL adds screen-space bounce light between nearby surfaces, as a Post Process component on the World Environment or a camera
+
 ## 2026-11-18 21:45
 - fix(plugins): a plugin with third-party dependencies rebuilds in seconds after an engine update instead of recompiling them all
 

@@ -1048,10 +1048,17 @@ fn directional_light_entry() -> InspectorEntry {
                     }
                 },
             },
+            // On a Sun the next two are hidden: the Sun card has the same
+            // switches (and contact shadows' reach, thickness and steps right
+            // under its own), and showing both on one entity read as two
+            // settings. A plain directional light keeps them here.
             FieldDef {
                 name: "Shadows",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
+                    if world.get::<renzora::Sun>(entity).is_some() {
+                        return None;
+                    }
                     world
                         .get::<DirectionalLight>(entity)
                         .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
@@ -1073,6 +1080,9 @@ fn directional_light_entry() -> InspectorEntry {
                 name: "Contact Shadows",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
+                    if world.get::<renzora::Sun>(entity).is_some() {
+                        return None;
+                    }
                     world
                         .get::<DirectionalLight>(entity)
                         .map(|l| FieldValue::Bool(l.contact_shadows_enabled))

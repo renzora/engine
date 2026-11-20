@@ -87,9 +87,14 @@ pub struct EffectRouting {
 
 The table is rebuilt every frame (by the viewport crate in the editor, by `renzora_engine` at runtime). Each effect plugin runs a small sync system that copies its component from a routed source onto the target camera and removes it again when the source disappears. The Bevy-wrapper family, OIT and Solari all consume the same table, so the editor inspector can drive viewport effects without you touching the camera entity.
 
-## Global illumination: Solari
+## Global illumination: SSIL and Solari
 
-The engine's only global illumination is **Solari**: hardware ray-traced GI delivered by the optional **`renzora_solari`** plugin, which wraps Bevy Solari. It is authored with a `SolariGi` component on the **World Environment**, routed onto cameras through `EffectRouting`, and activates only on an RT-capable GPU; elsewhere the scene renders with direct lighting, IBL and SSAO as usual. See [Solari ray-traced GI](./solari.md).
+**SSIL** (`renzora_ssil`) adds one bounce of light between nearby surfaces,
+gathered from the lit frame in screen space. It runs on any GPU, needs the
+Deferred path, and is `High`-tier only. See
+[Screen-Space Indirect Lighting](./ssil.md).
+
+The engine's only ray-traced global illumination is **Solari**: hardware ray-traced GI delivered by the optional **`renzora_solari`** plugin, which wraps Bevy Solari. It is authored with a `SolariGi` component on the **World Environment**, routed onto cameras through `EffectRouting`, and activates only on an RT-capable GPU; elsewhere the scene renders with direct lighting, IBL and SSAO as usual. See [Solari ray-traced GI](./solari.md).
 
 ## Reflection probes — parallax-corrected cubemaps
 
@@ -249,11 +254,11 @@ as a full level) and scales with pixel count, so it dominates on weak GPUs and
 high-DPI displays where the physical framebuffer is 2–4× the logical size. The
 quality tier is the single switch that trades those passes for frame rate:
 
-| Tier | IBL bake | Shadows | Clouds | Atmosphere | SSAO | Auto-exp | Bloom | TAA |
-|---|---|---|---|---|---|---|---|---|
-| **High** | 256² | 2048² | full march | Raymarched | on | on | on | on |
-| **Medium** *(default)* | **128²** | **1024²** | **capped steps** | **LookupTexture** | **off** | on | on | on |
-| **Low** | **64²** | **512²** | **off** | LookupTexture | off | **off** | **off** | **off** |
+| Tier | IBL bake | Shadows | Clouds | Atmosphere | SSAO | SSIL | Auto-exp | Bloom | TAA |
+|---|---|---|---|---|---|---|---|---|---|
+| **High** | 256² | 2048² | full march | Raymarched | on | on | on | on | on |
+| **Medium** *(default)* | **128²** | **1024²** | **capped steps** | **LookupTexture** | **off** | **off** | on | on | on |
+| **Low** | **64²** | **512²** | **off** | LookupTexture | off | off | **off** | **off** | **off** |
 
 (Shadows = per-cascade `DirectionalLightShadowMap` resolution; each of the up-to-4
 cascades clears a depth target that size every frame regardless of geometry, so

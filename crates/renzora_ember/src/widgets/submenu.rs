@@ -147,6 +147,22 @@ pub fn menu_submenu_parts(
     label: &str,
     icon_color: (u8, u8, u8),
 ) -> (Entity, Entity, Entity) {
+    menu_submenu_parts_sized(commands, fonts, icon, label, icon_color, MENU_TEXT, MENU_ICON)
+}
+
+/// [`menu_submenu_parts`] with the label and icon at given sizes, for a
+/// submenu row that sits among smaller rows than a context menu's: a panel of
+/// 12px option rows (the viewport's Display menu) where a 14px row with a
+/// 16px icon reads as a heading rather than one more entry.
+pub fn menu_submenu_parts_sized(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    icon_color: (u8, u8, u8),
+    text_size: f32,
+    icon_size: f32,
+) -> (Entity, Entity, Entity) {
     let row = commands
         .spawn((
             Node {
@@ -166,11 +182,11 @@ pub fn menu_submenu_parts(
         .id();
     bind_bg(commands, row, move |w| if super::popup::row_lit(w, row) { menu_hover_bg() } else { Color::NONE });
 
-    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
+    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, icon_size);
     let text = commands
         .spawn((
             Text::new(label),
-            ui_font(&fonts.ui, MENU_TEXT),
+            ui_font(&fonts.ui, text_size),
             TextColor(rgb(text_primary())),
         ))
         .id();

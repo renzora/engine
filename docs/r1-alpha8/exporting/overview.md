@@ -476,7 +476,7 @@ pipeline back in and undo the saving. Current groups:
 | Parent | Children |
 |---|---|
 | **3D rendering** | graph materials, glTF loading, morph targets, advanced PBR texture maps, lighting lookup tables |
-| **Post-processing** | bloom, SSAO, SSR, depth of field, motion blur, distance fog, volumetric fog, lens distortion, order-independent transparency, anti-aliasing |
+| **Post-processing** | bloom, SSAO, SSR, SSIL, depth of field, motion blur, distance fog, volumetric fog, lens distortion, order-independent transparency, anti-aliasing |
 | **User interface** | Bevy's built-in font, Game UI (markup) |
 
 Turning a parent off switches its children off **in the list**, not just at build

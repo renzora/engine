@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -252,6 +252,7 @@ localization = ["dep:renzora_lang"]
 bloom = ["dep:renzora_bloom_effect"]
 ssao = ["dep:renzora_ssao"]
 ssr = ["dep:renzora_ssr"]
+ssil = ["dep:renzora_ssil"]
 dof = ["dep:renzora_dof"]
 motion_blur = ["dep:renzora_motion_blur"]
 distance_fog = ["dep:renzora_distance_fog"]
@@ -397,6 +398,7 @@ renzora_bloom_effect = { path = "../renzora_bloom_effect", optional = true }
 renzora_antialiasing = { path = "../renzora_antialiasing", optional = true }
 renzora_ssao = { path = "../renzora_ssao", optional = true }
 renzora_ssr = { path = "../renzora_ssr", optional = true }
+renzora_ssil = { path = "../renzora_ssil", optional = true }
 renzora_oit = { path = "../renzora_oit", optional = true }
 renzora_dof = { path = "../renzora_dof", optional = true }
 renzora_motion_blur = { path = "../renzora_motion_blur", optional = true }

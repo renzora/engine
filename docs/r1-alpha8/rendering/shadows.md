@@ -9,7 +9,15 @@ Every light can cast shadows. The settings are in the light's section of the Ins
 | **Shadows** | The light renders a shadow map and things block it. A shadowed spot light is one extra render of the scene and a point light six, one per cube face, so give shadows only to the lights where they show. |
 | **Contact Shadows** | Fills in the small shadows where objects meet surfaces (a cup on a table, the gap under a door) that a shadow map is too coarse to catch. Traced in screen space, so it is cheap and only sees what is on screen. |
 
-On the scene's Sun, both switches are the Sun's own: changing them in either the Sun or the Directional Light section changes the same setting.
+On the scene's Sun, both switches are in the **Sun** section instead, and the Directional Light section leaves them out. The Sun section also sets how contact shadows are traced:
+
+| Field | Default | Effect |
+|---|---|---|
+| **Contact Length** | 0.8 m | How far a contact shadow reaches. Longer catches bigger overhangs (a deep window sill, an awning's edge) but spreads the same steps thinner. |
+| **Contact Thickness** | 0.1 m | How thick surfaces are assumed to be. Too thin and shadows leak through; too thick and thin things (railings, wires) cast shadows as if they were solid. |
+| **Contact Steps** | 32 | Steps along each ray, 4 to 64. More finds smaller occluders over a long reach; cost grows linearly. |
+
+These apply to every camera, and to contact shadows from any light, since the renderer traces them once per view.
 
 ## Fixing acne and floating shadows
 

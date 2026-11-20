@@ -52,7 +52,7 @@ Under the header runs a strip of **pages**. Each page holds one kind of componen
 | Lighting | Lights, light probes, ray-traced GI |
 | Camera | The camera and its image effects: bloom, tonemapping, anti-aliasing, depth of field, motion blur |
 | Environment | Sky, atmosphere, clouds, fog, water, wind, terrain |
-| Post Process | SSAO, SSR and shader post effects |
+| Post Process | SSAO, SSR, SSIL and shader post effects |
 | Physics | Bodies, colliders, joints, ragdolls |
 | Animation | Animators and clips |
 | Scripting | Scripts |

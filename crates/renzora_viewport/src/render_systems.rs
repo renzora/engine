@@ -167,6 +167,10 @@ fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
         | VisualizationMode::VgLod
         | VisualizationMode::VgInstances
         | VisualizationMode::VgResidency => None,
+        // Drawn by the SSIL pass in place of the frame, the same way.
+        VisualizationMode::SsilLight
+        | VisualizationMode::SsilOcclusion
+        | VisualizationMode::SsilHistory => None,
     }
 }
 

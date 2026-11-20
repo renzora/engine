@@ -84,18 +84,18 @@ name already exists, both files are kept and the Console says so.
 
 ## Seeing it work
 
-The viewport's **Visualization** menu has five virtual geometry views. Each
-colours what virtual geometry drew and greys out every other mesh, so ordinary
-geometry (and anything that did not convert) stands out. The sky keeps its
-colour:
+The viewport's **Display ▸ Visualization ▸ Virtual Geometry** submenu has five
+views. Each colours what virtual geometry drew and greys out every other mesh,
+so ordinary geometry (and anything that did not convert) stands out. The sky
+keeps its colour:
 
 | View | Colours by | What to look for |
 |---|---|---|
-| **Virtual Geometry: Clusters** | cluster | Patches of up to 128 triangles. Up close they are small; far away a single cluster covers a large area, because a coarser level was chosen. |
-| **Virtual Geometry: Triangles** | triangle | The actual triangle density on screen. It stays roughly even as you move, which is the point. |
-| **Virtual Geometry: LOD Level** | level of detail | Green is full detail, then yellow, orange, red and purple for each coarser level. Pull the camera back and watch the colours move outward. |
-| **Virtual Geometry: Instances** | converted mesh | Which meshes are virtual geometry at all. |
-| **Virtual Geometry: Residency** | streaming | Green where the detail the camera wants is in GPU memory, red where a coarser level stands in for it. Red flashes and turns green as you move; red that stays means the memory budget has no room for that detail (see Streaming). |
+| **Clusters** | cluster | Patches of up to 128 triangles. Up close they are small; far away a single cluster covers a large area, because a coarser level was chosen. |
+| **Triangles** | triangle | The actual triangle density on screen. It stays roughly even as you move, which is the point. |
+| **LOD Level** | level of detail | Green is full detail, then yellow, orange, red and purple for each coarser level. Pull the camera back and watch the colours move outward. |
+| **Instances** | converted mesh | Which meshes are virtual geometry at all. |
+| **Residency** | streaming | Green where the detail the camera wants is in GPU memory, red where a coarser level stands in for it. Red flashes and turns green as you move; red that stays means the memory budget has no room for that detail (see Streaming). |
 
 The views apply to editor viewports only; the Game panel and exported games
 never show them.

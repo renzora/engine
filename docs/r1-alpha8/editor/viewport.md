@@ -163,6 +163,13 @@ While you drag a divider or window edge beside a viewport, it keeps rendering at
 
 The **Visualization** row replaces every material in the viewport with one that answers a single question: Normals, Roughness, Metallic, Depth, UV Checker or Matcap. **None** puts the real materials back.
 
+Views that belong to one rendering feature sit in a submenu of their own under the same heading:
+
+- **Virtual Geometry ▸** Clusters, Triangles, LOD Level, Instances and Residency. See [Virtual Geometry](/docs/r1-alpha8/rendering/virtual-geometry).
+- **SSIL ▸** Light, Occlusion and History, which show what screen-space indirect lighting gathers. They draw only where SSIL is on. See [SSIL](/docs/r1-alpha8/rendering/ssil).
+
+Like the others, these are editor viewport views only: a game camera, the Play window and thumbnails never show them. While one is up the viewport runs without TAA or DLSS, whose jitter would shake the flat debug colours; they come back when you return to **None**.
+
 These are a view, not an edit. Nothing is written to your materials and nothing ships.
 
 **Matcap** is the one to reach for when you are judging a form. Its lights are fixed to the camera rather than the world, so orbiting tells you about the shape rather than about the lighting. It also shades creases by curvature rather than by direction, so fine detail that is invisible under lit shading shows up.

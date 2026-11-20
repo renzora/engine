@@ -88,6 +88,8 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_sprite_anim::SpriteImagesPlugin::default());
     #[cfg(feature = "ssao")]
     app.add_plugins(renzora_ssao::SsaoPlugin::default());
+    #[cfg(feature = "ssil")]
+    app.add_plugins(renzora_ssil::SsilPlugin::default());
     #[cfg(feature = "ssr")]
     app.add_plugins(renzora_ssr::SsrPlugin::default());
     app.add_plugins(renzora_svg::SvgPlugin::default());

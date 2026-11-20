@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use renzora::core::viewport_types::{
-    CollisionGizmoVisibility, ViewportSettings, VisualizationMode,
+    CollisionGizmoVisibility, ViewportSettings, VisualizationGroup, VisualizationMode,
 };
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::cursor_icon::HoverCursor;
@@ -25,6 +25,7 @@ use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
+use super::options::compact_submenu;
 use super::rows::{check_row, option_row, section_label, separator_row, toggle_row};
 use super::{col, loc_opt};
 
@@ -47,9 +48,34 @@ pub(super) fn display_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<E
     let mut kids: Vec<Entity> = Vec::new();
 
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.visualization")));
-    for (i, m) in VisualizationMode::ALL.iter().enumerate() {
-        kids.push(option_row(commands, fonts, DisplayOption::Viz(i), &loc_opt(m.label())));
-    }
+    // The material-swap views are listed here; the views a renderer feature
+    // draws itself (virtual geometry, SSIL) each get a submenu of their own, so
+    // the list does not grow by a screenful with every feature that adds some.
+    let rows_in = |commands: &mut Commands, group: VisualizationGroup| -> Vec<Entity> {
+        VisualizationMode::ALL
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.group() == group)
+            .map(|(i, m)| option_row(commands, fonts, DisplayOption::Viz(i), &loc_opt(m.menu_label())))
+            .collect()
+    };
+    kids.extend(rows_in(commands, VisualizationGroup::General));
+    let vg = rows_in(commands, VisualizationGroup::VirtualGeometry);
+    kids.push(compact_submenu(
+        commands,
+        fonts,
+        "polygon",
+        &renzora::lang::t_or("viewport.display.virtual_geometry", "Virtual Geometry"),
+        vg,
+    ));
+    let ssil = rows_in(commands, VisualizationGroup::Ssil);
+    kids.push(compact_submenu(
+        commands,
+        fonts,
+        "sun-dim",
+        &renzora::lang::t_or("viewport.display.ssil", "SSIL"),
+        ssil,
+    ));
 
     kids.push(separator_row(commands));
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.render")));

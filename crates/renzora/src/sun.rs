@@ -34,6 +34,29 @@ pub struct Sun {
     /// Needs the camera's depth prepass + a `ContactShadows` component (the
     /// editor/runtime cameras carry one). Bevy 0.19 built-in.
     pub contact_shadows: bool,
+    /// How far a contact shadow reaches, in metres: the length of the ray each
+    /// pixel marches toward the sun. Longer catches bigger overhangs, but
+    /// spreads the same steps thinner.
+    ///
+    /// Bevy keeps these three on the camera (`ContactShadows`), not the light;
+    /// `renzora_lighting` copies them onto every camera that draws them, so
+    /// they are set where the switch is.
+    #[serde(default = "default_contact_shadow_length")]
+    #[reflect(default = "default_contact_shadow_length")]
+    pub contact_shadow_length: f32,
+    /// How thick each surface in the depth buffer is assumed to be, in
+    /// metres. The depth buffer only knows a surface's front, so a ray passing
+    /// further behind it than this counts as passing behind the object, not
+    /// into it. Too thin lets shadows leak through; too thick casts them from
+    /// thin things as if they were solid.
+    #[serde(default = "default_contact_shadow_thickness")]
+    #[reflect(default = "default_contact_shadow_thickness")]
+    pub contact_shadow_thickness: f32,
+    /// Steps along each ray. More finds smaller occluders over a long reach,
+    /// and costs linearly.
+    #[serde(default = "default_contact_shadow_steps")]
+    #[reflect(default = "default_contact_shadow_steps")]
+    pub contact_shadow_steps: u32,
     /// Angular diameter of the sun disc in degrees (Earth's sun ≈ 0.53°).
     pub angular_diameter: f32,
     /// Brightness multiplier for the sun disk (0 = no disk, 1 = physical, >1 = overexposed).
@@ -104,6 +127,30 @@ pub const SYNODIC_MONTH_DAYS: f32 = 29.530_588;
 fn default_true() -> bool {
     true
 }
+
+/// Longer than Bevy's 0.3. Tested in the Bistro under a 120,000 lux sun: at
+/// 0.3 contact shadows only darkened the very edges of sills and mouldings; at
+/// 1.5 they filled window reveals and cornice undersides but the rays began
+/// catching the bumps of the cobbles, which read as grain. 0.8 sits between.
+pub fn default_contact_shadow_length() -> f32 {
+    0.8
+}
+
+/// Bevy's `ContactShadows` default.
+pub fn default_contact_shadow_thickness() -> f32 {
+    0.1
+}
+
+/// Doubled from Bevy's 16 with the longer reach above, so each step covers
+/// about the distance it did in the 1.5 m / 32 step test that looked right.
+pub fn default_contact_shadow_steps() -> u32 {
+    32
+}
+
+/// The bounds the inspector offers for [`Sun::contact_shadow_steps`], applied
+/// again when the steps reach the GPU so a hand-edited scene cannot ask for a
+/// march long enough to stall it.
+pub const CONTACT_SHADOW_STEPS: std::ops::RangeInclusive<u32> = 4..=64;
 
 fn default_moon_day() -> f32 {
     SYNODIC_MONTH_DAYS * 0.5
@@ -177,6 +224,9 @@ impl Default for Sun {
             // On: it is what seats small things on the ground (a bollard, a
             // chair leg) where the shadow map is too coarse to reach.
             contact_shadows: true,
+            contact_shadow_length: default_contact_shadow_length(),
+            contact_shadow_thickness: default_contact_shadow_thickness(),
+            contact_shadow_steps: default_contact_shadow_steps(),
             angular_diameter: 0.53,
             sun_disk_intensity: 1.0,
             glare_intensity: default_glare_intensity(),

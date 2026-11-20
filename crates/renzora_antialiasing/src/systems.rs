@@ -8,7 +8,8 @@ use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::pbr::{AtmosphereSettings, ScreenSpaceAmbientOcclusion};
 use bevy::prelude::*;
 use bevy::render::camera::{MipBias, TemporalJitter};
-use renzora::{DlssMode, DlssSupport, EffectRouting, ResolvedGraphicsQuality};
+use renzora::core::viewport_types::ViewportSettings;
+use renzora::{DlssMode, DlssSupport, EditorCamera, EffectRouting, ResolvedGraphicsQuality};
 
 use crate::compat::{blocker, CameraCaps, RunCaps};
 use crate::settings::{AntiAliasing, AntiAliasingMethod};
@@ -122,8 +123,20 @@ type Rendering<'a> = (
         Has<OrderIndependentTransparencySettings>,
         Has<RayReconstruction>,
     ),
-    (Has<TemporalJitter>, Has<MipBias>, Option<&'a Camera>),
+    (Has<TemporalJitter>, Has<MipBias>, Option<&'a Camera>, Has<EditorCamera>),
 );
+
+/// `w` without its temporal method, for an editor viewport showing a feature's
+/// debug view (virtual geometry, SSIL).
+///
+/// Those views are drawn before TAA. Flat debug colours give TAA nothing to
+/// resolve, and its jitter shakes them by up to half a pixel while its history
+/// trails them behind the camera, which read as a jumpy image. Turning the
+/// viewport's TAA or DLSS off while the view is up costs nothing anyone is
+/// looking at, and the method comes back with the normal view.
+fn hold_still(w: Want) -> Want {
+    Want { taa: false, dlss: None, ..w }
+}
 
 /// Give every routed camera exactly the anti-aliasing its source asks for and
 /// the rules allow, every frame, touching it only where it differs.
@@ -145,6 +158,7 @@ pub(crate) fn reconcile_anti_aliasing(
     routing: Res<EffectRouting>,
     quality: Option<Res<ResolvedGraphicsQuality>>,
     dlss: Option<Res<DlssSupport>>,
+    viewport: Option<Res<ViewportSettings>>,
     mut cameras: Query<Rendering>,
     applied: Query<Entity, With<AntiAliasingApplied>>,
     mut seen: Local<Vec<Entity>>,
@@ -153,17 +167,18 @@ pub(crate) fn reconcile_anti_aliasing(
         taa_off_by_quality: quality.is_some_and(|q| !q.0.taa()),
         dlss: dlss.as_deref().copied().unwrap_or_default(),
     };
+    let feature_view = viewport.is_some_and(|v| v.visualization_mode.is_feature_view());
     seen.clear();
     for (target, list) in routing.iter() {
         let source = list.iter().find_map(|&s| sources.get(s).ok());
-        apply(&mut commands, &mut cameras, *target, source, &run);
+        apply(&mut commands, &mut cameras, *target, source, &run, feature_view);
         seen.push(*target);
     }
     // A camera that dropped out of the routing altogether keeps whatever it
     // last ran, unless it is taken away here.
     for cam in &applied {
         if !seen.contains(&cam) {
-            apply(&mut commands, &mut cameras, cam, None, &run);
+            apply(&mut commands, &mut cameras, cam, None, &run, feature_view);
         }
     }
 }
@@ -174,9 +189,19 @@ fn apply(
     target: Entity,
     source: Option<&AntiAliasing>,
     run: &RunCaps,
+    feature_view: bool,
 ) {
-    let Ok((msaa, fxaa, smaa, has_taa, sr, applied, temporal, caps, (jitter, mip_bias, camera))) =
-        cameras.get_mut(target)
+    let Ok((
+        msaa,
+        fxaa,
+        smaa,
+        has_taa,
+        sr,
+        applied,
+        temporal,
+        caps,
+        (jitter, mip_bias, camera, editor),
+    )) = cameras.get_mut(target)
     else {
         return;
     };
@@ -190,7 +215,12 @@ fn apply(
     let big_enough = camera
         .and_then(|c| c.physical_target_size())
         .is_some_and(|size| size.min_element() >= DLSS_MIN_OUTPUT);
-    let w = source.map_or(Want::NOTHING, |aa| want(aa, &cam, run, big_enough));
+    let mut w = source.map_or(Want::NOTHING, |aa| want(aa, &cam, run, big_enough));
+    // Only the editor's viewport cameras show the debug views; a game camera
+    // or the Play window keeps its method.
+    if feature_view && editor {
+        w = hold_still(w);
+    }
 
     let mut ec = commands.entity(target);
     match msaa {
@@ -340,6 +370,19 @@ mod tests {
         let deferred = CameraCaps { deferred: true, ..default() };
         assert_eq!(want(&aa, &deferred, &run(), true), Want::NOTHING);
         assert_eq!(want(&aa, &CameraCaps::default(), &run(), true).msaa, Msaa::Sample4);
+    }
+
+    /// A debug view drops the temporal method and nothing else, so an edge
+    /// method the camera also runs is untouched.
+    #[test]
+    fn holding_still_drops_only_the_temporal_method() {
+        let taa = AntiAliasing { method: AntiAliasingMethod::Taa, ..default() };
+        let w = want(&taa, &CameraCaps::default(), &run(), true);
+        assert!(w.taa);
+        assert_eq!(hold_still(w), Want::NOTHING);
+        let msaa = AntiAliasing { method: AntiAliasingMethod::Msaa, ..default() };
+        let w = want(&msaa, &CameraCaps::default(), &run(), true);
+        assert_eq!(hold_still(w), w);
     }
 
     #[test]

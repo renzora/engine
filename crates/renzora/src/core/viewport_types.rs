@@ -639,6 +639,15 @@ impl GraphicsQuality {
         matches!(self, Self::High)
     }
 
+    /// Screen-space indirect lighting: on only at `High`.
+    ///
+    /// It is global illumination, the cost class `Medium` exists to shed: a
+    /// half-resolution gather of a dozen taps per pixel, two blur passes and a
+    /// full-resolution composite, every frame, whatever the scene holds.
+    pub fn ssil(&self) -> bool {
+        matches!(self, Self::High)
+    }
+
     /// Whether the procedural cloud dome renders at all. Off at `Low` (its
     /// full-screen FBM shader is the single largest scene-independent raster
     /// cost on a weak GPU); on at `Medium` and `High`.
@@ -710,6 +719,7 @@ impl GraphicsQuality {
             "bloom" => self.bloom(),
             "auto_exposure" => self.auto_exposure(),
             "world_env_ssao" => self.ssao(),
+            "ssil" => self.ssil(),
             // The one that survives in reduced form rather than going away.
             "atmosphere" => {
                 return (!self.atmosphere_raymarched()).then_some(QualityGate::Downgraded)
@@ -919,6 +929,23 @@ pub enum VisualizationMode {
     /// camera wants is on the GPU, red where a coarser level stands in while
     /// it streams in (or because the memory budget has no room for it).
     VgResidency,
+    /// SSIL's gathered bounce light on its own. Drawn by `renzora_ssil` in
+    /// place of the frame, in editor viewports only, and only where SSIL is
+    /// on.
+    SsilLight,
+    /// SSIL's occlusion: white is open, black blocked.
+    SsilOcclusion,
+    /// Last frame as SSIL's taps read it: reprojected, from the blurred mip.
+    SsilHistory,
+}
+
+/// Which submenu of the viewport's Visualization menu a mode is listed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisualizationGroup {
+    /// Listed directly: the material-swap views.
+    General,
+    VirtualGeometry,
+    Ssil,
 }
 
 impl VisualizationMode {
@@ -935,7 +962,53 @@ impl VisualizationMode {
         Self::VgLod,
         Self::VgInstances,
         Self::VgResidency,
+        Self::SsilLight,
+        Self::SsilOcclusion,
+        Self::SsilHistory,
     ];
+
+    /// The submenu this mode is listed in.
+    pub fn group(self) -> VisualizationGroup {
+        if self.is_virtual_geometry() {
+            VisualizationGroup::VirtualGeometry
+        } else if self.is_ssil() {
+            VisualizationGroup::Ssil
+        } else {
+            VisualizationGroup::General
+        }
+    }
+
+    /// A view a rendering feature draws itself, over or in place of the frame
+    /// (virtual geometry, SSIL), rather than a material swap.
+    ///
+    /// These are drawn before TAA, and TAA's jitter and history then smear
+    /// and shake flat debug colours, so while one is on the editor viewport
+    /// runs without a temporal method (`renzora_antialiasing`).
+    pub fn is_feature_view(self) -> bool {
+        self.group() != VisualizationGroup::General
+    }
+
+    /// One of SSIL's views, which leave materials alone and are drawn by the
+    /// SSIL pass.
+    pub fn is_ssil(self) -> bool {
+        matches!(self, Self::SsilLight | Self::SsilOcclusion | Self::SsilHistory)
+    }
+
+    /// The label inside its submenu, where the group's name is already said:
+    /// "Clusters" under Virtual Geometry rather than the full [`Self::label`].
+    pub fn menu_label(&self) -> &'static str {
+        match self {
+            Self::VgClusters => "Clusters",
+            Self::VgTriangles => "Triangles",
+            Self::VgLod => "LOD Level",
+            Self::VgInstances => "Instances",
+            Self::VgResidency => "Residency",
+            Self::SsilLight => "Light",
+            Self::SsilOcclusion => "Occlusion",
+            Self::SsilHistory => "History",
+            other => other.label(),
+        }
+    }
 
     /// One of the virtual geometry views, which leave materials alone and are
     /// drawn as an overlay by the virtual geometry renderer.
@@ -960,6 +1033,9 @@ impl VisualizationMode {
             Self::VgLod => "Virtual Geometry: LOD Level",
             Self::VgInstances => "Virtual Geometry: Instances",
             Self::VgResidency => "Virtual Geometry: Residency",
+            Self::SsilLight => "SSIL: Light",
+            Self::SsilOcclusion => "SSIL: Occlusion",
+            Self::SsilHistory => "SSIL: History",
         }
     }
 }
@@ -1569,6 +1645,9 @@ impl PersistedViewportSettings {
             "VgLod" => VisualizationMode::VgLod,
             "VgInstances" => VisualizationMode::VgInstances,
             "VgResidency" => VisualizationMode::VgResidency,
+            "SsilLight" => VisualizationMode::SsilLight,
+            "SsilOcclusion" => VisualizationMode::SsilOcclusion,
+            "SsilHistory" => VisualizationMode::SsilHistory,
             _ => VisualizationMode::None,
         };
         s.toolbar_order = self.toolbar_order.clone();

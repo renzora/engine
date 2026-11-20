@@ -36,6 +36,24 @@ fn inspector_entry() -> InspectorEntry {
             renzora::float_field!("Glare Size", Sun, glare_size, 0.1, 0.1, 45.0),
             renzora::bool_field!("Shadows", Sun, shadows_enabled),
             renzora::bool_field!("Contact Shadows", Sun, contact_shadows),
+            renzora::float_field!("Contact Length", Sun, contact_shadow_length, 0.01, 0.01, 5.0),
+            renzora::float_field!(
+                "Contact Thickness",
+                Sun,
+                contact_shadow_thickness,
+                0.005,
+                0.001,
+                1.0
+            ),
+            renzora::int_field!(
+                "Contact Steps",
+                Sun,
+                contact_shadow_steps,
+                u32,
+                1.0,
+                *renzora::sun::CONTACT_SHADOW_STEPS.start() as f32,
+                *renzora::sun::CONTACT_SHADOW_STEPS.end() as f32
+            ),
             renzora::float_field!("Moonlight", Sun, moon_illuminance, 1.0, 0.0, 1000.0),
             renzora::vec3_color_field!("Moon Color", Sun, moon_color),
             renzora::bool_field!("Moon Follows Calendar", Sun, moon_follows_calendar),

@@ -254,7 +254,7 @@ pub use drag_window::{drag_grip, DragHandle};
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
-pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_styled};
+pub use submenu::{menu_submenu, menu_submenu_parts, menu_submenu_parts_sized, menu_submenu_styled};
 // The scene front-end below takes the `EmberDropdown` name, so the widget's own
 // state is reachable crate-wide under another one (`inspector_row` checks for it).
 pub(crate) use dropdown::EmberDropdown as DropdownState;

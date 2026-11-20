@@ -7844,6 +7844,8 @@ dependencies = [
  "renzora_sprite_anim_editor",
  "renzora_ssao",
  "renzora_ssao_editor",
+ "renzora_ssil",
+ "renzora_ssil_editor",
  "renzora_ssr",
  "renzora_ssr_editor",
  "renzora_terrain",
@@ -8759,6 +8761,7 @@ dependencies = [
  "renzora_solari",
  "renzora_sprite_anim",
  "renzora_ssao",
+ "renzora_ssil",
  "renzora_ssr",
  "renzora_svg",
  "renzora_terrain",
@@ -9014,6 +9017,24 @@ dependencies = [
  "renzora",
  "renzora_ember",
  "renzora_ssao",
+]
+
+[[package]]
+name = "renzora_ssil"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "serde",
+]
+
+[[package]]
+name = "renzora_ssil_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_ssil",
 ]
 
 [[package]]

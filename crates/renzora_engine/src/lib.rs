@@ -137,17 +137,19 @@ fn ensure_deferred_prepass_on_cameras(
     }
 }
 
-/// Attach the `ContactShadows` receiver to FORWARD cameras only.
-///
-/// Bevy 0.19's *deferred* lighting pipeline doesn't wire up contact shadows
-/// (`prepare_deferred_lighting_pipelines` never queries `Has<ContactShadows>`,
-/// so the deferred pipeline's mesh-view layout omits the contact-shadows binding
-/// and mismatches the camera's bind group — an upstream bug, see the bevy docs
-/// which claim deferred support). The *forward* mesh pipeline specializes it
-/// correctly, so we only attach the receiver when the resolved mode is forward.
-/// A light's `contact_shadows_enabled` (e.g. the Sun's toggle) then takes effect
-/// on these views. Same cheap `Without<>` scan + before-first-render timing as
+/// Attach the `ContactShadows` receiver to every main 3D camera, forward and
+/// deferred alike, so a light's `contact_shadows_enabled` (the Sun's switch)
+/// takes effect. Same cheap `Without<>` scan + before-first-render timing as
 /// [`ensure_deferred_prepass_on_cameras`].
+///
+/// Deferred cameras used to be left out. Bevy 0.19's deferred lighting
+/// pipeline built its own key and never checked `Has<ContactShadows>`, so its
+/// layout lacked binding 16 while the view's bind group carried it, and wgpu
+/// crashed; the receiver went on forward cameras only, which left the Sun's
+/// switch doing nothing in a deferred project. Bevy 0.20 specializes the
+/// deferred lighting pass with the forward pass's own view key
+/// (`ViewKeyCache`), which sets `CONTACT_SHADOWS` from `Has<ContactShadows>`,
+/// so the layout and the bind group now always agree.
 ///
 /// `Without<IsolatedCamera>` is load-bearing: contact shadows are a main-view
 /// feature, and the offscreen utility cameras (material/model thumbnails, studio
@@ -158,49 +160,46 @@ fn ensure_deferred_prepass_on_cameras(
 /// `CONTACT_SHADOWS` key (binding 16 absent), so wgpu hard-quits with a layout
 /// mismatch. `renzora_skybox`/`renzora_night_stars` exclude these same cameras.
 #[cfg(feature = "render_3d")]
-fn ensure_contact_shadows_on_forward_cameras(
-    rendering_mode: Res<ResolvedRenderingMode>,
+fn ensure_contact_shadows_on_cameras(
     add_cameras: Query<
-        Entity,
+        (Entity, Has<DeferredPrepass>),
         (
             With<Camera3d>,
             Without<bevy::pbr::ContactShadows>,
             Without<IsolatedCamera>,
-            Without<DeferredPrepass>,
         ),
     >,
-    // Cameras that must NOT keep `ContactShadows`: a deferred prepass (whose
-    // lighting pipeline omits binding 16) or an isolated utility view.
+    // A camera that must not keep `ContactShadows`, however it got there (a
+    // scene that saved the component, say): an isolated utility view, and on
+    // the web a deferred one.
     conflicting: Query<
-        Entity,
-        (
-            With<bevy::pbr::ContactShadows>,
-            Or<(With<DeferredPrepass>, With<IsolatedCamera>)>,
-        ),
+        (Entity, Has<IsolatedCamera>),
+        (With<bevy::pbr::ContactShadows>, Or<(With<IsolatedCamera>, With<DeferredPrepass>)>),
     >,
     mut commands: Commands,
 ) {
-    // Strip `ContactShadows` from any camera it conflicts with, no matter how it
-    // got there — a Forward→Deferred mode switch, a `DeferredPrepass` attached
-    // later (e.g. for SSR), or a scene that saved the component while forward.
-    // Without this, such a camera's mesh-view bind group exposes binding 16
-    // while the deferred lighting pipeline's layout omits it → wgpu hard-crash.
-    for entity in &conflicting {
-        commands
-            .entity(entity)
-            .remove::<bevy::pbr::ContactShadows>();
+    // On the web a deferred camera stays without them: WebGPU allows 12 uniform
+    // buffers per shader stage, and the deferred mesh view layout spends its
+    // last one elsewhere (see the distance-fog note in `camera.rs`).
+    let deferred_allowed = !cfg!(target_arch = "wasm32");
+    for (entity, isolated) in &conflicting {
+        if isolated || !deferred_allowed {
+            commands
+                .entity(entity)
+                .remove::<bevy::pbr::ContactShadows>();
+        }
     }
-    if rendering_mode.is_deferred() {
-        return;
-    }
-    for entity in &add_cameras {
+    for (entity, deferred) in &add_cameras {
+        if deferred && !deferred_allowed {
+            continue;
+        }
         commands
             .entity(entity)
             .try_insert(bevy::pbr::ContactShadows::default());
     }
 }
 
-/// Render-world companion to [`ensure_contact_shadows_on_forward_cameras`] that
+/// Render-world companion to [`ensure_contact_shadows_on_cameras`] that
 /// closes a one-frame wgpu crash window in Bevy 0.19's contact-shadows path.
 ///
 /// Bevy decides a mesh pipeline's `CONTACT_SHADOWS` key in
@@ -743,7 +742,7 @@ impl Plugin for RuntimePlugin {
                 PostUpdate,
                 (
                     ensure_deferred_prepass_on_cameras,
-                    ensure_contact_shadows_on_forward_cameras,
+                    ensure_contact_shadows_on_cameras,
                 ),
             );
 

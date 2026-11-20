@@ -124,16 +124,11 @@ pub fn spawn_editor_camera(
             // covers every other `Camera3d` in the editor (previews,
             // thumbnails, etc.), so we don't special-case it here.
             (NormalPrepass, DepthPrepass, MotionVectorPrepass),
-            // NOTE: `bevy::pbr::ContactShadows` is NOT attached here. Contact
-            // shadows live at `mesh_view` binding 16; the *forward* opaque mesh
-            // pipeline specializes the `CONTACT_SHADOWS` key (so its layout has
-            // binding 16), but the deferred lighting pipeline does not — attach
-            // it to a deferred camera and its bind group exposes binding 16 while
-            // the pipeline's layout omits it, a wgpu hard-crash.
-            // `ensure_contact_shadows_on_forward_cameras` (lib.rs) attaches it to
-            // FORWARD cameras only, where it works; the `Sun`'s contact-shadow
-            // toggle then takes effect there. (`seed_contact_shadows_offset`
-            // closes the separate first-frame specialization race.)
+            // NOTE: `bevy::pbr::ContactShadows` is not attached here but by
+            // `ensure_contact_shadows_on_cameras` (lib.rs), which also keeps it
+            // off isolated utility views and, on the web, deferred cameras.
+            // (`seed_contact_shadows_offset` closes a first-frame
+            // specialization race.)
         ));
 
         // Resident, no-op distance fog (3D only — bevy_pbr mesh-view binding 13).
@@ -148,9 +143,10 @@ pub fn spawn_editor_camera(
         // wants 13. The alternatives were all worse: without one of them
         // `alpha_blend_mesh_pipeline` fails to create and NOTHING transparent
         // draws at all. Of the optional uniforms, SSR and contact shadows are
-        // already absent here (SSR needs a deferred prepass, contact shadows are
-        // forward-only) and OIT contributes nothing once disabled, which leaves
-        // fog as the one remaining slot to give back.
+        // already absent here (SSR needs a deferred prepass, and contact
+        // shadows stay off deferred cameras on the web) and OIT contributes
+        // nothing once disabled, which leaves fog as the one remaining slot to
+        // give back.
         //
         // Consistently absent is safe; INTERMITTENT is what crashes wgpu, per
         // the note above. So this is gated at the insert, and the reconcile that

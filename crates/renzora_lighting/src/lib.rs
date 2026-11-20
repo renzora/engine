@@ -4,7 +4,9 @@
 //! systems that keep the underlying Bevy `DirectionalLight` in lockstep.
 
 use bevy::light::{ShadowFilteringMethod, SunDisk};
+use bevy::pbr::ContactShadows;
 use bevy::prelude::*;
+use renzora::sun::CONTACT_SHADOW_STEPS;
 
 // ============================================================================
 // Sun component
@@ -219,11 +221,53 @@ fn size_light_clusters(settings: Option<ResMut<bevy::light::cluster::GlobalClust
     gpu.initial_index_list_capacity = gpu.initial_index_list_capacity.max(INDICES);
 }
 
+/// The `ContactShadows` a camera should carry for `sun`: its reach, thickness
+/// and steps, with the steps held to [`CONTACT_SHADOW_STEPS`] and the lengths
+/// kept positive (a zero-length ray divides by zero in the march).
+fn contact_shadows_for(sun: &Sun) -> ContactShadows {
+    ContactShadows {
+        linear_steps: sun
+            .contact_shadow_steps
+            .clamp(*CONTACT_SHADOW_STEPS.start(), *CONTACT_SHADOW_STEPS.end()),
+        thickness: sun.contact_shadow_thickness.max(0.001),
+        length: sun.contact_shadow_length.max(0.01),
+    }
+}
+
+/// Copy the Sun's contact-shadow settings onto every camera that draws them.
+///
+/// Bevy keeps these on the camera, but they are about the light, and the
+/// switch that turns them on is on the Sun; a camera holding its own copy
+/// would mean setting them once per camera, and the editor's viewport cameras
+/// cannot be selected at all. `renzora_engine` decides which cameras carry
+/// `ContactShadows`; this only fills in its values, and writes a camera only
+/// when they differ so a still scene does not re-specialize anything.
+fn sync_contact_shadow_settings(
+    suns: Query<&Sun>,
+    mut cameras: Query<&mut ContactShadows>,
+) {
+    let Some(sun) = suns.iter().next() else {
+        return;
+    };
+    let want = contact_shadows_for(sun);
+    for mut current in &mut cameras {
+        let same = current.linear_steps == want.linear_steps
+            && current.thickness == want.thickness
+            && current.length == want.length;
+        if !same {
+            *current = want;
+        }
+    }
+}
+
 impl Plugin for LightingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] LightingPlugin");
         app.add_systems(Startup, size_light_clusters);
-        app.add_systems(Update, (sync_sun, match_shadow_filtering));
+        app.add_systems(
+            Update,
+            (sync_sun, match_shadow_filtering, sync_contact_shadow_settings),
+        );
         app.add_observer(handle_sun_script_actions);
     }
 }
@@ -242,6 +286,61 @@ mod tests {
             a,
             (a - b).length(),
         );
+    }
+
+    /// The Sun's values reach every camera that draws contact shadows, and a
+    /// camera without them is left alone.
+    #[test]
+    fn contact_shadow_settings_reach_the_cameras() {
+        let mut app = App::new();
+        app.add_systems(Update, sync_contact_shadow_settings);
+        app.world_mut().spawn(Sun {
+            contact_shadow_length: 1.5,
+            contact_shadow_thickness: 0.25,
+            contact_shadow_steps: 32,
+            ..default()
+        });
+        let camera = app.world_mut().spawn(ContactShadows::default()).id();
+        let other = app.world_mut().spawn(Transform::default()).id();
+        app.update();
+        let cs = app.world().get::<ContactShadows>(camera).unwrap();
+        assert_eq!((cs.length, cs.thickness, cs.linear_steps), (1.5, 0.25, 32));
+        assert!(app.world().get::<ContactShadows>(other).is_none());
+    }
+
+    #[test]
+    fn contact_shadow_settings_are_clamped() {
+        let wild = Sun {
+            contact_shadow_length: 0.0,
+            contact_shadow_thickness: -1.0,
+            contact_shadow_steps: 100_000,
+            ..default()
+        };
+        let cs = contact_shadows_for(&wild);
+        assert!(cs.length > 0.0 && cs.thickness > 0.0);
+        assert_eq!(cs.linear_steps, *CONTACT_SHADOW_STEPS.end());
+    }
+
+    /// A scene saved before the settings existed still loads, with the
+    /// defaults. Scenes load through `FromReflect`, which fails the whole
+    /// component on a missing field without a default.
+    #[test]
+    fn a_scene_without_contact_shadow_settings_reconstructs_by_reflection() {
+        use bevy::reflect::structs::DynamicStruct;
+        use bevy::reflect::FromReflect;
+        let mut old = DynamicStruct::default();
+        old.insert("azimuth", 200.0_f32);
+        old.insert("elevation", 40.0_f32);
+        old.insert("color", Vec3::ONE);
+        old.insert("illuminance", 100_000.0_f32);
+        old.insert("shadows_enabled", true);
+        old.insert("contact_shadows", true);
+        old.insert("angular_diameter", 0.53_f32);
+        old.insert("sun_disk_intensity", 1.0_f32);
+        let sun = Sun::from_reflect(&old).expect("old scene loads");
+        assert_eq!(sun.azimuth, 200.0);
+        assert_eq!(sun.contact_shadow_length, renzora::sun::default_contact_shadow_length());
+        assert_eq!(sun.contact_shadow_steps, renzora::sun::default_contact_shadow_steps());
     }
 
     #[test]

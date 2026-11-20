@@ -104,6 +104,7 @@ editor = [
     "dep:renzora_environment_map_editor",
     "dep:renzora_ssao_editor",
     "dep:renzora_ssr_editor",
+    "dep:renzora_ssil_editor",
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
     "dep:renzora_solari_editor",
@@ -200,6 +201,8 @@ renzora_ssao            = { path = "../renzora_ssao" }
 renzora_ssao_editor     = { path = "../renzora_ssao/editor", optional = true }
 renzora_ssr             = { path = "../renzora_ssr" }
 renzora_ssr_editor      = { path = "../renzora_ssr/editor", optional = true }
+renzora_ssil            = { path = "../renzora_ssil" }
+renzora_ssil_editor     = { path = "../renzora_ssil/editor", optional = true }
 renzora_oit             = { path = "../renzora_oit" }
 renzora_oit_editor      = { path = "../renzora_oit/editor", optional = true }
 renzora_skybox          = { path = "../renzora_skybox" }
