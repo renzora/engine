@@ -8248,6 +8248,7 @@ dependencies = [
  "renzora_lighting",
  "renzora_motion_blur",
  "renzora_ssao",
+ "renzora_ssil",
  "renzora_ssr",
  "renzora_terrain",
  "renzora_tonemapping",

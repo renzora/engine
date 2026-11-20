@@ -1000,7 +1000,10 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "dof" => &["renzora_dof::"],
         "motion_blur" => &["renzora_motion_blur::"],
         "distance_fog" => &["renzora_distance_fog::", "set_fog"],
-        "volumetric_fog" => &["renzora_volumetric_fog::"],
+        // A Fog Volume is Bevy's own type, and a scene may hold one with no
+        // settings component: the crate is what gives the cameras
+        // `VolumetricFog` for it, so it has to ship.
+        "volumetric_fog" => &["renzora_volumetric_fog::", "FogVolume"],
         "oit" => &["renzora_oit::"],
         "antialiasing" => &["renzora_antialiasing::"],
 

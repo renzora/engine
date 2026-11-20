@@ -188,14 +188,23 @@ fn run_phase(
     render_context: &mut RenderContext,
     phase: RenderPhase,
 ) {
+    use bevy::render::diagnostic::RecordDiagnostics;
+
     let entity = view.entity();
     let view_target = view.into_inner();
     let composition = world.resource::<RenderComposition>();
+    // Each pass is timed under its id, so the profiler's GPU passes show what
+    // SSIL, the sun glare, post effects and the rest cost. Bevy times only its
+    // own passes, and a pass that skips this view records next to nothing.
+    let diagnostics = render_context.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
     for entry in composition.passes.iter() {
         if entry.phase == phase && entry.enabled {
+            let span = diagnostics.time_span(render_context.command_encoder(), entry.id);
             entry
                 .handler
                 .execute(world, render_context, view_target, entity);
+            span.end(render_context.command_encoder());
         }
     }
 }

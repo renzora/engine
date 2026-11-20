@@ -1,5 +1,20 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 07:14
+- feat(rendering): a Fog Volume's card holds all its settings, including the sky light and quality that were a separate Volumetric Fog card
+- fix(rendering): volumetric fog reads as bright haze instead of darkening the scene
+- feat(rendering): a new World Environment comes with SSIL on
+
+## 2026-11-20 06:46
+- feat(rendering): a Fog Volume in Add Entity brings volumetric fog and sun shafts, turning the camera's volumetric pass on by itself while one exists
+- fix(rendering): Volumetric Fog can be added by scripts and tools, not only the inspector
+
+## 2026-11-20 06:38
+- fix(fog): deleting the World Environment clears its distance fog instead of leaving it on the viewport
+
+## 2026-11-20 06:26
+- feat(profiler): GPU pass timings include virtual geometry, SSIL, the sun glare, cloud probe and post effects, not only Bevy's own passes
+
 ## 2026-11-20 06:07
 - feat(inspector): long cards fold their settings into groups, among them Clouds, the lights' Shadows, SSIL, Solari, Vehicle, NavMesh Volume, the 2D lights, Sprite Image and UI nodes, and grouped rows line up with the rest of the card
 

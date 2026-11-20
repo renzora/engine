@@ -1381,9 +1381,7 @@ fn spawn_terrain(
 ///   camera's `Exposure.ev100`. AE wins per-frame; Tonemapping's value
 ///   is just the at-spawn baseline.
 /// - `VolumetricLight` is the marker that turns the sun into a god-ray
-///   source — paired with `VolumetricFogSettings` on the same entity
-///   so the routed-to camera gets the fog and the light source has the
-///   marker simultaneously.
+///   source, so a Fog Volume added later lights up without further setup.
 fn spawn_world_environment(world: &mut World) -> Entity {
     let sun = renzora_lighting::Sun::default();
     let dir = sun.direction();
@@ -1436,7 +1434,10 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // TAA — migrated to the CAMERA bucket (seeded onto each `SceneCamera`
             // by `seed_camera_effects`), no longer on the environment. SSAO went
             // to `WorldEnvironment.ssao` (slice 2). Only SSR remains here.
-            (ssr,),
+            // SSIL beside it: bounce light between nearby surfaces. It runs only
+            // where it can (deferred cameras at the High tier) and stands down
+            // under Solari, so it is safe to have on everywhere.
+            (ssr, renzora_ssil::SsilSettings::default()),
             // ── Ray-traced GI ────────────────────────────────────────
             // Present but off, so Solari is one toggle away in the Inspector
             // rather than an Add Component hunt. Off because it is the most

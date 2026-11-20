@@ -17,6 +17,7 @@ use bevy::core_pipeline::prepass::{MotionVectorPrepass, PreviousViewUniformOffse
 use bevy::pbr::{MeshViewBindGroup, PrepassViewBindGroup};
 use bevy::prelude::*;
 use bevy::render::camera::ExtractedCamera;
+use bevy::render::diagnostic::RecordDiagnostics;
 use bevy::render::render_resource::*;
 use bevy::render::renderer::{RenderContext, ViewQuery};
 use bevy::render::view::{ViewDepthStencilTexture, ViewTarget, ViewUniformOffset};
@@ -54,6 +55,11 @@ pub(crate) fn raster(
     };
     let viewport = Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override);
 
+    // Timed as one span, so the profiler's GPU passes show what the scene's
+    // geometry costs; Bevy only times its own passes.
+    let diagnostics = ctx.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+    let span = diagnostics.time_span(ctx.command_encoder(), "vg_raster");
     ctx.command_encoder().push_debug_group("virtual_geometry_raster");
     // Deform the skinned instances first. It runs once per view, though the
     // result does not depend on the view: every view writes the same values,
@@ -148,6 +154,7 @@ pub(crate) fn raster(
         pass.draw(0..3, 0..1);
     }
     ctx.command_encoder().pop_debug_group();
+    span.end(ctx.command_encoder());
 }
 
 fn material_depth_attachment(vg: &VgView) -> RenderPassDepthStencilAttachment<'_> {
@@ -199,6 +206,9 @@ pub(crate) fn prepass(
         view.into_inner();
     let viewport = Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override);
 
+    let diagnostics = ctx.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+    let span = diagnostics.time_span(ctx.command_encoder(), "vg_prepass");
     for (deferred, list) in [(false, &materials.prepass), (true, &materials.deferred)] {
         if list.is_empty() {
             continue;
@@ -246,6 +256,7 @@ pub(crate) fn prepass(
         pass.set_bind_group(2, &groups.shade, &[]);
         draw_materials(&mut pass, list, &pipeline_cache);
     }
+    span.end(ctx.command_encoder());
 }
 
 #[allow(clippy::type_complexity)]
@@ -267,6 +278,9 @@ pub(crate) fn main_opaque(
         return;
     }
     let viewport = Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override);
+    let diagnostics = ctx.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+    let span = diagnostics.time_span(ctx.command_encoder(), "vg_main_opaque");
     let mut pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
         label: Some("vg_main_opaque"),
         color_attachments: &[Some(target.get_color_attachment())],
@@ -282,4 +296,6 @@ pub(crate) fn main_opaque(
     pass.set_bind_group(1, &mesh_view.binding_array, &[]);
     pass.set_bind_group(2, &groups.shade, &[]);
     draw_materials(&mut pass, &materials.forward, &pipeline_cache);
+    drop(pass);
+    span.end(ctx.command_encoder());
 }

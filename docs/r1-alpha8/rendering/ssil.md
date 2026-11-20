@@ -13,9 +13,9 @@ about what is on screen.
 
 ## Quick start
 
-Select the **World Environment** (or a camera) and **Add Component > Post
-Process > SSIL**. It is on as soon as it is added, with defaults that suit a
-scene built in metres.
+A new **World Environment** comes with SSIL on, with defaults that suit a scene
+built in metres. For a scene made before that, or for a camera, select it and
+use **Add Component > Post Process > SSIL**.
 
 SSIL draws only when all of these hold:
 

@@ -24,6 +24,7 @@ renzora_environment_map = { path = "../renzora_environment_map" }
 renzora_tonemapping = { path = "../renzora_tonemapping" }
 renzora_ssao = { path = "../renzora_ssao" }
 renzora_ssr = { path = "../renzora_ssr" }
+renzora_ssil = { path = "../renzora_ssil" }
 renzora_antialiasing = { path = "../renzora_antialiasing" }
 renzora_motion_blur = { path = "../renzora_motion_blur" }
 renzora_dof = { path = "../renzora_dof" }
