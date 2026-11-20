@@ -109,6 +109,11 @@ impl Plugin for ShellPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] ShellPlugin (bevy_ui editor shell)");
         app.add_plugins(EmberPlugin);
+        // `shell_action_press` writes this, so the shell registers it rather
+        // than relying on some plugin having called `register_shell_action`.
+        // On the web nothing does (the marketplace is native-only), and the
+        // system failed its parameter check every frame.
+        app.add_message::<renzora::ShellActionInvoked>();
         app.add_systems(Update, toasts::forward_toasts);
         // Restore the persisted per-workspace dock layout if one exists, else use
         // the built-in defaults. When restoring, append any *new* built-in

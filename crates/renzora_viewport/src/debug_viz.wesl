@@ -82,6 +82,10 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(turbo(t), 1.0);
     }
 
-    // Passthrough.
-    return textureSample(scene_tex, scene_sampler, in.uv);
+    // Passthrough. `textureSampleLevel`, not `textureSample`: the early
+    // returns above depend on per-pixel depth, which makes this point
+    // non-uniform control flow, and the browser's WebGPU compiler rejects an
+    // implicit-derivative sample there (desktop drivers let it through). A
+    // full-screen pass has no use for mips anyway.
+    return textureSampleLevel(scene_tex, scene_sampler, in.uv, 0.0);
 }

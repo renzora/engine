@@ -348,18 +348,24 @@ fn search_for_blockers_in_shadow_cubemap_hardware(
 
     @if(PCSS_SAMPLERS_AVAILABLE) {
 
+    // `textureSampleLevel` like the directional variant above: this runs in
+    // non-uniform control flow (once per light), where WebGPU forbids an
+    // implicit-derivative `textureSample` and Chrome rejects the whole PBR
+    // fragment shader. Shadow maps have one mip, so level 0 is what it read.
     @if(NO_CUBE_ARRAY_TEXTURES_SUPPORT)
-    let sampled_depth = textureSample(
+    let sampled_depth = textureSampleLevel(
         view_bindings::point_shadow_textures,
         view_bindings::linear_sampler,
         light_local,
+        0u,
     );
     @else
-    let sampled_depth = textureSample(
+    let sampled_depth = textureSampleLevel(
         view_bindings::point_shadow_textures,
         view_bindings::linear_sampler,
         light_local,
         i32(light_id),
+        0u,
     );
 
     return select(vec2(0.0), vec2(sampled_depth, 1.0), sampled_depth >= depth);

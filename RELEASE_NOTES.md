@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-20 23:54
+- fix(web): the web editor renders again instead of showing a black screen in Chrome
+- fix(web): the top bar's action buttons no longer log an error every frame in the web editor
+
 ## 2026-11-20 22:14
 - feat(plugins): every nightly and stable release compiles third-party marketplace plugins from their uploaded source and publishes signed prebuilts for the ones that compile
 - feat(plugins): a newly published plugin release is compiled against the latest nightly and stable builds straight away, and its creator sees any failure with the compiler's output on its listing
