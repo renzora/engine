@@ -333,7 +333,8 @@ impl SpecializedRenderPipeline for DeferredLightingLayout {
             }
         }
 
-        #[cfg(feature = "experimental_pbr_pcss")]
+        // Not on wasm, for the reason given in `MeshPipeline::specialize`.
+        #[cfg(all(feature = "experimental_pbr_pcss", not(target_arch = "wasm32")))]
         shader_defs.push("PCSS_SAMPLERS_AVAILABLE".into());
 
         #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]

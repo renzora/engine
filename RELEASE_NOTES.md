@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-21 02:06
+- fix(ci): nightly downloads contain the editor again instead of only its prebuilt plugins
+- fix(web): the web editor no longer renders black because of soft shadows, which are off on the web
+
 ## 2026-11-20 23:54
 - fix(web): the web editor renders again instead of showing a black screen in Chrome
 - fix(web): the top bar's action buttons no longer log an error every frame in the web editor

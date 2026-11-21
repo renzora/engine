@@ -3625,7 +3625,11 @@ impl SpecializedMeshPipeline for MeshPipeline {
         #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
         shader_defs.push("WEBGL2".into());
 
-        #[cfg(feature = "experimental_pbr_pcss")]
+        // Not on wasm: the PCSS blocker search reads the depth shadow maps
+        // through the filtering `linear_sampler`, which WebGPU rejects, and the
+        // whole PBR pipeline fails to create. Without the define the search
+        // finds no blockers and shadows fall back to ordinary filtering.
+        #[cfg(all(feature = "experimental_pbr_pcss", not(target_arch = "wasm32")))]
         shader_defs.push("PCSS_SAMPLERS_AVAILABLE".into());
 
         if key.contains(MeshPipelineKey::TONEMAP_IN_SHADER) {

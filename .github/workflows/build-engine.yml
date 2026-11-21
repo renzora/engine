@@ -1234,9 +1234,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all build artifacts
+      # Only the build outputs. `package-release.sh` takes the first directory
+      # it finds for each platform, and `prebuilts-<platform>` sorts ahead of
+      # `renzora-<platform>`, so downloading everything shipped the prebuilt
+      # plugins as each platform's editor zip (r1-alpha8-nightly-21nov26).
+      - name: Download the build artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: renzora-*
           path: artifacts
 
       # Executables ship exactly as they were built. There used to be a UPX pass
