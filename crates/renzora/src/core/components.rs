@@ -424,12 +424,19 @@ impl SceneEntityId {
     pub fn new_random() -> Self {
         use std::hash::{BuildHasher, Hasher};
         use std::sync::atomic::{AtomicU64, Ordering};
+        // The browser's clock on the web: std's panics there, and the hasher
+        // seed is a constant, so the clock is the only part that differs
+        // between sessions.
+        #[cfg(not(target_arch = "wasm32"))]
+        use std::time::{SystemTime, UNIX_EPOCH};
+        #[cfg(target_arch = "wasm32")]
+        use web_time::{SystemTime, UNIX_EPOCH};
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let mut h = std::collections::hash_map::RandomState::new().build_hasher();
         h.write_u64(COUNTER.fetch_add(1, Ordering::Relaxed));
         h.write_u128(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_nanos())
                 .unwrap_or(0),
         );

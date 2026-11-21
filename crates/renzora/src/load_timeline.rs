@@ -15,8 +15,12 @@
 //! also a log line, so the timeline is in the terminal of every launch without
 //! anything asking for it.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+// `bevy::platform::time::Instant`, never `std`'s: std's panics on wasm, and
+// this runs on every project open, so the web editor died the moment a
+// project was picked.
+use bevy::platform::time::Instant;
 use bevy::prelude::*;
 
 /// A frame this long during a load is counted as a stall: the main thread was

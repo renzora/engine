@@ -69,9 +69,8 @@ name: Build Engine
 # externals no redistributable lib provides). See docker/windows/Dockerfile.
 #
 # None of these lanes has a build cache and each takes hours, which makes them
-# the long pole on every publishing run — so `publish` treats them as
-# best-effort and ships whichever slices arrived rather than waiting on a
-# failure.
+# the long pole on every publishing run. `publish` waits for all of them and
+# publishes nothing if any failed; see the note on that job.
 
 on:
   schedule:
@@ -385,8 +384,8 @@ jobs:
     # wasm-only run leaves this empty, and an empty `include` fails expansion.
     if: needs.setup.outputs.skip != 'true' && needs.setup.outputs.desktop != '{"include":[]}'
     strategy:
-      # One platform failing must not cancel five hours of work on the other
-      # five. `publish` takes whichever slices arrived.
+      # One platform failing must not cancel hours of work on the others: their
+      # artifacts stay, so re-running the failed lane is all a retry costs.
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.desktop) }}
     runs-on: ${{ matrix.runner }}
@@ -531,9 +530,63 @@ jobs:
       # `TemplateManager::scan` and `package-release.sh` both read the Linux and
       # macOS runtime from *inside* the bundle, so a flat tree is invisible to
       # them. See `xtask/src/bundle.rs`.
+      # DLSS compiled in, on the two platforms it exists for. `cargo renzora` turns the
+      # `dlss` feature on by itself when DLSS_SDK, VULKAN_SDK and libclang are
+      # all present (xtask/src/dlss.rs), and without them it quietly builds
+      # Solari's own denoiser instead, which is how every release before this
+      # shipped with "this build has no DLSS".
+      #
+      # * The DLSS SDK is NVIDIA's public repository at the exact release
+      #   `dlss_wgpu` is written against. Sparse, because the whole tree is
+      #   1.4 GB of libraries for platforms this lane is not building.
+      # * `dlss_wgpu` only needs Vulkan's *headers* (bindgen reads
+      #   `$VULKAN_SDK/include`), not a whole SDK: on Linux libvulkan-dev has
+      #   already put them under /usr, and on Windows the Khronos headers
+      #   repository has the same layout.
+      - name: DLSS SDK
+        if: matrix.dist_dir == 'windows-x64' || matrix.dist_dir == 'linux-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.dist_dir }}" in
+            windows-x64) libs=lib/Windows_x86_64 ;;
+            linux-x64)   libs=lib/Linux_x86_64 ;;
+          esac
+          dlss="$RUNNER_TEMP/DLSS"
+          git clone -q --depth 1 --branch v310.9.1 --filter=blob:none --sparse \
+            https://github.com/NVIDIA/DLSS.git "$dlss"
+          git -C "$dlss" sparse-checkout set include "$libs"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            vk="$RUNNER_TEMP/Vulkan-Headers"
+            git clone -q --depth 1 --branch v1.4.335 \
+              https://github.com/KhronosGroup/Vulkan-Headers.git "$vk"
+            echo "DLSS_SDK=$(cygpath -w "$dlss")" >> "$GITHUB_ENV"
+            echo "VULKAN_SDK=$(cygpath -w "$vk")" >> "$GITHUB_ENV"
+            # bindgen loads libclang.dll; the runner image has LLVM installed
+            # but does not put its bin directory where clang-sys looks first.
+            echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+          else
+            sudo apt-get install -y --no-install-recommends libclang-dev
+            echo "DLSS_SDK=$dlss" >> "$GITHUB_ENV"
+            echo "VULKAN_SDK=/usr" >> "$GITHUB_ENV"
+          fi
+          echo "DLSS_LANE=1" >> "$GITHUB_ENV"
+          # Compile DLSS in, ship without NVIDIA's 107 MB of libraries: the
+          # Solari inspector's Install DLSS button fetches them on an RTX GPU.
+          echo "RENZORA_DLSS_LIBS=0" >> "$GITHUB_ENV"
+
+      # On a DLSS lane the build must say DLSS is on. Without this check a
+      # missing piece would turn DLSS off with one line in a long log and the
+      # release would ship without it again, which is the bug this replaces.
       - name: Build + stage
         shell: bash
-        run: cargo renzora dist --bundle
+        run: |
+          cargo renzora dist --bundle 2>&1 | tee "$RUNNER_TEMP/build.log"
+          if [ "${DLSS_LANE:-}" = "1" ] && ! grep -q '\[xtask\] DLSS: on' "$RUNNER_TEMP/build.log"; then
+            echo "::error::this lane builds with DLSS but the build turned it off:"
+            grep '\[xtask\] DLSS' "$RUNNER_TEMP/build.log" || true
+            exit 1
+          fi
 
       # Windows does not ship the Visual C++ runtime. It ships the *Universal*
       # CRT, which is why `api-ms-win-crt-*` resolves everywhere and this looked
@@ -1215,19 +1268,21 @@ jobs:
           retention-days: 7
 
   # ── Publish ─────────────────────────────────────────────────────────────────
-  # `if: always()` because the desktop lanes are best-effort: each is measured in
-  # hours and none has a build cache, so a release waits for them but does not
-  # depend on them. Whatever slices arrived get published; the rest are simply
-  # absent from `manifest.json`, which the editor reads as "no template for that
-  # platform".
+  # Nothing is published unless every platform built. This used to ship
+  # whichever slices arrived, so one lost runner put out a release with a
+  # platform missing (and deleted the good nightly it replaced), which then had
+  # to be found and removed by hand hours later. A failed lane now stops the
+  # run before anything public changes; "Re-run failed jobs" rebuilds only that
+  # lane, and this job then publishes from the artifacts the others already
+  # uploaded.
   #
-  # `build` is checked with `!= 'failure'` rather than `== 'success'`, because it
-  # now reports `skipped` whenever the run has no container platform to build —
-  # every narrowed desktop run, since only wasm goes through a container. A
-  # skipped container job is a normal outcome; a failed one is not.
+  # `!cancelled()` rather than plain success because `build` and `desktop`
+  # report `skipped` on a narrowed run (only wasm goes through a container, and
+  # a desktop-only dispatch has no container platform). Skipped is a normal
+  # outcome; failed is not.
   publish:
     needs: [setup, build, desktop]
-    if: always() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.skip != 'true' && needs.build.result != 'failure'
+    if: "!cancelled() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.skip != 'true' && needs.build.result != 'failure' && needs.desktop.result != 'failure'"
     runs-on: ubuntu-latest
     permissions:
       contents: write

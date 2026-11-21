@@ -7438,6 +7438,7 @@ dependencies = [
  "serde",
  "serde_json",
  "toml 0.8.23",
+ "web-time",
 ]
 
 [[package]]
@@ -9041,6 +9042,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_ember",
+ "sha2 0.10.9",
 ]
 
 [[package]]

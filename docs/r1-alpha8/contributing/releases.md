@@ -52,7 +52,9 @@ The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per ve
 
 **Windows ARM64 is the one target the Docker toolchain cannot produce.** The only MSVC pieces Microsoft allows to be redistributed (so xwin can bake them into a public image) are the CRT and SDK, which leaves clang as the C compiler — and clang can't stand in for MSVC on ARM64, because it emits MSVC NEON intrinsics as undefined externals no redistributable library provides. So that slice builds natively with the real MSVC toolchain on a GitHub-hosted arm64 runner.
 
-That job has **no build cache** and takes hours, which makes it the long pole on every publishing run. The `publish` job therefore treats it as best-effort: whatever slices arrived get published, and a missing one is simply absent from `manifest.json`, which the editor reads as "no template for that platform".
+That job has **no build cache** and takes hours, which makes it the long pole on every publishing run.
+
+**Nothing is published unless every platform built.** `publish` waits for every desktop lane and the wasm build, and if any of them failed it does not run: no release is created and the previous nightly with the same tag is left alone. A lost runner or a broken lane therefore costs a retry, not a half-empty release to find and delete. Use **Re-run failed jobs** on the run: it rebuilds only the lanes that failed, keeps the artifacts the others uploaded, and then publishes. A narrowed run that never started a lane is fine; only a *failed* lane stops the publish.
 
 ## What a release contains
 
@@ -134,9 +136,9 @@ Three things about where it sits are load-bearing:
   desktop matrix is already one runner per platform, so all six are checked for
   free, and a plugin that builds on Linux but not against the MSVC SDK is caught.
 - **Report-only**, written to the job summary. By the time it runs the lane has
-  spent hours building, and `publish` ships whichever slices arrived, so a hard
-  failure would drop a whole platform out of a release over one broken
-  third-party plugin. Enforcement belongs in the plugins repo instead, where a
+  spent hours building, and a failed lane stops the whole release from
+  publishing, so a hard failure would hold back every platform over one broken
+  plugin. Enforcement belongs in the plugins repo instead, where a
   red run costs one rerun rather than six runner-hours.
 
 It checks that each plugin **compiles and exports `renzora_native_plugin_ctor`**,

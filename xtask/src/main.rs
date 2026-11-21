@@ -350,7 +350,11 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
     }
     match stage(repo, plat) {
         Ok(out) => {
-            if let Some(sdk) = &dlss_sdk {
+            // `RENZORA_DLSS_LIBS=0` compiles DLSS in but leaves NVIDIA's
+            // libraries out: the official downloads, where the Solari
+            // inspector fetches them on machines that can run them.
+            let stage_libs = std::env::var("RENZORA_DLSS_LIBS").map_or(true, |v| v != "0");
+            if let Some(sdk) = dlss_sdk.as_ref().filter(|_| stage_libs) {
                 if let Err(e) = dlss::stage(sdk, &out) {
                     eprintln!("[xtask] WARN: could not stage the DLSS libraries: {e}");
                 }

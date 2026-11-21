@@ -88,7 +88,9 @@ fn name_cluster_folders(
     for terrain in &terrains {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         terrain.to_bits().hash(&mut h);
-        std::time::SystemTime::now().hash(&mut h);
+        // Not std's clock, which panics on the web; a fresh scene id already
+        // mixes in a clock that works on every platform.
+        renzora::SceneEntityId::new_random().0.hash(&mut h);
         commands
             .entity(terrain)
             .try_insert(TerrainClusters { dir: format!("terrain_clusters/{:016x}", h.finish()) });

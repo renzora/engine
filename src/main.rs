@@ -153,6 +153,12 @@ fn run_companion() {
 // only difference between shipping the editor and shipping the game.
 #[cfg(not(all(target_arch = "wasm32", feature = "runtime")))]
 fn main() {
+    // First, before any thread exists: DLSS reads `DLSS_SDK` when the GPU is
+    // set up, and the libraries the Solari inspector installs are found
+    // through it. See `renzora::dlss_runtime`.
+    #[cfg(not(target_arch = "wasm32"))]
+    renzora::dlss_runtime::point_env_at_install();
+
     // `cargo renzora` runs this straight after staging, so a source checkout
     // compiles its installed plugins in the build's own terminal. Without it the
     // editor found them stale on launch, opened the setup window to compile

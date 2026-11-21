@@ -37,8 +37,30 @@ All of these, or the built-in denoiser runs instead:
 - the engine was **built with the DLSS SDK** (below);
 - an **NVIDIA RTX** GPU with a current driver;
 - the **Vulkan** renderer (the default; DX12 has no DLSS in this engine);
-- `nvngx_dlss.dll` and `nvngx_dlssd.dll` **beside the executable**
-  (`cargo renzora` puts them there).
+- `nvngx_dlss.dll` and `nvngx_dlssd.dll` **beside the executable** (`cargo
+  renzora` puts them there) or **installed by Install DLSS** (below).
+
+## Official downloads
+
+The **Windows x64** and **Linux x64** nightlies and releases have DLSS
+compiled in. Those are the only two platforms NVIDIA ships DLSS for, so every
+other download uses the built-in denoiser. The build fails rather than publish
+a Windows x64 or Linux x64 download without DLSS.
+
+You do **not** need the DLSS SDK to use them. What they leave out is NVIDIA's
+runtime libraries (`nvngx_dlss` and `nvngx_dlssd`, about 107 MB), which only do
+anything on an NVIDIA RTX GPU:
+
+1. On an NVIDIA GPU, the **Solari Ray-Traced GI** component shows an **Install
+   DLSS** button under **Denoiser** while the libraries are missing.
+2. It downloads them from NVIDIA's repository at release 310.9.1, checks each
+   against its known checksum, and installs them with NVIDIA's licence under
+   `~/.renzora/dlss/310.9.1/`.
+3. Press **Restart Editor**. DLSS is set up when the GPU starts, so it takes
+   effect from the next launch.
+
+A game you export from that editor with Solari on carries the libraries and the
+licence beside its executable, so players never install anything.
 
 ## Building with DLSS
 

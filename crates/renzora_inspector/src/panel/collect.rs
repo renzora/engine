@@ -196,6 +196,13 @@ fn field_specs(
             if val.is_none() && !matches!(f.field_type, FieldType::Button { .. }) {
                 continue;
             }
+            // A button that only makes sense sometimes (Solari's Install DLSS)
+            // hides itself by reading `false`; `None` still means "always".
+            if matches!(f.field_type, FieldType::Button { .. })
+                && matches!(val, Some(FieldValue::Bool(false)))
+            {
+                continue;
+            }
             let mut children = Vec::new();
             let (kind, init) = match (&f.field_type, &val) {
                 (FieldType::Group { fields: inner }, _) => {

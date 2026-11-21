@@ -9,6 +9,8 @@ bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 # The Ray Tracing panel (panel.rs).
 renzora_ember = { path = "../../renzora_ember" }
+# Checking the DLSS libraries the Install DLSS button downloads.
+sha2 = "0.10"
 
 [lints]
 workspace = true

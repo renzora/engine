@@ -34,6 +34,11 @@ pub use core::*;
 pub mod gi;
 pub use gi::*;
 
+// NVIDIA's DLSS runtime libraries: where the editor installs them and how the
+// engine finds them at startup. Here because `main`, the Solari inspector and
+// the exporter all need the same answer.
+pub mod dlss_runtime;
+
 // `WorldEnvironment` — the unified environment contract type (see its module
 // doc). Shared dylib, same boundary reason.
 pub mod world_environment;
@@ -419,7 +424,13 @@ impl SplashEffectsSetting {
     ///
     /// "Large" is wider than 21:9 or more pixels than 4K: the displays where a
     /// full-window shader is the most expensive thing on screen.
+    ///
+    /// Always reduced on the web, whatever the setting: the cinematic held the
+    /// browser editor's launcher to about 10 fps.
     pub fn reduced(&self, monitor: Option<(u32, u32)>) -> bool {
+        if cfg!(target_arch = "wasm32") {
+            return true;
+        }
         match self.0 {
             SplashEffects::Full => false,
             SplashEffects::Reduced => true,

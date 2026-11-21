@@ -227,6 +227,22 @@ pub fn dlss_files(platform: Platform) -> &'static [&'static str] {
     }
 }
 
+/// Whether both DLSS runtime libraries for `platform` are in `dir`. The
+/// licence is not asked for: the editor's install keeps it elsewhere.
+fn libraries_in(platform: Platform, dir: &Path) -> bool {
+    let libs: Vec<_> = dlss_files(platform).iter().filter(|f| !f.ends_with(".txt")).collect();
+    !libs.is_empty() && libs.iter().all(|f| dir.join(f).is_file())
+}
+
+/// Where an export copies the DLSS libraries from: beside the build when a
+/// local `cargo renzora` staged them there, otherwise the editor's install.
+pub fn dlss_source_dir(platform: Platform, runtime_dir: &Path) -> Option<PathBuf> {
+    if libraries_in(platform, runtime_dir) {
+        return Some(runtime_dir.to_path_buf());
+    }
+    renzora::dlss_runtime::install_dir().filter(|d| libraries_in(platform, d))
+}
+
 /// Whether an export gets DLSS Ray Reconstruction.
 ///
 /// Only a game that uses Solari has anything for DLSS to do, so a Solari-off
@@ -240,12 +256,27 @@ pub fn dlss_files(platform: Platform) -> &'static [&'static str] {
 ///   built with the `dlss` feature. That needs the DLSS SDK at compile time
 ///   (`DLSS_SDK`, as for `cargo renzora`) and a native build: the toolchain
 ///   containers have no SDK in them.
-pub fn export_has_dlss(platform: Platform, solari: bool, lean: bool, runtime_dir: &Path) -> bool {
+///
+/// The official downloads have DLSS compiled in but ship without NVIDIA's
+/// libraries, which the Solari inspector installs under `~/.renzora/dlss/`
+/// (see `renzora::dlss_runtime`). So a build counts as DLSS-capable either way:
+/// libraries beside it, or `dlss_compiled` (the editor's own `DlssSupport`)
+/// and the editor's install complete. The template a copy-based export ships
+/// is cut from that same build, so the editor's answer is the template's.
+pub fn export_has_dlss(
+    platform: Platform,
+    solari: bool,
+    lean: bool,
+    runtime_dir: &Path,
+    dlss_compiled: bool,
+) -> bool {
     if !solari {
         return false;
     }
-    let files = dlss_files(platform);
-    if files.is_empty() || !files.iter().all(|f| runtime_dir.join(f).is_file()) {
+    let beside = libraries_in(platform, runtime_dir);
+    let installed = dlss_compiled
+        && renzora::dlss_runtime::install_dir().is_some_and(|d| libraries_in(platform, &d));
+    if !beside && !installed {
         return false;
     }
     if !lean {
@@ -255,7 +286,11 @@ pub fn export_has_dlss(platform: Platform, solari: bool, lean: bool, runtime_dir
     // falling back. The DLSS SDK's version is not re-checked here: the
     // libraries beside the editor are the ones `cargo renzora` accepted.
     let sdk_dir = |var: &str| std::env::var_os(var).is_some_and(|d| Path::new(&d).is_dir());
-    !crate::docker::needs_container(platform) && sdk_dir("DLSS_SDK") && sdk_dir("VULKAN_SDK")
+    // `include/` too: `DLSS_SDK` may name the editor's own install of the
+    // runtime libraries (`renzora::dlss_runtime::point_env_at_install`), which
+    // has no headers to compile against.
+    let dlss_headers = std::env::var_os("DLSS_SDK").is_some_and(|d| Path::new(&d).join("include").is_dir());
+    !crate::docker::needs_container(platform) && dlss_headers && sdk_dir("VULKAN_SDK")
 }
 
 /// The engine source a lean build compiles: the checkout the editor runs from

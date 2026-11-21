@@ -7,10 +7,12 @@
 //! is unavailable, so the component stays discoverable and serializable; the
 //! runtime plugin's systems simply don't run in that case.
 
+mod dlss_install;
 mod panel;
 
 use bevy::prelude::*;
 use bevy::solari::realtime::SolariLighting;
+use renzora::dlss_runtime::DlssInstall;
 use renzora::{
     bool_field, AppEditorExt, DlssMode, DlssSupport, FieldDef, FieldType, FieldValue,
     InspectorEntry, SolariDenoiser, SolariGi, SolariQuality, SolariResolution,
@@ -34,6 +36,12 @@ fn dlss_unavailable(world: &World) -> Option<String> {
         Some(
             "This build has no DLSS, so the built-in denoiser is running. Build with the \
              DLSS SDK to use it."
+                .to_string(),
+        )
+    } else if dlss_install::install_offered(world) {
+        Some(
+            "NVIDIA's DLSS libraries are not installed, so the built-in denoiser is \
+             running. Press Install DLSS to download them."
                 .to_string(),
         )
     } else {
@@ -162,6 +170,61 @@ fn solari_inspector_entry() -> InspectorEntry {
                     }
                 },
             },
+            // Right under the dropdown it unlocks. Offered only where DLSS
+            // would run once installed; see `dlss_install`.
+            FieldDef {
+                name: "Install DLSS",
+                field_type: FieldType::Button { icon: "download-simple" },
+                get_fn: |world, _e| {
+                    let busy = world.get_resource::<DlssInstall>().is_some_and(|s| {
+                        matches!(s, DlssInstall::Downloading { .. } | DlssInstall::Installed)
+                    });
+                    Some(FieldValue::Bool(!busy && dlss_install::install_offered(world)))
+                },
+                set_fn: |world, _e, v| {
+                    if let FieldValue::Bool(true) = v {
+                        dlss_install::start_install(world);
+                    }
+                },
+            },
+            // How the install is going, and why it stopped if it did.
+            FieldDef {
+                name: "DLSS",
+                field_type: FieldType::ReadOnly,
+                get_fn: |world, _e| {
+                    let text = match world.get_resource::<DlssInstall>()? {
+                        DlssInstall::Idle => return None,
+                        DlssInstall::Downloading { done, total } => format!(
+                            "Downloading {}% of {} MB",
+                            done * 100 / (*total).max(1),
+                            total / 1_000_000
+                        ),
+                        DlssInstall::Installed => "Installed. Restart the editor to use it.".to_string(),
+                        DlssInstall::Failed(why) => format!("Install failed: {why}"),
+                    };
+                    Some(FieldValue::ReadOnly(text))
+                },
+                set_fn: |_w, _e, _v| {},
+            },
+            // Support is decided while the GPU starts, so an install only
+            // takes effect in a new process.
+            FieldDef {
+                name: "Restart Editor",
+                field_type: FieldType::Button { icon: "arrow-clockwise" },
+                get_fn: |world, _e| {
+                    let installed = matches!(world.get_resource::<DlssInstall>(), Some(DlssInstall::Installed));
+                    Some(FieldValue::Bool(installed))
+                },
+                set_fn: |_w, _e, v| {
+                    // The web has no process to restart and never installs.
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let FieldValue::Bool(true) = v {
+                        renzora::restart_process();
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    let _ = v;
+                },
+            },
             // Only while DLSS is the denoiser actually running: anywhere else
             // the frame renders at full size and the setting does nothing.
             FieldDef {
@@ -263,6 +326,8 @@ impl Plugin for SolariEditorPlugin {
 
         info!("[editor] SolariEditorPlugin");
         app.register_inspector(solari_inspector_entry());
+        app.init_resource::<DlssInstall>()
+            .add_systems(Update, dlss_install::sync_install_state);
 
         // The Ray Tracing panel (panel.rs).
         app.init_resource::<renzora::SolariDiagnosticsRequest>()

@@ -158,3 +158,10 @@ workspace = true
 # installed goes to Application Support, so the answer is shared with the loader
 # rather than reconstructed here. Carries no dependencies of its own.
 renzora_native_build = { path = "../renzora_native_build" }
+
+# The browser's wall clock. std's `SystemTime::now` panics on wasm, and a fresh
+# `SceneEntityId` needs something that differs between sessions: the hasher
+# seed std mixes in is a constant there. Already in every web build through
+# `bevy_platform`, so this adds no crate.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = { version = "1.1", default-features = false }

@@ -1,5 +1,20 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-21 17:23
+- fix(web): opening a project in the web editor no longer crashes it
+- perf(web): the web editor's launcher skips its animated background, which held it to about 10 fps
+
+## 2026-11-21 14:22
+- feat(rendering): the Windows x64 and Linux x64 downloads are built with DLSS
+- feat(rendering): on an NVIDIA GPU, the Solari component has an Install DLSS button that downloads NVIDIA's DLSS libraries, so DLSS works after a restart
+- feat(export): a Solari game exported from an editor with DLSS installed ships the DLSS libraries beside it
+
+## 2026-11-21 13:41
+- fix(plugins): third-party plugins built for Windows now get signed prebuilts like the other platforms
+
+## 2026-11-21 10:29
+- fix(ci): a release or nightly is published only once every platform has built, so a failed build no longer ships a partial one
+
 ## 2026-11-21 02:06
 - fix(ci): nightly downloads contain the editor again instead of only its prebuilt plugins
 - fix(web): the web editor no longer renders black because of soft shadows, which are off on the web

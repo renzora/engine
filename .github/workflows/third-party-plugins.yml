@@ -226,8 +226,12 @@ jobs:
           cp "target/dist/examples/unpack_sdk$exe" "target/dist/examples/check_plugins$exe" out/
           # The stamp, for the publish job, which never unpacks a 1.9 GB SDK.
           out/unpack_sdk$exe --archive out/sdk.tar.zst --root work >/dev/null
-          jq -r '.build_id + "+rustc-" + .rustc' work/sdk/manifest.json > stamp.txt
-          jq -r '.rustc' work/sdk/manifest.json > out/rustc.txt
+          # `tr -d '\r'`: jq on Windows ends its output with CRLF, `$(cat)`
+          # strips only the LF, and a stamp ending in a carriage return
+          # matches no plugin's ABI record, so the signer refused every
+          # Windows binary.
+          jq -r '.build_id + "+rustc-" + .rustc' work/sdk/manifest.json | tr -d '\r' > stamp.txt
+          jq -r '.rustc' work/sdk/manifest.json | tr -d '\r' > out/rustc.txt
           cat stamp.txt
 
       - uses: actions/upload-artifact@v4
@@ -282,7 +286,7 @@ jobs:
           exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
           chmod +x tools/* 2>/dev/null || true
           # The toolchain the SDK was built with; a plugin must match it.
-          rustc_version=$(cat tools/rustc.txt)
+          rustc_version=$(tr -d '\r\n' < tools/rustc.txt)
           rustup toolchain install "$rustc_version" --profile minimal >/dev/null
           export RUSTUP_TOOLCHAIN="$rustc_version"
           "tools/unpack_sdk$exe" --archive tools/sdk.tar.zst --root work >/dev/null
@@ -374,7 +378,7 @@ jobs:
           echo "| Plugin | Platform | Result |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
-            stamp=$(cat "stamps/tp-stamp-$platform/stamp.txt" 2>/dev/null || echo "")
+            stamp=$(tr -d '\r\n' < "stamps/tp-stamp-$platform/stamp.txt" 2>/dev/null || echo "")
             # Trusted facts: what the marketplace listed, never what a build wrote.
             while IFS=$'\t' read -r asset id version; do
               dir="out/tp-out-$platform-$asset"

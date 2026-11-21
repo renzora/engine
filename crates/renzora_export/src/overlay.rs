@@ -1001,11 +1001,15 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // DLSS Ray Reconstruction for a Solari game, when the build being exported
     // can carry it: compiled into a lean binary, and its libraries shipped
     // beside the executable in every mode. See `build::export_has_dlss`.
+    let dlss_compiled = world
+        .get_resource::<renzora::DlssSupport>()
+        .is_some_and(|s| s.compiled);
     let dlss = crate::build::export_has_dlss(
         platform,
         solari_on,
         packaging_mode == PackagingMode::LeanSingleBinary,
         &runtime_dir,
+        dlss_compiled,
     );
 
     // The dedicated server reuses the game binary (run with `--server`), so
@@ -1728,10 +1732,25 @@ pub(crate) fn export_worker(
             // folded into it. Without them the game still runs, on the
             // built-in denoiser, so a copy that fails is a warning, not an
             // error.
-            if dlss {
+            // Resolved here, in the worker, which may be the companion process.
+            let dlss_libs = dlss.then(|| crate::build::dlss_source_dir(platform, &runtime_dir)).flatten();
+            if let Some(libs) = dlss_libs.as_ref() {
                 let _ = tx.send(ExportMsg::Progress("Copying NVIDIA DLSS libraries...".into()));
                 for file in crate::build::dlss_files(platform) {
-                    if let Err(e) = std::fs::copy(runtime_dir.join(file), output_dir.join(file)) {
+                    // Beside a local build the licence is already called
+                    // DLSS_LICENSE.txt; the editor's install keeps NVIDIA's
+                    // own name for it one level up.
+                    let from = if libs.join(file).is_file() {
+                        libs.join(file)
+                    } else if *file == "DLSS_LICENSE.txt" {
+                        match renzora::dlss_runtime::install_root() {
+                            Some(root) => root.join("LICENSE.txt"),
+                            None => continue,
+                        }
+                    } else {
+                        libs.join(file)
+                    };
+                    if let Err(e) = std::fs::copy(&from, output_dir.join(file)) {
                         let _ = tx.send(ExportMsg::Progress(format!(
                             "Could not copy {file}: {e}. The game will use the built-in denoiser."
                         )));

@@ -116,7 +116,8 @@ pub enum FieldType {
     /// A full-width action button. The `FieldDef::name` is the button label and
     /// `icon` is a leading Phosphor glyph. There's no value to read — `get_fn`
     /// should return `None`; clicking invokes `set_fn` with
-    /// `FieldValue::Bool(true)` as a "pressed" signal.
+    /// `FieldValue::Bool(true)` as a "pressed" signal. A button that only
+    /// applies sometimes returns `Some(FieldValue::Bool(false))` to hide.
     Button {
         icon: &'static str,
     },
