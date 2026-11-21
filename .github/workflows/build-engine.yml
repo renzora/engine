@@ -99,13 +99,14 @@ on:
           - macos-x64
           - macos-arm64
       publish:
-        description: "Publish the result as a release"
+        description: "Publish the result as a release (web: rebuild only the web editor into the newest release and refresh renzora.com/engine; ignores platform)"
         type: choice
         default: none
         options:
           - none
           - nightly
           - release
+          - web
 
 env:
   REGISTRY: ghcr.io/renzora
@@ -169,6 +170,21 @@ jobs:
               ;;
             nightly)
               tag="$version-nightly-$(date -u +%d%b%y | tr '[:upper:]' '[:lower:]')"
+              ;;
+            web)
+              # A web fix should not wait two hours for every desktop lane, nor
+              # cost a day's desktop downloads: a web-only nightly would replace
+              # the whole release with one zip. So this builds only the web
+              # editor, under the tag of the newest release (the one renzora.com
+              # serves, nightlies included), so the build names itself after
+              # that release rather than "dev", and `publish-web` swaps its web
+              # assets in place.
+              platform=wasm
+              tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+              if [ -z "$tag" ]; then
+                echo "::error::there is no release to put a web build into"
+                exit 1
+              fi
               ;;
             *)
               tag=""
@@ -1282,7 +1298,7 @@ jobs:
   # outcome; failed is not.
   publish:
     needs: [setup, build, desktop]
-    if: "!cancelled() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.skip != 'true' && needs.build.result != 'failure' && needs.desktop.result != 'failure'"
+    if: "!cancelled() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.publish != 'web' && needs.setup.outputs.skip != 'true' && needs.build.result != 'failure' && needs.desktop.result != 'failure'"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1469,6 +1485,63 @@ jobs:
           cat release-assets/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+  # ── Swap a new web build into an existing release ───────────────────────────
+  # `publish: web` only. The release keeps every other asset; its two web zips
+  # are replaced, and their rows in `manifest.json` and `SHA256SUMS` with them,
+  # since the editor verifies a web export template against the manifest and
+  # the website names a build by its SHA256SUMS line. The release's own commit
+  # and notes stay those of the full build: this is a patch to one platform,
+  # which the summary says.
+  publish-web:
+    needs: [setup, build]
+    if: needs.setup.outputs.publish == 'web' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the web build
+        uses: actions/download-artifact@v4
+        with:
+          pattern: renzora-wasm
+          path: artifacts
+
+      - name: Package it
+        run: |
+          bash scripts/package-release.sh artifacts web-assets \
+            "${{ needs.setup.outputs.tag }}" "${{ github.sha }}"
+
+      - name: Replace the release's web assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.setup.outputs.tag }}
+        run: |
+          set -euo pipefail
+          names='["web-wasm32.zip","renzora-runtime-web-wasm32.zip"]'
+          mkdir -p old
+          gh release download "$TAG" -p manifest.json -p SHA256SUMS -D old
+
+          # The new rows replace the old ones by name; every other row is kept
+          # exactly as the full build wrote it.
+          jq --argjson names "$names" --slurpfile new web-assets/manifest.json '
+            .assets |= ([.[] | select(.name as $n | $names | index($n) | not)]
+              + [$new[0].assets[] | select(.name as $n | $names | index($n))])
+          ' old/manifest.json > manifest.json
+          { grep -vE ' (\./)?(web-wasm32|renzora-runtime-web-wasm32)\.zip$' old/SHA256SUMS || true
+            grep -E ' (\./)?(web-wasm32|renzora-runtime-web-wasm32)\.zip$' web-assets/SHA256SUMS
+          } > SHA256SUMS
+
+          gh release upload "$TAG" --clobber \
+            web-assets/web-wasm32.zip web-assets/renzora-runtime-web-wasm32.zip \
+            manifest.json SHA256SUMS
+
+          echo "### Web build replaced in \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Built from \`$GITHUB_SHA\`; the release's other assets are unchanged." >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E 'web-wasm32' SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
   # ── Put the new wasm build on renzora.com/engine ────────────────────────────
   # Every nightly and every release refreshes the playable web build the website
   # serves at /engine. This job only *tells* the website a new tag exists; the
@@ -1572,10 +1645,10 @@ jobs:
     secrets: inherit
 
   website:
-    needs: [setup, build, publish]
+    needs: [setup, build, publish, publish-web]
     if: |
       always()
-      && needs.publish.result == 'success'
+      && (needs.publish.result == 'success' || needs.publish-web.result == 'success')
       && needs.build.result == 'success'
       && needs.setup.outputs.containers == 'true'
     runs-on: ubuntu-latest

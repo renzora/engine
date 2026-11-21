@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-21 17:27
+- feat(ci): Build Engine's `web` publish mode rebuilds only the web editor into the newest release and puts it on renzora.com
+
 ## 2026-11-21 17:23
 - fix(web): opening a project in the web editor no longer crashes it
 - perf(web): the web editor's launcher skips its animated background, which held it to about 10 fps

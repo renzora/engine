@@ -30,7 +30,7 @@ A published binary also carries two values CI stamps in at compile time, read wi
 |---|---|---|
 | `schedule`, 02:00 UTC daily | `r1-alpha8-nightly-16aug26` | prerelease |
 | `push` of an `r1-alpha*` tag | the tag itself | full release |
-| `workflow_dispatch` | your choice of `none` / `nightly` / `release` | — |
+| `workflow_dispatch` | your choice of `none` / `nightly` / `release` / `web` | — |
 
 The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per version because the version comes first.
 
@@ -304,7 +304,7 @@ The chain has three links:
 
 1. The `website` job at the end of **Build Engine** sends a `repository_dispatch` of type `engine-wasm` to `renzora/website`, carrying the tag it just published. It uses `WEBSITE_SYNC_TOKEN`, the same fine-grained PAT `sync-docs.yml` holds, because `POST /repos/{owner}/{repo}/dispatches` needs exactly the Contents write it already grants.
 2. The website's **Engine WASM** workflow catches that and SSHes into the droplet. Nothing is rebuilt and no image is pushed, because the website itself did not change.
-3. `scripts/fetch-engine-wasm.sh` on the droplet downloads `web-wasm32.zip` for that tag, unpacks it to `engine/builds/<tag>/`, pre-compresses it, and moves the `engine/current` symlink.
+3. `scripts/fetch-engine-wasm.sh` on the droplet downloads `web-wasm32.zip` for that tag, unpacks it to `engine/builds/<tag>-<checksum>/`, pre-compresses it, and moves the `engine/current` symlink. The checksum (the first 12 characters of the zip's `SHA256SUMS` line) is in the name because a rebuilt nightly keeps its tag: named by tag alone, a rebuild looked already live and the site kept the old build.
 
 The job is `continue-on-error` and runs after the release is already published. A website one build stale is not a reason to redden a green release, and the next nightly re-fires it anyway.
 
@@ -322,6 +322,18 @@ To pin the site to a specific engine build, or to pull one by hand: **website �
 **Actions → Build Engine → Run workflow.** Pick a platform (or `all`) and a publish mode. `publish: none` builds and uploads GitHub *artifacts* (7-day retention) without creating a release — the right choice for checking that a platform still builds.
 
 A run that builds no wasm (any narrowed `platform` other than `all` or `wasm`) skips the website dispatch, since there would be no new bundle to publish.
+
+### Fixing only the web editor
+
+`publish: web` rebuilds just the web editor and puts it live, in about the time the web build takes rather than the full run's hours. It ignores `platform`:
+
+1. It builds under the tag of the **newest release** (nightlies included, the one renzora.com serves), so the build names itself after that release rather than `dev`.
+2. The `publish-web` job replaces that release's `web-wasm32.zip` and `renzora-runtime-web-wasm32.zip`, and their rows in `manifest.json` and `SHA256SUMS`. Every other asset, and the release's notes, stay as the full build left them.
+3. The `website` job dispatches as usual, and the website fetches the new build because its checksum changed.
+
+The release then holds desktop downloads and a web build from two different commits; the job summary names the web build's. The next full nightly replaces the whole release. Purge Cloudflare's cache for `/engine/` afterwards, or it keeps serving the old files until they expire.
+
+Do not use `publish: nightly` with `platform: wasm` for this: it would replace the whole nightly with a release holding only the web zips.
 
 ## See also
 
