@@ -859,7 +859,10 @@ jobs:
           excludes=()
           while IFS= read -r p; do
             excludes+=("--exclude=sdk/$p")
-          done < <(jq -r '.shared_images[]?' "$out/sdk/manifest.json")
+          # `tr -d '\r'`: jq on Windows ends each line with CRLF, and an
+          # `--exclude` carrying the carriage return matches nothing, so the
+          # Windows archives silently kept both images.
+          done < <(jq -r '.shared_images[]?' "$out/sdk/manifest.json" | tr -d '\r')
           echo "left out of the archive: ${excludes[*]:-nothing}"
           ( cd "$out" && tar ${excludes[@]+"${excludes[@]}"} -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
           rm -rf "$out/sdk"

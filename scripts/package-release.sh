@@ -498,7 +498,7 @@ compress_sdk() {
     if command -v jq >/dev/null 2>&1; then
         while IFS= read -r p; do
             excludes+=("--exclude=sdk/$p")
-        done < <(jq -r '.shared_images[]?' "$dir/sdk/manifest.json")
+        done < <(jq -r '.shared_images[]?' "$dir/sdk/manifest.json" | tr -d '\r')
     fi
     ( cd "$dir" && tar ${excludes[@]+"${excludes[@]}"} -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f ) || {
         echo "ERROR: failed to compress $dir/sdk" >&2

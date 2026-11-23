@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-23 07:00
+- fix(sdk): the Linux editor unpacks its plugin SDK again; it looks for the engine's shared libraries inside the AppImage, where they live
+- fix(ci): third-party plugins get prebuilts for Linux and macOS again
+- fix(sdk): Windows downloads also leave the engine's shared libraries out of the SDK archive
+
 ## 2026-11-22 21:16
 - refactor(contract): the contract layers live in `crates/api/`, and `renzora`, `renzora_sdk` and the shared images in `crates/shared/`
 - refactor(contract): console logging is its own layer, `renzora_log_api`, so crates that only log no longer rebuild when the rest of the contract changes

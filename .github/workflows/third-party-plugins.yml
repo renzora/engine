@@ -190,24 +190,52 @@ jobs:
         run: |
           set -euo pipefail
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "${{ matrix.asset }}" -D release
-          mkdir -p out
+          # The engine's shared images (`bevy_dylib`, `renzora_dylib`) as well as
+          # the archive: a release leaves them out of `sdk.tar.zst`, because the
+          # engine already ships them, and the unpacker links them back in from
+          # beside the executable or from its `--root`. This job runs neither
+          # inside the engine nor beside it, so it hands them over in `work/`.
+          mkdir -p out/images
           case "${{ matrix.asset }}" in
             *.dmg)
               hdiutil attach -nobrowse -readonly -mountpoint /tmp/engine "release/${{ matrix.asset }}"
-              cp "/tmp/engine/Renzora Engine.app/Contents/MacOS/sdk.tar.zst" out/
+              macos="/tmp/engine/Renzora Engine.app/Contents/MacOS"
+              cp "$macos/sdk.tar.zst" out/
+              cp "$macos"/libbevy_dylib.dylib "$macos"/librenzora_dylib.dylib out/images/
               hdiutil detach /tmp/engine ;;
             *.zip)
               py=$(command -v python3 || command -v python)
-              "$py" - "release/${{ matrix.asset }}" out/sdk.tar.zst <<'PY'
-          import sys, zipfile, shutil
+              "$py" - "release/${{ matrix.asset }}" out <<'PY'
+          import os, sys, zipfile, shutil
           z = zipfile.ZipFile(sys.argv[1])
-          name = next(n for n in z.namelist() if n.endswith("sdk.tar.zst"))
-          with z.open(name) as src, open(sys.argv[2], "wb") as dst:
-              shutil.copyfileobj(src, dst)
+          out = sys.argv[2]
+          images = {"bevy_dylib.dll", "renzora_dylib.dll", "libbevy_dylib.so", "librenzora_dylib.so"}
+          def copy(member, dest):
+              with z.open(member) as src, open(dest, "wb") as dst:
+                  shutil.copyfileobj(src, dst)
+          names = z.namelist()
+          copy(next(n for n in names if n.endswith("sdk.tar.zst")), os.path.join(out, "sdk.tar.zst"))
+          # Windows: the images sit beside the executable in the zip itself.
+          for n in names:
+              if os.path.basename(n) in images and "plugins/" not in n:
+                  copy(n, os.path.join(out, "images", os.path.basename(n)))
+          # Linux: the binaries live only inside the AppImage. Hand it to the
+          # shell, which extracts the images from it.
+          appimage = next((n for n in names if n.endswith(".AppImage")), None)
+          if appimage and not os.listdir(os.path.join(out, "images")):
+              copy(appimage, os.path.join("release", "engine.AppImage"))
           PY
+              if [ -f release/engine.AppImage ]; then
+                # `--appimage-extract` unpacks the squashfs without mounting it,
+                # so it needs no FUSE on the runner.
+                chmod +x release/engine.AppImage
+                ( cd release && ./engine.AppImage --appimage-extract >/dev/null )
+                cp release/squashfs-root/libbevy_dylib.so release/squashfs-root/librenzora_dylib.so out/images/
+              fi
               ;;
           esac
-          ls -lh out/sdk.tar.zst
+          ls -lh out/sdk.tar.zst out/images
+          [ "$(ls out/images | wc -l)" -ge 2 ] || { echo "::error::the engine's shared images were not found in ${{ matrix.asset }}"; exit 1; }
 
       # `.cargo/config.toml` links x86_64 Linux with clang + mold, and the
       # hosted runner ships clang but not mold.
@@ -225,6 +253,8 @@ jobs:
           exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
           cp "target/dist/examples/unpack_sdk$exe" "target/dist/examples/check_plugins$exe" out/
           # The stamp, for the publish job, which never unpacks a 1.9 GB SDK.
+          # The images go in `work/`, the root the unpacker links them from.
+          mkdir -p work && cp out/images/* work/
           out/unpack_sdk$exe --archive out/sdk.tar.zst --root work >/dev/null
           # `tr -d '\r'`: jq on Windows ends its output with CRLF, `$(cat)`
           # strips only the LF, and a stamp ending in a carriage return
@@ -289,6 +319,7 @@ jobs:
           rustc_version=$(tr -d '\r\n' < tools/rustc.txt)
           rustup toolchain install "$rustc_version" --profile minimal >/dev/null
           export RUSTUP_TOOLCHAIN="$rustc_version"
+          mkdir -p work && cp tools/images/* work/
           "tools/unpack_sdk$exe" --archive tools/sdk.tar.zst --root work >/dev/null
 
           # The source zip, at its crate's root (the manifest may sit one

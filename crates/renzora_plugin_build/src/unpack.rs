@@ -163,7 +163,7 @@ pub fn extract(
     let src = if inner.is_dir() { inner } else { staging.clone() };
 
     // Before the rename, like everything else, so a tree that lands is whole.
-    if let Err(e) = restore_shared_images(&src, root) {
+    if let Err(e) = restore_shared_images(&src, &image_dirs(root)) {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(e);
     }
@@ -188,20 +188,43 @@ pub fn extract(
     Ok(final_dir)
 }
 
+/// Where the engine's shared images can be found, most authoritative first.
+///
+/// The running executable's own directory comes first: the images are linked
+/// from beside it, so they are there by construction, whichever way the engine
+/// was installed. `root` is NOT always that directory. A Linux AppImage keeps
+/// its binaries and `.so` files inside the read-only mount while `root` (from
+/// `$APPIMAGE`, see `install::root`) is the directory holding the `.AppImage`
+/// and `sdk.tar.zst`, where there are no images at all. Looking only in `root`
+/// broke the first unpack of every Linux nightly that left the images out.
+///
+/// `root` follows for a caller that unpacks for an engine it is not running
+/// inside, such as CI's `unpack_sdk` tool, which is given the images there.
+fn image_dirs(root: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)) {
+        dirs.push(exe_dir);
+    }
+    if !dirs.iter().any(|d| d == root) {
+        dirs.push(root.to_path_buf());
+    }
+    dirs
+}
+
 /// Put back the shared images a release left out of the archive.
 ///
 /// `bevy_dylib` and `renzora_dylib` are the same files the engine runs from,
-/// already beside the executable in `root`, so shipping them inside
-/// `sdk.tar.zst` as well was a second copy of about 200 MB in every download and
-/// every install. The manifest names them (`shared_images`); each one the
-/// archive did not carry is hardlinked from `root`, which costs no disk, or
+/// so shipping them inside `sdk.tar.zst` as well was a second copy of about
+/// 200 MB in every download and every install. The manifest names them
+/// (`shared_images`); each one the archive did not carry is hardlinked from the
+/// first of `dirs` that has it (see [`image_dirs`]), which costs no disk, or
 /// copied where a hardlink cannot be made (the macOS SDK lives in Application
 /// Support, which need not be on the bundle's volume).
 ///
 /// An image the archive did carry is left alone, which is every archive cut
-/// before the list existed. A missing source is an error naming it, rather
-/// than an SDK that loads and then fails every plugin link.
-fn restore_shared_images(tree: &Path, root: &Path) -> Result<(), String> {
+/// before the list existed. A missing source is an error naming it and every
+/// place looked, rather than an SDK that loads and then fails every plugin link.
+fn restore_shared_images(tree: &Path, dirs: &[PathBuf]) -> Result<(), String> {
     let Ok(text) = std::fs::read_to_string(tree.join("manifest.json")) else {
         return Ok(()); // reported by the caller's own manifest check
     };
@@ -216,14 +239,14 @@ fn restore_shared_images(tree: &Path, root: &Path) -> Result<(), String> {
         let name = Path::new(rel)
             .file_name()
             .ok_or_else(|| format!("the SDK manifest names a shared image with no file name: {rel}"))?;
-        let src = root.join(name);
-        if !src.is_file() {
+        let Some(src) = dirs.iter().map(|d| d.join(name)).find(|p| p.is_file()) else {
+            let looked: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
             return Err(format!(
-                "the SDK expects the engine's {} beside the executable, at {}, and it is not there",
+                "the SDK expects the engine's {} beside the executable, and it is in none of: {}",
                 name.to_string_lossy(),
-                src.display()
+                looked.join(", ")
             ));
-        }
+        };
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("could not create {}: {e}", parent.display()))?;
         }
@@ -339,5 +362,71 @@ impl<R: std::io::Read, F: FnMut(u64)> std::io::Read for Counting<R, F> {
         self.read += n as u64;
         (self.progress)(self.read);
         Ok(n)
+    }
+}
+
+#[cfg(test)]
+mod shared_image_tests {
+    use super::restore_shared_images;
+    use std::path::{Path, PathBuf};
+
+    const MANIFEST: &str = r#"{"triple":"t","rustc":"1","lib_ext":"so",
+        "extern":{"bevy":"deps/b.rlib","renzora":"deps/libshared.so"},
+        "link_search":{"dependency":["deps"],"native":[]},
+        "shared_images":["deps/libshared.so"]}"#;
+
+    fn scratch(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(p.join("tree/deps")).unwrap();
+        std::fs::create_dir_all(p.join("exe")).unwrap();
+        std::fs::create_dir_all(p.join("root")).unwrap();
+        std::fs::write(p.join("tree/manifest.json"), MANIFEST).unwrap();
+        p
+    }
+
+    fn landed(p: &Path) -> String {
+        std::fs::read_to_string(p.join("tree/deps/libshared.so")).unwrap()
+    }
+
+    /// The Linux AppImage case: the images sit beside the executable inside the
+    /// mount, and `root` (the directory holding the `.AppImage`) has none.
+    #[test]
+    fn an_image_beside_the_executable_is_found_when_the_root_has_none() {
+        let p = scratch("renzora_images_exe");
+        std::fs::write(p.join("exe/libshared.so"), "from the executable").unwrap();
+        restore_shared_images(&p.join("tree"), &[p.join("exe"), p.join("root")]).unwrap();
+        assert_eq!(landed(&p), "from the executable");
+        let _ = std::fs::remove_dir_all(&p);
+    }
+
+    /// CI's `unpack_sdk`, which runs from a tools directory and is handed the
+    /// images in `root`.
+    #[test]
+    fn the_root_is_the_fallback() {
+        let p = scratch("renzora_images_root");
+        std::fs::write(p.join("root/libshared.so"), "from the root").unwrap();
+        restore_shared_images(&p.join("tree"), &[p.join("exe"), p.join("root")]).unwrap();
+        assert_eq!(landed(&p), "from the root");
+        let _ = std::fs::remove_dir_all(&p);
+    }
+
+    #[test]
+    fn the_executable_wins_over_the_root() {
+        let p = scratch("renzora_images_both");
+        std::fs::write(p.join("exe/libshared.so"), "from the executable").unwrap();
+        std::fs::write(p.join("root/libshared.so"), "from the root").unwrap();
+        restore_shared_images(&p.join("tree"), &[p.join("exe"), p.join("root")]).unwrap();
+        assert_eq!(landed(&p), "from the executable");
+        let _ = std::fs::remove_dir_all(&p);
+    }
+
+    #[test]
+    fn nowhere_is_an_error_naming_every_place_looked() {
+        let p = scratch("renzora_images_none");
+        let err = restore_shared_images(&p.join("tree"), &[p.join("exe"), p.join("root")]).unwrap_err();
+        assert!(err.contains("libshared.so"), "{err}");
+        assert!(err.contains("exe") && err.contains("root"), "names both places: {err}");
+        let _ = std::fs::remove_dir_all(&p);
     }
 }
