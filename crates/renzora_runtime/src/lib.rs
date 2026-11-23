@@ -519,8 +519,10 @@ fn launcher_app_id(is_editor: bool) -> Option<String> {
 /// A build with the `dlss` feature has Bevy's `DlssInitPlugin` inside
 /// `DefaultPlugins`, and that plugin panics at build if this resource is not
 /// already in the app. So every path that adds `DefaultPlugins` calls this
-/// first; without the feature it does nothing.
-fn insert_dlss_project_id(app: &mut App) {
+/// first; without the feature it does nothing. Public for the one `App` built
+/// outside this crate, the first-run setup window (`src/setup_ui.rs`), which
+/// crashed every DLSS build's first launch for want of it.
+pub fn insert_dlss_project_id(app: &mut App) {
     #[cfg(feature = "dlss")]
     app.insert_resource(bevy::anti_alias::dlss::DlssProjectId(
         bevy::asset::uuid::Uuid::from_u128(0x0364273c_a645_40f3_b774_74a7377b0c10),

@@ -229,8 +229,13 @@ pub fn run() -> Outcome {
 
     spawn_worker(shared.clone());
 
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
+    let mut app = App::new();
+    // A DLSS build's `DefaultPlugins` holds Bevy's `DlssInitPlugin`, which
+    // panics unless this is already in the app. Without it, every first launch
+    // of a DLSS download crashed here, while the worker above had already done
+    // its job, so the second launch found nothing to set up and worked.
+    renzora_runtime::insert_dlss_project_id(&mut app);
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 // Not "first run": this window is also how an update and an
                 // edited plugin get rebuilt, and both are ordinary launches.

@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-23 07:20
+- fix(editor): the first launch of a Windows x64 or Linux x64 download no longer crashes with "DlssProjectId was not added to the App" before the setup window opens
+
 ## 2026-11-23 07:00
 - fix(sdk): the Linux editor unpacks its plugin SDK again; it looks for the engine's shared libraries inside the AppImage, where they live
 - fix(ci): third-party plugins get prebuilts for Linux and macOS again
