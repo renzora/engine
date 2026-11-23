@@ -491,13 +491,19 @@ compress_sdk() {
     echo "   compressing sdk/ …"
     # -T0 uses every core. Compression is the slowest part of packaging, and it
     # only ever runs here — the decoder is single-threaded and does not care.
-    # The engine's own images ship beside the executable already; leave them
-    # out and the unpacker links them back in. Without jq they simply ship
+    # The engine's own images, when they ship beside the executable, stay out
+    # and the unpacker links them back in. Only those that do: macOS's `.app`
+    # has no `librenzora_dylib.dylib` (see the build workflow's packing step),
+    # and the Linux binaries live in the AppDir. Without jq they simply ship
     # twice, which still unpacks correctly.
-    local excludes=() p
+    local excludes=() p bin="$dir"
+    [ -d "$dir/Renzora Engine.app/Contents/MacOS" ] && bin="$dir/Renzora Engine.app/Contents/MacOS"
+    [ -d "$dir/Renzora Engine.AppDir" ] && bin="$dir/Renzora Engine.AppDir"
     if command -v jq >/dev/null 2>&1; then
         while IFS= read -r p; do
-            excludes+=("--exclude=sdk/$p")
+            if [ -f "$bin/$(basename "$p")" ]; then
+                excludes+=("--exclude=sdk/$p")
+            fi
         done < <(jq -r '.shared_images[]?' "$dir/sdk/manifest.json" | tr -d '\r')
     fi
     ( cd "$dir" && tar ${excludes[@]+"${excludes[@]}"} -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f ) || {

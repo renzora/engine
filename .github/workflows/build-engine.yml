@@ -852,13 +852,28 @@ jobs:
           printf '%s\n' "$stamp" > "$dest/plugins/engine-stamp.txt"
           echo "engine stamp: $stamp"
 
-          # The engine's own images (`bevy_dylib`, `renzora_dylib`) already ship
-          # beside the executable, byte for byte, so they stay out of the
-          # archive and the unpacker links them back in from the install
+          # The engine's own images (`bevy_dylib`, `renzora_dylib`) stay out of
+          # the archive when they ship beside the executable, byte for byte, and
+          # the unpacker links them back in from there
           # (`renzora_plugin_build::unpack::restore_shared_images`).
+          #
+          # Only when they actually ship there. The stager copies the images an
+          # executable imports, and macOS's linker drops `renzora_dylib` from
+          # that list, so the `.app` has no `librenzora_dylib.dylib`; leaving it
+          # out of the archive anyway broke every Mac's first unpack. So each
+          # one is checked against the directory the executable runs from: the
+          # `.app`'s `Contents/MacOS`, the Linux AppDir (the AppImage's
+          # contents), or the platform directory itself on Windows.
+          bin="$out"
+          [ -d "$app/Contents/MacOS" ] && bin="$app/Contents/MacOS"
+          [ -d "$out/Renzora Engine.AppDir" ] && bin="$out/Renzora Engine.AppDir"
           excludes=()
           while IFS= read -r p; do
-            excludes+=("--exclude=sdk/$p")
+            if [ -f "$bin/$(basename "$p")" ]; then
+              excludes+=("--exclude=sdk/$p")
+            else
+              echo "keeping $p in the archive: $bin does not ship it"
+            fi
           # `tr -d '\r'`: jq on Windows ends each line with CRLF, and an
           # `--exclude` carrying the carriage return matches nothing, so the
           # Windows archives silently kept both images.

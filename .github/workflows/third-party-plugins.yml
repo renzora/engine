@@ -201,7 +201,11 @@ jobs:
               hdiutil attach -nobrowse -readonly -mountpoint /tmp/engine "release/${{ matrix.asset }}"
               macos="/tmp/engine/Renzora Engine.app/Contents/MacOS"
               cp "$macos/sdk.tar.zst" out/
-              cp "$macos"/libbevy_dylib.dylib "$macos"/librenzora_dylib.dylib out/images/
+              # Whichever the `.app` ships: macOS has no `librenzora_dylib`,
+              # whose copy then stays inside `sdk.tar.zst` instead.
+              for f in libbevy_dylib.dylib librenzora_dylib.dylib; do
+                if [ -f "$macos/$f" ]; then cp "$macos/$f" out/images/; fi
+              done
               hdiutil detach /tmp/engine ;;
             *.zip)
               py=$(command -v python3 || command -v python)
@@ -230,12 +234,16 @@ jobs:
                 # so it needs no FUSE on the runner.
                 chmod +x release/engine.AppImage
                 ( cd release && ./engine.AppImage --appimage-extract >/dev/null )
-                cp release/squashfs-root/libbevy_dylib.so release/squashfs-root/librenzora_dylib.so out/images/
+                for f in libbevy_dylib.so librenzora_dylib.so; do
+                  if [ -f "release/squashfs-root/$f" ]; then cp "release/squashfs-root/$f" out/images/; fi
+                done
               fi
               ;;
           esac
+          # Not a fixed count: a platform ships whichever images its executable
+          # imports, and any the archive left out but this download lacks are
+          # named by the unpacker below, which is the one that knows.
           ls -lh out/sdk.tar.zst out/images
-          [ "$(ls out/images | wc -l)" -ge 2 ] || { echo "::error::the engine's shared images were not found in ${{ matrix.asset }}"; exit 1; }
 
       # `.cargo/config.toml` links x86_64 Linux with clang + mold, and the
       # hosted runner ships clang but not mold.

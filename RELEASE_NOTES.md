@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-23 09:24
+- fix(sdk): the macOS editor unpacks its plugin SDK again; the archive keeps any engine library the app does not ship beside the executable
+
 ## 2026-11-23 07:20
 - fix(editor): the first launch of a Windows x64 or Linux x64 download no longer crashes with "DlssProjectId was not added to the App" before the setup window opens
 
