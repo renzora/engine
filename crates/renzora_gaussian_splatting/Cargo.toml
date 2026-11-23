@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "3D Gaussian splatting. Wraps the vendored bevy_gaussian_splatting renderer (.ply / .gcloud clouds) and resolves the serializable renzora::GaussianSplat contract component into live cloud handles."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, which the build
 # generator wires into the committed plugin list and the linker pulls straight
 # into the binary.
 [lib]
@@ -12,15 +12,16 @@ crate-type = ["rlib"]
 
 [features]
 default = ["editor"]
-editor = ["renzora/editor"]
+editor = ["dep:renzora_editor_api"]
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api", optional = true }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
 # The vendored gaussian-splatting renderer this plugin exposes to the runtime.
 # Default features only (stable-rust set, see the vendored Cargo.toml) — no
 # viewer/tooling extras.
 bevy_gaussian_splatting = { path = "../../vendor/bevy_gaussian_splatting" }
-renzora = { path = "../renzora" }
 
 # .sog bundle decoding (src/sog.rs): stored/deflate zip + lossless-WebP
 # property images + meta.json.
@@ -31,3 +32,9 @@ serde_json = "1"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "GaussianSplatPlugin"

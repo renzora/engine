@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportSettings;
+use renzora_viewport_api::ViewportSettings;
 use renzora_editor_framework::EditorSelection;
 
 use crate::material::{GizmoMaterial, GizmoMaterials};
@@ -25,8 +25,8 @@ use crate::GIZMO_SCALE_REF_DIST;
 /// them consistent with whichever viewport the cursor is in while each viewport
 /// still displays its own space.
 pub(crate) fn mirror_focused_gizmo_space(
-    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
-    vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    viewports: Option<Res<renzora_viewport_api::Viewports>>,
+    vp_space: Option<Res<renzora_viewport_api::ViewportGizmoSpace>>,
     mut space: ResMut<GizmoSpace>,
 ) {
     let focused = viewports.as_ref().map(|v| v.focused).unwrap_or(0);
@@ -49,10 +49,10 @@ pub(crate) fn update_gizmo_transforms(
     mode: Res<GizmoMode>,
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
-    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
+    viewports: Option<Res<renzora_viewport_api::Viewports>>,
     viewport_settings: Option<Res<ViewportSettings>>,
-    vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
-    target: Option<Res<renzora::GizmoTarget>>,
+    vp_space: Option<Res<renzora_viewport_api::ViewportGizmoSpace>>,
+    target: Option<Res<renzora_editor_api::GizmoTarget>>,
     mut gizmo_state: ResMut<GizmoState>,
     mut per_slot: ResMut<PerSlotGizmo>,
     transforms: Query<&GlobalTransform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
@@ -61,16 +61,16 @@ pub(crate) fn update_gizmo_transforms(
     mut gizmo_roots: Query<(&GizmoSlot, &mut Transform, &mut Visibility), With<GizmoRoot>>,
     mut gizmo_parts: Query<(&GizmoPart, &mut Visibility), (With<GizmoMesh>, Without<GizmoRoot>)>,
     cameras: Query<
-        (&renzora::core::ViewportCamera, &GlobalTransform),
+        (&renzora_scene_api::ViewportCamera, &GlobalTransform),
         Without<GizmoRoot>,
     >,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
 
     let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
     let selected = selection.get();
 
-    // A plugin can borrow the handles (see `renzora::GizmoTarget`). While it
+    // A plugin can borrow the handles (see `renzora_editor_api::GizmoTarget`). While it
     // has them the gizmo draws where *it* says, in the mode *it* asks for, and
     // whether an entity happens to be selected stops mattering.
     //

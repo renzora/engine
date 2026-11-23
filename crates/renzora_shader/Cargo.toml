@@ -7,16 +7,22 @@ edition = "2021"
 editor = []
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 naga = { version = "30", features = ["wgsl-in", "wgsl-out", "glsl-in"] }
 uuid = { version = "1", features = ["v4"] }
-# `diagnostics` for the material perf tables, which live in the contract crate so the
-# debug panels reading them can be a native plugin. This crate populates
-# them; enabling the feature here is what keeps them out of a build that
-# does not carry this crate at all.
-renzora = { path = "../renzora", default-features = false, features = ["diagnostics", "render_3d"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["render_3d"] }
+renzora_material_api = { path = "../api/renzora_material_api" }
+renzora_shader_api = { path = "../api/renzora_shader_api" }
+# `diagnostics` for the material perf tables, which live in the contract so the
+# debug panels reading them can be a native plugin. This crate populates them;
+# enabling the feature here is what keeps them out of a build that does not
+# carry this crate at all. Also `content_problems`, which the resolver writes.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api", features = ["diagnostics"] }
 # The compiler Bevy 0.20 builds every shader with. Same version and features as
 # `bevy_shader` links, so the validator accepts exactly what the pipeline will.
 wesl = { version = "0.6", features = ["naga-ext"] }
@@ -33,3 +39,11 @@ renzora_shader = { path = ".", features = ["editor"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ShaderPlugin"
+[[package.metadata.renzora.plugin]]
+type = "material::MaterialPlugin"

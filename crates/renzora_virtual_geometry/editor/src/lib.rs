@@ -24,7 +24,8 @@ mod converter;
 mod migrate;
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry, StandardGeometry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
+use renzora_scene_api::StandardGeometry;
 
 fn standard_geometry_entry() -> InspectorEntry {
     InspectorEntry {
@@ -56,5 +57,3 @@ impl Plugin for VirtualGeometryEditorPlugin {
         migrate::build(app);
     }
 }
-
-renzora::add!(VirtualGeometryEditorPlugin, Editor);

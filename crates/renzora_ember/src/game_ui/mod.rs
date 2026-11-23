@@ -163,7 +163,7 @@ impl Plugin for GameUiPlugin {
         // OUT of the shipped game too, so exported games never scaled their UI.
         let is_editor = app
             .world()
-            .get_resource::<renzora::EditorSession>()
+            .get_resource::<renzora_project_api::EditorSession>()
             .map(|s| s.0)
             .unwrap_or(false);
         if !is_editor {
@@ -230,7 +230,7 @@ impl Plugin for GameUiPlugin {
 // canvas component itself changes (`Changed<UiCanvas>`), not every frame.
 
 fn apply_canvas_visibility_mode(
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut canvases: Query<(&UiCanvas, &mut Visibility), Changed<UiCanvas>>,
 ) {
     let in_play = play_mode.is_none_or(|p| p.is_in_play_mode());
@@ -264,7 +264,7 @@ fn apply_canvas_visibility_to(in_play: bool, canvas: &UiCanvas, vis: &mut Visibi
 /// the same logic.
 fn on_canvas_inserted(
     trigger: On<Insert<UiCanvas>>,
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut canvases: Query<(&UiCanvas, &mut Visibility)>,
 ) {
     let entity = trigger.entity;
@@ -610,7 +610,7 @@ fn heal_canvas_root_transform(
 /// 512×512 wall panel could shrink the entire HUD.
 fn update_ui_scale(
     canvases: Query<(Entity, &UiCanvas)>,
-    render_target: Option<Res<renzora::ViewportRenderTarget>>,
+    render_target: Option<Res<renzora_project_api::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mut ui_scale: ResMut<bevy::ui::UiScale>,
@@ -774,7 +774,6 @@ fn sync_ui_zindex(
         }
     }
 }
-renzora::add!(GameUiPlugin);
 
 #[cfg(test)]
 mod invariant_tests {

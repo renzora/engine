@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{DocTabKind, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -286,7 +286,7 @@ impl Plugin for TemplateGalleryPlugin {
         // The Assets panel's create menu, through the registry every plugin
         // uses. The entry opens the gallery; the starter text is a blank 3D
         // effect for any route that cannot show one.
-        use renzora::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
+        use renzora_shell_api::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
         app.register_create_menu_item(
             CreateMenuItem::new("vfx_effect", "new_effect", "vfx", |_| write_vfx(&TEMPLATES[0].build("new_effect")).unwrap_or_default())
                 .label("assets.new.vfx_effect", "Particle Effect")
@@ -442,11 +442,11 @@ fn card_click(q: Query<(&UiInteraction, &TemplateCard), Changed<UiInteraction>>,
 fn create_and_open(world: &mut World, index: usize) {
     let Some(template) = TEMPLATES.get(index) else { return };
     let Some(root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone()) else {
-        renzora::console_log::console_warn("Particles", "Open a project before creating an effect");
+        renzora_log_api::console_warn("Particles", "Open a project before creating an effect");
         return;
     };
     let rel = world
-        .get_resource::<renzora::core::AssetBrowserCwd>()
+        .get_resource::<renzora_project_api::AssetBrowserCwd>()
         .and_then(|c| c.0.clone())
         .unwrap_or_else(|| "effects".to_string());
     let dir = if rel.is_empty() { root } else { root.join(rel) };
@@ -455,7 +455,7 @@ fn create_and_open(world: &mut World, index: usize) {
             info!("[vfx_editor] created {}", path.display());
             renzora_editor_framework::open_asset_tab(world, &path, DocTabKind::Particle);
         }
-        Err(e) => renzora::console_log::console_warn("Particles", format!("Could not create the effect: {e}")),
+        Err(e) => renzora_log_api::console_warn("Particles", format!("Could not create the effect: {e}")),
     }
 }
 
@@ -560,7 +560,7 @@ mod tests {
         assert!(gpu_blockers(e, &compiled, false, false, &GpuCaps::all()).is_empty(), "every feature it uses is on the GPU");
         assert_eq!(choose(e, &compiled, false, &GpuCaps::all()).active, ActiveBackend::Gpu);
         let program = renzora_particles::gpu::codegen::generate(&compiled, e.space).unwrap();
-        renzora::wgsl::check(&program.source).expect("its kernels validate");
+        renzora_shader_api::wgsl::check(&program.source).expect("its kernels validate");
         // Without the GPU it says so, rather than silently crawling.
         assert!(choose(e, &compiled, false, &GpuCaps::none()).fell_back);
     }

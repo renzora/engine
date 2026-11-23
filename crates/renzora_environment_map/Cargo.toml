@@ -8,12 +8,21 @@ description = "Image-based lighting (IBL) component — controls sky-derived env
 # renzora_environment_map_editor crate (crates/renzora_environment_map/editor).
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false }
+# Marks its stage of a project load on the load timeline.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
 # For `sun_horizon_factor` — sky-derived IBL fades with the sun so the
 # scene goes properly dark at night (no residual atmospheric ambient).
 renzora_lighting = { path = "../renzora_lighting" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "EnvironmentMapPlugin"

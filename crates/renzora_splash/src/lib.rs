@@ -50,7 +50,7 @@ use bevy::prelude::*;
 // SplashState now lives in the `renzora` SDK — coordination contract used
 // by both the splash UI and the editor framework. Re-exported here for
 // back-compat so existing `renzora_splash::SplashState` paths keep working.
-pub use renzora::SplashState;
+pub use renzora_project_api::SplashState;
 
 #[derive(Default)]
 pub struct SplashPlugin;
@@ -77,7 +77,7 @@ impl Plugin for SplashPlugin {
                 Update,
                 loading::auto_advance_to_editor.run_if(in_state(SplashState::Loading)),
             )
-            .init_resource::<renzora::RecentProjects>()
+            .init_resource::<renzora_project_api::RecentProjects>()
             .add_systems(
                 Update,
                 // These must work from inside the editor (File > Open Project,
@@ -87,9 +87,9 @@ impl Plugin for SplashPlugin {
                 // system that only finds nothing to do.
                 (
                     handle_request_open_project
-                        .run_if(resource_exists::<renzora::RequestOpenProject>),
+                        .run_if(resource_exists::<renzora_project_api::RequestOpenProject>),
                     handle_request_open_project_path
-                        .run_if(resource_exists::<renzora::RequestOpenProjectPath>),
+                        .run_if(resource_exists::<renzora_project_api::RequestOpenProjectPath>),
                     // `resource_changed` asks the same "changed since I last looked"
                     // question the body's `is_changed` did, so no edit is missed.
                     mirror_recent_projects.run_if(resource_changed::<AppConfig>),
@@ -116,20 +116,20 @@ impl Plugin for SplashPlugin {
     }
 }
 
-/// Consume `renzora::RequestOpenProject` markers (inserted by the editor's
+/// Consume `renzora_project_api::RequestOpenProject` markers (inserted by the editor's
 /// File menu). Owns the file dialog + validation + AppConfig update +
 /// state transition so `renzora_editor_framework` doesn't need to depend on splash.
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_request_open_project(
     mut commands: Commands,
-    request: Option<Res<renzora::RequestOpenProject>>,
+    request: Option<Res<renzora_project_api::RequestOpenProject>>,
     mut app_config: ResMut<AppConfig>,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
     if request.is_none() {
         return;
     }
-    commands.remove_resource::<renzora::RequestOpenProject>();
+    commands.remove_resource::<renzora_project_api::RequestOpenProject>();
 
     let Some(file) = rfd::FileDialog::new()
         .set_title("Open Project")
@@ -163,15 +163,15 @@ fn handle_request_open_project(
 #[cfg(target_arch = "wasm32")]
 fn handle_request_open_project(
     mut commands: Commands,
-    request: Option<Res<renzora::RequestOpenProject>>,
+    request: Option<Res<renzora_project_api::RequestOpenProject>>,
 ) {
     if request.is_some() {
-        commands.remove_resource::<renzora::RequestOpenProject>();
+        commands.remove_resource::<renzora_project_api::RequestOpenProject>();
         warn!("Open Project is not available in the browser");
     }
 }
 
-/// Consume `renzora::RequestOpenProjectPath` — File > Recent Projects, which
+/// Consume `renzora_project_api::RequestOpenProjectPath` — File > Recent Projects, which
 /// already knows the root and so skips the dialog `handle_request_open_project`
 /// opens. Everything after the pick is the same, deliberately: the entry is
 /// re-recorded so opening a project moves it back to the top of the list.
@@ -182,13 +182,13 @@ fn handle_request_open_project(
 #[cfg(not(target_arch = "wasm32"))]
 fn handle_request_open_project_path(
     mut commands: Commands,
-    request: Option<Res<renzora::RequestOpenProjectPath>>,
+    request: Option<Res<renzora_project_api::RequestOpenProjectPath>>,
     mut app_config: ResMut<AppConfig>,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
     let Some(request) = request else { return };
     let root = request.0.clone();
-    commands.remove_resource::<renzora::RequestOpenProjectPath>();
+    commands.remove_resource::<renzora_project_api::RequestOpenProjectPath>();
 
     let project = match project::open_project(&root.join("project.toml")) {
         Ok(p) => p,
@@ -217,11 +217,11 @@ fn handle_request_open_project_path(
 #[cfg(target_arch = "wasm32")]
 fn handle_request_open_project_path(
     mut commands: Commands,
-    request: Option<Res<renzora::RequestOpenProjectPath>>,
+    request: Option<Res<renzora_project_api::RequestOpenProjectPath>>,
 ) {
     let Some(request) = request else { return };
     let root = request.0.clone();
-    commands.remove_resource::<renzora::RequestOpenProjectPath>();
+    commands.remove_resource::<renzora_project_api::RequestOpenProjectPath>();
     let name = root
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -235,7 +235,7 @@ fn handle_request_open_project_path(
 /// A copy rather than a move because `AppConfig` is what is written to disk and
 /// what the dashboard's cards are built from; this is the read-only view of it
 /// that crosses a crate boundary.
-fn mirror_recent_projects(cfg: Res<AppConfig>, mut recents: ResMut<renzora::RecentProjects>) {
+fn mirror_recent_projects(cfg: Res<AppConfig>, mut recents: ResMut<renzora_project_api::RecentProjects>) {
     if !cfg.is_changed() {
         return;
     }
@@ -321,5 +321,3 @@ fn size_for_editor() {}
 /// (e.g. project opened via File menu).
 #[derive(Resource)]
 pub struct PendingProjectReopen;
-
-renzora::add!(SplashPlugin, Editor);

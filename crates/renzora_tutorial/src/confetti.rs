@@ -8,7 +8,7 @@
 //! is mid-task on.
 
 use bevy::prelude::*;
-use renzora::core::{EditorLocked, HideInHierarchy};
+use renzora_scene_api::{EditorLocked, HideInHierarchy};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{accent, play_green, rgb, warn_amber};
 

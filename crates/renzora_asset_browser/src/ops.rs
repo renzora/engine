@@ -42,7 +42,7 @@ pub(crate) fn create_registered_asset(world: &mut World, id: &str) {
     // An item that opens its own flow (a template gallery) writes the file
     // itself, into the folder the browser publishes as `AssetBrowserCwd`.
     let action = world
-        .get_resource::<renzora::CreateMenuRegistry>()
+        .get_resource::<renzora_shell_api::CreateMenuRegistry>()
         .and_then(|r| r.get(id))
         .and_then(|i| i.action);
     if let Some(action) = action {
@@ -51,7 +51,7 @@ pub(crate) fn create_registered_asset(world: &mut World, id: &str) {
     }
     let boilerplate = boilerplate(world);
     let Some((filename, content)) = world
-        .get_resource::<renzora::CreateMenuRegistry>()
+        .get_resource::<renzora_shell_api::CreateMenuRegistry>()
         .and_then(|r| r.get(id))
         .map(|i| (i.filename(), (i.starter)(boilerplate)))
     else {
@@ -75,7 +75,7 @@ fn create_named(world: &mut World, filename: String, is_folder: bool, content: S
         .and_then(|s| s.current.clone())
         .or_else(|| {
             world
-                .get_resource::<renzora::core::CurrentProject>()
+                .get_resource::<renzora_project_api::CurrentProject>()
                 .map(|p| p.path.clone())
         });
     let Some(folder) = folder else {
@@ -111,7 +111,7 @@ fn create_named(world: &mut World, filename: String, is_folder: bool, content: S
 
 pub(crate) fn toggle_favorite(world: &mut World, path: &Path) {
     let root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone());
     if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
         if let Some(i) = s.favorites.iter().position(|f| f == path) {
@@ -182,22 +182,22 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
 /// `xdg-open`'s refusal to select anything at all) that a second copy would
 /// have drifted from this one the first time any of them was corrected.
 pub(crate) fn reveal_in_explorer(path: &Path) {
-    renzora::core::reveal_in_explorer(path);
+    renzora_platform_api::reveal_in_explorer(path);
 }
 
 pub(crate) fn project_root(w: &Rx) -> Option<PathBuf> {
-    w.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
+    w.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone())
 }
 
 /// Republish the current folder as a project-relative, forward-slashed path
-/// (`""` = project root) into [`AssetBrowserCwd`](renzora::core::AssetBrowserCwd)
+/// (`""` = project root) into [`AssetBrowserCwd`](renzora_project_api::AssetBrowserCwd)
 /// so the importer's drop handler targets it. Mirrors the relative-path
 /// computation in `import_click`.
 pub(crate) fn publish_cwd(
-    mut cwd: ResMut<renzora::core::AssetBrowserCwd>,
+    mut cwd: ResMut<renzora_project_api::AssetBrowserCwd>,
     state: Res<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    hovering: Option<Res<renzora::core::FileDragHovering>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    hovering: Option<Res<renzora_project_api::FileDragHovering>>,
     tiles: Query<(&UiInteraction, &AssetTile)>,
     tree: Query<(&UiInteraction, &TreeNav)>,
     crumbs: Query<(&UiInteraction, &CrumbNav)>,
@@ -296,7 +296,7 @@ pub(crate) fn icon_for(path: &Path, is_dir: bool) -> &'static str {
 pub(crate) fn shortcut_click(
     q: Query<(&UiInteraction, &ShortcutClick), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     for (interaction, shortcut) in &q {
@@ -360,8 +360,8 @@ pub(crate) fn crumb_click(
 pub(crate) fn paste_from_clipboard(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    input_focus: Option<Res<renzora::core::InputFocusState>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    input_focus: Option<Res<renzora_project_api::InputFocusState>>,
 ) {
     let ctrl = keyboard.any_pressed([
         KeyCode::ControlLeft,

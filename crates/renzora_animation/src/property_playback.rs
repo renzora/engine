@@ -5,7 +5,7 @@
 //! `AnimationPlayer` (which only drives skeletal bone curves). It works for any
 //! entity — including ones with no skeleton/`AnimationPlayer`, like a sun light —
 //! by writing `Transform` fields directly and other component fields through the
-//! shared reflection writer (`renzora::reflection::set_reflected_field`), so the
+//! shared reflection writer (`renzora_scripting_api::reflection::set_reflected_field`), so the
 //! exact same code path animates fields in the editor preview and the exported
 //! runtime.
 
@@ -14,7 +14,7 @@ use bevy::asset::{AssetLoader, LoadContext};
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 
-use renzora::{sample_property_track, AnimMarker, PropertyTrack, TrackValue};
+use renzora_animation_api::{sample_property_track, AnimMarker, PropertyTrack, TrackValue};
 
 use crate::component::{AnimatorComponent, AnimatorState};
 use crate::loader::AnimLoadError;
@@ -36,7 +36,7 @@ pub struct PropertyClip {
     /// The clip's raw bone keys (the rest of the `.anim`, property tracks and
     /// markers taken out). Bevy's `AnimationClip` keeps only type-erased
     /// curves, and retargeting and difference clips are built from keys.
-    pub skeletal: Option<std::sync::Arc<renzora::AnimClip>>,
+    pub skeletal: Option<std::sync::Arc<renzora_animation_api::AnimClip>>,
 }
 
 #[derive(Default, TypePath)]
@@ -55,7 +55,7 @@ impl AssetLoader for PropertyClipLoader {
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        let mut anim: renzora::AnimClip = ron::de::from_bytes(&bytes)?;
+        let mut anim: renzora_animation_api::AnimClip = ron::de::from_bytes(&bytes)?;
         let tracks = std::mem::take(&mut anim.property_tracks);
         let markers = std::mem::take(&mut anim.markers);
         Ok(PropertyClip {
@@ -142,15 +142,15 @@ pub fn read_track_value(
             // Record rotation as Euler degrees (preferring the typed cache) so
             // keyframes interpolate per-component — a 0→360 pair is a real spin.
             "rotation" => {
-                let cache = world.get::<renzora::EditorEulerCache>(target);
-                let deg = renzora::rotation_euler_deg(t.rotation, cache, "transform");
+                let cache = world.get::<renzora_animation_api::EditorEulerCache>(target);
+                let deg = renzora_animation_api::rotation_euler_deg(t.rotation, cache, "transform");
                 Some(TrackValue::Vec3(deg.to_array()))
             }
             _ => None,
         };
     }
     let pv =
-        renzora::reflection::get_reflected_field(world, target, &track.component, &track.field)?;
+        renzora_scripting_api::reflection::get_reflected_field(world, target, &track.component, &track.field)?;
     TrackValue::from_property_value(&pv)
 }
 
@@ -183,7 +183,7 @@ fn apply_track_value(world: &mut World, target: Entity, track: &PropertyTrack, v
         // component-lerped, so 0→360 is a full turn. The cache write needs an
         // exclusive borrow, so resolve the quaternion before touching Transform.
         if let ("rotation", TrackValue::Vec3(d)) = (track.field.as_str(), value) {
-            let q = renzora::cache_euler_deg(world, target, "transform", Vec3::from_array(d));
+            let q = renzora_animation_api::cache_euler_deg(world, target, "transform", Vec3::from_array(d));
             if let Some(mut t) = world.get_mut::<Transform>(target) {
                 t.rotation = q;
             } else if verbose {
@@ -209,7 +209,7 @@ fn apply_track_value(world: &mut World, target: Entity, track: &PropertyTrack, v
         return;
     }
     if let Some(pv) = value.to_property_value() {
-        let ok = renzora::reflection::set_reflected_field(world, target, &track.component, &track.field, &pv);
+        let ok = renzora_scripting_api::reflection::set_reflected_field(world, target, &track.component, &track.field, &pv);
         if verbose && !ok {
             warn!("[prop-anim] reflection write failed for {}.{}", track.component, track.field);
         }
@@ -232,7 +232,7 @@ pub struct PropAnimDebug {
 /// `PlayModeState` resource) or whenever scripts are running in the editor —
 /// both full Play and in-editor Simulate. While editing, the animation-editor
 /// scrub preview drives sampling instead.
-pub fn property_animation_active(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
+pub fn property_animation_active(play_mode: Option<Res<renzora_project_api::PlayModeState>>) -> bool {
     play_mode.is_none_or(|pm| pm.is_scripts_running())
 }
 
@@ -341,9 +341,9 @@ pub fn apply_runtime_property_animation(world: &mut World) {
 
     // Deliver animation events to scripts (broadcast via the inbox).
     if !events.is_empty() {
-        if let Some(mut inbox) = world.get_resource_mut::<renzora::ScriptAnimEventInbox>() {
+        if let Some(mut inbox) = world.get_resource_mut::<renzora_scripting_api::ScriptAnimEventInbox>() {
             for (entity, name) in events {
-                inbox.pending.push(renzora::AnimEvent {
+                inbox.pending.push(renzora_scripting_api::AnimEvent {
                     name,
                     entity_bits: entity.to_bits(),
                 });

@@ -1,6 +1,6 @@
 //! The runtime ends of two features that need a Bevy app: a script setting an
 //! effect's Parameter nodes by name, and Collide Scene asking the scene's
-//! colliders through `renzora::scene_query`, here answered by a stand-in
+//! colliders through `renzora_physics_api::scene_query`, here answered by a stand-in
 //! floor so no physics engine is linked.
 //!
 //! Time is stepped manually at 60 Hz, as in `runtime.rs`.
@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use renzora::scene_query::{SceneHit, SceneQueries, SceneQuery, SceneQueryBatch};
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_physics_api::scene_query::{SceneHit, SceneQueries, SceneQuery, SceneQueryBatch};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 use renzora_particles::asset::{Connection, Emitter, PinValue, VfxGraph, VfxNode};
 use renzora_particles::nodes::OUTPUT_NODE;
 use renzora_particles::{ParticleParams, ParticleRuntime, ParticleStats, ParticleSystem, ParticlesPlugin, VfxAsset};
@@ -132,7 +132,7 @@ fn the_on_forms_find_the_effect_by_name_and_values_survive_a_rebuild() {
     frames(&mut app, 10);
     assert!((newest_up(&app) - 5.0).abs() < 1e-3, "still the script's velocity after the rebuild");
 
-    let extensions = app.world().resource::<renzora::script_extension::ScriptExtensions>();
+    let extensions = app.world().resource::<renzora_scripting_api::script_extension::ScriptExtensions>();
     for name in ["vfx_set_param", "vfx_set_param_vec3", "vfx_set_param_color", "vfx_clear_param", "vfx_set_param_on"] {
         assert!(extensions.bindings().iter().any(|b| b.name == name), "{name} is not declared");
     }

@@ -51,7 +51,7 @@ use notify_debouncer_full::{
     DebounceEventResult, Debouncer, RecommendedCache,
 };
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_shader::material::precompiled::project_relative;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
 
@@ -228,7 +228,7 @@ fn invalidate_for_wgsl(
 /// watcher is the point: a compile that recompiled slightly differently from a
 /// save would be a second definition of what compiling means.
 fn on_compile_requested(
-    trigger: On<renzora::core::ShaderCompileRequested>,
+    trigger: On<renzora_scene_api::ShaderCompileRequested>,
     project: Option<Res<CurrentProject>>,
     mut cache: ResMut<MaterialCache>,
     mut commands: Commands,

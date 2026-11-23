@@ -91,8 +91,8 @@ fn apply_cursor_icon(
         &bevy::ui::ComputedNode,
         &bevy::ui::ComputedStackIndex,
     )>,
-    viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
-    drop_request: Res<renzora::core::viewport_types::DropCursorRequest>,
+    viewport_request: Option<Res<renzora_viewport_api::ViewportCursorRequest>>,
+    drop_request: Res<renzora_viewport_api::DropCursorRequest>,
     windows: Query<(Entity, &Window)>,
     cursor_opts: Query<&bevy::window::CursorOptions>,
     primary: Query<Entity, With<PrimaryWindow>>,
@@ -192,7 +192,7 @@ fn apply_cursor_icon(
 }
 
 pub fn plugin(app: &mut App) {
-    app.init_resource::<renzora::core::viewport_types::DropCursorRequest>()
+    app.init_resource::<renzora_viewport_api::DropCursorRequest>()
         .add_systems(Update, apply_cursor_icon);
 }
 

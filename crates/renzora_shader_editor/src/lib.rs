@@ -66,5 +66,3 @@ impl Plugin for ShaderEditorPlugin {
         app.add_plugins(hot_reload::WgslHotReloadPlugin);
     }
 }
-
-renzora::add!(ShaderEditorPlugin, Editor);

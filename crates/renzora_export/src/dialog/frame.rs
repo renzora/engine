@@ -70,7 +70,7 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
     commands.entity(panel).add_child(header);
 
     if !has_project {
-        let w = txt(commands, fonts, &renzora::lang::t("export.no_project"), 12.0, RED);
+        let w = txt(commands, fonts, &renzora_lang_api::t("export.no_project"), 12.0, RED);
         commands.entity(w).insert(Node { margin: UiRect::all(Val::Px(20.0)), ..default() });
         commands.entity(panel).add_child(w);
         return;
@@ -108,7 +108,7 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
         .spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(6.0), min_width: Val::Px(0.0), ..default() })
         .id();
     let ei = icon_text(commands, &fonts.phosphor, "package", text_muted(), 30.0);
-    let et = txt(commands, fonts, &renzora::lang::t("export.presets.none_selected"), 12.0, text_muted());
+    let et = txt(commands, fonts, &renzora_lang_api::t("export.presets.none_selected"), 12.0, text_muted());
     commands.entity(right_empty).add_children(&[ei, et]);
     bind_display(commands, right_empty, |w| {
         w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_preset.is_none())
@@ -162,16 +162,16 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let titles = commands
         .spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), ..default() })
         .id();
-    let title = txt(commands, fonts, &renzora::lang::t("export.title"), 14.5, text_primary());
+    let title = txt(commands, fonts, &renzora_lang_api::t("export.title"), 14.5, text_primary());
     let sub = txt(commands, fonts, "", 11.0, text_muted());
     // Which project, which engine: the two facts that decide what an export
     // will contain, and neither was anywhere on the old dialog.
     bind_text(commands, sub, |w| {
         let project = w
-            .get_resource::<renzora::core::CurrentProject>()
+            .get_resource::<renzora_project_api::CurrentProject>()
             .map(|p| p.config.name.clone())
             .unwrap_or_default();
-        format!("{project} · {}", renzora::version::ENGINE_VERSION)
+        format!("{project} · {}", renzora_platform_api::version::ENGINE_VERSION)
     });
     commands.entity(titles).add_children(&[title, sub]);
 
@@ -200,7 +200,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         if matches!(w.get::<UiInteraction>(close), Some(UiInteraction::Hovered)) { ca(255, 255, 255, 12) } else { Color::NONE }
     });
     let ct = commands
-        .spawn((Text::new(renzora::lang::t("common.cancel")), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), PASS_THROUGH))
+        .spawn((Text::new(renzora_lang_api::t("common.cancel")), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), PASS_THROUGH))
         .id();
     commands.entity(close).add_child(ct);
 
@@ -253,10 +253,10 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let ic = icon_text(commands, &fonts.phosphor, "rocket-launch", (255, 255, 255), 14.0);
     commands.entity(ic).insert(PASS_THROUGH);
     let t = commands
-        .spawn((Text::new(renzora::lang::t("common.export")), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), PASS_THROUGH))
+        .spawn((Text::new(renzora_lang_api::t("common.export")), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), PASS_THROUGH))
         .id();
     bind_text(commands, t, |w| {
-        let base = renzora::lang::t("common.export");
+        let base = renzora_lang_api::t("common.export");
         match w.get_resource::<ExportOverlayState>() {
             Some(s) if s.active_preset.is_some() => format!("{base} {}", platform_short(s.platform)),
             _ => base,

@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_ember::widgets::PointerOverOverlay;
 use renzora_ui::asset_drag::AssetDragPayload;
@@ -102,7 +102,7 @@ fn spawn_dropped_scene(world: &mut World, path: PathBuf) {
         world.insert_resource(cache);
         if cycle {
             if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
-                toasts.warning(renzora::lang::t("hierarchy.toast.cannot_add_self"));
+                toasts.warning(renzora_lang_api::t("hierarchy.toast.cannot_add_self"));
             }
             return;
         }

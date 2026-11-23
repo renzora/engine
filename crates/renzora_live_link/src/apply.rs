@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectDeserializer;
-use renzora::SceneEntityId;
+use renzora_scene_api::SceneEntityId;
 use serde::de::DeserializeSeed;
 
 use crate::tracker::Tracker;

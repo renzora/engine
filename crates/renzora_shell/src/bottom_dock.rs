@@ -15,7 +15,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{placeholder, rgb, tab_active, text_muted};
 use renzora_ember::UiInteraction;
 
-use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
 
 use crate::dock;
 use crate::panel_sets::{default_panel_set_name, BottomPanelSets};
@@ -74,7 +74,7 @@ pub(crate) struct BottomDock {
 pub(crate) fn toggle_bottom_panel(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Option<Res<KeyBindings>>,
-    input_focus: Option<Res<renzora::core::InputFocusState>>,
+    input_focus: Option<Res<renzora_project_api::InputFocusState>>,
     wraps: Query<&ComputedNode, With<DockAreaWrap>>,
     mut bottom: ResMut<BottomDock>,
 ) {
@@ -425,21 +425,21 @@ pub(crate) fn sync_bottom_dock_mode_btn(
     let (icon, tip) = match (effective, bottom.mode) {
         (dock::BottomDockMode::Overlay, dock::BottomDockMode::Layout) => (
             "stack",
-            renzora::lang::t_or(
+            renzora_lang_api::t_or(
                 "shell.bottom_dock.mode_forced_overlay",
                 "Overlay — too tall to dock; drag it down to return to Layout",
             ),
         ),
         (dock::BottomDockMode::Overlay, _) => (
             "stack",
-            renzora::lang::t_or(
+            renzora_lang_api::t_or(
                 "shell.bottom_dock.mode_overlay",
                 "Overlay — floats over the workspace",
             ),
         ),
         (dock::BottomDockMode::Layout, _) => (
             "rows",
-            renzora::lang::t_or(
+            renzora_lang_api::t_or(
                 "shell.bottom_dock.mode_layout",
                 "Layout — docked below the workspace",
             ),
@@ -870,8 +870,8 @@ pub(crate) fn sync_collapsed_bottom_bar(
     fixed: Res<renzora_ember::dock::FixedDock>,
     sets: Res<BottomPanelSets>,
     fonts: Option<Res<EmberFonts>>,
-    registry: Option<Res<renzora::core::ShellPanelRegistry>>,
-    keys: Option<Res<renzora::core::keybindings::KeyBindings>>,
+    registry: Option<Res<renzora_shell_api::ShellPanelRegistry>>,
+    keys: Option<Res<renzora_shell_api::keybindings::KeyBindings>>,
     bars: Query<Entity, With<CollapsedBottomBar>>,
     mut nodes: Query<&mut Node>,
     mut commands: Commands,
@@ -912,7 +912,7 @@ pub(crate) fn sync_collapsed_bottom_bar(
     // a key that no longer does anything. In the rebuild key for that reason.
     let shortcut = keys
         .and_then(|k| {
-            k.get(renzora::core::keybindings::EditorAction::ToggleBottomPanel)
+            k.get(renzora_shell_api::keybindings::EditorAction::ToggleBottomPanel)
                 .map(|b| b.display())
         })
         .unwrap_or_default();
@@ -928,7 +928,7 @@ pub(crate) fn sync_collapsed_bottom_bar(
     if !empty_label.is_empty() {
         // Italic would be the usual "nothing here" cue, but the UI font has no
         // italic face — the muted colour and the em dash carry it instead.
-        let empty = renzora::lang::t_or("shell.bottom_dock.empty_hint", "empty");
+        let empty = renzora_lang_api::t_or("shell.bottom_dock.empty_hint", "empty");
         let hint = commands
             .spawn((
                 Text::new(format!("{empty_label} — {empty}")),

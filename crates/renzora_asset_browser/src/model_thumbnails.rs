@@ -27,14 +27,15 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use bevy::world_serialization::WorldInstanceReady;
 
-use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{model_thumb_path, ModelThumbnailRegistry};
 
 /// Render layer the offscreen capture lives on so the user's viewport
 /// camera doesn't see the spawned model. Allocated in the contract crate
 /// alongside every other offscreen rig's, which is what keeps it distinct
 /// from the material thumbnail rig's and from every preview panel's.
-pub use renzora::core::viewport_types::MODEL_THUMBNAIL_LAYER;
+pub use renzora_viewport_api::MODEL_THUMBNAIL_LAYER;
 
 /// Output resolution for the captured PNG. Same as material thumbnails
 /// — asset browser displays at ~96px so 256 leaves headroom for HiDPI.
@@ -189,7 +190,7 @@ pub struct ModelThumbnailPlugin;
 
 impl Plugin for ModelThumbnailPlugin {
     fn build(&self, app: &mut App) {
-        renzora::init_companion_jobs(app);
+        renzora_platform_api::init_companion_jobs(app);
         app.init_resource::<PendingCaptures>()
             .init_resource::<PendingDiskLoads>()
             .init_resource::<CaptureCells>()
@@ -220,7 +221,7 @@ impl Plugin for ModelThumbnailPlugin {
 #[derive(Resource, Default)]
 struct CompanionCaptures {
     /// Job id to the model and its cache file.
-    jobs: std::collections::HashMap<renzora::CompanionJobId, (PathBuf, PathBuf)>,
+    jobs: std::collections::HashMap<renzora_platform_api::CompanionJobId, (PathBuf, PathBuf)>,
     /// Models the companion failed on: captured here from now on.
     local_only: std::collections::HashSet<PathBuf>,
 }
@@ -228,7 +229,7 @@ struct CompanionCaptures {
 /// Turn finished companion captures into cache loads, and failed ones back
 /// into requests the editor captures itself.
 fn collect_companion_captures(
-    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut done: MessageReader<renzora_platform_api::CompanionJobDone>,
     mut captures: ResMut<CompanionCaptures>,
     mut registry: ResMut<ModelThumbnailRegistry>,
     mut disk_loads: ResMut<PendingDiskLoads>,
@@ -269,8 +270,9 @@ fn intake_model_requests(
     mut cells: ResMut<CaptureCells>,
     asset_server: Res<AssetServer>,
     project: Option<Res<CurrentProject>>,
-    jobs: Option<ResMut<renzora::CompanionJobs>>,
+    jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
     mut companion: ResMut<CompanionCaptures>,
+    rendering: Option<Res<renzora_project_api::ThumbnailRendering>>,
 ) {
     let Some(project) = project else {
         // No project: drop the queue. Each request can be retried
@@ -298,10 +300,17 @@ fn intake_model_requests(
             }
         }
 
+        // Render thumbnails is off: a missing one stays the file icon, and
+        // nothing is rendered here or in the companion.
+        if !rendering.as_ref().is_none_or(|r| r.0) {
+            registry.cancel(&model_path);
+            continue;
+        }
+
         // Cache miss / stale: the companion renders it when one is
         // connected (see `CompanionCaptures`).
         if !companion.local_only.contains(&model_path) {
-            let args = renzora::job_args::ModelThumbnail { project: project.path.clone(), model: model_path.clone() };
+            let args = renzora_platform_api::job_args::ModelThumbnail { project: project.path.clone(), model: model_path.clone() };
             let target = model_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             if let Some(id) = jobs.as_mut().and_then(|j| j.submit("model_thumbnail", target, &args)) {
                 companion.jobs.insert(id, (model_path, thumb_path));
@@ -319,15 +328,17 @@ fn intake_model_requests(
             registry.cancel(&model_path);
             continue;
         }
-        let gltf_handle: Handle<Gltf> = asset_server.load(asset_path);
-
-        // Allocate a cell up-front. If all are busy, push back to the
-        // front of the queue and try again next frame; intake budget
-        // limits how many we'd be re-pushing in the worst case.
+        // A cell first, and only then the load. If all are busy, push back
+        // to the front of the queue and try again next frame. Loading first
+        // started the next model's whole load every frame the cells were
+        // busy, then dropped it, which on a project of large models (a city
+        // tile with hundreds of textures) kept the loader decoding models
+        // nobody would draw.
         let Some(cell_idx) = cells.alloc() else {
             registry.incoming_requests.push_front(model_path);
             return;
         };
+        let gltf_handle: Handle<Gltf> = asset_server.load(asset_path);
 
         // Spawn nothing yet — we wait for the GLB to load before
         // creating the SceneRoot child. `tick_capture_lifecycle` polls

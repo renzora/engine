@@ -21,7 +21,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{CollisionGizmoVisibility, ViewportSettings};
+use renzora_viewport_api::{CollisionGizmoVisibility, ViewportSettings};
 use renzora_editor_framework::EditorSelection;
 use renzora_gizmo::collider_gizmo::draw_capsule;
 use renzora_gizmo::OverlayGizmoGroup;
@@ -371,5 +371,3 @@ impl Plugin for ParkourEditorPlugin {
         app.add_systems(Update, draw_parkour_gizmos);
     }
 }
-
-renzora::add!(ParkourEditorPlugin, Editor);

@@ -55,7 +55,6 @@ edition = "2024"
 rust-version = "1.95.0"
 authors = ["mosure <mitchell@mosure.me>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/mosure/bevy_gaussian_splatting"
 repository = "https://github.com/mosure/bevy_gaussian_splatting"
 readme = "README.md"
 
@@ -166,3 +165,6 @@ features = [
 
 [lib]
 path = "src/lib.rs"
+
+[lints]
+workspace = true

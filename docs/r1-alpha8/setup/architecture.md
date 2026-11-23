@@ -1,6 +1,6 @@
 # Architecture
 
-How Renzora is put together: one Bevy 0.20 binary, a removable editor bundle, the `renzora.dll` contract, the `add!` plugin model, and the render/scene/asset pipelines.
+How Renzora is put together: one Bevy 0.20 binary, a removable editor bundle, the `renzora.dll` contract, the manifest-declared plugin model, and the render/scene/asset pipelines.
 
 Renzora is a large Cargo workspace where almost every feature is its own crate that registers a Bevy `Plugin`. The defining structural decision is the **"one binary, editor-as-removable-cdylib" model** (internally "Operation Merge", now fully shipped): the editor, the runtime, and the dedicated server are the *same* executable, and what it does is decided at startup, not at compile time.
 
@@ -43,7 +43,9 @@ A handful of crates form the spine that everything else plugs into:
 
 | Crate | Artifact | Role |
 |-------|----------|------|
-| `renzora` | `rlib` (shared through `renzora_dylib`) | The contract crate — the `add!` / `plugin!` macros, `PluginScope`, the GI contract types, the post-process framework, the audio/net/script boundary types, the `runtime_warnings` ring buffer, and (under the `editor` feature) the editor contract registries |
+| `renzora` | `rlib` (shared through `renzora_dylib`) | The bottom of the contract: the shared components and editor events, project config and settings, the translation table, the Console buffer, and (under the `editor` feature) the editor contract registries |
+| `renzora_*_api` and the other subject layers | `rlib` (shared through `renzora_dylib`) | One crate per subject, above `renzora`; see the table below |
+| `renzora_sdk` | `rlib` | The top of the contract: re-exports `renzora` and every subject layer under the one name `renzora`, for plugins and Rust scripts. Engine crates never depend on it |
 | `renzora_runtime` | `rlib` | Shared engine library every binary links: `init_app`, `add_default_rendering`, `add_headless_rendering`, `add_engine_plugins` |
 | `renzora_engine` | `rlib` | The editor-free game core: VFS, custom asset reader, scene IO, autoload, crash reporting |
 | `renzora_editor` | `cdylib` | The **editor bundle** — statically links ~50 editor-only crates plus the dual-mode `/editor` subcrates as rlibs |
@@ -51,15 +53,65 @@ A handful of crates form the spine that everything else plugs into:
 | `renzora_native_plugin` | `rlib` | Scans `plugins/`, rebuilds what is stale, loads the rest |
 | `renzora_plugin_build` | `rlib` | The compiler driver — reads the SDK manifest and invokes `rustc` directly |
 
-The `renzora_dylib` and `renzora_ember_dylib` crates hold no code of their own: they exist so the host binary, the dlopen'd editor image and every installed plugin share **one** compiled copy of `renzora` and `renzora_ember`, and therefore one translation table, one Console buffer and one theme palette. `bevy` is shared the same way through `bevy_dylib` (`dynamic_linking` + `prefer-dynamic`), so Bevy's `TypeId`s line up across the dlopen boundary too.
+The `renzora_dylib` crate holds no code of its own: it exists so the host binary, the dlopen'd editor image and every installed plugin share **one** compiled copy of the contract and, under its `ui` feature (which turns on `renzora_sdk/ui`), `renzora_ember`, and therefore one translation table, one Console buffer, one HTTP queue and one theme palette. `bevy` is shared the same way through `bevy_dylib` (`dynamic_linking` + `prefer-dynamic`), so Bevy's `TypeId`s line up across the dlopen boundary too.
+
+### The contract is a hierarchy
+
+The contract is layered the way Bevy is: `renzora` at the bottom, subject crates above it, and `renzora_sdk` on top re-exporting all of them, as the `bevy` crate does for `bevy_ecs`, `bevy_render` and the rest. It is split because Cargo rebuilds every crate downstream of one that changed: while everything lived in `renzora`, an edit to the HTTP layer rebuilt about 200 crates that never make a request.
+
+On disk the hierarchy is two folders:
+
+- **`crates/api/`** holds the contracts, one `renzora_*_api` crate per job. Engine crates build on these and never on each other. A new layer goes here, where the workspace's `crates/api/*` member glob picks it up.
+- **`crates/shared/`** holds what hands the contracts out: `renzora` (the name plugins and Rust scripts import) with `renzora_sdk`, and the shared image `renzora_dylib` that keeps every contract and the UI framework (`renzora::ui`) singular. None of these is a contract of its own.
+
+Everything else in `crates/` is engine, built on top of them. The folders are only places on disk: crate names, and so every `use` line, do not depend on them.
+
+Every layer ends in `_api`, and `renzora` itself holds nothing but re-exports (plus the legacy `add!`). `renzora_text_mesh` is not a layer but a library ember and the text3d plugin share, so it sits in `crates/shared/`. A layer's own proc-macro crate nests inside it, as `crates/api/renzora_editor_api/macros` (`renzora_editor_api_macros`) does.
+
+The layers, and what plugins still call each one:
+
+| Crate | Holds | Plugins see it as |
+|-------|-------|-------------------|
+| `renzora_lang_api` | The translation table: `t`, `t_or`, `t_args`, language packs, the active language and `LanguageChanged`. Depends on Bevy (for the message), serde and toml | `renzora::lang::t`, `renzora::lang::register_pack_str` |
+| `renzora_project_api` | The open project and the process around it: `project.toml` (`ProjectConfig`, `CurrentProject`), editor preferences and `settings_file`, `project_files` change events, `session` (process kind, `DedicatedServer`, the editor's one-shot requests), `play_mode`, `image_formats` and the `GraphicsQuality` tier. Depends on Bevy, serde, toml and the Console layer | `renzora::ProjectConfig`, `renzora::PlayModeState`, `renzora::core::project_files::...` |
+| `renzora_scene_api` | The scene vocabulary: shared components and entity tags (`SceneCamera`, `HideInHierarchy`, `SceneEntityId`, `MeshInstanceData`, ...), entity ids (`sanitize_id`, `unique_entity_name`), the shape registry, `RenderResolution` and the project byte loader. Its reflected types keep the `renzora::core::..` type paths saved scenes were written with, through `#[type_path]`, and a test fails if one drifts | `renzora::SceneCamera`, `renzora::core::HideInHierarchy` |
+| `renzora_viewport_api` | The viewport vocabulary: render-target state, viewport slots and `ViewportSettings`, the render-layer numbers previews and blits use, visualization modes, `in_three_view`/`in_two_view`. Read by runtime render crates as well as the editor, so it is not gated | `renzora::core::viewport_types::...` |
+| `renzora_editor_api` | The editor contract: `EditorSelection`, the inspector registry and `FieldDef`, the `*_field!` macros and the `Inspectable` derive (from its nested `macros` crate), the toolbar, spawn, shortcut and GPU-pass registries, gizmo targets, the timeline bridge, `AppEditorExt`. Editor-only by linking: a crate that ships in games makes it optional behind its own `editor` feature | `renzora::EditorSelection`, `renzora::FieldDef`, `renzora::float_field!` (under `renzora`'s `editor` feature) |
+| `renzora_shell_api` | The editor chrome's vocabulary: shell panels, status items and top-bar buttons, `keybindings`, `editor_events`, `inspector_pages`, and the editor's extension points: `undo`, `create_menu`, `asset_actions`, `entity_actions` (formerly `renzora_editor_ext`). Ungated, because ember builds its panels from these registries in shipped games too | `renzora::ShellPanelRegistry`, `renzora::core::keybindings::...`, `renzora::inspector_pages::...`, `renzora::undo`, `renzora::create_menu` |
+| `renzora_crash_api` | Panics the engine catches on purpose: `catch`, `panic_will_be_caught`, `CaughtPanic`, so the crash reporter can tell a recovered script or loader panic from a real crash. No dependencies at all | `renzora::core::recoverable::catch` |
+| `renzora_log_api` | The Console: `console_info`/`console_warn`/`console_error`, the `clog_*!` macros, the buffer the Console panel drains and the history it keeps. No dependencies at all | `renzora::console_log::console_warn`, `renzora::clog_warn!` |
+| `renzora_scripting_api` | The script vocabulary: `ScriptCtx`, hooks, `ScriptExtension`, `ScriptBackend`, commands, the property bridge, input actions, `script!`. Depends on Bevy only | `renzora::ScriptCtx`, `renzora::command`, `renzora::script!`, ... |
+| `renzora_net_api` | HTTP requests, their queue and the `Backend` contract | `renzora::net`, `renzora::net_backend` |
+| `renzora_audio_api` | The audio vocabulary and the audio backend contract | `renzora::audio`, `renzora::audio_backend` |
+| `renzora_diagnostics_api` | Profiling, probes, the load timeline, runtime warnings, content problems | `renzora::profiling`, `renzora::runtime_warnings`, ... |
+| `renzora_platform_api` | Version, the Rust toolchain, child processes, DLSS runtime, auth, plugin inventory and updates, the native `plugin!` macro and its ABI record (`native_plugin.rs`), the project index, streaming | `renzora::version`, `renzora::core::...` |
+| `renzora_animation_api` | Animation clips, bone styles, sprite animation | `renzora::AnimClip`, `renzora::bone_style`, ... |
+| `renzora_save_api` | Save games | `renzora::save` |
+| `renzora_physics_api` | The physics contract, vehicles, scene queries | `renzora::physics`, `renzora::vehicle`, `renzora::scene_query` |
+| `renzora_world_api` | World environment, wind, sun, splines | `renzora::WorldEnvironment`, `renzora::Sun`, ... |
+| `renzora_render_api` | The GPU capability flags, `SolariLit` and the ray tracer's stand-in contracts (`gi`), auto exposure, post effects, the post-process framework (`postprocess` feature), the grid (`grid` feature), the blockout grid texture | `renzora::SolariLit`, `renzora::PostEffects`, `renzora::postprocess`, ... |
+| `renzora_solari_api` | Solari's settings (`SolariGi` and its enums), DLSS modes and support, the ray tracing diagnostics. Depends on Bevy only; its own crate because it changes far more often than the rest of rendering and only six crates read it | `renzora::SolariGi`, `renzora::DlssMode`, `renzora::gi::...` |
+| `renzora_material_api` | `MaterialRef`, the material node catalogue, the node-graph vocabulary. Sits above `renzora_render_api` | `renzora::MaterialRef`, `renzora::GraphComment`, ... |
+| `renzora_shader_api` | `wgsl` (parse and validate) and `shader_source` (shader text in any dialect to a Bevy `Shader`). Depends on Bevy only, so a crate that just builds shaders, like the UI toolkit, does not sit under the material and render layers | `renzora::wgsl`, `renzora::shader_source` |
+| `renzora_text_mesh` | SDF text meshes (optional, `text_mesh` feature of the sdk) | `renzora::text_mesh` |
+
+- **Engine crates depend on the layers they use**: `renzora` for core types, plus each subject crate whose names they use. Never on `renzora_sdk`, which would bring the cascade back.
+- **Depend on the lowest crate that has the name.** A crate with many dependents (`renzora_ember` has about 60) passes every edit below it on to all of them. Ember takes `Request` from `renzora_net_api`, not from `renzora_net` (the frame pump that only the runtime adds), and `shader_source` from `renzora_shader_api`, not from the material layer.
+- **A shader embedded by a layer has that layer's crate name in its path** (`embedded://renzora_render_api/postprocess_copy.wesl`). Where a plugin may still load the old path, the layer registers the file under both.
+- **Plugins and Rust scripts see one `renzora`**, which is `renzora_sdk`: through `renzora_dylib` when built against the staged SDK, and by a repointed dependency when a lean export compiles them in. A subject's old path keeps working for them (`renzora::net::Request`), so moving a subject out breaks no plugin.
+- **`renzora_dylib` embeds every layer**, which is what keeps each layer's statics (the HTTP queue, the translation table) singular across the editor, the runtime and every plugin.
+- **`renzora` keeps its name** because it appears in the type path of every component a scene saves (`renzora::core::...`). Moving a type that scenes save into a subject crate changes its type path; the scene loader falls back to the type's short name when the full path is not registered, so a move needs no alias, while a rename still does (see [Scene serialization](#scene-serialization)).
+
+To move a subject out: create the crate above `renzora` (it must not be depended on by `renzora`), add one `pub use` line for it to `renzora_sdk`, and point the engine crates that use it at the new crate.
 
 > The editor contract (`EditorSelection`, `FieldDef`/`FieldType`/`FieldValue`, the inspector/spawn/toolbar/shortcut registries, `AppEditorExt`, the field macros, `Inspectable`, `post_process`) was **folded into `renzora.dll`** under its `editor` feature. `renzora`'s default features are empty, so a crate that derives `Inspectable` or registers an inspector must depend on `renzora = { ..., features = ["editor"] }`.
 
 ## The plugin / ABI model
 
-Every plugin declares itself with **`renzora::add!`**. There is no central list of plugins to edit.
+Every engine plugin declares itself with a **`[[package.metadata.renzora.plugin]]`** table in its crate's `Cargo.toml`. There is no central list of plugins to edit.
 
 ```rust
+// src/lib.rs
 use bevy::prelude::*;
 
 #[derive(Default)]
@@ -70,23 +122,32 @@ impl Plugin for GravityPlugin {
         app.add_systems(Update, apply_gravity);
     }
 }
+```
 
-renzora::add!(GravityPlugin);                          // Runtime (default)
-renzora::add!(GravityPlugin, Runtime);                 // explicit Runtime
-renzora::add!(MyToolPanelPlugin, Editor);              // editor-only
-renzora::add!(EarlySetupPlugin, Runtime, priority = -100); // installed earlier
+```toml
+# Cargo.toml, one table per plugin
+[[package.metadata.renzora.plugin]]
+type = "GravityPlugin"                 # Runtime (default)
+
+[[package.metadata.renzora.plugin]]
+type = "panel::MyToolPanelPlugin"      # a path from the crate root
+scope = "Editor"                       # editor-only
+
+[[package.metadata.renzora.plugin]]
+type = "EarlySetupPlugin"
+priority = -100                        # installed earlier
 ```
 
 > Import the SDK with `use renzora::*;` (or `use renzora::Inspectable;`). There is **no** `renzora::prelude` module.
 
-### What `add!` expands to
+### What a plugin table becomes
 
-**Nothing at all, at the call site.** The macro (`crates/renzora/src/plugin_meta.rs`) exists so the declaration has somewhere to live and a shape a parser can rely on; the actual wiring is written by a build-time generator that reads every `add!` line *as text* and emits two committed files:
+**Nothing, in the crate itself.** The table is configuration read only by the generator (`cargo renzora sync`, `manifest_plugins` in `xtask/src/sync.rs`), never code the crate compiles, so a crate needs no contract dependency just to be a plugin. The parser is strict: an unknown key, an unknown scope or a table without `type` is an error. Every module on the `type` path must be `pub`; a `#[cfg(feature = "x")] pub mod y;` gate on it is detected and reproduced. The generator emits two committed files:
 
 - `crates/renzora_runtime/src/plugins.rs` — every `Runtime`-scope plugin
 - `crates/renzora_editor/src/plugins.rs` — every `Editor`-scope plugin
 
-Each is an ordinary list of `app.add_plugins(...)` calls in priority order. There is no registry to iterate, no constructor to keep alive against dead-stripping, and no FFI — a named type in a generated list is just a linker symbol.
+Each is an ordinary list of `app.add_plugins(...)` calls in priority order. There is no registry to iterate, no constructor to keep alive against dead-stripping, and no FFI — a named type in a generated list is just a linker symbol. The type must implement `Plugin + Default`, so a wrong type name or a missing `Default` impl is a compile error in the generated `plugins.rs`, not in the crate's own source.
 
 Because both files are committed, a plain `cargo build` needs no generator run. CI regenerates them and fails on a diff, which is what stops a stale list from shipping.
 
@@ -94,10 +155,10 @@ This replaced an `inventory` registry, and the registry's removal took three dea
 
 ### Scopes
 
-`PluginScope` is exactly two values and matching is **exact equality** — there is **no "both" scope**:
+A plugin table's `scope` is exactly one of two values, `Runtime` (the default) or `Editor`, and there is **no "both" scope**. Native plugins have the same two, as `renzora_platform_api::NativePluginScope`:
 
 ```rust
-pub enum PluginScope { Editor = 0, Runtime = 1 }
+pub enum NativePluginScope { Editor = 0, Runtime = 1 }
 ```
 
 A feature that needs editor tooling *and* runtime behaviour ships **two** plugins (e.g. `GameUiPlugin` + `GameUiEditorPlugin`).
@@ -131,7 +192,7 @@ The export UI reads the same directory through `renzora_native_plugin::installed
 
 Renzora builds on Bevy's PBR/HDR pipeline plus a large family of plugin crates. Camera effects fall into three structural families:
 
-1. **Shader-file effects and render passes**: one `RenderComposition` registry (`crates/renzora/src/postprocess.rs`) of passes, dispatched in one of four phases positioned around Bevy's own tonemapping and anti-aliasing. The Post Process component's effects run as one of those passes.
+1. **Shader-file effects and render passes**: one `RenderComposition` registry (`crates/shared/renzora/src/postprocess.rs`) of passes, dispatched in one of four phases positioned around Bevy's own tonemapping and anti-aliasing. The Post Process component's effects run as one of those passes.
 2. **Bevy built-in wrappers** that author user-facing settings and route a stock Bevy component onto the camera (bloom → `Bloom`, dof → `DepthOfField`, ssao → `ScreenSpaceAmbientOcclusion`, ssr → `ScreenSpaceReflections`, motion blur, auto-exposure, fog, atmosphere → `Atmosphere`, skybox → `Skybox`, etc.).
 3. **Custom multi-pass render-graph crates** for transparency (`renzora_oit`) and for material/mesh sky & water (clouds, night stars, water, lighting).
 

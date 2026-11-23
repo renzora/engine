@@ -591,4 +591,4 @@ A `.wgsl` written in the old `#import` dialect still loads, because the engine t
 
 ## Where widgets live
 
-Widgets are contributed by plugins. Editor-only widgets and panels ride in editor-scope plugins (`renzora::add!(MyPlugin, Editor)`), linked into the removable `renzora_editor` bundle; game HUD widgets ride in runtime-scope plugins and ship inside the game. Either way you import builders from `renzora_ember::widgets` and theme helpers from `renzora_ember::theme` / `renzora_ember::style`. There is no `renzora::prelude` — use `use renzora::*;` or import individual items.
+Widgets are contributed by plugins. Editor-only widgets and panels ride in editor-scope plugins (`scope = "Editor"` in the crate's `[[package.metadata.renzora.plugin]]` table), linked into the removable `renzora_editor` bundle; game HUD widgets ride in runtime-scope plugins and ship inside the game. Either way you import builders from `renzora_ember::widgets` and theme helpers from `renzora_ember::theme` / `renzora_ember::style`. There is no `renzora::prelude` — use `use renzora::*;` or import individual items.

@@ -60,8 +60,9 @@ use std::collections::{HashMap, HashSet};
 use bevy::asset::UntypedHandle;
 use bevy::pbr::StandardMaterial;
 use bevy::prelude::*;
-use renzora::core::{MeshInstanceData, TabClosed};
-use renzora::{EditorCamera, HideInHierarchy};
+use renzora_shell_api::TabClosed;
+use renzora_scene_api::MeshInstanceData;
+use renzora_scene_api::{EditorCamera, HideInHierarchy};
 use renzora_shader::material::GraphMaterial;
 use renzora_ui::DocumentTabState;
 
@@ -136,6 +137,17 @@ impl TabAssetCache {
         }
     }
 
+    /// Let go of a tab's GLB pins for these model paths. For content that
+    /// became streamed after it was pinned (moved into world partition
+    /// cells): its cells must be able to free it by streaming out.
+    pub fn release_paths(&mut self, tab_id: u64, paths: &[String]) {
+        if let Some(pin) = self.by_tab.get_mut(&tab_id) {
+            for path in paths {
+                pin.gltfs.remove(path);
+            }
+        }
+    }
+
     /// Record (or refresh) a GLB handle against a tab. Called by
     /// [`cache_added_mesh_instances`] as `MeshInstanceData` entities arrive.
     /// Idempotent: storing the same path twice replaces the handle with
@@ -192,11 +204,19 @@ pub struct TabPinSnapshot {
 /// Runs in both `Loading` and `Editor` states because models can arrive
 /// in either: the splash-loaded scene rehydrates entities during
 /// `Loading`, and drag-drop / tab-respawn add them during `Editor`.
+///
+/// Streamed content (a partition cell's or streamed instance's, marked
+/// [`renzora_scene_api::StreamedContent`]) is not pinned. Pinning it would hold every
+/// model a cell ever loaded until the tab closed, so a cell streaming out
+/// would free nothing, which is the whole job of streaming.
 pub fn cache_added_mesh_instances(
     asset_server: Res<AssetServer>,
     tabs: Option<Res<DocumentTabState>>,
     mut cache: ResMut<TabAssetCache>,
-    new_instances: Query<&MeshInstanceData, Added<MeshInstanceData>>,
+    new_instances: Query<
+        &MeshInstanceData,
+        (Added<MeshInstanceData>, Without<renzora_scene_api::StreamedContent>),
+    >,
 ) {
     let Some(tabs) = tabs else { return };
     let Some(active_id) = tabs.active_tab_id() else {
@@ -243,34 +263,60 @@ pub fn pin_live_tab_handles(world: &mut World, tab_id: u64) {
     let mut graph_mat_handles: Vec<Handle<GraphMaterial>> = Vec::new();
     let mut scene_handles: Vec<Handle<bevy::world_serialization::WorldAsset>> = Vec::new();
 
+    // Streamed content is left out, as in `cache_added_mesh_instances`: a
+    // partitioned world switched away from would otherwise keep every cell
+    // that happened to be loaded pinned until its tab closed, though on the
+    // way back only the cells near the camera return. A mesh entity is the
+    // child of a model, so the test walks up to the streamed ancestor.
+    let streamed = |world: &World, entity: Entity| -> bool {
+        let mut current = Some(entity);
+        let mut depth = 0;
+        while let Some(e) = current.filter(|_| depth < 128) {
+            if world.get::<renzora_scene_api::StreamedContent>(e).is_some() {
+                return true;
+            }
+            current = world.get::<ChildOf>(e).map(|c| c.parent());
+            depth += 1;
+        }
+        false
+    };
+
     {
-        let mut q = world.query_filtered::<&Mesh3d, (Without<EditorCamera>, Without<HideInHierarchy>)>();
-        for m in q.iter(world) {
-            mesh_handles.push(m.0.clone());
+        let mut q = world.query_filtered::<(Entity, &Mesh3d), (Without<EditorCamera>, Without<HideInHierarchy>)>();
+        for (e, m) in q.iter(world) {
+            if !streamed(world, e) {
+                mesh_handles.push(m.0.clone());
+            }
         }
     }
     {
         let mut q = world.query_filtered::<
-            &MeshMaterial3d<StandardMaterial>,
+            (Entity, &MeshMaterial3d<StandardMaterial>),
             (Without<EditorCamera>, Without<HideInHierarchy>),
         >();
-        for m in q.iter(world) {
-            std_mat_handles.push(m.0.clone());
+        for (e, m) in q.iter(world) {
+            if !streamed(world, e) {
+                std_mat_handles.push(m.0.clone());
+            }
         }
     }
     {
         let mut q = world.query_filtered::<
-            &MeshMaterial3d<GraphMaterial>,
+            (Entity, &MeshMaterial3d<GraphMaterial>),
             (Without<EditorCamera>, Without<HideInHierarchy>),
         >();
-        for m in q.iter(world) {
-            graph_mat_handles.push(m.0.clone());
+        for (e, m) in q.iter(world) {
+            if !streamed(world, e) {
+                graph_mat_handles.push(m.0.clone());
+            }
         }
     }
     {
-        let mut q = world.query_filtered::<&bevy::world_serialization::WorldAssetRoot, (Without<EditorCamera>, Without<HideInHierarchy>)>();
-        for s in q.iter(world) {
-            scene_handles.push(s.0.clone());
+        let mut q = world.query_filtered::<(Entity, &bevy::world_serialization::WorldAssetRoot), (Without<EditorCamera>, Without<HideInHierarchy>)>();
+        for (e, s) in q.iter(world) {
+            if !streamed(world, e) {
+                scene_handles.push(s.0.clone());
+            }
         }
     }
 
@@ -370,7 +416,7 @@ pub(crate) fn collect_standard_material_images(mat: &StandardMaterial, out: &mut
 pub fn evict_closed_tab(
     trigger: On<TabClosed>,
     mut cache: ResMut<TabAssetCache>,
-    buffers: Option<ResMut<renzora::core::SceneTabBuffers>>,
+    buffers: Option<ResMut<renzora_project_api::SceneTabBuffers>>,
 ) {
     let tab_id = trigger.event().tab_id;
     cache.drop_tab(tab_id);
@@ -653,7 +699,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
                 (
                     Entity,
                     Option<&'static Name>,
-                    Option<&'static renzora::core::MaterialRef>,
+                    Option<&'static renzora_material_api::MaterialRef>,
                     Has<MaterialResolved>,
                 ),
                 (
@@ -669,7 +715,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
                 's,
                 Entity,
                 (
-                    With<renzora::core::MaterialRef>,
+                    With<renzora_material_api::MaterialRef>,
                     Without<MaterialResolved>,
                 ),
             >,

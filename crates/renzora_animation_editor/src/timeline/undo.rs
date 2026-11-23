@@ -108,6 +108,6 @@ pub(super) fn anim_undo_observer(world: &mut World) {
     }
 }
 
-fn same_bone_track(a: &renzora::BoneTrack, b: &renzora::BoneTrack) -> bool {
+fn same_bone_track(a: &renzora_animation_api::BoneTrack, b: &renzora_animation_api::BoneTrack) -> bool {
     a.muted == b.muted && a.bone_name == b.bone_name && a.translations == b.translations && a.rotations == b.rotations && a.scales == b.scales && a.curves == b.curves
 }

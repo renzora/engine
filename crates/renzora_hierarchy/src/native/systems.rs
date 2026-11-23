@@ -342,12 +342,12 @@ fn find_tree_node(nodes: &[EntityNode], target: Entity) -> Option<&EntityNode> {
 
 /// Does the hierarchy own the arrow keys right now? True when it's the focused
 /// panel, nothing is typing, and there's a selection to walk from. Shared by the
-/// navigation system and the [`renzora::core::ArrowKeysClaimed`] publisher so
+/// navigation system and the [`renzora_project_api::ArrowKeysClaimed`] publisher so
 /// the claim can never disagree with what the keys actually do.
 fn owns_arrow_keys(
     focused: Option<&renzora_ember::dock::FocusedPanel>,
-    play_mode: Option<&renzora::core::PlayModeState>,
-    input_focus: &renzora::core::InputFocusState,
+    play_mode: Option<&renzora_project_api::PlayModeState>,
+    input_focus: &renzora_project_api::InputFocusState,
     rename: &super::rename::HierRename,
     selection: Option<&EditorSelection>,
 ) -> bool {
@@ -365,7 +365,7 @@ fn owns_arrow_keys(
     selection.is_some_and(|s| s.get().is_some())
 }
 
-/// Publish [`renzora::core::ArrowKeysClaimed`] so the hover-driven arrow-key
+/// Publish [`renzora_project_api::ArrowKeysClaimed`] so the hover-driven arrow-key
 /// behaviours — ember's keyboard scrolling, the 2D viewport's nudge — stand down
 /// while the tree is walking its selection with them.
 ///
@@ -375,11 +375,11 @@ fn owns_arrow_keys(
 /// you bring the tree back. It's a handful of resource reads.
 pub(crate) fn publish_arrow_claim(
     focused: Option<Res<renzora_ember::dock::FocusedPanel>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    input_focus: Res<renzora::core::InputFocusState>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
+    input_focus: Res<renzora_project_api::InputFocusState>,
     rename: Res<super::rename::HierRename>,
     selection: Option<Res<EditorSelection>>,
-    mut claimed: ResMut<renzora::core::ArrowKeysClaimed>,
+    mut claimed: ResMut<renzora_project_api::ArrowKeysClaimed>,
 ) {
     let owns = owns_arrow_keys(
         focused.as_deref(),
@@ -419,8 +419,8 @@ pub(crate) fn publish_arrow_claim(
 pub(crate) fn hierarchy_arrow_keys(
     keys: Res<ButtonInput<KeyCode>>,
     focused: Option<Res<renzora_ember::dock::FocusedPanel>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    input_focus: Res<renzora::core::InputFocusState>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
+    input_focus: Res<renzora_project_api::InputFocusState>,
     rename: Res<super::rename::HierRename>,
     selection: Option<Res<EditorSelection>>,
     cache: Res<HierarchyTreeCache>,
@@ -575,7 +575,7 @@ fn open_entity_asset(world: &mut World, entity: Entity, kind: BadgeKind) {
 
     let resolve = |rel: &str, world: &World| -> std::path::PathBuf {
         world
-            .get_resource::<renzora::core::CurrentProject>()
+            .get_resource::<renzora_project_api::CurrentProject>()
             .map(|p| p.resolve_path(rel))
             .unwrap_or_else(|| std::path::PathBuf::from(rel))
     };
@@ -583,7 +583,7 @@ fn open_entity_asset(world: &mut World, entity: Entity, kind: BadgeKind) {
     match kind {
         BadgeKind::Material => {
             let rel = world
-                .get::<renzora::core::MaterialRef>(entity)
+                .get::<renzora_material_api::MaterialRef>(entity)
                 .map(|m| m.0.clone())
                 .filter(|s| !s.is_empty());
             let Some(rel) = rel else {

@@ -123,7 +123,7 @@ pub(crate) fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> En
         .id();
     let version = commands
         .spawn((
-            Text::new(renzora::version::display()),
+            Text::new(renzora_platform_api::version::display()),
             ui_font(&fonts.mono, 11.0),
             TextColor(text_muted()),
             PASS_THROUGH,
@@ -492,7 +492,7 @@ pub(crate) fn drag_handle(
 ) {
     let Some(mut queue) = queue else { return };
     // The OS frame's own title bar moves the window.
-    if renzora::EDITOR_OS_FRAME {
+    if renzora_shell_api::EDITOR_OS_FRAME {
         return;
     }
     if q.iter().any(|i| *i == UiInteraction::Pressed) {

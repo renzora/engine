@@ -9,7 +9,7 @@
 /// `String`. Named `tr` (not `t`) to avoid colliding with the many `let t = …`
 /// toggle-entity locals throughout the tab builders.
 pub(crate) fn tr(key: &str) -> String {
-    renzora::lang::t(key)
+    renzora_lang_api::t(key)
 }
 
 /// Slugify an option label for the shared `opt.<slug>` translation namespace:
@@ -37,11 +37,11 @@ fn opt_slug(s: &str) -> String {
 /// displayed string is translated.
 pub(crate) fn loc_opt(s: &str) -> String {
     match s {
-        "None" => renzora::lang::t_or("common.none", s),
-        "Disabled" => renzora::lang::t_or("common.disabled", s),
-        "Default" => renzora::lang::t_or("common.default", s),
-        "Always" => renzora::lang::t_or("common.always", s),
-        _ => renzora::lang::t_or(&format!("opt.{}", opt_slug(s)), s),
+        "None" => renzora_lang_api::t_or("common.none", s),
+        "Disabled" => renzora_lang_api::t_or("common.disabled", s),
+        "Default" => renzora_lang_api::t_or("common.default", s),
+        "Always" => renzora_lang_api::t_or("common.always", s),
+        _ => renzora_lang_api::t_or(&format!("opt.{}", opt_slug(s)), s),
     }
 }
 

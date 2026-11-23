@@ -11,7 +11,7 @@ use bevy::camera::primitives::{Aabb, Frustum};
 use bevy::camera::visibility::RenderLayers;
 use bevy::math::{Affine3A, Vec3};
 use bevy::prelude::Entity;
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     VIEWPORT_2D_GRID_LAYER_BASE, VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT,
 };
 

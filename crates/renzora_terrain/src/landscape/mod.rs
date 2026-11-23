@@ -124,6 +124,6 @@ impl Plugin for LandscapePlugin {
 }
 
 /// Migration writes project files, so it waits for the editor and a project.
-fn in_editor_with_project(session: Option<Res<renzora::EditorSession>>, project: Option<Res<renzora::CurrentProject>>) -> bool {
+fn in_editor_with_project(session: Option<Res<renzora_project_api::EditorSession>>, project: Option<Res<renzora_project_api::CurrentProject>>) -> bool {
     session.is_some_and(|s| s.is_editor()) && project.is_some()
 }

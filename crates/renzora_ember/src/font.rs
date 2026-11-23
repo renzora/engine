@@ -323,8 +323,8 @@ pub(crate) fn scan_project_fonts(
     mut registry: ResMut<FontRegistry>,
     asset_server: Res<AssetServer>,
     ember: Option<Res<EmberFonts>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
 ) {
     let fonts_dir = project.as_ref().map(|p| p.path.join("fonts"));
     // Read the buffer unconditionally so the cursor keeps moving: skipping it

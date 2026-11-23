@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Skeletal ragdoll physics. Auto-builds rigid bodies + joints from a GLTF skeleton through the physics API and toggles bones between animated and physically-simulated."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, same model as
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, same model as
 # `renzora_cloth`.
 [lib]
 crate-type = ["rlib"]
@@ -17,15 +17,16 @@ default = ["editor"]
 # Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
 # it, so the whole engine agrees on one answer.
 scripting = ["dep:renzora_scripting"]
-# Forwards to `renzora/editor` so `Ragdoll` registers into the Inspector's
+# Turns on the editor contract (`renzora_editor_api`) so `Ragdoll` registers into the Inspector's
 # "Add Component" list. Off in lean exports — the dev/editor build keeps it
 # on by default (see docs/r1-alpha8/editor-dev/inspector-fields.md).
-editor = ["renzora/editor"]
+editor = ["dep:renzora_editor_api"]
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
-renzora_macros = { path = "../renzora_macros" }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
+renzora_editor_api = { path = "../api/renzora_editor_api", optional = true }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # Bone discovery walks the same AnimatorState/AnimationCommandQueue the
 # skeletal animation system uses, so pausing/resuming playback when a ragdoll
@@ -40,3 +41,9 @@ renzora_animation = { path = "../renzora_animation", default-features = false }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "RagdollPlugin"

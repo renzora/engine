@@ -240,7 +240,7 @@ pub fn dlss_source_dir(platform: Platform, runtime_dir: &Path) -> Option<PathBuf
     if libraries_in(platform, runtime_dir) {
         return Some(runtime_dir.to_path_buf());
     }
-    renzora::dlss_runtime::install_dir().filter(|d| libraries_in(platform, d))
+    renzora_platform_api::dlss_runtime::install_dir().filter(|d| libraries_in(platform, d))
 }
 
 /// Whether an export gets DLSS Ray Reconstruction.
@@ -259,7 +259,7 @@ pub fn dlss_source_dir(platform: Platform, runtime_dir: &Path) -> Option<PathBuf
 ///
 /// The official downloads have DLSS compiled in but ship without NVIDIA's
 /// libraries, which the Solari inspector installs under `~/.renzora/dlss/`
-/// (see `renzora::dlss_runtime`). So a build counts as DLSS-capable either way:
+/// (see `renzora_platform_api::dlss_runtime`). So a build counts as DLSS-capable either way:
 /// libraries beside it, or `dlss_compiled` (the editor's own `DlssSupport`)
 /// and the editor's install complete. The template a copy-based export ships
 /// is cut from that same build, so the editor's answer is the template's.
@@ -275,7 +275,7 @@ pub fn export_has_dlss(
     }
     let beside = libraries_in(platform, runtime_dir);
     let installed = dlss_compiled
-        && renzora::dlss_runtime::install_dir().is_some_and(|d| libraries_in(platform, &d));
+        && renzora_platform_api::dlss_runtime::install_dir().is_some_and(|d| libraries_in(platform, &d));
     if !beside && !installed {
         return false;
     }
@@ -287,7 +287,7 @@ pub fn export_has_dlss(
     // libraries beside the editor are the ones `cargo renzora` accepted.
     let sdk_dir = |var: &str| std::env::var_os(var).is_some_and(|d| Path::new(&d).is_dir());
     // `include/` too: `DLSS_SDK` may name the editor's own install of the
-    // runtime libraries (`renzora::dlss_runtime::point_env_at_install`), which
+    // runtime libraries (`renzora_platform_api::dlss_runtime::point_env_at_install`), which
     // has no headers to compile against.
     let dlss_headers = std::env::var_os("DLSS_SDK").is_some_and(|d| Path::new(&d).join("include").is_dir());
     !crate::docker::needs_container(platform) && dlss_headers && sdk_dir("VULKAN_SDK")
@@ -455,6 +455,7 @@ pub fn build_lean(
     stage_branding(workspace_dir, &ws, branding, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
+    strip_sdk_layers(&ws, disabled_bevy_features)?;
     patch_lean_profile(&ws, profile, progress)?;
     // The plugins' SOURCE, which is beside the editor rather than in the
     // checkout — `workspace_dir` is the engine repo and has held no `plugins/`
@@ -1142,6 +1143,53 @@ fn strip_runtime_features(
     Ok(())
 }
 
+/// The `renzora_sdk` layers that need a Bevy feature, paired with that feature.
+///
+/// `renzora_sdk` turns these layers on by default, so a plugin or Rust script
+/// compiled into an export sees the same `renzora::...` it was written against.
+/// A layer whose Bevy feature this export strips cannot compile, so it is taken
+/// out of the default too; the plugin using it could not have worked without
+/// that Bevy feature anyway, and every other plugin in the build still compiles.
+const SDK_LAYER_NEEDS: &[(&str, &str)] = &[("text_mesh", "bevy_text")];
+
+/// Drop the `renzora_sdk` default layers whose Bevy feature this export strips.
+///
+/// The sdk is only in the build when a plugin or Rust script is compiled in (the
+/// exporter repoints their `renzora` at it), but it is edited either way: a copy
+/// left defaulting to a stripped layer would fail the moment one is.
+fn strip_sdk_layers(
+    copy_root: &Path,
+    disabled_bevy_features: &[String],
+) -> Result<(), String> {
+    let drop: Vec<&str> = SDK_LAYER_NEEDS
+        .iter()
+        .filter(|(_, bevy)| disabled_bevy_features.iter().any(|d| d == bevy))
+        .map(|(layer, _)| *layer)
+        .collect();
+    if drop.is_empty() {
+        return Ok(());
+    }
+    let manifest = copy_root
+        .join("crates")
+        .join("shared")
+        .join("renzora_sdk")
+        .join("Cargo.toml");
+    let text = std::fs::read_to_string(&manifest)
+        .map_err(|e| format!("read {}: {e}", manifest.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("parse {}: {e}", manifest.display()))?;
+    if let Some(arr) = doc
+        .get_mut("features")
+        .and_then(|f| f.get_mut("default"))
+        .and_then(|d| d.as_array_mut())
+    {
+        arr.retain(|v| v.as_str().map(|s| !drop.contains(&s)).unwrap_or(true));
+    }
+    std::fs::write(&manifest, doc.to_string())
+        .map_err(|e| format!("write {}: {e}", manifest.display()))
+}
+
 // ── Statically-linked plugins ────────────────────────────────────────────────
 
 /// Which mechanism a linked-in plugin belongs to.
@@ -1510,8 +1558,9 @@ fn stage_static_plugins(
          [dependencies]\n\
          # `plugin!` emits `#[no_mangle] renzora_native_plugin_ctor`, and fifty\n\
          # of those in one binary do not link. Cargo unifies features per\n\
-         # package, so naming it here turns it off for every plugin in the build.\n\
-         renzora = {{ path = \"../renzora\", features = [\"static_plugins\"] }}\n\
+         # package, so naming it on `renzora_platform_api`, where `plugin!` lives,\n\
+         # turns it off for every plugin in the build.\n\
+         renzora_platform_api = {{ path = \"../api/renzora_platform_api\", features = [\"static_plugins\"] }}\n\
          bevy = {{ workspace = true }}\n\
          {deps}"
     );
@@ -1695,7 +1744,7 @@ pub fn stage_runtime_native_plugins(
     // off because the user turned it off, and an export is the last moment that
     // choice can still be honoured — after this it is in a player's hands with
     // no switch at all.
-    let disabled = renzora::load_disabled_plugins();
+    let disabled = renzora_project_api::load_disabled_plugins();
 
     // The build this editor is, so the game can refuse a plugin built for any
     // other — it has no SDK of its own to ask. The same answer the loader and
@@ -1741,7 +1790,7 @@ pub fn stage_runtime_native_plugins(
         if selected.is_some_and(|s| !s.contains(&name)) {
             continue;
         }
-        if plugin.scope != renzora::NativePluginScope::Runtime {
+        if plugin.scope != renzora_platform_api::NativePluginScope::Runtime {
             // Editor-only: belongs in no game, and worth saying so.
             skipped_editor.push(name);
             continue;
@@ -2006,7 +2055,10 @@ fn stage_static_scripts(
         let staged_name = format!("script_{i}.rs");
         let text = std::fs::read_to_string(src)
             .map_err(|e| format!("read {}: {e}", src.display()))?;
-        uses_ember |= text.contains("renzora_ember");
+        // `renzora::ui` is how a script reaches the UI framework; the old
+        // `renzora_ember` spelling is counted too, so such a script fails on its
+        // path rather than on a missing feature.
+        uses_ember |= text.contains("renzora::ui") || text.contains("renzora_ember");
         write_if_changed(&crate_dir.join("src").join(&staged_name), &text)?;
 
         mods.push_str(&format!("#[path = \"{staged_name}\"]\nmod script_{i};\n"));
@@ -2068,17 +2120,21 @@ fn stage_static_scripts(
          # `static_scripts` drops `#[no_mangle]` from what `renzora::script!`\n\
          # emits, so the scripts below can share one binary. Cargo unifies\n\
          # features per package, so naming it once here applies it to all.\n\
-         renzora = { path = \"../renzora\", features = [\"static_scripts\"] }\n\
+         # `renzora_sdk` under the name `renzora`: what a script is compiled\n\
+         # against everywhere else, so `renzora::net` and the rest resolve.\n\
+         renzora = { path = \"../shared/renzora_sdk\", package = \"renzora_sdk\", features = [\"static_scripts\"] }\n\
          bevy = { workspace = true }\n"
     );
     if uses_ember {
-        // `default-features = false` for the same reason `renzora_runtime` deps
-        // it that way: which of ember's features are on is the export's decision,
-        // not this crate's, and turning them on here would quietly un-strip
-        // `game_ui` (and the world-space 3D UI) in a build that dropped them.
-        manifest.push_str(
-            "# At least one script imports the UI crate.\n\
-             renzora_ember = { path = \"../renzora_ember\", default-features = false }\n",
+        // At least one script uses `renzora::ui`: turn on the SDK's `ui`, which
+        // brings ember in with its default features off, for the same reason
+        // `renzora_runtime` deps it that way: which of ember's features are on is
+        // the export's decision, not this crate's, and turning them on here would
+        // quietly un-strip `game_ui` (and the world-space 3D UI) in a build that
+        // dropped them.
+        manifest = manifest.replace(
+            "features = [\"static_scripts\"] }",
+            "features = [\"static_scripts\", \"ui\"] }",
         );
     }
     manifest.push_str(
@@ -2199,16 +2255,28 @@ fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), Str
     // way here as anywhere.
     if let Some(deps) = doc.get_mut("dependencies").and_then(|d| d.as_table_like_mut()) {
         // `renzora` and `bevy` are what a plugin links, and `renzora` is the one
-        // named by path. `renzora_ember` joins it for a plugin that draws UI.
-        for (name, workspace_path) in [
-            ("renzora", "../../crates/renzora"),
-            ("renzora_ember", "../../crates/renzora_ember"),
+        // named by path. A plugin that draws UI lists `ui` among its `renzora`
+        // features (the framework is `renzora::ui`), and the feature list is
+        // kept, so that is what brings ember into this build.
+        //
+        // A plugin's `renzora` is `renzora_sdk`, not the contract crate: the
+        // contract is a hierarchy, and `renzora_sdk` is the top of it, putting
+        // every subject crate (`renzora::net`, ...) back under the one name. The
+        // staged SDK hands a plugin the same thing through `renzora_dylib`, so a
+        // plugin compiled in here sees exactly the API it was written against.
+        // `package` keeps the dependency's name `renzora`, so its code and its
+        // feature list need no change.
+        for (name, workspace_path, package) in [
+            ("renzora", "../../crates/shared/renzora_sdk", Some("renzora_sdk")),
         ] {
             let Some(dep) = deps.get_mut(name).and_then(|d| d.as_table_like_mut()) else {
                 continue;
             };
             if dep.get("path").is_some() {
                 dep.insert("path", toml_edit::value(workspace_path));
+                if let Some(package) = package {
+                    dep.insert("package", toml_edit::value(package));
+                }
             }
         }
     }
@@ -2285,9 +2353,10 @@ mod tests {
         // `#[no_mangle]` and the binary fails to link.
         let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
         assert!(manifest.contains("features = [\"static_scripts\"]"), "{manifest}");
-        // No script here mentions the UI crate, so it must not be linked: a game
-        // with no UI strips ember, and an unconditional dep would compile it back.
-        assert!(!manifest.contains("renzora_ember"), "{manifest}");
+        // No script here uses the UI framework, so it must not be linked: a game
+        // with no UI strips ember, and an unconditional feature would compile it
+        // back.
+        assert!(!manifest.contains("\"ui\""), "{manifest}");
 
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -2552,7 +2621,7 @@ mod tests {
         std::fs::create_dir_all(&scripts).unwrap();
         std::fs::write(
             scripts.join("hud.rs"),
-            format!("use renzora_ember::game_ui::components::UiImageFill;\n{SCRIPT}"),
+            format!("use renzora::ui::game_ui::components::UiImageFill;\n{SCRIPT}"),
         )
         .unwrap();
 
@@ -2566,11 +2635,11 @@ mod tests {
                 .join("Cargo.toml"),
         )
         .unwrap();
-        assert!(manifest.contains("renzora_ember"), "{manifest}");
-        // Which of ember's features are on is the export's decision, not this
-        // crate's — turning them on here would un-strip `game_ui` and the
-        // world-space 3D UI in a build that dropped them.
-        assert!(manifest.contains("default-features = false"), "{manifest}");
+        // The SDK's `ui` feature, which brings ember in with its own features
+        // left to the export (it deps ember with default features off), so a
+        // build that dropped `game_ui` keeps it dropped.
+        assert!(manifest.contains("features = [\"static_scripts\", \"ui\"]"), "{manifest}");
+        assert!(!manifest.contains("renzora_ember"), "{manifest}");
 
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -2795,7 +2864,10 @@ mod manifest_patch_tests {
         let out = patched(
             "[package]\nname = \"clouds\"\nversion = \"0.1.0\"\n\n             [lib]\ncrate-type = [\"dylib\"]\n\n             [dependencies]\n             bevy = \"0.19\"\n             renzora = { path = \"/somewhere/else/crates/renzora\" }\n",
         );
-        assert!(out.contains("../../crates/renzora"), "{out}");
+        // The top of the contract hierarchy, still named `renzora` for the
+        // plugin's code, so a plugin using `renzora::net` builds linked in.
+        assert!(out.contains("../../crates/shared/renzora_sdk"), "{out}");
+        assert!(out.contains("package = \"renzora_sdk\""), "{out}");
         assert!(!out.contains("/somewhere/else"), "{out}");
         assert!(out.contains("bevy = \"0.19\""), "{out}");
         // And the crate type has to become an rlib to be linked in.
@@ -2807,12 +2879,14 @@ mod manifest_patch_tests {
     #[test]
     fn repointing_keeps_the_rest_of_the_dependency() {
         let out = patched(
-            "[package]\nname = \"panelish\"\nversion = \"0.1.0\"\n\n             [lib]\ncrate-type = [\"dylib\"]\n\n             [dependencies]\n             renzora_ember = { path = \"../../sdk/renzora_ember\", default-features = false,              features = [\"widgets\"] }\n",
+            "[package]\nname = \"panelish\"\nversion = \"0.1.0\"\n\n             [lib]\ncrate-type = [\"dylib\"]\n\n             [dependencies]\n             renzora = { path = \"../../sdk/renzora\", default-features = false,              features = [\"editor\", \"ui\"] }\n",
         );
-        assert!(out.contains("../../crates/renzora_ember"), "{out}");
-        assert!(!out.contains("sdk/renzora_ember"), "{out}");
+        assert!(out.contains("../../crates/shared/renzora_sdk"), "{out}");
+        assert!(!out.contains("sdk/renzora\""), "{out}");
+        assert!(out.contains("renzora_sdk"), "{out}");
         assert!(out.contains("default-features = false"), "{out}");
-        assert!(out.contains("widgets"), "{out}");
+        // The `ui` feature is what brings the UI framework into a static build.
+        assert!(out.contains("\"ui\""), "{out}");
     }
 
     /// A version dependency is not a path and must be left alone — cargo

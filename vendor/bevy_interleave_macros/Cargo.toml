@@ -23,3 +23,6 @@ quote = "1.0"
 sha1 = "0.10"
 syn = "2.0"
 wgpu = "30"
+
+[lints]
+workspace = true

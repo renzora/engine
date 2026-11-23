@@ -5,10 +5,10 @@
 //! systems turn each description back into renderable geometry after a load.
 
 use bevy::prelude::*;
-use renzora::MeshInstanceData;
+use renzora_scene_api::MeshInstanceData;
 
 #[cfg(feature = "render_3d")]
-use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora_scene_api::{MeshColor, MeshPrimitive, ShapeRegistry};
 
 /// Rehydrate mesh primitives — spawns `Mesh3d` + `MeshMaterial3d` for entities that have
 /// `MeshPrimitive` but no `Mesh3d` yet (e.g. after scene deserialization).
@@ -30,14 +30,14 @@ pub fn rehydrate_meshes(
             Entity,
             &MeshPrimitive,
             Option<&MeshColor>,
-            Option<&renzora::core::MaterialRef>,
+            Option<&renzora_material_api::MaterialRef>,
         ),
         Without<Mesh3d>,
     >,
     registry: Res<ShapeRegistry>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
-    grid: Option<Res<renzora::core::GridTexture>>,
+    grid: Option<Res<renzora_render_api::GridTexture>>,
 ) {
     let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
         return;
@@ -73,7 +73,7 @@ pub fn rehydrate_meshes(
 }
 
 /// Apply persisted mesh edits after scene load: entities carrying an
-/// [`renzora::core::EditedMesh`] without the applied marker get a fresh
+/// [`renzora_scene_api::EditedMesh`] without the applied marker get a fresh
 /// `Mesh3d` built from the stored geometry. Runs after [`rehydrate_meshes`]
 /// (chained at registration) so the edit override deterministically replaces
 /// the primitive/glTF mesh. The editor inserts the marker itself when baking,
@@ -82,8 +82,8 @@ pub fn rehydrate_meshes(
 pub fn apply_edited_meshes(
     mut commands: Commands,
     query: Query<
-        (Entity, &renzora::core::EditedMesh),
-        Without<renzora::core::EditedMeshApplied>,
+        (Entity, &renzora_scene_api::EditedMesh),
+        Without<renzora_scene_api::EditedMeshApplied>,
     >,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
 ) {
@@ -95,13 +95,13 @@ pub fn apply_edited_meshes(
             // Degenerate payload — don't build an empty mesh over the source.
             commands
                 .entity(entity)
-                .try_insert(renzora::core::EditedMeshApplied);
+                .try_insert(renzora_scene_api::EditedMeshApplied);
             continue;
         }
         let handle = meshes.add(edited.to_mesh());
         commands
             .entity(entity)
-            .try_insert((Mesh3d(handle), renzora::core::EditedMeshApplied));
+            .try_insert((Mesh3d(handle), renzora_scene_api::EditedMeshApplied));
     }
 }
 
@@ -201,15 +201,26 @@ pub fn finish_mesh_instance_rehydrate(
             .entity(entity)
             .remove::<PendingMeshInstanceRehydrate>();
         if let Some(scene) = scene_handle {
-            commands.spawn((
-                Name::new("SceneRoot"),
-                // Bevy 0.19: glTF scenes are `Handle<WorldAsset>` and are
-                // instantiated via `WorldAssetRoot` (the old `SceneRoot` is gone).
-                bevy::world_serialization::WorldAssetRoot(scene),
-                Transform::default(),
-                Visibility::default(),
-                ChildOf(entity),
-            ));
+            // Spawned only if the model still exists when the command runs.
+            // A streamed model can be despawned between this system and its
+            // commands applying (its cell streamed out); a plain spawn with
+            // `ChildOf` to the dead model then lost the link and left a named
+            // "SceneRoot" at the top of the scene, drawing a stray copy of the
+            // model at the origin and saved with the scene from then on.
+            commands.queue(move |world: &mut World| {
+                if world.get_entity(entity).is_err() {
+                    return;
+                }
+                world.spawn((
+                    Name::new("SceneRoot"),
+                    // Bevy 0.19: glTF scenes are `Handle<WorldAsset>` and are
+                    // instantiated via `WorldAssetRoot` (the old `SceneRoot` is gone).
+                    bevy::world_serialization::WorldAssetRoot(scene),
+                    Transform::default(),
+                    Visibility::default(),
+                    ChildOf(entity),
+                ));
+            });
         } else {
             // Loaded, but nothing to place: the `.rvg` kept beside a `.glb`
             // holds only that model's virtual geometry and loads as an empty

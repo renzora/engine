@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Planar reflections: a PlanarReflection component on a flat mesh renders the scene from a mirrored camera with an oblique near plane and shows it on the surface, the way Unreal's Planar Reflection actor does."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, which the build
 # generator wires into the committed plugin list. The inspector entry and the
 # Mirror preset are the nested `renzora_planar_reflection_editor` crate in
 # `editor/`, linked only by the editor bundle.
@@ -20,8 +20,10 @@ default = ["render_3d"]
 render_3d = []
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
@@ -32,3 +34,9 @@ renzora_test_harness = { path = "../renzora_test_harness" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "PlanarReflectionPlugin"

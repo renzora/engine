@@ -2,7 +2,7 @@
 
 Define your own data components, make them survive scene save/load, and expose their fields in the editor's Inspector.
 
-This page assumes you already know the basics of Bevy components, queries, and the `renzora::add!` plugin macro — see [ECS & Bevy](/docs/r1-alpha8/engine-core/ecs) first. Everything here is about the two Renzora-specific layers on top of a plain component: **scene serialization** (`register_type`) and the **`#[derive(Inspectable)]`** editor card.
+This page assumes you already know the basics of Bevy components, queries, and the `[[package.metadata.renzora.plugin]]` plugin declaration — see [ECS & Bevy](/docs/r1-alpha8/engine-core/ecs) first. Everything here is about the two Renzora-specific layers on top of a plain component: **scene serialization** (`register_type`) and the **`#[derive(Inspectable)]`** editor card.
 
 ## A plain component
 
@@ -76,12 +76,15 @@ impl Plugin for DayNightPlugin {
         app.add_systems(Update, advance_day_night);
     }
 }
-
-// Self-register in the global plugin inventory (Runtime scope by default).
-renzora::add!(DayNightPlugin);
 ```
 
-> **Register from a `Runtime`-scoped plugin (the `add!` default), not an editor-only one.** Editor plugins ship only inside the removable `renzora_editor` bundle. If a type is registered *only* by an editor plugin, the shipped game (no bundle) never registers it, and the scene loader silently drops it on load — see the lossy-load note below.
+```toml
+# Cargo.toml: declare the plugin (Runtime scope by default).
+[[package.metadata.renzora.plugin]]
+type = "DayNightPlugin"
+```
+
+> **Register from a `Runtime`-scoped plugin (the plugin table's default), not an editor-only one.** Editor plugins ship only inside the removable `renzora_editor` bundle. If a type is registered *only* by an editor plugin, the shipped game (no bundle) never registers it, and the scene loader silently drops it on load — see the lossy-load note below.
 
 ### How save and load behave
 
@@ -119,7 +122,7 @@ Either way, scenes heal on their next save (which writes the current path).
 
 ## Making a component editable in the Inspector
 
-To give a component an editable card in the editor's Inspector, derive `renzora::Inspectable` and annotate the fields. This is the same `Health`/`Movement` pattern shipped in the `renzora_test_component` example crate:
+To give a component an editable card in the editor's Inspector, derive `renzora::Inspectable` and annotate the fields, as in this `Health`/`Movement` example:
 
 ```rust
 use bevy::prelude::*;
@@ -144,8 +147,12 @@ impl Plugin for HealthEditorPlugin {
         app.register_inspectable::<Health>();
     }
 }
+```
 
-renzora::add!(HealthEditorPlugin, Editor);
+```toml
+[[package.metadata.renzora.plugin]]
+type = "HealthEditorPlugin"
+scope = "Editor"
 ```
 
 `register_inspectable::<T>()` (from the `AppEditorExt` trait) calls `register_type::<T>()` for you and then registers the generated `InspectorEntry`. `T` must implement `Component + Default + Reflect` — the derive does **not** add those, so list them yourself.
@@ -200,7 +207,7 @@ The widget is inferred from the field's Rust type — there is no `type =` attri
 
 ## The dual-plugin pattern (data + editor)
 
-Runtime plugins (rlibs, registered through `add!`'s inventory) ship in every build. Editor plugins ship only in the `renzora_editor` bundle and are filtered by `PluginScope` — there is **no "both" scope**, so a feature that needs runtime data *and* an editor card ships **two plugins**:
+Runtime plugins (rlibs, declared in a `[[package.metadata.renzora.plugin]]` table) ship in every build. Editor plugins ship only in the `renzora_editor` bundle and are filtered by `PluginScope` — there is **no "both" scope**, so a feature that needs runtime data *and* an editor card ships **two plugins**:
 
 ```rust
 use bevy::prelude::*;
@@ -213,20 +220,30 @@ impl Plugin for HealthPlugin {
         app.add_systems(Update, tick_health);
     }
 }
-renzora::add!(HealthPlugin); // Runtime scope
 
 // Editor-only: adds the Inspector card (and re-registers the type for the editor).
 #[cfg(feature = "editor")]
-pub struct HealthEditorPlugin;
-#[cfg(feature = "editor")]
-impl Plugin for HealthEditorPlugin {
-    fn build(&self, app: &mut App) {
-        use renzora::AppEditorExt;
-        app.register_inspectable::<Health>();
+pub mod editor {
+    use bevy::prelude::*;
+    use super::Health;
+
+    pub struct HealthEditorPlugin;
+    impl Plugin for HealthEditorPlugin {
+        fn build(&self, app: &mut App) {
+            use renzora::AppEditorExt;
+            app.register_inspectable::<Health>();
+        }
     }
 }
-#[cfg(feature = "editor")]
-renzora::add!(HealthEditorPlugin, Editor);
+```
+
+```toml
+[[package.metadata.renzora.plugin]]
+type = "HealthPlugin"                  # Runtime scope
+
+[[package.metadata.renzora.plugin]]
+type = "editor::HealthEditorPlugin"    # the cfg gate on `mod editor` is reproduced
+scope = "Editor"
 ```
 
 This is how Renzora's own dual-mode crates are split (e.g. the runtime `renzora_<name>` crate plus a `renzora_<name>/editor` subcrate). The runtime half guarantees the component is registered and serializable in the shipped game; the editor half adds the authoring UI.

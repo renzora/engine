@@ -30,3 +30,6 @@ default = []
 
 [dev-dependencies]
 test-case = "3.3.1"
+
+[lints]
+workspace = true

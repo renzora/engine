@@ -14,8 +14,8 @@ use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
 use bevy::render::sync_world::RenderEntity;
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::Extract;
-use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
-use renzora::EditorCamera;
+use renzora_viewport_api::{ViewportSettings, VisualizationMode};
+use renzora_scene_api::EditorCamera;
 
 use super::pipelines::VgPipelines;
 use super::view::{VgView, VgViewBindGroups};

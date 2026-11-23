@@ -16,12 +16,11 @@ renzora shell -- cargo fmt --all
 
 ### Workspace lints
 
-The workspace defines exactly one lint rule in the root `Cargo.toml`, and every first-party crate opts into it:
+The root `Cargo.toml` defines a `[workspace.lints.rust]` table, and every first-party crate opts into it:
 
 ```toml
 # root Cargo.toml
 [workspace.lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen"))'] }
 ```
 
 ```toml
@@ -30,7 +29,7 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 workspace = true
 ```
 
-That single `allow` exists because `renzora::add!` gates its FFI exports behind `#[cfg(feature = "dlopen")]`, and that `cfg` is evaluated in the **calling** crate. Workspace plugins that have no `dlopen` feature would otherwise warn on every `add!` invocation — the `check-cfg` entry tells the compiler the feature is expected-but-unset. **Keep the `[lints] workspace = true` block in new crates** so they inherit this.
+The table is currently empty. It used to carry an `unexpected_cfgs` allow for `cfg(feature = "dlopen")`, which the old in-source plugin macro emitted into every calling crate; that FFI path is gone, and plugins are now declared in `Cargo.toml` instead. The table must still exist because every crate inherits from it. **Keep the `[lints] workspace = true` block in new crates** so they pick up any workspace lint added later.
 
 ### Clippy
 
@@ -147,7 +146,7 @@ edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }                                # one shared Bevy
-renzora = { path = "../renzora", default-features = false } # SDK contracts
+renzora = { path = "../renzora", default-features = false } # SDK contracts, if you use them
 
 [lints]
 workspace = true
@@ -160,7 +159,7 @@ workspace = true
 
 ## Registering a plugin
 
-Wire a plugin in with a single macro — there is no central plugin list and no manual `app.add_plugins(...)` call:
+Wire a plugin in with a table in the crate's `Cargo.toml`. There is no central plugin list and no manual `app.add_plugins(...)` call:
 
 ```rust
 use bevy::prelude::*;
@@ -171,10 +170,19 @@ pub struct MyPlugin;
 impl Plugin for MyPlugin {
     fn build(&self, app: &mut App) { /* ... */ }
 }
+```
 
-renzora::add!(MyPlugin);            // Runtime scope (default)
-// renzora::add!(MyEditorTool, Editor);
-// renzora::add!(MyFoundation, Runtime, priority = -100);
+```toml
+[[package.metadata.renzora.plugin]]
+type = "MyPlugin"                   # Runtime scope (default)
+
+# [[package.metadata.renzora.plugin]]
+# type = "MyEditorTool"
+# scope = "Editor"
+
+# [[package.metadata.renzora.plugin]]
+# type = "MyFoundation"
+# priority = -100
 ```
 
 `PluginScope` is exactly `{ Editor, Runtime }` with equality matching — there is **no "both" scope**. A feature that needs editor tooling on top of runtime behaviour ships two plugins (e.g. `GameUiPlugin` + `GameUiEditorPlugin`). See [Building Plugins](/docs/r1-alpha8/extending/plugins) for the full model.
@@ -253,4 +261,4 @@ Common scopes: a crate short-name (`physics`, `ember`, `shader`, `animation`), o
 
 - [Building From Source](/docs/r1-alpha8/setup/building-from-source) — the `renzora` CLI commands the workflow actually uses
 - [Project Structure](/docs/r1-alpha8/setup/project-structure) — how the workspace's ~187 crates are organized
-- [Building Plugins](/docs/r1-alpha8/extending/plugins) — the `renzora::add!` plugin model in depth
+- [Building Plugins](/docs/r1-alpha8/extending/plugins) — the manifest-declared plugin model in depth

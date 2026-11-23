@@ -45,5 +45,3 @@ impl Plugin for Light2dPlugin {
         editor::register(app);
     }
 }
-
-renzora::add!(Light2dPlugin);

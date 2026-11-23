@@ -58,5 +58,3 @@ impl Plugin for TerrainGraphPlugin {
             .init_resource::<TerrainGraphBuilds>();
     }
 }
-
-renzora::add!(TerrainGraphPlugin);

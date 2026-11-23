@@ -140,8 +140,8 @@ fn build(
     url: &str,
     body: Option<&str>,
     headers: &[(String, String)],
-) -> renzora_net::Request {
-    let mut request = renzora_net::Request::new(method, url);
+) -> renzora_net_api::net::Request {
+    let mut request = renzora_net_api::net::Request::new(method, url);
     let has_content_type = headers
         .iter()
         .any(|(k, _)| k.eq_ignore_ascii_case("content-type"));

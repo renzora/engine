@@ -119,7 +119,7 @@ pub(crate) fn register(app: &mut App) {
             refresh_click,
             poll_jobs,
         )
-            .run_if(in_state(renzora::SplashState::Splash)),
+            .run_if(in_state(renzora_project_api::SplashState::Splash)),
     );
 }
 

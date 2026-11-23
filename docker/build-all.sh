@@ -266,8 +266,9 @@ copy_shared_libs() {
     # NOTE: the "static-Bevy split removed all of these" note that used to sit
     # here has been out of date since native plugins landed. `dynamic_linking` is
     # back in `renzora_app`'s default features, so a desktop build produces
-    # `bevy_dylib` (handled above), `renzora_dylib` and `renzora_ember_dylib`
-    # again — and the executables IMPORT them. Missing one does not degrade
+    # `bevy_dylib` (handled above) and `renzora_dylib`, which carries the UI
+    # framework too (it used to ship beside a separate `renzora_ember_dylib`),
+    # again, and the executables IMPORT them. Missing one does not degrade
     # gracefully: the OS loader refuses the binary before `main`, with a dialog
     # naming a filename and nothing else.
     #
@@ -276,7 +277,6 @@ copy_shared_libs() {
     # the exe rather than being swept into plugins/ below.
     for f in \
         "$SRC/librenzora_dylib.$EXT"        "$SRC/renzora_dylib.$EXT" \
-        "$SRC/librenzora_ember_dylib.$EXT"  "$SRC/renzora_ember_dylib.$EXT" \
         "$SRC/librenzora.$EXT"              "$SRC/renzora.$EXT" \
         "$SRC/librenzora_editor.$EXT"       "$SRC/renzora_editor.$EXT"; do
         [ -f "$f" ] && cp "$f" "$OUT/"
@@ -294,9 +294,14 @@ copy_shared_libs() {
         # into plugins/ they would be ~37 MB of duplicate dead weight that the
         # loader then sniffs for a ctor symbol they do not export.
         [[ "$base" == *renzora_dylib* ]] && continue
+        # No longer built (the UI framework is inside renzora_dylib); skipped so
+        # a stale one in a warm cargo cache is not swept into plugins/.
         [[ "$base" == *renzora_ember_dylib* ]] && continue
         [[ "$base" == *libstd-* ]] && continue
         [[ "$base" == *renzora_macros* ]] && continue
+        # Contract proc-macro crates nested in their layer, such as
+        # renzora_editor_api_macros.
+        [[ "$base" == *_api_macros* ]] && continue
         [[ "$base" == librenzora."$EXT" ]] && continue
         [[ "$base" == renzora."$EXT" ]] && continue
         # Editor bundle (renzora_editor.*) ships beside the exe (copied above),

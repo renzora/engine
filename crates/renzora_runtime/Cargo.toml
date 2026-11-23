@@ -28,7 +28,7 @@ crash_dialog = ["renzora_engine/crash_dialog"]
 # game that kept the UI. Paired with the exporter's "Editor/dev conveniences"
 # capability, which is off by default — the same toggle that drops `rfd` and the
 # crash dialog. `?/` so it never drags the UI layer in on its own.
-editor_tools = ["renzora_ember?/editor_tools", "renzora_ember_dylib?/editor_tools"]
+editor_tools = ["renzora_ember?/editor_tools", "renzora_dylib?/editor_tools"]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
@@ -51,20 +51,19 @@ xr = ["dep:renzora_xr"]
 # and links the ones it ships straight into the binary instead.
 dynamic_linking = [
     "dep:renzora_dylib",
-    # The UI half of the same idea. A native plugin that draws a panel links
-    # `renzora_ember`, and ember keeps the theme palette, the stylesheet, the UI
-    # font scale and the viewport-toolbar lists in process-global statics — so a
-    # privately linked copy gives the plugin its own theme and its own toolbar
-    # nobody reads. See `crates/renzora_ember_dylib/src/lib.rs`.
+    # The UI half of the same idea, in the same image. A native plugin that
+    # draws a panel links the UI framework (`renzora::ui`, ember), and ember
+    # keeps the theme palette, the stylesheet, the UI font scale and the
+    # viewport-toolbar lists in process-global statics, so a privately linked
+    # copy gives the plugin its own theme and its own toolbar nobody reads.
+    # `ui` embeds it in `renzora_dylib`; it used to be a second image,
+    # `renzora_ember_dylib`.
     #
-    # Pulled here rather than from `ui` (which is what makes `renzora_ember`
-    # optional) because cargo cannot express "this dep, only when two features
-    # are both on". That is harmless in practice: `dynamic_linking` is only ever
-    # enabled for a full editor/dev build, where `ui` is on via `default`. The
-    # `extern crate` in `src/lib.rs` still requires both, so a hand-built
-    # `--no-default-features --features runtime,dynamic_linking` compiles rather
-    # than failing to resolve.
-    "dep:renzora_ember_dylib",
+    # Turned on here rather than from `ui` (which is what makes `renzora_ember`
+    # optional) because cargo cannot express "this, only when two features are
+    # both on". That is harmless in practice: `dynamic_linking` is only ever
+    # enabled for a full editor/dev build, where `ui` is on via `default`.
+    "renzora_dylib/ui",
     "renzora_native_plugin/dynamic_linking",
     "renzora_rust_script/dynamic_linking",
 ]
@@ -93,9 +92,9 @@ profiling = []
 # this feature must not drag the whole UI layer into a headless 3D build.
 render_3d = [
     "renzora_engine/render_3d",
-    "renzora/render_3d",
+    "renzora_render_api/render_3d",
     "renzora_ember?/render_3d",
-    "renzora_ember_dylib?/render_3d",
+    "renzora_dylib?/render_3d",
     "renzora_particles?/render_3d",
     "renzora_planar_reflection/render_3d",
 ]
@@ -234,7 +233,7 @@ animation = ["dep:renzora_animation", "renzora_engine/animation"]
 # are two dependency entries on the same crate, and enabling the feature on only
 # one would leave cargo resolving ember with a union that does not match what the
 # dylib was built from.
-game_ui = ["ui", "scripting", "renzora_ember/game_ui", "renzora_ember_dylib?/game_ui"]
+game_ui = ["ui", "scripting", "renzora_ember/game_ui", "renzora_dylib?/game_ui"]
 # The UI layer: `renzora_ember` (the widget/theme framework) and, through the
 # exporter, bevy_ui + bevy_text + bevy_ui_render + bevy_ui_widgets. Dropping it
 # takes the whole text-shaping stack (parley, swash, harfrust, fontique, skrifa,
@@ -259,7 +258,7 @@ motion_blur = ["dep:renzora_motion_blur"]
 distance_fog = ["dep:renzora_distance_fog"]
 volumetric_fog = ["dep:renzora_volumetric_fog"]
 oit = ["dep:renzora_oit"]
-antialiasing = ["dep:renzora_antialiasing", "renzora/antialiasing"]
+antialiasing = ["dep:renzora_antialiasing", "renzora_render_api/antialiasing"]
 # Sky / environment visuals, likewise one per crate rather than one `sky` bundle.
 atmosphere = ["dep:renzora_atmosphere"]
 environment_map = ["dep:renzora_environment_map"]
@@ -267,6 +266,10 @@ skybox = ["dep:renzora_skybox"]
 clouds = ["dep:renzora_clouds"]
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 # Feature crates that used to be loaded from `plugins/`, now statically linked.
 #
 # They are engine features rather than things a user installs, so they belong in
@@ -318,23 +321,21 @@ wgpu = { version = "30", default-features = false }
 # `renzora_engine` would otherwise hard-pull (audio, animation) — the `audio` /
 # `animation` features below forward to it. Normal builds keep them via `default`.
 renzora_engine = { path = "../renzora_engine", default-features = false }
-renzora = { path = "../renzora", default-features = false }
+renzora = { path = "../shared/renzora", default-features = false }
+# The profiler's log layer and the runtime-warnings capture, both installed into
+# `LogPlugin` at boot.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_render_api = { path = "../api/renzora_render_api" }
 # The same contract crate again, as one shared dylib. Nothing calls into it —
 # `renzora_dylib` re-exports `renzora` and is linked purely so the compiled code
 # lives in ONE image. Without it every plugin embeds a private copy of the four
 # process-global statics in the contract crate (the translation table, the
 # Problems and Console buffers, the asset loader), and each one then fails
 # silently: `t()` returns raw keys, logs and warnings land in buffers nobody
-# drains, asset reads find no loader. See `crates/renzora_dylib/src/lib.rs`.
-renzora_dylib = { path = "../renzora_dylib", optional = true }
-# And ember as one shared dylib, for the same reason one layer up: a native
-# plugin that registers a panel links ember, and ember's theme palette,
-# stylesheet, UI font scale and viewport-toolbar lists are process-global
-# statics. A privately linked copy leaves the plugin's panel painted in the
-# default palette while the editor around it is on the user's theme, and its
-# toolbar contributions pushed into a list nothing reads — silently, in both
-# cases. See `crates/renzora_ember_dylib/src/lib.rs`.
-renzora_ember_dylib = { path = "../renzora_ember_dylib", default-features = false, optional = true }
+# drains, asset reads find no loader. See `crates/shared/renzora_dylib/src/lib.rs`.
+renzora_dylib = { path = "../shared/renzora_dylib", optional = true }
 # `default-features = false`: script_http is switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
@@ -385,7 +386,8 @@ renzora_sprite_anim = { path = "../renzora_sprite_anim", optional = true }
 
 # Shader-file post-process effects (the Post Process component). Core: with no
 # effect added it builds no pipelines and its pass returns at once. Also what
-# switches on `renzora/postprocess`, the render phases every pass slots into.
+# switches on `renzora_render_api/postprocess`, the render phases every pass
+# slots into.
 renzora_postprocess = { path = "../renzora_postprocess" }
 # `default-features = false` is load-bearing: this crate's `tonemapping_luts`
 # feature FORWARDS to it, and `renzora_tonemapping`'s own `default` enables it.
@@ -420,7 +422,7 @@ renzora_clouds = { path = "../renzora_clouds", optional = true }
 renzora_native_plugin = { path = "../renzora_native_plugin" }
 
 # ── generated by `cargo renzora sync` — declared plugin crates ──
-# Discovered from their `renzora::add!` lines. Plain, non-optional
+# Discovered from their plugin declarations. Plain, non-optional
 # entries: a new plugin is always compiled and always installed. To let
 # the lean exporter strip one, move its line out of this block, mark it
 # `optional = true`, and put it in a feature — the generator will leave

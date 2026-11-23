@@ -17,7 +17,7 @@ use bevy::prelude::*;
 /// its parent is the mid joint (elbow, knee) and its grandparent the root
 /// (shoulder, thigh), the way a glTF skeleton is laid out.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Two Bone IK", icon = "BONE", category = "animation"))]
 pub struct TwoBoneIk {
@@ -65,7 +65,7 @@ impl Default for TwoBoneIk {
 
 /// Aim one of a bone's axes at a target: heads, eyes, turrets.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Look At", icon = "EYE", category = "animation"))]
 pub struct LookAt {
@@ -111,7 +111,7 @@ impl Default for LookAt {
 /// Put it on the character's model root (the entity at the feet, whose height
 /// the animation treats as the floor).
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Foot IK", icon = "FOOTPRINTS", category = "animation"))]
 pub struct FootIk {
@@ -176,7 +176,7 @@ impl Default for FootIk {
 /// The limits are measured from the bone's rotation when the component was
 /// added (for a model straight out of its glTF, the rest pose).
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Rotation Limit", icon = "LOCK", category = "animation"))]
 pub struct RotationLimit {
@@ -204,7 +204,7 @@ impl Default for RotationLimit {
 
 /// Copy another entity's world rotation onto this one.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Copy Rotation", icon = "COPY", category = "animation"))]
 pub struct CopyRotation {
@@ -233,7 +233,7 @@ impl Default for CopyRotation {
 
 /// Copy another entity's world position onto this one.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Copy Position", icon = "COPY", category = "animation"))]
 pub struct CopyPosition {
@@ -265,7 +265,7 @@ impl Default for CopyPosition {
 /// damped springs toward the animated pose. For a bone with several chains
 /// hanging off it (a head of hair strands), add one to each strand's root.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Spring Bones", icon = "WAVE_SINE", category = "animation"))]
 pub struct SpringBones {
@@ -311,7 +311,7 @@ impl Default for SpringBones {
 /// a tail). It affects the spring chains of the same character: those under
 /// the same top-level root.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(feature = "editor", inspectable(name = "Spring Collider", icon = "CIRCLE", category = "animation"))]
 pub struct SpringCollider {

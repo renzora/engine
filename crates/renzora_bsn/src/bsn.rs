@@ -896,7 +896,7 @@ mod tests {
     /// A component whose serialized type-path moved modules (here faked by
     /// rewriting `Transform`'s path) must still load via the short-name fallback
     /// — the exact regression that the `core/mod.rs` split caused for scenes
-    /// keyed by `renzora::core::MeshInstanceData`.
+    /// keyed by `renzora_scene_api::MeshInstanceData`.
     #[test]
     fn moved_type_resolves_by_short_name() {
         let atr = registry();

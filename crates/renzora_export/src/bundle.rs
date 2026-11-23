@@ -271,7 +271,7 @@ fn appimagetool(arch: &str, progress: &mut dyn FnMut(String)) -> Result<PathBuf,
         "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-{arch}.AppImage"
     );
     progress("Fetching appimagetool (once per machine)...".to_string());
-    let response = renzora_net::Request::get(&url)
+    let response = renzora_net_api::net::Request::get(&url)
         .header("User-Agent", "renzora-export")
         .send()
         .map_err(|e| format!("{e}"))?;

@@ -83,7 +83,7 @@ impl Init {
     fn read(world: &Rx) -> Self {
         let s = world.resource::<ImportOverlayState>();
         let project_root = world
-            .get_resource::<renzora::core::CurrentProject>()
+            .get_resource::<renzora_project_api::CurrentProject>()
             .map(|p| p.path.clone());
         let texture_sets = queue_texture_sets(s);
         let texture_set = s
@@ -210,7 +210,7 @@ pub(super) fn auto_start_import(world: &mut World) {
     };
     // The worker writes into the project's cache directory, so there has to be
     // a project.
-    if !ready || world.get_resource::<renzora::core::CurrentProject>().is_none() {
+    if !ready || world.get_resource::<renzora_project_api::CurrentProject>().is_none() {
         return;
     }
     run_import(world);

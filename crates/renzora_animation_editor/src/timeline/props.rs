@@ -6,8 +6,8 @@
 
 use bevy::prelude::*;
 
-use renzora::reflection::list_animatable_fields;
-use renzora::{PropertyKey, PropertyTrack, TrackValue};
+use renzora_scripting_api::reflection::list_animatable_fields;
+use renzora_animation_api::{PropertyKey, PropertyTrack, TrackValue};
 use renzora_animation::property_playback::read_track_value;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{menu_item, screen_menu};
@@ -76,13 +76,13 @@ pub(super) fn timeline_ops_pending(ops: Res<TimelineOps>) -> bool {
 /// Run condition for [`publish_active_timeline`]: a clip to publish, or a
 /// published entity still to clear. With neither, the system would compute
 /// `None` and write nothing.
-pub(super) fn active_timeline_stale(clip: Res<TimelineClip>, active: Res<renzora::ActiveTimeline>) -> bool {
+pub(super) fn active_timeline_stale(clip: Res<TimelineClip>, active: Res<renzora_editor_api::ActiveTimeline>) -> bool {
     clip.clip.is_some() || active.entity.is_some()
 }
 
 /// Run condition for [`apply_keyframe_requests`]: it drains the queue and does
 /// nothing else, so an empty queue means nothing to do.
-pub(super) fn keyframe_requests_pending(reqs: Option<Res<renzora::KeyframeRequests>>) -> bool {
+pub(super) fn keyframe_requests_pending(reqs: Option<Res<renzora_editor_api::KeyframeRequests>>) -> bool {
     reqs.is_some_and(|r| !r.is_empty())
 }
 
@@ -93,7 +93,7 @@ pub(super) fn upsert_key(pt: &mut PropertyTrack, time: f32, value: TrackValue) {
     if let Some(k) = pt.keys.iter_mut().find(|k| (k.time - time).abs() < EPS) {
         k.value = value;
     } else {
-        pt.keys.push(PropertyKey { time, value, interp: renzora::Interp::Linear });
+        pt.keys.push(PropertyKey { time, value, interp: renzora_animation_api::Interp::Linear });
         pt.keys.sort_by(|a, b| a.time.total_cmp(&b.time));
     }
 }
@@ -166,7 +166,7 @@ pub(super) fn set_key_to_live(world: &mut World, entity: Option<Entity>, track: 
 
 /// Set a property key's interpolation curve and mark the clip dirty (so the
 /// scrub preview and the auto-save reflect it immediately).
-pub(super) fn set_key_interp(world: &mut World, track: usize, idx: usize, interp: renzora::Interp) {
+pub(super) fn set_key_interp(world: &mut World, track: usize, idx: usize, interp: renzora_animation_api::Interp) {
     if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
         if let Some(key) = cache
             .clip
@@ -184,9 +184,9 @@ pub(super) fn set_key_interp(world: &mut World, track: usize, idx: usize, interp
 /// `(icon, label, interp)`. A curated subset of Bevy's [`EaseFunction`](bevy::curve::EaseFunction)
 /// set — the ones that read clearly on a float/Vec3/Color dopesheet — plus the
 /// two non-eased modes. Per-key authoring writes one of these into `PropertyKey`.
-pub(super) fn interp_menu_choices() -> [(&'static str, &'static str, renzora::Interp); 9] {
+pub(super) fn interp_menu_choices() -> [(&'static str, &'static str, renzora_animation_api::Interp); 9] {
     use bevy::curve::EaseFunction as E;
-    use renzora::Interp;
+    use renzora_animation_api::Interp;
     [
         ("minus", "Linear", Interp::Linear),
         ("stairs", "Stepped (hold)", Interp::Stepped),
@@ -204,7 +204,7 @@ pub(super) fn interp_menu_choices() -> [(&'static str, &'static str, renzora::In
 /// English label stays the identity in `interp_menu_choices`; the `Interp` enum
 /// value is what's actually written, so only the menu text is translated).
 pub(super) fn interp_label_tr(label: &str) -> String {
-    renzora::lang::t(match label {
+    renzora_lang_api::t(match label {
         "Linear" => "animation.interp_linear",
         "Stepped (hold)" => "animation.interp_stepped",
         "Smooth (in-out)" => "animation.interp_smooth",
@@ -354,7 +354,7 @@ fn apply_pending_setup(world: &mut World) {
         let wanted = ["translation", "rotation", "scale"];
         let picked: Vec<_> = fields
             .into_iter()
-            .filter(|f| renzora::norm(&f.component) == renzora::norm("Transform") && wanted.contains(&f.field.as_str()))
+            .filter(|f| renzora_editor_api::norm(&f.component) == renzora_editor_api::norm("Transform") && wanted.contains(&f.field.as_str()))
             .collect();
         if let Some(mut cache) = world.get_resource_mut::<TimelineClip>() {
             if let Some(clip) = cache.clip.as_mut() {
@@ -403,14 +403,14 @@ pub(super) fn delete_selected_keys(world: &mut World) {
 }
 
 /// Mirror which entity the open clip animates into the shared
-/// [`renzora::ActiveTimeline`] so the inspector can show per-property keyframe
+/// [`renzora_editor_api::ActiveTimeline`] so the inspector can show per-property keyframe
 /// buttons without linking this crate. Uses `cache.key` (not `selected_entity`)
 /// so the published entity stays consistent with the loaded track buffer during
 /// the one frame they differ on a selection change. Writes only on change, to
 /// avoid needless change-detection churn.
 pub(super) fn publish_active_timeline(
     clip: Res<TimelineClip>,
-    mut active: ResMut<renzora::ActiveTimeline>,
+    mut active: ResMut<renzora_editor_api::ActiveTimeline>,
 ) {
     // A clip must be loaded for the timeline to count as "active". An effect
     // shown on its own has no clip a property key could be saved into, so the
@@ -426,7 +426,7 @@ pub(super) fn publish_active_timeline(
 /// live value at the playhead. Exclusive because reading a live property value
 /// goes through reflection (`read_track_value`, inside `add_key_at`).
 pub(super) fn apply_keyframe_requests(world: &mut World) {
-    let reqs = match world.get_resource_mut::<renzora::KeyframeRequests>() {
+    let reqs = match world.get_resource_mut::<renzora_editor_api::KeyframeRequests>() {
         Some(mut r) if !r.is_empty() => r.drain(),
         _ => return,
     };
@@ -447,7 +447,7 @@ pub(super) fn apply_keyframe_requests(world: &mut World) {
     let mut bones: Vec<Entity> = Vec::new();
     for req in reqs {
         let is_bone = world.get::<bevy::animation::AnimationTargetId>(req.entity).is_some();
-        if is_bone && renzora::norm(&req.component) == renzora::norm("Transform") {
+        if is_bone && renzora_editor_api::norm(&req.component) == renzora_editor_api::norm("Transform") {
             if !bones.contains(&req.entity) {
                 bones.push(req.entity);
             }
@@ -475,8 +475,8 @@ fn add_key_for_field(world: &mut World, entity: Option<Entity>, component: &str,
         .and_then(|c| c.clip.as_ref())
         .and_then(|c| {
             c.property_tracks.iter().position(|t| {
-                renzora::norm(&t.component) == renzora::norm(component)
-                    && renzora::norm(&t.field) == renzora::norm(field)
+                renzora_editor_api::norm(&t.component) == renzora_editor_api::norm(component)
+                    && renzora_editor_api::norm(&t.field) == renzora_editor_api::norm(field)
             })
         });
     if let Some(idx) = existing {
@@ -485,8 +485,8 @@ fn add_key_for_field(world: &mut World, entity: Option<Entity>, component: &str,
     }
     // No track yet — resolve the canonical animatable field and create one.
     let canon = list_animatable_fields(world, entity).into_iter().find(|f| {
-        renzora::norm(&f.component) == renzora::norm(component)
-            && renzora::norm(&f.field) == renzora::norm(field)
+        renzora_editor_api::norm(&f.component) == renzora_editor_api::norm(component)
+            && renzora_editor_api::norm(&f.field) == renzora_editor_api::norm(field)
     });
     let Some(canon) = canon else {
         warn!("[prop-anim] Inspector keyframe: {}.{} is not animatable", component, field);

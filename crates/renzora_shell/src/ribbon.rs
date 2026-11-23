@@ -495,7 +495,7 @@ fn ribbon_item(
     // via `layout.<slug>`; the stored `label` stays the workspace's identity (it's
     // the persisted key + the entity Name). A user-renamed/added workspace has no
     // matching key, so `t_or` falls back to its raw name.
-    let display = renzora::lang::t_or(&format!("layout.{}", label.to_lowercase()), label);
+    let display = renzora_lang_api::t_or(&format!("layout.{}", label.to_lowercase()), label);
     let text = commands
         .spawn((
             Text::new(display),
@@ -549,7 +549,7 @@ fn ribbon_item(
     // and, while it's the active one, the guarantee that it never folds at all.
     commands.entity(item).insert(renzora_ember::widgets::OverflowEntry::new(
         "browsers",
-        &renzora::lang::t_or(&format!("layout.{}", label.to_lowercase()), label),
+        &renzora_lang_api::t_or(&format!("layout.{}", label.to_lowercase()), label),
         move |w| select_workspace(w, index),
     ));
     if active {

@@ -32,7 +32,7 @@
 //! viewport goes back to being 3D-or-2D and nothing else.
 //!
 //! It still shows the scene behind the canvas — `viewport.rs` reads the shared
-//! `renzora::ViewportRenderTarget` image, which is contract state any panel may
+//! `renzora_project_api::ViewportRenderTarget` image, which is contract state any panel may
 //! sample. Borrowing the picture never required living inside the panel that
 //! draws it.
 
@@ -40,7 +40,7 @@
 
 use bevy::prelude::*;
 
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::game_ui::UiCanvas;
 
@@ -170,7 +170,7 @@ impl Plugin for GameUiEditorPlugin {
         // panel table is for panels the shell itself knows how to draw; this one
         // belongs to the crate that draws it, which is also what lets an editor
         // built without this plugin simply not offer it.
-        use renzora::core::RenzoraShellExt;
+        use renzora_shell_api::RenzoraShellExt;
         use renzora_ember::panel::RegisterPanelContent;
         // "UI Editor", not "UI Canvas": the panel is the place you edit a UI.
         // The *canvas* is the entity in the scene that mounts a template, and
@@ -206,7 +206,6 @@ pub fn canvas_panel_visible(world: &World) -> bool {
     )
 }
 
-renzora::add!(GameUiEditorPlugin, Editor);
 
 /// Build the full UI canvas editor content (toolbar + scene-backdrop + rendered
 /// UI image + selection overlay). Mounted by the viewport in UI mode.
@@ -228,7 +227,7 @@ pub fn build_ui_canvas(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn sync_active_canvas(
     mut state: ResMut<NativeCanvasState>,
     canvases: Query<(Entity, &UiCanvas)>,
-    selection: Option<Res<renzora::EditorSelection>>,
+    selection: Option<Res<renzora_editor_api::EditorSelection>>,
     parents: Query<&ChildOf>,
 ) {
     // The selection decides which canvas is being edited.

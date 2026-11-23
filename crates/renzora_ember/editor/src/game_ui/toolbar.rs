@@ -8,7 +8,8 @@
 
 use bevy::prelude::*;
 
-use renzora::{EditorSelection, SplashState};
+use renzora_editor_api::EditorSelection;
+use renzora_project_api::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::UiInteraction;
@@ -71,7 +72,7 @@ fn sync_toolbar_order(
     // An empty order means "not arranged yet" — take the saved one rather than
     // clobbering it with the default.
     if order.0.is_empty() {
-        let disk = saved.get_or_insert_with(renzora::core::load_ui_toolbar_order);
+        let disk = saved.get_or_insert_with(renzora_project_api::load_ui_toolbar_order);
         if !disk.is_empty() {
             order.0 = disk.clone();
         }
@@ -79,7 +80,7 @@ fn sync_toolbar_order(
     }
     if saved.as_deref() != Some(order.0.as_slice()) {
         *saved = Some(order.0.clone());
-        if let Err(err) = renzora::core::save_ui_toolbar_order(&order.0) {
+        if let Err(err) = renzora_project_api::save_ui_toolbar_order(&order.0) {
             warn!("ui toolbar: could not save group order — {err}");
         }
     }

@@ -3,7 +3,7 @@
 //! Exclusive system that applies generic reflection-based component field writes.
 //!
 //! The reflection read/write/enumerate helpers themselves live in the `renzora`
-//! contract crate (`renzora::reflection`) so scripting and the
+//! contract crate (`renzora_scripting_api::reflection`) so scripting and the
 //! animation system both share one implementation. This module re-exports the
 //! ones scripting callers use and hosts the script-queue-draining system.
 
@@ -11,7 +11,7 @@ use bevy::prelude::*;
 
 use super::execution::ScriptReflectionQueue;
 
-pub use renzora::reflection::{
+pub use renzora_scripting_api::reflection::{
     get_all_component_fields, get_entity_component_names, get_reflected_field,
 };
 
@@ -61,7 +61,7 @@ pub fn apply_reflection_sets(world: &mut World) {
             set_op.source_entity
         };
 
-        if !renzora::reflection::set_reflected_field(
+        if !renzora_scripting_api::reflection::set_reflected_field(
             world,
             target,
             &set_op.component_type,

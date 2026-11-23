@@ -72,8 +72,8 @@ renzora test                     # the full suite, exactly as CI runs it (contai
 | **Documentation** | Edit the markdown under `docs/r1-alpha8/` in the **engine** repo; pushing to `main` auto-publishes it to this site. Older `docs/r1-alpha*` directories are frozen releases — leave them alone. |
 | **Editor panels** | Register a native bevy_ui panel with the `App` extension APIs `register_shell_panel(id, title, icon, category)` + `register_panel_content(id, scroll, build_fn)`. See [Editor Panels](/docs/r1-alpha8/editor-dev/panels). |
 | **Scripting functions** | Declare them from the owning domain crate via the `ScriptExtension` trait, so every language backend builds them. Engine-wide primitives live in the language plugin's `register_api()` (`plugins/lua`). |
-| **Post-process effects** | Annotate a settings struct with `#[renzora_macros::post_process(...)]` and `renzora::add!` the plugin. See [Post-Processing](/docs/r1-alpha8/extending/post-processing). |
-| **Plugins** | Declare with `renzora::add!(MyPlugin)` — a build-time generator reads that line *as text* and writes the committed static plugin lists, so keep it on one line at the top level. See [Building Plugins](/docs/r1-alpha8/extending/plugins). |
+| **Post-process effects** | Annotate a settings struct with `#[renzora_macros::post_process(...)]` and declare the plugin in a `[[package.metadata.renzora.plugin]]` table. See [Post-Processing](/docs/r1-alpha8/extending/post-processing). |
+| **Plugins** | Declare with a `[[package.metadata.renzora.plugin]]` table (`type = "MyPlugin"`) in the crate's `Cargo.toml`. A build-time generator reads it and writes the committed static plugin lists. See [Building Plugins](/docs/r1-alpha8/extending/plugins). |
 | **Export targets** | Improve a platform lane in `docker/build-all.sh`. |
 
 > The editor has no `EditorPanel` trait you "implement and register" — panels are plain bevy_ui content functions registered through the two `App` extension methods above. Anything claiming an egui `EditorPanel` trait is stale (egui was fully removed).
@@ -211,4 +211,4 @@ The engine is dual-licensed under **MIT OR Apache-2.0** (`LICENSE-MIT` and `LICE
 - [AI Policy](ai-policy.md) — using AI assistants, auditing, testing, and disclosure
 - [Building from Source](/docs/r1-alpha8/setup/building-from-source) — the full build, aliases, and Docker cross-compile flow
 - [Architecture](/docs/r1-alpha8/setup/architecture) — the one-binary, editor-as-removable-cdylib model
-- [Building Plugins](/docs/r1-alpha8/extending/plugins) — extend the engine with `renzora::add!`
+- [Building Plugins](/docs/r1-alpha8/extending/plugins) — extend the engine with a `[[package.metadata.renzora.plugin]]` table

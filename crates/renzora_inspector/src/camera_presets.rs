@@ -1,4 +1,4 @@
-//! Bevy-native (ember) inspector drawer for [`renzora::CameraPresets`].
+//! Bevy-native (ember) inspector drawer for [`renzora_scene_api::CameraPresets`].
 //!
 //! Lists each named camera angle with three actions:
 //! - **Go to** drives the editor fly-camera to the preset (preview the angle),
@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use renzora::{CameraPreset, CameraPresets};
+use renzora_scene_api::{CameraPreset, CameraPresets};
 use renzora_camera::OrbitCameraState;
 use renzora_editor_framework::camera::editor_camera_world_pose;
 use renzora_editor_framework::EditorCommands;
@@ -141,7 +141,7 @@ fn rebuild_camera_presets(world: &mut World) {
                 let l = muted_label(
                     &mut commands,
                     &fonts,
-                    &renzora::lang::t("comp.camera_presets.empty"),
+                    &renzora_lang_api::t("comp.camera_presets.empty"),
                 );
                 commands.entity(root).add_child(l);
             }
@@ -182,7 +182,7 @@ fn build_preset_row(
         .id();
 
     // Editable name (two-way bound to the preset at this index by position).
-    let ti = text_input(commands, &fonts.ui, &renzora::lang::t("comp.camera_presets.name_placeholder"), name);
+    let ti = text_input(commands, &fonts.ui, &renzora_lang_api::t("comp.camera_presets.name_placeholder"), name);
     commands.entity(ti).insert(Node {
         flex_grow: 1.0,
         min_width: Val::Px(0.0),
@@ -229,7 +229,7 @@ fn build_preset_row(
 }
 
 fn build_capture_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
-    let btn = icon_label_button(commands, fonts, "plus", &renzora::lang::t("comp.camera_presets.capture"));
+    let btn = icon_label_button(commands, fonts, "plus", &renzora_lang_api::t("comp.camera_presets.capture"));
     commands.entity(btn).insert((
         Node {
             width: Val::Percent(100.0),
@@ -257,7 +257,7 @@ fn editor_pose_or_warn(w: &mut World) -> Option<Transform> {
         Some(gt) => Some(gt.compute_transform()),
         None => {
             if let Some(mut t) = w.get_resource_mut::<renzora_ui::Toasts>() {
-                t.warning(renzora::lang::t("comp.camera_presets.no_camera"));
+                t.warning(renzora_lang_api::t("comp.camera_presets.no_camera"));
             }
             None
         }
@@ -287,7 +287,7 @@ fn capture_preset_click(
                 p.presets.push(CameraPreset::from_transform(name, &pose));
             }
             if let Some(mut t) = w.get_resource_mut::<renzora_ui::Toasts>() {
-                t.info(renzora::lang::t("comp.camera_presets.captured"));
+                t.info(renzora_lang_api::t("comp.camera_presets.captured"));
             }
         });
     }
@@ -342,7 +342,7 @@ fn snap_preset_click(
                 }
             }
             if let Some(mut t) = w.get_resource_mut::<renzora_ui::Toasts>() {
-                t.info(renzora::lang::t("comp.camera_presets.snapped"));
+                t.info(renzora_lang_api::t("comp.camera_presets.snapped"));
             }
         });
     }

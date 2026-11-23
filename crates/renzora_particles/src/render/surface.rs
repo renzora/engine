@@ -88,7 +88,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError};
 use bevy::render::storage::ShaderBuffer;
 use bevy::shader::{ShaderDefVal, ShaderRef};
-use renzora::core::MaterialResolved;
+use renzora_material_api::MaterialResolved;
 use renzora_shader::material::surface_ext::{GraphMaterial, SurfaceGraphExt, SurfaceGraphParams};
 
 use super::material::{
@@ -528,7 +528,7 @@ pub fn adopt_surface_materials(
         Option<&MeshMaterial3d<GraphMaterial>>,
         Option<&MeshMaterial3d<StandardMaterial>>,
         Has<MaterialResolved>,
-        Option<&renzora::MaterialRef>,
+        Option<&renzora_material_api::MaterialRef>,
         Option<&ParticleMotion>,
     )>,
     mut assets: SurfaceAssets,
@@ -584,7 +584,7 @@ pub fn adopt_surface_materials(
             },
             Source::Fallback => {
                 let path = material_ref.map(|r| r.0.as_str()).unwrap_or("");
-                renzora::console_log::console_warn(
+                renzora_log_api::console_warn(
                     "Particles",
                     format!("the material `{path}` could not be used on particles; they draw with the particle shader"),
                 );

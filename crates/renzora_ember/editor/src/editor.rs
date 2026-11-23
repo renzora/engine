@@ -10,9 +10,7 @@
 
 use bevy::prelude::*;
 use bevy_hui::prelude::Tags;
-use renzora::{
-    AppEditorExt, ComponentIconEntry, FieldDef, FieldType, FieldValue, InspectorEntry,
-};
+use renzora_editor_api::{AppEditorExt, ComponentIconEntry, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_ember::game_ui::{UiCanvas, UiWidget};
 
 use renzora_ember::markup::HtmlTemplatePath;
@@ -155,7 +153,7 @@ fn register_editor_entries(app: &mut App) {
                 // template. Then the normal path-binding observer builds it.
                 create_fn: |world, entity| {
                     let Some(root) = world
-                        .get_resource::<renzora::CurrentProject>()
+                        .get_resource::<renzora_project_api::CurrentProject>()
                         .map(|p| p.path.clone())
                     else {
                         return;

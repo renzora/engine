@@ -1,6 +1,6 @@
 //! The Debug screen: the probes the connected game or editor offers, as cards.
 //!
-//! Probes (`renzora::probes`) are the editor's old debug panels without their
+//! Probes (`renzora_diagnostics_api::probes`) are the editor's old debug panels without their
 //! UI: the game builds a report from its `World`, and this screen draws it.
 //! Every probe is drawn by the one renderer here, from the report's small
 //! vocabulary of figures, sparklines, bars, tables, notes and controls, so a
@@ -12,7 +12,7 @@
 use std::collections::BTreeSet;
 
 use bevy::prelude::*;
-use renzora::probes::{ProbeItem, ProbeLevel, ProbeReport};
+use renzora_diagnostics_api::probes::{ProbeItem, ProbeLevel, ProbeReport};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::*;
 

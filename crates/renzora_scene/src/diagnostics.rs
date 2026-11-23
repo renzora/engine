@@ -10,14 +10,14 @@
 //! editor's own UI nothing.
 //!
 //! The data still comes from [`SceneDiagSnapshot`] (filled by
-//! `update_scene_diag_snapshot`, gated on [`renzora::probes::probe_watched`]
+//! `update_scene_diag_snapshot`, gated on [`renzora_diagnostics_api::probes::probe_watched`]
 //! with this probe's id), [`TabAssetCache`] and [`recent_warnings`]. The
 //! colours the panel drew map onto [`ProbeLevel`]: its green is `Good`, its
 //! red is `Bad`, its amber is `Warn`, its muted grey `Muted`.
 
 use bevy::prelude::*;
 
-use renzora::probes::{ProbeDef, ProbeItem, ProbeLevel, ProbeReport, RegisterProbe};
+use renzora_diagnostics_api::probes::{ProbeDef, ProbeItem, ProbeLevel, ProbeReport, RegisterProbe};
 
 use crate::runtime_warnings::{recent_warnings, CapturedWarning, WarningLevel};
 use crate::tab_asset_cache::{CameraEntry, SceneDiagSnapshot, TabAssetCache, TabPinSnapshot};
@@ -289,7 +289,7 @@ fn warnings_section(report: &mut ProbeReport, warnings: &[CapturedWarning]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::probes::{ProbeRegistry, ProbeSection};
+    use renzora_diagnostics_api::probes::{ProbeRegistry, ProbeSection};
 
     fn section<'a>(report: &'a ProbeReport, title: &str) -> &'a ProbeSection {
         report

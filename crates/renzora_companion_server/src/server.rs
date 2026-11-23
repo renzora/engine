@@ -166,9 +166,15 @@ fn handle(state: &mut State, window: &mut Option<Window>, event: Event, events: 
                     Err(why) => state.queue.answer(id, Err(why)),
                 }
             }
+            Message::Submit { id, job } if state.editor.thumbnails_off && job.uses_gpu() => {
+                state.queue.answer(id, Err(THUMBNAILS_OFF.into()));
+            }
             Message::Submit { id, job } => state.queue.submit(id, job),
             Message::Cancel { id } => cancel(state, id),
-            Message::EditorState { playing } => state.editor.playing = playing,
+            Message::EditorState { playing, thumbnails } => {
+                state.editor.playing = playing;
+                set_thumbnails(state, thumbnails);
+            }
             Message::Show => show(window, events),
             // Lines only the companion sends.
             Message::Hello { .. } | Message::Progress { .. } | Message::Done { .. } => {}
@@ -234,6 +240,36 @@ fn handle(state: &mut State, window: &mut Option<Window>, event: Event, events: 
 
 /// Stop a job, wherever it is: waiting in the queue, on a worker thread, or
 /// with the render worker.
+/// Why a thumbnail job fails while the editor has thumbnails turned off.
+const THUMBNAILS_OFF: &str = "thumbnail rendering is turned off in the editor's settings";
+
+/// Apply the editor's Render thumbnails setting. Off: forget the render-ahead
+/// backlog, fail every thumbnail job waiting or running, and stop the render
+/// worker, which is what gives its memory and GPU back. On: render ahead again
+/// (when a worker can be started at all), from a fresh look at the project.
+fn set_thumbnails(state: &mut State, on: bool) {
+    let off = !on;
+    if state.editor.thumbnails_off == off {
+        return;
+    }
+    state.editor.thumbnails_off = off;
+    if off {
+        state.cache.render_ahead = false;
+        state.cache.backlog.clear();
+        let waiting: Vec<protocol::JobId> =
+            state.queue.waiting().filter(|(_, job)| job.uses_gpu()).map(|(entry, _)| entry.id).collect();
+        for id in waiting {
+            cancel(state, id);
+        }
+        for report in state.render.stop(THUMBNAILS_OFF) {
+            state.queue.report(report);
+        }
+    } else {
+        state.cache.render_ahead = state.render.available();
+        state.cache.render_missing();
+    }
+}
+
 fn cancel(state: &mut State, id: protocol::JobId) {
     state.queue.cancel(id);
     if let Some(report) = state.render.cancel(id) {

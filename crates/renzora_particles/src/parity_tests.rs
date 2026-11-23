@@ -284,7 +284,7 @@ fn the_new_forces_run_on_the_gpu_and_generate_valid_wgsl() {
         let compiled = compile_graph(&e.graph).unwrap();
         assert_eq!(choose(e, &compiled, false, &GpuCaps::all()).active, ActiveBackend::Gpu, "{t}");
         let p = crate::gpu::codegen::generate(&compiled, SimulationSpace::Local).unwrap();
-        renzora::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{t}:\n{e}"));
+        renzora_shader_api::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{t}:\n{e}"));
     }
 }
 
@@ -420,7 +420,7 @@ fn collide_scene_keeps_its_emitter_on_the_cpu_and_says_why() {
     assert!(choice.reason.unwrap().contains("collides with the scene"));
     // A shader generated anyway still validates; it just has no scene.
     let p = crate::gpu::codegen::generate(&compiled, SimulationSpace::Local).unwrap();
-    renzora::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{e}"));
+    renzora_shader_api::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{e}"));
     // An emitter without the node tracks nothing.
     let plain = sim_of(&simple_effect(&[], vec![], vec![]));
     assert!(!plain.wants_scene());
@@ -514,7 +514,7 @@ fn a_gpu_step_carries_the_script_value() {
     let with = crate::compile::compile_graph_with_params(&asset.emitters[0].graph, &keyed).unwrap();
     let p = crate::gpu::codegen::generate(&with, SimulationSpace::Local).unwrap();
     assert!(p.source.contains("step.params[0]"), "the parameter reads its slot");
-    renzora::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{e}"));
+    renzora_shader_api::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{e}"));
     // Compiled without parameters (the editor's checker), it is its value.
     assert!(compiled.update.instrs.iter().all(|i| !matches!(i.op, crate::ir::Op::Param(_))));
 }

@@ -78,7 +78,7 @@ impl Plugin for LangPlugin {
         // 1. Built-ins first, so the table is fully populated before any
         //    external pack or plugin contribution gets a chance to override.
         for (code, src) in EMBEDDED_PACKS {
-            if let Err(e) = renzora::lang::register_pack_str(src) {
+            if let Err(e) = renzora_lang_api::register_pack_str(src) {
                 error!("[lang] embedded pack '{code}' failed to parse: {e}");
             }
         }
@@ -93,12 +93,12 @@ impl Plugin for LangPlugin {
         //    preference saved in `~/.renzora/editor.toml` (default "en"). The
         //    Settings picker calls `set_active` + `save_language` to update it.
         let initial =
-            std::env::var("RENZORA_LANG").unwrap_or_else(|_| renzora::load_language());
-        renzora::lang::set_active(&initial);
+            std::env::var("RENZORA_LANG").unwrap_or_else(|_| renzora_project_api::load_language());
+        renzora_lang_api::set_active(&initial);
         info!(
             "[lang] {} language(s) loaded, active = '{}'",
-            renzora::lang::available().len(),
-            renzora::lang::active_code(),
+            renzora_lang_api::available().len(),
+            renzora_lang_api::active_code(),
         );
 
         // The `languages/` folders sit beside the executable and in the working
@@ -113,18 +113,18 @@ impl Plugin for LangPlugin {
         {
             let mut roots = app
                 .world_mut()
-                .get_resource_or_insert_with(renzora::core::project_files::ExtraWatchRoots::default);
+                .get_resource_or_insert_with(renzora_project_api::project_files::ExtraWatchRoots::default);
             for dir in external_dirs() {
                 roots.add(dir);
             }
         }
 
         app.insert_resource(external)
-            .add_message::<renzora::lang::LanguageChanged>()
+            .add_message::<renzora_lang_api::LanguageChanged>()
             // Same idempotent registration as the other consumers: this crate is
             // in every build and the watcher is editor-only, so the message has
             // to exist whether or not anything writes to it.
-            .add_message::<renzora::core::project_files::ProjectFileChanged>()
+            .add_message::<renzora_project_api::project_files::ProjectFileChanged>()
             .add_systems(Update, (rescan_external_packs, emit_language_changed));
 
         // Expose `tr("key")` to Lua/Rhai scripts via the scripting extension
@@ -196,7 +196,7 @@ fn scan_dirs(state: &mut ExternalPacks, dirs: &[PathBuf]) {
             let result = std::fs::read_to_string(&path)
                 .map_err(|e| format!("unreadable: {e}"))
                 .and_then(|src| {
-                    renzora::lang::register_pack_str(&src)
+                    renzora_lang_api::register_pack_str(&src)
                         .map_err(|e| format!("parse error: {e}"))
                 });
             match result {
@@ -223,10 +223,10 @@ fn scan_dirs(state: &mut ExternalPacks, dirs: &[PathBuf]) {
 /// re-parses exactly the file that changed, and a pack landing as a rename or a
 /// batch of writes needs no special case.
 ///
-/// [`ExtraWatchRoots`]: renzora::core::project_files::ExtraWatchRoots
+/// [`ExtraWatchRoots`]: renzora_project_api::project_files::ExtraWatchRoots
 fn rescan_external_packs(
     mut state: ResMut<ExternalPacks>,
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
 ) {
     if changes.is_empty() {
         return;
@@ -248,21 +248,20 @@ fn rescan_external_packs(
 /// fire `LanguageChanged` so panels caching translated text can rebuild.
 fn emit_language_changed(
     mut last: Local<u64>,
-    mut writer: bevy::ecs::message::MessageWriter<renzora::lang::LanguageChanged>,
+    mut writer: bevy::ecs::message::MessageWriter<renzora_lang_api::LanguageChanged>,
 ) {
-    let rev = renzora::lang::revision();
+    let rev = renzora_lang_api::revision();
     // `Local` starts at 0; the build-time registrations already pushed the
     // revision past 0, so the first frame emits one change — exactly what we
     // want, to localize any UI built before this system first runs.
     if *last != rev {
         *last = rev;
-        writer.write(renzora::lang::LanguageChanged {
-            code: renzora::lang::active_code(),
+        writer.write(renzora_lang_api::LanguageChanged {
+            code: renzora_lang_api::active_code(),
         });
     }
 }
 
-renzora::add!(LangPlugin, Runtime, priority = -50);
 
 #[cfg(test)]
 mod tests {
@@ -304,7 +303,7 @@ mod tests {
         let _guard = lang_lock();
         for (code, src) in EMBEDDED_PACKS {
             assert!(
-                renzora::lang::register_pack_str(src).is_ok(),
+                renzora_lang_api::register_pack_str(src).is_ok(),
                 "embedded pack '{code}' does not parse"
             );
         }
@@ -353,7 +352,7 @@ mod tests {
         scan_dirs(&mut state, &[tmp.path().to_path_buf()]);
 
         assert_eq!(state.seen.len(), 1, "the pack's mtime should be recorded");
-        assert!(renzora::lang::has_language("zz-scan"));
+        assert!(renzora_lang_api::has_language("zz-scan"));
     }
 
     /// The mtime table is what keeps the 2-second rescan cheap. If an unchanged
@@ -370,11 +369,11 @@ mod tests {
         let mut state = ExternalPacks::default();
 
         scan_dirs(&mut state, &dirs);
-        let after_first = renzora::lang::revision();
+        let after_first = renzora_lang_api::revision();
 
         scan_dirs(&mut state, &dirs);
         assert_eq!(
-            renzora::lang::revision(),
+            renzora_lang_api::revision(),
             after_first,
             "an unchanged pack was re-registered, bumping the revision"
         );
@@ -420,13 +419,13 @@ mod tests {
     fn emit_app() -> App {
         let mut app = App::new();
         app.init_resource::<Seen>()
-            .add_message::<renzora::lang::LanguageChanged>()
+            .add_message::<renzora_lang_api::LanguageChanged>()
             .add_systems(
                 Update,
                 (
                     emit_language_changed,
                     |mut reader: bevy::ecs::message::MessageReader<
-                        renzora::lang::LanguageChanged,
+                        renzora_lang_api::LanguageChanged,
                     >,
                      mut seen: ResMut<Seen>| {
                         seen.0 += reader.read().count();
@@ -445,7 +444,7 @@ mod tests {
         let _guard = lang_lock();
         // Guarantee the global revision is non-zero without depending on which
         // other tests have already run.
-        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+        renzora_lang_api::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
 
         let mut app = emit_app();
         app.update();
@@ -462,7 +461,7 @@ mod tests {
     #[test]
     fn a_quiet_frame_emits_nothing_further() {
         let _guard = lang_lock();
-        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+        renzora_lang_api::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
 
         let mut app = emit_app();
         app.update();
@@ -480,26 +479,26 @@ mod tests {
     #[test]
     fn switching_language_emits_again() {
         let _guard = lang_lock();
-        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
-        renzora::lang::register_pack_str(EMBEDDED_PACKS[1].1).unwrap();
-        renzora::lang::set_active("en");
+        renzora_lang_api::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+        renzora_lang_api::register_pack_str(EMBEDDED_PACKS[1].1).unwrap();
+        renzora_lang_api::set_active("en");
 
         let mut app = emit_app();
         app.update();
         let after_first = app.world().resource::<Seen>().0;
 
-        renzora::lang::set_active("de");
+        renzora_lang_api::set_active("de");
         app.update();
 
         assert_eq!(app.world().resource::<Seen>().0, after_first + 1);
-        renzora::lang::set_active("en");
+        renzora_lang_api::set_active("en");
     }
 
     #[test]
     fn set_active_switches_the_reported_code() {
         let _guard = lang_lock();
-        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
-        renzora::lang::set_active("en");
-        assert_eq!(renzora::lang::active_code(), "en");
+        renzora_lang_api::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+        renzora_lang_api::set_active("en");
+        assert_eq!(renzora_lang_api::active_code(), "en");
     }
 }

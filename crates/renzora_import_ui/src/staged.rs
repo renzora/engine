@@ -119,7 +119,7 @@ pub struct StagedImport {
     /// They ride along with the tree rather than firing from the worker,
     /// because the observer that handles them writes a file the moment it is
     /// triggered — and until the user accepts, nothing may touch the project.
-    pub material_events: Vec<renzora::core::PbrMaterialExtracted>,
+    pub material_events: Vec<renzora_scene_api::PbrMaterialExtracted>,
     /// What the user unchecked in the scene tree, in the staged GLB's own index
     /// space. Applied by [`apply_exclusions`] just before the tree is committed
     /// — never while it is being inspected, so the preview always shows the

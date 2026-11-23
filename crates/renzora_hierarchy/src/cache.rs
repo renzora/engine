@@ -157,9 +157,9 @@ impl IdentityChanges<'_, '_> {
 pub struct AssetBadgeChanges<'w, 's> {
     // `Changed` already fires on the add tick, so it covers attach + edit.
     changed_script: Query<'w, 's, (), Changed<renzora_scripting::ScriptComponent>>,
-    changed_material: Query<'w, 's, (), Changed<renzora::core::MaterialRef>>,
+    changed_material: Query<'w, 's, (), Changed<renzora_material_api::MaterialRef>>,
     removed_script: RemovedComponents<'w, 's, renzora_scripting::ScriptComponent>,
-    removed_material: RemovedComponents<'w, 's, renzora::core::MaterialRef>,
+    removed_material: RemovedComponents<'w, 's, renzora_material_api::MaterialRef>,
 }
 
 impl AssetBadgeChanges<'_, '_> {

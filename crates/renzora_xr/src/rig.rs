@@ -31,7 +31,7 @@ pub(crate) fn register(app: &mut App) {
 // `VrPlayState.active` — an XR-side override here would just fight it.)
 
 /// The XR session is currently rendering to the headset.
-fn session_active(play: Option<Res<renzora::VrPlayState>>) -> bool {
+fn session_active(play: Option<Res<renzora_scene_api::VrPlayState>>) -> bool {
     play.is_some_and(|p| p.active)
 }
 
@@ -71,7 +71,7 @@ fn spawn_rig(
                 // Editor-internal rig, not scene content: keep it out of the
                 // hierarchy panel and the scene saver (descendant meshes are
                 // hidden with it via the hierarchy's ancestor check).
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
             ))
             .id();
         // Grip pose: +Z points back along the handle, so tilt the capsule to
@@ -127,7 +127,7 @@ fn spawn_rig(
         XrTrackedView,
         VrMirrorCamera,
         // Editor-internal spectator camera, not scene content.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
     ));
 }
 
@@ -135,7 +135,7 @@ fn spawn_rig(
 /// every frame — cheap, and keeps the knobs live-editable.
 fn apply_visibility_config(
     config: Res<VrConfig>,
-    play: Option<Res<renzora::VrPlayState>>,
+    play: Option<Res<renzora_scene_api::VrPlayState>>,
     mut mirror: Query<&mut Camera, With<VrMirrorCamera>>,
     mut wands: Query<&mut Visibility, With<VrControllerVisual>>,
 ) {
@@ -168,7 +168,7 @@ fn apply_visibility_config(
 /// arriving with scene loads are caught too.
 fn suppress_flat_scene_cameras(
     boot: Res<crate::XrBootMode>,
-    play: Option<Res<renzora::VrPlayState>>,
+    play: Option<Res<renzora_scene_api::VrPlayState>>,
     mut cameras: Query<
         (&mut Camera, Option<&RenderTarget>),
         (

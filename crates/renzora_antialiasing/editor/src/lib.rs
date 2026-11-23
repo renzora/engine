@@ -15,7 +15,7 @@
 
 use bevy::anti_alias::contrast_adaptive_sharpening::ContrastAdaptiveSharpening;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_antialiasing::compat::method_warning;
 use renzora_antialiasing::{AntiAliasing, AntiAliasingMethod, CasSettings};
 
@@ -161,8 +161,8 @@ fn cas_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
-            renzora::bool_field!("Denoise", CasSettings, denoise),
+            renzora_editor_api::float_field!("Strength", CasSettings, sharpening_strength, 0.01, 0.0, 1.0),
+            renzora_editor_api::bool_field!("Denoise", CasSettings, denoise),
         ],
     }
 }
@@ -179,5 +179,3 @@ impl Plugin for AntiAliasingEditorPlugin {
         app.register_inspector(cas_entry());
     }
 }
-
-renzora::add!(AntiAliasingEditorPlugin, Editor);

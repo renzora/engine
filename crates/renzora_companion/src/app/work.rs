@@ -1,12 +1,12 @@
 //! What each kind of job actually does, on a worker thread.
 //!
 //! Every handler takes its arguments as the JSON its submitter wrote (the
-//! types are in `renzora::job_args`, shared by both ends) and answers with a
+//! types are in `renzora_platform_api::job_args`, shared by both ends) and answers with a
 //! short result or a reason in words.
 
 use std::time::Duration;
 
-use renzora::job_args;
+use renzora_platform_api::job_args;
 use serde::de::DeserializeOwned;
 
 use super::jobs::JobCtx;

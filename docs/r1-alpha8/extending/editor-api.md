@@ -210,6 +210,26 @@ app.register_component_icon(ComponentIconEntry {
 
 `priority` breaks ties when an entity has several registered components — higher wins, which is how a camera outranks the mesh it also carries. `name` is what the hierarchy's filter-by-type control shows. `dynamic_icon_fn` lets the icon depend on entity state (an on/off light, a playing/stopped emitter).
 
+### Hierarchy right-click actions
+
+Add your own row to the menu a right-click on a Hierarchy row opens. World partition's **Partition into cells** is one of these.
+
+```rust
+use renzora::{EntityAction, RegisterEntityAction};
+
+app.register_entity_action(
+    EntityAction::new("light_beacons", |world, clicked| {
+        // Act on the selection when the clicked row is part of it, as Delete
+        // does, or on `clicked` alone.
+    })
+    .label("hierarchy.action.light_beacons", "Light beacons")
+    .icon("lighthouse")
+    .applies_to(|world, entity| world.get::<Beacon>(entity).is_some()),
+);
+```
+
+`applies_to` decides which rows offer it (the default is every row); `run` gets the right-clicked entity and full `&mut World`. Registering the same id again replaces the earlier action. The rows appear above Delete, and not on UI canvas rows.
+
 ## Keyboard shortcuts
 
 ```rust
@@ -430,7 +450,7 @@ A fullscreen effect needs no plugin: it is a `.wesl` file that declares its own 
 
 - **Reach the editor's concrete undo commands.** The undo *core* is in the contract crate, so a plugin's edits can be undoable: see [Making Edits Undoable](../editor-dev/undo.md) and the section below. What stays out of reach is `renzora_undo`'s own command types (`SpawnShapeCmd`, `ReparentCmd`, …), because those need crates a plugin cannot link. Implement `UndoCommand` for your own edit instead.
 - **Unregister anything.** Registries are append-only for the life of the `App`, because Bevy cannot withdraw a system and unmapping a plugin's image would dangle every function pointer it left behind.
-- **Reach another `renzora_*` crate.** Only `bevy`, `renzora` and `renzora_ember` are linkable. If you need a type from elsewhere, that type belongs in the contract crate — which is the rule the engine's own crates follow, and the reason this list is as short as it is.
+- **Reach another `renzora_*` crate.** Only `bevy` and `renzora` (with the UI framework as `renzora::ui`) are linkable. If you need a type from elsewhere, that type belongs in the contract crate — which is the rule the engine's own crates follow, and the reason this list is as short as it is.
 
 ## See also
 

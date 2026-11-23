@@ -9,13 +9,15 @@ description = "Post-process effects written as shader files: a .wesl declares it
 # its own pass. This crate is the effects that run in one of them.
 #
 # Depending on this crate is also what switches that framework on: hosts list
-# it partly for the `renzora/postprocess` feature below.
+# it partly for the `renzora_render_api/postprocess` feature below.
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["postprocess"] }
 # Reads an effect's settings struct (field types and byte offsets) and checks its
 # bindings before wgpu sees them. The version wgpu itself uses, so the layout it
 # reports is the one the GPU gets.
@@ -26,3 +28,9 @@ renzora_test_harness = { path = "../renzora_test_harness" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "PostProcessPlugin"

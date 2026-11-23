@@ -9,7 +9,7 @@
 //!
 //! Nothing about the export window changes. Its thread still starts and still
 //! reports through the same channel; it hands the export to the companion
-//! with [`renzora::CompanionRemote::run_cancellable`] and turns each progress
+//! with [`renzora_platform_api::CompanionRemote::run_cancellable`] and turns each progress
 //! note back into the line the window shows. Cancel cancels the job in the
 //! companion, which stops cargo as before. With no companion connected, the
 //! thread runs the export itself, as it always did.
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
-use renzora::core::{CurrentProject, ProjectConfig, WindowMode};
+use renzora_project_api::{CurrentProject, ProjectConfig, WindowMode};
 use serde::{Deserialize, Serialize};
 
 use crate::build::LeanProfile;
@@ -39,7 +39,7 @@ pub struct PluginPick {
 
 impl From<&renzora_native_plugin::InstalledNativePlugin> for PluginPick {
     fn from(p: &renzora_native_plugin::InstalledNativePlugin) -> Self {
-        Self { id: p.id.clone(), runtime: p.scope == renzora::NativePluginScope::Runtime, lib: p.lib.clone() }
+        Self { id: p.id.clone(), runtime: p.scope == renzora_platform_api::NativePluginScope::Runtime, lib: p.lib.clone() }
     }
 }
 
@@ -47,7 +47,7 @@ impl From<PluginPick> for renzora_native_plugin::InstalledNativePlugin {
     fn from(p: PluginPick) -> Self {
         Self {
             id: p.id,
-            scope: if p.runtime { renzora::NativePluginScope::Runtime } else { renzora::NativePluginScope::Editor },
+            scope: if p.runtime { renzora_platform_api::NativePluginScope::Runtime } else { renzora_platform_api::NativePluginScope::Editor },
             lib: p.lib,
         }
     }
@@ -142,7 +142,7 @@ pub(crate) fn start(
     job: ExportJob,
     tx: mpsc::Sender<ExportMsg>,
     cancel: Arc<AtomicBool>,
-    remote: Option<renzora::CompanionRemote>,
+    remote: Option<renzora_platform_api::CompanionRemote>,
 ) {
     std::thread::spawn(move || {
         if let Some(remote) = remote {
@@ -255,6 +255,6 @@ mod tests {
         assert_eq!(back.selected_plugins[0].id, "spline");
         assert_eq!(back.project_config.main_scene, job.project_config.main_scene);
         let plugin: renzora_native_plugin::InstalledNativePlugin = back.selected_plugins[0].clone().into();
-        assert_eq!(plugin.scope, renzora::NativePluginScope::Runtime);
+        assert_eq!(plugin.scope, renzora_platform_api::NativePluginScope::Runtime);
     }
 }

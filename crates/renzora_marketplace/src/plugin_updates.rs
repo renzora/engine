@@ -2,7 +2,7 @@
 //!
 //! Runs once, shortly after the editor is up, on a worker thread — an update
 //! check is not worth a frame of the main thread and is never urgent. The
-//! result lands in [`renzora::PluginUpdates`], which is where every surface that
+//! result lands in [`renzora_platform_api::PluginUpdates`], which is where every surface that
 //! draws it reads from: the updater overlay, the store's Updates view, the
 //! Settings plugin grid and the exporter's plugin picker. None of those can
 //! depend on this crate, which is why the answer goes to the contract crate
@@ -26,7 +26,7 @@ use crate::installed::{self, UpdateState};
 
 /// One plugin with something newer published, as the worker found it.
 ///
-/// Mirrors [`renzora::PluginUpdate`] rather than being it, because the worker
+/// Mirrors [`renzora_platform_api::PluginUpdate`] rather than being it, because the worker
 /// thread builds this before there is a `World` to write into and the contract
 /// type carries the shape the UI wants rather than the shape the check produces.
 struct Found {
@@ -48,16 +48,16 @@ pub(crate) struct PluginUpdateCheck {
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<PluginUpdateCheck>();
-    app.init_resource::<renzora::PluginUpdates>();
+    app.init_resource::<renzora_platform_api::PluginUpdates>();
     // Read off disk once, here, rather than by the toggle's getter every frame.
-    app.insert_resource(renzora::PluginUpdateReminders(
-        renzora::core::load_plugin_update_reminders(),
+    app.insert_resource(renzora_platform_api::PluginUpdateReminders(
+        renzora_project_api::load_plugin_update_reminders(),
     ));
     // One check per session: idle once it has started and its answer is in.
     app.add_systems(
         Update,
         (start_check, poll_check).run_if(
-            in_state(renzora::SplashState::Editor)
+            in_state(renzora_project_api::SplashState::Editor)
                 .and_then(|check: Res<PluginUpdateCheck>| !check.started || check.rx.is_some()),
         ),
     );
@@ -72,7 +72,7 @@ pub(crate) fn register(app: &mut App) {
 #[cfg(not(target_arch = "wasm32"))]
 fn start_check(
     mut state: ResMut<PluginUpdateCheck>,
-    mut updates: ResMut<renzora::PluginUpdates>,
+    mut updates: ResMut<renzora_platform_api::PluginUpdates>,
 ) {
     if state.started {
         return;
@@ -82,7 +82,7 @@ fn start_check(
     let installed = installed::scan();
     updates.installed = installed
         .iter()
-        .map(|p| renzora::InstalledPluginAsset {
+        .map(|p| renzora_platform_api::InstalledPluginAsset {
             id: p.dir_name.clone(),
             asset_id: p.asset_id.clone(),
             version: p.version.clone(),
@@ -105,7 +105,7 @@ fn start_check(
             let _ = tx.send(Vec::new());
             return;
         };
-        let engine = renzora::version::ENGINE_VERSION;
+        let engine = renzora_platform_api::version::ENGINE_VERSION;
         let out = installed
             .iter()
             .filter_map(|p| {
@@ -140,7 +140,7 @@ fn start_check(
 #[cfg(target_arch = "wasm32")]
 fn start_check(
     mut state: ResMut<PluginUpdateCheck>,
-    mut updates: ResMut<renzora::PluginUpdates>,
+    mut updates: ResMut<renzora_platform_api::PluginUpdates>,
 ) {
     state.started = true;
     updates.checked = true;
@@ -148,8 +148,8 @@ fn start_check(
 
 fn poll_check(
     mut state: ResMut<PluginUpdateCheck>,
-    mut updates: ResMut<renzora::PluginUpdates>,
-    reminders: Res<renzora::PluginUpdateReminders>,
+    mut updates: ResMut<renzora_platform_api::PluginUpdates>,
+    reminders: Res<renzora_platform_api::PluginUpdateReminders>,
     mut toasts: ResMut<crate::toasts::ToastQueue>,
 ) {
     let Some(rx) = state.rx.as_ref() else { return };
@@ -170,7 +170,7 @@ fn poll_check(
                 // `unreachable!` in a path that only ever runs once.
                 _ => (f.installed_version.clone(), false, String::new()),
             };
-            renzora::PluginUpdate {
+            renzora_platform_api::PluginUpdate {
                 id: f.id.clone(),
                 asset_id: f.asset_id.clone(),
                 slug: f.slug.clone(),
@@ -225,12 +225,12 @@ fn poll_check(
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn record_install(world: &mut World) {
     let installed = installed::scan();
-    let Some(mut updates) = world.get_resource_mut::<renzora::PluginUpdates>() else {
+    let Some(mut updates) = world.get_resource_mut::<renzora_platform_api::PluginUpdates>() else {
         return;
     };
     updates.installed = installed
         .iter()
-        .map(|p| renzora::InstalledPluginAsset {
+        .map(|p| renzora_platform_api::InstalledPluginAsset {
             id: p.dir_name.clone(),
             asset_id: p.asset_id.clone(),
             version: p.version.clone(),

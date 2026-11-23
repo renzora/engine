@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use renzora::write_anim_file;
-use renzora::{AnimClip, BoneTrack, KeyCurve, KeyMode, MorphTrack, RestBone, SkeletonRestPose};
+use renzora_animation_api::write_anim_file;
+use renzora_animation_api::{AnimClip, BoneTrack, KeyCurve, KeyMode, MorphTrack, RestBone, SkeletonRestPose};
 
 /// Result of animation extraction for a single GLB.
 #[derive(Debug)]
@@ -340,7 +340,7 @@ pub fn write_rest_skeleton(
         .filter_map(|p| Path::new(p).file_name().and_then(|n| n.to_str()).map(str::to_string))
         .collect();
     let path = output_dir.join(format!("{}.skel", model_name));
-    renzora::write_skeleton_file(&pose, &path)?;
+    renzora_animation_api::write_skeleton_file(&pose, &path)?;
     Ok(Some(path))
 }
 

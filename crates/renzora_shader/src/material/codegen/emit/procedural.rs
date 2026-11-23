@@ -103,8 +103,17 @@ impl Ctx<'_> {
                 self.emit(format!("    let {v}_n0 = normalize(in.world_normal);"));
                 self.emit(format!("    let {v}_r1 = cross({v}_dpdy, {v}_n0);"));
                 self.emit(format!("    let {v}_r2 = cross({v}_n0, {v}_dpdx);"));
+                // The determinant's sign is the handedness of the screen-space
+                // frame, and it is negative for an ordinary upward surface seen
+                // from above (screen y runs down). It must be kept: clamping it
+                // with `max(det, 1e-7)` turned every such surface's gradient
+                // into gradient / 1e-7, a normal that snapped between straight
+                // up and sideways, so water rippled as hard-edged camouflage
+                // at any strength. Only a determinant too close to zero to
+                // divide by (a surface seen exactly edge-on) is replaced.
+                self.emit(format!("    let {v}_det_raw = dot({v}_dpdx, {v}_r1);"));
                 self.emit(format!(
-                    "    let {v}_det = max(dot({v}_dpdx, {v}_r1), 0.0000001);"
+                    "    let {v}_det = select({v}_det_raw, select(-0.0000001, 0.0000001, {v}_det_raw >= 0.0), abs({v}_det_raw) < 0.0000001);"
                 ));
                 self.emit(format!(
                     "    let {v}_grad = ({v}_dhdx * {v}_r1 + {v}_dhdy * {v}_r2) / {v}_det;"

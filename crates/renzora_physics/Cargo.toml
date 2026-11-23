@@ -15,9 +15,14 @@ default = []
 scripting = ["dep:renzora_scripting"]
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 
 # Tests only: system/param names in ECS validation errors, so a failing

@@ -12,10 +12,10 @@ mod panel;
 
 use bevy::prelude::*;
 use bevy::solari::realtime::SolariLighting;
-use renzora::dlss_runtime::DlssInstall;
-use renzora::{
-    bool_field, AppEditorExt, DlssMode, DlssSupport, FieldDef, FieldType, FieldValue,
-    InspectorEntry, SolariDenoiser, SolariGi, SolariQuality, SolariResolution,
+use renzora_platform_api::dlss_runtime::DlssInstall;
+use renzora_editor_api::{bool_field, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_solari_api::{
+    DlssMode, DlssSupport, SolariDenoiser, SolariGi, SolariQuality, SolariResolution,
 };
 
 /// Whether DLSS Ray Reconstruction is what actually denoises `gi` on this run,
@@ -219,7 +219,7 @@ fn solari_inspector_entry() -> InspectorEntry {
                     // The web has no process to restart and never installs.
                     #[cfg(not(target_arch = "wasm32"))]
                     if let FieldValue::Bool(true) = v {
-                        renzora::restart_process();
+                        renzora_shell_api::restart_process();
                     }
                     #[cfg(target_arch = "wasm32")]
                     let _ = v;
@@ -321,7 +321,7 @@ pub struct SolariEditorPlugin;
 
 impl Plugin for SolariEditorPlugin {
     fn build(&self, app: &mut App) {
-        use renzora::RenzoraShellExt;
+        use renzora_shell_api::RenzoraShellExt;
         use renzora_ember::panel::RegisterPanelContent;
 
         info!("[editor] SolariEditorPlugin");
@@ -330,7 +330,7 @@ impl Plugin for SolariEditorPlugin {
             .add_systems(Update, dlss_install::sync_install_state);
 
         // The Ray Tracing panel (panel.rs).
-        app.init_resource::<renzora::SolariDiagnosticsRequest>()
+        app.init_resource::<renzora_solari_api::SolariDiagnosticsRequest>()
             .init_resource::<panel::PanelVisible>()
             .init_resource::<panel::RayHistory>()
             .register_shell_panel(panel::PANEL, "Ray Tracing", "lightning", "Debug");
@@ -347,5 +347,3 @@ impl Plugin for SolariEditorPlugin {
             .always(Last, panel::follow_visibility);
     }
 }
-
-renzora::add!(SolariEditorPlugin, Editor);

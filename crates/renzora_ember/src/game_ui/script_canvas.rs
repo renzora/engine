@@ -4,9 +4,9 @@
 //! height="300px">`) becomes a [`ScriptCanvas`] drawing surface. Each frame:
 //!
 //! 1. [`publish_canvas_surfaces`] tells `renzora_scripting` the surface's px size
-//!    (via [`renzora::ScriptDrawSurfaces`]), so the script's `on_draw(g)` gets the
+//!    (via [`renzora_scripting_api::ScriptDrawSurfaces`]), so the script's `on_draw(g)` gets the
 //!    right `g.width`/`g.height`.
-//! 2. The script's `on_draw` fills [`renzora::ScriptDrawBuffer`] with `DrawCmd`s.
+//! 2. The script's `on_draw` fills [`renzora_scripting_api::ScriptDrawBuffer`] with `DrawCmd`s.
 //! 3. [`render_script_canvas`] reconciles that list into a **pool of the existing
 //!    SDF shape entities** ([`ArcShape`], [`CircleShape`], …) parented under the
 //!    canvas node — reused in place (no per-frame spawn/despawn churn) and ordered
@@ -17,7 +17,7 @@
 use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 
-use renzora::DrawCmd;
+use renzora_scripting_api::DrawCmd;
 
 use super::shapes::{ArcShape, CircleShape, LineShape, RectangleShape, Tri3Shape, UiShapeWidget};
 
@@ -73,7 +73,7 @@ pub(crate) fn register(app: &mut App) {
 /// rebuilt each frame; scripting reads it (a frame's lag on a resize is harmless).
 fn publish_canvas_surfaces(
     canvases: Query<(&ScriptCanvas, &ComputedNode)>,
-    mut surfaces: ResMut<renzora::ScriptDrawSurfaces>,
+    mut surfaces: ResMut<renzora_scripting_api::ScriptDrawSurfaces>,
 ) {
     surfaces.per_entity.clear();
     for (canvas, cn) in &canvases {
@@ -101,7 +101,7 @@ fn abs_node(left: f32, top: f32, w: f32, h: f32) -> Node {
 /// Reconcile each canvas's draw list into its pooled shape children.
 fn render_script_canvas(
     mut commands: Commands,
-    draws: Res<renzora::ScriptDrawBuffer>,
+    draws: Res<renzora_scripting_api::ScriptDrawBuffer>,
     mut canvases: Query<(Entity, &mut ScriptCanvas)>,
 ) {
     let empty: Vec<DrawCmd> = Vec::new();
@@ -266,7 +266,7 @@ fn slot(commands: &mut Commands, pool: &mut Vec<Entity>, index: usize, parent: E
         return e;
     }
     let e = commands
-        .spawn((UiShapeWidget, renzora::HideInHierarchy, ChildOf(parent)))
+        .spawn((UiShapeWidget, renzora_scene_api::HideInHierarchy, ChildOf(parent)))
         .id();
     pool.push(e);
     e
@@ -283,7 +283,7 @@ fn slot_text(
         return e;
     }
     let e = commands
-        .spawn((renzora::HideInHierarchy, ChildOf(parent)))
+        .spawn((renzora_scene_api::HideInHierarchy, ChildOf(parent)))
         .id();
     pool.push(e);
     e

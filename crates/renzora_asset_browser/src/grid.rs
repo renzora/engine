@@ -99,7 +99,7 @@ pub(crate) fn list_entries(w: &Rx) -> std::sync::Arc<Vec<Entry>> {
 /// alter what the panel is rendering, and re-listing on it would put the cost
 /// back with extra steps.
 pub(crate) fn mark_listing_stale(
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
     mut state: ResMut<NativeAssets>,
 ) {
     let Some(current) = state.current.clone() else {
@@ -126,7 +126,7 @@ pub(crate) fn mark_listing_stale(
 /// Assets panel's frame rate.
 pub(crate) fn refresh_listing(
     mut state: ResMut<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     let folder = state
         .current
@@ -268,7 +268,7 @@ pub(crate) fn grid_snapshot(world: &Rx) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new(renzora::lang::t("assets.empty_folder")),
+                    Text::new(renzora_lang_api::t("assets.empty_folder")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                     Node { padding: UiRect::all(Val::Px(8.0)), ..default() },
@@ -335,7 +335,7 @@ pub(crate) fn rename_field_for(
     path: &Path,
     name: &str,
 ) -> Entity {
-    let input = text_input(commands, &fonts.ui, &renzora::lang::t("common.name"), name);
+    let input = text_input(commands, &fonts.ui, &renzora_lang_api::t("common.name"), name);
     commands.entity(input).insert((
         AssetRenameInput(path.to_path_buf()),
         Node {

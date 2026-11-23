@@ -2,8 +2,8 @@
 //! entity a click should actually select.
 //!
 //! **What a click selects.** The mesh it hits, unless something above that mesh
-//! is marked to pick as one object ([`renzora::PickAsUnit`], the user's choice
-//! from the hierarchy menu, or [`renzora::SelectionStop`], which code puts on
+//! is marked to pick as one object ([`renzora_scene_api::PickAsUnit`], the user's choice
+//! from the hierarchy menu, or [`renzora_scene_api::SelectionStop`], which code puts on
 //! things like a terrain whose chunks are its own machinery); then the outermost
 //! such ancestor. A locked entity, or anything under one, is passed through:
 //! the click selects whatever is behind it. The rule is the same for a click,
@@ -28,8 +28,8 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings, Ra
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{NavOverlayState, ViewportState};
-use renzora::{EditorLocked, PickAsUnit, SelectionStop};
+use renzora_viewport_api::{NavOverlayState, ViewportState};
+use renzora_scene_api::{EditorLocked, PickAsUnit, SelectionStop};
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::modal_transform;
@@ -179,7 +179,7 @@ pub(crate) fn entity_pick_system(
     camera_q: Query<(&Camera, &GlobalTransform, &Projection), With<EditorCamera>>,
     mut scene_ray: SceneRay,
     resolver: PickResolver,
-    pick_proxies: Query<(Entity, &GlobalTransform, &renzora::PickProxy)>,
+    pick_proxies: Query<(Entity, &GlobalTransform, &renzora_scene_api::PickProxy)>,
     drawn_bones: Res<crate::skeleton_gizmo::DrawnBones>,
     selection: Res<EditorSelection>,
     mut box_sel: ResMut<BoxSelectionState>,

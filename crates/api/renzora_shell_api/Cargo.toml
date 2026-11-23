@@ -1,0 +1,16 @@
+[package]
+name = "renzora_shell_api"
+version = "0.1.0"
+edition = "2021"
+description = "The editor chrome's vocabulary: shell panels, status items and top-bar buttons, keybindings, editor events, Inspector pages. Plugins see it at `renzora::ShellPanelRegistry`, `renzora::core::keybindings`, ..."
+
+# A contract layer, moved out of `renzora`. Ungated: ember builds its panels from
+# these registries in shipped games as well as in the editor.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+# The Inspector pages translate their labels.
+renzora_lang_api = { path = "../renzora_lang_api" }
+
+[lints]
+workspace = true

@@ -20,12 +20,12 @@ game_ui = ["dep:bevy_hui", "dep:uuid", "dep:renzora_scripting"]
 # World-space UI: `game_ui::world_panel` (a template rendered onto a quad in the
 # 3D scene) and `game_ui::world_ui_mesh` (the same template emitted as 3D glyph
 # and rect geometry). Both are `Mesh3d` + `StandardMaterial`, i.e. `bevy_pbr`,
-# and one of them also wants `renzora`'s `SdfTextMaterial` — so a lean export
-# that turns 3D rendering off strips the very thing they are built out of. ON by
-# default; `renzora_runtime` forwards its own `render_3d` here, and the exporter
-# strips that for a 2D game. Nothing else in this crate is 3D, which is why the
-# gate is these two modules rather than the UI layer.
-render_3d = ["renzora/render_3d"]
+# and one of them also wants `renzora_text_mesh`'s `SdfTextMaterial`, so a lean
+# export that turns 3D rendering off strips the very thing they are built out
+# of. ON by default; `renzora_runtime` forwards its own `render_3d` here, and the
+# exporter strips that for a 2D game. Nothing else in this crate is 3D, which is
+# why the gate is these two modules rather than the UI layer.
+render_3d = ["renzora_text_mesh/render_3d"]
 # Desktop conveniences that only the EDITOR's widgets use: the system clipboard
 # (`arboard`, for the code editor / text input / console Copy) and local + remote
 # image decoding (`image`, for file-browser thumbnails and markdown `![](url)`).
@@ -41,18 +41,31 @@ render_3d = ["renzora/render_3d"]
 editor_tools = ["dep:arboard", "dep:image"]
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 # Theme serialization: the per-widget Theme loads from project themes/*.toml
 # (runtime-safe — the exported game uses the same Theme).
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
-# HideInHierarchy + core types.
-# `text_mesh` for the world-space UI mesh emitter's glyph geometry. It is a
-# feature rather than always-on because it is the only thing in the contract
-# crate that touches `bevy::text`, and a lean export with the UI capability off
-# strips `bevy_text` from the Bevy feature set entirely — ember is dropped in
-# that configuration too, so nothing turns this on and nothing breaks.
-renzora = { path = "../renzora", default-features = false, features = ["text_mesh"] }
+# The world-space UI mesh emitter's glyph geometry. Its own crate because it is
+# the one part of the contract that needs `bevy::text`; a lean export with the UI
+# capability off strips that, and drops ember, so nothing pulls this in there.
+renzora_text_mesh = { path = "../shared/renzora_text_mesh" }
+# A markup edit is one undoable change.
+# Window resizing helpers.
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+# The script canvas, UI callbacks and the markup's script bridge.
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+# Theme shaders, built through `shader_source` like every other shader. The
+# shader layer and not the material one: ember has ~60 crates above it, and the
+# material layer sits on the render layer, so linking it here made every render
+# setting edit rebuild the editor.
+renzora_shader_api = { path = "../api/renzora_shader_api" }
 # Markup runtime (folded in from the former renzora_hui crate): the vendored
 # bevy_hui parser, the game-UI canvas primitives, and the scripting bridge.
 # Both are used only by the `markup` module → gated behind `game_ui`.
@@ -68,18 +81,15 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false, o
 # Send+Sync channel for the markdown widget's image downloads (background
 # thread → per-frame poll), same as renzora_hub's thumbnail cache.
 crossbeam-channel = "0.5"
-# Shared SDF glyph machinery (coverage→SDF, strip packing, the SDF text material)
-# now lives in the contract crate as `renzora::text_mesh` — the `text3d` native
-# plugin needs the same `SdfTextMaterial` type, and a plugin can only reach
-# `bevy`/`renzora`/`renzora_ember`. No dependency line needed; ember already
-# links `renzora`.
 
 # System clipboard for the code editor's cut/copy/paste. Native-only: arboard
 # has no wasm backend (the browser clipboard is async + gesture-gated), so the
 # editor's clipboard path no-ops on wasm. Optional under `editor_tools`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 arboard = { version = "3", optional = true }
-renzora_net = { path = "../renzora_net" }
+# `Request` for the web image widget. The vocabulary crate, not `renzora_net`
+# (the frame pump), so an edit to the pump does not rebuild ember's dependents.
+renzora_net_api = { path = "../api/renzora_net_api" }
 # Markdown image downloads (`![alt](url)`) and the file browser's thumbnail
 # decode: fetch + decode on a background thread, register as bevy `Image`
 # assets. wasm builds no-op both. Optional under `editor_tools` — this is a
@@ -100,3 +110,11 @@ nom = "7.1.3"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "game_ui::GameUiPlugin"
+[[package.metadata.renzora.plugin]]
+type = "markup::MarkupPlugin"

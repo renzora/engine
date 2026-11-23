@@ -153,7 +153,7 @@ pub fn spawn_runtime(
     binary: &Path,
     project_path: &Path,
     embed_parent: Option<isize>,
-    live_link: Option<&renzora::LiveLinkEndpoint>,
+    live_link: Option<&renzora_project_api::LiveLinkEndpoint>,
     profiling_key: Option<&str>,
 ) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
@@ -191,12 +191,12 @@ pub fn spawn_runtime(
     // so `spawn` has already failed there.
     #[cfg(not(target_arch = "wasm32"))]
     {
-        renzora::child_process::tie_to_editor(&child, "the game");
+        renzora_platform_api::child_process::tie_to_editor(&child, "the game");
         if let Some(stdout) = child.stdout.take() {
-            renzora::child_process::forward_to_console(stdout, "Runtime");
+            renzora_platform_api::child_process::forward_to_console(stdout, "Runtime");
         }
         if let Some(stderr) = child.stderr.take() {
-            renzora::child_process::forward_to_console(stderr, "Runtime");
+            renzora_platform_api::child_process::forward_to_console(stderr, "Runtime");
         }
     }
     Ok(child)
@@ -237,9 +237,9 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
             // want very different reactions.
             match status.code() {
                 Some(0) | None => {
-                    renzora::core::console_log::console_info("PlayMode", "Runtime window closed")
+                    renzora_log_api::console_info("PlayMode", "Runtime window closed")
                 }
-                Some(code) => renzora::core::console_log::console_error(
+                Some(code) => renzora_log_api::console_error(
                     "PlayMode",
                     format!("Runtime exited with code {code}"),
                 ),
@@ -296,7 +296,7 @@ pub fn advance_runtime_phase(time: Res<Time>, mut runtime: ResMut<ExternalRuntim
 /// happen on user action; the one AppExit consumer is this system). Runs in
 /// `Last`, after every system in the final frame.
 ///
-/// It leaves through [`renzora::exit_now`] rather than `std::process::exit`,
+/// It leaves through [`renzora_shell_api::exit_now`] rather than `std::process::exit`,
 /// which was still slow for a reason this system could not see: `exit` runs
 /// libc's atexit chain and every shared object's destructors first, 7.2 s of
 /// them with a project open from an AppImage build. See that function.
@@ -323,5 +323,5 @@ pub fn kill_on_app_exit(
         bevy::app::AppExit::Error(n) => i32::from(n.get()),
     };
     info!("[exit] fast exit (code {code})");
-    renzora::exit_now(code);
+    renzora_shell_api::exit_now(code);
 }

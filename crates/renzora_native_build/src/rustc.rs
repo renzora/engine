@@ -46,11 +46,9 @@ pub struct Target<'a> {
     /// `--extern bevy=` — the facade **rlib**, which declares
     /// `extern crate bevy_dylib` and routes Bevy's code to the shared image.
     pub extern_bevy: &'a Path,
-    /// `--extern renzora=` — the `renzora_dylib` shared library, aliased.
+    /// `--extern renzora=` — the `renzora_dylib` shared library, aliased. It
+    /// carries the UI framework too, which a plugin reaches as `renzora::ui`.
     pub extern_renzora: &'a Path,
-    /// `--extern renzora_ember=` — the shared UI image. Absent only for an SDK
-    /// staged before panels were reachable from a plugin.
-    pub extern_ember: Option<&'a Path>,
     /// `-L dependency=` — crate metadata and linkable dylibs.
     pub dependency: &'a [PathBuf],
     /// `-L native=` — native import libraries from build scripts.
@@ -152,13 +150,6 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
 
     push!("--extern", format!("bevy={}", t.extern_bevy.display()));
     push!("--extern", format!("renzora={}", t.extern_renzora.display()));
-    // Passed unconditionally when the SDK has it — an unused `--extern` costs a
-    // plugin nothing (it is not even linked), and requiring plugins to opt in
-    // would mean an author's first panel fails to resolve `use renzora_ember::…`
-    // with no hint that a switch exists.
-    if let Some(ember) = t.extern_ember {
-        push!("--extern", format!("renzora_ember={}", ember.display()));
-    }
 
     // Third-party crates the plugin declared, compiled by cargo from a manifest
     // that mentions no Bevy. Empty — and cargo never runs — unless the plugin

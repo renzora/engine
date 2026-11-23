@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use bevy::mesh::{Indices, Meshable, VertexAttributeValues};
 use bevy::prelude::*;
-use renzora::physics::{ResolvedCollider, ResolvedShape};
+use renzora_physics_api::physics::{ResolvedCollider, ResolvedShape};
 use vleue_navigator::prelude::ObstacleSource;
 
 use crate::NavMeshObstacle;
@@ -275,7 +275,7 @@ mod tests {
                 [[i, j, i + n], [j, j + n, i + n]]
             })
             .collect();
-        let shape = ResolvedShape::TriMesh(Arc::new(renzora::physics::TriMeshData { vertices, indices }));
+        let shape = ResolvedShape::TriMesh(Arc::new(renzora_physics_api::physics::TriMeshData { vertices, indices }));
         let obstacle = ColliderObstacle(ResolvedCollider::new(shape));
         let navmesh = Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
         let polys = obstacle.get_polygons(&GlobalTransform::IDENTITY, &navmesh, (Dir3::Y, 0.0));

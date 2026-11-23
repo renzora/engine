@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::AnimClip;
+use renzora_animation_api::AnimClip;
 use renzora_rig::export::{self, ExportClip, ExportTrack};
 use renzora_rig::Glb;
 
@@ -25,7 +25,7 @@ pub(crate) fn export_model(world: &mut World) {
         tell(world, false, "This entity has no model file to export");
         return;
     };
-    let Some(project) = world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone()) else { return };
+    let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone()) else { return };
     let slots: Vec<(String, String)> = world
         .get::<renzora_animation::AnimatorComponent>(root)
         .map(|a| a.clips.iter().map(|c| (c.name.clone(), c.path.clone())).collect())

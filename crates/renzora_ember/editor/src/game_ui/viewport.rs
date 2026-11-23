@@ -23,7 +23,7 @@ pub(crate) struct CreateCanvasBtn;
 /// — which is the next thing to fill and the whole reason the entity exists.
 pub(crate) fn create_canvas_click(
     q: Query<&UiInteraction, (With<CreateCanvasBtn>, Changed<UiInteraction>)>,
-    cmds: Option<Res<renzora::EditorCommands>>,
+    cmds: Option<Res<renzora_editor_api::EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
     if !q.iter().any(|i| *i == UiInteraction::Pressed) {
@@ -31,7 +31,7 @@ pub(crate) fn create_canvas_click(
     }
     cmds.push(|world: &mut World| {
         let canvas = super::register::spawn_ui_canvas(world);
-        if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
+        if let Some(sel) = world.get_resource::<renzora_editor_api::EditorSelection>() {
             sel.set(Some(canvas));
         }
     });
@@ -177,7 +177,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_with(
         commands,
         backdrop,
-        |w| w.get_resource::<renzora::ViewportRenderTarget>().and_then(|rt| rt.image.clone()),
+        |w| w.get_resource::<renzora_project_api::ViewportRenderTarget>().and_then(|rt| rt.image.clone()),
         |w, e, h: &Option<Handle<Image>>| {
             if let (Some(h), Some(mut n)) = (h, w.get_mut::<ImageNode>(e)) {
                 if n.image != *h {

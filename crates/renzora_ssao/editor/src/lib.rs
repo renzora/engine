@@ -13,7 +13,8 @@
 //! the sub-section.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry, SsaoQuality, WorldEnvironment};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
+use renzora_world_api::{SsaoQuality, WorldEnvironment};
 
 fn ssao_entry() -> InspectorEntry {
     InspectorEntry {
@@ -172,5 +173,3 @@ impl Plugin for SsaoEditorPlugin {
         app.register_native_inspector_ui("world_env_ssao", ssao_native_ui);
     }
 }
-
-renzora::add!(SsaoEditorPlugin, Editor);

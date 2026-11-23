@@ -1,7 +1,7 @@
 //! Publish the wands' pointing rays into the world-UI pointer contract.
 //!
-//! Each frame both tracked wands contribute a [`renzora::WorldUiPointerRay`]
-//! (grip pose, -Z forward, trigger value) to [`renzora::WorldUiPointers`].
+//! Each frame both tracked wands contribute a [`renzora_scene_api::WorldUiPointerRay`]
+//! (grip pose, -Z forward, trigger value) to [`renzora_scene_api::WorldUiPointers`].
 //! The world-UI panel system (renzora_ember game_ui) intersects them with
 //! `WorldUiPanel` quads and drives bevy_picking pointers, making in-world
 //! `.html` UI clickable from the controllers — the same bridge the upcoming
@@ -13,19 +13,19 @@ use bevy_xr_utils::tracking_utils::{XrTrackedLeftGrip, XrTrackedRightGrip};
 use crate::VrInput;
 
 pub(crate) fn register(app: &mut App) {
-    app.init_resource::<renzora::WorldUiPointers>();
+    app.init_resource::<renzora_scene_api::WorldUiPointers>();
     app.add_systems(
         Update,
-        publish_wand_rays.in_set(renzora::WorldUiPointerSet::Publish),
+        publish_wand_rays.in_set(renzora_scene_api::WorldUiPointerSet::Publish),
     );
 }
 
 fn publish_wand_rays(
     input: Res<VrInput>,
-    play: Option<Res<renzora::VrPlayState>>,
+    play: Option<Res<renzora_scene_api::VrPlayState>>,
     left: Query<&GlobalTransform, With<XrTrackedLeftGrip>>,
     right: Query<&GlobalTransform, With<XrTrackedRightGrip>>,
-    mut pointers: ResMut<renzora::WorldUiPointers>,
+    mut pointers: ResMut<renzora_scene_api::WorldUiPointers>,
 ) {
     // Own only the wand ids — the mouse publisher owns id 2 (multiple
     // producers share the resource by replacing their own entries).
@@ -35,7 +35,7 @@ fn publish_wand_rays(
     }
     let mut push = |id: u8, transform: Option<&GlobalTransform>, trigger: f32| {
         if let Some(tf) = transform {
-            pointers.0.push(renzora::WorldUiPointerRay {
+            pointers.0.push(renzora_scene_api::WorldUiPointerRay {
                 id,
                 ray: bevy::shape::Ray3d::new(tf.translation(), tf.forward()),
                 trigger,

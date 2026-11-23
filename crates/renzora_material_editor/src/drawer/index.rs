@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, poll_once, IoTaskPool, Task};
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 use crate::material_inspector::find_material_files;
 
@@ -99,9 +99,9 @@ impl MaterialIndex {
 pub(super) fn track_material_files(
     mut index: ResMut<MaterialIndex>,
     project: Option<Res<CurrentProject>>,
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
 ) {
-    use renzora::core::project_files::{AssetKind, FileChange};
+    use renzora_project_api::project_files::{AssetKind, FileChange};
 
     if changes.is_empty() {
         return;

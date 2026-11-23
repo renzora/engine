@@ -23,7 +23,7 @@ use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use renzora_ember::UiCursor;
 
-use renzora::core::keybindings::KeyBinding;
+use renzora_shell_api::keybindings::KeyBinding;
 use renzora_editor_framework::{AppEditorExt, ShortcutEntry, SplashState};
 use renzora_ember::dock::{Dock, DockWindows, FixedDock};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -837,7 +837,7 @@ fn graph_sync(world: &mut World) {
         }
     }
     for note in notes {
-        renzora::console_log::console_info("Particles", note);
+        renzora_log_api::console_info("Particles", note);
     }
 }
 
@@ -1120,7 +1120,7 @@ fn rename_confirm(
             commands.entity(r).despawn();
         }
     } else {
-        renzora::console_log::console_warn("Particles", "That emitter name is empty or already taken");
+        renzora_log_api::console_warn("Particles", "That emitter name is empty or already taken");
     }
 }
 

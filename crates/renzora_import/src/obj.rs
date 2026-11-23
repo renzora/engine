@@ -231,7 +231,7 @@ fn extract_obj_materials(
         });
         let metallic = param_f32("Pm").unwrap_or(0.0);
         let emissive = param_vec3("Ke").unwrap_or([0.0, 0.0, 0.0]);
-        let advanced = renzora::core::PbrAdvanced {
+        let advanced = renzora_scene_api::PbrAdvanced {
             clearcoat: param_f32("Pc").unwrap_or(0.0),
             clearcoat_roughness: param_f32("Pcr").unwrap_or(0.0),
             ior: mat.optical_density.unwrap_or(1.5),

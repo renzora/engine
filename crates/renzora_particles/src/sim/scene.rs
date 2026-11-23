@@ -17,7 +17,7 @@
 //! carried.
 
 use bevy::math::Affine3A;
-use renzora::scene_query::{SceneHit, SceneRay};
+use renzora_physics_api::scene_query::{SceneHit, SceneRay};
 
 use super::{collide, sanitize3, EffectSim, ScenePoint};
 use crate::asset::SimulationSpace;

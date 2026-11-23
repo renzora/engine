@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 
 use bevy::prelude::*;
-use renzora::SceneEntityId;
+use renzora_scene_api::SceneEntityId;
 
 use crate::apply::{apply, Quiet};
 use crate::tracker::{holds_entity, Tracker};

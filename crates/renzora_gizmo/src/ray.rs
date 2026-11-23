@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportState;
+use renzora_viewport_api::ViewportState;
 
 use crate::types::GizmoAxis;
 

@@ -91,17 +91,17 @@ pub(crate) struct GizmoSlot(pub usize);
 #[derive(Resource)]
 pub(crate) struct PerSlotGizmo {
     /// World-space scale factor of this slot's gizmo (distance-to-camera based).
-    pub scale: [f32; renzora::core::viewport_types::VIEWPORT_COUNT],
+    pub scale: [f32; renzora_viewport_api::VIEWPORT_COUNT],
     /// Per-axis camera-facing signs for this slot (X/Z flip toward its camera).
-    pub signs: [Vec3; renzora::core::viewport_types::VIEWPORT_COUNT],
+    pub signs: [Vec3; renzora_viewport_api::VIEWPORT_COUNT],
     /// Whether this slot should draw the tool-mode line gizmos this frame
     /// (docked, has a live camera, and the shared show/hide gates pass).
-    pub draw: [bool; renzora::core::viewport_types::VIEWPORT_COUNT],
+    pub draw: [bool; renzora_viewport_api::VIEWPORT_COUNT],
 }
 
 impl Default for PerSlotGizmo {
     fn default() -> Self {
-        use renzora::core::viewport_types::VIEWPORT_COUNT;
+        use renzora_viewport_api::VIEWPORT_COUNT;
         Self {
             scale: [1.0; VIEWPORT_COUNT],
             signs: [Vec3::ONE; VIEWPORT_COUNT],

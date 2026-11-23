@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use renzora::{PropertyTrack, TrackValue};
+use renzora_animation_api::{PropertyTrack, TrackValue};
 use renzora_animation::property_playback::{apply_property_tracks, read_track_value};
 
 use crate::AnimationEditorState;

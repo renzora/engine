@@ -4,11 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_network = { path = "../renzora_network" }
 # bevy_ui-native panel content (the egui → bevy_ui migration).
 renzora_ember = { path = "../renzora_ember" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "NetworkEditorPlugin"
+scope = "Editor"

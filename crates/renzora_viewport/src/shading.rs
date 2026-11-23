@@ -46,7 +46,7 @@
 //! # The environment is part of a mode, not a consequence of one
 //!
 //! The bottom three suppress the sky through
-//! [`EnvironmentSuppressed`](renzora::core::EnvironmentSuppressed), and Rendered
+//! [`EnvironmentSuppressed`](renzora_render_api::EnvironmentSuppressed), and Rendered
 //! restores it. That flag is *the* thing separating Material from Rendered,
 //! whose render toggles are otherwise identical, so it is a switch these buttons
 //! write and compare like any other — not something derived from the toggles
@@ -54,7 +54,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{RenderToggles, ViewportSettings, VisualizationMode};
+use renzora_viewport_api::{RenderToggles, ViewportSettings, VisualizationMode};
 use renzora_ember::font::{icon_text, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::UiInteraction;
@@ -199,7 +199,7 @@ pub(crate) fn build_strip(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     // Gone in play mode: the point of play mode is to see the game, and a
     // shading switch is an authoring control.
     renzora_ember::reactive::tracked::bind_display(commands, strip, |w| {
-        !w.get_resource::<renzora::core::PlayModeState>()
+        !w.get_resource::<renzora_project_api::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false)
     });
@@ -239,7 +239,7 @@ fn shading_btn(commands: &mut Commands, fonts: &EmberFonts, mode: Shading) -> En
 /// bar are the same button.
 pub(crate) fn shading_visuals(
     settings: Option<Res<ViewportSettings>>,
-    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
+    suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
     theme: Option<Res<renzora_theme::ThemeManager>>,
     mut buttons: Query<(&Shading, &UiInteraction, &ShadingGlyph, &mut BackgroundColor)>,
     mut glyphs: Query<&mut TextColor>,
@@ -292,7 +292,7 @@ pub(crate) fn shading_visuals(
 /// has always been in.
 pub(crate) fn align_environment_to_restored_settings(
     settings: Option<Res<ViewportSettings>>,
-    suppressed: Option<ResMut<renzora::core::EnvironmentSuppressed>>,
+    suppressed: Option<ResMut<renzora_render_api::EnvironmentSuppressed>>,
 ) {
     let (Some(settings), Some(mut suppressed)) = (settings, suppressed) else {
         return;
@@ -315,8 +315,8 @@ pub(crate) fn align_environment_to_restored_settings(
 /// explains it no longer on screen. Stashing the value rather than just clearing
 /// it means leaving play mode puts you back in the mode you were working in.
 pub(crate) fn restore_environment_in_play_mode(
-    play: Option<Res<renzora::core::PlayModeState>>,
-    suppressed: Option<ResMut<renzora::core::EnvironmentSuppressed>>,
+    play: Option<Res<renzora_project_api::PlayModeState>>,
+    suppressed: Option<ResMut<renzora_render_api::EnvironmentSuppressed>>,
     mut stashed: Local<Option<bool>>,
 ) {
     let Some(mut suppressed) = suppressed else {
@@ -348,7 +348,7 @@ pub(crate) fn restore_environment_in_play_mode(
 pub(crate) fn shading_clicks(
     buttons: Query<(&Shading, &UiInteraction), Changed<UiInteraction>>,
     settings: Option<ResMut<ViewportSettings>>,
-    suppressed: Option<ResMut<renzora::core::EnvironmentSuppressed>>,
+    suppressed: Option<ResMut<renzora_render_api::EnvironmentSuppressed>>,
 ) {
     let Some(mut settings) = settings else { return };
     let mut suppressed = suppressed;

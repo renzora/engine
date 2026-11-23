@@ -23,13 +23,13 @@ use bevy::light::GeneratedEnvironmentMapLight;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_ember::UiInteraction;
 
 /// Its own layer. See the registry in the contract crate for what is already
 /// taken — sharing one with another preview means seeing its contents, because
 /// every one of them parks geometry at the world origin.
-use renzora::core::viewport_types::IMPORT_MATERIAL_PREVIEW_LAYER as MAT_LAYER;
+use renzora_viewport_api::IMPORT_MATERIAL_PREVIEW_LAYER as MAT_LAYER;
 
 /// Initial size only — the target is resized to the panel each frame, both so
 /// the sphere is crisp and so it is not letterboxed inside a differently-shaped

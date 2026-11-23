@@ -51,7 +51,7 @@ pub(crate) fn register(app: &mut App) {
         Update,
         (position_scrollbars, drag_thumbs)
             .after(crate::game_ui::geometry::snapshot_widgets)
-            .run_if(in_state(renzora::SplashState::Editor)),
+            .run_if(in_state(renzora_project_api::SplashState::Editor)),
     );
 }
 

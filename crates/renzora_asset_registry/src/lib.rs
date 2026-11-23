@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_splash::SplashState;
 
 /// Coarse classification of an asset by file extension.
@@ -28,7 +28,7 @@ use renzora_splash::SplashState;
 ///
 /// Moving it also fixed a classification nobody had queried in a long time:
 /// the table here said `"scene"`, while the scene format is `.bsn`.
-pub use renzora::core::project_files::AssetKind;
+pub use renzora_project_api::project_files::AssetKind;
 
 /// One row in the registry. The `path` is asset-relative — i.e. what
 /// you'd pass to `AssetServer::load`.

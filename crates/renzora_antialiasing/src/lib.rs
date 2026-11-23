@@ -42,5 +42,3 @@ impl Plugin for AntiAliasingPlugin {
         );
     }
 }
-
-renzora::add!(AntiAliasingPlugin);

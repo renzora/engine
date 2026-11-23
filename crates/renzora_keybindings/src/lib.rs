@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 
 // Re-export all types from renzora::keybindings
-pub use renzora::core::keybindings::*;
+pub use renzora_shell_api::keybindings::*;
 
 #[derive(Default)]
 pub struct KeybindingsPlugin;
@@ -24,7 +24,7 @@ impl Plugin for KeybindingsPlugin {
         app.init_resource::<KeyBindings>();
         // Rebinding a shortcut used to last exactly as long as the session:
         // nothing ever wrote this anywhere. The saved deltas go on now.
-        if let Some(saved) = renzora::core::settings_file::load_section::<
+        if let Some(saved) = renzora_project_api::settings_file::load_section::<
             std::collections::BTreeMap<String, PersistedBinding>,
         >("keybindings")
         {
@@ -70,7 +70,7 @@ fn persist_keybindings(
         return;
     }
     if let Err(e) =
-        renzora::core::settings_file::save_section("keybindings", &bindings.to_persisted())
+        renzora_project_api::settings_file::save_section("keybindings", &bindings.to_persisted())
     {
         warn!("[keybindings] could not save shortcuts: {e}");
     }

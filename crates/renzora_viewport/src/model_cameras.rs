@@ -2,9 +2,9 @@
 //!
 //! An imported fly-through carries its camera as an animated node, and a node
 //! is not something the engine renders from. The importer marks each such
-//! camera's view node with [`renzora::IMPORTED_CAMERA_EXTRAS_KEY`] extras (its
+//! camera's view node with [`renzora_scene_api::IMPORTED_CAMERA_EXTRAS_KEY`] extras (its
 //! name and vertical field of view); this module reads them when the model is
-//! dropped and adds a scene camera with [`renzora::FollowNode`] on that node and
+//! dropped and adds a scene camera with [`renzora_scene_api::FollowNode`] on that node and
 //! the source's lens, made the default camera so Play shows the shot the file
 //! was authored with.
 //!
@@ -16,8 +16,8 @@ use bevy::ecs::reflect::ReflectComponent;
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::gltf::{Gltf, GltfNode};
 use bevy::prelude::*;
-use renzora::core::{DefaultCamera, SceneCamera};
-use renzora::FollowNode;
+use renzora_scene_api::{DefaultCamera, SceneCamera};
+use renzora_scene_api::FollowNode;
 
 /// Placed on a dropped model's root until its imported cameras are added.
 #[derive(Component)]
@@ -96,7 +96,7 @@ fn imported_cameras(world: &World, handle: &Handle<Gltf>) -> Vec<ImportedCamera>
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&extras.value) else {
             continue;
         };
-        let Some(camera) = value.get(renzora::IMPORTED_CAMERA_EXTRAS_KEY) else {
+        let Some(camera) = value.get(renzora_scene_api::IMPORTED_CAMERA_EXTRAS_KEY) else {
             continue;
         };
         let name = camera
@@ -129,11 +129,11 @@ fn imported_cameras(world: &World, handle: &Handle<Gltf>) -> Vec<ImportedCamera>
 fn spawn_follow_camera(world: &mut World, camera: ImportedCamera) {
     // A second drop of the same model must not stack a second camera on the
     // same node.
-    let target = renzora::sanitize_id(&camera.node);
+    let target = renzora_scene_api::sanitize_id(&camera.node);
     let mut followers = world.query::<&FollowNode>();
     if followers
         .iter(world)
-        .any(|f| renzora::sanitize_id(&f.target) == target)
+        .any(|f| renzora_scene_api::sanitize_id(&f.target) == target)
     {
         return;
     }
@@ -175,7 +175,7 @@ fn spawn_follow_camera(world: &mut World, camera: ImportedCamera) {
         }
     }
 
-    renzora::console_log::console_info(
+    renzora_log_api::console_info(
         "Import",
         format!(
             "Added camera '{}' following '{}' ({:.1} degree field of view); it is now the default camera, so Play shows the imported shot",

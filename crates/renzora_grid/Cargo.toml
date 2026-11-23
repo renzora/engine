@@ -5,10 +5,20 @@ edition = "2021"
 
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
 # `grid` for `InfiniteGrid`/`InfiniteGridSettings` — this crate renders them but
 # does not define them, so a plugin can spawn a grid without linking this crate.
-renzora = { path = "../renzora", default-features = false, features = ["editor", "grid"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["grid"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "GridPlugin"
+scope = "Editor"

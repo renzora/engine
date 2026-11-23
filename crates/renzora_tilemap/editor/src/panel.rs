@@ -26,8 +26,9 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, ScrollPosition};
 
-use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
-use renzora::{RenzoraShellExt, SplashState};
+use renzora_viewport_api::{ViewportMode, ViewportSettings};
+use renzora_shell_api::RenzoraShellExt;
+use renzora_project_api::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::UiCursor;
 use renzora_ember::panel::RegisterPanelContent;
@@ -822,7 +823,7 @@ fn add_paint_layer_click(
     let layer = commands
         .spawn((
             Name::new(format!("Layer {}", count + 1)),
-            renzora::core::Node2d,
+            renzora_scene_api::Node2d,
             TilemapPaintLayer {
                 order,
                 ..Default::default()

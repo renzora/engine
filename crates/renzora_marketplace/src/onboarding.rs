@@ -11,7 +11,7 @@
 
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use crate::auth::billing::OnboardStatus;
 use crate::auth::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};

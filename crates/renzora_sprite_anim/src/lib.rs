@@ -15,7 +15,8 @@
 
 use bevy::prelude::*;
 
-use renzora::core::{SpriteImagePath, SpriteImages};
+use renzora_scene_api::SpriteImagePath;
+use renzora_animation_api::SpriteImages;
 
 #[derive(Default)]
 pub struct SpriteImagesPlugin;
@@ -27,7 +28,6 @@ impl Plugin for SpriteImagesPlugin {
     }
 }
 
-renzora::add!(SpriteImagesPlugin);
 
 /// When [`SpriteImages`] changes — the property timeline keyframing `active`, a
 /// scene-load insert, or the editor appending/switching sheets — mirror the

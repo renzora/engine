@@ -1,0 +1,20 @@
+[package]
+name = "renzora_editor_api_macros"
+version = "0.1.0"
+edition = "2021"
+description = "The editor contract's proc macros: the `Inspectable` derive. Re-exported as `renzora_editor_api::Inspectable` (and `renzora::Inspectable` for plugins)."
+
+[lib]
+proc-macro = true
+
+[dependencies]
+# Proc-macro crates only need the syn/quote toolchain — paths emitted by
+# the macros (e.g. `renzora::FieldDef`) are resolved in
+# the user crate, so we don't depend on those crates here. That avoids a
+# cycle with editor_framework, which itself uses these macros.
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"
+
+[lints]
+workspace = true

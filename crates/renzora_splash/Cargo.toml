@@ -4,8 +4,14 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_render_api = { path = "../api/renzora_render_api" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_ui = { path = "../renzora_ui" }
 serde = { version = "1", features = ["derive"] }
@@ -15,7 +21,7 @@ toml = "0.8"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
 dirs = "6"
-renzora_net = { path = "../renzora_net" }
+renzora_net_api = { path = "../api/renzora_net_api" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage", "console"] }
@@ -25,3 +31,10 @@ renzora_webfs = { path = "../renzora_webfs" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SplashPlugin"
+scope = "Editor"

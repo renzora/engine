@@ -17,13 +17,14 @@ use bevy::camera::primitives::Aabb;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
-use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::{
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
+use renzora_viewport_api::{
     CameraOrbitSnapshot, NavOverlayState, ProjectionMode as VpProjectionMode,
     ViewportSettings, ViewportState, ViewportView,
 };
-use renzora::core::InputFocusState;
-use renzora::core::{EditorCamera, PlayModeCamera, ViewportCamera};
+use renzora_project_api::InputFocusState;
+use renzora_scene_api::{EditorCamera, ViewportCamera};
+use renzora_project_api::PlayModeCamera;
 use renzora_editor_framework::EditorSelection;
 
 /// Orbit camera state for the editor viewport.
@@ -319,24 +320,24 @@ impl Plugin for CameraPlugin {
 /// where you were editing.
 #[allow(clippy::type_complexity)]
 fn drive_editor_camera_in_play(
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     scene_cameras: Query<
         (&GlobalTransform, &Projection),
         (
-            With<renzora::core::SceneCamera>,
+            With<renzora_scene_api::SceneCamera>,
             Without<EditorCamera>,
-            Without<renzora::core::EditorCamera2d>,
+            Without<renzora_scene_api::EditorCamera2d>,
         ),
     >,
     cameras_2d_kind: Query<(), With<bevy::camera::Camera2d>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut editor_cam: Query<
         (&mut Transform, &mut Projection),
-        (With<EditorCamera>, Without<renzora::core::EditorCamera2d>),
+        (With<EditorCamera>, Without<renzora_scene_api::EditorCamera2d>),
     >,
     mut editor_cam_2d: Query<
         (&Camera, &mut Transform, &mut Projection),
-        (With<renzora::core::EditorCamera2d>, Without<EditorCamera>),
+        (With<renzora_scene_api::EditorCamera2d>, Without<EditorCamera>),
     >,
     mut saved_2d_pose: Local<Option<(Transform, Projection)>>,
 ) {
@@ -438,7 +439,7 @@ fn apply_initial_orbit(
 ) {
     for (entity, mut transform) in &mut cameras {
         let t = orbit.calculate_transform();
-        renzora::core::console_log::console_info(
+        renzora_log_api::console_info(
             "Camera",
             format!(
             "apply_initial_orbit: entity={:?} focus={:?} dist={:.2} yaw={:.3} pitch={:.3} pos={:?}",
@@ -518,10 +519,10 @@ fn sync_viewport_settings(
 /// (persisted by `mirror_focused_orbit_out`); the others are written straight to
 /// their stored angle, which `apply_secondary_viewport_cameras` drives each frame.
 fn apply_per_slot_view_angle(
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
     mut orbit: ResMut<OrbitCameraState>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
     for i in 0..VIEWPORT_COUNT {
         let Some(slot) = viewports.slots.get_mut(i) else {
@@ -548,7 +549,7 @@ fn handle_view_angle_keys(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut orbit: ResMut<OrbitCameraState>,
     mut vp: ResMut<ViewportSettings>,
     mouse_button: Res<ButtonInput<MouseButton>>,
@@ -660,7 +661,7 @@ fn focus_selected(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     selection: Res<EditorSelection>,
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
@@ -720,7 +721,7 @@ fn toggle_pivot_lock(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut pivot_lock: ResMut<PivotLock>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
@@ -751,7 +752,7 @@ fn frame_all(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
     meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
@@ -801,8 +802,8 @@ fn frame_all(
 /// Reset Zoom, Fit All) and apply them to the orbit camera.
 fn handle_camera_view_request(
     mut commands: Commands,
-    request: Option<Res<renzora::core::CameraViewRequest>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    request: Option<Res<renzora_project_api::CameraViewRequest>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut orbit: ResMut<OrbitCameraState>,
     mut pivot_lock: ResMut<PivotLock>,
     meshes: Query<&GlobalTransform, (With<Mesh3d>, Without<EditorCamera>, Without<PlayModeCamera>)>,
@@ -813,22 +814,22 @@ fn handle_camera_view_request(
 ) {
     let Some(request) = request else { return };
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
-        commands.remove_resource::<renzora::core::CameraViewRequest>();
+        commands.remove_resource::<renzora_project_api::CameraViewRequest>();
         return;
     }
     match *request {
-        renzora::core::CameraViewRequest::ZoomIn => {
+        renzora_project_api::CameraViewRequest::ZoomIn => {
             let delta = orbit.distance * 0.2;
             orbit.zoom(delta);
         }
-        renzora::core::CameraViewRequest::ZoomOut => {
+        renzora_project_api::CameraViewRequest::ZoomOut => {
             let delta = -orbit.distance * 0.2;
             orbit.zoom(delta);
         }
-        renzora::core::CameraViewRequest::ResetZoom => {
+        renzora_project_api::CameraViewRequest::ResetZoom => {
             orbit.distance = OrbitCameraState::default().distance;
         }
-        renzora::core::CameraViewRequest::FrameAll => {
+        renzora_project_api::CameraViewRequest::FrameAll => {
             let mut count = 0u32;
             let mut centroid = Vec3::ZERO;
             for gt in &meshes {
@@ -852,7 +853,7 @@ fn handle_camera_view_request(
         // The same path the F key takes, down to reading the viewport's own fov
         // rather than assuming one. Framing against the wrong angle is wrong by
         // exactly the ratio between them.
-        renzora::core::CameraViewRequest::Frame(entity) => {
+        renzora_project_api::CameraViewRequest::Frame(entity) => {
             let vertical_fov = projections
                 .iter()
                 .find_map(|p| match p {
@@ -873,7 +874,7 @@ fn handle_camera_view_request(
             }
             pivot_lock.0 = true;
         }
-        renzora::core::CameraViewRequest::LookAt { eye, target } => {
+        renzora_project_api::CameraViewRequest::LookAt { eye, target } => {
             let offset = eye - target;
             let distance = offset.length();
             // An eye sitting on its own target has no direction to face, and
@@ -889,7 +890,7 @@ fn handle_camera_view_request(
                 pivot_lock.0 = true;
             }
         }
-        renzora::core::CameraViewRequest::SetOrbit {
+        renzora_project_api::CameraViewRequest::SetOrbit {
             focus,
             yaw,
             pitch,
@@ -904,7 +905,7 @@ fn handle_camera_view_request(
             pivot_lock.0 = true;
         }
     }
-    commands.remove_resource::<renzora::core::CameraViewRequest>();
+    commands.remove_resource::<renzora_project_api::CameraViewRequest>();
 }
 
 /// Move the camera's orbit pivot to the point under the mouse cursor: the
@@ -920,7 +921,7 @@ fn camera_to_cursor(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
     input_focus: Res<InputFocusState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     viewport: Option<Res<ViewportState>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
@@ -1056,7 +1057,7 @@ fn camera_controller(
     mut velocity: ResMut<CameraVelocityState>,
     viewport: Option<Res<ViewportState>>,
     active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     time: Res<Time>,
     // Paired to stay within Bevy's sixteen system parameters.
     (keyboard, mouse_button): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>),
@@ -1439,8 +1440,8 @@ fn apply_nav_overlay(
         let zoom_speed = 0.02 * orbit.distance.max(0.5);
         orbit.distance -= zoom_dy * zoom_speed;
         orbit.distance = orbit.distance.clamp(
-            renzora::core::viewport_types::EDITOR_ZOOM_MIN,
-            renzora::core::viewport_types::EDITOR_ZOOM_MAX,
+            renzora_viewport_api::EDITOR_ZOOM_MIN,
+            renzora_viewport_api::EDITOR_ZOOM_MAX,
         );
     }
 
@@ -1483,12 +1484,12 @@ fn resolve_editor_viewport_fov(
     vp_settings: Option<Res<ViewportSettings>>,
     selection: Option<Res<EditorSelection>>,
     scene_cams: Query<
-        (Entity, &Projection, Has<renzora::DefaultCamera>),
-        With<renzora::SceneCamera>,
+        (Entity, &Projection, Has<renzora_scene_api::DefaultCamera>),
+        With<renzora_scene_api::SceneCamera>,
     >,
     mut out: ResMut<EditorViewportFov>,
 ) {
-    use renzora::core::viewport_types::EditorCameraSource;
+    use renzora_viewport_api::EditorCameraSource;
     let source = vp_settings
         .as_ref()
         .map(|s| s.camera.editor_camera_source)
@@ -1528,11 +1529,11 @@ fn resolve_editor_viewport_fov(
 fn goto_selected_camera(
     vp_settings: Option<Res<ViewportSettings>>,
     selection: Option<Res<EditorSelection>>,
-    scene_cams: Query<&GlobalTransform, With<renzora::SceneCamera>>,
+    scene_cams: Query<&GlobalTransform, With<renzora_scene_api::SceneCamera>>,
     mut orbit: ResMut<OrbitCameraState>,
     mut last: Local<Option<Entity>>,
 ) {
-    use renzora::core::viewport_types::EditorCameraSource;
+    use renzora_viewport_api::EditorCameraSource;
     let source = vp_settings
         .as_ref()
         .map(|s| s.camera.editor_camera_source)
@@ -1550,7 +1551,7 @@ fn goto_selected_camera(
         if let Ok(gt) = scene_cams.get(e) {
             // One line per selection (not per frame) — handy to see when the
             // editor view snaps to a scene camera.
-            renzora::core::console_log::console_info(
+            renzora_log_api::console_info(
                 "CameraGoto",
                 format!("snapped editor view to selected scene camera {e:?}"),
             );
@@ -1691,7 +1692,7 @@ fn update_camera_projection(
 /// Runs in `PreUpdate` so the structural change is flushed before the `Update`
 /// controller/gizmo systems read it.
 fn relocate_editor_camera_marker(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
+    viewports: Res<renzora_viewport_api::Viewports>,
     cameras: Query<(Entity, &ViewportCamera, Has<EditorCamera>)>,
     mut commands: Commands,
 ) {
@@ -1715,19 +1716,19 @@ fn relocate_editor_camera_marker(
 /// the marker (that's `is_active` + `RenderTarget`, not this) — the marker only
 /// decides which one the single-camera tool stack drives.
 fn relocate_editor_2d_marker(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
-    cameras: Query<(Entity, &renzora::core::ViewportCamera2d, Has<renzora::core::EditorCamera2d>)>,
+    viewports: Res<renzora_viewport_api::Viewports>,
+    cameras: Query<(Entity, &renzora_scene_api::ViewportCamera2d, Has<renzora_scene_api::EditorCamera2d>)>,
     mut commands: Commands,
 ) {
     let focused = viewports.focused;
     for (entity, vc, has_marker) in cameras.iter() {
         let want = vc.0 == focused;
         if want && !has_marker {
-            commands.entity(entity).insert(renzora::core::EditorCamera2d);
+            commands.entity(entity).insert(renzora_scene_api::EditorCamera2d);
         } else if !want && has_marker {
             commands
                 .entity(entity)
-                .remove::<renzora::core::EditorCamera2d>();
+                .remove::<renzora_scene_api::EditorCamera2d>();
         }
     }
 }
@@ -1761,11 +1762,11 @@ struct OrbitMirror {
 /// mirror-out (e.g. a scene/tab switch restoring a saved camera), that change
 /// is adopted into the focused slot instead of being overwritten.
 fn mirror_focused_orbit_in(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
+    viewports: Res<renzora_viewport_api::Viewports>,
     mut orbit: ResMut<OrbitCameraState>,
     mut mirror: ResMut<OrbitMirror>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
     let externally_changed = mirror.initialized
         && mirror.last_active == focused
@@ -1801,10 +1802,10 @@ fn mirror_focused_orbit_in(
 /// mid-frame focus change can't redirect the write to the wrong slot.
 fn mirror_focused_orbit_out(
     orbit: Res<OrbitCameraState>,
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
     mut mirror: ResMut<OrbitMirror>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     let active = mirror.active.min(VIEWPORT_COUNT - 1);
     if let Some(slot) = viewports.slots.get_mut(active) {
         slot.focus = orbit.focus;
@@ -1824,10 +1825,10 @@ fn mirror_focused_orbit_out(
 /// stored slot orbit. The focused camera is handled by the regular controller
 /// path, so it's skipped here to avoid double-writes.
 fn apply_secondary_viewport_cameras(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
+    viewports: Res<renzora_viewport_api::Viewports>,
     vp_settings: Option<Res<ViewportSettings>>,
     fov: Res<EditorViewportFov>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut cameras: Query<(&ViewportCamera, &mut Transform, &mut Projection), Without<PlayModeCamera>>,
 ) {
     // During play the viewport camera is driven to the game camera's pose by
@@ -1891,7 +1892,6 @@ fn sync_orbit_snapshot(orbit: Res<OrbitCameraState>, mut snapshot: ResMut<Camera
     }
 }
 
-renzora::add!(CameraPlugin, Editor);
 
 #[cfg(test)]
 mod tests {
@@ -2218,7 +2218,7 @@ mod tests {
     #[test]
     fn a_lone_scene_cameras_fov_is_mirrored() {
         let mut world = fov_world();
-        world.spawn((renzora::SceneCamera, perspective(1.1)));
+        world.spawn((renzora_scene_api::SceneCamera, perspective(1.1)));
         world.run_system_once(resolve_editor_viewport_fov).unwrap();
         assert!(close(world.resource::<EditorViewportFov>().0, 1.1));
     }
@@ -2229,9 +2229,9 @@ mod tests {
     #[test]
     fn the_default_camera_wins_over_the_others() {
         let mut world = fov_world();
-        world.spawn((renzora::SceneCamera, perspective(0.5)));
-        world.spawn((renzora::SceneCamera, renzora::DefaultCamera, perspective(1.3)));
-        world.spawn((renzora::SceneCamera, perspective(0.9)));
+        world.spawn((renzora_scene_api::SceneCamera, perspective(0.5)));
+        world.spawn((renzora_scene_api::SceneCamera, renzora_scene_api::DefaultCamera, perspective(1.3)));
+        world.spawn((renzora_scene_api::SceneCamera, perspective(0.9)));
         world.run_system_once(resolve_editor_viewport_fov).unwrap();
         assert!(close(world.resource::<EditorViewportFov>().0, 1.3));
     }
@@ -2242,7 +2242,7 @@ mod tests {
     fn orthographic_scene_cameras_are_skipped() {
         let mut world = fov_world();
         world.spawn((
-            renzora::SceneCamera,
+            renzora_scene_api::SceneCamera,
             Projection::Orthographic(OrthographicProjection::default_3d()),
         ));
         world.run_system_once(resolve_editor_viewport_fov).unwrap();

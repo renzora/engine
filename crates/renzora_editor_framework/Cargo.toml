@@ -15,7 +15,12 @@ description = "Renzora editor SDK — RenzoraEditorPlugin + extension contracts 
 crate-type = ["rlib"]
 
 [dependencies]
-renzora_macros = { path = "../renzora_macros" }
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
+renzora_editor_api = { path = "../api/renzora_editor_api" }
 bevy = { workspace = true }
 renzora_ui = { path = "../renzora_ui" }
 renzora_theme = { path = "../renzora_theme" }
@@ -25,8 +30,8 @@ renzora_ember = { path = "../renzora_ember" }
 # field macros, AppEditorExt) that folded into `renzora` core is visible here
 # and re-exported at `renzora_editor_framework::*` for back-compat.
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_postprocess = { path = "../renzora_postprocess" }
+renzora_animation_api = { path = "../api/renzora_animation_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 #[derive(Resource, Default)]
 pub struct SceneThumbnailRegistry {
@@ -110,7 +110,7 @@ impl SceneThumbnailRegistry {
 /// `level.bsn` and `level.ron` side by side, and `set_extension` would collapse
 /// both onto one `level.png` so each save would overwrite the other's preview.
 ///
-/// The layout rule itself is [`renzora::core::scene_thumbnail_path`] — the
+/// The layout rule itself is [`renzora_project_api::scene_thumbnail_path`] — the
 /// splash derives the same path from a folder it has never opened, so the two
 /// have to agree.
 pub fn scene_thumb_path(scene_abs: &Path, project: &CurrentProject) -> PathBuf {
@@ -120,5 +120,5 @@ pub fn scene_thumb_path(scene_abs: &Path, project: &CurrentProject) -> PathBuf {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default()
     });
-    renzora::core::scene_thumbnail_path(&project.path, &rel)
+    renzora_project_api::scene_thumbnail_path(&project.path, &rel)
 }

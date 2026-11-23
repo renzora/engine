@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use bevy::animation::AnimationTargetId;
 use bevy::prelude::*;
 
-use renzora::{BoneTrack, KeyCurve};
+use renzora_animation_api::{BoneTrack, KeyCurve};
 use renzora_animation::AnimatorComponent;
 
 use crate::AnimationEditorState;
@@ -148,9 +148,9 @@ pub(crate) fn apply_pose(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn viewport_key_shortcut(
     keys: Res<ButtonInput<KeyCode>>,
-    viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
+    viewport: Option<Res<renzora_viewport_api::ViewportState>>,
     stage: Option<Res<crate::stage::view::StageCursor>>,
-    focus: Option<Res<renzora::InputFocusState>>,
+    focus: Option<Res<renzora_project_api::InputFocusState>>,
     layer: Res<PoseLayer>,
     morphs: Res<super::morph::MorphLayer>,
     selection: Res<renzora_editor_framework::EditorSelection>,
@@ -230,7 +230,7 @@ pub(crate) fn key_transforms(world: &mut World, keys: &[(Entity, f32, Transform)
     let poses: Vec<(AnimationTargetId, String, f32, Transform)> = keys
         .iter()
         .filter_map(|&(b, time, pose)| {
-            let name = renzora::BindName::of(world.get::<Name>(b)?, world.get::<renzora::BindName>(b)).to_string();
+            let name = renzora_scene_api::BindName::of(world.get::<Name>(b)?, world.get::<renzora_scene_api::BindName>(b)).to_string();
             let target = world.get::<AnimationTargetId>(b).copied().unwrap_or_else(|| renzora_animation::bone_target(&name));
             Some((target, name, time, pose))
         })
@@ -300,7 +300,7 @@ fn replace_loaded_clip(world: &mut World, clip: AnimationClip) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::KeyMode;
+    use renzora_animation_api::KeyMode;
 
     fn track() -> BoneTrack {
         let mut t = BoneTrack::new("arm");

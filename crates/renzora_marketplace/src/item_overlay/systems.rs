@@ -69,7 +69,7 @@ pub(super) fn item_install_click(
     };
     let signed = session.as_ref().map(|s| s.is_signed_in()).unwrap_or(false);
     if !signed && asset.price_credits > 0 {
-        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+        commands.insert_resource(renzora_platform_api::AuthToggleWindowRequest);
         return;
     }
     commands.queue(move |world: &mut World| crate::install_overlay::open(world, asset));

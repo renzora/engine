@@ -5,18 +5,21 @@ edition = "2021"
 description = "Periodic scene auto-save. Editor-only plugin: counts down a user-set interval, then re-saves the open scene through the same path as Ctrl+S. The status bar's left label shows the live 'Auto save in Ns' countdown in place of 'Ready'."
 
 # Editor-scope plugin, linked into the `renzora_editor` image. Its
-# `add!(AutoSavePlugin, Editor)` puts it in the generated editor plugin list,
+# Its Editor-scope plugin table puts it in the generated editor plugin list,
 # which is the only place an Editor-scope plugin is installed from. Mirrors
 # `renzora_tutorial`.
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-# Everything this plugin touches is a contract type, so the dylib is the only
-# dependency: AutoSaveSettings + load_autosave (the persisted setting),
-# ShellReadyStatus (the status-bar label override), SaveSceneRequested (the
-# asset-tab-safe save path Ctrl+S uses), CurrentProject / PlayModeState /
-# SplashState (the gates).
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AutoSavePlugin"
+scope = "Editor"

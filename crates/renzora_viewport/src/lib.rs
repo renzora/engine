@@ -57,12 +57,12 @@ use bevy::pbr::{
 };
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::ViewportRenderTarget;
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
+use renzora_project_api::ViewportRenderTarget;
 
 pub use camera_preview::CameraPreviewState;
 // Re-export all viewport types from core (they now live in renzora::viewport_types)
-pub use renzora::core::viewport_types::{
+pub use renzora_viewport_api::{
     CameraOrbitSnapshot, CameraSettingsState, CollisionGizmoVisibility, NavOverlayState,
     ProjectionMode, RenderToggles, SnapSettings, ViewAngleCommand, ViewportSettings, ViewportState,
     VisualizationMode,
@@ -102,22 +102,22 @@ impl Plugin for ViewportPlugin {
             .init_resource::<ViewportSettings>()
             .init_resource::<redraw::ViewportRedraw>()
             .init_resource::<overlay::ViewportOverlays>()
-            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
+            .init_resource::<renzora_viewport_api::ViewportOverlayChanged>()
             .init_resource::<render_systems::ShadowBudget>()
             .add_plugins(bevy::render::extract_resource::ExtractResourcePlugin::<
                 render_systems::ShadowBudget,
             >::default())
             // Owned here because the shading modes are what set it; the sky
             // crates only read it, and take it as absent when nothing does.
-            .register_type::<renzora::core::EnvironmentSuppressed>()
-            .init_resource::<renzora::core::EnvironmentSuppressed>()
-            .init_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
+            .register_type::<renzora_render_api::EnvironmentSuppressed>()
+            .init_resource::<renzora_render_api::EnvironmentSuppressed>()
+            .init_resource::<renzora_viewport_api::ViewportRenderResolution>()
             .init_resource::<CameraOrbitSnapshot>()
             // Filled in by whatever is filling the scene in (a new terrain);
             // shown by `work_card`.
-            .init_resource::<renzora::core::viewport_types::ViewportWork>()
-            .init_resource::<renzora::core::InputFocusState>()
-            .init_resource::<renzora::core::PlayModeState>()
+            .init_resource::<renzora_viewport_api::ViewportWork>()
+            .init_resource::<renzora_project_api::InputFocusState>()
+            .init_resource::<renzora_project_api::PlayModeState>()
             .init_resource::<external_runtime::ExternalRuntime>()
             .init_resource::<bevy::winit::WinitSettings>()
             .init_resource::<render_systems::OriginalMaterialStates>()
@@ -138,14 +138,14 @@ impl Plugin for ViewportPlugin {
             // the scan re-runs against the finished subtree instead of the
             // bare mount point it saw first.
             .add_observer(model_flatten::rearm_wrapper_hiding_on_ready)
-            .init_resource::<renzora::core::EffectRouting>()
+            .init_resource::<renzora_scene_api::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
             .init_resource::<model_drop::ModelDragPreviewState>()
             .init_resource::<model_drop::ModelPlaceholderAssets>()
             .init_resource::<renzora_ui::ShapeDragState>()
             .init_resource::<renzora_ui::ShapeDragPreviewState>()
             .init_resource::<drop_target::ArmedViewportDrop>()
-            .init_resource::<renzora::core::viewport_types::DropCursorRequest>()
+            .init_resource::<renzora_viewport_api::DropCursorRequest>()
             .init_resource::<BrushCursorHiddenByUs>()
             .add_systems(Update, (
                 update_input_focus,
@@ -306,7 +306,7 @@ impl Plugin for ViewportPlugin {
         app.add_systems(
             Update,
             world_ui_pointer::publish_viewport_mouse_ray
-                .in_set(renzora::WorldUiPointerSet::Publish)
+                .in_set(renzora_scene_api::WorldUiPointerSet::Publish)
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
 
@@ -356,7 +356,7 @@ struct BrushCursorHiddenByUs(bool);
 /// modal transform) has hidden the cursor, we don't touch it.
 fn hide_cursor_for_brushes(
     active_tool: Option<Res<renzora_editor_framework::ActiveTool>>,
-    viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
+    viewport: Option<Res<renzora_viewport_api::ViewportState>>,
     mut cursor_options: Query<&mut bevy::window::CursorOptions>,
     mut ours: ResMut<BrushCursorHiddenByUs>,
 ) {
@@ -406,7 +406,7 @@ impl SlotResizeRequest {
 /// from `&World`; [`resolve_viewport_slots`] reads them each frame.
 #[derive(Resource)]
 pub struct ViewportResizeRequest {
-    pub slots: [SlotResizeRequest; renzora::core::viewport_types::VIEWPORT_COUNT],
+    pub slots: [SlotResizeRequest; renzora_viewport_api::VIEWPORT_COUNT],
 }
 
 impl Default for ViewportResizeRequest {
@@ -424,9 +424,9 @@ pub(crate) fn setup_viewport(
     mut images: ResMut<Assets<Image>>,
     mut render_target: ResMut<ViewportRenderTarget>,
     mut viewport_state: ResMut<ViewportState>,
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     bevy::log::info!("[viewport] setup_viewport — creating {VIEWPORT_COUNT} render targets");
 
     for (i, slot) in viewports.slots.iter_mut().enumerate() {
@@ -477,22 +477,22 @@ pub(crate) fn make_render_target(width: u32, height: u32) -> Image {
 /// camera at all) resolves to `Full`.
 fn compute_viewport_render_resolution(
     selection: Option<Res<renzora_editor_framework::EditorSelection>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     cameras: Query<
         (
             Entity,
-            Option<&renzora::core::DefaultCamera>,
-            Option<&renzora::core::CameraRenderResolution>,
+            Option<&renzora_scene_api::DefaultCamera>,
+            Option<&renzora_scene_api::CameraRenderResolution>,
         ),
-        With<renzora::core::SceneCamera>,
+        With<renzora_scene_api::SceneCamera>,
     >,
-    mut out: ResMut<renzora::core::viewport_types::ViewportRenderResolution>,
+    mut out: ResMut<renzora_viewport_api::ViewportRenderResolution>,
 ) {
-    use renzora::core::viewport_types::RenderResolution;
+    use renzora_viewport_api::RenderResolution;
 
     let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
 
-    let res_of = |r: Option<&renzora::core::CameraRenderResolution>| r.map(|r| r.0).unwrap_or_default();
+    let res_of = |r: Option<&renzora_scene_api::CameraRenderResolution>| r.map(|r| r.0).unwrap_or_default();
     let default_or_first = || -> Option<RenderResolution> {
         cameras
             .iter()
@@ -526,22 +526,22 @@ fn resolve_viewport_slots(
     ember_fixed: Option<Res<renzora_ember::dock::FixedDock>>,
     ember_windows: Option<Res<renzora_ember::dock::DockWindows>>,
     modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
-    resolution: Option<Res<renzora::core::viewport_types::ViewportRenderResolution>>,
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    resolution: Option<Res<renzora_viewport_api::ViewportRenderResolution>>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
     mut viewport_state: ResMut<ViewportState>,
     mut images: ResMut<Assets<Image>>,
-    resize_busy: Option<Res<renzora::core::resize::ResizeBusy>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    mut hidden_frames: Local<[u32; renzora::core::viewport_types::VIEWPORT_COUNT]>,
+    resize_busy: Option<Res<renzora_platform_api::resize::ResizeBusy>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
+    mut hidden_frames: Local<[u32; renzora_viewport_api::VIEWPORT_COUNT]>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
 
     // A splitter or window edge is being dragged. Every size a drag passes
     // through used to resize the target, and DLSS starts over at every new
     // size (35 to 40 ms each), so a drag ran at 15 fps. The target now keeps
     // its size until the button comes up; the panel stretches the last image
     // meanwhile, which is what it already does for the render scale.
-    let resizing = renzora::core::resize::resize_in_flight(&resize_busy);
+    let resizing = renzora_platform_api::resize::resize_in_flight(&resize_busy);
 
     // Render-resolution scale: the target is sized at this fraction of the
     // panel and upscaled on display. `screen_size` stays the full panel size so
@@ -704,7 +704,7 @@ const HIDE_GRACE_FRAMES: u32 = 15;
 
 /// Dock panel id for each viewport slot. Slot 0 keeps the historical `"viewport"`
 /// id so existing saved layouts and `contains_panel("viewport")` checks keep working.
-const VIEWPORT_PANEL_IDS: [&str; renzora::core::viewport_types::VIEWPORT_COUNT] =
+const VIEWPORT_PANEL_IDS: [&str; renzora_viewport_api::VIEWPORT_COUNT] =
     ["viewport", "viewport-2", "viewport-3", "viewport-4"];
 
 // ── Input focus tracking ─────────────────────────────────────────────────────
@@ -713,12 +713,12 @@ const VIEWPORT_PANEL_IDS: [&str; renzora::core::viewport_types::VIEWPORT_COUNT] 
 /// when the user is typing in a text field, and so the gizmo box-select gesture
 /// doesn't arm while the pointer is over a floating overlay.
 fn update_input_focus(
-    mut input_focus: ResMut<renzora::core::InputFocusState>,
+    mut input_focus: ResMut<renzora_project_api::InputFocusState>,
     ember_inputs: Query<&renzora_ember::widgets::EmberTextInput>,
     drag_editing: Option<Res<renzora_ember::widgets::AnyDragValueEditing>>,
     code_editing: Option<Res<renzora_ember::widgets::AnyCodeEditorFocused>>,
     over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
 ) {
     // A focused bevy_ui (ember) text field "wants keyboard" — so editor
     // keybindings (G/R/S, Delete, …) don't fire while typing in the shell.
@@ -755,8 +755,8 @@ fn update_input_focus(
 fn handle_view_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
-    input_focus: Res<renzora::core::InputFocusState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    input_focus: Res<renzora_project_api::InputFocusState>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut settings: ResMut<ViewportSettings>,
     mouse_button: Res<ButtonInput<MouseButton>>,
 ) {
@@ -810,8 +810,8 @@ fn handle_view_shortcuts(
 fn handle_play_shortcuts(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
-    input_focus: Res<renzora::core::InputFocusState>,
-    mut play_mode: ResMut<renzora::core::PlayModeState>,
+    input_focus: Res<renzora_project_api::InputFocusState>,
+    mut play_mode: ResMut<renzora_project_api::PlayModeState>,
 ) {
     // Escape exits play OR simulate mode — always, regardless of focus state.
     // (Checked before the `ui_wants_keyboard` guard below, which Simulate forces
@@ -858,7 +858,7 @@ type LoggedCamera = (
     &'static Camera,
     Option<&'static Name>,
     Has<Camera3d>,
-    Has<renzora::core::ViewportRedrawIdle>,
+    Has<renzora_scene_api::ViewportRedrawIdle>,
 );
 
 /// Log the active cameras whenever that set changes.
@@ -873,7 +873,7 @@ type LoggedCamera = (
 /// pair of lines per hover; and one renders only lines, so it is not the
 /// expensive view this log is for.
 fn log_active_cameras(
-    cameras: Query<LoggedCamera, Without<renzora::core::ViewportOverlayCamera>>,
+    cameras: Query<LoggedCamera, Without<renzora_scene_api::ViewportOverlayCamera>>,
     mut last: Local<Vec<Entity>>,
 ) {
     // A camera idled by render-on-change still counts as on: it wakes the
@@ -901,8 +901,8 @@ fn log_active_cameras(
 /// The overlay cameras, kept provably apart from the scene, 2D and UI canvas
 /// camera queries beside them in [`sync_viewport_camera_activation`].
 type OnlyOverlayCameras = (
-    Without<renzora::core::ViewportCamera>,
-    Without<renzora::core::ViewportCamera2d>,
+    Without<renzora_scene_api::ViewportCamera>,
+    Without<renzora_scene_api::ViewportCamera2d>,
     Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
 );
 
@@ -917,16 +917,16 @@ type OnlyOverlayCameras = (
 #[allow(clippy::too_many_arguments)]
 fn sync_viewport_camera_activation(
     settings: Option<Res<ViewportSettings>>,
-    viewports: Res<renzora::core::viewport_types::Viewports>,
+    viewports: Res<renzora_viewport_api::Viewports>,
     mut cameras_3d: Query<
         (
             Entity,
             &mut Camera,
-            &renzora::core::ViewportCamera,
-            Has<renzora::core::ViewportRedrawIdle>,
+            &renzora_scene_api::ViewportCamera,
+            Has<renzora_scene_api::ViewportRedrawIdle>,
         ),
         (
-            Without<renzora::core::ViewportCamera2d>,
+            Without<renzora_scene_api::ViewportCamera2d>,
             Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
         ),
     >,
@@ -934,11 +934,11 @@ fn sync_viewport_camera_activation(
         (
             Entity,
             &mut Camera,
-            &renzora::core::ViewportCamera2d,
-            Has<renzora::core::ViewportRedrawIdle>,
+            &renzora_scene_api::ViewportCamera2d,
+            Has<renzora_scene_api::ViewportRedrawIdle>,
         ),
         (
-            Without<renzora::core::ViewportCamera>,
+            Without<renzora_scene_api::ViewportCamera>,
             Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
         ),
     >,
@@ -946,13 +946,13 @@ fn sync_viewport_camera_activation(
         &mut Camera,
         (
             With<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
-            Without<renzora::core::ViewportCamera>,
-            Without<renzora::core::ViewportCamera2d>,
+            Without<renzora_scene_api::ViewportCamera>,
+            Without<renzora_scene_api::ViewportCamera2d>,
         ),
     >,
-    mut cameras_overlay: Query<(&mut Camera, &renzora::core::ViewportOverlayCamera), OnlyOverlayCameras>,
+    mut cameras_overlay: Query<(&mut Camera, &renzora_scene_api::ViewportOverlayCamera), OnlyOverlayCameras>,
     mut overlays: ResMut<overlay::ViewportOverlays>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed_dock: Option<Res<renzora_ember::dock::FixedDock>>,
@@ -960,7 +960,7 @@ fn sync_viewport_camera_activation(
     redraw: Option<Res<redraw::ViewportRedraw>>,
     mut commands: Commands,
 ) {
-    use renzora::core::viewport_types::ViewportView;
+    use renzora_viewport_api::ViewportView;
 
     // Render-on-change (see `redraw`): with Realtime off, a camera that would
     // render sits out the frames where nothing in the scene changed.
@@ -969,7 +969,7 @@ fn sync_viewport_camera_activation(
     let overlay_ok = realtime || redraw.as_ref().is_none_or(|r| r.should_render_overlay());
     // Which slots' 3D scene cameras would render, before the redraw gate: their
     // overlays are on show exactly then.
-    let mut scene_wants = [false; renzora::core::viewport_types::VIEWPORT_COUNT];
+    let mut scene_wants = [false; renzora_viewport_api::VIEWPORT_COUNT];
 
     let ui_canvas_visible = renzora_ember::dock::panel_visible_anywhere(
         "ui_canvas",
@@ -1149,7 +1149,7 @@ fn sync_viewport_camera_activation(
 }
 
 /// Apply the render-on-change gate to a camera that `would_render`: returns
-/// whether it renders, and keeps the [`renzora::core::ViewportRedrawIdle`]
+/// whether it renders, and keeps the [`renzora_scene_api::ViewportRedrawIdle`]
 /// marker on exactly the cameras the gate is holding back.
 fn gate_redraw(
     commands: &mut Commands,
@@ -1160,9 +1160,9 @@ fn gate_redraw(
 ) -> bool {
     let held_back = would_render && !render_ok;
     if held_back && !idle {
-        commands.entity(entity).insert(renzora::core::ViewportRedrawIdle);
+        commands.entity(entity).insert(renzora_scene_api::ViewportRedrawIdle);
     } else if !held_back && idle {
-        commands.entity(entity).remove::<renzora::core::ViewportRedrawIdle>();
+        commands.entity(entity).remove::<renzora_scene_api::ViewportRedrawIdle>();
     }
     would_render && render_ok
 }
@@ -1182,17 +1182,17 @@ fn gate_redraw(
 /// but rasterizes almost nothing.
 fn park_primary_3d_target(
     settings: Option<Res<ViewportSettings>>,
-    viewports: Res<renzora::core::viewport_types::Viewports>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    viewports: Res<renzora_viewport_api::Viewports>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     mut images: ResMut<Assets<Image>>,
     mut parking: Local<Option<Handle<Image>>>,
     mut primary: Query<
         &mut bevy::camera::RenderTarget,
-        With<renzora::core::PrimaryViewportCamera>,
+        With<renzora_scene_api::PrimaryViewportCamera>,
     >,
 ) {
-    use renzora::core::viewport_types::ViewportView;
+    use renzora_viewport_api::ViewportView;
 
     // Same "2D owns the primary image" condition as `sync_viewport_camera_activation`.
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
@@ -1230,5 +1230,3 @@ fn park_primary_3d_target(
         *target = bevy::camera::RenderTarget::Image(desired.into());
     }
 }
-
-renzora::add!(ViewportPlugin, Editor);

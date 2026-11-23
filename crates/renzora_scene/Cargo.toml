@@ -5,11 +5,22 @@ edition = "2021"
 
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api" }
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_undo = { path = "../renzora_undo" }
+# "Partition into cells" on the Hierarchy's right-click menu.
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# The load timeline it drives, the probes, the warnings and content problems
+# its diagnostics panel shows.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api", features = ["diagnostics"] }
+renzora_material_api = { path = "../api/renzora_material_api" }
 renzora_engine = { path = "../renzora_engine" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_camera = { path = "../renzora_camera" }
@@ -23,6 +34,23 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
+# Building world partition stand-ins (`world_partition/hlod.rs`): reading the
+# cells' files and models, simplifying the merged mesh, and averaging each
+# texture from its smallest mip, which is block-compressed. All editor-only;
+# a game only loads the stand-ins these write.
+renzora_bsn = { path = "../renzora_bsn" }
+renzora_rvg = { path = "../renzora_rvg" }
+renzora_rmip = { path = "../renzora_rmip" }
+serde_json = "1"
+meshopt = "0.7"
+bcdec_rs = "0.2.1"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ScenePlugin"
+scope = "Editor"

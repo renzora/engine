@@ -9,8 +9,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
-use renzora::core::console_log::{console_info, console_warn};
-use renzora::{RenzoraShellExt, ShellActionInvoked, ShellActionItem};
+use renzora_log_api::{console_info, console_warn};
+use renzora_shell_api::{RenzoraShellExt, ShellActionInvoked, ShellActionItem};
 
 use crate::protocol::{self, Job, JobId, Message, PROTOCOL_VERSION};
 
@@ -52,12 +52,12 @@ pub struct Companion {
     restart_in: Option<f32>,
     /// The echo sent on every connect, and when, to report the round trip.
     probe: Option<(JobId, Instant)>,
-    /// Jobs other crates queued through `renzora::CompanionJobs`, by the id
+    /// Jobs other crates queued through `renzora_platform_api::CompanionJobs`, by the id
     /// they went out under: their own id and kind, for the answer.
-    external: std::collections::HashMap<JobId, (renzora::CompanionJobId, String)>,
+    external: std::collections::HashMap<JobId, (renzora_platform_api::CompanionJobId, String)>,
     /// Answers for those, waiting for `bridge_jobs` to hand them back.
-    external_done: Vec<renzora::CompanionJobDone>,
-    external_progress: Vec<renzora::CompanionJobProgress>,
+    external_done: Vec<renzora_platform_api::CompanionJobDone>,
+    external_progress: Vec<renzora_platform_api::CompanionJobProgress>,
 }
 
 #[derive(Default, Clone, PartialEq, Debug)]
@@ -121,12 +121,12 @@ impl Companion {
 pub(crate) fn build(app: &mut App) {
     // The editor profiles itself too, under this machine's key: the companion
     // finds it the same way it finds a game, and Play passes the same key on.
-    app.insert_resource(renzora::profiling::ProfilingAccess {
-        key: renzora::profiling::machine_key(),
+    app.insert_resource(renzora_diagnostics_api::profiling::ProfilingAccess {
+        key: renzora_diagnostics_api::profiling::machine_key(),
         lan: false,
         name: "Editor".into(),
     });
-    renzora::init_companion_jobs(app);
+    renzora_platform_api::init_companion_jobs(app);
     app.init_resource::<Companion>()
         .add_systems(Startup, start_on_launch)
         .add_systems(Update, ((pump, bridge_jobs).chain(), show_on_action, report_play));
@@ -204,7 +204,7 @@ fn launch(companion: &mut Companion) {
         .arg(&token)
         // What it presents to the games it profiles.
         .arg("--profiling-key")
-        .arg(renzora::profiling::machine_key())
+        .arg(renzora_diagnostics_api::profiling::machine_key())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let mut child = match command.spawn() {
@@ -215,12 +215,12 @@ fn launch(companion: &mut Companion) {
             return;
         }
     };
-    renzora::child_process::tie_to_editor(&child, "the companion");
+    renzora_platform_api::child_process::tie_to_editor(&child, "the companion");
     if let Some(stdout) = child.stdout.take() {
-        renzora::child_process::forward_to_console(stdout, "Companion");
+        renzora_platform_api::child_process::forward_to_console(stdout, "Companion");
     }
     if let Some(stderr) = child.stderr.take() {
-        renzora::child_process::forward_to_console(stderr, "Companion");
+        renzora_platform_api::child_process::forward_to_console(stderr, "Companion");
     }
     companion.child = Some(child);
     companion.accepted = Some(Mutex::new(accepted));
@@ -244,8 +244,8 @@ fn listen() -> Option<(u16, String, Receiver<Accepted>)> {
     let port = listener.local_addr().ok()?.port();
     let token = format!(
         "{:016x}{:016x}",
-        renzora::SceneEntityId::new_random().0,
-        renzora::SceneEntityId::new_random().0
+        renzora_scene_api::SceneEntityId::new_random().0,
+        renzora_scene_api::SceneEntityId::new_random().0
     );
     let (tx, rx) = channel();
     let expected = token.clone();
@@ -352,10 +352,10 @@ fn pump(time: Res<Time>, mut companion: ResMut<Companion>) {
         // told, so nothing waits forever.
         companion.jobs.clear();
         companion.probe = None;
-        let lost: Vec<(renzora::CompanionJobId, String)> =
+        let lost: Vec<(renzora_platform_api::CompanionJobId, String)> =
             companion.external.drain().map(|(_, job)| job).collect();
         for (id, kind) in lost {
-            companion.external_done.push(renzora::CompanionJobDone {
+            companion.external_done.push(renzora_platform_api::CompanionJobDone {
                 id,
                 kind,
                 result: Err("the companion stopped while running it".into()),
@@ -417,13 +417,13 @@ fn received(companion: &mut Companion, message: Message) {
             }
             if let Some((external, _)) = companion.external.get(&id) {
                 let external = *external;
-                companion.external_progress.push(renzora::CompanionJobProgress { id: external, fraction, note });
+                companion.external_progress.push(renzora_platform_api::CompanionJobProgress { id: external, fraction, note });
             }
         }
         Message::Done { id, result } => {
             let label = companion.jobs.remove(&id).map(|j| j.label).unwrap_or("Job");
             if let Some((external, kind)) = companion.external.remove(&id) {
-                companion.external_done.push(renzora::CompanionJobDone { id: external, kind, result });
+                companion.external_done.push(renzora_platform_api::CompanionJobDone { id: external, kind, result });
                 return;
             }
             if let Some((probe, sent)) = companion.probe {
@@ -455,9 +455,9 @@ fn received(companion: &mut Companion, message: Message) {
 /// Carry other crates' jobs to the companion and their answers back.
 fn bridge_jobs(
     mut companion: ResMut<Companion>,
-    mut jobs: ResMut<renzora::CompanionJobs>,
-    mut done: MessageWriter<renzora::CompanionJobDone>,
-    mut progress: MessageWriter<renzora::CompanionJobProgress>,
+    mut jobs: ResMut<renzora_platform_api::CompanionJobs>,
+    mut done: MessageWriter<renzora_platform_api::CompanionJobDone>,
+    mut progress: MessageWriter<renzora_platform_api::CompanionJobProgress>,
 ) {
     let connected = companion.is_connected();
     if std::mem::take(&mut companion.kinds_changed) {
@@ -501,20 +501,24 @@ fn bridge_jobs(
 
 /// Tell the companion when Play starts and stops, so its GPU jobs wait while a
 /// game is running. `LivePlaySession` exists exactly while one is.
+/// With it goes the Render thumbnails setting, so turning that off stops the
+/// companion's render worker.
 fn report_play(
-    session: Option<Res<renzora::LivePlaySession>>,
+    session: Option<Res<renzora_project_api::LivePlaySession>>,
+    thumbnails: Option<Res<renzora_project_api::ThumbnailRendering>>,
     mut companion: ResMut<Companion>,
-    mut was: Local<Option<bool>>,
+    mut was: Local<Option<(bool, bool)>>,
 ) {
     let playing = session.is_some();
+    let thumbnails = thumbnails.is_none_or(|t| t.0);
     // Sent again after a reconnect, which clears `was`.
     if !companion.is_connected() {
         *was = None;
         return;
     }
-    if *was != Some(playing) {
-        *was = Some(playing);
-        companion.send(Message::EditorState { playing });
+    if *was != Some((playing, thumbnails)) {
+        *was = Some((playing, thumbnails));
+        companion.send(Message::EditorState { playing, thumbnails });
     }
 }
 

@@ -39,7 +39,7 @@ pub fn refresh_graph_files(world: &mut World) {
     let mut q = world.query::<&TerrainGenerator>();
     let paths: Vec<String> = q.iter(world).map(|g| g.graph.clone()).filter(|p| !p.is_empty()).collect();
     let open = world.get_resource::<TerrainGraphEditorState>().filter(|s| s.is_open()).and_then(|s| s.path.clone().map(|p| (p, s.graph.clone())));
-    let root = world.get_resource::<renzora::core::CurrentProject>().cloned();
+    let root = world.get_resource::<renzora_project_api::CurrentProject>().cloned();
     // Read first and write only what changed: taking the resource mutably
     // every frame would mark it changed every frame, and every binding that
     // reads it would re-run with it.

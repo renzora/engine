@@ -8,7 +8,7 @@
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
-use renzora::{EditorLocked, HideInHierarchy, IsolatedCamera, ReflectionCamera, SceneCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera, ReflectionCamera, SceneCamera};
 use renzora_planar_reflection::systems::{MirrorCamera, MirrorOverlay, ReflectionRigs};
 use renzora_planar_reflection::{PlanarReflection, PlanarReflectionPlugin, PlanarReflectionSettings};
 

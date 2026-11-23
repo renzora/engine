@@ -27,7 +27,7 @@ use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniform
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bytemuck::{Pod, Zeroable};
 
-use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
+use renzora_viewport_api::{ViewportSettings, VisualizationMode};
 
 /// Marker mirrored to view entities each frame; the value selects which
 /// post-tonemap visualization to run. None = pass through unchanged.
@@ -303,7 +303,7 @@ impl Plugin for DebugVizPlugin {
                 // (after tonemapping + AA; the framework owns the placement).
                 .add_systems(
                     Core3d,
-                    debug_viz_pass.in_set(renzora::RenderPhase::Overlay),
+                    debug_viz_pass.in_set(renzora_scene_api::RenderPhase::Overlay),
                 );
         }
     }

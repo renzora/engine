@@ -6,7 +6,7 @@
 //! judders against the geometry it is flying past.
 
 use bevy::prelude::*;
-use renzora::FollowNode;
+use renzora_scene_api::FollowNode;
 use std::collections::HashMap;
 
 /// Copy each follower's target world position and rotation onto it.
@@ -30,11 +30,11 @@ pub fn follow_nodes(
         if follow.target.is_empty() {
             continue;
         }
-        let key = renzora::sanitize_id(&follow.target);
+        let key = renzora_scene_api::sanitize_id(&follow.target);
         let matches = |entity: Entity| {
             names
                 .get(entity)
-                .is_ok_and(|(_, name)| renzora::sanitize_id(name.as_str()) == key)
+                .is_ok_and(|(_, name)| renzora_scene_api::sanitize_id(name.as_str()) == key)
         };
         // Look the name up only when the cached entity no longer answers to
         // it: the target despawned, was renamed, or the field was edited.
@@ -42,7 +42,7 @@ pub fn follow_nodes(
             Some(&cached) if matches(cached) => cached,
             _ => {
                 let Some((found, _)) = names.iter().find(|(entity, name)| {
-                    *entity != follower && renzora::sanitize_id(name.as_str()) == key
+                    *entity != follower && renzora_scene_api::sanitize_id(name.as_str()) == key
                 }) else {
                     continue;
                 };

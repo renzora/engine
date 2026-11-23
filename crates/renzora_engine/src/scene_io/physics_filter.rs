@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 use bevy::reflect::TypePath;
-use renzora::physics::{CollisionShapeData, PhysicsBackends, PhysicsBodyData, RuntimeOnlyPhysics};
+use renzora_physics_api::physics::{CollisionShapeData, PhysicsBackends, PhysicsBodyData, RuntimeOnlyPhysics};
 
 /// Built once per save, before the scene is extracted.
 pub(crate) struct PhysicsFilter {
@@ -51,7 +51,7 @@ impl PhysicsFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::physics::{AppPhysicsBackendExt, CastBatch, Caps, PhysicsBackend};
+    use renzora_physics_api::physics::{AppPhysicsBackendExt, CastBatch, Caps, PhysicsBackend};
 
     struct Fake;
 

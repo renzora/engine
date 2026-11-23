@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Translates shaders written for Bevy's old naga_oil preprocessor (#import, #ifdef, #{DEF}) into WESL, so shaders from before Bevy 0.20 keep loading."
 
-# Plain library, not a plugin: no `add!` line and no Bevy. The shader loader
+# Plain library, not a plugin: no plugin table and no Bevy. The shader loader
 # calls it on a source string, and so does the one-off conversion of the
 # engine's own shaders. Keeping it free of dependencies is what lets both use
 # it, and lets it be tested without a GPU or an App.
@@ -12,3 +12,6 @@ description = "Translates shaders written for Bevy's old naga_oil preprocessor (
 crate-type = ["rlib"]
 
 [dependencies]
+
+[lints]
+workspace = true

@@ -23,10 +23,11 @@ use bevy::sprite::Sprite;
 use bevy::text::FontSource;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     ViewportBoxSelect2d, ViewportSettings, ViewportView, Viewports, VIEWPORT_COUNT,
 };
-use renzora::core::{EditorCamera2d, Node2d, PickBounds2d, PlayModeState, ViewportCamera2d};
+use renzora_scene_api::{EditorCamera2d, Node2d, PickBounds2d, ViewportCamera2d};
+use renzora_project_api::PlayModeState;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
 
@@ -45,12 +46,12 @@ struct Cursor2dReadout(Option<Vec2>);
 
 /// Status-bar segment: `⌖ 128, -64` on the left while the cursor is over the
 /// 2D viewport. Empty (item hidden) otherwise.
-fn cursor_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment> {
+fn cursor_status_segments(world: &World) -> Vec<renzora_shell_api::ShellStatusSegment> {
     const MUTED: [u8; 3] = [150, 150, 164];
     let Some(pos) = world.get_resource::<Cursor2dReadout>().and_then(|r| r.0) else {
         return Vec::new();
     };
-    vec![renzora::core::ShellStatusSegment::new(
+    vec![renzora_shell_api::ShellStatusSegment::new(
         "crosshair",
         format!("{:.0}, {:.0}", pos.x, pos.y),
         MUTED,
@@ -68,7 +69,7 @@ struct Zoom2dReadout(Option<f32>);
 /// coordinate readout (order -19 vs -20). Shown whenever the 2D view is active
 /// (the zoom label moved here from the viewport toolbar); empty otherwise. Scale
 /// 1.0 reads as 100%; zooming in (smaller scale) grows the percentage.
-fn zoom_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment> {
+fn zoom_status_segments(world: &World) -> Vec<renzora_shell_api::ShellStatusSegment> {
     const MUTED: [u8; 3] = [150, 150, 164];
     let Some(scale) = world.get_resource::<Zoom2dReadout>().and_then(|r| r.0) else {
         return Vec::new();
@@ -77,7 +78,7 @@ fn zoom_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment>
         return Vec::new();
     }
     let pct = (100.0 / scale).round() as i32;
-    vec![renzora::core::ShellStatusSegment::new(
+    vec![renzora_shell_api::ShellStatusSegment::new(
         "magnifying-glass",
         format!("{pct}%"),
         MUTED,
@@ -139,7 +140,7 @@ const ROTATE_HANDLE_OFFSET_PX: f32 = 22.0;
 const ACCENT: Color = Color::srgb(1.0, 0.6, 0.1);
 
 pub(crate) fn register(app: &mut App) {
-    use renzora::core::RenzoraShellExt;
+    use renzora_shell_api::RenzoraShellExt;
     // Not gated on `in_two_view`/`not_in_play_mode`: the system must run every
     // frame so it can *clear* its overlay when the view leaves 2D (otherwise the
     // last frame's rulers/handles linger in the 3D/UI/play views). It draws only
@@ -154,17 +155,17 @@ pub(crate) fn register(app: &mut App) {
     // Cursor world coordinates live in the status bar's left side (next to
     // "Ready"), not floating beside the pointer — a label glued to the cursor
     // sits exactly where the user is looking/working.
-    app.register_shell_status_item(renzora::core::ShellStatusItem {
+    app.register_shell_status_item(renzora_shell_api::ShellStatusItem {
         id: "cursor-2d",
-        align: renzora::core::ShellStatusAlign::Left,
+        align: renzora_shell_api::ShellStatusAlign::Left,
         order: -20,
         render: cursor_status_segments,
     });
     // The 2D zoom percentage, immediately to the right of the cursor readout
     // (order -19 > -20). Moved here from the viewport toolbar.
-    app.register_shell_status_item(renzora::core::ShellStatusItem {
+    app.register_shell_status_item(renzora_shell_api::ShellStatusItem {
         id: "zoom-2d",
-        align: renzora::core::ShellStatusAlign::Left,
+        align: renzora_shell_api::ShellStatusAlign::Left,
         order: -19,
         render: zoom_status_segments,
     });
@@ -302,7 +303,7 @@ fn render_overlay_2d(
     (collider_edit, shapes, ysorts): (
         Option<Res<renzora_physics::ColliderEditMode>>,
         Query<&renzora_physics::CollisionShapeData>,
-        Query<&renzora::core::YSort>,
+        Query<&renzora_scene_api::YSort>,
     ),
 ) {
     // Clear last frame's overlay first — unconditionally, so switching away from
@@ -486,7 +487,7 @@ fn render_overlay_2d(
                 bevy::picking::Pickable::IGNORE,
                 // See the ruler spawns below: named chrome is saved unless it
                 // opts out.
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 Overlay2dPart,
                 Name::new("selection-chrome-2d"),
             ))
@@ -956,7 +957,7 @@ fn draw_rulers(
         // with the rulers on came back with a thousand `ruler-tick` entities in
         // the file — the loader prunes them again on the way in, so nothing
         // looks wrong until you open the `.bsn`.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-top"),
     ));
@@ -972,7 +973,7 @@ fn draw_rulers(
         // with the rulers on came back with a thousand `ruler-tick` entities in
         // the file — the loader prunes them again on the way in, so nothing
         // looks wrong until you open the `.bsn`.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-left"),
     ));
@@ -1062,7 +1063,7 @@ fn spawn_tick(commands: &mut Commands, left: f32, top: f32, width: f32, height: 
         // with the rulers on came back with a thousand `ruler-tick` entities in
         // the file — the loader prunes them again on the way in, so nothing
         // looks wrong until you open the `.bsn`.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-tick"),
     ));
@@ -1083,7 +1084,7 @@ fn spawn_label(commands: &mut Commands, font: &FontSource, text: &str, left: f32
         // with the rulers on came back with a thousand `ruler-tick` entities in
         // the file — the loader prunes them again on the way in, so nothing
         // looks wrong until you open the `.bsn`.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         Overlay2dPart,
         Name::new("ruler-label"),
     ));

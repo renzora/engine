@@ -46,7 +46,7 @@ enum ParamKind {
 
 impl ParamKind {
     fn label(self) -> String {
-        renzora::lang::t(match self {
+        renzora_lang_api::t(match self {
             ParamKind::Float => "animation.param_float",
             ParamKind::Bool => "animation.param_bool",
             ParamKind::Trigger => "animation.param_trigger",
@@ -112,8 +112,8 @@ fn ready(w: &Rx) -> bool {
 
 fn empty_msg(w: &Rx) -> String {
     match state(w.untracked()).and_then(|s| s.selected_entity) {
-        None => renzora::lang::t("animation.select_animated_entity"),
-        Some(_) => renzora::lang::t("animation.no_animator"),
+        None => renzora_lang_api::t("animation.select_animated_entity"),
+        Some(_) => renzora_lang_api::t("animation.no_animator"),
     }
 }
 
@@ -205,7 +205,7 @@ fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let lbl = commands
         .spawn((
-            Text::new(renzora::lang::t("common.new")),
+            Text::new(renzora_lang_api::t("common.new")),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
         ))
@@ -394,7 +394,7 @@ fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> E
         .id();
     let lbl = commands
         .spawn((
-            Text::new(renzora::lang::t(label)),
+            Text::new(renzora_lang_api::t(label)),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
         ))
@@ -560,7 +560,7 @@ fn trash_button(
 fn empty_note(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .spawn((
-            Text::new(renzora::lang::t("animation.no_parameters")),
+            Text::new(renzora_lang_api::t("animation.no_parameters")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             Node {

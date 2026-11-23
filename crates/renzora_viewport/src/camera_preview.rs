@@ -12,10 +12,7 @@ use bevy::prelude::*;
 use bevy::camera::Hdr;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
-use renzora::core::{
-    DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera,
-    PrimaryViewportCamera,
-};
+use renzora_scene_api::{DefaultCamera, EditorCamera, EditorLocked, HideInHierarchy, IsolatedCamera, PrimaryViewportCamera};
 use renzora_editor_framework::EditorSelection;
 
 /// Skybox brightness for the shared atmosphere cubemap when synthesizing a

@@ -184,7 +184,7 @@ fn setup_title() -> String {
     match product_name().as_str() {
         "Renzora" => format!(
             "Renzora Engine {} - Setup",
-            renzora_runtime::renzora::version::display()
+            renzora_platform_api::version::display()
         ),
         product => format!("{product} - Setup"),
     }
@@ -632,7 +632,7 @@ fn build_title_bar(commands: &mut Commands, images: &mut Assets<Image>) -> Entit
         .id();
     let version = commands
         .spawn((
-            Text::new(renzora_runtime::renzora::version::display()),
+            Text::new(renzora_platform_api::version::display()),
             TextFont::from_font_size(11.0),
             TextColor(MUTED),
             Pickable::IGNORE,

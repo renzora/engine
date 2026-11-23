@@ -12,18 +12,20 @@ default = ["editor"]
 # Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
 # it, so the whole engine agrees on one answer.
 scripting = ["dep:renzora_scripting"]
-# Forwards to `renzora/editor` so the components below register into the
+# Turns on the editor contract (`renzora_editor_api`) so the components below register into the
 # Inspector's "Add Component" list. Off in lean exports.
-editor = ["renzora/editor"]
+editor = ["dep:renzora_editor_api"]
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
 # The read-state mirror is Serialize/Deserialize for the same reason
 # `PhysicsReadState` is: reflection registers those impls, and the scene
 # serializer needs them to round-trip the component.
 serde = { version = "1", features = ["derive"] }
-renzora_macros = { path = "../renzora_macros" }
+renzora_editor_api = { path = "../api/renzora_editor_api", optional = true }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # Traversals hand the skeleton a clip through the same command queue the
 # animation crate's own scripting API uses, rather than reaching into bevy's
@@ -40,3 +42,9 @@ renzora_physics = { path = "../renzora_physics", default-features = false }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ParkourPlugin"

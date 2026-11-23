@@ -80,9 +80,9 @@ fn rig_click(q: Query<(&UiInteraction, &RigClick), Changed<UiInteraction>>, mut 
 pub(crate) fn tell(world: &mut World, ok: bool, msg: impl Into<String>) {
     let msg = msg.into();
     if ok {
-        renzora::core::console_log::console_success("Rig", msg.clone());
+        renzora_log_api::console_success("Rig", msg.clone());
     } else {
-        renzora::core::console_log::console_error("Rig", msg.clone());
+        renzora_log_api::console_error("Rig", msg.clone());
     }
     if let Some(mut q) = world.get_resource_mut::<renzora_ember::widgets::ToastQueue>() {
         let tone = if ok { renzora_ember::widgets::Tone::Success } else { renzora_ember::widgets::Tone::Error };
@@ -99,8 +99,8 @@ pub(crate) fn subject(world: &World) -> Option<Entity> {
 /// The subject's model file, as an absolute path, and as the project-relative
 /// path the asset server knows it by.
 pub(crate) fn model_file(world: &World, root: Entity) -> Option<(std::path::PathBuf, String)> {
-    let rel = world.get::<renzora::core::MeshInstanceData>(root)?.model_path.clone()?;
-    let project = world.get_resource::<renzora::core::CurrentProject>()?;
+    let rel = world.get::<renzora_scene_api::MeshInstanceData>(root)?.model_path.clone()?;
+    let project = world.get_resource::<renzora_project_api::CurrentProject>()?;
     Some((project.resolve_path(&rel), rel))
 }
 
@@ -136,17 +136,17 @@ pub(crate) fn joints(world: &World, root: Entity) -> Vec<Entity> {
 /// suffix the editor added only to keep the name unique.
 pub(crate) fn bone_name(world: &World, e: Entity) -> Option<String> {
     let name = world.get::<Name>(e)?;
-    Some(renzora::sanitize_id(renzora::BindName::of(name, world.get::<renzora::BindName>(e))))
+    Some(renzora_scene_api::sanitize_id(renzora_scene_api::BindName::of(name, world.get::<renzora_scene_api::BindName>(e))))
 }
 
 /// A bone under `root` by name, however the entity's name was spelled after
 /// import (`mixamorig:LeftArm` arrives as `mixamorig_leftarm`).
 pub(crate) fn find_bone(world: &World, root: Entity, name: &str) -> Option<Entity> {
-    let want = renzora::sanitize_id(name);
+    let want = renzora_scene_api::sanitize_id(name);
     descendants(world, root).into_iter().find(|&e| {
         world
             .get::<Name>(e)
-            .is_some_and(|n| renzora::sanitize_id(renzora::BindName::of(n, world.get::<renzora::BindName>(e))) == want)
+            .is_some_and(|n| renzora_scene_api::sanitize_id(renzora_scene_api::BindName::of(n, world.get::<renzora_scene_api::BindName>(e))) == want)
     })
 }
 

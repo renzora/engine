@@ -26,15 +26,15 @@ use super::{empty_label, phosphor_glyph, GetFn, InspectorSectionHeader, Mutate, 
 /// it did to this effect, and where to change it. The tier is the project's
 /// `[rendering] graphics_quality`, which the viewport and the game share.
 fn quality_gate_tooltip(
-    tier: renzora::core::viewport_types::GraphicsQuality,
-    gate: renzora::core::viewport_types::QualityGate,
+    tier: renzora_viewport_api::GraphicsQuality,
+    gate: renzora_viewport_api::QualityGate,
 ) -> String {
-    use renzora::core::viewport_types::QualityGate;
+    use renzora_viewport_api::QualityGate;
     let key = match gate {
         QualityGate::Disabled => "inspector.quality_gate.disabled",
         QualityGate::Downgraded => "inspector.quality_gate.downgraded",
     };
-    renzora::lang::t_args(key, &[("tier", tier.label())])
+    renzora_lang_api::t_args(key, &[("tier", tier.label())])
 }
 
 #[derive(Component)]
@@ -237,7 +237,7 @@ pub(super) fn reconcile_section_bodies(
                     // filled below, after the queue applies (needs &mut World)
                 } else if custom {
                     let note =
-                        empty_label(&mut commands, &fonts, &renzora::lang::t("inspector.custom_pending"));
+                        empty_label(&mut commands, &fonts, &renzora_lang_api::t("inspector.custom_pending"));
                     commands.entity(body).add_child(note);
                 } else {
                     fill_section_rows(&mut commands, &fonts, &fields, ent, type_id, body);
@@ -412,7 +412,7 @@ fn build_section_rest(
         // Body is filled by the registered native drawer once the build queue
         // has applied (it needs exclusive &mut World). See `rebuild_inspector`.
     } else if sec.custom {
-        let note = empty_label(commands, fonts, &renzora::lang::t("inspector.custom_pending"));
+        let note = empty_label(commands, fonts, &renzora_lang_api::t("inspector.custom_pending"));
         commands.entity(body).add_child(note);
     } else {
         fill_section_rows(commands, fonts, &sec.fields, entity, sec.type_id, body);
@@ -478,7 +478,7 @@ fn build_section_rest(
             UiInteraction::default(),
             BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("comp.script.add")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t("comp.script.add")),
             crate::scripts::AddScriptBtn { entity },
         ));
         extra.push(plus);

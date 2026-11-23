@@ -1,6 +1,6 @@
 //! Editor-only spawn helpers relocated from `renzora_ember::game_ui::spawn`.
 //!
-//! These read `renzora::EditorSelection` / use the `image` crate, which the
+//! These read `renzora_editor_api::EditorSelection` / use the `image` crate, which the
 //! lean runtime `renzora_game_ui` crate no longer carries.
 
 use bevy::prelude::*;
@@ -16,7 +16,7 @@ use renzora_ember::game_ui::components::*;
 ///    active canvas here.
 /// 3. `None` — `spawn_widget` will fall back to "any canvas, or spawn one."
 pub fn pick_spawn_parent(world: &World, active_canvas: Option<Entity>) -> Option<Entity> {
-    if let Some(sel_res) = world.get_resource::<renzora::EditorSelection>() {
+    if let Some(sel_res) = world.get_resource::<renzora_editor_api::EditorSelection>() {
         if let Some(sel) = sel_res.get() {
             // Container/Panel: a layout-mode parent for nested widgets.
             let is_container = world
@@ -93,7 +93,7 @@ pub fn spawn_image_at(
             h: 720.0,
         });
 
-    let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+    let load_path = if let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() {
         project.make_asset_relative(asset_path)
     } else {
         asset_path.to_string_lossy().replace('\\', "/")
@@ -141,7 +141,7 @@ pub fn spawn_image_at(
 
     world.entity_mut(entity).set_parent_in_place(canvas_entity);
 
-    if let Some(sel) = world.get_resource::<renzora::EditorSelection>() {
+    if let Some(sel) = world.get_resource::<renzora_editor_api::EditorSelection>() {
         sel.set(Some(entity));
     }
 }

@@ -270,9 +270,12 @@ impl Plugin for MyPlugin {
         app.add_systems(Update, my_system);
     }
 }
+```
 
-// Registers the plugin in the global inventory (Runtime scope by default).
-renzora::add!(MyPlugin);
+```toml
+# Cargo.toml: declares the plugin to the generator (Runtime scope by default).
+[[package.metadata.renzora.plugin]]
+type = "MyPlugin"
 ```
 
 Editor-only plugins (panels, inspectors, gizmos) are not added by `add_engine_plugins` at all — they arrive through the editor bundle and run only when the editor session is active. The editor UI is built on `bevy_ui` and `renzora_ember`; there is **no egui** anywhere in the engine.

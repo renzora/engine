@@ -252,7 +252,7 @@ fn spawn_renderer_inner(
                 let material = match render.material_path(dimension) {
                     #[cfg(feature = "material_graph")]
                     Some(path) => Some(RendererMaterial::Surface(
-                        renzora::MaterialRef(path.to_string()),
+                        renzora_material_api::MaterialRef(path.to_string()),
                         Box::new(surface::ParticleSurfaceSlot::new(
                             params,
                             render.blend,
@@ -346,7 +346,7 @@ fn spawn_renderer_inner(
 enum RendererMaterial {
     Builtin(Handle<ParticleMaterial3d>),
     #[cfg(feature = "material_graph")]
-    Surface(renzora::MaterialRef, Box<surface::ParticleSurfaceSlot>),
+    Surface(renzora_material_api::MaterialRef, Box<surface::ParticleSurfaceSlot>),
 }
 
 /// A build without the material system draws a material-wearing emitter with
@@ -360,7 +360,7 @@ pub(crate) fn warn_no_material_graph(render: &RenderSettings, dimension: Dimensi
         static WARNED: std::sync::Once = std::sync::Once::new();
         let path = path.to_string();
         WARNED.call_once(|| {
-            renzora::console_log::console_warn(
+            renzora_log_api::console_warn(
                 "Particles",
                 format!("this build has no material system, so `{path}` on particles draws with the particle shader"),
             );
@@ -391,11 +391,11 @@ fn renderer_bundle(emitter: &Emitter, parent: Entity, z: f32) -> impl Bundle {
         Name::new(format!("vfx emitter {}", emitter.name)),
         // Editor plumbing, not scene content: hidden from the hierarchy, and
         // therefore never written into a saved scene either.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         // Its bounds follow wherever the particles are this frame, so a
         // selection box taken from it jumped with the effect. The editor's
         // particle gizmo marks the emitter instead.
-        renzora::NoSelectionBounds,
+        renzora_scene_api::NoSelectionBounds,
         ChildOf(parent),
         Transform::from_xyz(0.0, 0.0, z),
         Visibility::Hidden,

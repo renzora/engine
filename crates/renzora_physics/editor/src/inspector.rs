@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 use renzora_ember::reactive::Rx;
 use renzora_ember::UiInteraction;
-use renzora::InspectorEntry;
+use renzora_editor_api::InspectorEntry;
 
 use renzora_physics::{
     ColliderEditMode, CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType,
@@ -33,7 +33,7 @@ fn stamp_mesh_colliders_on_descendants(world: &mut World, root: Entity) {
     }
     let total = targets.len();
     if total == 0 {
-        renzora::console_log::console_warn("Physics", "No descendant mesh entities found to stamp");
+        renzora_log_api::console_warn("Physics", "No descendant mesh entities found to stamp");
         return;
     }
     if let Some(mut queue) = world.get_resource_mut::<crate::ColliderStampQueue>() {
@@ -41,7 +41,7 @@ fn stamp_mesh_colliders_on_descendants(world: &mut World, root: Entity) {
         queue.total = total;
         queue.remaining = targets;
     }
-    renzora::console_log::console_info(
+    renzora_log_api::console_info(
         "Physics",
         format!("Queued {} entities for mesh collider stamping", total),
     );
@@ -84,7 +84,7 @@ fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
             queue.total = 0;
         }
     }
-    renzora::console_log::console_success(
+    renzora_log_api::console_success(
         "Physics",
         format!("Stripped colliders from {} descendant entities", count),
     );
@@ -93,7 +93,7 @@ fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
 pub fn register_physics_inspectors(app: &mut App) {
     // Auto-insert default collider on new MeshPrimitive entities
     app.add_observer(auto_insert_collider_for_shape);
-    use renzora::{AppEditorExt, EntityPreset};
+    use renzora_editor_api::{AppEditorExt, EntityPreset};
 
     app.register_inspector(physics_body_entry())
         .register_inspector(collision_shape_entry())
@@ -103,7 +103,7 @@ pub fn register_physics_inspectors(app: &mut App) {
     app.register_native_inspector_ui("collision_shape", collision_shape_native);
     app.add_systems(
         bevy::prelude::Update,
-        (edit_collider_click, stamp_strip_click).run_if(bevy::prelude::in_state(renzora::SplashState::Editor)),
+        (edit_collider_click, stamp_strip_click).run_if(bevy::prelude::in_state(renzora_project_api::SplashState::Editor)),
     );
 
     // No shelf or strip entry for Edit Collider. It is the Collision Shape
@@ -855,9 +855,9 @@ fn stamp_strip_click(stamp: Query<(&UiInteraction, &StampBtn), Changed<UiInterac
 
 /// Auto-insert a default static body + collider on newly spawned MeshPrimitive entities.
 fn auto_insert_collider_for_shape(
-    trigger: On<Insert<renzora::MeshPrimitive>>,
+    trigger: On<Insert<renzora_scene_api::MeshPrimitive>>,
     mut commands: Commands,
-    query: Query<&renzora::MeshPrimitive, Without<CollisionShapeData>>,
+    query: Query<&renzora_scene_api::MeshPrimitive, Without<CollisionShapeData>>,
 ) {
     let entity = trigger.entity;
     if let Ok(prim) = query.get(entity) {

@@ -84,7 +84,7 @@ use bevy::prelude::*;
 use libloading::{Library, Symbol};
 #[cfg(target_arch = "wasm32")]
 use wasm_dl::{Library, Symbol};
-use renzora::PluginState;
+use renzora_platform_api::PluginState;
 use renzora_plugin_build::{Error as BuildError, Sdk};
 
 /// `libloading`'s shape, for a platform that has no dynamic loading at all.
@@ -170,7 +170,7 @@ pub struct InstalledNativePlugin {
     /// Settings disable list, the export selection, the thumbnail path.
     pub id: String,
     /// Read from the built library, not the source. See [`installed`].
-    pub scope: renzora::NativePluginScope,
+    pub scope: renzora_platform_api::NativePluginScope,
     pub lib: PathBuf,
 }
 
@@ -312,7 +312,7 @@ pub fn installed(plugins_dir: &Path, lib_ext: &str, expected: Option<&str>) -> I
 /// initializers, and unmapping a warmed Rust dylib runs `FreeLibrary` inside the
 /// loader lock. In the editor this is usually a second handle on an image
 /// already mapped, so the cost is a refcount.
-pub fn read_scope(lib_path: &Path) -> Option<renzora::NativePluginScope> {
+pub fn read_scope(lib_path: &Path) -> Option<renzora_platform_api::NativePluginScope> {
     // SAFETY: loading native code, which runs its static initializers. Same
     // exposure the loader accepts, and here the library is one the editor
     // produced from source in this very project.
@@ -322,9 +322,9 @@ pub fn read_scope(lib_path: &Path) -> Option<renzora::NativePluginScope> {
         return None;
     }
     let scope = match unsafe { lib.get::<ScopeFn>(SCOPE_SYMBOL) } {
-        Ok(f) => renzora::NativePluginScope::from_byte(f()),
+        Ok(f) => renzora_platform_api::NativePluginScope::from_byte(f()),
         // Built before scopes existed — editor-only, same as the loader assumes.
-        Err(_) => renzora::NativePluginScope::Editor,
+        Err(_) => renzora_platform_api::NativePluginScope::Editor,
     };
     std::mem::forget(lib);
     Some(scope)
@@ -455,7 +455,7 @@ impl Plugin for NativePluginLoader {
         // Read once, off disk, because this runs during `App` assembly — there
         // is no settings resource yet, and there will not be one until long
         // after every plugin has been installed.
-        let disabled = renzora::load_disabled_plugins();
+        let disabled = renzora_project_api::load_disabled_plugins();
 
         // Which scopes this process admits. `EditorSession` is inserted by the
         // editor binary during assembly; a shipped game has none, which is the
@@ -463,7 +463,7 @@ impl Plugin for NativePluginLoader {
         // both binaries come out of one `--workspace` build).
         let in_editor = app
             .world()
-            .get_resource::<renzora::core::EditorSession>()
+            .get_resource::<renzora_project_api::EditorSession>()
             .is_some_and(|s| s.0);
 
         let mut libraries = Vec::new();
@@ -551,7 +551,7 @@ impl Plugin for NativePluginLoader {
                     // shows only what is pushed to it, and a plugin that failed
                     // to compile is exactly what its author is looking for.
                     warn!("plugin '{name}' not loaded: {e}");
-                    renzora::core::console_log::console_error(
+                    renzora_log_api::console_error(
                         "Plugin",
                         format!("{name}\n{e}"),
                     );
@@ -581,7 +581,7 @@ pub struct LoadedNativePlugins {
 /// implementation in the UI would list a different set the first time either
 /// side's rules changed.
 fn record(app: &mut App, name: &str, state: PluginState) {
-    renzora::record_plugin(app.world_mut(), name, state);
+    renzora_platform_api::record_plugin(app.world_mut(), name, state);
 }
 
 /// A constructed plugin and the image it came from, which must outlive it.
@@ -917,13 +917,13 @@ fn load_one(
     // scopes existed — so an old plugin keeps its old behaviour instead of
     // appearing in a game it was never written for.
     let scope = match unsafe { lib.get::<ScopeFn>(SCOPE_SYMBOL) } {
-        Ok(f) => renzora::NativePluginScope::from_byte(f()),
-        Err(_) => renzora::NativePluginScope::Editor,
+        Ok(f) => renzora_platform_api::NativePluginScope::from_byte(f()),
+        Err(_) => renzora_platform_api::NativePluginScope::Editor,
     };
     // `EditorSession` absent means this is the shipped game — the same check the
     // rest of the engine uses, because a cargo feature cannot answer it (both
     // binaries come out of one `--workspace` build).
-    if !in_editor && scope == renzora::NativePluginScope::Editor {
+    if !in_editor && scope == renzora_platform_api::NativePluginScope::Editor {
         std::mem::forget(lib);
         // Reported, not silent. A plugin sitting in a game's `plugins/` and
         // doing nothing, with nothing said about it, is indistinguishable from a
@@ -942,7 +942,7 @@ fn load_one(
     // this layer can help with that. `recoverable::catch` rather than bare
     // `catch_unwind`, so the crash reporter does not announce a crash that this
     // line recovers from.
-    let plugin = renzora::core::recoverable::catch(*ctor)
+    let plugin = renzora_crash_api::catch(*ctor)
         .map_err(|caught| format!("panicked while constructing: {caught}"))?;
     Ok(Outcome::Loaded((plugin, lib)))
 }
@@ -1027,7 +1027,7 @@ pub enum ImageAbi {
 
 /// Read the ABI record `renzora::plugin!` embedded in a built plugin.
 ///
-/// A byte search for [`renzora::NATIVE_PLUGIN_ABI_MARKER`], then the stamp up
+/// A byte search for [`renzora_platform_api::NATIVE_PLUGIN_ABI_MARKER`], then the stamp up
 /// to the NUL the record is padded with. The same approach as [`exports_ctor_in`]
 /// and for the same reason: the question is whether mapping the file is sound,
 /// so it has to be answered from the file.
@@ -1035,8 +1035,8 @@ pub enum ImageAbi {
 /// Public so the exporter can refuse to stage a library that does not match
 /// the editor shipping it.
 pub fn image_abi(bytes: &[u8]) -> ImageAbi {
-    let marker = renzora::NATIVE_PLUGIN_ABI_MARKER;
-    let max = renzora::NATIVE_PLUGIN_ABI_RECORD_LEN - marker.len();
+    let marker = renzora_platform_api::NATIVE_PLUGIN_ABI_MARKER;
+    let max = renzora_platform_api::NATIVE_PLUGIN_ABI_RECORD_LEN - marker.len();
     let mut from = 0;
     while let Some(at) = find(&bytes[from..], marker) {
         let start = from + at + marker.len();
@@ -1405,7 +1405,7 @@ mod tests {
     fn fake_library(stamp: Option<&str>) -> Vec<u8> {
         let mut bytes = b"\x7fELF...renzora_native_plugin_ctor...".to_vec();
         if let Some(stamp) = stamp {
-            bytes.extend_from_slice(&renzora::native_plugin_abi_record(stamp));
+            bytes.extend_from_slice(&renzora_platform_api::native_plugin_abi_record(stamp));
         }
         bytes.extend_from_slice(b"...trailing data...");
         bytes
@@ -1443,13 +1443,13 @@ mod tests {
     /// later in the file still counts, and with none the image is unrecorded.
     #[test]
     fn a_truncated_abi_record_is_bounded() {
-        let mut bytes = renzora::NATIVE_PLUGIN_ABI_MARKER.to_vec();
+        let mut bytes = renzora_platform_api::NATIVE_PLUGIN_ABI_MARKER.to_vec();
         bytes.extend(std::iter::repeat_n(b'x', 4096));
         assert_eq!(image_abi(&bytes), ImageAbi::Absent, "garbage after a marker is not a stamp");
 
         // The marker spelled out in the plugin's own code, ahead of the record
         // `plugin!` wrote: the record is the one that is read.
-        bytes.extend_from_slice(&renzora::native_plugin_abi_record("real-stamp"));
+        bytes.extend_from_slice(&renzora_platform_api::native_plugin_abi_record("real-stamp"));
         assert_eq!(image_abi(&bytes), ImageAbi::Stamped("real-stamp".into()));
     }
 

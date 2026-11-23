@@ -53,20 +53,20 @@ fn is_terrain_parent(world: &World, entity: Entity) -> bool {
 
 /// Read a u32 field from a reflected component.
 fn get_reflected_u32(world: &World, entity: Entity, type_substr: &str, field: &str) -> Option<u32> {
-    let pv = renzora::core::reflection::get_reflected_field(world, entity, type_substr, field)?;
+    let pv = renzora_scripting_api::reflection::get_reflected_field(world, entity, type_substr, field)?;
     match pv {
-        renzora::core::PropertyValue::Int(v) => Some(v as u32),
-        renzora::core::PropertyValue::Float(v) => Some(v as u32),
+        renzora_scripting_api::PropertyValue::Int(v) => Some(v as u32),
+        renzora_scripting_api::PropertyValue::Float(v) => Some(v as u32),
         _ => None,
     }
 }
 
 /// Read an f32 field from a reflected component.
 fn get_reflected_f32(world: &World, entity: Entity, type_substr: &str, field: &str) -> Option<f32> {
-    let pv = renzora::core::reflection::get_reflected_field(world, entity, type_substr, field)?;
+    let pv = renzora_scripting_api::reflection::get_reflected_field(world, entity, type_substr, field)?;
     match pv {
-        renzora::core::PropertyValue::Float(v) => Some(v),
-        renzora::core::PropertyValue::Int(v) => Some(v as f32),
+        renzora_scripting_api::PropertyValue::Float(v) => Some(v),
+        renzora_scripting_api::PropertyValue::Int(v) => Some(v as f32),
         _ => None,
     }
 }
@@ -101,9 +101,9 @@ fn chunk_heights(chunk: &dyn Reflect) -> Option<&[f32]> {
 /// draw their own affordances and would otherwise double up.
 pub fn draw_selection_bounding_box(
     selection: Res<EditorSelection>,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     modal: Res<ModalTransformState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     mesh_aabbs: Query<(Option<&Aabb>, &GlobalTransform), crate::BoundsMeshes>,
@@ -236,7 +236,7 @@ fn draw_wireframe_box(
 pub fn terrain_chunk_selection_system(
     selection: Res<EditorSelection>,
     modal: Res<ModalTransformState>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     global_transforms: Query<&GlobalTransform>,
     children_query: Query<&Children>,
     child_of_query: Query<&ChildOf>,

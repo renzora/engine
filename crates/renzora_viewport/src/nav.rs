@@ -26,7 +26,7 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::core::viewport_types::{NavOverlayState, ViewportSettings};
+use renzora_viewport_api::{NavOverlayState, ViewportSettings};
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, EmberFonts};
 use renzora_ember::theme::{accent, hover_bg, panel_bg, rgb, text_primary};
@@ -161,12 +161,12 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // view (they're 3D-orbit pan/zoom controls).
     renzora_ember::reactive::tracked::bind_display(commands, cluster, |w| {
         let in_play = w
-            .get_resource::<renzora::core::PlayModeState>()
+            .get_resource::<renzora_project_api::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false);
         let in_2d = w
-            .get_resource::<renzora::core::viewport_types::ViewportSettings>()
-            .map(|s| s.viewport_view == renzora::core::viewport_types::ViewportView::Two)
+            .get_resource::<renzora_viewport_api::ViewportSettings>()
+            .map(|s| s.viewport_view == renzora_viewport_api::ViewportView::Two)
             .unwrap_or(false);
         !in_play && !in_2d
     });

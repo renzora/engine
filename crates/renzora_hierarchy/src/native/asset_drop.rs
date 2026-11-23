@@ -22,8 +22,9 @@ use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
 use bevy::window::SystemCursorIcon;
-use renzora::core::viewport_types::DropCursorRequest;
-use renzora::core::{CurrentProject, MaterialRef, MaterialResolved, MaterialTarget};
+use renzora_viewport_api::DropCursorRequest;
+use renzora_project_api::CurrentProject;
+use renzora_material_api::{MaterialRef, MaterialResolved, MaterialTarget};
 use renzora_editor_framework::{EditorCommands, EditorSelection};
 use renzora_ember::widgets::PointerOverOverlay;
 use renzora_scripting::ScriptComponent;
@@ -176,7 +177,7 @@ pub(crate) fn arm_hier_asset_drop(
                 *target_of = Some((
                     first.clone(),
                     MaterialTarget::of_file(first),
-                    renzora::is_effect_file(first),
+                    renzora_render_api::is_effect_file(first),
                 ));
             }
             match target_of.as_ref() {
@@ -278,7 +279,7 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
         AttachKind::Script => attach_scripts(world, target, kind, &rel),
         AttachKind::Material => match MaterialTarget::of_file(&paths[0]) {
             Some(material) => assign_material(world, target, &rel[0], material),
-            None if renzora::is_effect_file(&paths[0]) => add_effect(world, target, &rel[0]),
+            None if renzora_render_api::is_effect_file(&paths[0]) => add_effect(world, target, &rel[0]),
             // Not a material and not an effect. Compiling an unknown shader
             // as a mesh's surface is what used to crash wgpu.
             None => false,
@@ -298,10 +299,10 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
     let entity_name = world
         .get::<Name>(target)
         .map(|n| n.as_str().to_string())
-        .unwrap_or_else(|| renzora::lang::t("hierarchy.drop.the_entity"));
+        .unwrap_or_else(|| renzora_lang_api::t("hierarchy.drop.the_entity"));
     if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
         toasts.success(
-            renzora::lang::t(kind.toast_key())
+            renzora_lang_api::t(kind.toast_key())
                 .replace("{name}", &name)
                 .replace("{entity}", &entity_name),
         );
@@ -311,10 +312,10 @@ fn apply_attach(world: &mut World, target: Entity, kind: AttachKind, paths: Vec<
 /// Append a post-process effect to `target`'s Post Process list, adding the
 /// list if the entity has none.
 fn add_effect(world: &mut World, target: Entity, rel: &str) -> bool {
-    match world.get_mut::<renzora::PostEffects>(target) {
+    match world.get_mut::<renzora_render_api::PostEffects>(target) {
         Some(mut list) => list.push(rel),
         None => {
-            let mut list = renzora::PostEffects::default();
+            let mut list = renzora_render_api::PostEffects::default();
             list.push(rel);
             world.entity_mut(target).insert(list);
         }
@@ -369,7 +370,7 @@ fn attach_scripts(world: &mut World, target: Entity, kind: AttachKind, rel: &[St
         // the drop look like it was swallowed.
         let name = rel.first().map(|r| file_name(std::path::Path::new(r)));
         if let (Some(name), Some(mut toasts)) = (name, world.get_resource_mut::<Toasts>()) {
-            toasts.info(renzora::lang::t("hierarchy.drop.already_attached").replace("{name}", &name));
+            toasts.info(renzora_lang_api::t("hierarchy.drop.already_attached").replace("{name}", &name));
         }
         return false;
     }
@@ -430,7 +431,7 @@ fn assign_material(world: &mut World, target: Entity, rel: &str, material: Mater
             .unwrap_or_default();
         if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
             toasts.warning(
-                renzora::lang::t("hierarchy.drop.no_mesh").replace("{entity}", &entity_name),
+                renzora_lang_api::t("hierarchy.drop.no_mesh").replace("{entity}", &entity_name),
             );
         }
         return false;

@@ -17,9 +17,7 @@ use bevy::ui::widget::NodeImageMode;
 use bevy::ui::{
     AlignItems, BorderRadius, Display, FlexDirection, JustifyContent, PositionType, UiRect, Val,
 };
-use renzora::{
-    AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry,
-};
+use renzora_editor_api::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 
 use renzora_ember::markup::provenance::{MarkupImage, MarkupSource};
 use renzora_ember::markup::writeback::write_attr_to_markup;
@@ -775,7 +773,7 @@ fn image_node_entry() -> InspectorEntry {
             field_type: FieldType::Asset {
                 // Every format that loads as an `Image`; an SVG icon is the
                 // common case for UI, and it stays sharp at any `scale`.
-                extensions: renzora::IMAGE_EXTENSIONS
+                extensions: renzora_project_api::IMAGE_EXTENSIONS
                     .iter()
                     .map(|e| (*e).to_string())
                     .collect(),

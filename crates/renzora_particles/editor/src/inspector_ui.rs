@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use renzora::FieldValue;
+use renzora_editor_api::FieldValue;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{inspector_body, inspector_row};
 use renzora_ember::interaction::PASS_THROUGH;

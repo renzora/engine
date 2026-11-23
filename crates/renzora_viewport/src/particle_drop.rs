@@ -11,8 +11,9 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-use renzora::core::{CurrentProject, EditorCamera, EditorCamera2d, Node2d};
+use renzora_viewport_api::{ViewportSettings, ViewportView};
+use renzora_scene_api::{EditorCamera, EditorCamera2d, Node2d};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::EditorSelection;
 
 use crate::ViewportState;

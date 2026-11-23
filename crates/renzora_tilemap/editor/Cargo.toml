@@ -2,11 +2,15 @@
 name = "renzora_tilemap_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only half of renzora_tilemap: the Tilemap palette panel (click-on-atlas tile picker), the paint/erase tool, tileset drag-drop, and the Tilemap entity preset. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only half of renzora_tilemap: the Tilemap palette panel (click-on-atlas tile picker), the paint/erase tool, tileset drag-drop, and the Tilemap entity preset. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_shell_api = { path = "../../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../../api/renzora_scene_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_tilemap = { path = ".." }
 # Data types only (no avian): stamping an object inserts the palette-authored
 # CollisionShapeData on the spawned entity.
@@ -17,3 +21,10 @@ renzora_ui = { path = "../../renzora_ui" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "TilemapEditorPlugin"
+scope = "Editor"

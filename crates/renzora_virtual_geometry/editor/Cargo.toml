@@ -2,11 +2,15 @@
 name = "renzora_virtual_geometry_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor half of virtual geometry: builds and keeps current the .rvg beside every model in the project. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor half of virtual geometry: builds and keeps current the .rvg beside every model in the project. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_platform_api = { path = "../../api/renzora_platform_api" }
+renzora_scene_api = { path = "../../api/renzora_scene_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
+renzora_log_api = { path = "../../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_virtual_geometry = { path = ".." }
 # The builder. Pulls meshoptimizer, which is why it lives in the editor half:
 # a shipped game only ever reads `.rvg` files.
@@ -18,3 +22,10 @@ renzora_ember = { path = "../../renzora_ember" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "VirtualGeometryEditorPlugin"
+scope = "Editor"

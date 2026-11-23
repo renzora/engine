@@ -16,7 +16,7 @@
 //!    material graph lives behind another crate's private state; camera moves,
 //!    dock changes and file writes do not.
 
-use renzora::core::keybindings::EditorAction;
+use renzora_shell_api::keybindings::EditorAction;
 
 use crate::steps::{Chapter, Hint, HintAnim, Step, StepKind, NO_HINT};
 

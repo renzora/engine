@@ -121,7 +121,7 @@ impl RegisterPanelContent for App {
         F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static,
     {
         // Tell the egui shell to skip this id (native panels own their content).
-        renzora::NativePanelExt::register_native_panel(self, id);
+        renzora_shell_api::NativePanelExt::register_native_panel(self, id);
         // Lazily stand up the registry + the single generic build system.
         if !self.world().contains_resource::<NativePanelBuilders>() {
             self.init_resource::<NativePanelBuilders>();

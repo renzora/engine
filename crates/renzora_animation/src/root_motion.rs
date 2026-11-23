@@ -180,13 +180,13 @@ pub fn post_animation(
     graphs: Res<Assets<BlendGraph>>,
     clips: Res<Assets<AnimationClip>>,
     prop_clips: Res<Assets<PropertyClip>>,
-    mut inbox: ResMut<renzora::ScriptAnimEventInbox>,
+    mut inbox: ResMut<renzora_scripting_api::ScriptAnimEventInbox>,
     mut animators: Query<(Entity, &AnimatorComponent, &mut AnimatorState)>,
     players: Query<&AnimationPlayer>,
     mut transforms: Query<&mut Transform>,
     parents: Query<&ChildOf>,
     children: Query<&Children>,
-    names: Query<(&Name, Option<&renzora::BindName>)>,
+    names: Query<(&Name, Option<&renzora_scene_api::BindName>)>,
 ) {
     for (entity, animator, mut state) in animators.iter_mut() {
         if !state.initialized {
@@ -232,7 +232,7 @@ pub fn post_animation(
             }
             let times: Vec<f32> = markers.iter().map(|m| m.time).collect();
             for i in markers_crossed(&times, *duration, step) {
-                inbox.pending.push(renzora::AnimEvent { name: markers[i].name.clone(), entity_bits: entity.to_bits() });
+                inbox.pending.push(renzora_scripting_api::AnimEvent { name: markers[i].name.clone(), entity_bits: entity.to_bits() });
             }
         }
 
@@ -310,18 +310,18 @@ fn find_root_bone(
     animator: &AnimatorComponent,
     state: &AnimatorState,
     children: &Query<&Children>,
-    names: &Query<(&Name, Option<&renzora::BindName>)>,
+    names: &Query<(&Name, Option<&renzora_scene_api::BindName>)>,
 ) -> Option<(Entity, String)> {
     let wanted = match &state.target_rest {
         Some(rest) => rest.root_bone(animator.root_motion.bone.as_deref())?,
         None => animator.root_motion.bone.clone()?,
     };
-    let key = renzora::sanitize_id(&wanted);
+    let key = renzora_scene_api::sanitize_id(&wanted);
     let mut stack: Vec<Entity> = children.get(root).map(|c| c.iter().collect()).unwrap_or_default();
     while let Some(e) = stack.pop() {
         if let Ok((name, bind)) = names.get(e) {
-            let bound = renzora::BindName::of(name, bind);
-            if renzora::sanitize_id(bound) == key {
+            let bound = renzora_scene_api::BindName::of(name, bind);
+            if renzora_scene_api::sanitize_id(bound) == key {
                 return Some((e, bound.to_string()));
             }
         }

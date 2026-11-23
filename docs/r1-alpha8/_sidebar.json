@@ -32,6 +32,7 @@
             { "slug": "editor/materials", "title": "Material Editor" },
             { "slug": "editor/terrain", "title": "Terrain" },
             { "slug": "editor/terrain-graph", "title": "Terrain Graphs" },
+            { "slug": "editor/world-partition", "title": "World Partition" },
             { "slug": "editor/tilemap", "title": "Tilemaps" },
             { "slug": "editor/animation", "title": "Animation" },
             { "slug": "editor/animator", "title": "Animator: Blending, Layers & Root Motion" },

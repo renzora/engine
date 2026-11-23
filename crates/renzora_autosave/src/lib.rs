@@ -6,13 +6,13 @@
 //! worth of work.
 //!
 //! It deliberately reuses the **exact Ctrl+S path**: when the countdown reaches
-//! zero it inserts [`renzora::SaveSceneRequested`], which `renzora_scene`'s
+//! zero it inserts [`renzora_project_api::SaveSceneRequested`], which `renzora_scene`'s
 //! `save_scene_system` consumes — so auto-save inherits all of that path's
 //! safety (it won't write scene RON over a focused `.material`/asset tab, it
 //! redirects an unsaved scene to Save-As, etc.).
 //!
 //! The countdown is surfaced in the status bar by writing
-//! [`renzora::ShellReadyStatus`]: while counting it replaces the left-hand
+//! [`renzora_shell_api::ShellReadyStatus`]: while counting it replaces the left-hand
 //! "Ready" label with `Auto save in Ns`; on reaching zero it saves and lets the
 //! label fall back to "Ready" for a short beat before the next cycle begins.
 //!
@@ -35,7 +35,7 @@ const COUNTDOWN_VISIBLE: f32 = 5.0;
 /// asked for — before the next interval starts counting down.
 const READY_HOLD: f32 = 2.0;
 
-/// Runtime countdown state (distinct from the persisted [`renzora::AutoSaveSettings`]).
+/// Runtime countdown state (distinct from the persisted [`renzora_project_api::AutoSaveSettings`]).
 #[derive(Resource)]
 struct AutoSaveCountdown {
     /// Seconds until the next save. Counts down through zero into `-READY_HOLD`
@@ -63,23 +63,23 @@ pub struct AutoSavePlugin;
 impl Plugin for AutoSavePlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] AutoSavePlugin");
-        app.insert_resource(renzora::load_autosave());
+        app.insert_resource(renzora_project_api::load_autosave());
         app.init_resource::<AutoSaveCountdown>();
-        app.init_resource::<renzora::ShellReadyStatus>();
+        app.init_resource::<renzora_shell_api::ShellReadyStatus>();
         app.add_systems(
             Update,
-            tick.run_if(in_state(renzora::SplashState::Editor)),
+            tick.run_if(in_state(renzora_project_api::SplashState::Editor)),
         );
     }
 }
 
 fn tick(
     time: Res<Time>,
-    cfg: Option<Res<renzora::AutoSaveSettings>>,
-    project: Option<Res<renzora::CurrentProject>>,
-    play: Option<Res<renzora::PlayModeState>>,
+    cfg: Option<Res<renzora_project_api::AutoSaveSettings>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    play: Option<Res<renzora_project_api::PlayModeState>>,
     mut cd: ResMut<AutoSaveCountdown>,
-    mut ready: ResMut<renzora::ShellReadyStatus>,
+    mut ready: ResMut<renzora_shell_api::ShellReadyStatus>,
     mut commands: Commands,
 ) {
     let cfg = cfg.map(|c| *c).unwrap_or_default();
@@ -108,7 +108,7 @@ fn tick(
 
     if cd.remaining <= 0.0 && !cd.saved {
         cd.saved = true;
-        commands.insert_resource(renzora::SaveSceneRequested);
+        commands.insert_resource(renzora_project_api::SaveSceneRequested);
     }
 
     // Past zero: hold the "Ready" beat, then restart the cycle.
@@ -128,5 +128,3 @@ fn tick(
         ready.color = None;
     }
 }
-
-renzora::add!(AutoSavePlugin, Editor);

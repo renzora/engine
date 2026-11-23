@@ -56,7 +56,7 @@ use bevy::prelude::*;
 /// insert them on new cameras and the debugger reads them for its EV readout,
 /// and scenes store them under that path. Re-exported so
 /// `renzora_auto_exposure::AutoExposureSettings` resolves too.
-pub use renzora::AutoExposureSettings;
+pub use renzora_render_api::AutoExposureSettings;
 
 /// The manual EV100 the range and keep-dark settings are expressed against: a
 /// new camera's default. See the module doc.
@@ -101,7 +101,7 @@ fn curve_points(s: &AutoExposureSettings, offset: f32) -> [Vec2; 2] {
 /// pulls more of the dim range down.
 fn build_compensation_curve(
     sources: Query<(&AutoExposureSettings, Option<&Exposure>)>,
-    scene_cameras: Query<&Exposure, With<renzora::SceneCamera>>,
+    scene_cameras: Query<&Exposure, With<renzora_scene_api::SceneCamera>>,
     mut curves: ResMut<Assets<AutoExposureCompensationCurve>>,
     mut comp: ResMut<AeCompensation>,
 ) {
@@ -155,7 +155,7 @@ fn build_compensation_curve(
 fn sync_auto_exposure(
     mut commands: Commands,
     sources: Query<(Entity, Ref<AutoExposureSettings>)>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     comp: Res<AeCompensation>,
 ) {
     let routing_changed = routing.is_changed();
@@ -210,7 +210,7 @@ fn sync_auto_exposure(
 /// `*Settings` wrappers).
 fn sync_exposure(
     sources: Query<Ref<Exposure>>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     mut commands: Commands,
 ) {
     let routing_changed = routing.is_changed();
@@ -235,7 +235,7 @@ fn sync_exposure(
 fn cleanup_auto_exposure(
     mut commands: Commands,
     mut removed: RemovedComponents<AutoExposureSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
@@ -254,7 +254,7 @@ fn cleanup_auto_exposure(
 /// HUD number.
 fn mirror_camera_ev(
     cameras: Query<&Exposure, With<Camera3d>>,
-    mut state: ResMut<renzora::core::CameraExposureState>,
+    mut state: ResMut<renzora_scene_api::CameraExposureState>,
 ) {
     if let Some(exposure) = cameras.iter().next() {
         if (state.ev100 - exposure.ev100).abs() > 1e-4 {
@@ -276,7 +276,7 @@ impl Plugin for AutoExposurePlugin {
         // Registered by Bevy's plugin too; init it here as well (idempotent) so
         // building a curve cannot panic on a missing `Assets` resource.
         app.init_asset::<AutoExposureCompensationCurve>();
-        app.init_resource::<renzora::core::CameraExposureState>();
+        app.init_resource::<renzora_scene_api::CameraExposureState>();
         app.init_resource::<AeCompensation>();
         app.register_type::<AutoExposureSettings>();
         // Build the curve before applying it, so a rebuilt curve reaches the
@@ -292,7 +292,6 @@ impl Plugin for AutoExposurePlugin {
     }
 }
 
-renzora::add!(AutoExposurePlugin, Runtime);
 
 #[cfg(test)]
 mod tests {

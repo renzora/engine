@@ -6,7 +6,7 @@
 //! resource that is itself the value.
 
 use bevy::prelude::*;
-use renzora::{FieldType, FieldValue};
+use renzora_editor_api::{FieldType, FieldValue};
 use renzora_inspector::reflect_source::{read_field, resource_fields, world_resources, write_field};
 
 #[derive(Resource, Reflect, Default)]

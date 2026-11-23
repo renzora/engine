@@ -1,0 +1,24 @@
+[package]
+name = "renzora_shader_api"
+version = "0.1.0"
+edition = "2021"
+description = "Shader text tools: WGSL parsing and validation, and shader text in any dialect to a Bevy Shader; plugins see them at `renzora::wgsl` and `renzora::shader_source`"
+
+# A contract subject layer that sits on Bevy alone, beside `renzora` rather
+# than above it. It used to live in `renzora_material_api`, which put the UI
+# toolkit (theme shaders) and every crate that only builds a shader under the
+# material and render layers: an edit to a Solari setting then rebuilt the
+# whole editor. Nothing here names a material or a render setting, so nothing
+# here should rebuild when they change.
+[dependencies]
+bevy = { workspace = true }
+# `wgsl.rs` parses and validates self-contained shaders here so no other crate
+# re-rolls it. `termcolor` for the same reason `renzora` pins it.
+naga = { version = "30", features = ["termcolor", "wgsl-in"] }
+# Translates pre-0.20 (naga_oil) shader text to WESL in `shader_source`. In the
+# contract because native plugins build shaders at runtime too. A leaf with no
+# dependencies of its own.
+renzora_legacy_shaders = { path = "../../renzora_legacy_shaders" }
+
+[lints]
+workspace = true

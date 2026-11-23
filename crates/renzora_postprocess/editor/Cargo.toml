@@ -2,11 +2,14 @@
 name = "renzora_postprocess_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only Post Process inspector for renzora_postprocess: drop a shader effect on it, reorder, toggle and tune it. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only Post Process inspector for renzora_postprocess: drop a shader effect on it, reorder, toggle and tune it. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
+renzora_lang_api = { path = "../../api/renzora_lang_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_render_api = { path = "../../api/renzora_render_api" }
 renzora_postprocess = { path = ".." }
 renzora_ember = { path = "../../renzora_ember" }
 # `AssetDragPayload`, the file being dragged from the Assets panel.
@@ -14,3 +17,10 @@ renzora_ui = { path = "../../renzora_ui" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "PostProcessEditorPlugin"
+scope = "Editor"

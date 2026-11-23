@@ -31,7 +31,7 @@
 //! ## Wind
 //!
 //! [`FrameInput::wind`] is the world wind this frame, gust included (the
-//! runtime fills it from `renzora::wind::WindState`, dead calm without one).
+//! runtime fills it from `renzora_world_api::wind::WindState`, dead calm without one).
 //! Each emitter sees it in its own simulation space, so a `Local` emitter on an
 //! entity turned to face the wind is pushed backwards, not sideways. Wind is
 //! an input, not state: [`EffectSim::simulate_to`] replays every step with the
@@ -140,7 +140,7 @@ impl FrameInput {
     }
 
     /// The same frame with the world wind from `wind`.
-    pub fn with_wind(mut self, wind: &renzora::wind::WindState) -> Self {
+    pub fn with_wind(mut self, wind: &renzora_world_api::wind::WindState) -> Self {
         let v = wind.velocity();
         self.wind = if v.is_finite() { v } else { Vec3::ZERO };
         self.wind_turbulence = if wind.turbulence.is_finite() { wind.turbulence.max(0.0) } else { 0.0 };

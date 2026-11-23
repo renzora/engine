@@ -6,7 +6,7 @@ Add panels to the Renzora editor with three small `App` extension methods — no
 
 The editor shell is **bevy_ui-native** (`renzora_shell::ShellPlugin`). The reusable dock model (`DockTree`, splits, tabs, drag-docking, drop zones) lives in `renzora_ember::dock`; the shell supplies the per-workspace layouts and chrome (menu bar, ribbon, scene switcher, status bar). A panel is therefore just a tree of ordinary `bevy_ui` entities (`Node`, `Text`, `BackgroundColor`, …) built into a dock leaf, plus a little metadata so the dock and the Add-Panel picker know about it.
 
-Panels are contributed by **editor-scope plugins**. The editor itself is the removable `renzora_editor` cdylib bundle that loads beside the engine binary; an editor plugin registers itself with `renzora::add!(MyPlugin, Editor)` and is replayed into the app when the bundle is installed. (See *Plugins & ABI* for how scopes and the bundle work.)
+Panels are contributed by **editor-scope plugins**. The editor itself is the removable `renzora_editor` cdylib bundle that loads beside the engine binary; an editor plugin registers itself with a `[[package.metadata.renzora.plugin]]` table carrying `scope = "Editor"` in its `Cargo.toml` and is replayed into the app when the bundle is installed. (See *Plugins & ABI* for how scopes and the bundle work.)
 
 > ⚠️ There is **no `EditorPanel` trait, no `register_panel`/`register_panel_with_persistence`, and no `EditorCommands`.** egui and `bevy_egui` were removed from the engine entirely. Any doc or example showing `impl EditorPanel`, `egui::Window`, or a `&egui::Context` is from a dead API — ignore it. Panels are plain bevy_ui, and you mutate the world from systems and reactive closures with normal `&mut World` / `Commands` access.
 
@@ -145,9 +145,13 @@ fn build_content(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(root).add_children(&[icon, label, value]);
     root
 }
+```
 
-// Editor-scope: this plugin is replayed into the app by the renzora_editor bundle.
-renzora::add!(EntityCountPanelPlugin, Editor);
+```toml
+# Cargo.toml. Editor-scope: this plugin is replayed into the app by the renzora_editor bundle.
+[[package.metadata.renzora.plugin]]
+type = "EntityCountPanelPlugin"
+scope = "Editor"
 ```
 
 Note `use renzora::RenzoraShellExt;` — import the trait directly. There is **no `renzora::prelude`**; use `use renzora::*;` or import individual items.
@@ -384,8 +388,12 @@ fn fps_segments(world: &World) -> Vec<ShellStatusSegment> {
 
     vec![ShellStatusSegment::new("speedometer", format!("{fps:.0} FPS"), color)]
 }
+```
 
-renzora::add!(FpsStatusPlugin, Editor);
+```toml
+[[package.metadata.renzora.plugin]]
+type = "FpsStatusPlugin"
+scope = "Editor"
 ```
 
 ## Where panels appear

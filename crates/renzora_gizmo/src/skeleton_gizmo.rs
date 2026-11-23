@@ -2,7 +2,7 @@
 //!
 //! Each bone is a line from its joint to its child's with a ring around it,
 //! coloured by side, in the palette the Animation workspace's stage uses
-//! (`renzora::core::bone_style`), so a skeleton looks the same in both. Drawn
+//! (`renzora_animation_api::bone_style`), so a skeleton looks the same in both. Drawn
 //! with the always-on-top overlay lines, so a bone inside the body still
 //! shows.
 //!
@@ -13,7 +13,7 @@
 use bevy::animation::AnimationTargetId;
 use bevy::prelude::*;
 
-use renzora::core::bone_style::{bone_colour, ring_radius};
+use renzora_animation_api::bone_style::{bone_colour, ring_radius};
 use renzora_editor_framework::{EditorCamera, EditorSelection};
 
 use crate::OverlayGizmoGroup;
@@ -46,7 +46,7 @@ pub struct DrawnBones {
 #[allow(clippy::too_many_arguments)]
 pub fn draw_skeleton_gizmo(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     selection: Res<EditorSelection>,
     (mut bone_selection, mut drawn): (ResMut<BoneSelection>, ResMut<DrawnBones>),
     global_transforms: Query<&GlobalTransform>,

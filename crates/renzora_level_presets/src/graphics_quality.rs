@@ -49,9 +49,11 @@ use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::GraphicsQuality;
-use renzora::core::ViewportCamera;
-use renzora::{CurrentProject, EffectRouting, ResolvedGraphicsQuality, SplashState};
+use renzora_viewport_api::GraphicsQuality;
+use renzora_scene_api::ViewportCamera;
+use renzora_project_api::SplashState;
+use renzora_scene_api::EffectRouting;
+use renzora_project_api::{CurrentProject, ResolvedGraphicsQuality};
 
 /// The open project's tier, or `None` with no project open.
 fn project_tier(project: Option<&CurrentProject>) -> Option<GraphicsQuality> {
@@ -81,7 +83,7 @@ struct GraphicsQualityState {
 /// acting on it silences it permanently. Ignoring it costs one toast per launch,
 /// which is the right pressure for a hint the user hasn't acted on.
 fn suggest_low_tier_on_integrated_gpu(
-    integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    integrated: Option<Res<renzora_render_api::GpuIsIntegrated>>,
     project: Option<Res<CurrentProject>>,
     toasts: Option<ResMut<renzora_ui::Toasts>>,
     mut done: Local<bool>,
@@ -102,7 +104,7 @@ fn suggest_low_tier_on_integrated_gpu(
         *done = true;
         return;
     }
-    toasts.info(renzora::lang::t("settings.hint.integrated_gpu"));
+    toasts.info(renzora_lang_api::t("settings.hint.integrated_gpu"));
     *done = true;
 }
 
@@ -225,7 +227,7 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
 
     fn project_at(quality: GraphicsQuality) -> CurrentProject {
-        let mut config = renzora::ProjectConfig::default();
+        let mut config = renzora_project_api::ProjectConfig::default();
         config.rendering.graphics_quality = quality;
         CurrentProject {
             path: Default::default(),

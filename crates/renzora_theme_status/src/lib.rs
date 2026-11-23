@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use bevy::prelude::*;
 
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_theme::ThemeManager;
 
 // ============================================================================
@@ -48,7 +48,6 @@ impl Plugin for ThemeStatusPlugin {
     }
 }
 
-renzora::add!(ThemeStatusPlugin, Editor);
 
 #[cfg(test)]
 mod tests {

@@ -23,7 +23,7 @@
 
 use bevy::camera::visibility::VisibilityRange;
 use bevy::prelude::*;
-use renzora::core::MaterialRef;
+use renzora_material_api::MaterialRef;
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
@@ -168,7 +168,7 @@ pub fn ensure_chunk_lods(
                     // Generated, rebuilt from the chunk, never saved: kept out
                     // of the hierarchy, and out of the shipped game's sweep of
                     // unnamed entities.
-                    renzora::HideInHierarchy,
+                    renzora_scene_api::HideInHierarchy,
                     ChildOf(chunk_entity),
                 ))
                 .id();
@@ -271,7 +271,7 @@ pub fn sync_lod_materials(
                 MaterialRef,
                 MeshMaterial3d<GraphMaterial>,
                 MeshMaterial3d<StandardMaterial>,
-                renzora::core::MaterialResolved,
+                renzora_material_api::MaterialResolved,
             )>();
             if let Some(m) = surface {
                 e.insert(MeshMaterial3d(m.0.clone()));

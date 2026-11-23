@@ -100,7 +100,7 @@ impl ChannelStrip {
 /// and its strip state.
 ///
 /// The key/name split is the whole reason this is a struct rather than the
-/// `(String, ChannelStrip)` tuple it used to be — see [`renzora::BusConfig`] for
+/// `(String, ChannelStrip)` tuple it used to be — see [`renzora_project_api::BusConfig`] for
 /// why a bus needs both. In short: the key is what an `AudioPlayer` stores and
 /// what playback matches, so it must never change; the name is what the mixer
 /// shows, so it must be free to.
@@ -310,7 +310,7 @@ impl MixerState {
     /// else becomes a custom bus in the order written. An empty config leaves
     /// the default board untouched, so a project.toml with no `[audio]` section
     /// behaves exactly as it did before the section existed.
-    pub fn apply_config(&mut self, config: &renzora::AudioConfig) {
+    pub fn apply_config(&mut self, config: &renzora_project_api::AudioConfig) {
         if config.buses.is_empty() {
             return;
         }
@@ -347,8 +347,8 @@ impl MixerState {
 
     /// Snapshot the board for writing back to project.toml. Built-ins first, in
     /// `BUILTIN_BUSES` order, then the custom buses in mixer order.
-    pub fn to_config(&self) -> renzora::AudioConfig {
-        let entry = |key: &str, name: &str, s: &ChannelStrip| renzora::BusConfig {
+    pub fn to_config(&self) -> renzora_project_api::AudioConfig {
+        let entry = |key: &str, name: &str, s: &ChannelStrip| renzora_project_api::BusConfig {
             key: key.to_string(),
             // A built-in's name is its key, and writing both would put a
             // redundant `name = "Music"` in every project file.
@@ -373,7 +373,7 @@ impl MixerState {
                 .iter()
                 .map(|b| entry(&b.key, &b.name, &b.strip)),
         );
-        renzora::AudioConfig { buses }
+        renzora_project_api::AudioConfig { buses }
     }
 }
 
@@ -400,7 +400,7 @@ pub fn rename_custom_bus(world: &mut World, index: usize, new_name: &str) -> boo
 /// re-applying on that would overwrite whatever the user just did with the value
 /// that had only this moment been saved.
 pub fn load_mixer_config(
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mixer: Option<ResMut<MixerState>>,
     mut loaded: Local<Option<std::path::PathBuf>>,
 ) {
@@ -423,7 +423,7 @@ pub fn load_mixer_config(
 /// taking `DerefMut` on `CurrentProject` marks it changed, which cascades into
 /// every system watching the project.
 pub fn save_mixer_config(
-    mut project: Option<ResMut<renzora::core::CurrentProject>>,
+    mut project: Option<ResMut<renzora_project_api::CurrentProject>>,
     mixer: Option<Res<MixerState>>,
     time: Res<Time>,
     mut last_save: Local<f64>,
@@ -555,7 +555,7 @@ mod tests {
     fn an_empty_config_leaves_the_default_board_untouched() {
         let mut mixer = MixerState::default();
         mixer.add_bus();
-        mixer.apply_config(&renzora::AudioConfig::default());
+        mixer.apply_config(&renzora_project_api::AudioConfig::default());
         assert_eq!(mixer.custom_buses.len(), 1);
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Wraps the vendored [`bevy_gaussian_splatting`] renderer as a single
 //! dlopen'd cdylib. Scenes author splats through the serializable
-//! [`renzora::GaussianSplat`] contract component (a project-relative `.ply` /
+//! [`renzora_scene_api::GaussianSplat`] contract component (a project-relative `.ply` /
 //! `.gcloud` path plus per-cloud tuning); this plugin resolves it into the
 //! live cloud handle + [`CloudSettings`] the renderer consumes — the same
 //! path-in-component / handle-at-runtime split models, audio, and particles
@@ -17,6 +17,12 @@
 //! behind the `editor` feature; in a shipped game those registrations are
 //! harmless no-ops because the editor registries they target don't exist.
 
+// On the web the plugin installs nothing (see its `build`), so everything
+// below is compiled but unreachable there. One allow for that target rather
+// than a `cfg` on every item, which would hide them from the web build's
+// type-check for no gain.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
+
 use bevy::prelude::*;
 
 use bevy::render::renderer::RenderDevice;
@@ -24,7 +30,7 @@ use bevy_gaussian_splatting::{
     CloudSettings, GaussianCamera, Planar, PlanarGaussian3d, PlanarGaussian3dHandle,
     sort::SortMode,
 };
-use renzora::GaussianSplat;
+use renzora_scene_api::GaussianSplat;
 
 #[cfg(feature = "editor")]
 mod editor;
@@ -233,7 +239,7 @@ fn tag_gaussian_cameras(
         (
             With<Camera3d>,
             Without<GaussianCamera>,
-            Without<renzora::IsolatedCamera>,
+            Without<renzora_scene_api::IsolatedCamera>,
         ),
     >,
     tagged: Query<(Entity, &Camera), With<GaussianCamera>>,
@@ -260,5 +266,3 @@ fn tag_gaussian_cameras(
         }
     }
 }
-
-renzora::add!(GaussianSplatPlugin);

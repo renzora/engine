@@ -46,14 +46,14 @@ struct ResolveModule(#[allow(dead_code)] Handle<Shader>);
 /// every level of detail, so on a large scene it is one of the bigger rows.
 fn report_memory(
     files: Res<Assets<RvgFile>>,
-    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    memory: Option<ResMut<renzora_diagnostics_api::load_timeline::AssetMemory>>,
     mut frames: Local<u32>,
 ) {
     *frames = frames.wrapping_add(1);
     let Some(mut memory) = memory.filter(|_| *frames % 30 == 1) else {
         return;
     };
-    memory.set(renzora::load_timeline::AssetMemoryRow {
+    memory.set(renzora_diagnostics_api::load_timeline::AssetMemoryRow {
         kind: "virtual geometry (.rvg files)",
         count: files.len(),
         bytes: files.iter().map(|(_, file)| file.heap_bytes()).sum(),
@@ -155,5 +155,3 @@ impl Plugin for VirtualGeometryPlugin {
             .add_virtual_geometry_material::<StandardMaterial>(classify_standard);
     }
 }
-
-renzora::add!(VirtualGeometryPlugin);

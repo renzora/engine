@@ -15,10 +15,10 @@
 //! When the game stops, the ledger is played back: the game's changes are
 //! undone, the user's are kept (a user edit to something the game also moved
 //! wins, at the value the user gave it), and the scene is exactly what the
-//! user made of it. The Keep button ([`renzora::KeepLiveChangesRequested`])
+//! user made of it. The Keep button ([`renzora_project_api::KeepLiveChangesRequested`])
 //! instead adopts everything the game did so far.
 //!
-//! Saving is held off while mirroring ([`renzora::LivePlaySession`]), and runs
+//! Saving is held off while mirroring ([`renzora_project_api::LivePlaySession`]), and runs
 //! after the put-back if it was asked for.
 //!
 //! Everything but the plugin is gated off the web build. The link is a TCP
@@ -43,11 +43,10 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
-use renzora::console_log::{console_info, console_success};
+use renzora_log_api::{console_info, console_success};
 #[cfg(not(target_arch = "wasm32"))]
-use renzora::{
-    GameInput, GameLink, KeepLiveChangesRequested, LiveLinkEndpoint, LivePlaySession, SceneEntityId,
-};
+use renzora_scene_api::SceneEntityId;
+use renzora_project_api::{GameInput, GameLink, KeepLiveChangesRequested, LiveLinkEndpoint, LivePlaySession};
 #[cfg(not(target_arch = "wasm32"))]
 use renzora_engine::scene_io::{snapshot_entity_subtrees, spawn_entities_from_snapshot};
 #[cfg(not(target_arch = "wasm32"))]
@@ -90,7 +89,6 @@ impl Plugin for LiveLinkEditorPlugin {
     }
 }
 
-renzora::add!(LiveLinkEditorPlugin, Editor);
 
 #[cfg(not(target_arch = "wasm32"))]
 enum Incoming {
@@ -542,7 +540,7 @@ fn end_session(world: &mut World) {
         },
     );
     if pending_save {
-        world.insert_resource(renzora::SaveSceneRequested);
+        world.insert_resource(renzora_project_api::SaveSceneRequested);
     }
 }
 
@@ -645,7 +643,7 @@ mod tests {
         assert_eq!(world.get::<Transform>(crate_e).unwrap().translation, Vec3::ZERO, "the game's move stayed");
         assert!(named(&mut world, "bullet").is_none(), "the game's bullet stayed");
         assert_eq!(world.get::<Visibility>(crate_e), Some(&Visibility::Hidden), "the user's edit was lost");
-        assert!(world.get_resource::<renzora::SaveSceneRequested>().is_some(), "the held save never ran");
+        assert!(world.get_resource::<renzora_project_api::SaveSceneRequested>().is_some(), "the held save never ran");
         assert!(!world.resource::<GameLink>().connected);
     }
 

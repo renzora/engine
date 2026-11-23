@@ -6,7 +6,7 @@ Everything here is the **Build Engine** workflow, `.github/workflows/build-engin
 
 ## The version is one string
 
-`renzora::version::ENGINE_VERSION` in `crates/renzora/src/version.rs` is the engine's version — `r1-alpha8` today. It is what:
+`renzora::version::ENGINE_VERSION` in `crates/api/renzora_platform_api/src/version.rs` is the engine's version — `r1-alpha8` today. It is what:
 
 - the About dialog and the splash show,
 - the docs directory is named after (`docs/r1-alpha8/`),
@@ -100,10 +100,10 @@ passes, the `--plugins` coverage scope, CI's plugin jobs, and `build_plugins` in
 the container script.
 
 `stage_dist` in `docker/build-all.sh` sweeps every cdylib the build produced into
-`dist/<platform>/plugins/`, minus an explicit skip list: the shared engine images
-(`renzora_dylib`, `renzora_ember_dylib`) ship *beside* the executable, never in
-`plugins/`, because swept in there they would be tens of MB of duplicate weight
-that the loader would then sniff for an entry point they do not export.
+`dist/<platform>/plugins/`, minus an explicit skip list: the shared engine image
+(`renzora_dylib`) ships *beside* the executable, never in
+`plugins/`, because swept in there it would be tens of MB of duplicate weight
+that the loader would then sniff for an entry point it does not export.
 
 `stage()` no longer writes to that directory at all. It used to sweep every `.so`
 in `dist/<platform>/plugins/` on the assumption that xtask had put them there —
@@ -253,7 +253,7 @@ Downloading is never gated: it writes to `~/.renzora/updates/<tag>/`, not to the
 
 ## Cutting a real release
 
-1. `ENGINE_VERSION` in `crates/renzora/src/version.rs` must already be the version you are releasing, with `docs/<version>/` beside it. **Do not bump it to the next version in this commit** — the workflow reads that constant as `version` and compares it against the tag to decide what kind of build this is, so a constant that runs ahead of the tag makes the release classify itself as a *nightly*.
+1. `ENGINE_VERSION` in `crates/api/renzora_platform_api/src/version.rs` must already be the version you are releasing, with `docs/<version>/` beside it. **Do not bump it to the next version in this commit** — the workflow reads that constant as `version` and compares it against the tag to decide what kind of build this is, so a constant that runs ahead of the tag makes the release classify itself as a *nightly*.
 2. Write `RELEASE_NOTES.md` at the repo root for this version. Its first line must name the version.
 3. Record the release in `releases.json`: the version, the commit it is cut from, the ABI hash, and `"status": "released"`.
 4. Land that on `main`.

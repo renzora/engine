@@ -28,7 +28,7 @@ impl Default for DepthOfFieldSettings {
 fn sync_dof(
     mut commands: Commands,
     sources: Query<(Entity, Ref<DepthOfFieldSettings>)>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -70,7 +70,7 @@ fn sync_dof(
 fn cleanup_dof(
     mut commands: Commands,
     mut removed: RemovedComponents<DepthOfFieldSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
@@ -91,5 +91,3 @@ impl Plugin for DepthOfFieldPlugin {
         app.add_systems(Update, (sync_dof, cleanup_dof));
     }
 }
-
-renzora::add!(DepthOfFieldPlugin);

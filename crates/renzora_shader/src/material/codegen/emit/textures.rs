@@ -59,6 +59,7 @@ impl Ctx<'_> {
                 let uv = self.uv_or_mesh(node);
                 let strength = self.input(node, "strength");
                 let tex_name = self.alloc_d2_texture(texture_path(node));
+                self.mark_texture_linear(&tex_name);
 
                 let flip = self.input(node, "flip_green");
                 let raw = self.next_var("nraw");
@@ -194,6 +195,7 @@ impl Ctx<'_> {
                         binding: 0,
                         asset_path: path,
                         kind: TextureKind::Cube,
+                        linear: false,
                     });
                 }
                 let v = self.next_var("cubes");
@@ -214,6 +216,7 @@ impl Ctx<'_> {
                         binding: 0,
                         asset_path: path,
                         kind: TextureKind::D2Array,
+                        linear: false,
                     });
                 }
                 let v = self.next_var("tarr");
@@ -231,6 +234,7 @@ impl Ctx<'_> {
                         binding: 0,
                         asset_path: path,
                         kind: TextureKind::D3,
+                        linear: false,
                     });
                 }
                 let v = self.next_var("t3d");

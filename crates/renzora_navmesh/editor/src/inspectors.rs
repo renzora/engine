@@ -3,7 +3,7 @@
 //! feature. Registered by `NavMeshEditorPlugin`.
 
 use bevy::prelude::*;
-use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_navmesh::{NavAgent, NavMeshObstacle, NavMeshVolume, NavPath};
 use vleue_navigator::prelude::{
     ManagedNavMesh, NavMeshAgentExclusion, NavMeshDebug, NavMeshSettings, NavMeshUpdateMode,

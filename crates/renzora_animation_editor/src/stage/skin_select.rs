@@ -44,7 +44,7 @@ pub(super) fn register(app: &mut App) {
             .after(super::view::StageInputSet)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor))
             .run_if(super::stage_mounted)
-            .run_if(renzora::not_in_play_mode),
+            .run_if(renzora_project_api::not_in_play_mode),
     );
 }
 

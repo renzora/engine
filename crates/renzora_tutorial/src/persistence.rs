@@ -19,7 +19,7 @@
 //! thrown at them again just because the answer moved house.
 
 use renzora::core::project_config;
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 /// Has the tutorial NOT yet been engaged with by this user? `true` only until
 /// the first editor session that shows it, which is when we auto-launch.

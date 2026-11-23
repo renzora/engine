@@ -43,7 +43,7 @@ pub fn icon_for(path: &Path, is_dir: bool) -> &'static str {
     match ext.as_str() {
         // The shared list, so a format the engine learns to load (SVG was the
         // last) gets its icon without this table being found and edited.
-        e if renzora::is_image_extension(e) => "image",
+        e if renzora_project_api::is_image_extension(e) => "image",
         "ttf" | "otf" | "woff" | "woff2" => "text-aa",
         "rvg" | "glb" | "gltf" | "obj" | "fbx" => "cube",
         "material" => "palette",
@@ -83,8 +83,8 @@ pub fn type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
         "rs" => ((230, 140, 90), "Rust Script"),
         // Same colour as a raster texture: it loads as one and fits every slot
         // one does. The label says vector so the scalability is discoverable.
-        e if renzora::is_vector_image_extension(e) => ((150, 210, 120), "Vector Image"),
-        e if renzora::is_image_extension(e) => ((150, 210, 120), "Texture"),
+        e if renzora_project_api::is_vector_image_extension(e) => ((150, 210, 120), "Vector Image"),
+        e if renzora_project_api::is_image_extension(e) => ((150, 210, 120), "Texture"),
         "rvg" | "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
         "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
         "anim" => ((90, 215, 205), "Animation"),

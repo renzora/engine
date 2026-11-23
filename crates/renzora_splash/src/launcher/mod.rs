@@ -73,8 +73,8 @@ pub(crate) fn register(app: &mut App) {
         // Owned by `renzora_rust_script`, which registers both as well. Done here
         // too so the Install button has somewhere to write in a build without
         // that crate (the web), where the strip simply never shows.
-        .init_resource::<renzora::RustToolchain>()
-        .add_message::<renzora::RustToolchainAnswer>();
+        .init_resource::<renzora_platform_api::RustToolchain>()
+        .add_message::<renzora_platform_api::RustToolchainAnswer>();
 
     // The built-in pages register through the same door a plugin uses.
     projects::register(app);
@@ -179,7 +179,7 @@ fn manage_splash(world: &mut World, mut last_rev: Local<u64>, mut seen_once: Loc
     let mut q = world.query_filtered::<Entity, With<SplashRoot>>();
     let mut existing: Vec<Entity> = q.iter(world).collect();
 
-    let rev = renzora::lang::revision();
+    let rev = renzora_lang_api::revision();
     let language_changed = if *last_rev != rev {
         *last_rev = rev;
         std::mem::replace(&mut *seen_once, true)
@@ -288,7 +288,7 @@ fn spawn_splash(
 
     commands.entity(root).add_children(&[post_view, shell]);
     // The OS frame brings its own edges.
-    if !renzora::EDITOR_OS_FRAME {
+    if !renzora_shell_api::EDITOR_OS_FRAME {
         chrome::build_resize_zones(commands, root);
     }
 }
@@ -330,7 +330,7 @@ fn build_shell(
 
     // Under the OS frame the system title bar carries the mark, the name and the
     // version, so ours would only repeat it.
-    let title_bar = (!renzora::EDITOR_OS_FRAME).then(|| chrome::build_title_bar(commands, fonts));
+    let title_bar = (!renzora_shell_api::EDITOR_OS_FRAME).then(|| chrome::build_title_bar(commands, fonts));
 
     let body = commands
         .spawn((
@@ -405,7 +405,7 @@ fn collect_web_project_pick(mut commands: Commands) {
                 let config = crate::project::ProjectConfig {
                     name: picked.name.clone(),
                     version: "0.1.0".to_string(),
-                    created_with: Some(renzora::version::ENGINE_VERSION.to_string()),
+                    created_with: Some(renzora_platform_api::version::ENGINE_VERSION.to_string()),
                     main_scene: "scenes/main.bsn".to_string(),
                     ..Default::default()
                 };

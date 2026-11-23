@@ -71,10 +71,10 @@ impl SortMode {
         [SortMode::Name, SortMode::Type, SortMode::Size, SortMode::Modified];
     pub(crate) fn label(self) -> String {
         match self {
-            SortMode::Name => renzora::lang::t("common.name"),
-            SortMode::Type => renzora::lang::t("common.type"),
-            SortMode::Size => renzora::lang::t("common.size"),
-            SortMode::Modified => renzora::lang::t("assets.sort.modified"),
+            SortMode::Name => renzora_lang_api::t("common.name"),
+            SortMode::Type => renzora_lang_api::t("common.type"),
+            SortMode::Size => renzora_lang_api::t("common.size"),
+            SortMode::Modified => renzora_lang_api::t("assets.sort.modified"),
         }
     }
 }
@@ -455,7 +455,7 @@ pub(crate) fn save_list(root: &Path, file: &str, list: &[PathBuf]) {
 /// Load favorites + recent from disk once the project is known.
 pub(crate) fn load_persisted(
     mut state: ResMut<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     if state.loaded {
         return;
@@ -546,9 +546,9 @@ impl TreeTab {
     /// The header label for the list on show.
     pub(crate) fn label(self) -> String {
         match self {
-            TreeTab::Folders => renzora::lang::t_or("assets.list.project", "Project"),
-            TreeTab::Recent => renzora::lang::t_or("assets.list.recent", "Recent"),
-            TreeTab::Favorites => renzora::lang::t_or("assets.list.favourites", "Favourites"),
+            TreeTab::Folders => renzora_lang_api::t_or("assets.list.project", "Project"),
+            TreeTab::Recent => renzora_lang_api::t_or("assets.list.recent", "Recent"),
+            TreeTab::Favorites => renzora_lang_api::t_or("assets.list.favourites", "Favourites"),
         }
     }
 
@@ -689,22 +689,22 @@ impl NewAsset {
     /// Menu label.
     pub(crate) fn label(self) -> String {
         match self {
-            NewAsset::Folder => renzora::lang::t("assets.new.folder"),
-            NewAsset::Material => renzora::lang::t("assets.new.material"),
-            NewAsset::Rust => renzora::lang::t_or("assets.new.rust", "Rust Script"),
-            NewAsset::Template => renzora::lang::t("assets.new.template"),
-            NewAsset::Bsn => renzora::lang::t("assets.new.bsn"),
+            NewAsset::Folder => renzora_lang_api::t("assets.new.folder"),
+            NewAsset::Material => renzora_lang_api::t("assets.new.material"),
+            NewAsset::Rust => renzora_lang_api::t_or("assets.new.rust", "Rust Script"),
+            NewAsset::Template => renzora_lang_api::t("assets.new.template"),
+            NewAsset::Bsn => renzora_lang_api::t("assets.new.bsn"),
         }
     }
     /// Small uppercase type subtitle shown under the title on the menu card
     /// (Unreal's "STATIC MESH" / "BASIC SHAPE" second line).
     pub(crate) fn subtitle(self) -> String {
         match self {
-            NewAsset::Folder => renzora::lang::t("assets.new.folder"),
-            NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
-            NewAsset::Rust => renzora::lang::t_or("assets.new.rust_sub", "Rust Script"),
-            NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
-            NewAsset::Bsn => renzora::lang::t("assets.new.scene_sub"),
+            NewAsset::Folder => renzora_lang_api::t("assets.new.folder"),
+            NewAsset::Material => renzora_lang_api::t("assets.new.material_sub"),
+            NewAsset::Rust => renzora_lang_api::t_or("assets.new.rust_sub", "Rust Script"),
+            NewAsset::Template => renzora_lang_api::t("assets.new.template_sub"),
+            NewAsset::Bsn => renzora_lang_api::t("assets.new.scene_sub"),
         }
     }
     /// Phosphor icon — mirrors each type's editor opener in `open_action`.

@@ -7,8 +7,8 @@
 
 use bevy::prelude::*;
 
-use renzora::physics::{PhysicsBackends, PhysicsDim};
-use renzora::{AspectMode, CurrentProject, RenderingMode, StretchMode, TextureFilter, WindowMode};
+use renzora_physics_api::physics::{PhysicsBackends, PhysicsDim};
+use renzora_project_api::{AspectMode, CurrentProject, RenderingMode, StretchMode, TextureFilter, WindowMode};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, section, text_input};
@@ -45,7 +45,7 @@ fn physics_rows(world: &mut World, body: Entity) {
         let mut options = vec![default];
         options.extend(names.iter().cloned());
         let refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
-        let choice = move |config: &renzora::PhysicsProjectConfig| match dim {
+        let choice = move |config: &renzora_project_api::PhysicsProjectConfig| match dim {
             PhysicsDim::D3 => config.backend_3d.clone(),
             PhysicsDim::D2 => config.backend_2d.clone(),
         };
@@ -577,8 +577,8 @@ fn proj_u32_drag(
     fonts: &EmberFonts,
     min: f32,
     max: f32,
-    get: fn(&renzora::ProjectConfig) -> u32,
-    set: fn(&mut renzora::ProjectConfig, u32),
+    get: fn(&renzora_project_api::ProjectConfig) -> u32,
+    set: fn(&mut renzora_project_api::ProjectConfig, u32),
 ) -> Entity {
     ctl_drag(
         commands,

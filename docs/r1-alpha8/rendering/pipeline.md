@@ -50,7 +50,7 @@ For writing an effect file (the header, the slider comments and the shader contr
 Effects do not each get a render-graph node. They register a type-erased pass into a single `RenderComposition` resource, tagged with a **phase** and an **order**, and the registry keeps itself sorted by `(phase, order)`:
 
 ```rust
-// crates/renzora/src/postprocess.rs (abridged)
+// crates/shared/renzora/src/postprocess.rs (abridged)
 #[derive(Resource, Default)]
 pub struct RenderComposition {
     passes: Vec<RenderPassEntry>,   // kept sorted by (phase, order)
@@ -68,7 +68,7 @@ Four dispatcher systems drain it, one per phase, each pinned into `Core3d` relat
 
 This file is the **only** place that imports `tonemapping`, `temporal_anti_alias`, `fxaa` and `smaa`. An effect never orders against them; it names a phase and the framework positions it. Ordering against an anchor that isn't in the schedule — a 2D lean export with no anti-alias plugin — is a harmless no-op, which is why the anti-alias anchors are `render_3d`-gated and the phases still work without them.
 
-A pass runs only when its settings component is present, so **inactive effects cost nothing** — no pipeline bind, no pass. Within a phase, `order` decides; there is no per-effect priority API and the `add!` priority does not affect render order.
+A pass runs only when its settings component is present, so **inactive effects cost nothing** — no pipeline bind, no pass. Within a phase, `order` decides; there is no per-effect priority API and a plugin table's `priority` does not affect render order.
 
 The framework lives inside `renzora.dll` (`renzora::postprocess`) so every pass shares one registry and matching `TypeId`s across the dlopen boundary. A plugin's pass registers through the same `add_render_pass` an engine one does, so the two sort against each other in one list.
 
@@ -77,7 +77,7 @@ The framework lives inside `renzora.dll` (`renzora::postprocess`) so every pass 
 You rarely attach effect components to the camera directly. Instead you author them on any entity (the inspector does this for you), and the engine proxies them onto the active cameras through the **`EffectRouting`** resource:
 
 ```rust
-// crates/renzora/src/core/mod.rs
+// crates/shared/renzora/src/core/mod.rs
 #[derive(Resource, Default, Debug)]
 pub struct EffectRouting {
     /// (target_camera, [source_entities]) — for a given settings type the FIRST source that has it wins.
@@ -227,7 +227,7 @@ The section's fields:
 The last two rows are hidden unless **Quality** is `Custom`, because every preset supplies its own pair and would override whatever you typed there.
 
 ```rust
-// crates/renzora/src/world_environment.rs
+// crates/shared/renzora/src/world_environment.rs
 WorldEnvironment {
     ssao: SsaoSection {
         enabled: true,

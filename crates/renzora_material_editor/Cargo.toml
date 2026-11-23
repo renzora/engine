@@ -4,9 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# Registers "New Material" in the create-file menu.
+# Reports a material's problems to the Problems panel.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
+renzora_shader_api = { path = "../api/renzora_shader_api" }
 renzora_splash = { path = "../renzora_splash" }
 renzora_ember = { path = "../renzora_ember" }
 # `editor`: the Problems-panel shader validator lives behind that feature; the
@@ -28,3 +37,10 @@ workspace = true
 # `std::fs` there answers every read with "operation not supported".
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 renzora_webfs = { path = "../renzora_webfs" }
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "MaterialEditorPlugin"
+scope = "Editor"

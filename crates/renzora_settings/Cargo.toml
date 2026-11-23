@@ -4,15 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 renzora_theme = { path = "../renzora_theme" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
 # bevy_ui-native settings overlay (the egui → bevy_ui migration target).
 renzora_ember = { path = "../renzora_ember" }
 renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_viewport = { path = "../renzora_viewport" }
-renzora_splash = { path = "../renzora_splash" }
 renzora_input = { path = "../renzora_input" }
 rfd = "0.15"
 # Save the ember Theme's per-widget style sections to themes/*.toml.
@@ -20,3 +24,10 @@ toml = "0.8"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SettingsPlugin"
+scope = "Editor"

@@ -1,0 +1,21 @@
+[package]
+name = "renzora_physics_api"
+version = "0.1.0"
+edition = "2021"
+description = "The physics contract: the components scenes save, the state the engine and a backend exchange, the PhysicsBackend trait, wheeled vehicles and scene ray/sphere queries; plugins see them as `renzora::physics`, `renzora::vehicle` and `renzora::scene_query`"
+
+# A contract subject layer that needs nothing from `renzora`, so it sits beside
+# it. A physics backend is meant to be a plugin, which must name these types
+# without linking `renzora_physics`: `renzora_sdk` re-exports this crate for
+# that. An edit here rebuilds the physics crates and their users, not the whole
+# engine.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# A test reads a collision shape written in the RON scene format.
+ron = "0.8"
+
+[lints]
+workspace = true

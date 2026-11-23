@@ -37,7 +37,7 @@ pub(crate) struct OverlayState {
     /// so it re-spawns with the new palette (it's a separate root from the chrome
     /// and wouldn't otherwise pick up the change while open).
     pub(crate) built_theme: Option<String>,
-    /// `renzora::lang::revision()` at last build — same idea as `built_theme`, so
+    /// `renzora_lang_api::revision()` at last build — same idea as `built_theme`, so
     /// switching language from the overlay's own picker re-localizes it live.
     pub(crate) built_lang_rev: u64,
     /// Sub-selection within the active tab — a section focus key for a split tab

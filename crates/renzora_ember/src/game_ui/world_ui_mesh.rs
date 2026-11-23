@@ -38,7 +38,7 @@ use bevy::text::{
 };
 use bevy::ui::{BackgroundColor, ComputedNode, UiGlobalTransform};
 
-use renzora::text_mesh::{build_text_mesh, SdfTextMaterial, WORLD_UNITS_PER_PX};
+use renzora_text_mesh::{build_text_mesh, SdfTextMaterial, WORLD_UNITS_PER_PX};
 
 use super::components::UiCanvas;
 use super::world_panel::{canvas_resolution, canvas_size, WorldUiPanelLive, WorldUiPanelOwner};
@@ -58,7 +58,7 @@ pub(crate) struct WorldUiMeshBuilt(u64);
 pub(crate) fn register(app: &mut App) {
     // Register the shared SDF material + shader (idempotent — text3d may also call
     // it; the guard dedupes since both link the same rlib type).
-    renzora::text_mesh::ensure_sdf_material(app);
+    renzora_text_mesh::ensure_sdf_material(app);
     app.add_systems(Update, emit_world_ui_meshes);
 }
 
@@ -354,7 +354,7 @@ fn emit_world_ui_meshes(
                 // Generated chrome: keep it out of the scene hierarchy AND out of
                 // the selection outline (which would trace every glyph as stray
                 // dotted lines — see renzora_gizmo::selection_visuals).
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 WorldUiTextGeom,
                 WorldUiPanelOwner(entity),
                 ChildOf(entity),

@@ -33,11 +33,12 @@
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
-use renzora::core::resize::{resize_in_flight, ResizeBusy};
-use renzora::core::viewport_types::{
+use renzora_platform_api::resize::{resize_in_flight, ResizeBusy};
+use renzora_viewport_api::{
     ViewportBoxSelect2d, ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
 };
-use renzora::core::{Node2d, PickBounds2d, PlayModeState};
+use renzora_scene_api::{Node2d, PickBounds2d};
+use renzora_project_api::PlayModeState;
 use renzora_editor_framework::EditorSelection;
 
 /// Cursor travel (window px) below which a rubber-band release counts as a
@@ -613,7 +614,7 @@ pub fn pick_2d_system(
     images: Res<Assets<Image>>,
     mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
     nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
@@ -848,7 +849,7 @@ pub fn drag_move_2d_system(
     play_mode: Option<Res<PlayModeState>>,
     mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
     mut transforms: Query<&mut Transform>,
     mut sprites: Query<&mut Sprite>,
     mut commands: Commands,
@@ -999,7 +1000,7 @@ pub fn box_select_2d_system(
     mut drag: ResMut<Drag2dState>,
     mut band: ResMut<ViewportBoxSelect2d>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
     nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
@@ -1196,7 +1197,7 @@ pub fn update_cursor_2d(
     drag: Option<Res<Drag2dState>>,
     mut request: ResMut<ViewportCursorRequest>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
     sprites: Query<(&Sprite, &GlobalTransform)>,
     nodes_2d: Query<Option<&PickBounds2d>, (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
@@ -1332,7 +1333,7 @@ pub fn update_cursor_2d(
 /// the system's run-condition.
 ///
 /// Also stands down while a focused list panel has claimed the arrows
-/// ([`renzora::core::ArrowKeysClaimed`] — the hierarchy tree walking its
+/// ([`renzora_project_api::ArrowKeysClaimed`] — the hierarchy tree walking its
 /// selection). Hover isn't enough on its own: click a row in the tree, drift the
 /// cursor over the viewport, and every press would nudge the sprite *and* walk
 /// the selection off it. Focus outranks hover for a keypress, so a click back in
@@ -1342,7 +1343,7 @@ pub fn keyboard_nudge_2d(
     keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
-    claimed: Option<Res<renzora::core::ArrowKeysClaimed>>,
+    claimed: Option<Res<renzora_project_api::ArrowKeysClaimed>>,
     mut transforms: Query<&mut Transform>,
     mut commands: Commands,
 ) {

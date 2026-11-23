@@ -39,10 +39,10 @@ use std::path::{Path, PathBuf};
 
 use bevy::asset::io::AssetSourceEvent;
 use bevy::prelude::*;
-use renzora::core::project_files::{
+use renzora_project_api::project_files::{
     is_ignored, is_transient, AssetKind, AssetReloadSink, FileChange, ProjectFileChanged,
 };
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 /// How long `FileWatcher` coalesces events before handing them over.
 ///
@@ -95,7 +95,7 @@ impl Plugin for ProjectWatchPlugin {
             // not matter: a push that lands after it has run is picked up on
             // the following frame, which is indistinguishable at 100ms
             // debounce.
-            .init_resource::<renzora::core::project_files::ExtraWatchRoots>()
+            .init_resource::<renzora_project_api::project_files::ExtraWatchRoots>()
             .add_systems(PreUpdate, (sync_roots, drain).chain());
         // The project index, kept from the same events (see `index`).
         index::build(app);
@@ -104,7 +104,6 @@ impl Plugin for ProjectWatchPlugin {
 
 mod index;
 
-renzora::add!(ProjectWatchPlugin, Editor);
 
 /// Keep the set of watchers matching the project plus [`ExtraWatchRoots`].
 ///
@@ -115,7 +114,7 @@ renzora::add!(ProjectWatchPlugin, Editor);
 /// or renamed until the handle went with it.
 fn sync_roots(
     project: Option<Res<CurrentProject>>,
-    extra: Res<renzora::core::project_files::ExtraWatchRoots>,
+    extra: Res<renzora_project_api::project_files::ExtraWatchRoots>,
     mut watcher: ResMut<ProjectWatcher>,
 ) {
     let wanted: Vec<PathBuf> = project

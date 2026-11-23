@@ -11,7 +11,7 @@
 //! the node, which is how the panel highlights it; refusing the wire outright
 //! would hide the reason from the user.
 
-use renzora::GraphComment;
+use renzora_material_api::GraphComment;
 use renzora_particles::asset::{Connection, Emitter, NodeId, PinValue, VfxAsset, VfxGraph, VfxNode};
 use renzora_particles::curve::{CurvePoint, Ease, GradientStop};
 use renzora_particles::nodes::{node_def, PropKind, OUTPUT_NODE};

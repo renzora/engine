@@ -42,8 +42,9 @@
 use bevy::prelude::*;
 use bevy::platform::collections::HashSet;
 
-use renzora::core::console_log::console_error;
-use renzora::core::{HideInHierarchy, Persistent, PlayModeState};
+use renzora_log_api::console_error;
+use renzora_scene_api::{HideInHierarchy, Persistent};
+use renzora_project_api::PlayModeState;
 
 /// Entities the guard considers scene content.
 ///
@@ -75,7 +76,7 @@ type SceneContent = (
 pub fn reject_unnamed_entities(
     mut commands: Commands,
     play: Option<Res<PlayModeState>>,
-    editor: Option<Res<renzora::core::EditorSession>>,
+    editor: Option<Res<renzora_project_api::EditorSession>>,
     q: Query<Entity, SceneContent>,
     mut suspects: Local<HashSet<Entity>>,
     mut reported: Local<u64>,

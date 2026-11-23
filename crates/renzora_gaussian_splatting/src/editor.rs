@@ -13,9 +13,8 @@
 
 use bevy::prelude::*;
 
-use renzora::{
-    AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, GaussianSplat, InspectorEntry,
-};
+use renzora_editor_api::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_scene_api::GaussianSplat;
 
 pub(super) fn register(app: &mut App) {
     info!("[editor] GaussianSplat inspector + preset");
@@ -75,8 +74,8 @@ fn splat_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::float_field!("Opacity", GaussianSplat, opacity, 0.01, 0.0, 1.0),
-            renzora::float_field!("Splat Scale", GaussianSplat, splat_scale, 0.01, 0.0, 10.0),
+            renzora_editor_api::float_field!("Opacity", GaussianSplat, opacity, 0.01, 0.0, 1.0),
+            renzora_editor_api::float_field!("Splat Scale", GaussianSplat, splat_scale, 0.01, 0.0, 10.0),
         ],
     }
 }

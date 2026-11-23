@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use renzora::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{EditorSettings, SettingsTab};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::BLOCK;
@@ -44,7 +44,7 @@ pub(crate) fn manage_overlay(world: &mut World) {
         .get_resource::<ThemeManager>()
         .map(|t| t.active_theme_name.clone());
 
-    let lang_rev = renzora::lang::revision();
+    let lang_rev = renzora_lang_api::revision();
     let st = world.resource::<OverlayState>();
     // Rebuild when the active theme switches so the overlay re-spawns with the
     // new palette (it's a separate root from the chrome).
@@ -221,7 +221,7 @@ fn spawn_overlay(
             // Editor chrome — keep this whole overlay tree out of scene saves
             // (auto-save can fire while Settings is open; without this its nodes
             // get serialized into the scene as leaked UI).
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             OverlayRoot,
             Name::new("settings-overlay"),
         ))

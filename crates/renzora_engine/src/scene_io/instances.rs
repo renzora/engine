@@ -9,8 +9,8 @@
 //! will not.
 
 use bevy::prelude::*;
-use renzora::console_log::*;
-use renzora::CurrentProject;
+use renzora_log_api::*;
+use renzora_project_api::CurrentProject;
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicSceneBuilder;
 use std::path::Path;
@@ -34,13 +34,25 @@ pub fn expand_scene_instances(world: &mut World) {
     // (`scene_stream::drive_streamed_scene_instances`) — eagerly expanding it
     // here would defeat the point of streaming. In editor edit mode streamed
     // instances expand like ordinary ones so designers can author them.
-    let skip_streamed = renzora::world_streaming_active(world);
+    let skip_streamed = renzora_platform_api::world_streaming_active(world);
+    // World partition cells are the exception to "expand while editing": a
+    // partition streams in the editor too, and its cells belong to the
+    // editor's cell driver. Expanding them here would load the whole world,
+    // the one thing a partition exists to avoid.
+    let skip_cells = crate::world_partition::partition_streams_in_editor(world);
 
     let mut to_expand: Vec<(Entity, std::path::PathBuf)> = Vec::new();
     {
-        let mut q = world.query::<(Entity, &renzora::SceneInstance)>();
-        for (entity, inst) in q.iter(world) {
+        let mut q = world.query::<(
+            Entity,
+            &renzora_scene_api::SceneInstance,
+            bevy::ecs::query::Has<renzora_scene_api::PartitionCell>,
+        )>();
+        for (entity, inst, is_cell) in q.iter(world) {
             if skip_streamed && inst.streamed {
+                continue;
+            }
+            if skip_cells && is_cell {
                 continue;
             }
             // Skip entities that already have children (already expanded, or
@@ -210,7 +222,7 @@ pub fn would_create_reference_cycle(
     false
 }
 
-/// Scrape `renzora::core::SceneInstance` `source:` values out of a scene
+/// Scrape `renzora_scene_api::SceneInstance` `source:` values out of a scene
 /// .ron file's text. Intentionally avoids full RON deserialization — it's
 /// faster and robust to unknown components.
 fn extract_scene_instance_sources(text: &str) -> Vec<String> {
@@ -313,7 +325,7 @@ pub fn spawn_scene_instance(
 
     let mut e = world.spawn((
         Name::new(name),
-        renzora::SceneInstance {
+        renzora_scene_api::SceneInstance {
             source: relative,
             ..Default::default()
         },
@@ -344,6 +356,10 @@ pub fn save_prefab_source(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
+    // A partition cell whose contents are still held hidden until ready must
+    // be saved as authored, not hidden: show it now.
+    crate::world_partition::reveal_pending_under(world, instance_entity);
+
     // Collect all descendants of the instance, breadth-first.
     //
     // Two filters mirror `save_scene`:
@@ -364,7 +380,7 @@ pub fn save_prefab_source(
         }
         descendants.push(e);
         // Stop descending into gltf-owned subtrees.
-        if world.get::<renzora::core::MeshInstanceData>(e).is_some() {
+        if world.get::<renzora_scene_api::MeshInstanceData>(e).is_some() {
             continue;
         }
         if let Some(kids) = world.get::<Children>(e) {
@@ -433,7 +449,7 @@ pub fn save_prefab_source(
                 return false;
             }
             // Gaussian-splat runtime components are resolved on load from the
-            // serializable renzora::GaussianSplat — same filter as `save_scene`.
+            // serializable renzora_scene_api::GaussianSplat — same filter as `save_scene`.
             if type_name.starts_with("bevy_gaussian_splatting::") {
                 return false;
             }
@@ -495,9 +511,20 @@ pub fn save_all_scene_instances(world: &mut World, host_scene_path: &Path) {
     };
 
     let instances: Vec<(Entity, String)> = {
-        let mut q = world.query::<(Entity, &renzora::SceneInstance)>();
+        let mut q = world.query::<(
+            Entity,
+            &renzora_scene_api::SceneInstance,
+            bevy::ecs::query::Has<renzora_scene_api::PartitionCell>,
+        )>();
         q.iter(world)
-            .map(|(e, inst)| (e, inst.source.clone()))
+            // An unloaded partition cell is the normal state of most of a
+            // partitioned world, not a missing expansion: its file already
+            // holds its contents, so there is nothing to write and nothing
+            // worth the "no descendants" warning a few hundred times a save.
+            .filter(|&(e, _, is_cell)| {
+                !is_cell || crate::world_partition::cell_is_loaded(world, e)
+            })
+            .map(|(e, inst, _)| (e, inst.source.clone()))
             .collect()
     };
 
@@ -570,7 +597,7 @@ mod tests {
         use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 
         let atr = bevy::ecs::reflect::AppTypeRegistry::default();
-        atr.write().register::<renzora::SceneInstance>();
+        atr.write().register::<renzora_scene_api::SceneInstance>();
 
         // Serialize a current-format instance, then strip the streaming
         // fields from the text — the exact shape of a scene saved before
@@ -578,7 +605,7 @@ mod tests {
         let mut src = World::new();
         src.insert_resource(atr.clone());
         let e = src
-            .spawn(renzora::SceneInstance {
+            .spawn(renzora_scene_api::SceneInstance {
                 source: "scenes/a.bsn".into(),
                 ..Default::default()
             })
@@ -624,7 +651,7 @@ mod tests {
         scene.write_to_world(&mut world, &mut map).expect("write");
         let entity = *map.values().next().expect("one entity");
         let inst = world
-            .get::<renzora::SceneInstance>(entity)
+            .get::<renzora_scene_api::SceneInstance>(entity)
             .expect("SceneInstance present");
         assert_eq!(inst.source, "scenes/a.bsn");
         assert_eq!(inst.load_radius, 150.0);

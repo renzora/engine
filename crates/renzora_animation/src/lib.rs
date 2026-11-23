@@ -71,7 +71,7 @@ use bevy::prelude::*;
 /// Because the name the importer wrote and the name the entity ends up with are
 /// not the same string. Every importer records the source's spelling
 /// (`mixamorig:Hips`, from the FBX or glTF node), while
-/// `renzora_editor_framework`'s `enforce_entity_ids` runs [`renzora::sanitize_id`]
+/// `renzora_editor_framework`'s `enforce_entity_ids` runs [`renzora_scene_api::sanitize_id`]
 /// over every `Name` in the world and turns that into `mixamorig_hips`.
 ///
 /// Hashing the raw string on one side and the live `Name` on the other made
@@ -92,7 +92,7 @@ use bevy::prelude::*;
 /// `enforce_entity_ids` renames the second to `bone_l_1`, which no clip names.
 /// Mixamo rigs have no such collisions.
 pub fn bone_target(bone_name: &str) -> bevy::animation::AnimationTargetId {
-    bevy::animation::AnimationTargetId::from_name(&Name::new(renzora::sanitize_id(bone_name)))
+    bevy::animation::AnimationTargetId::from_name(&Name::new(renzora_scene_api::sanitize_id(bone_name)))
 }
 
 #[derive(Default)]
@@ -119,7 +119,7 @@ impl Plugin for AnimationPlugin {
             .init_asset_loader::<sm_loader::AnimSmLoader>()
             .init_resource::<AnimationCommandQueue>()
             .init_resource::<property_playback::PropAnimDebug>()
-            .init_resource::<renzora::ScriptAnimEventInbox>();
+            .init_resource::<renzora_scripting_api::ScriptAnimEventInbox>();
 
         // Script animation commands (decoupled via ScriptAction observer)
         app.add_observer(bridge::handle_animation_script_actions);
@@ -142,13 +142,13 @@ impl Plugin for AnimationPlugin {
                 // Not while editing: the default clip used to start looping the
                 // moment a model was dropped. The animation editor's preview
                 // starts its own playback, so previewing still works.
-                systems::auto_play_default.run_if(renzora::core::game_running),
+                systems::auto_play_default.run_if(renzora_project_api::game_running),
                 systems::process_animation_commands,
                 systems::update_state_machines,
                 // Gameplay only for the same reason: a crossfade, a blend tree
                 // or a layer driving the player while editing fights the
                 // timeline preview for it.
-                controller::drive_animators.run_if(renzora::core::game_running),
+                controller::drive_animators.run_if(renzora_project_api::game_running),
                 tween::update_procedural_tweens,
             )
                 .chain(),
@@ -162,7 +162,7 @@ impl Plugin for AnimationPlugin {
             root_motion::post_animation
                 .after(bevy::app::AnimationSystems)
                 .before(bevy::transform::TransformSystems::Propagate)
-                .run_if(renzora::core::game_running),
+                .run_if(renzora_project_api::game_running),
         );
 
         // Property animation runs in the exported runtime / editor play mode.
@@ -174,7 +174,7 @@ impl Plugin for AnimationPlugin {
                 .run_if(property_playback::property_animation_active),
         );
 
-        app.register_type::<renzora::FollowNode>().add_systems(
+        app.register_type::<renzora_scene_api::FollowNode>().add_systems(
             PostUpdate,
             follow::follow_nodes
                 .after(bevy::app::AnimationSystems)
@@ -198,7 +198,7 @@ impl Plugin for AnimationPlugin {
 /// renamed or moved. Keeps scene references valid without forcing the user
 /// to manually re-point every animator.
 fn apply_asset_path_changes_to_animators(
-    trigger: On<renzora::AssetPathChanged>,
+    trigger: On<renzora_scene_api::AssetPathChanged>,
     mut animators: Query<(&mut AnimatorComponent, Option<&mut AnimatorState>)>,
 ) {
     let ev = trigger.event();
@@ -241,7 +241,6 @@ fn apply_asset_path_changes_to_animators(
     }
 }
 
-renzora::add!(AnimationPlugin);
 
 #[cfg(test)]
 mod tests {

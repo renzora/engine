@@ -465,7 +465,7 @@ pub struct MaterialGraph {
     /// Comment / group boxes. `#[serde(default)]` keeps older `.material` files
     /// loadable.
     #[serde(default)]
-    pub comments: Vec<renzora::GraphComment>,
+    pub comments: Vec<renzora_material_api::GraphComment>,
     /// Texture slots that are wired up but **not applied** — the material
     /// component's per-channel mute, keyed by `TextureSlot::key` and holding the
     /// sampler node the mute took off the pin.
@@ -545,7 +545,7 @@ impl MaterialGraph {
     pub fn add_comment(&mut self, rect: [f32; 4]) -> NodeId {
         let id = self.next_id;
         self.next_id += 1;
-        self.comments.push(renzora::GraphComment {
+        self.comments.push(renzora_material_api::GraphComment {
             id,
             rect,
             ..Default::default()
@@ -557,7 +557,7 @@ impl MaterialGraph {
         self.comments.retain(|c| c.id != id);
     }
 
-    pub fn get_comment_mut(&mut self, id: NodeId) -> Option<&mut renzora::GraphComment> {
+    pub fn get_comment_mut(&mut self, id: NodeId) -> Option<&mut renzora_material_api::GraphComment> {
         self.comments.iter_mut().find(|c| c.id == id)
     }
 

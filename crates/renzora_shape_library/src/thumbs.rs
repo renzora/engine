@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 use renzora_ember::theme::{card_bg, rgb};
 
 use crate::capture::{load_png, shape_thumb_path, ShapeCaptureRequest, ShapeCaptures};
@@ -38,7 +38,7 @@ pub(crate) struct ShapeThumbs {
     /// What is being done about each shape's picture.
     state: HashMap<&'static str, Want>,
     /// Companion jobs out, by id.
-    jobs: HashMap<renzora::CompanionJobId, &'static str>,
+    jobs: HashMap<renzora_platform_api::CompanionJobId, &'static str>,
     /// Shapes the companion could not render, which this editor renders.
     local_only: HashSet<&'static str>,
     /// The tile colour the pictures were made for; a theme with another one
@@ -137,7 +137,7 @@ fn load_thumbs(mut thumbs: ResMut<ShapeThumbs>, mut images: ResMut<Assets<Image>
 /// by waiting when it is on its way, and here otherwise.
 fn render_thumbs(
     mut thumbs: ResMut<ShapeThumbs>,
-    jobs: Option<ResMut<renzora::CompanionJobs>>,
+    jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
     mut captures: ResMut<ShapeCaptures>,
     time: Res<Time<Real>>,
 ) {
@@ -161,7 +161,7 @@ fn render_thumbs(
         return;
     }
     for (id, path) in missing {
-        let args = renzora::job_args::ShapeThumbnail {
+        let args = renzora_platform_api::job_args::ShapeThumbnail {
             id: id.to_string(),
             path: path.clone(),
             clear: clear.to_linear().to_f32_array(),
@@ -181,7 +181,7 @@ fn render_thumbs(
 /// here, which the companion does not have) hands it to this editor.
 fn collect_thumbs(
     mut thumbs: ResMut<ShapeThumbs>,
-    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut done: MessageReader<renzora_platform_api::CompanionJobDone>,
     mut captures: ResMut<ShapeCaptures>,
 ) {
     let thumbs = &mut *thumbs;

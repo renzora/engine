@@ -15,8 +15,8 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
-use renzora::core::resize::{resize_in_flight, ResizeBusy};
-use renzora::core::viewport_types::{SnapSettings, ViewportSettings, ViewportState};
+use renzora_platform_api::resize::{resize_in_flight, ResizeBusy};
+use renzora_viewport_api::{SnapSettings, ViewportSettings, ViewportState};
 use renzora_editor_framework::{EditorCamera, EditorLocked, EditorSelection};
 
 use crate::pivot::compute_gizmo_pivot;
@@ -48,7 +48,7 @@ fn release_drag_cursor(cursor_q: &mut Query<&mut CursorOptions, With<PrimaryWind
 /// over the cap.
 #[derive(SystemParam)]
 pub(crate) struct DragGeom<'w, 's> {
-    pub(crate) target: Option<ResMut<'w, renzora::GizmoTarget>>,
+    pub(crate) target: Option<ResMut<'w, renzora_editor_api::GizmoTarget>>,
     global: Query<'w, 's, &'static GlobalTransform, Without<EditorCamera>>,
     aabb: Query<'w, 's, &'static bevy::camera::primitives::Aabb>,
     pivot_aabbs: Query<
@@ -99,7 +99,7 @@ pub(crate) fn gizmo_drag(
         .as_deref()
         .map(|s| s.snap)
         .unwrap_or_default();
-    // A plugin may have borrowed the handles (`renzora::GizmoTarget`). Its mode
+    // A plugin may have borrowed the handles (`renzora_editor_api::GizmoTarget`). Its mode
     // is read from the target rather than from the global `GizmoMode`, which
     // stays `None` so that click-picking and box selection remain disengaged —
     // the borrower is doing its own picking. See the `GizmoTarget` module docs.

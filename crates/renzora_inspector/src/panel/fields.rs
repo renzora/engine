@@ -229,8 +229,8 @@ fn field_anim_path(type_id: &str, field_name: &str, kind: FieldKind) -> Option<(
 /// A small per-field "add keyframe" button (a keyframe diamond, matching the
 /// timeline's add-key glyph). Hidden by default and shown reactively while the
 /// timeline has a clip open on the inspected entity — see
-/// [`renzora::ActiveTimeline::animates`]. Pressing it queues a
-/// [`renzora::KeyframeRequests`] entry that the timeline editor keys at the
+/// [`renzora_editor_api::ActiveTimeline::animates`]. Pressing it queues a
+/// [`renzora_editor_api::KeyframeRequests`] entry that the timeline editor keys at the
 /// playhead from the entity's live value, creating the track first if this field
 /// isn't animated yet.
 fn build_add_keyframe_button(
@@ -263,7 +263,7 @@ fn build_add_keyframe_button(
         ))
         .id();
     bind_display(commands, btn, move |w| {
-        w.get_resource::<renzora::ActiveTimeline>()
+        w.get_resource::<renzora_editor_api::ActiveTimeline>()
             .is_some_and(|t| t.animates(entity))
     });
     // Amber diamond — the timeline's keyframe color, so the affordance reads as

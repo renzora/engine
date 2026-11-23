@@ -20,7 +20,7 @@ use bevy::animation::AnimationTargetId;
 use bevy::mesh::morph::MorphWeights;
 use bevy::prelude::*;
 
-use renzora::{KeyCurve, MorphTrack};
+use renzora_animation_api::{KeyCurve, MorphTrack};
 
 use crate::AnimationEditorState;
 
@@ -144,7 +144,7 @@ pub(crate) fn key_morphs(world: &mut World, keys: &[(Entity, usize, f32, f32)]) 
     let resolved: Vec<(AnimationTargetId, String, usize, String, f32, f32)> = keys
         .iter()
         .filter_map(|&(e, index, time, weight)| {
-            let name = renzora::BindName::of(world.get::<Name>(e)?, world.get::<renzora::BindName>(e)).to_string();
+            let name = renzora_scene_api::BindName::of(world.get::<Name>(e)?, world.get::<renzora_scene_api::BindName>(e)).to_string();
             let target = world.get::<AnimationTargetId>(e).copied().unwrap_or_else(|| renzora_animation::bone_target(&name));
             Some((target, name, index, target_name(world, e, index), time, weight))
         })

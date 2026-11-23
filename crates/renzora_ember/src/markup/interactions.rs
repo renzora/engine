@@ -12,7 +12,7 @@
 
 use bevy::prelude::*;
 use bevy_hui::prelude::{OnUiEnter, OnUiExit, OnUiPress};
-use renzora::{ScriptUiInbox, UiCallback};
+use renzora_scripting_api::{ScriptUiInbox, UiCallback};
 use std::collections::HashMap;
 
 use crate::UiInteraction;

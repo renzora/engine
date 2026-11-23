@@ -22,8 +22,9 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 
-use renzora::core::viewport_types::ViewportState;
-use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy};
+use renzora_viewport_api::ViewportState;
+use renzora_scene_api::{EditorLocked, HideInHierarchy};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{scene_thumb_path, SceneThumbnailRegistry};
 
 /// Edge length of the written PNG. The browser draws tiles at ~96 px, so 256

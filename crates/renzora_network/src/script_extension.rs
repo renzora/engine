@@ -9,7 +9,7 @@
 //! ```
 
 use bevy::prelude::*;
-use renzora::ScriptAction;
+use renzora_scripting_api::ScriptAction;
 
 use crate::status::NetworkStatus;
 
@@ -20,7 +20,7 @@ pub fn handle_network_script_actions(
     mut cmds: Commands,
     mut outbox: ResMut<crate::rpc::PendingOutgoingRpc>,
 ) {
-    use renzora::ScriptActionValue;
+    use renzora_scripting_api::ScriptActionValue;
     let action = trigger.event();
 
     let get_str = |key: &str| -> String {

@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use bevy::ui::UiTransform;
 use renzora_ember::UiCursor;
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     CameraOrbitSnapshot, NavOverlayState, ViewAngleCommand, ViewportSettings, AXIS_NEG_X,
     AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
 };
@@ -217,9 +217,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
 /// and hide the gizmo when the setting is off.
 fn gizmo_layout(
     orbit: Option<Res<CameraOrbitSnapshot>>,
-    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
+    viewports: Option<Res<renzora_viewport_api::Viewports>>,
     settings: Option<Res<ViewportSettings>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut roots: Query<&mut Node, (With<AxisGizmoRoot>, Without<AxisTip>, Without<AxisLine>)>,
     mut tips: Query<
         (&AxisTip, &AxisGizmoSlot, &mut Node, &mut BackgroundColor, &mut ZIndex),
@@ -243,7 +243,7 @@ fn gizmo_layout(
     let show = settings
         .map(|s| {
             s.show_axis_gizmo
-                && s.viewport_view != renzora::core::viewport_types::ViewportView::Two
+                && s.viewport_view != renzora_viewport_api::ViewportView::Two
         })
         .unwrap_or(true)
         && !playing;

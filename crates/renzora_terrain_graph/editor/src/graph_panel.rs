@@ -546,7 +546,7 @@ pub fn graph_sync(world: &mut World) {
         }
     }
     for note in notes {
-        renzora::console_log::console_info("Terrain Graph", note);
+        renzora_log_api::console_info("Terrain Graph", note);
     }
 }
 

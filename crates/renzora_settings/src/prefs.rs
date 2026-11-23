@@ -40,8 +40,8 @@ pub(crate) fn sync_scroll_speed(
 /// so the loaded pref takes effect before much can be logged.
 pub(crate) fn sync_console_log_limit(settings: Res<EditorSettings>) {
     if settings.is_changed()
-        && renzora::core::console_log::max_log_entries() != settings.console_log_limit
+        && renzora_log_api::max_log_entries() != settings.console_log_limit
     {
-        renzora::core::console_log::set_max_log_entries(settings.console_log_limit);
+        renzora_log_api::set_max_log_entries(settings.console_log_limit);
     }
 }

@@ -35,7 +35,7 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_ember::UiInteraction;
 
 /// A render layer of this preview's own.
@@ -46,7 +46,7 @@ use renzora_ember::UiInteraction;
 /// every import. The hand-maintained list of taken layers that used to live in
 /// this comment is now the registry in the contract crate; that is the only
 /// place a new rig should read or write.
-use renzora::core::viewport_types::IMPORT_PREVIEW_LAYER as PREVIEW_LAYER;
+use renzora_viewport_api::IMPORT_PREVIEW_LAYER as PREVIEW_LAYER;
 
 /// Initial render target size. The texture is resized every frame to match the
 /// panel it is drawn into (see [`match_viewport_size`]) — a fixed size is both

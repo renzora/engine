@@ -38,7 +38,7 @@ crash_dialog = ["dep:rfd", "dep:arboard"]
 # denies (scene_io.rs) and the render-mode/contact-shadow setup (lib.rs). NOTE: a
 # full 2D build also needs the bevy `3d` meta-feature dropped at the root manifest
 # + bevy_light handling — see plan (2D MODE).
-render_3d = ["renzora/render_3d"]
+render_3d = ["renzora_render_api/render_3d"]
 # The node-graph material system (`renzora_shader`). Split out of `render_3d`
 # because it's a large slice of it (~1 MiB of code) that a game using only
 # StandardMaterial never touches. Gates the `GraphMaterial`/`MaterialResolved`
@@ -57,7 +57,7 @@ render_2d = []
 # both exist only to load models (`.glb`/`.gltf`, and `.rvg`, whose scene is
 # glTF), so a scene built from engine primitives needs neither. Implies `render_3d`: bevy's `bevy_gltf` requires
 # `bevy_pbr`, so the two can't be stripped independently.
-gltf = ["render_3d", "dep:renzora_rvg"]
+gltf = ["render_3d", "dep:renzora_rvg", "dep:serde_json"]
 audio = ["dep:renzora_audio"]
 # Multiplayer. All this crate needs it for is keeping replication bookkeeping
 # (`Networked`/`NetworkOwner`/`NetworkId`) out of saved scenes, routed through
@@ -75,9 +75,22 @@ terrain = ["dep:renzora_terrain"]
 physics = ["dep:renzora_physics"]
 
 [dependencies]
-renzora_macros = { path = "../renzora_macros" }
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_crash_api = { path = "../api/renzora_crash_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora = { path = "../shared/renzora", default-features = false }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
+renzora_render_api = { path = "../api/renzora_render_api" }
+renzora_material_api = { path = "../api/renzora_material_api" }
+renzora_animation_api = { path = "../api/renzora_animation_api" }
+renzora_save_api = { path = "../api/renzora_save_api" }
 renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_rmip = { path = "../renzora_rmip" }
 # Loads models stored as `.rvg` (its `model` loader), under the `gltf` feature.
@@ -95,6 +108,10 @@ renzora_audio = { path = "../renzora_audio", optional = true }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 renzora_animation = { path = "../renzora_animation", default-features = false, optional = true }
 futures-lite = "2"
+# Reads a model file's glTF JSON for its bounds when partitioning a world
+# (`world_partition`), without loading the model. Bevy's glTF loader already
+# links it, so the `gltf` feature adds nothing to a build.
+serde_json = { version = "1", optional = true }
 ron = "0.8"
 serde = "1"
 thiserror = "2"

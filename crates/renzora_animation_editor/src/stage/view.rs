@@ -727,7 +727,7 @@ fn navigate(
     mut motion: MessageReader<MouseMotion>,
     mut wheel: MessageReader<MouseWheel>,
     cursor: Res<StageCursor>,
-    focus: Option<Res<renzora::InputFocusState>>,
+    focus: Option<Res<renzora_project_api::InputFocusState>>,
     mut nav: ResMut<StageNav>,
     mut orbit: ResMut<StudioPreviewOrbit>,
     mut tracker: ResMut<StudioPreviewTracker>,
@@ -787,7 +787,7 @@ fn navigate(
 fn tool_keys(
     keys: Res<ButtonInput<KeyCode>>,
     cursor: Res<StageCursor>,
-    focus: Option<Res<renzora::InputFocusState>>,
+    focus: Option<Res<renzora_project_api::InputFocusState>>,
     mut ui: ResMut<StageUi>,
     mut markers: ResMut<crate::rig::markers::Markers>,
 ) {

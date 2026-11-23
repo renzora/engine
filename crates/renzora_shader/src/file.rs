@@ -344,7 +344,7 @@ pub fn detect_language(source: &str) -> &'static str {
     }
 
     // WESL: an `import a::b;` statement, which plain WGSL cannot have.
-    if renzora::shader_source::dialect(source, "") == renzora::shader_source::Dialect::Wesl {
+    if renzora_shader_api::shader_source::dialect(source, "") == renzora_shader_api::shader_source::Dialect::Wesl {
         return "WESL";
     }
 
@@ -368,9 +368,9 @@ pub fn detect_language(source: &str) -> &'static str {
     "WESL"
 }
 
-/// The naga_oil dialect, as `renzora::shader_source` sees it.
+/// The naga_oil dialect, as `renzora_shader_api::shader_source` sees it.
 fn renzora_legacy_like(source: &str) -> bool {
-    renzora::shader_source::dialect(source, "") == renzora::shader_source::Dialect::Legacy
+    renzora_shader_api::shader_source::dialect(source, "") == renzora_shader_api::shader_source::Dialect::Legacy
 }
 
 // The templates a new shader starts from are WESL, the language Bevy 0.20

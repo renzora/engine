@@ -1,4 +1,4 @@
-//! Answers the contract crate's scene queries (`renzora::scene_query`) through
+//! Answers the contract crate's scene queries (`renzora_physics_api::scene_query`) through
 //! whichever backend simulates each world, so crates that must not link a
 //! physics engine (the particle system) can still hit the level's real
 //! colliders.
@@ -17,8 +17,8 @@
 //!   sticking.
 
 use bevy::prelude::*;
-use renzora::physics::{Cast, CastBatch, CastShape, PhysicsBackends, PhysicsDim, ResolvedShape};
-use renzora::scene_query::{SceneHit, SceneQuery, SceneQueryBatch};
+use renzora_physics_api::physics::{Cast, CastBatch, CastShape, PhysicsBackends, PhysicsDim, ResolvedShape};
+use renzora_physics_api::scene_query::{SceneHit, SceneQuery, SceneQueryBatch};
 
 /// The service `PhysicsPlugin` installs.
 pub struct BackendSceneQuery;

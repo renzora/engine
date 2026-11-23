@@ -29,8 +29,8 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite_render::SpriteMaterial;
 use uuid::Uuid;
 
-use renzora::core::viewport_types::MATERIAL_PREVIEW_2D_LAYER;
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_viewport_api::MATERIAL_PREVIEW_2D_LAYER;
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_shader::material::runtime::FallbackTexture;
 use renzora_shader::material::sprite_material::{
     insert_sprite_shader, sprite_material_from_compiled, SpriteGraphExt,

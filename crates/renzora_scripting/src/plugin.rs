@@ -1,7 +1,7 @@
 #![allow(unused_variables, unused_assignments, dead_code)]
 
 use bevy::prelude::*;
-use renzora::physics::PhysicsSet;
+use renzora_physics_api::physics::PhysicsSet;
 use std::path::PathBuf;
 
 use crate::command::CharacterCommandQueue;
@@ -75,15 +75,15 @@ impl Plugin for ScriptingPlugin {
         }
 
         app.insert_resource(engine)
-            .init_resource::<renzora::backend::PendingScriptBackends>()
+            .init_resource::<renzora_scripting_api::backend::PendingScriptBackends>()
             .add_systems(PreStartup, collect_script_backends)
             .init_resource::<ScriptInput>()
             .init_resource::<ScriptTimers>()
             .init_resource::<ScriptCommandQueue>()
-            .init_resource::<renzora::ScriptDrawBuffer>()
-            .init_resource::<renzora::ScriptDrawSurfaces>()
+            .init_resource::<renzora_scripting_api::ScriptDrawBuffer>()
+            .init_resource::<renzora_scripting_api::ScriptDrawSurfaces>()
             .init_resource::<CharacterCommandQueue>()
-            .init_resource::<renzora::TransformWriteQueue>()
+            .init_resource::<renzora_animation_api::TransformWriteQueue>()
             .init_resource::<ScriptLogBuffer>()
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()
@@ -92,10 +92,10 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<crate::extension::ScriptExtensions>()
             .init_resource::<crate::get_handler::AssetProgressBridge>()
             .init_resource::<crate::get_handler::SceneLoadBridge>()
-            .init_resource::<renzora::ScriptSceneInbox>()
-            .init_resource::<renzora::GameEventQueue>()
+            .init_resource::<renzora_scripting_api::ScriptSceneInbox>()
+            .init_resource::<renzora_scripting_api::GameEventQueue>()
             .init_resource::<crate::perf::ScriptPerfStats>()
-            .init_resource::<renzora::diagnostics::ScriptInventory>()
+            .init_resource::<renzora_diagnostics_api::diagnostics::ScriptInventory>()
             .add_systems(bevy::prelude::Update, publish_script_inventory)
             .init_resource::<crate::http::HttpInbox>()
             .register_type::<ScriptComponent>()
@@ -202,7 +202,7 @@ impl Plugin for ScriptingPlugin {
 /// `add_script_backend` cannot insert into [`ScriptEngine`] directly any more:
 /// the trait lives in the contract crate, so that an installed plugin can
 /// implement one, and the contract crate knows nothing about this one. So it
-/// queues into `renzora::backend::PendingScriptBackends` and this drains it.
+/// queues into `renzora_scripting_api::backend::PendingScriptBackends` and this drains it.
 ///
 /// `PreStartup`, because that is the first point at which every plugin's `build`
 /// has run. A language plugin has no ordering relationship with this one, and
@@ -215,7 +215,7 @@ impl Plugin for ScriptingPlugin {
 /// resource it had created. Nothing ordered them, so that was luck rather than
 /// design.
 fn collect_script_backends(
-    mut pending: ResMut<renzora::backend::PendingScriptBackends>,
+    mut pending: ResMut<renzora_scripting_api::backend::PendingScriptBackends>,
     mut engine: ResMut<ScriptEngine>,
 ) {
     for backend in pending.0.drain(..) {
@@ -230,7 +230,7 @@ fn collect_script_backends(
 /// Scripts usually reach these via `ScriptCommand`; one raised through the
 /// generic `action("name", ...)` call arrives as a `ScriptAction` and routes here.
 fn handle_lifecycle_actions(
-    trigger: On<renzora::ScriptAction>,
+    trigger: On<renzora_scripting_api::ScriptAction>,
     mut commands: Commands,
     names: Query<(Entity, &Name)>,
     mut cursor: Query<&mut bevy::window::CursorOptions>,
@@ -271,7 +271,7 @@ fn handle_lifecycle_actions(
 
 /// Reset all script runtime states when the editor sends `ResetScriptStates`.
 fn handle_reset_script_states(
-    _trigger: On<renzora::ResetScriptStates>,
+    _trigger: On<renzora_shell_api::ResetScriptStates>,
     mut query: Query<&mut ScriptComponent>,
 ) {
     for mut sc in &mut query {
@@ -317,7 +317,7 @@ pub struct ScriptsActive(pub bool);
 /// than copying the rule, which is how the two paths used to drift.
 pub fn update_scripts_active(
     mut active: ResMut<ScriptsActive>,
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     scripts: Query<&ScriptComponent>,
 ) {
     let running = match play_mode {
@@ -424,7 +424,7 @@ fn check_script_hot_reload(
     if !reload_events.reloaded.is_empty() {
         let names = reload_events.reloaded.clone();
         commands.queue(move |world: &mut World| {
-            world.trigger(renzora::ScriptsReloaded { names });
+            world.trigger(renzora_shell_api::ScriptsReloaded { names });
         });
     }
 }
@@ -435,7 +435,7 @@ struct ScriptsFolderSynced(Option<PathBuf>);
 
 /// System that sets the scripts folder on the engine when a project is loaded.
 fn sync_scripts_folder(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut engine: ResMut<ScriptEngine>,
     mut synced: Local<Option<PathBuf>>,
 ) {
@@ -511,7 +511,7 @@ fn evict_despawned_scripts(
 fn publish_script_inventory(
     engine: Option<Res<ScriptEngine>>,
     components: Query<&ScriptComponent>,
-    mut inventory: ResMut<renzora::diagnostics::ScriptInventory>,
+    mut inventory: ResMut<renzora_diagnostics_api::diagnostics::ScriptInventory>,
 ) {
     let mut entities = 0usize;
     let mut attachments = 0usize;
@@ -519,7 +519,7 @@ fn publish_script_inventory(
         entities += 1;
         attachments += comp.scripts.len();
     }
-    let current = renzora::diagnostics::ScriptInventory {
+    let current = renzora_diagnostics_api::diagnostics::ScriptInventory {
         entities_with_script: entities,
         total_attachments: attachments,
         backend_count: engine.as_ref().map(|e| e.backend_count()).unwrap_or(0),

@@ -82,6 +82,10 @@ pub use residency::GroupGraph;
 #[cfg(all(feature = "bake", not(target_arch = "wasm32")))]
 mod scene;
 
+// GLB chunk splitting, for the builder (`scene`) and the model loader.
+#[cfg(any(all(feature = "bake", not(target_arch = "wasm32")), feature = "model"))]
+mod glb;
+
 #[cfg(feature = "model")]
 pub mod model;
 

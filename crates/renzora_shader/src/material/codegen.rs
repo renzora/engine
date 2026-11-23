@@ -60,7 +60,9 @@ pub const MAX_SPRITE_D2_TEXTURES: usize = 6;
 /// 4: Reads at the mesh UV sample with explicit gradients, so a texture on
 ///    virtual geometry picks its mip from the resolve pass's true UV
 ///    derivatives rather than from quads that span unrelated micro-triangles.
-pub const CODEGEN_VERSION: u32 = 4;
+/// 5: Texture bindings record which textures are data (`linear`), so a normal
+///    map in a plain image file is loaded without the sRGB decode.
+pub const CODEGEN_VERSION: u32 = 5;
 
 /// Whether a generated Surface shader can also run as the deferred G-buffer
 /// pass. Read from the source rather than carried beside it, so it holds for a
@@ -179,6 +181,36 @@ pub struct TextureBinding {
     pub binding: u32,
     pub asset_path: String,
     pub kind: TextureKind,
+    /// The texture holds data, not colour (a normal map), and must be read
+    /// without the sRGB decode. See [`load_texture_binding`].
+    #[serde(default)]
+    pub linear: bool,
+}
+
+/// Image files Bevy's own `ImageLoader` reads, whose colour space is chosen at
+/// load time by `ImageLoaderSettings::is_srgb`. `.rmip` and the GPU container
+/// formats carry their colour space in the file and are loaded as they are.
+const PLAIN_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "tga", "bmp", "webp"];
+
+/// Load a texture a compiled graph samples.
+///
+/// A normal map in a plain image file is bound to its linear twin (see
+/// `linear_textures`), so it is read as data however the file itself was
+/// loaded. Imported normal maps are `.rmip` (BC5, linear by format) and are
+/// loaded as they are.
+pub fn load_texture_binding(
+    asset_server: &bevy::asset::AssetServer,
+    binding: &TextureBinding,
+) -> bevy::asset::Handle<bevy::image::Image> {
+    let plain = std::path::Path::new(&binding.asset_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| PLAIN_IMAGE_EXTENSIONS.iter().any(|p| p.eq_ignore_ascii_case(e)));
+    if binding.linear && plain {
+        super::linear_textures::linear_twin(asset_server, &binding.asset_path)
+    } else {
+        asset_server.load(&binding.asset_path)
+    }
 }
 
 // ── Public compile function ─────────────────────────────────────────────────
@@ -400,7 +432,7 @@ mod tests {
     /// translated old output.
     #[test]
     fn generated_shaders_are_wesl() {
-        use renzora::shader_source::{dialect, Dialect};
+        use renzora_shader_api::shader_source::{dialect, Dialect};
         for (name, graph) in gated_graphs() {
             let result = compile(&graph);
             assert!(result.errors.is_empty(), "{name}: {:?}", result.errors);
@@ -631,6 +663,46 @@ mod tests {
         assert!(!s.contains("mat_uv_dx"), "{s}");
     }
 
+    /// A normal map is bound as data, to be loaded without the sRGB decode; a
+    /// colour texture is not. Decoded as colour, a JPEG normal map tilted
+    /// every normal about 45 degrees.
+    #[test]
+    fn normal_maps_are_bound_linear_and_colour_maps_are_not() {
+        let mut graph = MaterialGraph::new("Bumpy", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let colour = graph.add_node("texture/sample", [0.0, 0.0]);
+        let normal = graph.add_node("texture/sample_normal", [0.0, 0.0]);
+        graph.get_node_mut(colour).unwrap().input_values.insert("texture".into(), PinValue::TexturePath("a.jpg".into()));
+        graph.get_node_mut(normal).unwrap().input_values.insert("texture".into(), PinValue::TexturePath("a_nor.jpg".into()));
+        graph.connect(colour, "color", out, "base_color");
+        graph.connect(normal, "normal", out, "normal");
+        let bindings = compile(&graph).texture_bindings;
+        let linear = |path: &str| bindings.iter().find(|b| b.asset_path == path).map(|b| b.linear);
+        assert_eq!(linear("a.jpg"), Some(false));
+        assert_eq!(linear("a_nor.jpg"), Some(true));
+    }
+
+    /// World Normal From Height divides by the screen-space frame's
+    /// determinant with its sign kept. Clamping it to a small positive number
+    /// turned every upward surface seen from above (a negative determinant)
+    /// into a gradient ten million times too large: a normal snapping between
+    /// up and sideways at any strength.
+    #[test]
+    fn world_normal_from_height_keeps_the_determinants_sign() {
+        let mut graph = MaterialGraph::new("Ripples", MaterialDomain::Surface);
+        let out = graph.output_node().unwrap().id;
+        let noise = graph.add_node("procedural/noise_fbm", [0.0, 0.0]);
+        let normal = graph.add_node("procedural/world_normal_from_height", [0.0, 0.0]);
+        graph.connect(noise, "value", normal, "height");
+        graph.connect(normal, "normal", out, "normal");
+        let result = compile(&graph);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        let s = result.fragment_shader;
+        assert!(!s.contains("max(dot("), "the determinant must not be clamped positive: {s}");
+        assert!(s.contains("_det_raw = dot("), "{s}");
+        assert!(s.contains("abs(") && s.contains("_det_raw) < 0.0000001)"), "only a near-zero determinant is replaced: {s}");
+    }
+
     /// A sprite is never a particle, so its Particle nodes are plain
     /// constants and its fragment declares nothing extra.
     #[test]
@@ -815,11 +887,11 @@ mod tests {
         graph.connect(code, "result", output_id, "base_color");
 
         let src = compile(&graph).fragment_shader;
-        let t = renzora::shader_source::to_wesl(&src);
+        let t = renzora_shader_api::shader_source::to_wesl(&src);
         let errors: Vec<_> = t
             .diagnostics
             .iter()
-            .filter(|d| d.severity == renzora::shader_source::Severity::Error)
+            .filter(|d| d.severity == renzora_shader_api::shader_source::Severity::Error)
             .collect();
         assert!(errors.is_empty(), "{errors:?}\n{}", t.source);
         assert!(t.source.contains("import bevy_pbr::render::pbr_functions;"), "{}", t.source);

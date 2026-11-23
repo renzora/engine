@@ -167,7 +167,7 @@ impl ShaderCache {
             return handle.clone();
         }
 
-        let handle = shaders.add(renzora::shader_source::shader(wgsl, label));
+        let handle = shaders.add(renzora_shader_api::shader_source::shader(wgsl, label));
         self.entries.insert(hash, handle.clone());
         handle
     }
@@ -188,8 +188,8 @@ impl ShaderCache {
         if let Some(handle) = self.entries.get(&hash) {
             return handle.clone();
         }
-        let mut shader = renzora::shader_source::shader(wgsl, label);
-        for file in renzora::shader_source::wesl_import_files(&shader) {
+        let mut shader = renzora_shader_api::shader_source::shader(wgsl, label);
+        for file in renzora_shader_api::shader_source::wesl_import_files(&shader) {
             if let Some(dep) = load(&file) {
                 shader.file_dependencies.push(dep);
             }
@@ -270,7 +270,7 @@ pub fn apply_code_shader(
 
     // For the editor preview, we update the default handle in-place
     // so the preview quad's material picks it up immediately.
-    let shader = renzora::shader_source::shader(wgsl, "code_shader/preview.wgsl");
+    let shader = renzora_shader_api::shader_source::shader(wgsl, "code_shader/preview.wgsl");
     let _ = shaders.insert(&DEFAULT_CODE_SHADER_HANDLE, shader);
     state.last_wgsl_hash = Some(hash);
     true

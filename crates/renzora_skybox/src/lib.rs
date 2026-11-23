@@ -440,14 +440,14 @@ fn equirectangular_to_cubemap(equirect: &Image) -> Result<Image, String> {
 fn sync_skybox(
     mut commands: Commands,
     skybox_query: Query<&SkyboxData>,
-    cameras: Query<Entity, (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
-    mut camera_query: Query<&mut Camera, (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
+    cameras: Query<Entity, (With<Camera3d>, Without<renzora_scene_api::IsolatedCamera>)>,
+    mut camera_query: Query<&mut Camera, (With<Camera3d>, Without<renzora_scene_api::IsolatedCamera>)>,
     asset_server: Res<AssetServer>,
     mut skybox_state: ResMut<SkyboxState>,
     mut images: ResMut<Assets<Image>>,
     has_data: Query<(), With<SkyboxData>>,
     mut removed: RemovedComponents<SkyboxData>,
-    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
+    suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
 ) {
     // A shading mode that shows no environment (wireframe, solid) asks for the
     // sky to stand down. It cannot simply remove the `Skybox` itself: this
@@ -670,5 +670,3 @@ impl Plugin for SkyboxPlugin {
             .add_systems(Update, sync_skybox);
     }
 }
-
-renzora::add!(SkyboxPlugin);

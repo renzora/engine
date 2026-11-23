@@ -11,7 +11,7 @@
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
-use renzora::core::console_log::console_warn;
+use renzora_log_api::console_warn;
 use renzora_editor_framework::EditorSelection;
 use renzora_gizmo::OverlayGizmoGroup;
 use renzora_planar_reflection::fit::MeshPlaneFit;

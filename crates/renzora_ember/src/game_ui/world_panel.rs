@@ -86,14 +86,14 @@ pub(crate) fn register(app: &mut App) {
     // that never link this one (renzora_xr, renzora_viewport), so they can only
     // declare set membership. `init_resource` here means world canvases work even
     // in a build with no XR and no editor viewport.
-    app.init_resource::<renzora::WorldUiPointers>();
+    app.init_resource::<renzora_scene_api::WorldUiPointers>();
     app.configure_sets(
         Update,
-        renzora::WorldUiPointerSet::Publish.before(renzora::WorldUiPointerSet::Consume),
+        renzora_scene_api::WorldUiPointerSet::Publish.before(renzora_scene_api::WorldUiPointerSet::Consume),
     );
     app.add_systems(
         Update,
-        publish_game_mouse_ray.in_set(renzora::WorldUiPointerSet::Publish),
+        publish_game_mouse_ray.in_set(renzora_scene_api::WorldUiPointerSet::Publish),
     );
     app.add_systems(
         Update,
@@ -105,7 +105,7 @@ pub(crate) fn register(app: &mut App) {
             drive_world_ui_pointers,
         )
             .chain()
-            .in_set(renzora::WorldUiPointerSet::Consume),
+            .in_set(renzora_scene_api::WorldUiPointerSet::Consume),
     );
     // Scene load inserts components by reflection, which does NOT bump change
     // ticks, so `Changed<UiCanvas>`/`Changed<HtmlTemplatePath>` never fires for a
@@ -144,11 +144,11 @@ fn mark_canvas_changed_on_path_insert(
 /// Shipped-game mouse → world-UI ray (pointer id 2). Editor sessions publish the
 /// same id from the viewport instead (renzora_viewport), so this gates off there.
 fn publish_game_mouse_ray(
-    session: Option<Res<renzora::EditorSession>>,
+    session: Option<Res<renzora_project_api::EditorSession>>,
     windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<(&Camera, &GlobalTransform), (With<Camera3d>, Without<renzora::IsolatedCamera>)>,
+    cameras: Query<(&Camera, &GlobalTransform), (With<Camera3d>, Without<renzora_scene_api::IsolatedCamera>)>,
     mouse: Res<ButtonInput<MouseButton>>,
-    pointers: Option<ResMut<renzora::WorldUiPointers>>,
+    pointers: Option<ResMut<renzora_scene_api::WorldUiPointers>>,
 ) {
     let Some(mut pointers) = pointers else { return };
     if session.is_some_and(|s| s.0) {
@@ -165,14 +165,14 @@ fn publish_game_mouse_ray(
     let Ok(ray) = camera.viewport_to_world(camera_tf, cursor) else {
         return;
     };
-    pointers.0.push(renzora::core::WorldUiPointerRay {
+    pointers.0.push(renzora_scene_api::WorldUiPointerRay {
         id: 2,
         ray,
         trigger: if mouse.pressed(MouseButton::Left) { 1.0 } else { 0.0 },
     });
 }
 
-/// One picking pointer per [`renzora::WorldUiPointerRay`] source, driven by
+/// One picking pointer per [`renzora_scene_api::WorldUiPointerRay`] source, driven by
 /// ray-vs-quad hits. Picking consumes the pointer entities +
 /// `PointerInput` messages exactly like the mouse, so `UiInteraction`, hover
 /// states, `on_ui` markup callbacks — everything — works on world canvases
@@ -186,7 +186,7 @@ struct PanelPointer {
 
 fn drive_world_ui_pointers(
     mut commands: Commands,
-    rays: Option<Res<renzora::WorldUiPointers>>,
+    rays: Option<Res<renzora_scene_api::WorldUiPointers>>,
     canvases: Query<(&UiCanvas, &WorldUiPanelLive, &GlobalTransform)>,
     mut pointer_inputs: MessageWriter<bevy::picking::pointer::PointerInput>,
     mut locations: Query<&mut bevy::picking::pointer::PointerLocation>,
@@ -238,7 +238,7 @@ fn drive_world_ui_pointers(
                     pointer_id,
                     PointerLocation { location: None },
                     Name::new(format!("World UI Pointer {}", ray_source.id)),
-                    renzora::HideInHierarchy,
+                    renzora_scene_api::HideInHierarchy,
                 ))
                 .id()
         });
@@ -471,8 +471,8 @@ fn sync_world_ui_canvases(
                     ..default()
                 },
                 RenderTarget::Image(image_handle.clone().into()),
-                renzora::IsolatedCamera,
-                renzora::HideInHierarchy,
+                renzora_scene_api::IsolatedCamera,
+                renzora_scene_api::HideInHierarchy,
                 WorldUiPanelOwner(entity),
                 Name::new("World UI Canvas Camera"),
             ))
@@ -499,7 +499,7 @@ fn sync_world_ui_canvases(
                 MarkupBindingHost(entity),
                 WorldUiRoot,
                 WorldUiPanelOwner(entity),
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
             ))
             .id();
 

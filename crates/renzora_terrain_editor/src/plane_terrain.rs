@@ -39,9 +39,10 @@
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
-use renzora::console_log::console_info;
-use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
-use renzora::core::{EditedMesh, EditedMeshApplied, MaterialRef, MeshInstanceData, MeshPrimitive};
+use renzora_log_api::console_info;
+use renzora_viewport_api::{ViewportMode, ViewportSettings};
+use renzora_scene_api::{EditedMesh, EditedMeshApplied, MeshInstanceData, MeshPrimitive};
+use renzora_material_api::MaterialRef;
 use renzora_editor_framework::{ActiveTool, EditorSelection};
 use renzora_terrain::data::{TerrainChunkData, TerrainData};
 
@@ -264,7 +265,7 @@ fn convert(world: &mut World, entity: Entity) -> bool {
     em.remove::<MeshPrimitive>();
     em.remove::<EditedMesh>();
     em.remove::<EditedMeshApplied>();
-    em.insert((terrain_data.clone(), renzora::SelectionStop));
+    em.insert((terrain_data.clone(), renzora_scene_api::SelectionStop));
     if let Some(mut transform) = em.get_mut::<Transform>() {
         // See the module docs: the brushes read this root's translation and
         // nothing else, so rotation and scale have to be spent here or every
@@ -334,7 +335,7 @@ impl ConvertPlaneCmd {
                 .cloned()
                 .map(|m| (m, world.get::<EditedMeshApplied>(entity).is_some())),
             transform: world.get::<Transform>(entity).copied().unwrap_or_default(),
-            selection_stop: world.get::<renzora::SelectionStop>(entity).is_some(),
+            selection_stop: world.get::<renzora_scene_api::SelectionStop>(entity).is_some(),
         })
     }
 }
@@ -371,7 +372,7 @@ impl renzora_undo::UndoCommand for ConvertPlaneCmd {
         };
         em.remove::<TerrainData>();
         if !self.selection_stop {
-            em.remove::<renzora::SelectionStop>();
+            em.remove::<renzora_scene_api::SelectionStop>();
         }
         em.insert((self.mesh.clone(), self.transform));
         if let Some(primitive) = self.primitive.clone() {

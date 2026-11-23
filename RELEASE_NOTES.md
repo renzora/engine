@@ -1,5 +1,107 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-22 21:16
+- refactor(contract): the contract layers live in `crates/api/`, and `renzora`, `renzora_sdk` and the shared images in `crates/shared/`
+- refactor(contract): console logging is its own layer, `renzora_log_api`, so crates that only log no longer rebuild when the rest of the contract changes
+- refactor(plugins): engine crates declare their plugins in their own `Cargo.toml` (`[[package.metadata.renzora.plugin]]`, with `type`, optional `scope` and `priority`) instead of a `renzora::add!` line, so a crate needs no contract dependency just to be a plugin. `cargo renzora sync` reads the tables and still accepts a lone `add!` line from the `renzora add` scaffolder. `renzora_http` and `renzora_lighting` no longer depend on `renzora` at all
+- perf(sdk): the plugin SDK is 1.2 GB instead of 3.9 GB
+- perf(sdk): the download and the install carry the engine's shared images once instead of twice
+- refactor(plugins): the UI framework rides in `renzora_dylib` and `renzora_ember_dylib` is gone, so there are two shared images instead of three. Plugins import it as `renzora::ui`; the separate `renzora_ember` name is no longer offered to plugins, and the plugins in the plugins repo were moved to `renzora::ui`
+- perf(rendering): a game no longer rebuilds its effect routing whenever it spawns or despawns an entity. It picks effect sources the way the editor does (named scene entities, not hidden chrome or UI), so a short-lived entity no longer makes every effect re-apply itself to the camera and re-bake the sky
+- fix(rendering): a game in a Deferred project no longer renders its geometry black (or flickering black) with Solari off. Solari's plugin reset the global material method to Forward while it built, throwing away the project's Deferred mode that the runtime had set just before; the editor re-synced the mode when it opened, but a game never did, so it drew forward materials through deferred cameras. It now puts back whatever method was there
+- refactor(contract): every layer now ends in `_api`: `renzora_diagnostics`, `renzora_platform` and `renzora_save` are `renzora_diagnostics_api`, `renzora_platform_api` and `renzora_save_api`, and `renzora_text_mesh`, a shared library rather than a contract, moved to `crates/shared/`. Plugin paths are unchanged
+- refactor(contract): the editor contract is its own layer, `renzora_editor_api` (selection, inspector registry, field macros, registries, `AppEditorExt`), with its proc macros nested as `renzora_editor_api_macros`. The `Inspectable` derive generates `renzora_editor_api::` paths in engine crates and `renzora::` in plugins. `renzora` itself now holds only re-exports, and 65 more crates no longer depend on it: 19 of 175 still do
+- refactor(contract): the editor chrome's vocabulary is its own layer, `renzora_shell_api` (shell panels and status items, keybindings, editor events, Inspector pages, and the extension points that were `renzora_editor_ext`: undo, create menus, asset and entity actions); companion jobs moved into `renzora_platform` (which no longer depends on `renzora` at all) and `terrain_tools` into `renzora_world_api`. Plugin paths are unchanged
+- refactor(contract): the viewport vocabulary is its own layer, `renzora_viewport_api` (runtime render crates read it as well as the editor), and so are recoverable panics, `renzora_crash_api`. 45 engine crates now use no part of `renzora` and no longer depend on it, so an edit to the editor contract no longer rebuilds them
+- refactor(contract): the scene vocabulary is its own layer, `renzora_scene_api` (shared components and entity tags, entity ids, shapes, render resolution, the project byte loader); 257 files across 86 crates import it directly. Every moved component keeps the type path saved scenes use (`renzora::core::components::SceneEntityId` and the rest), and a test pins all 31
+- refactor(contract): the project and process vocabulary is its own layer, `renzora_project_api` (project config and preferences, project file events, session and editor requests, play mode, image formats, `GraphicsQuality`, and the launcher state and open-project requests that sat at `renzora`'s root); 285 files across 77 crates import it directly. `in_three_view`/`in_two_view` stay beside `ViewportSettings`. Every `renzora::` path plugins use still resolves
+- fix(ci): the release workflow and `scripts/check-versions.sh` read `ENGINE_VERSION` from `crates/api/renzora_platform_api/src/version.rs`, where it actually lives; they named a `renzora/src/version.rs` that no longer existed
+- refactor(contract): translation is its own layer, `renzora_lang_api`; 122 files across 26 crates now import it directly. Plugins still write `renzora::lang::t`
+- refactor(plugins): `plugin!`, `NativePluginScope` and the native plugin ABI record moved from `renzora` to `renzora_platform`, as has the `static_plugins` feature. Plugins still write `renzora::plugin!`
+
+## 2026-11-22 19:43
+- feat(editor): the World Partition panel's map, readouts, switches and stand-in builder are the World Partition entity's Inspector section, and the panel is gone
+- feat(editor): Partition into cells is on the Hierarchy's right-click menu
+- feat(plugin): a plugin can add rows to the Hierarchy's right-click menu with `register_entity_action`
+
+## 2026-11-22 19:28
+- feat(scene): world partition cells are filed under the World Partition entity, and cells left at the top of older scenes move there when they open
+
+## 2026-11-22 05:59
+- fix(rendering): screen-space reflections show on mirror-smooth surfaces such as water and polished floors, instead of only on slightly rough ones
+
+## 2026-11-22 04:49
+- fix(scene): distant stand-ins of dense cells keep their small buildings, which no longer vanish when the cell unloads
+
+## 2026-11-22 04:40
+- feat(editor): a Render Thumbnails setting turns thumbnail rendering off and stops the companion's render worker
+
+## 2026-11-22 04:19
+- feat(scene): the Console warns when a world partition cell goes out of view with no stand-in drawn in its place, and says why
+
+## 2026-11-22 03:52
+- fix(materials): normal maps in PNG or JPEG files are read as data instead of colour, even when the file was already loaded elsewhere, so they no longer tilt the surface and darken it (black under Solari)
+
+## 2026-11-22 03:31
+- fix(editor): material thumbnails that compile to the same shader share it, so a project with thousands of imported materials no longer slows each thumbnail and fills memory with pipelines
+
+## 2026-11-22 03:14
+- fix(materials): World Normal From Height gives smooth normals on upward-facing surfaces instead of snapping them sideways
+
+## 2026-11-22 03:08
+- fix(companion): the thumbnail render worker is replaced every 50 thumbnails even while a backlog keeps it busy, so it no longer grows to tens of gigabytes on a large project
+- fix(editor): model thumbnails no longer start loading the next model while every capture slot is busy
+
+## 2026-11-22 02:45
+- fix(terrain): painted landscape layers on a streamed terrain show again after the scene is reopened, instead of loading back as all first layer
+
+## 2026-11-22 01:42
+- feat(scene): world partition cells can have distant stand-ins, so the world never disappears in the distance from any height
+- feat(editor): Build distant LODs in the World Partition panel builds every cell's stand-in in the background
+- fix(scene): partitioning leaves the world environment, cameras and directional lights out of cells
+- fix(scene): a model whose cell unloads while it loads no longer leaves a stray copy at the origin
+
+## 2026-11-22 01:16
+- fix(editor): opening the World Partition panel no longer turns off streaming in the editor
+
+## 2026-11-22 01:12
+- fix(render): virtual geometry no longer draws whole areas black while new models and materials are loading
+- perf(render): virtual geometry spends less time per frame on scenes with thousands of materials
+
+## 2026-11-22 01:04
+- fix(scene): a world partition cell appears once its textures are loaded instead of as black geometry, and the frame rate holds while it arrives
+- fix(editor): streaming cells in no longer raises the full-screen loading overlay
+
+## 2026-11-22 00:26
+- feat(scene): world partition splits a scene into grid cells that stream in and out around the camera, in the editor as well as in the game
+- feat(editor): a World Partition panel shows every cell's state on a map, pins cells loaded, and partitions the selection
+- fix(editor): content streamed out of the scene now releases its meshes and textures instead of staying pinned until its tab closes
+
+## 2026-11-21 23:25
+- fix(import): models with TIFF textures, such as PLATEAU city tiles, import with their textures instead of crashing the editor when loaded
+- fix(model): a model holding a texture the engine cannot read loads with that texture blank instead of crashing
+
+## 2026-11-21 21:57
+- chore(build): the engine's own crates no longer declare dependencies they do not use
+
+## 2026-11-21 21:48
+- refactor(contract): Solari's settings are their own layer, so changing them rebuilds only the Solari, anti-aliasing, export, preset and virtual geometry crates
+
+## 2026-11-21 21:32
+- refactor(contract): the UI toolkit no longer rebuilds when a material, a render setting or the HTTP pump changes
+
+## 2026-11-21 21:12
+- refactor(contract): scripting, audio, rendering, materials, physics, world, animation, saves, diagnostics and platform services are each their own layer under the contract, so editing one rebuilds only the crates that use it; plugins see every name at its old `renzora::` path
+
+## 2026-11-21 18:51
+- refactor(contract): the HTTP layer is its own crate under the contract, so changing it no longer rebuilds the whole engine; plugins still reach it as `renzora::net`
+
+## 2026-11-21 18:06
+- chore(editor): the editor no longer ships the demo Health and Movement test components
+
+## 2026-11-21 17:33
+- feat(build): `cargo renzora wasm` installs what it needs, serves the web build on localhost and opens the editor in your browser
+
 ## 2026-11-21 17:27
 - feat(ci): Build Engine's `web` publish mode rebuilds only the web editor into the newest release and puts it on renzora.com
 

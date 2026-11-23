@@ -31,5 +31,3 @@ impl Plugin for ShaderPlugin {
         reg.register(Box::new(backends::shadertoy::ShaderToyBackend));
     }
 }
-
-renzora::add!(ShaderPlugin);

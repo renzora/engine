@@ -14,7 +14,7 @@ use renzora_ember::widgets::{menu_item, scroll_area_keyed, Popup};
 use renzora_ember::UiInteraction;
 
 /// A status segment that invokes a shell action when clicked; see
-/// [`renzora::ShellStatusSegment::action`].
+/// [`renzora_shell_api::ShellStatusSegment::action`].
 #[derive(Component)]
 pub(crate) struct StatusSegmentAction(&'static str);
 
@@ -25,12 +25,12 @@ pub(crate) struct StatusSegmentAction(&'static str);
 /// without one must not fail to run this system.
 pub(crate) fn status_segment_click(
     segments: Query<(&UiInteraction, &StatusSegmentAction), Changed<UiInteraction>>,
-    messages: Option<ResMut<bevy::ecs::message::Messages<renzora::ShellActionInvoked>>>,
+    messages: Option<ResMut<bevy::ecs::message::Messages<renzora_shell_api::ShellActionInvoked>>>,
 ) {
     let Some(mut messages) = messages else { return };
     for (interaction, action) in &segments {
         if *interaction == UiInteraction::Pressed {
-            messages.write(renzora::ShellActionInvoked(action.0));
+            messages.write(renzora_shell_api::ShellActionInvoked(action.0));
         }
     }
 }
@@ -188,15 +188,15 @@ pub(crate) fn build_status_bar(
     commands
         .entity(bar)
         .add_children(&[left_content, lang_picker, dropup, right_content]);
-    if !renzora::EDITOR_OS_FRAME || cfg!(target_arch = "wasm32") {
+    if !renzora_shell_api::EDITOR_OS_FRAME || cfg!(target_arch = "wasm32") {
         let version = commands
             .spawn((
-                Text::new(format!("Renzora {}", renzora::version::display())),
+                Text::new(format!("Renzora {}", renzora_platform_api::version::display())),
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(text_muted())),
                 bevy::text::TextLayout::no_wrap(),
                 Node { flex_shrink: 0.0, ..default() },
-                renzora_ember::widgets::HoverTooltip::new(renzora::version::display()),
+                renzora_ember::widgets::HoverTooltip::new(renzora_platform_api::version::display()),
                 Name::new("status-version"),
             ))
             .id();
@@ -263,7 +263,7 @@ fn theme_dropup(
 
     let icon = icon_text(commands, &fonts.phosphor, "palette", text_muted(), 12.0);
     let theme_label = if active.is_empty() {
-        renzora::lang::t_or("status.theme", "Theme")
+        renzora_lang_api::t_or("status.theme", "Theme")
     } else {
         active.to_string()
     };
@@ -305,12 +305,12 @@ struct LanguageDropup;
 
 /// The language picker dropup in the status bar: shows the active language and
 /// opens a menu (flipped up) of every registered language — built-in packs plus
-/// any external `languages/*.toml`. Picking one calls `renzora::lang::set_active`
-/// and persists it via `renzora::save_language`; the resulting `LanguageChanged`
+/// any external `languages/*.toml`. Picking one calls `renzora_lang_api::set_active`
+/// and persists it via `renzora_project_api::save_language`; the resulting `LanguageChanged`
 /// drives whatever live relocalization is wired up. Mirrors `theme_dropup`.
 fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let langs = renzora::lang::available();
-    let active = renzora::lang::active_code();
+    let langs = renzora_lang_api::available();
+    let active = renzora_lang_api::active_code();
 
     let panel = commands
         .spawn((
@@ -346,8 +346,8 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         };
         let icon = if m.code == active { "check" } else { "globe" };
         rows.push(menu_item(commands, fonts, icon, &label, move |_w| {
-            renzora::lang::set_active(&code);
-            let _ = renzora::save_language(&code);
+            renzora_lang_api::set_active(&code);
+            let _ = renzora_project_api::save_language(&code);
         }));
     }
     let content = commands
@@ -374,7 +374,7 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .unwrap_or_else(|| {
             if active.is_empty() {
-                renzora::lang::t("settings.row.language")
+                renzora_lang_api::t("settings.row.language")
             } else {
                 active.clone()
             }
@@ -415,15 +415,15 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 enum StatusRow {
     Label(String, (u8, u8, u8)),
-    Seg(renzora::ShellStatusSegment),
+    Seg(renzora_shell_api::ShellStatusSegment),
 }
 
 /// Status segments for one alignment, as keyed rows (each item's `render` is
 /// recomputed every frame).
-fn status_rows(world: &Rx, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
+fn status_rows(world: &Rx, align: renzora_shell_api::ShellStatusAlign) -> Vec<StatusRow> {
     let mut rows: Vec<StatusRow> = Vec::new();
-    if let Some(reg) = world.get_resource::<renzora::ShellStatusRegistry>() {
-        let mut items: Vec<&renzora::ShellStatusItem> =
+    if let Some(reg) = world.get_resource::<renzora_shell_api::ShellStatusRegistry>() {
+        let mut items: Vec<&renzora_shell_api::ShellStatusItem> =
             reg.items.iter().filter(|i| i.align == align).collect();
         items.sort_by_key(|i| i.order);
         for it in items {
@@ -434,7 +434,7 @@ fn status_rows(world: &Rx, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
 }
 
 /// Segment `index` on one side, as it is now.
-fn segment(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Option<renzora::ShellStatusSegment> {
+fn segment(world: &Rx, align: renzora_shell_api::ShellStatusAlign, index: usize) -> Option<renzora_shell_api::ShellStatusSegment> {
     match status_rows(world, align).into_iter().nth(index) {
         Some(StatusRow::Seg(s)) => Some(s),
         _ => None,
@@ -443,7 +443,7 @@ fn segment(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Option
 
 /// The current text of segment `index` on one side: what a segment's text node
 /// is bound to, so a live metric updates in place.
-fn segment_text(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
+fn segment_text(world: &Rx, align: renzora_shell_api::ShellStatusAlign, index: usize) -> String {
     segment(world, align, index).map(|s| s.text).unwrap_or_default()
 }
 
@@ -457,13 +457,13 @@ fn icon_glyph_text(icon: &str) -> String {
 /// The current icon glyph of segment `index`: what its icon node is bound to.
 /// The MCP item swaps `plugs` for `plugs-connected` on every client
 /// connection, which with the icon hashed rebuilt the segment on every call.
-fn segment_icon(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> String {
+fn segment_icon(world: &Rx, align: renzora_shell_api::ShellStatusAlign, index: usize) -> String {
     segment(world, align, index).map(|s| icon_glyph_text(&s.icon)).unwrap_or_default()
 }
 
 /// The current colour of segment `index`, made legible on the bar: what its
 /// icon and text are bound to.
-fn segment_color(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> Color {
+fn segment_color(world: &Rx, align: renzora_shell_api::ShellStatusAlign, index: usize) -> Color {
     let color = segment(world, align, index).map_or((0, 0, 0), |s| (s.color[0], s.color[1], s.color[2]));
     rgb(legible(color, window_bg()))
 }
@@ -482,7 +482,7 @@ fn segment_color(world: &Rx, align: renzora::ShellStatusAlign, index: usize) -> 
 /// one node and nothing else.
 fn rows_snapshot(
     rows: Vec<StatusRow>,
-    align: Option<renzora::ShellStatusAlign>,
+    align: Option<renzora_shell_api::ShellStatusAlign>,
 ) -> renzora_ember::reactive::KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let items: Vec<(u64, u64)> = rows
@@ -503,8 +503,8 @@ fn rows_snapshot(
                 StatusRow::Seg(s) => {
                     let bar = match s.bar {
                         None => (0u8, 0u8),
-                        Some(renzora::ShellStatusBar::Busy) => (1u8, 0u8),
-                        Some(renzora::ShellStatusBar::Fraction(f)) => {
+                        Some(renzora_shell_api::ShellStatusBar::Busy) => (1u8, 0u8),
+                        Some(renzora_shell_api::ShellStatusBar::Fraction(f)) => {
                             (2u8, (f.clamp(0.0, 1.0) * 100.0) as u8)
                         }
                     };
@@ -521,24 +521,24 @@ fn rows_snapshot(
 }
 
 /// The Ready label at the head of the left side. A plugin can swap the
-/// "Ready" text via [`renzora::ShellReadyStatus`] (e.g. the auto-save countdown).
+/// "Ready" text via [`renzora_shell_api::ShellReadyStatus`] (e.g. the auto-save countdown).
 fn status_snapshot_ready(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     let (label, color) = world
-        .get_resource::<renzora::ShellReadyStatus>()
+        .get_resource::<renzora_shell_api::ShellReadyStatus>()
         .and_then(|r| r.label.clone().map(|t| (t, r.color)))
         .map(|(t, c)| (t, c.map(|c| (c[0], c[1], c[2])).unwrap_or_else(text_muted)))
-        .unwrap_or_else(|| (renzora::lang::t_or("status.ready", "Ready"), text_muted()));
+        .unwrap_or_else(|| (renzora_lang_api::t_or("status.ready", "Ready"), text_muted()));
     rows_snapshot(vec![StatusRow::Label(label, color)], None)
 }
 
 /// Left side after Ready and the saved badge: the left-aligned plugin items.
 fn status_snapshot_left(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
-    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Left), Some(renzora::ShellStatusAlign::Left))
+    rows_snapshot(status_rows(world, renzora_shell_api::ShellStatusAlign::Left), Some(renzora_shell_api::ShellStatusAlign::Left))
 }
 
 /// Right side: the right-aligned metrics.
 fn status_snapshot_right(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
-    rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right), Some(renzora::ShellStatusAlign::Right))
+    rows_snapshot(status_rows(world, renzora_shell_api::ShellStatusAlign::Right), Some(renzora_shell_api::ShellStatusAlign::Right))
 }
 
 /// WCAG contrast a status segment's text must reach against the bar.
@@ -587,7 +587,7 @@ fn status_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
     row: &StatusRow,
-    source: Option<(renzora::ShellStatusAlign, usize)>,
+    source: Option<(renzora_shell_api::ShellStatusAlign, usize)>,
 ) -> Entity {
     match row {
         StatusRow::Label(text, color) => commands
@@ -658,10 +658,10 @@ fn status_row(
             // status bar around.
             match s.bar {
                 None => {}
-                Some(renzora::ShellStatusBar::Busy) => kids.push(
+                Some(renzora_shell_api::ShellStatusBar::Busy) => kids.push(
                     renzora_ember::widgets::progress_indeterminate(commands, 70.0, 4.0),
                 ),
-                Some(renzora::ShellStatusBar::Fraction(f)) => {
+                Some(renzora_shell_api::ShellStatusBar::Fraction(f)) => {
                     kids.push(renzora_ember::widgets::progress_sized(commands, f, 70.0, 4.0))
                 }
             }

@@ -109,7 +109,7 @@ impl Plugin for ParticlesPlugin {
 
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(
-                renzora::script_extension::ScriptExtensions::default,
+                renzora_scripting_api::script_extension::ScriptExtensions::default,
             );
             extensions.register(script::ParticleScriptExtension);
         }
@@ -120,7 +120,7 @@ impl Plugin for ParticlesPlugin {
 
         // Particles are purely visual: a dedicated server has no render world
         // and nothing to draw them for, so it neither simulates nor renders.
-        if app.world().contains_resource::<renzora::DedicatedServer>() {
+        if app.world().contains_resource::<renzora_project_api::DedicatedServer>() {
             return;
         }
 
@@ -211,5 +211,3 @@ impl Plugin for ParticlesPlugin {
         gpu::runtime::plugin(app);
     }
 }
-
-renzora::add!(ParticlesPlugin, Runtime);

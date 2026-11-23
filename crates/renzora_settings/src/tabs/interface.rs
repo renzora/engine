@@ -86,7 +86,7 @@ pub(crate) fn tab_interface(
     let (sec, body) = section(commands, fonts, "globe", &tr("settings.row.language"), A_GREEN);
     commands.entity(col).add_child(sec);
 
-    let langs = renzora::lang::available();
+    let langs = renzora_lang_api::available();
     let lang_labels: Vec<String> = langs
         .iter()
         .map(|m| {
@@ -99,7 +99,7 @@ pub(crate) fn tab_interface(
         .collect();
     let lang_refs: Vec<&str> = lang_labels.iter().map(|s| s.as_str()).collect();
     let codes: Vec<String> = langs.iter().map(|m| m.code.clone()).collect();
-    let active = renzora::lang::active_code();
+    let active = renzora_lang_api::active_code();
     let cur = codes.iter().position(|c| *c == active).unwrap_or(0);
     let codes_get = codes.clone();
     let codes_set = codes;
@@ -109,13 +109,13 @@ pub(crate) fn tab_interface(
         &lang_refs,
         cur,
         move |_w| {
-            let a = renzora::lang::active_code();
+            let a = renzora_lang_api::active_code();
             codes_get.iter().position(|c| *c == a).unwrap_or(0)
         },
         move |_w, &i| {
             if let Some(code) = codes_set.get(i) {
-                renzora::lang::set_active(code);
-                let _ = renzora::save_language(code);
+                renzora_lang_api::set_active(code);
+                let _ = renzora_project_api::save_language(code);
             }
         },
     );
@@ -124,7 +124,7 @@ pub(crate) fn tab_interface(
         fonts,
         body,
         0,
-        &renzora::lang::t("settings.row.language"),
+        &renzora_lang_api::t("settings.row.language"),
         dd,
     );
 
@@ -238,7 +238,7 @@ pub(crate) fn tab_interface(
         fonts,
         body,
         1,
-        &renzora::lang::t_or("settings.new_file_boilerplate", "Boilerplate in new files"),
+        &renzora_lang_api::t_or("settings.new_file_boilerplate", "Boilerplate in new files"),
         t,
     );
     // Dragging an asset out of the bottom panel hides it so you can see the

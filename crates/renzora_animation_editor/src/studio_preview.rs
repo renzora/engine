@@ -10,13 +10,13 @@ use bevy::prelude::*;
 use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, MeshInstanceData};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera, MeshInstanceData};
 
 use crate::AnimationEditorState;
 
 /// This preview's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's — see the registry there for why.
-pub use renzora::core::viewport_types::STUDIO_PREVIEW_LAYER;
+pub use renzora_viewport_api::STUDIO_PREVIEW_LAYER;
 
 /// The panels that show this preview: its own, and the Animation workspace's
 /// stage, which is the same picture with tools on it.
@@ -422,7 +422,7 @@ pub fn sync_preview_model(
     animator_query: Query<&renzora_animation::AnimatorComponent>,
     parent_query: Query<&ChildOf>,
     children_query: Query<&Children>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     existing_preview: Query<Entity, With<StudioPreviewModel>>,
 ) {
     let selected = editor_state.selected_entity;
@@ -513,7 +513,7 @@ fn resolve_model_path(
     animator_query: &Query<&renzora_animation::AnimatorComponent>,
     parent_query: &Query<&ChildOf>,
     children_query: &Query<&Children>,
-    project: Option<&renzora::core::CurrentProject>,
+    project: Option<&renzora_project_api::CurrentProject>,
 ) -> Option<String> {
     let model_of = |e: Entity| mesh_query.get(e).ok().and_then(|m| m.model_path.clone());
     let ancestry = |start: Entity| {

@@ -24,7 +24,7 @@ use crate::sim::{EffectSim, FrameInput, SEEK_STEP};
 use crate::tests::{graph, out_node, simple_effect};
 
 fn check(source: &str) -> naga::Module {
-    renzora::wgsl::check(source).unwrap_or_else(|e| panic!("generated WGSL does not validate:\n{e}"))
+    renzora_shader_api::wgsl::check(source).unwrap_or_else(|e| panic!("generated WGSL does not validate:\n{e}"))
 }
 
 fn program(compiled: &CompiledEmitter, space: SimulationSpace) -> GpuProgram {
@@ -67,7 +67,7 @@ fn every_catalog_node_generates_valid_wgsl_in_both_contexts() {
                 let compiled = compile_graph(&g).unwrap_or_else(|e| panic!("{}: {e:?}", def.node_type));
                 for space in [SimulationSpace::Local, SimulationSpace::World] {
                     let p = program(&compiled, space);
-                    renzora::wgsl::check(&p.source)
+                    renzora_shader_api::wgsl::check(&p.source)
                         .unwrap_or_else(|e| panic!("{}.{} ({update}, {space:?}):\n{e}", def.node_type, out.name));
                 }
             }
@@ -158,7 +158,7 @@ fn every_preset_generates_for_the_gpu_where_its_features_allow() {
                 continue;
             }
             let p = program(&compiled, emitter.space);
-            renzora::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{} / {}:\n{e}", preset.name, emitter.name));
+            renzora_shader_api::wgsl::check(&p.source).unwrap_or_else(|e| panic!("{} / {}:\n{e}", preset.name, emitter.name));
             let data = pack_data(&compiled, &p.consts);
             assert!(!data.is_empty());
             generated += 1;

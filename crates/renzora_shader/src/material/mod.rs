@@ -4,6 +4,7 @@ pub mod graph;
 pub mod instance;
 pub mod landscape;
 pub mod landscape_preset;
+mod linear_textures;
 pub mod material_ref;
 pub mod nodes;
 pub mod pbr_build;
@@ -12,7 +13,7 @@ pub mod pbr_build;
 // never have named a type in here. Collection still happens in `resolver.rs`;
 // only the vocabulary moved. Re-exported under the old path so every existing
 // `material::perf::…` still resolves.
-pub use renzora::diagnostics::material as perf;
+pub use renzora_diagnostics_api::diagnostics::material as perf;
 pub mod precompiled;
 pub mod resolver;
 pub mod runtime;
@@ -43,6 +44,7 @@ impl Plugin for MaterialPlugin {
         app.add_plugins(resolver::MaterialResolverPlugin);
         app.add_plugins(sprite_material::SpriteGraphMaterialPlugin);
         app.add_plugins(traced_stand_in::TracedStandInPlugin);
+        app.add_plugins(linear_textures::LinearTexturesPlugin);
         // Authoring-only, so it follows `validate.rs` behind the same feature:
         // nothing in a shipped game asks what nodes exist, and the catalogue is
         // 159 entries of strings built at startup to answer that question.
@@ -73,7 +75,7 @@ impl Plugin for MaterialPlugin {
 /// Once, at startup. The list is `&'static` and nothing adds to it at runtime.
 #[cfg(feature = "editor")]
 fn publish_node_catalogue(app: &mut App) {
-    use renzora::core::material_nodes::{
+    use renzora_material_api::material_nodes::{
         MaterialNodeCatalog, MaterialNodeDefinition, MaterialNodePin,
     };
 
@@ -103,10 +105,10 @@ fn publish_node_catalogue(app: &mut App) {
 }
 
 /// Observer: write a `.material` JSON file for each emitted
-/// [`renzora::PbrMaterialExtracted`] event. Format must match what
+/// [`renzora_scene_api::PbrMaterialExtracted`] event. Format must match what
 /// `resolver::resolve_graph_material` parses (`serde_json::from_str::<MaterialGraph>`).
 /// Failures are logged; the observer never panics.
-fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
+fn on_pbr_material_extracted(trigger: On<renzora_scene_api::PbrMaterialExtracted>) {
     let ev = trigger.event();
     if let Err(e) = std::fs::create_dir_all(&ev.output_dir) {
         warn!(
@@ -137,11 +139,11 @@ fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
 
     use crate::material::graph::AlphaMode as GraphAlpha;
     let alpha_mode = match ev.alpha_mode {
-        renzora::core::PbrAlphaMode::Opaque => GraphAlpha::Opaque,
-        renzora::core::PbrAlphaMode::Mask => GraphAlpha::Mask {
+        renzora_scene_api::PbrAlphaMode::Opaque => GraphAlpha::Opaque,
+        renzora_scene_api::PbrAlphaMode::Mask => GraphAlpha::Mask {
             cutoff: ev.alpha_cutoff,
         },
-        renzora::core::PbrAlphaMode::Blend => GraphAlpha::Blend,
+        renzora_scene_api::PbrAlphaMode::Blend => GraphAlpha::Blend,
     };
 
     let inputs = pbr_build::PbrInputs {
@@ -183,5 +185,3 @@ fn on_pbr_material_extracted(trigger: On<renzora::PbrMaterialExtracted>) {
         Err(e) => warn!("[material] save '{}': {}", ev.name, e),
     }
 }
-
-renzora::add!(MaterialPlugin);

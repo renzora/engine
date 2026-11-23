@@ -52,7 +52,7 @@ use std::sync::Arc;
 use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::prelude::*;
 
-use renzora::{AnimClip, BoneTrack, KeyCurve, RestBone, SkeletonRestPose};
+use renzora_animation_api::{AnimClip, BoneTrack, KeyCurve, RestBone, SkeletonRestPose};
 
 use crate::loader::AnimLoadError;
 
@@ -118,7 +118,7 @@ pub struct RestSkeleton {
 const MAX_DEPTH: usize = 512;
 
 fn key(name: &str) -> String {
-    renzora::sanitize_id(name)
+    renzora_scene_api::sanitize_id(name)
 }
 
 impl RestSkeleton {
@@ -352,9 +352,9 @@ pub fn capture_rest_pose(world: &World, root: Entity) -> SkeletonRestPose {
         |e| world.get::<Children>(e).map(|c| c.iter().collect()).unwrap_or_default(),
         |e| {
             let name = world.get::<Name>(e)?;
-            let bind = world.get::<renzora::BindName>(e);
+            let bind = world.get::<renzora_scene_api::BindName>(e);
             let t = world.get::<Transform>(e)?;
-            Some((renzora::BindName::of(name, bind).to_string(), *t))
+            Some((renzora_scene_api::BindName::of(name, bind).to_string(), *t))
         },
     )
     .to_pose()
@@ -604,9 +604,9 @@ mod tests {
     #[test]
     fn a_difference_clip_carries_blend_shapes_as_deltas() {
         let mut c = clip(vec![]);
-        let mut moving = renzora::MorphTrack::new("Face", 0, "");
+        let mut moving = renzora_animation_api::MorphTrack::new("Face", 0, "");
         moving.keys = vec![(0.0, 0.2), (1.0, 0.7)];
-        let mut still = renzora::MorphTrack::new("Face", 1, "");
+        let mut still = renzora_animation_api::MorphTrack::new("Face", 1, "");
         still.keys = vec![(0.0, 0.4), (1.0, 0.4)];
         c.morph_tracks = vec![moving, still];
         let out = make_additive(&c);

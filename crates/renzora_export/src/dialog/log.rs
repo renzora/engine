@@ -63,9 +63,9 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     });
     let heading = txt(commands, fonts, "", 16.0, text_primary());
     bind_text(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
-        Some(ExportProgress::Done(_)) => renzora::lang::t("export.status.complete"),
-        Some(ExportProgress::Error(_)) => renzora::lang::t("export.status.failed"),
-        _ => renzora::lang::t("export.status.exporting"),
+        Some(ExportProgress::Done(_)) => renzora_lang_api::t("export.status.complete"),
+        Some(ExportProgress::Error(_)) => renzora_lang_api::t("export.status.failed"),
+        _ => renzora_lang_api::t("export.status.exporting"),
     });
     // Which build this is, since the settings that said so are hidden while it
     // runs.
@@ -113,15 +113,15 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
 
     // Buttons: Copy log (left), Cancel/Back (right).
     let btn_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
-    let copy_btn = pill_button(commands, fonts, "clipboard", &renzora::lang::t("export.btn.copy_log"));
+    let copy_btn = pill_button(commands, fonts, "clipboard", &renzora_lang_api::t("export.btn.copy_log"));
     commands.entity(copy_btn).insert(CopyLogBtn);
     let btn = commands.spawn((Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(section_bg())), UiInteraction::default(), CancelOrBackBtn, cursor())).id();
-    let btn_label = commands.spawn((Text::new(renzora::lang::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
+    let btn_label = commands.spawn((Text::new(renzora_lang_api::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
     bind_text(commands, btn_label, |w| {
         if w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false) {
-            renzora::lang::t("common.cancel")
+            renzora_lang_api::t("common.cancel")
         } else {
-            renzora::lang::t("export.btn.back")
+            renzora_lang_api::t("export.btn.back")
         }
     });
     commands.entity(btn).add_child(btn_label);

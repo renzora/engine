@@ -28,8 +28,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::ui::ComputedNode;
 
-use renzora::core::viewport_types::VFX_PREVIEW_LAYER;
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_viewport_api::VFX_PREVIEW_LAYER;
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_ember::dock::{Dock, DockWindows, FixedDock};
 use renzora_ember::UiInteraction;
 use renzora_particles::asset::Dimension;
@@ -480,7 +480,7 @@ fn sync_effect(mut commands: Commands, state: Res<VfxEditorState>, mut effects: 
                 ))
                 .id();
             // Not pickable from the scene viewport: it is not scene content.
-            commands.entity(e).remove::<renzora::PickProxy>();
+            commands.entity(e).remove::<renzora_scene_api::PickProxy>();
         }
         (None, Some((e, _))) => commands.entity(e).despawn(),
         (None, None) => {}

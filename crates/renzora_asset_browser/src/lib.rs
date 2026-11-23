@@ -51,7 +51,7 @@ pub(crate) fn open_double_clicked(world: &bevy::prelude::World, path: std::path:
                 // tab — they must be loaded from disk into a new scene tab. Route
                 // them to the scene system; every other kind opens as an asset tab.
                 if matches!(kind, DocTabKind::Scene) {
-                    world.insert_resource(renzora::core::OpenScenePathRequested(p));
+                    world.insert_resource(renzora_project_api::OpenScenePathRequested(p));
                 } else {
                     renzora_editor_framework::open_asset_tab(world, &p, kind);
                 }
@@ -128,9 +128,9 @@ impl Plugin for AssetBrowserPlugin {
 
         app.init_resource::<state::NativeAssets>();
         app.add_observer(references::rewrite_project_references);
-        app.init_resource::<renzora::core::SelectAllClaimed>();
-        app.init_resource::<renzora::core::AssetBrowserCwd>();
-        app.init_resource::<renzora::core::AssetDropScrollRequest>();
+        app.init_resource::<renzora_project_api::SelectAllClaimed>();
+        app.init_resource::<renzora_project_api::AssetBrowserCwd>();
+        app.init_resource::<renzora_project_api::AssetDropScrollRequest>();
         app.register_panel_content("assets", false, panel::build);
         // View systems — gated on the panel being the active (visible) tab. While
         // the Assets tab is a hidden background tab these stand down, so directory
@@ -308,7 +308,7 @@ pub(crate) fn emit_asset_path_change(
     new_abs: &std::path::Path,
     is_dir: bool,
 ) {
-    let Some(project) = world.get_resource::<renzora::core::CurrentProject>() else {
+    let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() else {
         return;
     };
     let old_rel = project.make_asset_relative(old_abs);
@@ -321,12 +321,10 @@ pub(crate) fn emit_asset_path_change(
         return;
     };
     cmds.push(move |world: &mut bevy::prelude::World| {
-        world.trigger(renzora::core::AssetPathChanged {
+        world.trigger(renzora_scene_api::AssetPathChanged {
             old: old_rel,
             new: new_rel,
             is_dir,
         });
     });
 }
-
-renzora::add!(AssetBrowserPlugin, Editor);

@@ -8,7 +8,7 @@
 //! neighbours carries no information. A Ramer–Douglas–Peucker pass per channel
 //! keeps the keys that actually shape the curve.
 
-use renzora::AnimClip;
+use renzora_animation_api::AnimClip;
 
 /// Positional tolerance in scene units (metres) — half a millimetre.
 const TRANSLATION_TOLERANCE: f32 = 0.0005;

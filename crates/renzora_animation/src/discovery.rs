@@ -83,7 +83,7 @@ pub fn discover_animation_clips(
 }
 
 /// Which `.skel` in the folder claims each clip: `clip file name ->
-/// asset-relative .skel path`, from each skeleton's [`renzora::SkeletonRestPose::clips`].
+/// asset-relative .skel path`, from each skeleton's [`renzora_animation_api::SkeletonRestPose::clips`].
 ///
 /// The importer writes one `.skel` per model it extracted clips from, naming
 /// those clips, so a clip from an animation-only download carries its own
@@ -106,7 +106,7 @@ fn clip_skeletons(entries: &[std::fs::DirEntry], model_dir: &Path, model_stem: O
     skels.sort_by_key(|e| e.file_name());
     for skel in skels {
         let Ok(text) = std::fs::read_to_string(skel.path()) else { continue };
-        let Ok(pose) = ron::from_str::<renzora::SkeletonRestPose>(&text) else { continue };
+        let Ok(pose) = ron::from_str::<renzora_animation_api::SkeletonRestPose>(&text) else { continue };
         let asset = model_dir.join("animations").join(skel.file_name()).to_string_lossy().replace('\\', "/");
         for clip in pose.clips {
             out.entry(clip).or_insert_with(|| asset.clone());
@@ -129,12 +129,12 @@ mod tests {
         std::fs::create_dir_all(&anims).unwrap();
         let clip = crate::extract::create_empty_clip("walk", 1.0);
         for name in ["Walk.anim", "Mine.anim", "Handmade.anim"] {
-            renzora::write_anim_file(&clip, &anims.join(name)).unwrap();
+            renzora_animation_api::write_anim_file(&clip, &anims.join(name)).unwrap();
         }
-        let theirs = renzora::SkeletonRestPose { bones: vec![], clips: vec!["Walk.anim".into()] };
-        renzora::write_skeleton_file(&theirs, &anims.join("Walking.skel")).unwrap();
-        let own = renzora::SkeletonRestPose { bones: vec![], clips: vec!["Mine.anim".into()] };
-        renzora::write_skeleton_file(&own, &anims.join("Hero.skel")).unwrap();
+        let theirs = renzora_animation_api::SkeletonRestPose { bones: vec![], clips: vec!["Walk.anim".into()] };
+        renzora_animation_api::write_skeleton_file(&theirs, &anims.join("Walking.skel")).unwrap();
+        let own = renzora_animation_api::SkeletonRestPose { bones: vec![], clips: vec!["Mine.anim".into()] };
+        renzora_animation_api::write_skeleton_file(&own, &anims.join("Hero.skel")).unwrap();
 
         let animator = discover_animation_clips("models/Hero.glb", &root).unwrap();
         let _ = std::fs::remove_dir_all(&root);

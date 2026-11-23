@@ -6,7 +6,7 @@
 //! `<model_dir>/materials/<name>.material` graph, but nothing in a `.glb`
 //! points back at those files. The link is re-established at spawn time by
 //! walking the spawned hierarchy and tagging each mesh with a
-//! [`renzora::MaterialRef`] derived from its authored glTF material name;
+//! [`renzora_material_api::MaterialRef`] derived from its authored glTF material name;
 //! `renzora_shader`'s resolver then compiles the file and swaps out the
 //! `StandardMaterial` Bevy's glTF loader attached.
 //!
@@ -34,7 +34,7 @@ use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
 use bevy::world_serialization::WorldInstanceReady;
 
-use renzora::core::MeshInstanceData;
+use renzora_scene_api::MeshInstanceData;
 
 /// Marker on the top-level entity of an imported model. The gizmo and
 /// animation tooling use this as the default "grab the whole thing" target,
@@ -142,8 +142,8 @@ fn bound_material_path(
 /// archive in a packed game.
 fn material_file_exists(
     path: &str,
-    project: Option<&renzora::CurrentProject>,
-    reader: &renzora::VirtualFileReader,
+    project: Option<&renzora_project_api::CurrentProject>,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> bool {
     let fs_path = match project {
         Some(project) if !std::path::Path::new(path).is_absolute() => {
@@ -184,8 +184,8 @@ impl MaterialFiles {
         path: &str,
         dir_rel: &str,
         on_disk: bool,
-        project: Option<&renzora::CurrentProject>,
-        reader: &renzora::VirtualFileReader,
+        project: Option<&renzora_project_api::CurrentProject>,
+        reader: &renzora_project_api::VirtualFileReader,
     ) -> bool {
         if on_disk {
             if let Some(project) = project {
@@ -316,12 +316,12 @@ pub fn bind_material_refs(
         (
             With<Mesh3d>,
             Without<MaterialBindingDone>,
-            Without<renzora::MaterialRef>,
+            Without<renzora_material_api::MaterialRef>,
         ),
     >,
     gltf_assets: Res<Assets<Gltf>>,
-    project: Option<Res<renzora::CurrentProject>>,
-    file_reader: Option<Res<renzora::VirtualFileReader>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    file_reader: Option<Res<renzora_project_api::VirtualFileReader>>,
     mut files: Local<MaterialFiles>,
 ) {
     // Forget what was learned once nothing is binding, so the next import
@@ -330,7 +330,7 @@ pub fn bind_material_refs(
         files.clear();
         return;
     }
-    let default_reader = renzora::VirtualFileReader::default();
+    let default_reader = renzora_project_api::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
     // Only the editor and a loose-folder game read the project from disk; a
     // packed game or the web build installs its own reader, which has no
@@ -382,7 +382,7 @@ pub fn bind_material_refs(
                     Some(path) => {
                         commands
                             .entity(entity)
-                            .insert((renzora::MaterialRef(path), MaterialBindingDone));
+                            .insert((renzora_material_api::MaterialRef(path), MaterialBindingDone));
                     }
                     None => {
                         commands.entity(entity).insert(MaterialBindingDone);

@@ -215,7 +215,7 @@ fn prune_material_cache(time: Res<Time<Real>>, mut cache: ResMut<MaterialCache>,
 /// Marker component added to entities that have been resolved. Defined in the
 /// contract crate (every panel that rebinds a material has to remove it) and
 /// re-exported here so the resolver's own module path keeps working.
-pub use renzora::core::MaterialResolved;
+pub use renzora_material_api::MaterialResolved;
 
 /// Outcome of compiling a `.material` file. The classifier in
 /// `standard_build` decides which variant we get based on the graph's nodes.
@@ -249,12 +249,12 @@ impl Plugin for MaterialResolverPlugin {
         info!("[runtime] MaterialResolverPlugin");
         app.init_resource::<MaterialCache>()
             .init_resource::<super::perf::MaterialPerfStats>()
-            .init_resource::<renzora::VirtualFileReader>()
-            .init_resource::<renzora::content_problems::ContentProblems>()
+            .init_resource::<renzora_project_api::VirtualFileReader>()
+            .init_resource::<renzora_diagnostics_api::content_problems::ContentProblems>()
             .register_type::<MaterialRef>()
             .register_type::<super::material_ref::MaterialOverrides>()
             .register_type::<super::material_ref::ParamValue>()
-            .init_resource::<renzora::diagnostics::MaterialCacheCounts>()
+            .init_resource::<renzora_diagnostics_api::diagnostics::MaterialCacheCounts>()
             .init_resource::<super::alpha_override::AlphaVariantCache>()
             .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain())
             .add_systems(Last, prune_material_cache)
@@ -317,7 +317,7 @@ impl Plugin for MaterialResolverPlugin {
 /// Absent resource reads as "game": `EditorSession` is inserted during runtime
 /// setup, so a system scheduled before it lands must not assume editor.
 #[cfg(feature = "editor")]
-fn in_editor_session(session: Option<Res<renzora::EditorSession>>) -> bool {
+fn in_editor_session(session: Option<Res<renzora_project_api::EditorSession>>) -> bool {
     session.is_some_and(|s| s.is_editor())
 }
 
@@ -387,7 +387,7 @@ const LIBRARY_SETTLE_FRAMES: u32 = 10;
 struct ValidationJob {
     uuid: Uuid,
     libraries: usize,
-    task: bevy::tasks::Task<Vec<renzora::content_problems::ContentProblem>>,
+    task: bevy::tasks::Task<Vec<renzora_diagnostics_api::content_problems::ContentProblem>>,
 }
 
 /// Compile the WGSL each graph material binds and record what the compiler says.
@@ -410,7 +410,7 @@ fn report_material_problems(
     graph_materials: Option<Res<Assets<GraphMaterial>>>,
     shaders: Option<Res<Assets<Shader>>>,
     validator: Option<Res<super::validate::ShaderValidator>>,
-    mut problems: ResMut<renzora::content_problems::ContentProblems>,
+    mut problems: ResMut<renzora_diagnostics_api::content_problems::ContentProblems>,
 ) {
     let (Some(validator), Some(graph_materials), Some(shaders)) =
         (validator, graph_materials, shaders)
@@ -447,12 +447,12 @@ fn report_material_problems(
             // `console_error` feeds the Console panel's buffer.
             for problem in &found {
                 warn!("{}: {}", path, problem.message);
-                renzora::console_log::console_error("Material", format!("{path}: {}", problem.message));
+                renzora_log_api::console_error("Material", format!("{path}: {}", problem.message));
             }
             // Errors only: the compile sites own the Warning rows for this path.
             problems.set_severity(
                 path.clone(),
-                renzora::content_problems::ProblemSeverity::Error,
+                renzora_diagnostics_api::content_problems::ProblemSeverity::Error,
                 found,
             );
             checked.insert(path.clone(), (job.uuid, job.libraries));
@@ -561,7 +561,7 @@ fn resolve_material_refs(
     query: Query<(Entity, &MaterialRef), (Without<MaterialResolved>, Without<Sprite>)>,
     mut cache: ResMut<MaterialCache>,
     mut perf: ResMut<super::perf::MaterialPerfStats>,
-    mut problems: ResMut<renzora::content_problems::ContentProblems>,
+    mut problems: ResMut<renzora_diagnostics_api::content_problems::ContentProblems>,
     standard_materials: Option<ResMut<Assets<bevy::pbr::StandardMaterial>>>,
     graph_materials: Option<ResMut<Assets<GraphMaterial>>>,
     code_materials: Option<ResMut<Assets<CodeShaderMaterial>>>,
@@ -570,8 +570,8 @@ fn resolve_material_refs(
     shader_cache: Option<ResMut<ShaderCache>>,
     shader_registry: Option<Res<crate::registry::ShaderBackendRegistry>>,
     fallback_texture: Option<Res<FallbackTexture>>,
-    project: Option<Res<renzora::CurrentProject>>,
-    file_reader: Option<Res<renzora::VirtualFileReader>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    file_reader: Option<Res<renzora_project_api::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
     use super::perf::MaterialKind;
@@ -598,7 +598,7 @@ fn resolve_material_refs(
     let Some(shader_registry) = shader_registry else {
         return;
     };
-    let default_reader = renzora::VirtualFileReader::default();
+    let default_reader = renzora_project_api::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
     // Opening a scene with the Bistro in it asks for well over a hundred
     // materials the cache has never seen, and reading and building every one
@@ -740,11 +740,11 @@ fn resolve_material_refs(
                     if let Some(warnings) = warnings {
                         problems.set_severity(
                             path.clone(),
-                            renzora::content_problems::ProblemSeverity::Warning,
+                            renzora_diagnostics_api::content_problems::ProblemSeverity::Warning,
                             warnings
                                 .iter()
-                                .map(|w| renzora::content_problems::ContentProblem {
-                                    severity: renzora::content_problems::ProblemSeverity::Warning,
+                                .map(|w| renzora_diagnostics_api::content_problems::ContentProblem {
+                                    severity: renzora_diagnostics_api::content_problems::ProblemSeverity::Warning,
                                     message: w.clone(),
                                     line: None,
                                     node_id: None,
@@ -778,11 +778,11 @@ fn resolve_material_refs(
                         is_derived, fs_path
                     );
                     warn!("Failed to resolve material file: {} ({})", path, err);
-                    renzora::console_log::console_error("Material", format!("Failed to resolve {path}: {err}"));
+                    renzora_log_api::console_error("Material", format!("Failed to resolve {path}: {err}"));
                     problems.set(
                         path.clone(),
-                        vec![renzora::content_problems::ContentProblem {
-                            severity: renzora::content_problems::ProblemSeverity::Error,
+                        vec![renzora_diagnostics_api::content_problems::ContentProblem {
+                            severity: renzora_diagnostics_api::content_problems::ProblemSeverity::Error,
                             message: err.clone(),
                             line: None,
                             node_id: None,
@@ -925,7 +925,7 @@ fn resolve_code_shader(
     shaders: &mut Assets<Shader>,
     shader_cache: &mut ShaderCache,
     registry: &crate::registry::ShaderBackendRegistry,
-    reader: &renzora::VirtualFileReader,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> Option<Handle<CodeShaderMaterial>> {
     let content = match reader.read_string(path) {
         Some(c) => c,
@@ -977,13 +977,13 @@ fn resolve_code_shader(
 fn resolve_raw_shader(
     path: &str,
     asset_path: &str,
-    project: Option<&renzora::CurrentProject>,
+    project: Option<&renzora_project_api::CurrentProject>,
     asset_server: &AssetServer,
     materials: &mut Assets<CodeShaderMaterial>,
     shaders: &mut Assets<Shader>,
     shader_cache: &mut ShaderCache,
     registry: &crate::registry::ShaderBackendRegistry,
-    reader: &renzora::VirtualFileReader,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> Option<Handle<CodeShaderMaterial>> {
     let source = match reader.read_string(path) {
         Some(c) => c,
@@ -997,8 +997,8 @@ fn resolve_raw_shader(
     // puts the view uniform, so building a mesh material from one aborts the
     // process in wgpu at pipeline creation. The drop targets refuse it; this
     // covers a scene that already names one as a mesh's material.
-    if renzora::is_effect_source(&source) {
-        renzora::console_log::console_warn(
+    if renzora_render_api::is_effect_source(&source) {
+        renzora_log_api::console_warn(
             "Material",
             format!("{asset_path} is a post-process effect, not a material. Add it to a Post Process component instead."),
         );
@@ -1052,7 +1052,7 @@ fn resolve_raw_shader(
 /// Returns `false` on read errors / parse failures so missing or
 /// malformed files fall through to the master-resolver path, which
 /// already handles those cases gracefully.
-fn is_derived_material_file(path: &str, reader: &renzora::VirtualFileReader) -> bool {
+fn is_derived_material_file(path: &str, reader: &renzora_project_api::VirtualFileReader) -> bool {
     use super::instance::MaterialInstance;
     let Some(content) = reader.read_string(path) else {
         return false;
@@ -1070,14 +1070,14 @@ fn is_derived_material_file(path: &str, reader: &renzora::VirtualFileReader) -> 
 /// graphs — fails to compile to WGSL.
 fn resolve_material_file(
     path: &str,
-    project: Option<&renzora::CurrentProject>,
+    project: Option<&renzora_project_api::CurrentProject>,
     standard_materials: &mut Assets<bevy::pbr::StandardMaterial>,
     graph_materials: &mut Assets<GraphMaterial>,
     shaders: &mut Assets<Shader>,
     shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
-    reader: &renzora::VirtualFileReader,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> Option<CompiledMaterial> {
     let content = match reader.read_string(path) {
         Some(c) => c,
@@ -1099,7 +1099,7 @@ fn resolve_material_file(
     // `sprite_material`), and a sprite's shader reads bindings a 3D pipeline
     // does not have: binding it would fail when the pipeline is built.
     if graph.domain == MaterialDomain::Sprite {
-        renzora::console_log::console_error(
+        renzora_log_api::console_error(
             "Material",
             format!("{path} is a Sprite material; it can only be used on a sprite"),
         );
@@ -1201,8 +1201,8 @@ fn resolve_material_file(
 /// project the same way the `.material` lookup does.
 fn load_compiled_from_vfs(
     wgsl_path: &str,
-    project: Option<&renzora::CurrentProject>,
-    reader: &renzora::VirtualFileReader,
+    project: Option<&renzora_project_api::CurrentProject>,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> Option<(String, super::precompiled::CompiledMaterialMeta)> {
     let resolve = |key: &str| -> String {
         if std::path::Path::new(key).is_absolute() {
@@ -1249,7 +1249,7 @@ fn load_compiled_from_vfs(
 /// across every instance.
 fn resolve_material_instance_file(
     path: &str,
-    project: Option<&renzora::CurrentProject>,
+    project: Option<&renzora_project_api::CurrentProject>,
     cache: &mut MaterialCache,
     standard_materials: &mut Assets<bevy::pbr::StandardMaterial>,
     graph_materials: &mut Assets<GraphMaterial>,
@@ -1257,7 +1257,7 @@ fn resolve_material_instance_file(
     shader_state: &mut GraphMaterialShaderState,
     fallback_texture: &Option<Res<FallbackTexture>>,
     asset_server: &AssetServer,
-    reader: &renzora::VirtualFileReader,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> Option<CompiledMaterial> {
     use super::instance::{
         apply_overrides_to_param_slots, graph_with_overrides_applied, MaterialInstance,
@@ -1453,13 +1453,13 @@ fn resolve_graph_material_from_graph(
     if !result.errors.is_empty() {
         for err in &result.errors {
             error!("Material compile error in '{}': {}", path, err);
-            renzora::console_log::console_error("Material", format!("{path}: {err}"));
+            renzora_log_api::console_error("Material", format!("{path}: {err}"));
         }
         return None;
     }
     for warning in &result.warnings {
         warn!("Material compile warning in '{}': {}", path, warning);
-        renzora::console_log::console_warn("Material", format!("{path}: {warning}"));
+        renzora_log_api::console_warn("Material", format!("{path}: {warning}"));
     }
 
     let (handle, parameters) = assemble_graph_material(
@@ -1523,7 +1523,7 @@ fn assemble_graph_material(
     // as changed, and Bevy then rebuilds every pipeline that uses it: each
     // further material with this source would recompile all the earlier ones.
     if !shaders.contains(&shader_handle) {
-        let shader = renzora::shader_source::shader(
+        let shader = renzora_shader_api::shader_source::shader(
             fragment_shader,
             format!("material/{}.wesl", path.replace(['\\', ':'], "/").trim_start_matches('/')),
         );
@@ -1569,7 +1569,7 @@ fn assemble_graph_material(
         if tb.asset_path.is_empty() {
             continue;
         }
-        let handle: Handle<Image> = asset_server.load(&tb.asset_path);
+        let handle: Handle<Image> = super::codegen::load_texture_binding(asset_server, tb);
         if !mat.extension.set_texture(tb.kind, tb.binding, handle) {
             warn!(
                 "Material '{}' wants more textures than the extension provides ({:?} slot {})",
@@ -1596,9 +1596,9 @@ fn assemble_graph_material(
 /// binding watching it, and the cache is static in most frames.
 fn publish_cache_counts(
     cache: Res<MaterialCache>,
-    mut counts: ResMut<renzora::diagnostics::MaterialCacheCounts>,
+    mut counts: ResMut<renzora_diagnostics_api::diagnostics::MaterialCacheCounts>,
 ) {
-    let current = renzora::diagnostics::MaterialCacheCounts {
+    let current = renzora_diagnostics_api::diagnostics::MaterialCacheCounts {
         standard: cache.standard_count(),
         graph: cache.graph_count(),
         code: cache.code_count(),

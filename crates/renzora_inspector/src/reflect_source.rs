@@ -38,7 +38,7 @@ use bevy::reflect::enums::{DynamicEnum, DynamicVariant, VariantInfo};
 // Reflect` the component hands back, never from an `as_partial_reflect()` view.
 use bevy::reflect::{GetPath, ReflectRef, TypeInfo};
 
-use renzora::{FieldType, FieldValue};
+use renzora_editor_api::{FieldType, FieldValue};
 
 /// One generated row: what to draw, and the reflect path to read/write it.
 pub struct ReflectField {

@@ -9,14 +9,14 @@
 //! Add a `bevy_silk::prelude::ClothBuilder` to any entity with a mesh to turn
 //! it into cloth (see the `bevy_silk` docs for pinning / stick-generation).
 //!
-//! Cloth follows the world wind (`renzora::WindState`), so a flag and the grass
+//! Cloth follows the world wind (`renzora_world_api::WindState`), so a flag and the grass
 //! under it move together. `bevy_silk` has had a `Winds` resource all along;
 //! nothing had ever written to it, which is why cloth used to hang dead still
 //! in a scene full of moving foliage.
 
 use bevy::prelude::*;
 use bevy_silk::prelude::{Wind, Winds};
-use renzora::WindState;
+use renzora_world_api::WindState;
 
 /// Index in [`Winds::wind_forces`] that the world wind owns.
 ///
@@ -53,10 +53,8 @@ impl Plugin for ClothPlugin {
             // then too; its collisions run against that paused physics world.
             .configure_sets(
                 Update,
-                bevy_silk::prelude::ClothSimulationSet.run_if(renzora::core::game_running),
+                bevy_silk::prelude::ClothSimulationSet.run_if(renzora_project_api::game_running),
             )
             .add_systems(Update, sync_cloth_wind);
     }
 }
-
-renzora::add!(ClothPlugin);

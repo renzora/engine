@@ -497,7 +497,7 @@ fn choose_voice(world: &mut World) {
     let mut dialog = renzora_editor_framework::file_dialog::editor_file_dialog(world)
         .set_title("Lip sync from a voice recording")
         .add_filter("Audio", &["wav", "ogg", "mp3", "flac"]);
-    if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+    if let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() {
         dialog = dialog.set_directory(&project.path);
     }
     if let Some(path) = dialog.pick_file() {

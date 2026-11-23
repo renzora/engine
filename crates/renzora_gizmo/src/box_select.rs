@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{NavOverlayState, ViewportState};
+use renzora_viewport_api::{NavOverlayState, ViewportState};
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::types::{BoxSelectionState, GizmoMesh, GizmoRoot};

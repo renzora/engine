@@ -85,7 +85,7 @@ type FilterGateData = (
     Option<&'static AtmosphereEnvironmentMapLight>,
     Option<Ref<'static, Camera>>,
     Option<&'static Name>,
-    Has<renzora::core::ViewportRedrawIdle>,
+    Has<renzora_scene_api::ViewportRedrawIdle>,
 );
 
 /// Decide, per map, whether it filters this frame.
@@ -103,7 +103,7 @@ pub(crate) fn update_env_map_filter_gate(
     sky: Res<SkyBakeDirty>,
     mut image_events: MessageReader<AssetEvent<Image>>,
     maps: Query<FilterGateData>,
-    mut timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    mut timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
 ) {
     let changed_images: Vec<AssetId<Image>> = image_events
         .read()

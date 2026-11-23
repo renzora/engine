@@ -1,7 +1,7 @@
 //! Post-process effects written as shader files.
 //!
 //! An effect is one `.wesl` file that declares its own sliders in comments (see
-//! [`effect_file`]). A [`renzora::PostEffects`] component on a scene entity lists
+//! [`effect_file`]). A [`renzora_render_api::PostEffects`] component on a scene entity lists
 //! the effects to run, in order, and is routed to cameras like every other
 //! effect. Nothing is compiled per effect: one render pass runs whatever the
 //! list holds, so adding an effect to a project is copying a file into it.
@@ -20,7 +20,8 @@ mod render;
 
 use bevy::prelude::*;
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
-use renzora::{EffectRouting, PostEffects};
+use renzora_scene_api::EffectRouting;
+use renzora_render_api::PostEffects;
 
 pub use effect_file::{EffectField, EffectInfo, FieldKind, FieldRole};
 pub use library::EffectLibrary;
@@ -54,8 +55,8 @@ impl Plugin for PostProcessPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] PostProcessPlugin");
         app.register_type::<PostEffects>()
-            .register_type::<renzora::PostEffect>()
-            .register_type::<renzora::PostEffectValue>()
+            .register_type::<renzora_render_api::PostEffect>()
+            .register_type::<renzora_render_api::PostEffectValue>()
             .init_resource::<EffectLibrary>()
             .add_plugins(ExtractComponentPlugin::<PostEffectChain>::default())
             .add_systems(
@@ -75,7 +76,6 @@ impl Plugin for PostProcessPlugin {
     }
 }
 
-renzora::add!(PostProcessPlugin, Runtime);
 
 /// Resolve every routed camera's chain.
 ///

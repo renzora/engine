@@ -19,7 +19,7 @@ use bevy::prelude::*;
 #[cfg(feature = "gltf")]
 use crate::scene_io;
 use crate::Vfs;
-use renzora::MeshInstanceData;
+use renzora_scene_api::MeshInstanceData;
 
 /// Lifecycle state for the asset-load progress tracker.
 #[derive(Default, Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,8 +119,8 @@ pub struct LoadHold {
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct SceneSettling<'w, 's> {
     scene: Option<Res<'w, crate::scene_io::SceneLoadState>>,
-    work: Option<Res<'w, renzora::core::SceneLoadWork>>,
-    unresolved_materials: Query<'w, 's, (), (With<renzora::core::MaterialRef>, Without<renzora::core::MaterialResolved>)>,
+    work: Option<Res<'w, renzora_platform_api::SceneLoadWork>>,
+    unresolved_materials: Query<'w, 's, (), (With<renzora_material_api::MaterialRef>, Without<renzora_material_api::MaterialResolved>)>,
     // Optional, not `MessageReader`s: a headless server registers neither
     // asset type, and a reader of an unregistered message panics.
     images: Option<Res<'w, Messages<AssetEvent<Image>>>>,
@@ -383,7 +383,7 @@ mod tests {
             .insert_resource(TimeUpdateStrategy::ManualDuration(std::time::Duration::from_millis(100)))
             .init_resource::<AssetLoadProgress>()
             .init_resource::<SceneLoadState>()
-            .init_resource::<renzora::core::SceneLoadWork>()
+            .init_resource::<renzora_platform_api::SceneLoadWork>()
             .add_systems(Update, tick_asset_load_progress);
         app.update();
         app
@@ -402,14 +402,14 @@ mod tests {
     #[test]
     fn loading_waits_for_reported_work_and_a_quiet_spell() {
         let mut app = app();
-        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 40);
+        app.world_mut().resource_mut::<renzora_platform_api::SceneLoadWork>().set("terrain", 40);
         load_scene(&mut app);
         for _ in 0..20 {
             app.update();
         }
         assert_eq!(state(&app), LoadProgressState::Loading, "terrain still building");
 
-        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 0);
+        app.world_mut().resource_mut::<renzora_platform_api::SceneLoadWork>().set("terrain", 0);
         app.update();
         assert_eq!(state(&app), LoadProgressState::Loading, "settling");
         for _ in 0..8 {
@@ -429,7 +429,7 @@ mod tests {
         }
         let before = state(&app);
         assert_ne!(before, LoadProgressState::Loading);
-        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 5);
+        app.world_mut().resource_mut::<renzora_platform_api::SceneLoadWork>().set("terrain", 5);
         for _ in 0..5 {
             app.update();
         }
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn a_slow_scene_is_waited_for() {
         let mut app = app();
-        app.world_mut().resource_mut::<renzora::core::SceneLoadWork>().set("terrain", 1);
+        app.world_mut().resource_mut::<renzora_platform_api::SceneLoadWork>().set("terrain", 1);
         load_scene(&mut app);
         for _ in 0..((SLOW_LOAD_SECONDS * 10.0) as usize + 50) {
             app.update();

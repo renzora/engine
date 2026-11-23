@@ -1,7 +1,7 @@
 //! Collide Scene: particles hitting the scene's own physics colliders.
 //!
 //! This crate links no physics engine. The scene is asked through the contract
-//! crate's `renzora::scene_query`, which the physics crate answers when it is
+//! crate's `renzora_physics_api::scene_query`, which the physics crate answers when it is
 //! in the build; without it there is no `SceneQueries` resource and the node
 //! does nothing, exactly as if the scene were empty.
 //!
@@ -22,7 +22,7 @@
 //! so in the Running On row).
 
 use bevy::prelude::*;
-use renzora::scene_query::{SceneQueries, SceneQueryBatch};
+use renzora_physics_api::scene_query::{SceneQueries, SceneQueryBatch};
 
 use crate::asset::Dimension;
 use crate::sim::scene::SceneProbe;

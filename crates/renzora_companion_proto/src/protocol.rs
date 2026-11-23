@@ -58,8 +58,20 @@ pub enum Message {
     /// `Done` still arrives, as `Err("cancelled")`.
     Cancel { id: JobId },
     /// Editor to companion: what the editor is doing that work should keep out
-    /// of the way of. GPU jobs wait while `playing`.
-    EditorState { playing: bool },
+    /// of the way of. GPU jobs wait while `playing`. With `thumbnails` off
+    /// (the editor's Render thumbnails setting) the companion renders none:
+    /// it drops its render-ahead backlog, fails thumbnail jobs, and stops its
+    /// render worker, freeing the memory and GPU that worker held.
+    EditorState {
+        playing: bool,
+        #[serde(default = "thumbnails_on")]
+        thumbnails: bool,
+    },
+}
+
+/// An editor older than the Render thumbnails setting always wants them.
+fn thumbnails_on() -> bool {
+    true
 }
 
 /// Work the companion can do.
@@ -74,7 +86,7 @@ pub enum Job {
     /// the companion connects, which proves the whole round trip (submit, run
     /// on a worker, report back) and measures it.
     Echo { text: String, millis: u64 },
-    /// Work an editor crate queued through `renzora::CompanionJobs`: a handler
+    /// Work an editor crate queued through `renzora_platform_api::CompanionJobs`: a handler
     /// `kind` and its JSON arguments. One variant for every kind, so a crate
     /// adding a job does not change this protocol.
     Run { kind: String, payload: String, target: String },
@@ -200,7 +212,7 @@ mod tests {
             },
             Message::Show,
             Message::Cancel { id: 3 },
-            Message::EditorState { playing: true },
+            Message::EditorState { playing: true, thumbnails: false },
         ];
         for message in messages {
             let line = encode(&message);

@@ -1,0 +1,20 @@
+[package]
+name = "renzora_editor_api"
+version = "0.1.0"
+edition = "2021"
+description = "The editor contract: selection, the inspector registry and field definitions, the Inspectable derive, toolbar/spawn/shortcut/GPU-pass registries, AppEditorExt. Plugins see it at `renzora::EditorSelection`, `renzora::FieldDef`, ... under `renzora`'s `editor` feature"
+
+# A contract layer, moved out of `renzora`. Editor-only by linking: crates that
+# ship in a game do not depend on it (see the crate docs).
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+renzora_log_api = { path = "../renzora_log_api" }
+# Shortcuts are bound through the shell layer's key map.
+renzora_shell_api = { path = "../renzora_shell_api" }
+# Shortcuts stand down while a text field has focus (`InputFocusState`).
+renzora_project_api = { path = "../renzora_project_api" }
+renzora_editor_api_macros = { path = "macros" }
+
+[lints]
+workspace = true

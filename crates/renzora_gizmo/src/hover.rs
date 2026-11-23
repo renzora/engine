@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportState};
+use renzora_viewport_api::{ViewportSettings, ViewportState};
 use renzora_editor_framework::{EditorCamera, EditorSelection};
 
 use crate::modal_transform;
@@ -156,7 +156,7 @@ type HandleLines = (
     Option<GizmoAxis>,
     GizmoMode,
     GizmoSpace,
-    [bool; renzora::core::viewport_types::VIEWPORT_COUNT],
+    [bool; renzora_viewport_api::VIEWPORT_COUNT],
 );
 
 /// Wake the viewport overlay when what the transform gizmo draws as lines
@@ -176,7 +176,7 @@ pub(crate) fn signal_overlay_changes(
     space: Res<GizmoSpace>,
     per_slot: Res<crate::types::PerSlotGizmo>,
     mut last: Local<Option<HandleLines>>,
-    mut changed: ResMut<renzora::core::viewport_types::ViewportOverlayChanged>,
+    mut changed: ResMut<renzora_viewport_api::ViewportOverlayChanged>,
 ) {
     let now = Some((
         gizmo_state.hovered_axis,

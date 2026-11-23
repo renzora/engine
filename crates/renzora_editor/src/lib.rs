@@ -12,10 +12,11 @@
 //!
 //! # What is and is not shared
 //!
-//! `bevy_dylib`, `renzora_dylib` and `renzora_ember_dylib` are shared because
-//! those crates keep **process-global statics** — the translation table, the
-//! Console and Problems buffers, the theme palette and stylesheet — that must be
-//! one thing per process or they fail silently.
+//! `bevy_dylib` and `renzora_dylib` are shared because the crates inside them
+//! keep **process-global statics** (the translation table, the Console and
+//! Problems buffers, the UI framework's theme palette and stylesheet) that must
+//! be one thing per process or they fail silently. The UI framework rides in
+//! `renzora_dylib`; it used to be a third image, `renzora_ember_dylib`.
 //!
 //! The other crates this image and the executable both depend on are simply
 //! linked into each. That costs bytes and nothing else: a `TypeId` comes from a
@@ -30,15 +31,13 @@
 // allows it for the same link.
 #![allow(linker_messages)]
 
-// Linked for their side effect only — see the dependency comment in
-// `Cargo.toml`. Their presence is what makes `renzora` and `renzora_ember`
-// resolve to the shared images instead of being embedded here, which is what
-// keeps the translation table, the Console buffers and the theme palette one
-// thing per process rather than one per image.
+// Linked for its side effect only — see the dependency comment in
+// `Cargo.toml`. Its presence is what makes `renzora` and `renzora_ember` (the UI
+// framework, inside the same image) resolve to the shared image instead of
+// being embedded here, which is what keeps the translation table, the Console
+// buffers and the theme palette one thing per process rather than one per image.
 #[cfg(not(target_arch = "wasm32"))]
 extern crate renzora_dylib;
-#[cfg(not(target_arch = "wasm32"))]
-extern crate renzora_ember_dylib;
 
 #[cfg(feature = "editor")]
 mod plugins;
@@ -51,8 +50,8 @@ mod plugins;
 /// silently not installed.
 ///
 /// Taking `&mut App` across a `dlopen` boundary is sound here only because the
-/// executable and this image link one `bevy_dylib`, one `renzora_dylib`, one
-/// `renzora_ember_dylib` and one `renzora_runtime_dylib` — so `App`, `World` and
+/// executable and this image link one `bevy_dylib`, one `renzora_dylib` and one
+/// `renzora_runtime_dylib`, so `App`, `World` and
 /// every component type are the same types on both sides. See the module docs.
 #[cfg(all(feature = "editor", not(target_arch = "wasm32")))]
 #[unsafe(no_mangle)]

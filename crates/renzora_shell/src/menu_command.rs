@@ -53,7 +53,7 @@ pub enum MenuCommand {
     Save,
     SaveAs,
     /// Two commands because no OS dialog picks files and folders at once — see
-    /// `renzora::core::ImportPick`.
+    /// `renzora_project_api::ImportPick`.
     ImportFiles,
     ImportFolder,
     InstallPlugin,
@@ -104,6 +104,7 @@ impl MenuCommand {
     pub fn run(self, world: &mut World) {
         use crate::save_prompts::{ProjectSwitch, ProjectSwitchRequest};
         use renzora::core::*;
+        use renzora_platform_api::{AuthSignOutRequest, AuthToggleWindowRequest};
 
         match self {
             // ── File ────────────────────────────────────────────────────────

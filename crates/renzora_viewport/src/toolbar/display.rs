@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     CollisionGizmoVisibility, ViewportSettings, VisualizationGroup, VisualizationMode,
 };
 use renzora_editor_framework::EditorCommands;
@@ -47,7 +47,7 @@ pub(super) enum DisplayOption {
 pub(super) fn display_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
 
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.visualization")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.display.visualization")));
     // The material-swap views are listed here; the views a renderer feature
     // draws itself (virtual geometry, SSIL) each get a submenu of their own, so
     // the list does not grow by a screenful with every feature that adds some.
@@ -65,7 +65,7 @@ pub(super) fn display_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<E
         commands,
         fonts,
         "polygon",
-        &renzora::lang::t_or("viewport.display.virtual_geometry", "Virtual Geometry"),
+        &renzora_lang_api::t_or("viewport.display.virtual_geometry", "Virtual Geometry"),
         vg,
     ));
     let ssil = rows_in(commands, VisualizationGroup::Ssil);
@@ -73,35 +73,35 @@ pub(super) fn display_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<E
         commands,
         fonts,
         "sun-dim",
-        &renzora::lang::t_or("viewport.display.ssil", "SSIL"),
+        &renzora_lang_api::t_or("viewport.display.ssil", "SSIL"),
         ssil,
     ));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.render")));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.mesh"), render_toggles.mesh));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.textures"), render_toggles.textures));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.shading.wireframe"), render_toggles.wireframe));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.lighting"), render_toggles.lighting));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.shadows"), render_toggles.shadows));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.display.render")));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.mesh"), render_toggles.mesh));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.textures"), render_toggles.textures));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.shading.wireframe"), render_toggles.wireframe));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.lighting"), render_toggles.lighting));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.shadows"), render_toggles.shadows));
     // Off renders the viewport only when the scene changes, so a heavy scene
     // stops dragging the editor UI down to its frame rate while nothing moves.
     // On is for things that move without the scene changing: shader animation,
     // GPU particles. See `crate::redraw`.
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.realtime"), realtime));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.realtime"), realtime));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.overlays")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.display.overlays")));
     kids.push(grid_divisions_row(commands, fonts));
     // Subgrid's switch used to sit here, but it never touched this grid — the
     // flag only splits the *2D* editor's grid into major/minor lines. Dividing
     // the 3D grid is what the -/+ above does, and the 2D flag keeps its home in
     // Settings → Viewport.
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.axis_gizmo"), show_axis_gizmo));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.axis_gizmo"), show_axis_gizmo));
     // Sits with the axis gizmo rather than in Gizmos: both are corner chrome
     // that belongs to the *view*, where everything in Gizmos is drawn per
     // scene object.
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.stats"), show_stats));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.stats"), show_stats));
     // Scene Icons / Labels and the whole collision-gizmo picker used to live
     // here; they moved to the Gizmos dropdown (`build_gizmos_dropdown`) so all
     // the "what's drawn over the scene" switches sit in one place. Display keeps
@@ -127,55 +127,55 @@ pub(super) fn display_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<E
 pub(super) fn gizmos_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
 
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.selection")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.gizmos.selection")));
     kids.push(toggle_row!(
         commands, fonts,
-        &renzora::lang::t("viewport.gizmos.bounding_box"),
+        &renzora_lang_api::t("viewport.gizmos.bounding_box"),
         show_selection_box
     ));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.scene")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.gizmos.scene")));
     kids.push(toggle_row!(
         commands, fonts,
-        &renzora::lang::t("viewport.gizmos.lights"),
+        &renzora_lang_api::t("viewport.gizmos.lights"),
         show_light_gizmos
     ));
     kids.push(toggle_row!(
         commands, fonts,
-        &renzora::lang::t("viewport.gizmos.cameras"),
+        &renzora_lang_api::t("viewport.gizmos.cameras"),
         show_camera_gizmos
     ));
     // The editor camera's own orbit pivot, shown while navigating.
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.gizmos.pivot"), show_pivot));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.scene_icons"), show_scene_icons));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.labels"), show_labels));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.gizmos.pivot"), show_pivot));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.scene_icons"), show_scene_icons));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.display.labels"), show_labels));
     // The game's own UI, not an editor overlay — but it belongs here because
     // from the viewport's point of view it is one more thing drawn over the
     // scene, and this is where you come to turn those off.
     kids.push(toggle_row!(
         commands, fonts,
-        &renzora::lang::t_or("viewport.gizmos.game_ui", "Game UI"),
+        &renzora_lang_api::t_or("viewport.gizmos.game_ui", "Game UI"),
         show_game_ui
     ));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.rigging")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.gizmos.rigging")));
     kids.push(toggle_row!(
         commands, fonts,
-        &renzora::lang::t("viewport.gizmos.skeleton"),
+        &renzora_lang_api::t("viewport.gizmos.skeleton"),
         show_skeleton_gizmos
     ));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.physics")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.gizmos.physics")));
     // The on/off half of `collision_gizmo_visibility`. Turning it back on
     // restores the remembered Selected Only / Always choice rather than always
     // snapping to Selected Only.
     kids.push(check_row(
         commands,
         fonts,
-        &renzora::lang::t("viewport.gizmos.colliders"),
+        &renzora_lang_api::t("viewport.gizmos.colliders"),
         |w: &Rx| {
             w.get_resource::<ViewportSettings>()
                 .map(|s| s.collision_gizmo_visibility != CollisionGizmoVisibility::Off)
@@ -202,13 +202,13 @@ pub(super) fn gizmos_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<En
         commands,
         fonts,
         DisplayOption::Collision(true),
-        &renzora::lang::t("viewport.display.selected_only"),
+        &renzora_lang_api::t("viewport.display.selected_only"),
     ));
     kids.push(option_row(
         commands,
         fonts,
         DisplayOption::Collision(false),
-        &renzora::lang::t("common.always"),
+        &renzora_lang_api::t("common.always"),
     ));
     kids
 }
@@ -236,13 +236,13 @@ impl Default for ColliderGizmoMemory {
 /// in 2D view (the 3D Display dropdown is the mirror-image `ThreeDOnly`).
 pub(super) fn build_overlay_2d_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let kids = vec![
-        section_label(commands, fonts, &renzora::lang::t("viewport.display.overlays")),
+        section_label(commands, fonts, &renzora_lang_api::t("viewport.display.overlays")),
         grid_row(commands, fonts),
-        toggle_row!(commands, fonts, &renzora::lang::t("viewport.rulers"), show_rulers_2d),
+        toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.rulers"), show_rulers_2d),
         toggle_row!(
             commands,
             fonts,
-            &renzora::lang::t_or("viewport.gizmos", "Gizmos"),
+            &renzora_lang_api::t_or("viewport.gizmos", "Gizmos"),
             show_gizmos_2d
         ),
     ];
@@ -304,7 +304,7 @@ fn grid_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let lbl = commands
         .spawn((
-            Text::new(renzora::lang::t("viewport.grid")),
+            Text::new(renzora_lang_api::t("viewport.grid")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(value_text())),
         ))
@@ -356,7 +356,7 @@ fn grid_divisions_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let lbl = commands
         .spawn((
-            Text::new(renzora::lang::t("viewport.grid")),
+            Text::new(renzora_lang_api::t("viewport.grid")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(value_text())),
         ))

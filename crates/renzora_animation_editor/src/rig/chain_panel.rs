@@ -17,7 +17,7 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
 
-use renzora::core::{EditedMesh, MakeBendable, MeshColor, MeshInstanceData, MeshPrimitive};
+use renzora_scene_api::{EditedMesh, MakeBendable, MeshColor, MeshInstanceData, MeshPrimitive};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::reactive::Rx;
@@ -196,7 +196,7 @@ pub(crate) fn make_bendable(world: &mut World, entity: Entity, segments: usize) 
     let mesh = world.resource::<Assets<Mesh>>().get(&mesh).cloned().ok_or("the shape's mesh is not loaded")?;
     let color = world.get::<MeshColor>(entity).map_or(Color::WHITE, |c| c.0).to_linear();
     let name = world.get::<Name>(entity).map(|n| n.as_str().to_string()).unwrap_or_else(|| "shape".into());
-    let project = world.get_resource::<renzora::core::CurrentProject>().ok_or("no project is open")?.path.clone();
+    let project = world.get_resource::<renzora_project_api::CurrentProject>().ok_or("no project is open")?.path.clone();
 
     let positions: Vec<Vec3> = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
         Some(VertexAttributeValues::Float32x3(v)) => v.iter().map(|p| Vec3::from_array(*p)).collect(),

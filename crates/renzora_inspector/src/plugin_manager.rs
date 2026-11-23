@@ -12,12 +12,12 @@
 
 use bevy::prelude::*;
 
-use renzora::{DisabledPlugins, PluginInventory};
+use renzora_platform_api::{DisabledPlugins, PluginInventory};
 
 pub fn register(app: &mut App) {
     app.init_resource::<PluginInventory>();
     // Seeded from disk once. The loader has already read the same file for
     // itself — it runs before any resource exists — and this is the editable
     // mirror the settings UI binds to.
-    app.insert_resource(DisabledPlugins(renzora::load_disabled_plugins()));
+    app.insert_resource(DisabledPlugins(renzora_project_api::load_disabled_plugins()));
 }

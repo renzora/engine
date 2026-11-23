@@ -157,7 +157,7 @@ pub fn extract_animations_from_usd(
         };
 
         let out_path = output_dir.join(&file_name);
-        renzora::write_anim_file(&clip, &out_path)
+        renzora_animation_api::write_anim_file(&clip, &out_path)
             .map_err(|e| format!("Failed to write animation '{}': {}", file_name, e))?;
 
         written_files.push(out_path.display().to_string());

@@ -145,7 +145,7 @@ pub(crate) fn body(commands: &mut Commands, fonts: &EmberFonts, mixer: &MixerSta
     let caption = label(
         commands,
         &fonts.ui,
-        &renzora::lang::t_or("mixer.metering_caption", "Post-fader peak. The mark holds the highest peak for 2 seconds."),
+        &renzora_lang_api::t_or("mixer.metering_caption", "Post-fader peak. The mark holds the highest peak for 2 seconds."),
         text_muted(),
         11.0,
     );
@@ -169,7 +169,7 @@ pub(crate) fn body(commands: &mut Commands, fonts: &EmberFonts, mixer: &MixerSta
         Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
         _ => rgb(card_bg()),
     });
-    let rt = label(commands, &fonts.ui, &renzora::lang::t_or("mixer.reset_peaks", "Reset peaks"), text_primary(), 12.0);
+    let rt = label(commands, &fonts.ui, &renzora_lang_api::t_or("mixer.reset_peaks", "Reset peaks"), text_primary(), 12.0);
     commands.entity(reset).add_child(rt);
     commands.entity(head).add_children(&[caption, spring, reset]);
 
@@ -294,7 +294,7 @@ fn row(commands: &mut Commands, fonts: &EmberFonts, bus: BusRef, key: String, ma
             BackgroundColor(rgb(card_bg())),
             UiInteraction::default(),
             ClipReset(key.clone()),
-            HoverTooltip::new(renzora::lang::t_or("mixer.clip_tip", "Lights when this bus goes over full scale. Click to clear.")),
+            HoverTooltip::new(renzora_lang_api::t_or("mixer.clip_tip", "Lights when this bus goes over full scale. Click to clear.")),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
         ))
         .id();
@@ -306,7 +306,7 @@ fn row(commands: &mut Commands, fonts: &EmberFonts, bus: BusRef, key: String, ma
             rgb(card_bg())
         }
     });
-    let ct = label(commands, &fonts.ui, &renzora::lang::t_or("mixer.clip", "CLIP"), text_muted(), 9.0);
+    let ct = label(commands, &fonts.ui, &renzora_lang_api::t_or("mixer.clip", "CLIP"), text_muted(), 9.0);
     let key_ct = key;
     bind_with(
         commands,

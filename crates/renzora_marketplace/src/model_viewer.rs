@@ -44,8 +44,8 @@ use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora::SplashState;
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_project_api::SplashState;
 use crate::auth::marketplace::AssetSummary;
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 
@@ -53,7 +53,7 @@ use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
 /// alongside every other offscreen rig's — that registry is what keeps it
 /// distinct from the previews and thumbnail captures that would otherwise
 /// render their contents into the marketplace preview.
-use renzora::core::viewport_types::MODEL_VIEWER_LAYER;
+use renzora_viewport_api::MODEL_VIEWER_LAYER;
 
 /// Offscreen render-target resolution. 16:9 to match the overlay's landscape
 /// header viewer; 640×360 is crisp at the ~600px card width with HiDPI headroom.

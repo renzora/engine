@@ -2,11 +2,19 @@
 name = "renzora_particles_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only half of renzora_particles: the .vfx effect editor (ember node graph, live preview, emitter settings, template gallery), the Particle System Add Entity preset and its inspector. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only half of renzora_particles: the .vfx effect editor (ember node graph, live preview, emitter settings, template gallery), the Particle System Add Entity preset and its inspector. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_shell_api = { path = "../../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../../api/renzora_scene_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
+renzora_log_api = { path = "../../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+# Particle templates in the create-file menu, and the convert asset actions.
+renzora_material_api = { path = "../../api/renzora_material_api" }
+renzora_shader_api = { path = "../../api/renzora_shader_api" }
 renzora_particles = { path = ".." }
 # The viewport gizmo: the overlay gizmo group and the selection it follows.
 renzora_gizmo = { path = "../../renzora_gizmo" }
@@ -25,3 +33,10 @@ rfd = "0.15"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ParticlesEditorPlugin"
+scope = "Editor"

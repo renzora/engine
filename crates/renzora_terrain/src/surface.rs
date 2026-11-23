@@ -42,7 +42,7 @@ use bevy::render::render_resource::{
     AsBindGroup, Extent3d, ShaderType, TextureDimension, TextureFormat, TextureUsages,
 };
 use bevy::shader::ShaderRef;
-use renzora::core::MaterialRef;
+use renzora_material_api::MaterialRef;
 use serde::{Deserialize, Serialize};
 
 use crate::data::{TerrainChunkOf, TerrainData};
@@ -933,7 +933,7 @@ fn dress_chunks(
 /// material to be traced with.
 ///
 /// A ray hit cannot run the surface shader, so Solari traces the terrain with
-/// a [`TracedStandIn`](renzora::TracedStandIn) instead: the base layer's
+/// a [`TracedStandIn`](renzora_render_api::TracedStandIn) instead: the base layer's
 /// average colour, which is what shadows, bounced light and reflections of
 /// the ground see. What the camera sees directly is still the full surface,
 /// through the G-buffer. A chunk without one is left out of the ray-traced
@@ -952,10 +952,10 @@ fn dress_chunks(
 #[allow(clippy::type_complexity)]
 fn stand_in_chunks(
     mut commands: Commands,
-    wanted: Option<Res<renzora::TracedStandInsWanted>>,
+    wanted: Option<Res<renzora_render_api::TracedStandInsWanted>>,
     builds: Query<&SurfaceBuild>,
     chunks: Query<
-        (Entity, &TerrainChunkOf, Option<&renzora::TracedStandIn>),
+        (Entity, &TerrainChunkOf, Option<&renzora_render_api::TracedStandIn>),
         (
             With<Mesh3d>,
             Without<MaterialRef>,
@@ -966,7 +966,7 @@ fn stand_in_chunks(
     stale: Query<
         Entity,
         (
-            With<renzora::TracedStandIn>,
+            With<renzora_render_api::TracedStandIn>,
             With<TerrainChunkOf>,
             Without<MeshMaterial3d<renzora_shader::material::GraphMaterial>>,
         ),
@@ -976,7 +976,7 @@ fn stand_in_chunks(
 ) {
     if wanted.is_none() {
         for chunk in &stale {
-            commands.entity(chunk).try_remove::<renzora::TracedStandIn>();
+            commands.entity(chunk).try_remove::<renzora_render_api::TracedStandIn>();
         }
         return;
     }
@@ -988,7 +988,7 @@ fn stand_in_chunks(
         if current.is_some_and(|c| c.0 == want) {
             continue;
         }
-        commands.entity(chunk).try_insert(renzora::TracedStandIn(want));
+        commands.entity(chunk).try_insert(renzora_render_api::TracedStandIn(want));
     }
 }
 
@@ -1155,7 +1155,7 @@ fn main_pass_post_lighting_processing(p: PbrInput, c: vec4<f32>) -> vec4<f32> { 
             })
             .collect::<Vec<_>>()
             .join("\n");
-        renzora::wgsl::check(&format!("{STUBS}\n{body}"))
+        renzora_shader_api::wgsl::check(&format!("{STUBS}\n{body}"))
             .unwrap_or_else(|err| panic!("terrain_surface.wesl: {err}"));
     }
 

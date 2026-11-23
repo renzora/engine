@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use renzora::undo::{UndoCommand, UndoContext};
+use renzora_shell_api::undo::{UndoCommand, UndoContext};
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 
 use crate::apply::{apply_generator, gather_generator_layer, terrain_grid, TerrainGeneratorLayer};
@@ -25,7 +25,7 @@ use crate::format::TerrainGraph;
 /// The open project's folder, which relative graph and heightmap paths
 /// resolve from.
 pub fn project_root(world: &World) -> Option<PathBuf> {
-    world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
+    world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone())
 }
 
 /// Read and parse a `.tgraph`, project-relative or absolute.
@@ -33,7 +33,7 @@ pub fn load_graph(world: &World, path: &str) -> Result<TerrainGraph, String> {
     if path.trim().is_empty() {
         return Err("the terrain has no graph; pick a .tgraph".into());
     }
-    let fs = match world.get_resource::<renzora::core::CurrentProject>() {
+    let fs = match world.get_resource::<renzora_project_api::CurrentProject>() {
         Some(p) => p.resolve_path(path),
         None => PathBuf::from(path),
     };
@@ -170,8 +170,8 @@ pub fn commit(world: &mut World, terrain: Entity, result: &EvalResult, label: &s
         }
     }
     let after = snapshot(world, terrain, &chunks);
-    renzora::undo::record(world, UndoContext::Scene, Box::new(BuildUndo { label: label.to_string(), before, after }));
-    renzora::undo::seal(world, &UndoContext::Scene);
+    renzora_shell_api::undo::record(world, UndoContext::Scene, Box::new(BuildUndo { label: label.to_string(), before, after }));
+    renzora_shell_api::undo::seal(world, &UndoContext::Scene);
 
     world.entity_mut(terrain).insert(TerrainGraphOutput {
         grid: result.grid,

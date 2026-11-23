@@ -19,7 +19,7 @@ mod inspectors;
 mod panel;
 pub mod persistence;
 
-use renzora::AppEditorExt;
+use renzora_editor_api::AppEditorExt;
 use renzora_navmesh::ShowAgentPathsOverride;
 
 /// Editor-scope companion to `renzora_navmesh::NavMeshPlugin`. Adds the NavMesh
@@ -36,7 +36,7 @@ impl Plugin for NavMeshEditorPlugin {
         app.register_inspector(inspectors::agent_inspector_entry());
 
         {
-            use renzora::{EntityPreset, SpawnRegistry};
+            use renzora_editor_api::{EntityPreset, SpawnRegistry};
             let mut registry = app
                 .world_mut()
                 .get_resource_or_insert_with(SpawnRegistry::default);
@@ -91,7 +91,6 @@ impl Plugin for NavMeshEditorPlugin {
     }
 }
 
-renzora::add!(NavMeshEditorPlugin, Editor);
 
 /// Mirror the panel's "Show Agent Paths" toggle into the lean override resource
 /// that `renzora_navmesh::draw_agent_paths` reads.

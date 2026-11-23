@@ -93,9 +93,9 @@ pub(crate) fn build(app: &mut App) {
         render::build(app);
         return;
     }
-    let key = renzora::profiling::ProfilingAccess::from_args("")
+    let key = renzora_diagnostics_api::profiling::ProfilingAccess::from_args("")
         .map(|a| a.key)
-        .unwrap_or_else(renzora::profiling::machine_key);
+        .unwrap_or_else(renzora_diagnostics_api::profiling::machine_key);
     app.insert_resource(PairingKey(key));
     app.add_plugins(renzora_ember::EmberPlugin);
     // Ember's cursor system reads the markup layer's drag state, which the

@@ -1,6 +1,6 @@
 //! Paint the Windows title bar in the theme's window colour.
 //!
-//! The editor runs under the OS window frame (`renzora::EDITOR_OS_FRAME`), so
+//! The editor runs under the OS window frame (`renzora_shell_api::EDITOR_OS_FRAME`), so
 //! Windows draws the title bar itself, in its own grey. Directly beneath it
 //! sits our top bar, and an unrelated grey meeting the theme's own colours
 //! read as two bands that didn't belong together.
@@ -31,7 +31,7 @@ pub(crate) fn sync_title_bar_colour(
     windows: Query<(Entity, &bevy::window::RawHandleWrapper)>,
     mut applied: Local<Vec<(Entity, [u8; 3])>>,
 ) {
-    if !renzora::EDITOR_OS_FRAME {
+    if !renzora_shell_api::EDITOR_OS_FRAME {
         return;
     }
     let (r, g, b) = renzora_ember::theme::window_bg();

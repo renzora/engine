@@ -1,0 +1,16 @@
+[package]
+name = "renzora_audio_api"
+version = "0.1.0"
+edition = "2021"
+description = "The engine side of the audio boundary (`AudioLink`) and the mixer backend contract; plugins see it as `renzora::audio` and `renzora::audio_backend`"
+
+# A contract subject layer above `renzora`, which it uses only for the panic
+# catcher (`core::recoverable`). An edit here rebuilds the two audio crates and
+# what sits above them, not the whole engine.
+[dependencies]
+renzora_crash_api = { path = "../renzora_crash_api" }
+bevy = { workspace = true }
+renzora = { path = "../../shared/renzora", default-features = false }
+
+[lints]
+workspace = true

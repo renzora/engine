@@ -164,7 +164,7 @@ fn manage_loading_screen(world: &mut World) {
 /// The active project's display name and folder path (empty if none open yet).
 fn project_info(world: &Rx) -> (String, String) {
     world
-        .get_resource::<renzora::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| (p.config.name.clone(), p.path.display().to_string()))
         .unwrap_or_default()
 }
@@ -231,7 +231,7 @@ fn spawn_loading(
         GlobalZIndex(if modal { 9600 } else { 480 }),
         Name::new(if modal { "editor-loading-overlay" } else { "loading-screen" }),
         // Editor chrome: a named root is otherwise saved as scene content.
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
     ));
     if modal {
         backdrop.insert((
@@ -355,7 +355,7 @@ fn build_letterbox(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let title = commands
         .spawn((
-            Text::new(renzora::lang::t("splash.loading")),
+            Text::new(renzora_lang_api::t("splash.loading")),
             ui_font(&fonts.ui, 18.0),
             TextColor(c(240, 240, 248)),
         ))

@@ -14,7 +14,7 @@
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use renzora::physics::{Cast, CastShape, PhysicsBackends, PhysicsDim, ResolvedShape};
+use renzora_physics_api::physics::{Cast, CastShape, PhysicsBackends, PhysicsDim, ResolvedShape};
 
 use crate::{ParkourBlocker, ParkourController, ParkourLadder};
 

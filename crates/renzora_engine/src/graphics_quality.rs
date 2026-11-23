@@ -10,9 +10,9 @@
 //! whatever the machine. On a weak / integrated GPU (or a high-DPI display,
 //! where the pixel count is ~2–4×) that stack is scene-independent and drops the
 //! game to single-digit FPS — see the module doc on
-//! `renzora::core::viewport_types::GraphicsQuality`.
+//! `renzora_viewport_api::GraphicsQuality`.
 //!
-//! This module resolves [`RenderingConfig::graphics_quality`](renzora::RenderingConfig)
+//! This module resolves [`RenderingConfig::graphics_quality`](renzora_project_api::RenderingConfig)
 //! into [`ResolvedGraphicsQuality`] and forces the tier onto the **active play
 //! camera** every frame, exactly as the editor forces it onto its viewport
 //! cameras. Both paths write the same resource, so downstream renderer crates
@@ -41,8 +41,9 @@ use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::GraphicsQuality;
-use renzora::{CurrentProject, EffectRouting, ResolvedGraphicsQuality};
+use renzora_viewport_api::GraphicsQuality;
+use renzora_scene_api::EffectRouting;
+use renzora_project_api::{CurrentProject, ResolvedGraphicsQuality};
 
 /// Seed [`ResolvedGraphicsQuality`] from the loaded project's `[rendering]`
 /// tier. Idempotent and cheap — assigns only when the value actually differs,

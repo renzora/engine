@@ -63,7 +63,7 @@ fn inspector_edit_patches_source_file() {
     // The writeback helper resolves the disk path via
     // `CurrentProject::path.join(asset_path)`. Pointing project root at the
     // same tempdir matches how the editor wires this up at runtime.
-    app.insert_resource(renzora::core::CurrentProject {
+    app.insert_resource(renzora_project_api::CurrentProject {
         path: PathBuf::from(asset_root),
         config: Default::default(),
     });

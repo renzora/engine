@@ -330,7 +330,7 @@ pub fn spawn_gpu_renderer(
         Some(h) => h.clone(),
         None => {
             let path = format!("renzora_particles/gpu/{:016x}.wgsl", program.hash);
-            let h = assets.shaders.add(renzora::shader_source::shader(program.source.clone(), path));
+            let h = assets.shaders.add(renzora_shader_api::shader_source::shader(program.source.clone(), path));
             assets.shader_cache.0.insert(program.hash, h.clone());
             h
         }
@@ -345,7 +345,7 @@ pub fn spawn_gpu_renderer(
     } else if let Some(shape) = ribbon {
         let capped = shape.capped();
         if capped.strips < shape.strips {
-            renzora::console_log::console_warn(
+            renzora_log_api::console_warn(
                 "Particles",
                 format!(
                     "emitter `{name}`: its ribbon pool mesh would pass {} M vertices, so the GPU draws {} of its {} strips",
@@ -438,8 +438,8 @@ pub fn spawn_gpu_renderer(
     };
     let common = (
         Name::new(format!("vfx gpu emitter {name}")),
-        renzora::HideInHierarchy,
-        renzora::NoSelectionBounds,
+        renzora_scene_api::HideInHierarchy,
+        renzora_scene_api::NoSelectionBounds,
         ChildOf(parent),
         Visibility::Inherited,
         bevy::camera::visibility::NoAutoAabb,
@@ -475,7 +475,7 @@ pub fn spawn_gpu_renderer(
                             texture,
                         )
                         .with_route(crate::render::material::RenderRoute::of(render));
-                        commands.entity(entity).insert((renzora::MaterialRef(path.to_string()), slot));
+                        commands.entity(entity).insert((renzora_material_api::MaterialRef(path.to_string()), slot));
                     }
                     _ => {
                         crate::render::warn_no_material_graph(render, dimension);
@@ -600,7 +600,7 @@ pub fn attach_gpu_renderers(
             }
             let e = &mut runtime.sim.emitters[slot];
             let Some(emitter) = asset.emitters.get(e.emitter_index) else { continue };
-            renzora::console_log::console_warn("Particles", format!("emitter `{}` runs on the CPU: {why}", emitter.name));
+            renzora_log_api::console_warn("Particles", format!("emitter `{}` runs on the CPU: {why}", emitter.name));
             e.set_gpu(false);
             e.backend = crate::gpu::BackendChoice { active: crate::gpu::ActiveBackend::Cpu, reason: Some(why), fell_back: true };
             // A group member already drawn by the GPU loses that child too.
@@ -703,7 +703,7 @@ pub fn sync_gpu_emitters(
     mut effects: Query<(&mut ParticleRuntime, &GlobalTransform, Option<&RenderLayers>)>,
     mut links: Query<(&mut GpuEmitterLink, &Transform, &mut Aabb)>,
     cameras: Query<(&Camera, &GlobalTransform, Option<&RenderLayers>), With<Camera3d>>,
-    wind: Option<Res<renzora::wind::WindState>>,
+    wind: Option<Res<renzora_world_api::wind::WindState>>,
 ) {
     counter.0 = counter.0.wrapping_add(1);
     let frame_index = counter.0;

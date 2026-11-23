@@ -35,7 +35,7 @@ pub(crate) struct BottomPanelSets {
 /// The name a bottom panel gets when it has never had a second set — the case
 /// for every layout written before sets existed.
 pub(crate) fn default_panel_set_name() -> String {
-    renzora::lang::t_or("shell.bottom_dock.set_default", "Default")
+    renzora_lang_api::t_or("shell.bottom_dock.set_default", "Default")
 }
 
 /// `Default 2`, `Default 3`, … — the first numbered name the panel isn't already
@@ -511,7 +511,7 @@ pub(crate) fn sync_bottom_set_menu(
         &fonts,
         "plus",
         text_muted(),
-        renzora::lang::t_or("shell.bottom_dock.set_new", "New Panel Set"),
+        renzora_lang_api::t_or("shell.bottom_dock.set_new", "New Panel Set"),
     );
     commands.entity(new_row).insert(BottomSetNew);
     rows.push(new_row);
@@ -521,7 +521,7 @@ pub(crate) fn sync_bottom_set_menu(
             &fonts,
             "trash",
             text_muted(),
-            renzora::lang::t_or("shell.bottom_dock.set_remove", "Remove This Set"),
+            renzora_lang_api::t_or("shell.bottom_dock.set_remove", "Remove This Set"),
         );
         commands.entity(remove_row).insert(BottomSetRemove);
         rows.push(remove_row);

@@ -81,17 +81,17 @@ impl Check {
     }
 
     fn with(mut self, action: CheckAction, label_key: &str) -> Self {
-        self.action = Some((action, renzora::lang::t(label_key)));
+        self.action = Some((action, renzora_lang_api::t(label_key)));
         self
     }
 }
 
 fn t_platform(key: &str, p: Platform) -> String {
-    renzora::lang::t(key).replace("{platform}", p.display_name())
+    renzora_lang_api::t(key).replace("{platform}", p.display_name())
 }
 
 fn t_n(key: &str, n: usize) -> String {
-    renzora::lang::t(key).replace("{n}", &n.to_string())
+    renzora_lang_api::t(key).replace("{n}", &n.to_string())
 }
 
 /// Can a lean build be made for this platform from here at all?
@@ -114,7 +114,7 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
         if !crate::docker::lean_supported(p) {
             out.push(Check::new(CheckKind::Error, t_platform("export.check.lean_unsupported", p)));
         } else if !source {
-            let c = Check::new(CheckKind::Error, renzora::lang::t("export.packaging.needs_source"));
+            let c = Check::new(CheckKind::Error, renzora_lang_api::t("export.packaging.needs_source"));
             out.push(if s.release_info.is_some() {
                 c.with(CheckAction::DownloadSource, "export.check.action.download")
             } else if s.release_fetch_error.is_some() {
@@ -125,7 +125,7 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
         } else {
             out.push(Check::new(
                 CheckKind::Ok,
-                renzora::lang::t(if web { "export.check.toolchain_web" } else { "export.check.toolchain" }),
+                renzora_lang_api::t(if web { "export.check.toolchain_web" } else { "export.check.toolchain" }),
             ));
         }
         // A cross-platform lean build compiles in a container. Not blocking
@@ -135,10 +135,10 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
             match status {
                 crate::docker::DockerStatus::Ready => {}
                 crate::docker::DockerStatus::NotInstalled => {
-                    out.push(Check::new(CheckKind::Warn, renzora::lang::t("export.docker.not_installed")))
+                    out.push(Check::new(CheckKind::Warn, renzora_lang_api::t("export.docker.not_installed")))
                 }
                 crate::docker::DockerStatus::NotRunning(_) => {
-                    out.push(Check::new(CheckKind::Warn, renzora::lang::t("export.check.docker_not_running")))
+                    out.push(Check::new(CheckKind::Warn, renzora_lang_api::t("export.check.docker_not_running")))
                 }
             }
         }
@@ -151,7 +151,7 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
             out.push(Check::new(CheckKind::Pending, t_platform("export.check.template_downloading", p)));
         } else if s.release_fetch_error.is_some() {
             out.push(
-                Check::new(CheckKind::Error, renzora::lang::t("export.check.github_unreachable"))
+                Check::new(CheckKind::Error, renzora_lang_api::t("export.check.github_unreachable"))
                     .with(CheckAction::RetryRelease, "export.check.action.retry"),
             );
         } else if let Some(info) = &s.release_info {
@@ -162,18 +162,18 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
                 c.with(CheckAction::InstallTemplate, "export.check.action.install")
             });
         } else if release_fetch_pending(s) || !s.release_fetch_started {
-            out.push(Check::new(CheckKind::Pending, renzora::lang::t("export.check.template_looking")));
+            out.push(Check::new(CheckKind::Pending, renzora_lang_api::t("export.check.template_looking")));
         }
     }
 
     // ── Where it goes ───────────────────────────────────────────────────────
     if s.output_dir.trim().is_empty() {
         out.push(
-            Check::new(CheckKind::Error, renzora::lang::t("export.check.no_folder"))
+            Check::new(CheckKind::Error, renzora_lang_api::t("export.check.no_folder"))
                 .with(CheckAction::ChooseFolder, "export.check.action.choose"),
         );
     } else {
-        out.push(Check::new(CheckKind::Ok, renzora::lang::t("export.check.folder_set")));
+        out.push(Check::new(CheckKind::Ok, renzora_lang_api::t("export.check.folder_set")));
     }
 
     // ── Will it be what you meant? ──────────────────────────────────────────
@@ -183,7 +183,7 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
         out.push(if can_lean { c.with(CheckAction::UseLean, "export.check.action.use_lean") } else { c });
     }
     if !web && !lean && plugins > 0 && s.plugin_link_mode == PluginLinkMode::LinkIn {
-        let c = Check::new(CheckKind::Warn, renzora::lang::t("export.check.link_needs_lean"));
+        let c = Check::new(CheckKind::Warn, renzora_lang_api::t("export.check.link_needs_lean"));
         out.push(if can_lean { c.with(CheckAction::UseLean, "export.check.action.use_lean") } else { c });
     }
     if lean {
@@ -200,12 +200,12 @@ pub(super) fn preflight(w: &Rx) -> Vec<Check> {
         }
     } else if can_lean {
         out.push(
-            Check::new(CheckKind::Warn, renzora::lang::t("export.check.testing_mode"))
+            Check::new(CheckKind::Warn, renzora_lang_api::t("export.check.testing_mode"))
                 .with(CheckAction::UseLean, "export.check.action.use_lean"),
         );
     }
     let stale = w
-        .get_resource::<renzora::PluginUpdates>()
+        .get_resource::<renzora_platform_api::PluginUpdates>()
         .map(|u| u.entries.iter().filter(|e| s.selected_plugins.contains(&e.id)).count())
         .unwrap_or(0);
     if stale > 0 {
@@ -246,7 +246,7 @@ pub(super) fn build_summary_rail(commands: &mut Commands, fonts: &EmberFonts) ->
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
         .id();
 
-    let h1 = caption(commands, fonts, &renzora::lang::t("export.summary.this_build"));
+    let h1 = caption(commands, fonts, &renzora_lang_api::t("export.summary.this_build"));
     commands.entity(body).add_child(h1);
     let rows: [(&str, SummaryValue); 6] = [
         ("export.summary.platform", |s| s.platform.display_name().to_string()),
@@ -260,7 +260,7 @@ pub(super) fn build_summary_rail(commands: &mut Commands, fonts: &EmberFonts) ->
         let row = commands
             .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(10.0), justify_content: JustifyContent::SpaceBetween, ..default() })
             .id();
-        let k = txt(commands, fonts, &renzora::lang::t(key), 11.5, text_muted());
+        let k = txt(commands, fonts, &renzora_lang_api::t(key), 11.5, text_muted());
         let v = commands
             .spawn((
                 Text::new(String::new()),
@@ -275,7 +275,7 @@ pub(super) fn build_summary_rail(commands: &mut Commands, fonts: &EmberFonts) ->
         commands.entity(body).add_child(row);
     }
 
-    let h2 = caption(commands, fonts, &renzora::lang::t("export.summary.before_export"));
+    let h2 = caption(commands, fonts, &renzora_lang_api::t("export.summary.before_export"));
     commands.entity(h2).insert(Node { margin: UiRect::top(Val::Px(12.0)), ..default() });
     commands.entity(body).add_child(h2);
     let list = commands
@@ -324,15 +324,15 @@ pub(super) fn build_summary_rail(commands: &mut Commands, fonts: &EmberFonts) ->
     bind_text(commands, rel, |w| {
         let Some(s) = w.get_resource::<ExportOverlayState>() else { return String::new() };
         if s.release_fetch_error.is_some() {
-            renzora::lang::t("export.status.release_unavailable")
+            renzora_lang_api::t("export.status.release_unavailable")
         } else if let Some(info) = &s.release_info {
             // Say when this is the nightly fallback rather than a release for
             // this exact version: "where did this runtime come from?" should be
             // answerable without reading the source.
             let key = if info.is_fallback { "export.status.nightly" } else { "export.status.latest" };
-            format!("{} {}", renzora::lang::t(key), info.tag_name)
+            format!("{} {}", renzora_lang_api::t(key), info.tag_name)
         } else {
-            renzora::lang::t("export.status.loading_release")
+            renzora_lang_api::t("export.status.loading_release")
         }
     });
     commands.entity(foot).add_children(&[dot, rel]);
@@ -350,14 +350,14 @@ fn caption(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
 
 fn engine_summary(s: &ExportOverlayState) -> String {
     if s.packaging_mode != PackagingMode::LeanSingleBinary {
-        return renzora::lang::t("export.summary.engine_all");
+        return renzora_lang_api::t("export.summary.engine_all");
     }
     let total = crate::capabilities::CAPABILITIES.len();
     let on = crate::capabilities::CAPABILITIES
         .iter()
         .filter(|c| s.capabilities.get(c.id).copied().unwrap_or(false))
         .count();
-    renzora::lang::t("export.summary.engine_count")
+    renzora_lang_api::t("export.summary.engine_count")
         .replace("{n}", &on.to_string())
         .replace("{total}", &total.to_string())
 }
@@ -365,7 +365,7 @@ fn engine_summary(s: &ExportOverlayState) -> String {
 fn plugin_summary(s: &ExportOverlayState) -> String {
     let n = s.selected_plugins.len();
     if n == 0 {
-        return renzora::lang::t("common.none");
+        return renzora_lang_api::t("common.none");
     }
     let web = matches!(s.platform, Platform::WebWasm32);
     let lean = s.packaging_mode == PackagingMode::LeanSingleBinary;
@@ -381,8 +381,8 @@ fn plugin_summary(s: &ExportOverlayState) -> String {
 
 fn files_summary(s: &ExportOverlayState) -> String {
     match &s.included_files {
-        None => renzora::lang::t("export.summary.files_auto"),
-        Some(set) => renzora::lang::t("export.files.count")
+        None => renzora_lang_api::t("export.summary.files_auto"),
+        Some(set) => renzora_lang_api::t("export.files.count")
             .replace("{n}", &set.len().to_string())
             .replace("{total}", &s.project_files.len().to_string()),
     }
@@ -391,7 +391,7 @@ fn files_summary(s: &ExportOverlayState) -> String {
 fn folder_summary(s: &ExportOverlayState) -> String {
     let dir = s.output_dir.trim();
     if dir.is_empty() {
-        return renzora::lang::t("export.summary.not_set");
+        return renzora_lang_api::t("export.summary.not_set");
     }
     // The last component is what tells two output folders apart; the full path
     // would be clipped to its drive letter in a column this narrow.

@@ -258,8 +258,17 @@ impl<'a> Ctx<'a> {
             binding: slot,
             asset_path: path,
             kind: TextureKind::D2,
+            linear: false,
         });
         name
+    }
+
+    /// Mark a texture this graph samples as data, to be loaded without the
+    /// sRGB decode (see `codegen::load_texture_binding`).
+    pub(crate) fn mark_texture_linear(&mut self, name: &str) {
+        if let Some(t) = self.texture_bindings.iter_mut().find(|t| t.name == name) {
+            t.linear = true;
+        }
     }
 
     /// The variable holding this body's landscape weights, emitting the read

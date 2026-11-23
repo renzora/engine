@@ -1,0 +1,20 @@
+[package]
+name = "renzora_text_mesh"
+version = "0.1.0"
+edition = "2021"
+description = "SDF glyph meshes and the SDF text material, shared by ember's world-space UI and the text3d plugin; plugins see it as `renzora::text_mesh`"
+
+# A contract subject layer above `renzora` (it needs nothing from it). Its own
+# crate rather than a `text_mesh` feature of the contract because it is the one
+# part of the contract that needs `bevy::text`: a lean export with UI off strips
+# that, and simply not depending on this crate is how such a build leaves it out.
+[dependencies]
+bevy = { workspace = true }
+
+[features]
+# The SDF text material implements `bevy::pbr::Material`, which a 2D-only lean
+# export does not compile. See the crate doc.
+render_3d = []
+
+[lints]
+workspace = true

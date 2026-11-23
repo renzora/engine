@@ -1,14 +1,14 @@
 //! Drag-and-drop gaussian-splat spawning — detects `.ply` / `.gcloud` asset
 //! drops on the 3D viewport and spawns an entity carrying a
-//! `renzora::GaussianSplat` (resolved into a live cloud by the
+//! `renzora_scene_api::GaussianSplat` (resolved into a live cloud by the
 //! `renzora_gaussian_splatting` plugin's sync system).
 
 use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
-use renzora::GaussianSplat;
+use renzora_project_api::CurrentProject;
+use renzora_scene_api::GaussianSplat;
 use renzora_editor_framework::EditorSelection;
 
 pub(crate) const GAUSSIAN_EXTENSIONS: &[&str] = &["ply", "gcloud", "sog", "ssog"];

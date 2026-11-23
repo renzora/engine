@@ -39,7 +39,7 @@ pub(crate) struct InspectorSectionOrder {
 impl InspectorSectionOrder {
     pub(crate) fn from_disk() -> Self {
         Self {
-            order: renzora::core::load_inspector_component_order(),
+            order: renzora_project_api::load_inspector_component_order(),
             revision: 0,
         }
     }
@@ -68,7 +68,7 @@ impl InspectorSectionOrder {
         }
         self.order = next;
         self.revision = self.revision.wrapping_add(1);
-        if let Err(e) = renzora::core::save_inspector_component_order(&self.order) {
+        if let Err(e) = renzora_project_api::save_inspector_component_order(&self.order) {
             warn!("could not save the inspector component order: {e}");
         }
     }

@@ -21,12 +21,12 @@ pub const DEFAULT_EFFECT: &str = "embedded://renzora_particles/presets/campfire.
 
 /// A particle effect on an entity.
 ///
-/// Requires a [`renzora::PickProxy`] because nothing about an effect can be hit
+/// Requires a [`renzora_scene_api::PickProxy`] because nothing about an effect can be hit
 /// by the viewport's mesh raycast: without it a particle system was visible but
 /// could not be clicked.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize, Default)]
-#[require(Transform, Visibility, ParticlePlayback, renzora::PickProxy = renzora::PickProxy { radius: 0.3 })]
+#[require(Transform, Visibility, ParticlePlayback, renzora_scene_api::PickProxy = renzora_scene_api::PickProxy { radius: 0.3 })]
 #[serde(default)]
 pub struct ParticleSystem {
     /// Project-relative path of the `.vfx`. This is what a scene stores. An old

@@ -6,9 +6,10 @@ Almost every feature in Renzora is its own Bevy plugin. This page covers the kin
 
 ## The plugin model
 
-A Renzora plugin is a Bevy `Plugin`: anything implementing `bevy::app::Plugin`. You declare it once with `renzora::add!(...)` and the engine wires it in. There is no `app.add_plugins(...)` call to make by hand.
+A Renzora plugin is a Bevy `Plugin`: anything implementing `bevy::app::Plugin`. You declare it once, in the crate's `Cargo.toml`, and the engine wires it in. There is no `app.add_plugins(...)` call to make by hand.
 
 ```rust
+// src/lib.rs
 use bevy::prelude::*;
 
 #[derive(Default)]
@@ -29,34 +30,40 @@ pub struct MyState {
 fn my_system(mut state: ResMut<MyState>) {
     state.counter += 1;
 }
-
-// Register with the engine. Runtime scope by default.
-renzora::add!(MyPlugin);
 ```
 
-The plugin type must implement `Default` — the macro constructs it with `Default::default()`.
+```toml
+# Cargo.toml: register with the engine. Runtime scope by default.
+[[package.metadata.renzora.plugin]]
+type = "MyPlugin"
+```
+
+The plugin type must implement `Plugin + Default`: the generated list constructs it with `Default::default()`.
 
 > There is **no `renzora::prelude`**. Import the engine surface with `use renzora::*;`, or pull individual items (`use renzora::Inspectable;`). For ECS types (`Plugin`, `App`, `Query`, `Commands`, …) use Bevy's own `use bevy::prelude::*;`.
 
-## The `add!` macro
+## The plugin table
 
-`renzora::add!` is the one registration point. Its forms:
+A `[[package.metadata.renzora.plugin]]` table in the crate's `Cargo.toml` is the one registration point. Its keys:
 
-```rust
-renzora::add!(MyPlugin);                               // Runtime scope (default)
-renzora::add!(MyEditorTool, Editor);                   // Editor scope
-renzora::add!(MyGameplay, Runtime);                    // Runtime scope, stated
-renzora::add!(MyFoundation, Runtime, priority = -100); // with explicit order
+```toml
+[[package.metadata.renzora.plugin]]
+type = "MyPlugin"                  # required; a path from the crate root, e.g. "material::MaterialPlugin"
+scope = "Editor"                   # optional; "Runtime" (the default) or "Editor"
+priority = -100                    # optional; default 0, lower installs earlier
 ```
 
-**It is not a runtime registry.** The line is read *as text* at build time by a generator, which writes two committed files — `crates/renzora_runtime/src/plugins.rs` and `crates/renzora_editor/src/plugins.rs` — each an ordinary list of `app.add_plugins(...)` calls. So a named plugin in a generated list is just a linker symbol: there is no FFI, no registry to iterate, and nothing that can silently fail to register.
+**It is not a runtime registry.** The table is configuration read only by the generator (`cargo renzora sync`), never code the crate compiles, so a crate needs no contract dependency just to be a plugin. The generator writes two committed files — `crates/renzora_runtime/src/plugins.rs` and `crates/renzora_editor/src/plugins.rs` — each an ordinary list of `app.add_plugins(...)` calls, plus the dependency entries. So a named plugin in a generated list is just a linker symbol: there is no FFI, no registry to iterate, and nothing that can silently fail to register.
 
-Two consequences worth knowing:
+Consequences worth knowing:
 
-- **Keep the declaration on one line, at the top level of the file.** The parse requires the full `add!(..);` form at line start, so a commented-out or string-embedded one is ignored.
-- **Keep every module on the plugin's path `pub`.** The type is resolved from the module the file defines. A wrong path is a compile error in the generated file, never a silently missing plugin.
+- **The parser is strict.** An unknown key, an unknown scope or a table without `type` is an error, not a silently missing plugin.
+- **Keep every module on the plugin's path `pub`.** `type` is resolved from the crate root. A `#[cfg(feature = "x")] pub mod y;` gate on that path is detected and reproduced in the generated list.
+- **Mistakes surface in the generated file.** A wrong type name or a missing `Default` impl is a compile error in the generated `plugins.rs`, not in the crate's own source.
 
-Multiple `add!` lines in one crate are fine — `renzora_ember` has four.
+Multiple tables in one crate are fine (one `[[package.metadata.renzora.plugin]]` per plugin): `renzora_ember` has four.
+
+> **Transitional:** a single-line `renzora::add!(MyPlugin, Editor);` in source is still accepted by the generator, and the `renzora add` scaffolder still writes one. The manifest table is the documented form; declaring the same plugin both ways is reported as a duplicate.
 
 Because both generated lists are committed, a plain `cargo build` needs no generator run. CI checks that regenerating produces no diff, which is what stops a stale list from shipping.
 
@@ -89,10 +96,12 @@ edition = "2021"
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+
+[[package.metadata.renzora.plugin]]
+type = "MyPlugin"
 ```
 
-Dropping it in `crates/` with an `add!` line is the whole job — the generator finds it and adds the dependency. Then build:
+Add `renzora = { path = "../renzora", default-features = false }` only when the crate uses the contract's types; being a plugin does not need it. Dropping the crate in `crates/` with a `[[package.metadata.renzora.plugin]]` table is the whole job: the generator finds it and adds the dependency. Then build:
 
 ```bash
 cargo renzora dist

@@ -113,7 +113,7 @@ impl Plugin for ShellPlugin {
         // than relying on some plugin having called `register_shell_action`.
         // On the web nothing does (the marketplace is native-only), and the
         // system failed its parameter check every frame.
-        app.add_message::<renzora::ShellActionInvoked>();
+        app.add_message::<renzora_shell_api::ShellActionInvoked>();
         app.add_systems(Update, toasts::forward_toasts);
         // Restore the persisted per-workspace dock layout if one exists, else use
         // the built-in defaults. When restoring, append any *new* built-in
@@ -240,8 +240,8 @@ impl Plugin for ShellPlugin {
                     .collect(),
             ));
         }
-        app.init_resource::<renzora::ShellPanelRegistry>();
-        app.init_resource::<renzora::ShellStatusRegistry>();
+        app.init_resource::<renzora_shell_api::ShellPanelRegistry>();
+        app.init_resource::<renzora_shell_api::ShellStatusRegistry>();
         seed_panel_meta(app);
         // Without this both bottom-panel grip systems fail parameter validation
         // every frame ("Resource does not exist") and silently never run, which
@@ -378,7 +378,6 @@ impl Plugin for ShellPlugin {
     }
 }
 
-renzora::add!(ShellPlugin, Editor);
 
 /// The ribbon's workspace layouts and which one is active. Switching saves the
 /// current dock tree back into the active slot (so per-layout edits persist)
@@ -440,7 +439,7 @@ fn install_plugin_workspaces(
 pub(crate) struct ShellRoot;
 
 /// Live re-localization: when the active language changes, rebuild the chrome so
-/// every widget re-reads `renzora::lang::t(...)` in the new language — the same
+/// every widget re-reads `renzora_lang_api::t(...)` in the new language — the same
 /// despawn-`ShellRoot` path a theme switch uses; `manage_shell_root` respawns the
 /// chrome and re-arms `DockDirty`, so the dock rebuilds too (panel contents
 /// re-localize, not just the bars).
@@ -458,7 +457,7 @@ fn relocalize_on_language_change(
     mut dirty: ResMut<DockDirty>,
     mut commands: Commands,
 ) {
-    let rev = renzora::lang::revision();
+    let rev = renzora_lang_api::revision();
     if *last_rev == rev {
         return;
     }
@@ -507,11 +506,11 @@ fn manage_shell_root(
     tm: Option<Res<renzora_theme::ThemeManager>>,
     theme_menu_open: Res<ThemeMenuOpen>,
     asset_server: Res<AssetServer>,
-    splash: Option<Res<State<renzora::SplashState>>>,
+    splash: Option<Res<State<renzora_project_api::SplashState>>>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
-    let want = splash.is_none_or(|s| *s.get() == renzora::SplashState::Editor);
+    let want = splash.is_none_or(|s| *s.get() == renzora_project_api::SplashState::Editor);
     let have = !roots.is_empty();
     if want && !have {
         // Wait for fonts so text/icons render from the first frame.
@@ -576,7 +575,7 @@ fn spawn_shell(
             },
             BackgroundColor(rgb(window_bg())),
             ShellRoot,
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             Name::new("Renzora Shell"),
         ))
         .id();
@@ -784,7 +783,7 @@ fn spawn_shell(
             // corner controls takes the hover, and the cursor.
             BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or(
                 "shell.bottom_dock.mode_overlay",
                 "Overlay — floats over the workspace",
             )),
@@ -857,7 +856,7 @@ fn spawn_shell(
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     // The OS frame brings its own edges.
-    if !renzora::EDITOR_OS_FRAME {
+    if !renzora_shell_api::EDITOR_OS_FRAME {
         let grips = build_resize_zones(commands);
         commands.entity(root).add_children(&grips);
     }
@@ -892,7 +891,7 @@ fn sync_hierarchy_filter_to_workspace(
     fixed: Option<Res<renzora_ember::dock::FixedDock>>,
     wins: Option<Res<renzora_ember::dock::DockWindows>>,
     filter: Option<ResMut<renzora_editor_framework::HierarchyFilter>>,
-    spawn_scope: Option<ResMut<renzora::SpawnCategoryScope>>,
+    spawn_scope: Option<ResMut<renzora_editor_api::SpawnCategoryScope>>,
 ) {
     let visible = |id: &str| {
         renzora_ember::dock::panel_visible_anywhere(

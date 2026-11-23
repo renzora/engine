@@ -69,7 +69,7 @@ fn build_keep_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     commands.entity(icon).insert(PASS_THROUGH);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("play.keep")),
+            Text::new(renzora_lang_api::t("play.keep")),
             ui_font(font, 11.0),
             TextColor(rgb(text_primary())),
             PASS_THROUGH,
@@ -82,7 +82,7 @@ fn build_keep_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
 /// Keep: show while the editor mirrors a running game, and ask the live link
 /// to adopt the game's changes when clicked.
 pub(crate) fn keep_btn(
-    live: Option<Res<renzora::LivePlaySession>>,
+    live: Option<Res<renzora_project_api::LivePlaySession>>,
     mut btns: Query<(&mut Node, &mut BackgroundColor, &UiInteraction), With<TopBarKeepBtn>>,
     mut commands: Commands,
 ) {
@@ -101,7 +101,7 @@ pub(crate) fn keep_btn(
             fill.0 = want;
         }
         if live.is_some() && *interaction == UiInteraction::Pressed {
-            commands.insert_resource(renzora::KeepLiveChangesRequested);
+            commands.insert_resource(renzora_project_api::KeepLiveChangesRequested);
         }
     }
 }
@@ -152,7 +152,7 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
         .insert((TopBarPlayIcon, PASS_THROUGH));
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("common.play")),
+            Text::new(renzora_lang_api::t("common.play")),
             ui_font(font, 11.0),
             TextColor(rgb(text_primary())),
             TopBarPlayLabel,
@@ -182,7 +182,7 @@ pub(crate) struct GlobalSceneHasCamera(bool);
 /// answer degrades safely: a false positive lets Play start, and the game
 /// reports the missing camera itself.
 pub(crate) fn track_global_scene_cameras(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut state: ResMut<GlobalSceneHasCamera>,
     mut last: Local<Option<Vec<String>>>,
 ) {
@@ -202,9 +202,9 @@ pub(crate) fn track_global_scene_cameras(
 /// to play through, or stop it while it runs.
 pub(crate) fn play_btn_click(
     btns: Query<&UiInteraction, (Changed<UiInteraction>, With<TopBarPlayBtn>)>,
-    play_mode: Option<ResMut<renzora::core::PlayModeState>>,
+    play_mode: Option<ResMut<renzora_project_api::PlayModeState>>,
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
-    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+    scene_cams: Query<(), With<renzora_scene_api::SceneCamera>>,
     global_cam: Option<Res<GlobalSceneHasCamera>>,
 ) {
     let Some(mut pm) = play_mode else { return };
@@ -229,7 +229,7 @@ pub(crate) fn play_btn_click(
 pub(crate) fn update_play_button(
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
     theme: Option<Res<renzora_theme::ThemeManager>>,
-    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+    scene_cams: Query<(), With<renzora_scene_api::SceneCamera>>,
     global_cam: Option<Res<GlobalSceneHasCamera>>,
     mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
     mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
@@ -248,11 +248,11 @@ pub(crate) fn update_play_button(
 
     // `icon_name` is a phosphor glyph name (not localized); the label IS localized.
     let (icon_name, color, label_text) = if running {
-        ("stop", tc(t.semantic.error), renzora::lang::t("common.stop"))
+        ("stop", tc(t.semantic.error), renzora_lang_api::t("common.stop"))
     } else if has_cam {
-        ("play", tc(t.semantic.success), renzora::lang::t("common.play"))
+        ("play", tc(t.semantic.success), renzora_lang_api::t("common.play"))
     } else {
-        ("play", tc(t.text.muted), renzora::lang::t("common.play"))
+        ("play", tc(t.text.muted), renzora_lang_api::t("common.play"))
     };
 
     for mut icon in &mut icons {

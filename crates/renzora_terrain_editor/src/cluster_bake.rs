@@ -20,7 +20,7 @@ use std::sync::Arc;
 use bevy::mesh::{Indices, VertexAttributeValues};
 use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, AsyncComputeTaskPool, Task};
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_rvg::bake::{build_mesh, MeshInput};
 use renzora_terrain::clusters::{mesh_hash, ChunkClusters, ClusterFile, RvgFile, TerrainClusters};
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData, TerrainSculptState};
@@ -56,7 +56,7 @@ pub(crate) fn install(app: &mut App) {
         (name_cluster_folders, build_chunk_clusters)
             .chain()
             .run_if(terrain_or_builds)
-            .run_if(renzora::core::not_in_play_mode),
+            .run_if(renzora_project_api::not_in_play_mode),
     );
 }
 
@@ -90,7 +90,7 @@ fn name_cluster_folders(
         terrain.to_bits().hash(&mut h);
         // Not std's clock, which panics on the web; a fresh scene id already
         // mixes in a clock that works on every platform.
-        renzora::SceneEntityId::new_random().0.hash(&mut h);
+        renzora_scene_api::SceneEntityId::new_random().0.hash(&mut h);
         commands
             .entity(terrain)
             .try_insert(TerrainClusters { dir: format!("terrain_clusters/{:016x}", h.finish()) });

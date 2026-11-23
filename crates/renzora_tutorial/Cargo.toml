@@ -5,16 +5,21 @@ edition = "2021"
 description = "Interactive first-run onboarding tutorial. Editor-only plugin: teaches engine basics (orbit/zoom/fly the camera, select a mesh, move it with the gizmo) as hands-on tasks the user completes by actually performing the action, each rewarded with an ember confetti burst."
 
 # Editor-scope plugin, linked into the `renzora_editor` image. Its
-# `add!(TutorialPlugin, Editor)` puts it in the generated editor plugin list,
+# Its Editor-scope plugin table puts it in the generated editor plugin list,
 # the same way `renzora_command_palette` and `renzora_inspector` are wired.
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 # Reading the legacy [editor] table out of a project.toml during migration.
 toml = "0.8"
 bevy = { workspace = true }
 # `editor` features pulled in: EditorSelection, CurrentProject, SplashState,
 # TutorialRequested, HideInHierarchy/EditorLocked markers + EditorPrefs.
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora = { path = "../shared/renzora", default-features = false, features = ["editor"] }
+renzora_world_api = { path = "../api/renzora_world_api" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 # OrbitCameraState — the editor camera's orbit/zoom/focus state, polled to detect
@@ -33,3 +38,10 @@ renzora_code_editor = { path = "../renzora_code_editor" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "TutorialPlugin"
+scope = "Editor"

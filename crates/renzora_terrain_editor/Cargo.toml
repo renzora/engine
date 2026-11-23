@@ -4,10 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_world_api = { path = "../api/renzora_world_api" }
+renzora_material_api = { path = "../api/renzora_material_api" }
 renzora_terrain = { path = "../renzora_terrain" }
 # Alpine Landscape's texture paths and builder, for supplying a project with
 # the default landscape material (`surface_ui`).
@@ -35,3 +42,10 @@ rfd = "0.15"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "TerrainEditorPlugin"
+scope = "Editor"

@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use renzora::PropertyKey;
+use renzora_animation_api::PropertyKey;
 use renzora_animation::{AnimClip, AnimatorComponent};
 use renzora_particles::params::ParamKey;
 use renzora_ember::reactive::Rx;
@@ -134,11 +134,11 @@ pub(crate) struct SelKey {
 /// bone key has a curve beside it ([`renzora::BoneKeyCurves`]) that has to
 /// move, sort and delete with it.
 pub(super) enum ChannelTimes<'a> {
-    B(&'a mut renzora::BoneTrack, u8),
+    B(&'a mut renzora_animation_api::BoneTrack, u8),
     P(&'a mut Vec<PropertyKey>),
     /// A blend shape track, whole for the same reason as a bone's: its keys'
     /// curves sit beside them.
-    M(&'a mut renzora::MorphTrack),
+    M(&'a mut renzora_animation_api::MorphTrack),
     F(&'a mut Vec<ParamKey>),
 }
 
@@ -220,17 +220,17 @@ pub(super) fn ready(w: &Rx) -> bool {
 pub(super) fn empty_msg(w: &Rx) -> String {
     let Some(s) = state(w.untracked()) else { return String::new() };
     if s.selected_entity.is_none() {
-        renzora::lang::t("animation.select_entity_to_animate")
+        renzora_lang_api::t("animation.select_entity_to_animate")
     } else if s
         .selected_entity
         .and_then(|e| w.get::<AnimatorComponent>(e))
         .is_none_or(|a| a.clips.is_empty())
     {
-        renzora::lang::t("animation.no_animation_create_below")
+        renzora_lang_api::t("animation.no_animation_create_below")
     } else if s.selected_clip.is_none() {
-        renzora::lang::t("animation.choose_clip_above")
+        renzora_lang_api::t("animation.choose_clip_above")
     } else {
-        renzora::lang::t("animation.loading_clip")
+        renzora_lang_api::t("animation.loading_clip")
     }
 }
 
@@ -240,7 +240,7 @@ pub(super) fn cache_clip(
     mut cache: ResMut<TimelineClip>,
     mut state: ResMut<AnimationEditorState>,
     animators: Query<&AnimatorComponent>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut selected: ResMut<SelectedKey>,
     mut all_selected: ResMut<SelectedKeys>,
     mut preview: ResMut<PreviewApplied>,
@@ -280,7 +280,7 @@ pub(super) fn cache_clip(
     // — clicking off an entity must not lose unsaved keyframes.
     if cache.dirty {
         if let (Some(clip), Some(path)) = (cache.clip.as_ref(), cache.path.as_ref()) {
-            match renzora::core::write_anim_file(clip, path) {
+            match renzora_animation_api::write_anim_file(clip, path) {
                 Ok(()) => info!("[timeline] auto-saved keyframe edits before switching"),
                 Err(e) => warn!("[timeline] auto-save failed: {}", e),
             }
@@ -351,7 +351,7 @@ pub(super) fn auto_save_clip(
     }
     timer.last = now;
     let result = match (cache.clip.as_ref(), cache.path.as_ref()) {
-        (Some(clip), Some(path)) => Some(renzora::core::write_anim_file(clip, path)),
+        (Some(clip), Some(path)) => Some(renzora_animation_api::write_anim_file(clip, path)),
         _ => None,
     };
     match result {
@@ -381,7 +381,7 @@ pub(super) fn save_clip_click(
         return;
     }
     let result = match (cache.clip.as_ref(), cache.path.as_ref()) {
-        (Some(clip), Some(path)) => renzora::core::write_anim_file(clip, path),
+        (Some(clip), Some(path)) => renzora_animation_api::write_anim_file(clip, path),
         _ => return,
     };
     match result {

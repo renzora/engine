@@ -112,11 +112,11 @@ impl NetworkClient {
 /// Pump the client connection each frame: deliver received RPCs to scripts.
 pub fn client_poll(
     client: Option<ResMut<NetworkClient>>,
-    mut inbox: ResMut<renzora::ScriptRpcInbox>,
+    mut inbox: ResMut<renzora_scripting_api::ScriptRpcInbox>,
 ) {
     let Some(mut client) = client else { return };
     for event in client.update() {
-        inbox.pending.push(renzora::IncomingRpc {
+        inbox.pending.push(renzora_scripting_api::IncomingRpc {
             name: event.name,
             args: crate::rpc::args_from_bytes(&event.data),
             from: 0, // 0 = "from server/local" in script space

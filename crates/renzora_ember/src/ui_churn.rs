@@ -137,15 +137,15 @@ fn report(tally: &mut Tally) {
     let mut rows: Vec<_> = tally.counts.drain().collect();
     rows.sort_by_key(|row| std::cmp::Reverse(row.1.changes));
     if rows.is_empty() {
-        renzora::console_log::console_info("UI", format!("[ui-churn] nothing changed over {frames} frames"));
+        renzora_log_api::console_info("UI", format!("[ui-churn] nothing changed over {frames} frames"));
     } else {
-        renzora::console_log::console_info(
+        renzora_log_api::console_info(
             "UI",
             format!("[ui-churn] {} kinds of change over {frames} frames, busiest first:", rows.len()),
         );
         for ((panel, kind), count) in rows.into_iter().take(12) {
             let per_frame = count.changes as f32 / frames as f32;
-            renzora::console_log::console_info(
+            renzora_log_api::console_info(
                 "UI",
                 format!(
                     "[ui-churn]   {panel}: {kind}, {per_frame:.1}/frame, e.g. {}",

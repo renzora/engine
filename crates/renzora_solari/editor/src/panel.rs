@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use bevy::solari::realtime::HISTOGRAM_BINS;
 
-use renzora::{SolariDebugMode, SolariDiagnostics, SolariDiagnosticsRequest, SolariFrameStats};
+use renzora_solari_api::{SolariDebugMode, SolariDiagnostics, SolariDiagnosticsRequest, SolariFrameStats};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::reactive::Rx;
@@ -466,7 +466,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     section(commands, fonts, root, "chart-bar", "Brightness", &[raw_label, raw_bars, denoised_label, denoised_bars, range]);
 
     // ── Ray-traced scene ──
-    let coverage = |pick: fn(&renzora::SolariCoverage) -> usize| {
+    let coverage = |pick: fn(&renzora_solari_api::SolariCoverage) -> usize| {
         move |w: &Rx| {
             w.get_resource::<SolariDiagnostics>()
                 .map(|d| pick(&d.coverage).to_string())

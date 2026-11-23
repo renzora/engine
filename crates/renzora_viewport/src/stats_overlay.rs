@@ -50,8 +50,8 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportSettings;
-use renzora::core::PlayModeState;
+use renzora_viewport_api::ViewportSettings;
+use renzora_project_api::PlayModeState;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_display, bind_text};
@@ -151,25 +151,25 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 .is_some_and(|p| p.is_in_play_mode())
     });
 
-    let objects = stat_row(commands, fonts, &renzora::lang::t("viewport.stats.objects"), |w| {
+    let objects = stat_row(commands, fonts, &renzora_lang_api::t("viewport.stats.objects"), |w| {
         thousands(stats(w, |s| s.objects))
     });
-    let verts = stat_row(commands, fonts, &renzora::lang::t("viewport.stats.verts"), |w| {
+    let verts = stat_row(commands, fonts, &renzora_lang_api::t("viewport.stats.verts"), |w| {
         thousands(stats(w, |s| s.vertices))
     });
-    let tris = stat_row(commands, fonts, &renzora::lang::t("viewport.stats.tris"), |w| {
+    let tris = stat_row(commands, fonts, &renzora_lang_api::t("viewport.stats.tris"), |w| {
         thousands(stats(w, |s| s.triangles))
     });
     commands.entity(root).add_children(&[objects, verts, tris]);
 
     // The terrain pair appears only when there is a terrain to describe, so the
     // block stays three rows tall in an ordinary scene.
-    let height = stat_row(commands, fonts, &renzora::lang::t("viewport.stats.height"), |w| {
+    let height = stat_row(commands, fonts, &renzora_lang_api::t("viewport.stats.height"), |w| {
         terrain_stats(w)
             .map(|t| format!("{} – {}", metres(t.low), metres(t.high)))
             .unwrap_or_default()
     });
-    let range = stat_row(commands, fonts, &renzora::lang::t("viewport.stats.range"), |w| {
+    let range = stat_row(commands, fonts, &renzora_lang_api::t("viewport.stats.range"), |w| {
         terrain_stats(w)
             .map(|t| format!("{} – {}", metres(t.floor), metres(t.ceiling)))
             .unwrap_or_default()

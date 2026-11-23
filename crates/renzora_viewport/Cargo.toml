@@ -5,19 +5,29 @@ edition = "2021"
 
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 renzora_undo = { path = "../renzora_undo" }
 renzora_theme = { path = "../renzora_theme" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora = { path = "../shared/renzora", default-features = false, features = ["editor"] }
+# Marks load stages on the load timeline, and profiles Play.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
+renzora_render_api = { path = "../api/renzora_render_api" }
+renzora_material_api = { path = "../api/renzora_material_api" }
 # Data types only (no avian): the 2D overlay draws the collider-edit chrome
 # from `CollisionShapeData` + `ColliderEditMode` (the interaction half lives
 # in renzora_gizmo::collider_edit_2d — the two crates don't link).
 renzora_physics = { path = "../renzora_physics", default-features = false }
-renzora_console = { path = "../renzora_console" }
 renzora_ui = { path = "../renzora_ui" }
-renzora_keybindings = { path = "../renzora_keybindings" }
 renzora_animation = { path = "../renzora_animation" }
 # Only `ParticleSystem`, for dropping an effect onto the viewport.
 renzora_particles = { path = "../renzora_particles" }
@@ -37,3 +47,10 @@ raw-window-handle = "0.6"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ViewportPlugin"
+scope = "Editor"

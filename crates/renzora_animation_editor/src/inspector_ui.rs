@@ -17,7 +17,7 @@ use std::hash::{Hash, Hasher};
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use renzora::{AppEditorExt, FieldValue};
+use renzora_editor_api::{AppEditorExt, FieldValue};
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -43,7 +43,7 @@ pub fn register(app: &mut App) {
             add_clip_drop,
             add_clip_drop_highlight,
         )
-            .run_if(in_state(renzora::SplashState::Editor))
+            .run_if(in_state(renzora_project_api::SplashState::Editor))
             // Every one of these reads or clicks widgets under an
             // `AnimatorRoot`, which exists only while the inspector shows an
             // animator; without one they have nothing to touch.
@@ -167,7 +167,7 @@ fn build_body(
     let mut children: Vec<Entity> = Vec::new();
 
     // ── Clips ──
-    children.push(header(commands, fonts, &renzora::lang::t("animation.animation_clips")));
+    children.push(header(commands, fonts, &renzora_lang_api::t("animation.animation_clips")));
     for (i, slot) in data.clips.iter().enumerate() {
         let block = clip_block(commands, fonts, entity, i, slot);
         children.push(block);
@@ -175,7 +175,7 @@ fn build_body(
     children.push(build_clip_drop_zone(commands, fonts, entity));
 
     // ── Playback ──
-    children.push(header(commands, fonts, &renzora::lang::t("animation.playback")));
+    children.push(header(commands, fonts, &renzora_lang_api::t("animation.playback")));
 
     // Default clip dropdown: "(none)" + clip names.
     let mut labels: Vec<String> = vec!["(none)".into()];
@@ -211,7 +211,7 @@ fn build_body(
             }
         },
     );
-    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.default_clip"), dd);
+    let r = inspector_row(commands, &fonts.ui, &renzora_lang_api::t("animation.default_clip"), dd);
     children.push(r);
 
     // Blend duration.
@@ -227,11 +227,11 @@ fn build_body(
             }
         },
     );
-    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.blend_time"), dv);
+    let r = inspector_row(commands, &fonts.ui, &renzora_lang_api::t("animation.blend_time"), dv);
     children.push(r);
 
     // ── State Machine ──
-    children.push(header(commands, fonts, &renzora::lang::t("animation.state_machine")));
+    children.push(header(commands, fonts, &renzora_lang_api::t("animation.state_machine")));
     let sm = asset_drop_field(
         commands,
         fonts,
@@ -240,7 +240,7 @@ fn build_body(
         animator_sm_set,
         vec!["animsm".to_string()],
     );
-    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.file"), sm);
+    let r = inspector_row(commands, &fonts.ui, &renzora_lang_api::t("animation.file"), sm);
     children.push(r);
 
     commands.entity(root).add_children(&children);
@@ -303,7 +303,7 @@ fn clip_block(
             UiInteraction::default(),
             PlayClipBtn { entity, index },
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("animation.play_clip", "Play")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or("animation.play_clip", "Play")),
         ))
         .id();
     let play_ic = icon_text(commands, &fonts.phosphor, "play-circle", text_muted(), 16.0);
@@ -375,7 +375,7 @@ fn clip_block(
             UiInteraction::default(),
             RemoveClipBtn { entity, index },
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("animation.remove_clip", "Remove clip")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or("animation.remove_clip", "Remove clip")),
         ))
         .id();
     let trash_ic = icon_text(commands, &fonts.phosphor, "trash", text_muted(), 13.0);
@@ -405,7 +405,7 @@ fn clip_block(
     let speed = drag_value(commands, &fonts.ui, "Speed", text_muted(), 1.0, 0.05);
     commands.entity(speed).insert((
         DragRange { min: 0.05, max: 5.0 },
-        renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+        renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or(
             "animation.speed_tip",
             "Playback speed (1 = normal)",
         )),
@@ -447,7 +447,7 @@ fn clip_block(
             UiInteraction::default(),
             LoopClipBtn { entity, index },
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("animation.loop", "Loop")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or("animation.loop", "Loop")),
         ))
         .id();
     let looping = move |w: &renzora_ember::reactive::Rx| {
@@ -531,7 +531,7 @@ fn build_clip_drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Ent
     commands.entity(ic).insert(PASS_THROUGH);
     let txt = commands
         .spawn((
-            Text::new(renzora::lang::t_or("animation.drop_clips", "Drop .anim files here to add clips")),
+            Text::new(renzora_lang_api::t_or("animation.drop_clips", "Drop .anim files here to add clips")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
             PASS_THROUGH,
@@ -555,7 +555,7 @@ fn dragged_clips(payload: &renzora_ui::AssetDragPayload) -> Vec<std::path::PathB
 fn add_clip_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     zones: Query<(&renzora_ember::UiCursor, &AddClipDropZone)>,
     cmds: Option<Res<EditorCommands>>,
 ) {

@@ -69,15 +69,15 @@ impl Plugin for NetworkPlugin {
 
         // Shared status resource (read by editor panels and scripts)
         app.init_resource::<NetworkStatus>();
-        app.init_resource::<renzora::NetworkBridge>();
+        app.init_resource::<renzora_scripting_api::NetworkBridge>();
         // RPC bridge resources — outbound queue (drained to the wire) and the
         // inbound inbox (drained by renzora_scripting into `on_rpc`). Init'd
         // here so both the client and dedicated-server paths share them.
         #[cfg(not(target_arch = "wasm32"))]
         {
             app.init_resource::<rpc::PendingOutgoingRpc>();
-            app.init_resource::<renzora::ScriptRpcInbox>();
-            app.init_resource::<renzora::ScriptNetLifecycleInbox>();
+            app.init_resource::<renzora_scripting_api::ScriptRpcInbox>();
+            app.init_resource::<renzora_scripting_api::ScriptNetLifecycleInbox>();
         }
 
         // Register networked component types (scene serialization + inspector).
@@ -91,7 +91,7 @@ impl Plugin for NetworkPlugin {
         // A dedicated server adds `ServerPlugins` + protocol via
         // `NetworkServerPlugin`; skip the client setup here so the protocol
         // isn't registered twice.
-        if app.world().contains_resource::<renzora::DedicatedServer>() {
+        if app.world().contains_resource::<renzora_project_api::DedicatedServer>() {
             info!("[network] Dedicated server mode — skipping client setup");
             return;
         }
@@ -107,7 +107,7 @@ impl Plugin for NetworkPlugin {
             // process. The host IS the server (its scripts run server-side), so
             // it needs no separate local client link — `NetworkServerPlugin`
             // (added after this) owns the script-action observer + RPC send.
-            let host = app.world().contains_resource::<renzora::HostServer>();
+            let host = app.world().contains_resource::<renzora_project_api::HostServer>();
 
             // Client connection lifecycle + status. `process_pending_connect`
             // builds a `NetworkClient` from a `PendingNetworkConnect` request;
@@ -190,10 +190,8 @@ fn process_pending_disconnect(
 
 /// Sync the lightweight `NetworkBridge` resource from the full `NetworkStatus`.
 #[cfg(not(target_arch = "wasm32"))]
-fn sync_network_bridge(status: Res<NetworkStatus>, mut bridge: ResMut<renzora::NetworkBridge>) {
+fn sync_network_bridge(status: Res<NetworkStatus>, mut bridge: ResMut<renzora_scripting_api::NetworkBridge>) {
     bridge.is_server = status.is_server;
     bridge.is_connected = status.is_connected();
     bridge.player_count = status.connected_clients.len() as i32;
 }
-
-renzora::add!(NetworkPlugin);

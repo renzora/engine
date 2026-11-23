@@ -18,9 +18,12 @@ mod panel;
 
 use bevy::prelude::*;
 
-use renzora::core::animation::{AnimClip, Interp, PropertyKey, PropertyTrack, TrackValue};
-use renzora::core::{CurrentProject, SpriteImagePath, SpriteImages, SpriteSheet};
-use renzora::{EditorSelection, SplashState};
+use renzora_scene_api::{SpriteImagePath, SpriteSheet};
+use renzora_project_api::CurrentProject;
+use renzora_animation_api::animation::{AnimClip, Interp, PropertyKey, PropertyTrack, TrackValue};
+use renzora_animation_api::SpriteImages;
+use renzora_editor_api::EditorSelection;
+use renzora_project_api::SplashState;
 use renzora_animation::{AnimClipSlot, AnimatorComponent, AnimatorState};
 use renzora_animation_editor::AnimationEditorState;
 use renzora_ember::widgets::EmberTextInput;
@@ -102,7 +105,6 @@ impl Plugin for SpriteAnimEditorPlugin {
     }
 }
 
-renzora::add!(SpriteAnimEditorPlugin, Editor);
 
 /// Point [`SpriteTarget`] at the selected sprite (or clear it).
 fn sync_target(
@@ -252,7 +254,7 @@ fn create_sprite_clip(world: &mut World, entity: Entity, name: &str, clip: &Anim
     };
     let rel = format!("animations/{name}.anim");
     let abs = project_root.join(&rel);
-    if let Err(e) = renzora::core::animation::write_anim_file(clip, &abs) {
+    if let Err(e) = renzora_animation_api::animation::write_anim_file(clip, &abs) {
         warn!("[sprite_anim] Create Clip: failed to write {rel}: {e}");
         return;
     }

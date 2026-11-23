@@ -10,7 +10,7 @@
 use std::any::Any;
 
 use bevy::prelude::*;
-use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora_scene_api::{MeshColor, MeshPrimitive, ShapeRegistry};
 use renzora_editor_framework::{EditorLocked, EditorSelection, FieldValue, InspectorRegistry, SpawnRegistry};
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ use renzora_editor_framework::{EditorLocked, EditorSelection, FieldValue, Inspec
 /// What stayed here is everything with a dependency: the concrete commands, the
 /// shortcut wiring, and the document-tab bookkeeping. Re-exported so every
 /// existing `renzora_undo::execute` path still resolves.
-pub use renzora::undo::{
+pub use renzora_shell_api::undo::{
     active_context, execute, record, seal, UndoCommand, UndoContext, UndoStacks,
 };
 
@@ -183,8 +183,8 @@ fn route_undo_context(
 
 fn shortcut_input(
     keys: Res<ButtonInput<KeyCode>>,
-    bindings: Option<Res<renzora::keybindings::KeyBindings>>,
-    input_focus: Option<Res<renzora::core::InputFocusState>>,
+    bindings: Option<Res<renzora_shell_api::keybindings::KeyBindings>>,
+    input_focus: Option<Res<renzora_project_api::InputFocusState>>,
     mut undo_w: MessageWriter<RequestUndo>,
     mut redo_w: MessageWriter<RequestRedo>,
 ) {
@@ -197,7 +197,7 @@ fn shortcut_input(
     //   - User-rebound Undo/Redo keys are respected
     //   - Command palette dispatches (KeyBindings::dispatch) fire the messages
     let Some(bindings) = bindings else { return };
-    use renzora::keybindings::EditorAction;
+    use renzora_shell_api::keybindings::EditorAction;
     if bindings.just_pressed(EditorAction::Undo, &keys) {
         undo_w.write(RequestUndo);
     }
@@ -219,27 +219,27 @@ fn shortcut_input(
 /// into the same tab write one frame later — the arrangement `record` has used
 /// since it started being called from plugins.
 pub fn undo_once(world: &mut World) {
-    if !renzora::undo::undo_once(world) {
+    if !renzora_shell_api::undo::undo_once(world) {
         world.write_message(UndoExhausted);
         return;
     }
-    if matches!(renzora::undo::active_context(world), UndoContext::Scene) {
+    if matches!(renzora_shell_api::undo::active_context(world), UndoContext::Scene) {
         mark_active_scene_tab_modified(world);
     }
 }
 
 /// Redo the most recently undone action on the active stack.
 pub fn redo_once(world: &mut World) {
-    if !renzora::undo::redo_once(world) {
+    if !renzora_shell_api::undo::redo_once(world) {
         world.write_message(UndoExhausted);
         return;
     }
-    if matches!(renzora::undo::active_context(world), UndoContext::Scene) {
+    if matches!(renzora_shell_api::undo::active_context(world), UndoContext::Scene) {
         mark_active_scene_tab_modified(world);
     }
 }
 
-/// Drain the flag [`renzora::undo::record`] sets on a `Scene` edit into the
+/// Drain the flag [`renzora_shell_api::undo::record`] sets on a `Scene` edit into the
 /// active document tab.
 ///
 /// The contract crate cannot reach `renzora_ui::DocumentTabState`, and a plugin
@@ -310,7 +310,7 @@ impl UndoCommand for SpawnShapeCmd {
         let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
         // Fresh shapes wear the engine blockout grid as their "no texture yet"
         // look, tinted by the preset color.
-        let grid = world.get_resource::<renzora::core::GridTexture>().cloned();
+        let grid = world.get_resource::<renzora_render_api::GridTexture>().cloned();
         let material = world
             .resource_mut::<Assets<StandardMaterial>>()
             .add(renzora_engine::blockout::blockout_material(
@@ -384,7 +384,7 @@ impl UndoCommand for DeleteShapesCmd {
             let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
             // Same default material as SpawnShapeCmd, grid included, so
             // undoing a delete doesn't bring the shape back flat.
-            let grid = world.get_resource::<renzora::core::GridTexture>().cloned();
+            let grid = world.get_resource::<renzora_render_api::GridTexture>().cloned();
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
                 .add(renzora_engine::blockout::blockout_material(
@@ -929,7 +929,7 @@ impl UndoCommand for SpawnEntityCmd {
                     // Same one-unique-snake_case-id-per-entity rule the live
                     // spawn path applies, so redo doesn't resurrect the spawn_fn's
                     // spaced default name.
-                    let new_id = renzora::unique_entity_name(world, id, entity);
+                    let new_id = renzora_scene_api::unique_entity_name(world, id, entity);
                     if let Ok(mut em) = world.get_entity_mut(entity) {
                         em.insert(Name::new(new_id));
                     }
@@ -970,7 +970,6 @@ impl UndoCommand for SpawnEntityCmd {
     }
 }
 
-renzora::add!(UndoPlugin, Editor);
 
 // ──────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
@@ -979,7 +978,7 @@ mod tests {
     // The cap lives with the stacks it bounds, in the contract crate — not
     // copied here, so this test cannot go on asserting a number the engine has
     // stopped using.
-    use renzora::undo::MAX_DEPTH;
+    use renzora_shell_api::undo::MAX_DEPTH;
 
     /// Records every execute/undo into a shared log resource so tests can
     /// assert *which* command ran and in *what order*, plus a net counter.

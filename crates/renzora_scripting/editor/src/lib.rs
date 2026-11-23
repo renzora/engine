@@ -11,7 +11,7 @@
 mod toolchain_prompt;
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 
 // ============================================================================
 // Inspector entry
@@ -67,17 +67,15 @@ impl Plugin for ScriptingEditorPlugin {
         // The Rust script builder registers these too; `add_message` and
         // `init_resource` are idempotent, and doing it here keeps the prompt
         // from panicking in a build where that plugin bowed out early.
-        app.init_resource::<renzora::RustToolchain>()
-            .add_message::<renzora::RustToolchainAnswer>()
+        app.init_resource::<renzora_platform_api::RustToolchain>()
+            .add_message::<renzora_platform_api::RustToolchainAnswer>()
             .add_systems(
                 Update,
                 (
                     toolchain_prompt::spawn_prompt
-                        .run_if(in_state(renzora::SplashState::Editor)),
+                        .run_if(in_state(renzora_project_api::SplashState::Editor)),
                     toolchain_prompt::prompt_buttons,
                 ),
             );
     }
 }
-
-renzora::add!(ScriptingEditorPlugin, Editor);

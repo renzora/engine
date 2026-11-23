@@ -12,7 +12,7 @@ use std::sync::Arc;
 use bevy::camera::visibility::VisibilityRange;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use renzora::physics::{
+use renzora_physics_api::physics::{
     HeightfieldSource, PhysicsDim, ResolvedCollider, ResolvedShape, RuntimePhysics, RuntimePhysics2d, TriMeshData,
 };
 
@@ -219,7 +219,7 @@ pub fn resolve_model_colliders(
             state.waited = state.waited.saturating_add(1);
             if state.waited > STALL_FRAMES && !state.warned {
                 state.warned = true;
-                renzora::console_log::console_warn(
+                renzora_log_api::console_warn(
                     "Physics",
                     format!(
                         "The mesh collider for {entity} has built nothing yet: {} meshes found, {} loaded",
@@ -238,7 +238,7 @@ pub fn resolve_model_colliders(
         // Said each time it builds, because a whole level's collider takes a
         // visible moment and is the first thing to rule out when something
         // falls through it.
-        renzora::console_log::console_info(
+        renzora_log_api::console_info(
             "Physics",
             format!(
                 "Built a mesh collider for {entity} from {} of {} meshes ({} triangles)",

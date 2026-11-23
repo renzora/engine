@@ -87,7 +87,7 @@ pub(super) fn manage_export_modal(world: &mut World) {
         // on first open and swaps it when the user changes project without
         // closing the editor. It no-ops once loaded for that path.
         if let Some(root) =
-            world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
+            world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone())
         {
             if let Some(mut state) = world.get_resource_mut::<ExportOverlayState>() {
                 state.load_presets(&root);
@@ -120,7 +120,7 @@ pub(super) fn manage_export_modal(world: &mut World) {
 
     if visible && existing.is_empty() {
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
-        let has_project = world.get_resource::<renzora::core::CurrentProject>().is_some();
+        let has_project = world.get_resource::<renzora_project_api::CurrentProject>().is_some();
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
@@ -185,7 +185,7 @@ fn resolve_included_files(world: &mut World) {
         return;
     }
     let Some(root) = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone())
     else {
         return;
@@ -267,7 +267,7 @@ fn scan_plugins(world: &mut World) {
         plugins = renzora_native_plugin::installed_for(&editor_dir, lib_ext)
             .plugins
             .into_iter()
-            .filter(|p| p.scope == renzora::NativePluginScope::Runtime)
+            .filter(|p| p.scope == renzora_platform_api::NativePluginScope::Runtime)
             .collect();
         plugins.sort_by(|a, b| a.id.cmp(&b.id));
     }
@@ -285,7 +285,7 @@ fn scan_plugins(world: &mut World) {
     // With no project, or a project holding no scenes, `scan` is `None` and both
     // halves fall back to selecting everything / plain defaults.
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone());
     let needles: Vec<(String, String)> = plugins
         .iter()

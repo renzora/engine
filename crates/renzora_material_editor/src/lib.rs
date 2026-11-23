@@ -15,9 +15,9 @@ pub mod preview;
 mod preview_2d;
 
 use bevy::prelude::*;
-use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
-use renzora::core::project_files::{AssetKind, ProjectFileChanged};
-use renzora::core::CurrentProject;
+use renzora_diagnostics_api::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
+use renzora_project_api::project_files::{AssetKind, ProjectFileChanged};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{material_thumb_path, AppEditorExt, MaterialThumbnailRegistry};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph};
 use renzora_shader::material::material_ref::MaterialRef;
@@ -126,7 +126,7 @@ impl Plugin for MaterialEditorPlugin {
         // A Sprite material has to be written as one: a new `.material` from
         // the Assets panel's own Material entry is `{}`, which loads as a 3D
         // Surface graph, and the editor has no domain switch.
-        use renzora::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
+        use renzora_shell_api::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
         app.register_create_menu_item(
             CreateMenuItem::new("sprite_material", "NewSpriteMaterial", "material", |_| {
                 serde_json::to_string_pretty(&MaterialGraph::new("Sprite Material", MaterialDomain::Sprite))
@@ -211,7 +211,7 @@ pub fn save_material_graph(world: &mut World, path: &str, graph: &mut MaterialGr
     // Claim the write, so `reload_externally_edited_materials` does not refresh
     // the material a second time when the watcher reports this save.
     world
-        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .get_resource_or_insert_with(renzora_project_api::project_files::SelfWrites::default)
         .record(&fs_path, graph_json.as_bytes());
 
     refresh_material(world, path);
@@ -268,7 +268,7 @@ pub(crate) fn refresh_material(world: &mut World, path: &str) {
 fn reload_externally_edited_materials(
     mut changes: MessageReader<ProjectFileChanged>,
     project: Option<Res<CurrentProject>>,
-    self_writes: Option<Res<renzora::core::project_files::SelfWrites>>,
+    self_writes: Option<Res<renzora_project_api::project_files::SelfWrites>>,
     mut commands: Commands,
 ) {
     let Some(project) = project else {
@@ -309,7 +309,7 @@ fn reload_externally_edited_materials(
 pub(crate) fn note_save_warnings(world: &mut World, path: &str, warnings: &[String]) {
     for warning in warnings {
         warn!("[material_editor] codegen warning in '{}': {}", path, warning);
-        renzora::console_log::console_warn("Material", format!("{path}: {warning}"));
+        renzora_log_api::console_warn("Material", format!("{path}: {warning}"));
     }
     let Some(mut problems) = world.get_resource_mut::<ContentProblems>() else {
         return;
@@ -384,5 +384,3 @@ pub fn edit_material_graph(
     }
     true
 }
-
-renzora::add!(MaterialEditorPlugin, Editor);

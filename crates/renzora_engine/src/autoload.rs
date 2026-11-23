@@ -20,7 +20,7 @@
 //!
 //! A game build calls [`load_autoloads`] once on `Startup`. The editor has no
 //! equivalent moment — it boots into an editing session, not a game — so
-//! pressing Play fires `renzora::LoadAutoloadScenes` and Stop fires
+//! pressing Play fires `renzora_shell_api::LoadAutoloadScenes` and Stop fires
 //! `UnloadAutoloadScenes`, handled by the observers at the bottom of this
 //! module. That is what makes a global HUD / music / networking scene testable
 //! without an export.
@@ -35,7 +35,8 @@ use std::collections::HashSet;
 use bevy::prelude::*;
 
 use crate::scene_io;
-use renzora::{CurrentProject, Persistent};
+use renzora_scene_api::Persistent;
+use renzora_project_api::CurrentProject;
 
 /// What the autoload pass spawned, so an editor Stop can despawn exactly what
 /// Play added. Empty in a shipped game, where autoloads live for the whole
@@ -229,7 +230,7 @@ mod tests {
     #[test]
     fn an_autoload_leaves_the_open_document_alone() {
         let mut world = World::new();
-        let config = renzora::core::ProjectConfig {
+        let config = renzora_project_api::ProjectConfig {
             autoload: vec!["scenes/globals.bsn".to_string()],
             ..Default::default()
         };
@@ -260,7 +261,7 @@ mod tests {
 /// Idempotent — re-entering Play without a Stop would otherwise spawn a second
 /// copy of every global scene.
 pub fn on_load_autoload_scenes(
-    _trigger: On<renzora::LoadAutoloadScenes>,
+    _trigger: On<renzora_shell_api::LoadAutoloadScenes>,
     mut commands: Commands,
 ) {
     commands.queue(|world: &mut World| {
@@ -272,7 +273,7 @@ pub fn on_load_autoload_scenes(
 
 /// Editor Stop: despawn what Play loaded.
 pub fn on_unload_autoload_scenes(
-    _trigger: On<renzora::UnloadAutoloadScenes>,
+    _trigger: On<renzora_shell_api::UnloadAutoloadScenes>,
     mut commands: Commands,
 ) {
     commands.queue(|world: &mut World| {

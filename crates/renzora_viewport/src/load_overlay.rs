@@ -20,7 +20,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use renzora::core::PlayModeState;
+use renzora_project_api::PlayModeState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::{accent, panel_bg, rgb, text_primary};
@@ -107,8 +107,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             return String::new();
         };
         match pending.loads.len() {
-            1 => renzora::lang::t("viewport.loading.one").replace("{name}", &first.name),
-            n => renzora::lang::t("viewport.loading.many")
+            1 => renzora_lang_api::t("viewport.loading.one").replace("{name}", &first.name),
+            n => renzora_lang_api::t("viewport.loading.many")
                 .replace("{name}", &first.name)
                 .replace("{n}", &(n - 1).to_string()),
         }

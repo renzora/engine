@@ -26,7 +26,7 @@ use crate::state::{
 pub(crate) fn create_asset_click(
     q: Query<(&UiInteraction, &NewAssetBtn), Changed<UiInteraction>>,
     mut state: ResMut<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
     let boilerplate = settings.as_ref().is_none_or(|s| s.new_file_boilerplate);
@@ -79,15 +79,15 @@ pub(crate) fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> 
             commands,
             fonts,
             "file",
-            &renzora::lang::t("assets.import_files"),
-            |w| request_import(w, renzora::core::ImportPick::Files),
+            &renzora_lang_api::t("assets.import_files"),
+            |w| request_import(w, renzora_project_api::ImportPick::Files),
         ),
         menu_item(
             commands,
             fonts,
             "folder-open",
-            &renzora::lang::t("assets.import_folder"),
-            |w| request_import(w, renzora::core::ImportPick::Folder),
+            &renzora_lang_api::t("assets.import_folder"),
+            |w| request_import(w, renzora_project_api::ImportPick::Folder),
         ),
         // The third way to get an asset into a project, beside the two local
         // ones. It belongs in this menu because "I need a tree" is the same
@@ -106,8 +106,8 @@ pub(crate) fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> 
             commands,
             fonts,
             "storefront",
-            &renzora::lang::t("assets.search_marketplace"),
-            |w| renzora::ShellActionInvoked::invoke(w, renzora::ACTION_MARKETPLACE),
+            &renzora_lang_api::t("assets.search_marketplace"),
+            |w| renzora_shell_api::ShellActionInvoked::invoke(w, renzora_shell_api::ACTION_MARKETPLACE),
         ),
     ]
 }
@@ -117,10 +117,10 @@ pub(crate) fn import_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> 
 /// as buttons a click system can see). The title bar's File menu and the
 /// command palette insert the request themselves and set no target, so their
 /// assets land in the importer's default folder instead.
-fn request_import(world: &mut World, pick: renzora::core::ImportPick) {
-    world.insert_resource(renzora::core::ImportRequested(pick));
+fn request_import(world: &mut World, pick: renzora_project_api::ImportPick) {
+    world.insert_resource(renzora_project_api::ImportRequested(pick));
     let Some(root) = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone())
     else {
         return;
@@ -136,7 +136,7 @@ fn request_import(world: &mut World, pick: renzora::core::ImportPick) {
         .map(|rel| rel.to_string_lossy().replace('\\', "/"))
         .unwrap_or_default();
     if !target_dir.is_empty() {
-        world.insert_resource(renzora::core::ImportTargetDir(target_dir));
+        world.insert_resource(renzora_project_api::ImportTargetDir(target_dir));
     }
 }
 
@@ -194,9 +194,9 @@ pub(crate) fn asset_context_menu(
     fonts: Option<Res<EmberFonts>>,
     state: Res<NativeAssets>,
     roots: Query<&renzora_ember::UiCursor, With<AssetRoot>>,
-    registry: Option<Res<renzora::CreateMenuRegistry>>,
-    actions: Option<Res<renzora::AssetActionRegistry>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    registry: Option<Res<renzora_shell_api::CreateMenuRegistry>>,
+    actions: Option<Res<renzora_shell_api::AssetActionRegistry>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -222,9 +222,9 @@ pub(crate) fn asset_context_menu(
         return;
     };
     let fav_label = if state.favorites.contains(&path) {
-        renzora::lang::t("assets.context.unfavorite")
+        renzora_lang_api::t("assets.context.unfavorite")
     } else {
-        renzora::lang::t("assets.context.favorite")
+        renzora_lang_api::t("assets.context.favorite")
     };
     // Flip the menu upward when the click lands low in the window, so it grows
     // up from the cursor instead of being clipped.
@@ -246,12 +246,12 @@ pub(crate) fn asset_context_menu(
     // the file housekeeping below.
     kids.extend(registered_action_items(&mut commands, &fonts, actions.as_deref(), &path, path.is_dir()));
     kids.extend([
-        menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("assets.context.rename"), {
+        menu_item(&mut commands, &fonts, "pencil-simple", &renzora_lang_api::t("assets.context.rename"), {
             let path = path.clone();
             let surface = state.hovered_surface;
             move |w| start_rename(w, &path, surface)
         }),
-        menu_item(&mut commands, &fonts, "copy", &renzora::lang::t("assets.context.duplicate"), {
+        menu_item(&mut commands, &fonts, "copy", &renzora_lang_api::t("assets.context.duplicate"), {
             let path = path.clone();
             move |_| duplicate_asset(&path)
         }),
@@ -264,12 +264,12 @@ pub(crate) fn asset_context_menu(
             &mut commands,
             &fonts,
             "clipboard",
-            &renzora::lang::t("assets.context.copy_path"),
+            &renzora_lang_api::t("assets.context.copy_path"),
             {
                 let path = path.clone();
                 move |world| {
                     if let Some(relative) = world
-                        .get_resource::<renzora::core::CurrentProject>()
+                        .get_resource::<renzora_project_api::CurrentProject>()
                         .and_then(|project| project.make_relative(&path))
                     {
                         clipboard::set_text(&relative);
@@ -277,7 +277,7 @@ pub(crate) fn asset_context_menu(
                 }
             },
         ),
-        menu_item(&mut commands, &fonts, "folder-open", &renzora::lang::t("assets.context.reveal"), {
+        menu_item(&mut commands, &fonts, "folder-open", &renzora_lang_api::t("assets.context.reveal"), {
             let path = path.clone();
             move |_| reveal_in_explorer(&path)
         }),
@@ -286,21 +286,21 @@ pub(crate) fn asset_context_menu(
     // New ▸ : the same colour-coded create rows as the Add button (landing in
     // the current folder), then Folder, in a hover panel of their own.
     let (new_row, new_content) =
-        menu_submenu(&mut commands, &fonts, "plus", &renzora::lang::t_or("assets.context.new", "New"));
+        menu_submenu(&mut commands, &fonts, "plus", &renzora_lang_api::t_or("assets.context.new", "New"));
     let mut new_kids = new_asset_rows(&mut commands, &fonts, registry.as_deref());
     new_kids.push(menu_sep(&mut commands));
     new_kids.push(menu_item(
         &mut commands,
         &fonts,
         "folder-plus",
-        &renzora::lang::t("assets.new_folder"),
+        &renzora_lang_api::t("assets.new_folder"),
         |w| create_asset(w, NewAsset::Folder),
     ));
     commands.entity(new_content).add_children(&new_kids);
     kids.extend([
         new_row,
         menu_sep(&mut commands),
-        menu_item_styled(&mut commands, &fonts, "trash", &renzora::lang::t("assets.context.delete"), (224, 96, 88), (224, 96, 88), {
+        menu_item_styled(&mut commands, &fonts, "trash", &renzora_lang_api::t("assets.context.delete"), (224, 96, 88), (224, 96, 88), {
             let path = path.clone();
             move |w| {
                 // Right-clicking an item that's part of the current selection
@@ -341,8 +341,8 @@ fn background_context_menu(
     state: &NativeAssets,
     cursor: Vec2,
     win_h: f32,
-    registry: Option<&renzora::CreateMenuRegistry>,
-    actions: Option<&renzora::AssetActionRegistry>,
+    registry: Option<&renzora_shell_api::CreateMenuRegistry>,
+    actions: Option<&renzora_shell_api::AssetActionRegistry>,
     folder: Option<PathBuf>,
 ) {
     // Same upward flip as the per-asset menu: the create-asset list is tall
@@ -362,7 +362,7 @@ fn background_context_menu(
         commands,
         fonts,
         "folder-plus",
-        &renzora::lang::t("assets.new_folder"),
+        &renzora_lang_api::t("assets.new_folder"),
         |w| create_asset(w, NewAsset::Folder),
     ));
     kids.extend(import_menu_items(commands, fonts));
@@ -372,7 +372,7 @@ fn background_context_menu(
             commands,
             fonts,
             "folder-open",
-            &renzora::lang::t("assets.context.reveal"),
+            &renzora_lang_api::t("assets.context.reveal"),
             move |_| reveal_in_explorer(&folder),
         ));
     }
@@ -385,14 +385,14 @@ fn background_context_menu(
 fn registered_action_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    actions: Option<&renzora::AssetActionRegistry>,
+    actions: Option<&renzora_shell_api::AssetActionRegistry>,
     path: &std::path::Path,
     is_dir: bool,
 ) -> Vec<Entity> {
     let Some(actions) = actions else {
         return Vec::new();
     };
-    let matching: Vec<&renzora::AssetAction> = if is_dir {
+    let matching: Vec<&renzora_shell_api::AssetAction> = if is_dir {
         actions.for_folder(path)
     } else {
         actions.for_file(path).collect()
@@ -423,7 +423,7 @@ fn registered_action_items(
 /// click-outside rule (which would need one) leaves it to the overlay's own
 /// dismissal, and its full-window box is already inside the screen clamp.
 pub(crate) fn add_menu_open(
-    registry: Option<Res<renzora::CreateMenuRegistry>>,
+    registry: Option<Res<renzora_shell_api::CreateMenuRegistry>>,
     q: Query<(&UiInteraction, Has<TreeAddBtn>), (With<AddMenuBtn>, Changed<UiInteraction>)>,
     fonts: Option<Res<EmberFonts>>,
     mut commands: Commands,
@@ -435,9 +435,9 @@ pub(crate) fn add_menu_open(
         return;
     };
     let title = if file_actions {
-        renzora::lang::t("assets.import")
+        renzora_lang_api::t("assets.import")
     } else {
-        renzora::lang::t("assets.new.header")
+        renzora_lang_api::t("assets.new.header")
     };
     let parts = overlay_val_parts(&mut commands, &fonts, &title, Val::Px(440.0), Val::Auto, true);
     let (root, content) = (parts.root, parts.content);
@@ -491,29 +491,29 @@ fn import_grid(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             commands,
             fonts,
             "file",
-            &renzora::lang::t_or("assets.import_files_tile", "Files"),
-            &renzora::lang::t_or("assets.import_files_sub", "From disk"),
+            &renzora_lang_api::t_or("assets.import_files_tile", "Files"),
+            &renzora_lang_api::t_or("assets.import_files_sub", "From disk"),
             (96, 165, 250),
-            |w| request_import(w, renzora::core::ImportPick::Files),
+            |w| request_import(w, renzora_project_api::ImportPick::Files),
         ),
         import_tile(
             commands,
             fonts,
             "folder-open",
-            &renzora::lang::t_or("assets.import_folder_tile", "Folder"),
-            &renzora::lang::t_or("assets.import_folder_sub", "A whole folder"),
+            &renzora_lang_api::t_or("assets.import_folder_tile", "Folder"),
+            &renzora_lang_api::t_or("assets.import_folder_sub", "A whole folder"),
             (240, 180, 80),
-            |w| request_import(w, renzora::core::ImportPick::Folder),
+            |w| request_import(w, renzora_project_api::ImportPick::Folder),
         ),
         import_tile(
             commands,
             fonts,
             "storefront",
-            &renzora::lang::t_or("assets.search_marketplace_tile", "Marketplace"),
-            &renzora::lang::t_or("assets.search_marketplace_sub", "Browse assets"),
+            &renzora_lang_api::t_or("assets.search_marketplace_tile", "Marketplace"),
+            &renzora_lang_api::t_or("assets.search_marketplace_sub", "Browse assets"),
             // The Marketplace's own top-bar hue, so it reads as the same place.
             (167, 130, 245),
-            |w| renzora::ShellActionInvoked::invoke(w, renzora::ACTION_MARKETPLACE),
+            |w| renzora_shell_api::ShellActionInvoked::invoke(w, renzora_shell_api::ACTION_MARKETPLACE),
         ),
     ];
     commands.entity(grid).add_children(&tiles);
@@ -606,9 +606,9 @@ fn import_tile(
 fn new_asset_menu_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    registry: Option<&renzora::CreateMenuRegistry>,
+    registry: Option<&renzora_shell_api::CreateMenuRegistry>,
 ) -> Vec<Entity> {
-    let mut kids = vec![menu_header(commands, fonts, &renzora::lang::t("assets.new.header"))];
+    let mut kids = vec![menu_header(commands, fonts, &renzora_lang_api::t("assets.new.header"))];
     kids.extend(new_asset_rows(commands, fonts, registry));
     kids
 }
@@ -618,7 +618,7 @@ fn new_asset_menu_items(
 fn new_asset_rows(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    registry: Option<&renzora::CreateMenuRegistry>,
+    registry: Option<&renzora_shell_api::CreateMenuRegistry>,
 ) -> Vec<Entity> {
     let mut kids: Vec<Entity> = NewAsset::MENU.iter().map(|&kind| {
         menu_card(
@@ -646,7 +646,7 @@ fn new_asset_rows(
 /// building UI; `None` when nothing has registered, which is a normal state and
 /// draws no extra rows.
 fn registered_menu_items(
-    registry: Option<&renzora::CreateMenuRegistry>,
+    registry: Option<&renzora_shell_api::CreateMenuRegistry>,
     commands: &mut Commands,
     fonts: &EmberFonts,
 ) -> Vec<Entity> {
@@ -718,7 +718,7 @@ pub(crate) fn sort_menu_open(
         &mut commands,
         &fonts,
         if cur_desc { "arrow-up" } else { "check" },
-        &renzora::lang::t("assets.sort.ascending"),
+        &renzora_lang_api::t("assets.sort.ascending"),
         |w| {
             if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
                 s.sort_desc = false;
@@ -729,7 +729,7 @@ pub(crate) fn sort_menu_open(
         &mut commands,
         &fonts,
         if cur_desc { "check" } else { "arrow-down" },
-        &renzora::lang::t("assets.sort.descending"),
+        &renzora_lang_api::t("assets.sort.descending"),
         |w| {
             if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
                 s.sort_desc = true;

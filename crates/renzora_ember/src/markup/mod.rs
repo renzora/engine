@@ -88,7 +88,7 @@ impl Plugin for MarkupPlugin {
         // loader. We do NOT add bevy_hui's Build/Transition/Binding runtime.
         app.add_plugins(bevy_hui::prelude::LoaderPlugin);
 
-        app.init_resource::<renzora::ScriptUiInbox>()
+        app.init_resource::<renzora_scripting_api::ScriptUiInbox>()
             .add_observer(lua_bridge::handle_hui_spawn)
             .add_observer(lua_bridge::handle_hui_despawn)
             .add_observer(lua_bridge::handle_hui_hide)
@@ -111,5 +111,3 @@ impl Plugin for MarkupPlugin {
         // foundational to all widgets, not just markup) — see ember/src/lib.rs.
     }
 }
-
-renzora::add!(MarkupPlugin);

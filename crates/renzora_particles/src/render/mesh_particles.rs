@@ -291,7 +291,7 @@ pub fn resolve_mesh_particles(
                         t
                     }
                     Err(why) => {
-                        renzora::console_log::console_warn("Particles", why);
+                        renzora_log_api::console_warn("Particles", why);
                         particles.failed = true;
                         continue;
                     }
@@ -304,7 +304,7 @@ pub fn resolve_mesh_particles(
                 None => {
                     let slots = gpu_pool_slots(&template, capacity);
                     if slots < capacity {
-                        renzora::console_log::console_warn(
+                        renzora_log_api::console_warn(
                             "Particles",
                             format!(
                                 "a {} vertex particle mesh fits {slots} of the {capacity} GPU particles in one pool; the rest are simulated but not drawn",

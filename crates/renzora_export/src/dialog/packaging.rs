@@ -57,8 +57,8 @@ pub(super) fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p
 /// release, a copy mode while iterating), so each card now carries that answer
 /// as a badge and a sentence of its own.
 fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host: bool) -> Entity {
-    let release = renzora::lang::t("export.packaging.badge.release");
-    let test = renzora::lang::t("export.packaging.badge.test");
+    let release = renzora_lang_api::t("export.packaging.badge.release");
+    let test = renzora_lang_api::t("export.packaging.badge.test");
     let mut cards = Vec::new();
     if host {
         let (title, desc) = if web {
@@ -66,13 +66,13 @@ fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host
         } else {
             ("export.packaging.lean", "export.packaging.desc.lean")
         };
-        cards.push(choice_card(commands, fonts, &renzora::lang::t(title), Some((&release, true)), &renzora::lang::t(desc), Choice::Packaging(PackagingMode::LeanSingleBinary)));
+        cards.push(choice_card(commands, fonts, &renzora_lang_api::t(title), Some((&release, true)), &renzora_lang_api::t(desc), Choice::Packaging(PackagingMode::LeanSingleBinary)));
     }
     if web {
-        cards.push(choice_card(commands, fonts, &renzora::lang::t("export.packaging.web_template"), Some((&test, false)), &renzora::lang::t("export.packaging.desc.web_template"), Choice::Packaging(PackagingMode::SeparateFiles)));
+        cards.push(choice_card(commands, fonts, &renzora_lang_api::t("export.packaging.web_template"), Some((&test, false)), &renzora_lang_api::t("export.packaging.desc.web_template"), Choice::Packaging(PackagingMode::SeparateFiles)));
     } else {
-        cards.push(choice_card(commands, fonts, &renzora::lang::t("export.packaging.single_exe"), Some((&test, false)), &renzora::lang::t("export.packaging.desc.single"), Choice::Packaging(PackagingMode::SingleBinary)));
-        cards.push(choice_card(commands, fonts, &renzora::lang::t("export.packaging.separate"), Some((&test, false)), &renzora::lang::t("export.packaging.desc.separate"), Choice::Packaging(PackagingMode::SeparateFiles)));
+        cards.push(choice_card(commands, fonts, &renzora_lang_api::t("export.packaging.single_exe"), Some((&test, false)), &renzora_lang_api::t("export.packaging.desc.single"), Choice::Packaging(PackagingMode::SingleBinary)));
+        cards.push(choice_card(commands, fonts, &renzora_lang_api::t("export.packaging.separate"), Some((&test, false)), &renzora_lang_api::t("export.packaging.desc.separate"), Choice::Packaging(PackagingMode::SeparateFiles)));
     }
     let row = card_row(commands, &cards);
     let mut rows = vec![row];
@@ -83,7 +83,7 @@ fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host
     commands.entity(foot).insert(Node { margin: UiRect::top(Val::Px(8.0)), ..default() });
     bind_text(commands, foot, move |w| {
         let lean = w.get_resource::<ExportOverlayState>().is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary);
-        renzora::lang::t(match (lean, web) {
+        renzora_lang_api::t(match (lean, web) {
             (true, true) => "export.packaging.web_hint",
             (true, false) => "export.packaging.lean_hint",
             (false, _) => "export.packaging.test_note",
@@ -94,8 +94,8 @@ fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host
     // No source, no lean build. That is a missing download rather than a
     // permanent limitation, so offer it instead of only leaving the card out.
     if !lean_source_available() {
-        let n = notice(commands, fonts, "info", &renzora::lang::t("export.packaging.needs_source"), AMBER);
-        let btn = small_button(commands, fonts, "download-simple", &renzora::lang::t("export.packaging.get_source"), SourceDownloadBtn);
+        let n = notice(commands, fonts, "info", &renzora_lang_api::t("export.packaging.needs_source"), AMBER);
+        let btn = small_button(commands, fonts, "download-simple", &renzora_lang_api::t("export.packaging.get_source"), SourceDownloadBtn);
         commands.entity(btn).insert(Node { flex_grow: 0.0, height: Val::Px(26.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(5.0), padding: UiRect::horizontal(Val::Px(10.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() });
         commands.entity(n).add_child(btn);
         commands.entity(n).insert(Node {
@@ -111,7 +111,7 @@ fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host
         });
         rows.push(n);
     }
-    group(commands, fonts, &renzora::lang::t("export.section.packaging_mode"), &rows)
+    group(commands, fonts, &renzora_lang_api::t("export.section.packaging_mode"), &rows)
 }
 
 /// Whether the exported game ships the plugin SDK, and can therefore compile
@@ -123,8 +123,8 @@ fn build_modding_group(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let row = switch_row(
         commands,
         fonts,
-        &renzora::lang::t("export.modding.enable"),
-        Some(&renzora::lang::t("export.modding.hint")),
+        &renzora_lang_api::t("export.modding.enable"),
+        Some(&renzora_lang_api::t("export.modding.hint")),
         |s| s.enable_modding,
         |s, v| s.enable_modding = v,
     );
@@ -132,12 +132,12 @@ fn build_modding_group(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // nothing for a plugin library to bind to: the SDK would ship and be
     // unusable. Said rather than silently ignored, since someone who turned the
     // switch on and then picked lean would otherwise expect it to apply.
-    let note = txt(commands, fonts, &renzora::lang::t("export.modding.lean_note"), 11.0, AMBER);
+    let note = txt(commands, fonts, &renzora_lang_api::t("export.modding.lean_note"), 11.0, AMBER);
     bind_display(commands, note, |w| {
         w.get_resource::<ExportOverlayState>()
             .is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary)
     });
-    group(commands, fonts, &renzora::lang::t("export.section.modding"), &[row, note])
+    group(commands, fonts, &renzora_lang_api::t("export.section.modding"), &[row, note])
 }
 
 /// Application-bundle group: wrap the export in an `.AppImage` or a `.app`.
@@ -148,10 +148,10 @@ fn build_modding_group(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn build_bundle_group(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
     let mac = matches!(p, Platform::MacOSX64 | Platform::MacOSArm64);
     let title = if mac { "export.section.app_bundle" } else { "export.section.appimage" };
-    let label = renzora::lang::t(if mac { "export.bundle.enable_app" } else { "export.bundle.enable_appimage" });
-    let hint = renzora::lang::t(if mac { "export.bundle.hint_app" } else { "export.bundle.hint_appimage" });
+    let label = renzora_lang_api::t(if mac { "export.bundle.enable_app" } else { "export.bundle.enable_appimage" });
+    let hint = renzora_lang_api::t(if mac { "export.bundle.hint_app" } else { "export.bundle.hint_appimage" });
     let row = switch_row(commands, fonts, &label, Some(&hint), |s| s.bundle_app, |s, v| s.bundle_app = v);
-    group(commands, fonts, &renzora::lang::t(title), &[row])
+    group(commands, fonts, &renzora_lang_api::t(title), &[row])
 }
 
 /// The runtime template as one status row: whether it is installed, and the
@@ -185,7 +185,7 @@ fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform
         .id();
     let title = txt(commands, fonts, "", 12.5, text_primary());
     bind_text(commands, title, move |w| {
-        renzora::lang::t(if installed(w) { "export.runtime.installed_for" } else { "export.runtime.missing_for" }).replace("{platform}", p.display_name())
+        renzora_lang_api::t(if installed(w) { "export.runtime.installed_for" } else { "export.runtime.missing_for" }).replace("{platform}", p.display_name())
     });
     let hint = txt(commands, fonts, "", 11.0, text_muted());
     bind_text(commands, hint, move |w| {
@@ -198,18 +198,18 @@ fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform
                 }
             }
         }
-        renzora::lang::t(if installed(w) { "export.runtime.installed_hint" } else { "export.runtime.missing_hint" })
+        renzora_lang_api::t(if installed(w) { "export.runtime.installed_hint" } else { "export.runtime.missing_hint" })
     });
     commands.entity(text).add_children(&[title, hint]);
-    let inst = pill_button(commands, fonts, "folder-open", &renzora::lang::t("export.btn.install_from_file"));
+    let inst = pill_button(commands, fonts, "folder-open", &renzora_lang_api::t("export.btn.install_from_file"));
     commands.entity(inst).insert(InstallBtn);
-    let dl = pill_button(commands, fonts, "download-simple", &renzora::lang::t("export.btn.download_github"));
+    let dl = pill_button(commands, fonts, "download-simple", &renzora_lang_api::t("export.btn.download_github"));
     commands.entity(dl).insert(DownloadBtn);
     bind_display(commands, inst, move |w| !installed(w));
     bind_display(commands, dl, move |w| !installed(w));
     commands.entity(card).add_children(&[ic, text, inst, dl]);
 
-    let g = group(commands, fonts, &renzora::lang::t("export.section.runtime_template"), &[card]);
+    let g = group(commands, fonts, &renzora_lang_api::t("export.section.runtime_template"), &[card]);
     bind_display(commands, g, |w| {
         w.get_resource::<ExportOverlayState>()
             .is_some_and(|s| s.packaging_mode != PackagingMode::LeanSingleBinary)
@@ -239,8 +239,8 @@ fn compression_group(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -
     let level = setting_row(
         commands,
         fonts,
-        &renzora::lang::t("export.compression.level"),
-        Some(&renzora::lang::t("export.compression.level_hint")),
+        &renzora_lang_api::t("export.compression.level"),
+        Some(&renzora_lang_api::t("export.compression.level_hint")),
         dv,
     );
     let mut rows = vec![level];
@@ -251,22 +251,22 @@ fn compression_group(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -
         rows.push(switch_row(
             commands,
             fonts,
-            &renzora::lang::t("export.compression.upx"),
-            Some(&renzora::lang::t("export.compression.upx_help")),
+            &renzora_lang_api::t("export.compression.upx"),
+            Some(&renzora_lang_api::t("export.compression.upx_help")),
             |s| s.upx_compress,
             |s, v| s.upx_compress = v,
         ));
     }
 
-    rows.push(switch_row(commands, fonts, &renzora::lang::t("export.mesh.simplify"), Some(&renzora::lang::t("export.mesh.simplify_hint")), |s| s.mesh_simplify, |s, v| s.mesh_simplify = v));
+    rows.push(switch_row(commands, fonts, &renzora_lang_api::t("export.mesh.simplify"), Some(&renzora_lang_api::t("export.mesh.simplify_hint")), |s| s.mesh_simplify, |s, v| s.mesh_simplify = v));
     let dvr = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 0.01);
     bind_2way(commands, dvr, |w| w.resource::<ExportOverlayState>().mesh_simplify_ratio, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_simplify_ratio = v.clamp(0.1, 1.0));
-    rows.push(sub_value(commands, fonts, &renzora::lang::t("export.field.keep_ratio"), dvr, |s| s.mesh_simplify));
-    rows.push(switch_row(commands, fonts, &renzora::lang::t("export.mesh.quantize"), Some(&renzora::lang::t("export.mesh.quantize_hint")), |s| s.mesh_quantize, |s, v| s.mesh_quantize = v));
-    rows.push(switch_row(commands, fonts, &renzora::lang::t("export.mesh.generate_lods"), Some(&renzora::lang::t("export.mesh.lods_hint")), |s| s.mesh_generate_lods, |s, v| s.mesh_generate_lods = v));
+    rows.push(sub_value(commands, fonts, &renzora_lang_api::t("export.field.keep_ratio"), dvr, |s| s.mesh_simplify));
+    rows.push(switch_row(commands, fonts, &renzora_lang_api::t("export.mesh.quantize"), Some(&renzora_lang_api::t("export.mesh.quantize_hint")), |s| s.mesh_quantize, |s, v| s.mesh_quantize = v));
+    rows.push(switch_row(commands, fonts, &renzora_lang_api::t("export.mesh.generate_lods"), Some(&renzora_lang_api::t("export.mesh.lods_hint")), |s| s.mesh_generate_lods, |s, v| s.mesh_generate_lods = v));
     let dvl = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
     bind_2way(commands, dvl, |w| w.resource::<ExportOverlayState>().mesh_lod_levels as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_lod_levels = (v.round() as u32).clamp(1, 5));
-    rows.push(sub_value(commands, fonts, &renzora::lang::t("export.field.lod_levels"), dvl, |s| s.mesh_generate_lods));
+    rows.push(sub_value(commands, fonts, &renzora_lang_api::t("export.field.lod_levels"), dvl, |s| s.mesh_generate_lods));
 
-    group(commands, fonts, &renzora::lang::t("export.section.size"), &rows)
+    group(commands, fonts, &renzora_lang_api::t("export.section.size"), &rows)
 }

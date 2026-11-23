@@ -9,7 +9,7 @@ crate-type = ["rlib"]
 
 [features]
 default = ["editor"]
-editor = ["renzora/editor"]
+editor = ["dep:renzora_editor_api"]
 # The selection outlines in `editor.rs`, which need a `Gizmos` system param.
 #
 # NOT in `default`, unlike `editor`, and the difference is the whole point:
@@ -27,9 +27,18 @@ editor = ["renzora/editor"]
 gizmos = []
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api", optional = true }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 bevy_firefly = { path = "../../vendor/bevy_firefly" }
-renzora = { path = "../renzora" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "Light2dPlugin"

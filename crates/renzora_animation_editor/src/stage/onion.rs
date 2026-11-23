@@ -24,8 +24,8 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
-use renzora::core::{EditorLocked, HideInHierarchy};
-use renzora::ChannelSpline;
+use renzora_scene_api::{EditorLocked, HideInHierarchy};
+use renzora_animation_api::ChannelSpline;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text_color};
 use renzora_ember::reactive::Rx;
@@ -370,7 +370,7 @@ pub(crate) fn toolbar_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Ent
         let mut s = w.resource_mut::<OnionSkin>();
         s.enabled = !s.enabled;
     });
-    commands.entity(toggle).insert(renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+    commands.entity(toggle).insert(renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or(
         "stage.onion_tip",
         "Onion skin: ghosts of the pose a few frames before (orange) and after (blue) the playhead",
     )));
@@ -423,7 +423,7 @@ fn pill(
     bind_text_color(commands, ic, move |w| if lit(w) { rgb(on_accent()) } else { rgb(text_muted()) });
     commands.entity(b).add_child(ic);
     if !label.is_empty() {
-        let t = commands.spawn((Text::new(renzora::lang::t_or("stage.onion", label)), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())))).id();
+        let t = commands.spawn((Text::new(renzora_lang_api::t_or("stage.onion", label)), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())))).id();
         bind_text_color(commands, t, move |w| if on(w) { rgb(on_accent()) } else { rgb(text_primary()) });
         commands.entity(b).add_child(t);
     }
@@ -445,8 +445,8 @@ fn open_settings(world: &mut World) {
         let each = skin.before.max(skin.after);
         for n in [1u32, 2, 3, 5] {
             let label = match n {
-                1 => renzora::lang::t_or("stage.onion_one", "1 ghost each side"),
-                _ => format!("{n} {}", renzora::lang::t_or("stage.onion_ghosts", "ghosts each side")),
+                1 => renzora_lang_api::t_or("stage.onion_one", "1 ghost each side"),
+                _ => format!("{n} {}", renzora_lang_api::t_or("stage.onion_ghosts", "ghosts each side")),
             };
             kids.push(menu_item(&mut commands, &fonts, tick(each == n, "ghost"), &label, move |w| {
                 let mut s = w.resource_mut::<OnionSkin>();
@@ -466,7 +466,7 @@ fn open_settings(world: &mut World) {
         ];
         for (key, fallback, before, after) in sides {
             let on = (skin.before > 0) == before && (skin.after > 0) == after;
-            kids.push(menu_item(&mut commands, &fonts, tick(on, "arrows-horizontal"), &renzora::lang::t_or(key, fallback), move |w| {
+            kids.push(menu_item(&mut commands, &fonts, tick(on, "arrows-horizontal"), &renzora_lang_api::t_or(key, fallback), move |w| {
                 let mut s = w.resource_mut::<OnionSkin>();
                 let n = s.before.max(s.after).max(1);
                 s.enabled = true;
@@ -476,8 +476,8 @@ fn open_settings(world: &mut World) {
         }
         for step in [1u32, 2, 3, 5, 10] {
             let label = match step {
-                1 => renzora::lang::t_or("stage.onion_every_frame", "Every frame"),
-                _ => format!("{} {step} {}", renzora::lang::t_or("stage.onion_every", "Every"), renzora::lang::t_or("stage.onion_frames", "frames")),
+                1 => renzora_lang_api::t_or("stage.onion_every_frame", "Every frame"),
+                _ => format!("{} {step} {}", renzora_lang_api::t_or("stage.onion_every", "Every"), renzora_lang_api::t_or("stage.onion_frames", "frames")),
             };
             kids.push(menu_item(&mut commands, &fonts, tick(skin.step == step, "timer"), &label, move |w| {
                 let mut s = w.resource_mut::<OnionSkin>();

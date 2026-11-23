@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{KeyedSnapshot};

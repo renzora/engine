@@ -169,7 +169,7 @@ fn pump(
             }
             Message::Submit { id, job } => queue.submit(id, job),
             Message::Cancel { id } => queue.cancel(id),
-            Message::EditorState { playing } => editor.playing = playing,
+            Message::EditorState { playing, .. } => editor.playing = playing,
             Message::Show => {
                 // Visible alone leaves it wherever it was, usually behind the
                 // editor that was just clicked; asking for focus brings it up.

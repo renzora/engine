@@ -20,7 +20,7 @@
 //! reopening the scene still takes it.
 
 use bevy::prelude::*;
-use renzora::lang::t as tr;
+use renzora_lang_api::t as tr;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::UiInteraction;
 
@@ -48,7 +48,7 @@ pub(crate) fn spawn_conflict_prompt(
     conflicts: Res<SceneConflicts>,
     open: Query<&ConflictPromptRoot>,
     fonts: Option<Res<EmberFonts>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };

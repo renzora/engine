@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::BLOCK;

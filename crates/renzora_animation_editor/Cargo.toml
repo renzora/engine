@@ -4,10 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api" }
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 renzora_theme = { path = "../renzora_theme" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora = { path = "../shared/renzora", default-features = false, features = ["editor"] }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_animation_api = { path = "../api/renzora_animation_api" }
 renzora_ember = { path = "../renzora_ember" }
 renzora_animation = { path = "../renzora_animation" }
 renzora_inspector = { path = "../renzora_inspector" }
@@ -29,3 +39,10 @@ serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AnimationEditorPlugin"
+scope = "Editor"

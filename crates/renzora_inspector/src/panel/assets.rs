@@ -44,7 +44,7 @@ fn asset_display(v: Option<FieldValue>) -> (String, bool) {
                 .unwrap_or(p);
             (name, true)
         }
-        _ => (renzora::lang::t("inspector.drag_asset"), false),
+        _ => (renzora_lang_api::t("inspector.drag_asset"), false),
     }
 }
 
@@ -92,7 +92,7 @@ pub(super) fn build_asset_field(
     let get_r2 = get_fn.clone();
     let path_text = commands
         .spawn((
-            Text::new(renzora::lang::t("inspector.drag_asset")),
+            Text::new(renzora_lang_api::t("inspector.drag_asset")),
             ui_font(&fonts.ui, 11.0),
             TextColor(c(renzora_ember::theme::text_muted())),
             bevy::text::TextLayout::no_wrap(),
@@ -227,7 +227,7 @@ pub(super) fn build_asset_field(
     row
 }
 
-/// The "+" on an [`FieldType::AssetCreatable`](renzora::FieldType) field. Runs
+/// The "+" on an [`FieldType::AssetCreatable`](renzora_editor_api::FieldType) field. Runs
 /// `create_fn` to author + assign the asset in place, but only when the field is
 /// still empty — once it points at something, the ✕ clears and drag-drop replaces.
 #[derive(Component)]
@@ -264,7 +264,7 @@ pub(super) fn asset_create_click(
 pub(super) fn asset_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     zones: Query<(&renzora_ember::UiCursor, &AssetDropZone)>,
     cmds: Option<Res<EditorCommands>>,
 ) {

@@ -13,7 +13,7 @@
 //! that expose no observable state (a marketplace purchase, say) without either
 //! lying about detecting them or reaching into another crate's private state.
 
-use renzora::core::keybindings::EditorAction;
+use renzora_shell_api::keybindings::EditorAction;
 
 /// What action a step asks for — drives both the hint art and the detection
 /// predicate. Order within a chapter's slice is the order the tutorial walks.

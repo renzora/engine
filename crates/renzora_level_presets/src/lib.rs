@@ -9,7 +9,7 @@ pub mod state;
 
 use bevy::prelude::*;
 
-use renzora::core::{MeshColor, MeshPrimitive, SceneCamera};
+use renzora_scene_api::{MeshColor, MeshPrimitive, SceneCamera};
 use renzora_lighting::Sun;
 
 use state::*;
@@ -70,7 +70,7 @@ impl Plugin for LevelPresetsPlugin {
         // Register World Environment and Sun spawn presets
         register_lighting_presets(app);
 
-        use renzora::SplashState;
+        use renzora_project_api::SplashState;
         app.register_type::<CameraEffectsSeeded>();
         app.add_systems(
             Update,
@@ -122,7 +122,7 @@ fn seed_camera_effects(
             // CAS and deband stay OFF by default, added per camera. Anti-aliasing
             // starts on TAA; its other methods are picked on the same component.
             renzora_bloom_effect::BloomSettings::default(),
-            renzora::AutoExposureSettings::default(),
+            renzora_render_api::AutoExposureSettings::default(),
             renzora_tonemapping::TonemappingSettings::default(),
             renzora_antialiasing::AntiAliasing::default(),
             // Manual exposure (lens attribute, edited in the Camera section).
@@ -147,7 +147,7 @@ fn strip_camera_effects_from_2d(
             With<Camera2d>,
             Or<(
                 With<renzora_bloom_effect::BloomSettings>,
-                With<renzora::AutoExposureSettings>,
+                With<renzora_render_api::AutoExposureSettings>,
                 With<renzora_tonemapping::TonemappingSettings>,
                 // The old seeded component only. `AntiAliasing` is not
                 // stripped: the seeder never puts one on a 2D camera, so one
@@ -160,7 +160,7 @@ fn strip_camera_effects_from_2d(
     for cam in &cams {
         commands.entity(cam).remove::<(
             renzora_bloom_effect::BloomSettings,
-            renzora::AutoExposureSettings,
+            renzora_render_api::AutoExposureSettings,
             renzora_tonemapping::TonemappingSettings,
             renzora_antialiasing::TaaSettings,
         )>();
@@ -1397,7 +1397,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     // `App::add_plugins` panic. Users can still add it via the
     // inspector's "Add Component" overlay; the inspector entry is
     // registered by the dlopen path.
-    let night_stars = renzora::NightStarsData {
+    let night_stars = renzora_world_api::NightStarsData {
         enabled: false,
         ..default()
     };
@@ -1443,7 +1443,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // rather than an Add Component hunt. Off because it is the most
             // expensive thing in the frame and needs a ray-tracing GPU; on a
             // GPU without one the component is inert either way.
-            (renzora::SolariGi {
+            (renzora_solari_api::SolariGi {
                 enabled: false,
                 ..default()
             },),
@@ -1452,7 +1452,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             // env state. It currently drives only fog (disabled by default —
             // matches the stock fog-less scene); more sections migrate here in
             // later slices.
-            (renzora::WorldEnvironment::default(),),
+            (renzora_world_api::WorldEnvironment::default(),),
         ))
         .id()
 }
@@ -1498,7 +1498,7 @@ fn outdoor_daylight(world: &mut World, environment: Entity) {
         atmosphere.ground_albedo = 0.67;
         atmosphere.top_radius = atmosphere.bottom_radius + 60_000.0;
     }
-    if let Some(mut env) = entity.get_mut::<renzora::WorldEnvironment>() {
+    if let Some(mut env) = entity.get_mut::<renzora_world_api::WorldEnvironment>() {
         env.fog.enabled = true;
         env.fog.mode = 1;
         env.fog.density = 0.001;
@@ -1511,7 +1511,7 @@ fn outdoor_daylight(world: &mut World, environment: Entity) {
 /// clouds plugin), then applies what they queued, so the entity is complete by
 /// the time the preset or starter returns and its spawn is recorded for undo.
 fn environment_spawned(world: &mut World, entity: Entity, outdoor_daylight: bool) {
-    world.trigger(renzora::WorldEnvironmentSpawned { entity, outdoor_daylight });
+    world.trigger(renzora_world_api::WorldEnvironmentSpawned { entity, outdoor_daylight });
     world.flush();
 }
 
@@ -1531,14 +1531,14 @@ fn outdoor_camera() -> impl Bundle {
         }),
         renzora_tonemapping::TonemappingSettings::default(),
         renzora_bloom_effect::BloomSettings::default(),
-        renzora::AutoExposureSettings::default(),
+        renzora_render_api::AutoExposureSettings::default(),
         renzora_antialiasing::AntiAliasing::default(),
         bevy::camera::Exposure { ev100: 13.5 },
     )
 }
 
 fn register_lighting_presets(app: &mut App) {
-    use renzora::{AppEditorExt, EntityPreset, SceneStarter};
+    use renzora_editor_api::{AppEditorExt, EntityPreset, SceneStarter};
 
     app.register_entity_preset(EntityPreset {
         id: "world_environment",
@@ -1572,7 +1572,7 @@ fn register_lighting_presets(app: &mut App) {
             world.spawn((
                 (
                     Name::new("Camera"),
-                    renzora::core::SceneCamera,
+                    renzora_scene_api::SceneCamera,
                     Camera3d::default(),
                     Camera {
                         is_active: false,
@@ -1584,7 +1584,7 @@ fn register_lighting_presets(app: &mut App) {
             ));
             // And the editor's view with it, rather than the default orbit's
             // close look at the ground under the origin.
-            world.insert_resource(renzora::core::CameraViewRequest::LookAt { eye, target });
+            world.insert_resource(renzora_project_api::CameraViewRequest::LookAt { eye, target });
         },
     });
 
@@ -1612,5 +1612,3 @@ fn register_lighting_presets(app: &mut App) {
         },
     });
 }
-
-renzora::add!(LevelPresetsPlugin, Editor);

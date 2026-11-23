@@ -29,7 +29,7 @@ use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainChunkStreamedOut, Ter
 use crate::material::TerrainCheckerboardMaterial;
 use crate::mesh::{generate_chunk_lod_mesh_beside, ChunkNeighbours};
 use crate::surface::TerrainSurfaceMaterial;
-use renzora::core::MaterialRef;
+use renzora_material_api::MaterialRef;
 
 /// The point streaming measured from this frame, for the systems that build
 /// chunks to start with the nearest (`rehydrate_terrain_chunks`,
@@ -42,7 +42,7 @@ pub struct StreamFocus(pub Option<Vec3>);
 pub fn stream_terrain_chunks(world: &mut World) {
     // A dedicated server has no camera, and gameplay there needs the whole
     // world resident: bring back anything streamed out and stop.
-    if world.get_resource::<renzora::core::DedicatedServer>().is_some() {
+    if world.get_resource::<renzora_project_api::DedicatedServer>().is_some() {
         let stale: Vec<Entity> = {
             let mut q = world.query_filtered::<Entity, With<TerrainChunkStreamedOut>>();
             q.iter(world).collect()
@@ -54,10 +54,10 @@ pub fn stream_terrain_chunks(world: &mut World) {
     }
     // Editing: what the viewport is looking at. Playing, or a shipped game:
     // the gameplay camera, as every other streamer measures from.
-    let camera_pos = if renzora::core::editor_editing(world) {
-        renzora::core::editor_camera_pos(world)
+    let camera_pos = if renzora_platform_api::editor_editing(world) {
+        renzora_platform_api::editor_camera_pos(world)
     } else {
-        renzora::streaming_camera_pos(world)
+        renzora_platform_api::streaming_camera_pos(world)
     };
     if world.get_resource::<StreamFocus>().is_none_or(|f| f.0 != camera_pos) {
         world.insert_resource(StreamFocus(camera_pos));
@@ -94,7 +94,7 @@ pub fn stream_terrain_chunks(world: &mut World) {
             &GlobalTransform,
             Has<TerrainChunkStreamedOut>,
             Has<Mesh3d>,
-            Has<renzora::physics::HeightfieldSource>,
+            Has<renzora_physics_api::physics::HeightfieldSource>,
         )>();
         for (entity, chunk_of, transform, streamed_out, has_mesh, has_field) in q.iter(world) {
             let Some(&(stream, radius, chunk_size)) = configs.get(&chunk_of.0) else {
@@ -148,8 +148,8 @@ pub fn stream_terrain_chunks(world: &mut World) {
             if !has_field {
                 // Empty is safe wherever a heightfield is read: the backend
                 // builds no collider from it and its bounds are a point.
-                commands.entity(entity).try_insert(renzora::physics::HeightfieldSource(std::sync::Arc::new(
-                    renzora::physics::HeightfieldData::default(),
+                commands.entity(entity).try_insert(renzora_physics_api::physics::HeightfieldSource(std::sync::Arc::new(
+                    renzora_physics_api::physics::HeightfieldData::default(),
                 )));
             }
             // Collider first (both backends' component sets), then the mesh —
@@ -265,7 +265,7 @@ pub fn sync_stream_proxies(
             Transform::IDENTITY,
             Visibility::Inherited,
             // Generated from the chunk, never saved, not listed.
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             ChildOf(entity),
         ));
         if let Ok((surface, checker, material_ref, landscape)) = materials.get(entity) {

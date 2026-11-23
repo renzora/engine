@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Renzora's own particle system: node-graph effects (.vfx) compiled to a backend-neutral IR, simulated on the CPU and drawn as one dynamic mesh per emitter, in 2D and 3D."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, which the build
 # generator wires into the committed plugin list. The editor-only half (Add
 # Entity preset, inspector) is the nested `renzora_particles_editor` crate in
 # `editor/`, linked only by the editor bundle.
@@ -28,8 +28,15 @@ render_2d = []
 material_graph = ["dep:renzora_shader", "render_3d"]
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
+renzora_material_api = { path = "../api/renzora_material_api" }
+renzora_shader_api = { path = "../api/renzora_shader_api" }
 renzora_shader = { path = "../renzora_shader", optional = true }
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
@@ -51,3 +58,9 @@ renzora_bsn = { path = "../renzora_bsn" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ParticlesPlugin"

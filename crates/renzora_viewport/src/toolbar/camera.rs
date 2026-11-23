@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     CameraSettingsState, ProjectionMode, ViewAngleCommand, ViewportSettings,
 };
 use renzora_editor_framework::EditorCommands;
@@ -69,20 +69,20 @@ const VIEW_ANGLES: &[(&str, &str, f32, f32)] = {
 #[allow(clippy::vec_init_then_push)]
 pub(super) fn camera_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.projection")));
-    kids.push(proj_row(commands, fonts, ProjectionMode::Perspective, &renzora::lang::t("viewport.camera.perspective")));
-    kids.push(proj_row(commands, fonts, ProjectionMode::Orthographic, &renzora::lang::t("viewport.camera.orthographic")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.camera.projection")));
+    kids.push(proj_row(commands, fonts, ProjectionMode::Perspective, &renzora_lang_api::t("viewport.camera.perspective")));
+    kids.push(proj_row(commands, fonts, ProjectionMode::Orthographic, &renzora_lang_api::t("viewport.camera.orthographic")));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.view_angles")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.camera.view_angles")));
     for (label, sc, yaw, pitch) in VIEW_ANGLES {
         let lbl = match *label {
-            "Front" => renzora::lang::t("viewport.camera.front"),
-            "Back" => renzora::lang::t("viewport.camera.back"),
-            "Left" => renzora::lang::t("viewport.camera.left"),
-            "Right" => renzora::lang::t("viewport.camera.right"),
-            "Top" => renzora::lang::t("viewport.camera.top"),
-            "Bottom" => renzora::lang::t("viewport.camera.bottom"),
+            "Front" => renzora_lang_api::t("viewport.camera.front"),
+            "Back" => renzora_lang_api::t("viewport.camera.back"),
+            "Left" => renzora_lang_api::t("viewport.camera.left"),
+            "Right" => renzora_lang_api::t("viewport.camera.right"),
+            "Top" => renzora_lang_api::t("viewport.camera.top"),
+            "Bottom" => renzora_lang_api::t("viewport.camera.bottom"),
             other => other.to_string(),
         };
         kids.push(click_row(
@@ -97,21 +97,21 @@ pub(super) fn camera_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<En
     }
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.sensitivities")));
-    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.look"), 0.05, 2.0, 0.05, camera.look_sensitivity));
-    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.orbit"), 0.05, 2.0, 0.05, camera.orbit_sensitivity));
-    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.pan"), 0.1, 5.0, 0.1, camera.pan_sensitivity));
-    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.zoom"), 0.1, 5.0, 0.1, camera.zoom_sensitivity));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.camera.sensitivities")));
+    kids.push(drag_row!(commands, fonts, &renzora_lang_api::t("viewport.camera.look"), 0.05, 2.0, 0.05, camera.look_sensitivity));
+    kids.push(drag_row!(commands, fonts, &renzora_lang_api::t("viewport.camera.orbit"), 0.05, 2.0, 0.05, camera.orbit_sensitivity));
+    kids.push(drag_row!(commands, fonts, &renzora_lang_api::t("viewport.camera.pan"), 0.1, 5.0, 0.1, camera.pan_sensitivity));
+    kids.push(drag_row!(commands, fonts, &renzora_lang_api::t("viewport.camera.zoom"), 0.1, 5.0, 0.1, camera.zoom_sensitivity));
 
     kids.push(separator_row(commands));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.camera.invert_y"), camera.invert_y));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.camera.invert_y"), camera.invert_y));
     kids.push(toggle_row!(
         commands,
         fonts,
-        &renzora::lang::t("viewport.camera.distance_relative_speed"),
+        &renzora_lang_api::t("viewport.camera.distance_relative_speed"),
         camera.distance_relative_speed
     ));
-    kids.push(click_row(commands, fonts, &renzora::lang::t("inspector.component.reset"), HeaderClick::CamReset));
+    kids.push(click_row(commands, fonts, &renzora_lang_api::t("inspector.component.reset"), HeaderClick::CamReset));
     kids
 }
 
@@ -119,11 +119,11 @@ pub(super) fn camera_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<En
 #[allow(clippy::vec_init_then_push)]
 pub(super) fn snap_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
     let mut kids: Vec<Entity> = Vec::new();
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.snap.object_snapping")));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.snap.object_snapping")));
     kids.push(snap_dist_row(
         commands,
         fonts,
-        &renzora::lang::t("viewport.snap.objects"),
+        &renzora_lang_api::t("viewport.snap.objects"),
         SnapBtnKind::Object,
         HeaderClick::ToggleObjectSnap,
         0.1,
@@ -135,7 +135,7 @@ pub(super) fn snap_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Enti
     kids.push(snap_dist_row(
         commands,
         fonts,
-        &renzora::lang::t("viewport.snap.floor"),
+        &renzora_lang_api::t("viewport.snap.floor"),
         SnapBtnKind::Floor,
         HeaderClick::ToggleFloorSnap,
         -1000.0,
@@ -146,12 +146,12 @@ pub(super) fn snap_rows(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Enti
     ));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.snap.transform_aids")));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.snap.edge_snap"), snap.translate_edge_snap));
+    kids.push(section_label(commands, fonts, &renzora_lang_api::t("viewport.snap.transform_aids")));
+    kids.push(toggle_row!(commands, fonts, &renzora_lang_api::t("viewport.snap.edge_snap"), snap.translate_edge_snap));
     kids.push(toggle_row!(
         commands,
         fonts,
-        &renzora::lang::t("viewport.snap.scale_from_bottom"),
+        &renzora_lang_api::t("viewport.snap.scale_from_bottom"),
         snap.scale_bottom_anchor
     ));
     kids
@@ -212,7 +212,7 @@ pub(super) fn header_click(
                 // Per-slot channel, consumed by `renzora_camera::apply_per_slot_view_angle`.
                 cmds.push(move |w: &mut World| {
                     if let Some(mut vps) =
-                        w.get_resource_mut::<renzora::core::viewport_types::Viewports>()
+                        w.get_resource_mut::<renzora_viewport_api::Viewports>()
                     {
                         if let Some(s) = vps.slots.get_mut(slot) {
                             s.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });

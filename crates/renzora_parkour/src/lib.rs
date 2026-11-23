@@ -23,7 +23,7 @@
 //! `move_controller()` on the same entity is fighting it, and the last writer
 //! that frame wins — pick one.
 //!
-//! It is a 3D feature. Every cast goes through `renzora::physics`, so it runs
+//! It is a 3D feature. Every cast goes through `renzora_physics_api::physics`, so it runs
 //! on whichever backend simulates the 3D world. A 2D export drops the whole
 //! crate rather than carrying an inert copy.
 //!
@@ -52,10 +52,10 @@ pub mod script_extension;
 pub mod state;
 
 use bevy::prelude::*;
-use renzora::physics::ResolvedShape;
+use renzora_physics_api::physics::ResolvedShape;
 #[cfg(feature = "editor")]
-use renzora::AppEditorExt;
-use renzora::PlayModeState;
+use renzora_editor_api::AppEditorExt;
+use renzora_project_api::PlayModeState;
 
 pub use read_state::ParkourReadState;
 pub use state::{ParkourInput, ParkourMotion, ParkourState};
@@ -74,7 +74,7 @@ pub use state::{ParkourInput, ParkourMotion, ParkourState};
 /// The defaults describe an adult human: 1.8 m tall, runs at 7 m/s, vaults a
 /// 1.2 m rail, mantles a 2.3 m wall.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 // `Default` goes in the reflect list, not just the derive list, so a scene
 // saved before a field existed still loads: `FromReflect` returns `None` for
 // partial data and falls back to `ReflectDefault` for the missing fields.
@@ -233,7 +233,7 @@ impl Default for ParkourController {
 /// means "don't drive this one state", so a project can let the controller
 /// handle locomotion and keep the traversals for itself.
 #[derive(Component, Reflect, Clone, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(
     feature = "editor",
@@ -293,7 +293,7 @@ impl Default for ParkourAnimations {
 /// counts). Nothing about a ladder's *shape* distinguishes it from a fence, so
 /// this is the one piece of climbing the level has to state outright.
 #[derive(Component, Reflect, Clone, Copy, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(
     feature = "editor",
@@ -327,7 +327,7 @@ impl Default for ParkourLadder {
 /// The entity's world position is the pivot. It needs no collider — swings are
 /// found by proximity and a line-of-sight check, not by touching.
 #[derive(Component, Reflect, Clone, Copy, Debug)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(
     feature = "editor",
@@ -367,7 +367,7 @@ impl Default for ParkourSwingAnchor {
 /// "Add Component" list is generated from named fields, and a unit struct
 /// cannot appear in it.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 #[reflect(Component, Default)]
 #[cfg_attr(
     feature = "editor",
@@ -484,16 +484,16 @@ fn init_parkour(
 /// Turn the `parkour_*` script actions into movement intent.
 ///
 /// Same indirection every other domain crate uses: the script says
-/// `parkour_jump()`, the backend turns it into a `renzora::ScriptAction`, and
+/// `parkour_jump()`, the backend turns it into a `renzora_scripting_api::ScriptAction`, and
 /// this observer writes it onto the entity's [`ParkourInput`]. The drive
 /// system is the only thing that reads it, so any other caller firing the same
 /// action (another language backend, an engine crate) behaves identically to a
 /// Lua call.
 fn handle_parkour_script_actions(
-    trigger: On<renzora::ScriptAction>,
+    trigger: On<renzora_scripting_api::ScriptAction>,
     mut inputs: Query<&mut ParkourInput>,
 ) {
-    use renzora::ScriptActionValue;
+    use renzora_scripting_api::ScriptActionValue;
     let action = trigger.event();
     let Ok(mut input) = inputs.get_mut(action.entity) else {
         return;
@@ -585,5 +585,3 @@ impl Plugin for ParkourPlugin {
         }
     }
 }
-
-renzora::add!(ParkourPlugin);

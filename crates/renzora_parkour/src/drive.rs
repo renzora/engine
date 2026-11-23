@@ -22,7 +22,7 @@
 //!
 //! ## Why an exclusive system
 //!
-//! Every probe and sweep is a cast through `renzora::physics`, which reads the
+//! Every probe and sweep is a cast through `renzora_physics_api::physics`, which reads the
 //! selected backend's state out of the world. A cast takes `&World`, and an
 //! ordinary system cannot hold one beside the `&mut` it needs for the
 //! character. So the frame runs in three steps: each character's working state
@@ -32,7 +32,7 @@
 
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
-use renzora::physics::ResolvedCollider;
+use renzora_physics_api::physics::ResolvedCollider;
 use renzora_physics::slide::{collide_and_slide, SweepHit};
 
 use crate::probe::{probe, ProbeWorld, Spatial};

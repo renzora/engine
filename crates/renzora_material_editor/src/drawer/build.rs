@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::MaterialThumbnailRegistry;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::Rx;

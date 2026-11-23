@@ -21,7 +21,7 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::ViewportState;
+use renzora_viewport_api::ViewportState;
 use renzora_editor_framework::{EditorCamera, EditorSelection};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{menu_header, menu_item, menu_sep, screen_menu_flip};
@@ -143,15 +143,15 @@ pub(crate) fn pick_list_system(
     let mut rows = vec![menu_header(
         &mut commands,
         &fonts,
-        &renzora::lang::t("viewport.pick_list.under_cursor"),
+        &renzora_lang_api::t("viewport.pick_list.under_cursor"),
     )];
     for &e in &under {
         let mut label = name_of(e);
         // Say why a plain click would not have selected this one.
         if resolver.is_locked(e) {
-            label = renzora::lang::t_args("viewport.pick_list.locked", &[("name", &label)]);
+            label = renzora_lang_api::t_args("viewport.pick_list.locked", &[("name", &label)]);
         } else if let Some(unit) = resolver.unit(e).filter(|&u| u != e) {
-            label = renzora::lang::t_args(
+            label = renzora_lang_api::t_args(
                 "viewport.pick_list.in_unit",
                 &[("name", &label), ("unit", &name_of(unit))],
             );
@@ -164,7 +164,7 @@ pub(crate) fn pick_list_system(
         rows.push(menu_header(
             &mut commands,
             &fonts,
-            &renzora::lang::t_args("viewport.pick_list.parents", &[("name", &name_of(nearest))]),
+            &renzora_lang_api::t_args("viewport.pick_list.parents", &[("name", &name_of(nearest))]),
         ));
         for &e in &parents {
             let label = name_of(e);

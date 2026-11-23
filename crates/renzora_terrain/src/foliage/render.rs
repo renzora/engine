@@ -72,7 +72,7 @@ use bevy::shader::Shader;
 
 use super::instance::{BladeSetId, GrassChunk, GrassInstance, VERTS_PER_BLADE};
 
-// Wind comes from the one world-global `renzora::WindState` (authored on the
+// Wind comes from the one world-global `renzora_world_api::WindState` (authored on the
 // `WorldEnvironment` entity, evaluated by `renzora_wind`). This used to be a
 // hardcoded `const WIND_DIRECTION: Vec2`, which meant grass could lean east
 // under a cloud deck drifting west.
@@ -170,7 +170,7 @@ struct EnqueuedGrass {
 fn extract_grass_chunks(
     mut commands: Commands,
     time: Extract<Res<Time>>,
-    wind: Extract<Option<Res<renzora::WindState>>>,
+    wind: Extract<Option<Res<renzora_world_api::WindState>>>,
     chunks: Extract<
         Query<(
             RenderEntity,
@@ -210,7 +210,7 @@ struct ExtractedGrassOrigin(Vec3);
 #[derive(Resource, Default)]
 pub(super) struct GrassTime {
     seconds: f32,
-    wind: renzora::WindState,
+    wind: renzora_world_api::WindState,
 }
 
 // ── Prepare ─────────────────────────────────────────────────────────────────

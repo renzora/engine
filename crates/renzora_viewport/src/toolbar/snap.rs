@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{SnapSettings, ViewportSettings};
+use renzora_viewport_api::{SnapSettings, ViewportSettings};
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, EmberFonts};
 use renzora_ember::reactive::tracked::bind_2way;

@@ -51,6 +51,5 @@ impl Plugin for InspectorPanelPlugin {
     }
 }
 
-renzora::add!(InspectorPanelPlugin, Editor);
 
 pub mod plugin_manager;

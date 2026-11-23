@@ -23,9 +23,10 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, AsyncComputeTaskPool, Task};
-use renzora::console_log::{console_info, console_warn};
-use renzora::core::project_files::is_ignored;
-use renzora::core::{AssetPathChanged, ConvertModelsRequested, CurrentProject};
+use renzora_log_api::{console_info, console_warn};
+use renzora_project_api::project_files::is_ignored;
+use renzora_scene_api::AssetPathChanged;
+use renzora_project_api::{ConvertModelsRequested, CurrentProject};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::UiInteraction;
 use renzora_rvg::bake::{convert_to_model, find_models, Converted};
@@ -249,7 +250,7 @@ fn pump(world: &mut World, root: &Path) {
     if world.resource::<Converter>().is_running() {
         return;
     }
-    let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
+    let remote = world.get_resource::<renzora_platform_api::CompanionJobs>().map(|j| j.remote());
     let mut m = world.resource_mut::<Migration>();
     let Some(next) = m.queue.pop_front() else { return };
     let path = next.clone();
@@ -259,8 +260,8 @@ fn pump(world: &mut World, root: &Path) {
 /// Build one model: in the companion when one is connected (job kind
 /// `"rvg_migrate"`), here otherwise. A large model takes seconds of every
 /// core, which here came out of the editor's frame.
-fn convert(glb: &Path, remote: Option<renzora::CompanionRemote>) -> Result<Converted, String> {
-    use renzora::job_args::{RvgMigrate, RvgMigrateOutcome as Out};
+fn convert(glb: &Path, remote: Option<renzora_platform_api::CompanionRemote>) -> Result<Converted, String> {
+    use renzora_platform_api::job_args::{RvgMigrate, RvgMigrateOutcome as Out};
     let name = glb.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let answer = remote.and_then(|r| r.run("rvg_migrate", name, &RvgMigrate { glb: glb.to_path_buf() }, &mut |_, _| {}));
     match answer {

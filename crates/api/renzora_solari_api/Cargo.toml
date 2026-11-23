@@ -1,0 +1,16 @@
+[package]
+name = "renzora_solari_api"
+version = "0.1.0"
+edition = "2021"
+description = "Solari's settings, DLSS modes and the ray tracing diagnostics; plugins see them at `renzora::...`"
+
+# A contract subject layer on Bevy alone. Split from `renzora_render_api`
+# because the settings are edited far more often than anything else in
+# rendering and only six crates read them; while they lived there, every edit
+# rebuilt the ~84 crates that only wanted a marker type from that layer.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

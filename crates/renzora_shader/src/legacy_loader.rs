@@ -8,7 +8,7 @@
 //! plugins, all written for the naga_oil dialect the engine used until now.
 //!
 //! This loader replaces Bevy's for the `wgsl` extension. A file in the old
-//! dialect is translated to WESL (`renzora::shader_source`) and loaded as WESL;
+//! dialect is translated to WESL (`renzora_shader_api::shader_source`) and loaded as WESL;
 //! anything else is loaded exactly as Bevy's own loader would. Registering a
 //! second loader for an extension makes Bevy log one "Duplicate AssetLoader"
 //! warning at startup and then use the newest, which is this one.
@@ -48,7 +48,7 @@ impl AssetLoader for LegacyWgslLoader {
         reader.read_to_end(&mut bytes).await?;
         let source = String::from_utf8(bytes)?;
 
-        use renzora::shader_source::{dialect, Dialect};
+        use renzora_shader_api::shader_source::{dialect, Dialect};
         // A `.wgsl` holding WESL (an `import a::b;`, as a material shader
         // written since 0.20 does) goes to the WESL compiler like a `.wesl`
         // would; only one with neither imports nor directives is plain WGSL.
@@ -56,8 +56,8 @@ impl AssetLoader for LegacyWgslLoader {
             Dialect::Wgsl => return Ok(Shader::from_wgsl(source, path)),
             Dialect::Wesl => source,
             Dialect::Legacy => {
-                let translation = renzora::shader_source::to_wesl(&source);
-                renzora::shader_source::report(&path, &translation.diagnostics);
+                let translation = renzora_shader_api::shader_source::to_wesl(&source);
+                renzora_shader_api::shader_source::report(&path, &translation.diagnostics);
                 translation.source
             }
         };

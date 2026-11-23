@@ -70,7 +70,7 @@ pub(super) fn clip_picker_open(
             let name = slot.name.clone();
             let (looping, speed) = (slot.looping, slot.speed);
             let label = if default_clip.as_deref() == Some(&slot.name) {
-                format!("{} {}", slot.name, renzora::lang::t("animation.default_suffix"))
+                format!("{} {}", slot.name, renzora_lang_api::t("animation.default_suffix"))
             } else {
                 slot.name.clone()
             };
@@ -92,14 +92,14 @@ pub(super) fn clip_picker_open(
     }
     let at = Vec2::new(rect.min.x, rect.max.y + 2.0);
     if let Some(current) = state.selected_clip.clone() {
-        kids.push(menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t_or("timeline.rename_clip_menu", "Rename clip..."), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "pencil-simple", &renzora_lang_api::t_or("timeline.rename_clip_menu", "Rename clip..."), move |w| {
             spawn_rename_clip_card(w, at, &current);
         }));
     }
-    kids.push(menu_item(&mut commands, &fonts, "plus", &renzora::lang::t_or("timeline.new_clip_menu", "New clip..."), move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "plus", &renzora_lang_api::t_or("timeline.new_clip_menu", "New clip..."), move |w| {
         spawn_new_clip_card(w, at);
     }));
-    kids.push(menu_item(&mut commands, &fonts, "folder-open", &renzora::lang::t_or("timeline.use_existing_clip", "Use an existing clip..."), move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "folder-open", &renzora_lang_api::t_or("timeline.use_existing_clip", "Use an existing clip..."), move |w| {
         open_project_clip_menu(w, at);
     }));
     commands.entity(menu).add_children(&kids);
@@ -117,14 +117,14 @@ fn spawn_new_clip_card(world: &mut World, at: Vec2) {
             n.min_width = Val::Px(260.0);
             n.padding = UiRect::all(Val::Px(10.0));
         });
-        let title = commands.spawn((Text::new(renzora::lang::t_or("timeline.new_clip_title", "New clip")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
+        let title = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.new_clip_title", "New clip")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
         let row = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).id();
-        let field = text_input(&mut commands, &fonts.ui, &renzora::lang::t_or("timeline.clip_name", "Clip name"), "");
+        let field = text_input(&mut commands, &fonts.ui, &renzora_lang_api::t_or("timeline.clip_name", "Clip name"), "");
         commands.entity(field).insert((
             NewClipNameField,
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), height: Val::Px(26.0), padding: UiRect::axes(Val::Px(renzora_ember::widgets::PAD_X), Val::Px(1.0)), align_items: AlignItems::Center, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
         ));
-        let create = solid_button(&mut commands, &fonts, &renzora::lang::t_or("timeline.create", "Create"), NewClipBtn);
+        let create = solid_button(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.create", "Create"), NewClipBtn);
         commands.entity(row).add_children(&[field, create]);
         commands.entity(content).add_children(&[title, row]);
     }
@@ -151,14 +151,14 @@ fn spawn_rename_clip_card(world: &mut World, at: Vec2, current: &str) {
             n.min_width = Val::Px(260.0);
             n.padding = UiRect::all(Val::Px(10.0));
         });
-        let title = commands.spawn((Text::new(renzora::lang::t_or("timeline.rename_clip_title", "Rename clip")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
+        let title = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.rename_clip_title", "Rename clip")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
         let row = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).id();
-        let field = text_input(&mut commands, &fonts.ui, &renzora::lang::t_or("timeline.clip_name", "Clip name"), current);
+        let field = text_input(&mut commands, &fonts.ui, &renzora_lang_api::t_or("timeline.clip_name", "Clip name"), current);
         commands.entity(field).insert((
             RenameClipField(current.to_string()),
             Node { flex_grow: 1.0, min_width: Val::Px(0.0), height: Val::Px(26.0), padding: UiRect::axes(Val::Px(renzora_ember::widgets::PAD_X), Val::Px(1.0)), align_items: AlignItems::Center, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
         ));
-        let rename = solid_button(&mut commands, &fonts, &renzora::lang::t_or("timeline.rename", "Rename"), RenameClipBtn);
+        let rename = solid_button(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.rename", "Rename"), RenameClipBtn);
         commands.entity(row).add_children(&[field, rename]);
         commands.entity(content).add_children(&[title, row]);
     }
@@ -243,7 +243,7 @@ fn project_anim_files(root: &std::path::Path) -> Vec<String> {
 }
 
 fn open_project_clip_menu(world: &mut World, at: Vec2) {
-    let Some(root) = world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone()) else { return };
+    let Some(root) = world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone()) else { return };
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
     let files = project_anim_files(&root);
     let mut queue = bevy::ecs::world::CommandQueue::default();
@@ -251,7 +251,7 @@ fn open_project_clip_menu(world: &mut World, at: Vec2) {
         let mut commands = Commands::new(&mut queue, world);
         let menu = screen_menu(&mut commands, at.x, at.y);
         let kids: Vec<Entity> = if files.is_empty() {
-            vec![menu_item(&mut commands, &fonts, "info", &renzora::lang::t_or("timeline.no_project_clips", "No .anim clips in this project"), |_| {})]
+            vec![menu_item(&mut commands, &fonts, "info", &renzora_lang_api::t_or("timeline.no_project_clips", "No .anim clips in this project"), |_| {})]
         } else {
             files
                 .into_iter()
@@ -333,7 +333,7 @@ pub(super) fn overflow_open(
     commands.entity(content).entry::<Node>().and_modify(|mut n| n.row_gap = Val::Px(8.0));
 
     // Length.
-    let len_row = labeled_row(&mut commands, &fonts, &renzora::lang::t_or("timeline.clip_length", "Clip length (s)"));
+    let len_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.clip_length", "Clip length (s)"));
     let len_dv = drag_value(&mut commands, &fonts.mono, "", text_primary(), 2.0, 0.05);
     commands.entity(len_dv).insert(DragRange { min: 0.2, max: 600.0 });
     commands.entity(len_dv).entry::<Node>().and_modify(|mut n| {
@@ -344,17 +344,17 @@ pub(super) fn overflow_open(
     commands.entity(len_row).add_child(len_dv);
 
     // Event marker at the playhead.
-    let ev_row = labeled_row(&mut commands, &fonts, &renzora::lang::t_or("timeline.event", "Event"));
+    let ev_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.event", "Event"));
     let ev_field = text_input(&mut commands, &fonts.ui, "event", "");
     commands.entity(ev_field).insert((
         MarkerNameField,
         Node { flex_grow: 1.0, min_width: Val::Px(0.0), height: Val::Px(24.0), padding: UiRect::axes(Val::Px(renzora_ember::widgets::PAD_X), Val::Px(1.0)), align_items: AlignItems::Center, border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
     ));
-    let ev_btn = ghost_button(&mut commands, &fonts, "flag", &renzora::lang::t_or("timeline.add_event", "Add at playhead"), AddMarkerBtn);
+    let ev_btn = ghost_button(&mut commands, &fonts, "flag", &renzora_lang_api::t_or("timeline.add_event", "Add at playhead"), AddMarkerBtn);
     commands.entity(ev_row).add_children(&[ev_field, ev_btn]);
 
     // Zoom.
-    let zoom_row = labeled_row(&mut commands, &fonts, &renzora::lang::t_or("timeline.zoom_label", "Zoom"));
+    let zoom_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.zoom_label", "Zoom"));
     let z_out = ghost_icon(&mut commands, &fonts, "magnifying-glass-minus", AnimBtn::ZoomOut);
     // No wrap and no shrink: framing a short clip lands in the thousands
     // ("2262 px/s"), which wrapped onto two lines in the old 64px box.
@@ -369,12 +369,12 @@ pub(super) fn overflow_open(
         .id();
     bind_text(&mut commands, z_lbl, |w| format!("{:.0} px/s", state(w.untracked()).map(|s| s.timeline_zoom).unwrap_or(0.0)));
     let z_in = ghost_icon(&mut commands, &fonts, "magnifying-glass-plus", AnimBtn::ZoomIn);
-    let z_fit = ghost_button(&mut commands, &fonts, "arrows-out-line-horizontal", &renzora::lang::t_or("timeline.frame_all", "Frame all"), AnimBtn::FrameAll);
+    let z_fit = ghost_button(&mut commands, &fonts, "arrows-out-line-horizontal", &renzora_lang_api::t_or("timeline.frame_all", "Frame all"), AnimBtn::FrameAll);
     commands.entity(zoom_row).add_children(&[z_out, z_lbl, z_in, z_fit]);
 
     // Row height: three presets (Alt+wheel steps between them and beyond).
-    let rows_row = labeled_row(&mut commands, &fonts, &renzora::lang::t_or("timeline.row_height", "Row height"));
-    commands.entity(rows_row).insert(renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+    let rows_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.row_height", "Row height"));
+    commands.entity(rows_row).insert(renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or(
         "timeline.row_height_tip",
         "Alt+wheel over the timeline also changes it",
     )));
@@ -397,21 +397,21 @@ pub(super) fn overflow_open(
                 _ => Color::NONE,
             }
         });
-        let t = commands.spawn((Text::new(renzora::lang::t_or(key, fallback)), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), PASS_THROUGH)).id();
+        let t = commands.spawn((Text::new(renzora_lang_api::t_or(key, fallback)), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), PASS_THROUGH)).id();
         commands.entity(b).add_child(t);
         commands.entity(rows_row).add_child(b);
     }
 
     let sep = menu_sep(&mut commands);
-    let add_track = ghost_button(&mut commands, &fonts, "list-plus", &renzora::lang::t_or("timeline.add_property_track", "Add property track  (N)"), AnimBtn::AddProperty);
-    let add_key = ghost_button(&mut commands, &fonts, "diamond", &renzora::lang::t_or("timeline.key_all", "Key every property track  (K)"), AnimBtn::AddKey);
-    let save = ghost_button(&mut commands, &fonts, "floppy-disk", &renzora::lang::t_or("timeline.save_now", "Save now"), SaveClipBtn);
+    let add_track = ghost_button(&mut commands, &fonts, "list-plus", &renzora_lang_api::t_or("timeline.add_property_track", "Add property track  (N)"), AnimBtn::AddProperty);
+    let add_key = ghost_button(&mut commands, &fonts, "diamond", &renzora_lang_api::t_or("timeline.key_all", "Key every property track  (K)"), AnimBtn::AddKey);
+    let save = ghost_button(&mut commands, &fonts, "floppy-disk", &renzora_lang_api::t_or("timeline.save_now", "Save now"), SaveClipBtn);
     let hint = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
     bind_text(&mut commands, hint, |w| {
         if w.get_resource::<TimelineClip>().is_some_and(|c| c.dirty) {
-            renzora::lang::t_or("timeline.unsaved_autosave", "Unsaved edits, autosaving")
+            renzora_lang_api::t_or("timeline.unsaved_autosave", "Unsaved edits, autosaving")
         } else {
-            renzora::lang::t_or("timeline.all_saved", "All edits saved")
+            renzora_lang_api::t_or("timeline.all_saved", "All edits saved")
         }
     });
     bind_text_color(&mut commands, hint, |w| {
@@ -492,9 +492,9 @@ pub(super) fn build_empty_state(commands: &mut Commands, fonts: &EmberFonts) -> 
             .and_then(|s| s.selected_entity)
             .and_then(|e| w.get::<Name>(e).map(|n| n.as_str().to_string()))
             .unwrap_or_default();
-        format!("{name} {}", renzora::lang::t_or("timeline.has_no_animation", "has no animation yet"))
+        format!("{name} {}", renzora_lang_api::t_or("timeline.has_no_animation", "has no animation yet"))
     });
-    let sub = commands.spawn((Text::new(renzora::lang::t_or("timeline.pick_how_to_start", "Pick how you want to start. You can always add more tracks later.")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
+    let sub = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.pick_how_to_start", "Pick how you want to start. You can always add more tracks later.")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
     commands.entity(head).add_children(&[title, sub]);
 
     let row = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(12.0), ..default() }).id();
@@ -513,9 +513,9 @@ pub(super) fn build_empty_state(commands: &mut Commands, fonts: &EmberFonts) -> 
         let kbd = commands
             .spawn((Node { padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb((36, 36, 44))), BorderColor::all(rgb((48, 48, 58)))))
             .id();
-        let kt = commands.spawn((Text::new(renzora::lang::t_or(k, key_fallback)), ui_font(&fonts.ui, 11.0), TextColor(rgb((196, 196, 206))))).id();
+        let kt = commands.spawn((Text::new(renzora_lang_api::t_or(k, key_fallback)), ui_font(&fonts.ui, 11.0), TextColor(rgb((196, 196, 206))))).id();
         commands.entity(kbd).add_child(kt);
-        let dt = commands.spawn((Text::new(renzora::lang::t_or(d, d_fallback)), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
+        let dt = commands.spawn((Text::new(renzora_lang_api::t_or(d, d_fallback)), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
         commands.entity(h).add_children(&[kbd, dt]);
         commands.entity(hints).add_child(h);
     }
@@ -553,8 +553,8 @@ fn card(
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, hue, 18.0);
     commands.entity(badge).add_child(ic);
-    let t = commands.spawn((Text::new(renzora::lang::t_or(title_key, title)), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
-    let d = commands.spawn((Text::new(renzora::lang::t_or(desc_key, desc)), ui_font(&fonts.ui, 12.0), TextColor(rgb((154, 154, 166))))).id();
+    let t = commands.spawn((Text::new(renzora_lang_api::t_or(title_key, title)), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
+    let d = commands.spawn((Text::new(renzora_lang_api::t_or(desc_key, desc)), ui_font(&fonts.ui, 12.0), TextColor(rgb((154, 154, 166))))).id();
     let b = commands
         .spawn((
             Node { height: Val::Px(28.0), margin: UiRect::top(Val::Px(4.0)), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(7.0)), ..default() },
@@ -564,7 +564,7 @@ fn card(
             action,
         ))
         .id();
-    let bt = commands.spawn((Text::new(renzora::lang::t_or(btn_key, btn)), ui_font(&fonts.ui, 12.0), TextColor(rgb(if primary { (255, 255, 255) } else { text_primary() })), PASS_THROUGH)).id();
+    let bt = commands.spawn((Text::new(renzora_lang_api::t_or(btn_key, btn)), ui_font(&fonts.ui, 12.0), TextColor(rgb(if primary { (255, 255, 255) } else { text_primary() })), PASS_THROUGH)).id();
     commands.entity(b).add_child(bt);
     commands.entity(c).add_children(&[badge, t, d, b]);
     c

@@ -16,7 +16,7 @@
 //! waiting to be filed.
 
 use bevy::prelude::*;
-use renzora::ScriptAction;
+use renzora_scripting_api::ScriptAction;
 use serde::{Deserialize, Serialize};
 
 /// Same bounds the inspector's FOV field clamps to — past these a perspective
@@ -63,7 +63,7 @@ pub fn handle_camera_script_actions(
     trigger: On<ScriptAction>,
     mut cameras: Query<&mut Projection>,
 ) {
-    use renzora::ScriptActionValue as V;
+    use renzora_scripting_api::ScriptActionValue as V;
     let action = trigger.event();
     if action.name != "set_camera_fov" {
         return;

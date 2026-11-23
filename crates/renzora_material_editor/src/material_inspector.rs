@@ -8,7 +8,7 @@ use renzora_shader::material::material_ref::MaterialRef;
 
 /// Image extensions accepted for auto-material creation and the texture slots:
 /// the shared list, so SVG (and `.rmip`) work here like everywhere else.
-pub(crate) const IMAGE_EXTENSIONS: &[&str] = renzora::IMAGE_EXTENSIONS;
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = renzora_project_api::IMAGE_EXTENSIONS;
 
 /// How deep we recurse when scanning the project for `.material` files. Six
 /// levels covers `models/<asset>/materials/` plus a couple of hand-organized

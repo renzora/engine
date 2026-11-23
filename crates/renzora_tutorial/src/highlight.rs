@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use bevy::ui::{CalculatedClip, ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
-use renzora::core::{EditorLocked, HideInHierarchy};
+use renzora_scene_api::{EditorLocked, HideInHierarchy};
 use renzora_ember::game_ui::shapes::TriangleShape;
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::theme::{accent, play_green};

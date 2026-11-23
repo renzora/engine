@@ -17,19 +17,22 @@ edition = "2021"
 # ── No `static_scripts` here, and that is load-bearing ───────────────────────
 #
 # The GENERATED manifest (the one the exporter writes into `target/export-src/`)
-# enables `renzora/static_scripts`, because that is what drops `#[no_mangle]`
-# from `renzora::script!` so many scripts can share one binary. This checked-in
-# copy must not, because cargo unifies features across a build and every build
-# here is `--workspace`: naming it would compile `renzora` with the feature for
-# the WHOLE dev tree, and every script dylib the editor produces would export no
-# findable entry point. The symptom is not subtle and says nothing about
-# features:
+# enables `static_scripts`, because that is what drops `#[no_mangle]` from
+# `renzora::script!` so many scripts can share one binary. This checked-in copy
+# must not, because cargo unifies features across a build and every build here
+# is `--workspace`: naming it would compile the macro's crate with the feature
+# for the WHOLE dev tree, and every script dylib the editor produces would
+# export no findable entry point. The symptom is not subtle and says nothing
+# about features:
 #
 #     [Script] spin.rs
-#     exports no entry point — did you forget `renzora::script!(update);`?
+#     exports no entry point: did you forget `renzora::script!(update);`?
 #
 # `renzora_static_plugins` next door is written the same way for the same reason.
-renzora = { path = "../renzora" }
+#
+# `renzora_sdk` under the name `renzora`, matching the generated manifest: a
+# script sees the whole contract hierarchy as `renzora`.
+renzora = { path = "../shared/renzora_sdk", package = "renzora_sdk" }
 bevy = { workspace = true }
 
 [lints]

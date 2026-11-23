@@ -20,7 +20,8 @@ use std::path::Path;
 
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, HideInHierarchy, MeshInstanceData};
+use renzora_scene_api::{HideInHierarchy, MeshInstanceData};
+use renzora_project_api::CurrentProject;
 use renzora_animation::{
     state_machine::{AnimState, AnimationStateMachine, StateMotion},
     AnimClip, AnimClipSlot, AnimatorComponent, AnimatorState,
@@ -384,14 +385,14 @@ fn scan_clips_click(
             .get_resource::<CurrentProject>()
             .map(|p| p.path.clone())
         else {
-            set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
+            set_feedback(world, entity, renzora_lang_api::t("animation.no_project_open"), true);
             return;
         };
         let Some(model_path) = world
             .get::<MeshInstanceData>(entity)
             .and_then(|m| m.model_path.clone())
         else {
-            set_feedback(world, entity, renzora::lang::t("animation.selected_no_model"), true);
+            set_feedback(world, entity, renzora_lang_api::t("animation.selected_no_model"), true);
             return;
         };
 
@@ -462,14 +463,14 @@ fn create_sm_click(
             .get_resource::<CurrentProject>()
             .map(|p| p.path.clone())
         else {
-            set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
+            set_feedback(world, entity, renzora_lang_api::t("animation.no_project_open"), true);
             return;
         };
         let Some(animator) = world.get::<AnimatorComponent>(entity) else {
             return;
         };
         if animator.clips.is_empty() {
-            set_feedback(world, entity, renzora::lang::t("animation.add_clips_first"), true);
+            set_feedback(world, entity, renzora_lang_api::t("animation.add_clips_first"), true);
             return;
         }
 
@@ -592,7 +593,7 @@ pub fn sanitize_clip_name(raw: &str) -> String {
 pub fn create_clip_on_entity(world: &mut World, entity: Entity, clip_name: &str) {
     let Some(project_root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone())
     else {
-        set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
+        set_feedback(world, entity, renzora_lang_api::t("animation.no_project_open"), true);
         return;
     };
     let rel_path = format!("animations/{}.anim", clip_name);
@@ -604,7 +605,7 @@ pub fn create_clip_on_entity(world: &mut World, entity: Entity, clip_name: &str)
             duration: 2.0,
             ..Default::default()
         };
-        if let Err(e) = renzora::core::write_anim_file(&clip, &abs_path) {
+        if let Err(e) = renzora_animation_api::write_anim_file(&clip, &abs_path) {
             set_feedback(world, entity, format!("Write failed: {e}"), true);
             return;
         }

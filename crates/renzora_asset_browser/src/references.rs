@@ -1,7 +1,7 @@
 //! Keep the paths stored inside project files pointing at an asset after it
 //! moves.
 //!
-//! [`renzora::core::AssetPathChanged`] already had subscribers, but every one
+//! [`renzora_scene_api::AssetPathChanged`] already had subscribers, but every one
 //! of them patches something live: a component on a scene entity, the
 //! project's scene list, an open tab. Nothing followed the paths written into
 //! files on disk, and that is where most references live. An imported model's
@@ -36,8 +36,9 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy::reflect::{PartialReflect, ReflectMut, ReflectRef};
-use renzora::core::project_files::{is_ignored, SelfWrites};
-use renzora::core::{AssetPathChanged, CurrentProject, HideInHierarchy};
+use renzora_project_api::project_files::{is_ignored, SelfWrites};
+use renzora_scene_api::{AssetPathChanged, HideInHierarchy};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::Toasts;
 
 /// How deep the walk goes. Far past any real project, and a stop for a
@@ -132,7 +133,7 @@ pub(crate) fn rewrite_project_references(
         failed.extend(live.failed);
         report(world, &ev, rewritten.len(), live.values, &failed);
         if !scripts.is_empty() {
-            renzora::console_log::console_info(
+            renzora_log_api::console_info(
                 "Assets",
                 format!("Updated the path to {} in: {}", ev.new, scripts.join(", ")),
             );
@@ -158,7 +159,7 @@ fn report(world: &mut World, ev: &AssetPathChanged, files: usize, values: usize,
             ),
         };
         info!("[asset-move] '{}' -> '{}': {message}", ev.old, ev.new);
-        renzora::console_log::console_info("Assets", message.clone());
+        renzora_log_api::console_info("Assets", message.clone());
         // Unless it went wrong, when the warning below says the same thing and
         // more. Two toasts for one move would be noise.
         if failed.is_empty() {
@@ -170,7 +171,7 @@ fn report(world: &mut World, ev: &AssetPathChanged, files: usize, values: usize,
     if failed.is_empty() {
         return;
     }
-    renzora::console_log::console_warn(
+    renzora_log_api::console_warn(
         "Assets",
         format!(
             "Moved {}, but {} reference(s) still point at {}: {}",

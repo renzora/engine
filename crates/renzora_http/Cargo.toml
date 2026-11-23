@@ -19,12 +19,10 @@ edition = "2021"
 description = "The engine's HTTP backend, statically linked into the editor."
 
 [dependencies]
-# For `add!`, which declares this an Editor-scope plugin and lets the generator
-# wire it into the editor's list — the same way every other crate here is added,
-# and for `net_backend::Backend`, the contract `Ureq` implements.
-renzora = { path = "../renzora", default-features = false }
-# For `add_net_backend`, the one call that hands the client over.
-renzora_net = { path = "../renzora_net" }
+# `net_backend::Backend`, which this crate implements, and `add_net_backend`,
+# the one call that hands the client over. Not `renzora_net`, which is only the
+# frame pump that adopts it; the runtime adds that.
+renzora_net_api = { path = "../api/renzora_net_api" }
 bevy = { workspace = true }
 
 # `ureq` pulls the rustls/ring stack, which does not build for
@@ -37,3 +35,10 @@ ureq = "3"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "RenzoraHttpPlugin"
+scope = "Editor"

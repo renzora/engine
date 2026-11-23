@@ -14,7 +14,7 @@ use crate::apply::spring::SpringState;
 use crate::components::{CopyPosition, CopyRotation, FootIk, LookAt, RotationLimit, SpringBones, TwoBoneIk};
 use crate::names::NameLookup;
 use bevy::prelude::*;
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 
 fn arg_str<'a>(action: &'a ScriptAction, key: &str) -> &'a str {
     match action.args.get(key) {

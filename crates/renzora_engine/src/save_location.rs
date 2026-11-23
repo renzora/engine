@@ -13,13 +13,13 @@
 //! folder would hide a bug that only shows where the real saves are.
 
 use bevy::prelude::*;
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 pub fn point_saves_at_project(project: Res<CurrentProject>) {
-    let dir = renzora::save::default_directory(&project.config.name);
+    let dir = renzora_save_api::default_directory(&project.config.name);
     match &dir {
         Some(dir) => info!("[save] slots go to {}", dir.display()),
         None => warn!("[save] this platform reports no per-user data folder; saving is unavailable"),
     }
-    renzora::save::set_directory(dir);
+    renzora_save_api::set_directory(dir);
 }

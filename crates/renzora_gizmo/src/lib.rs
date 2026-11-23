@@ -73,9 +73,9 @@ pub(crate) use crate::drag::snap_rotation;
 
 /// The meshes whose bounds stand for an entity's shape: the selection box,
 /// pivot, hover outline and frame-selected all read through this, so a mesh
-/// marked [`renzora::NoSelectionBounds`] (a particle renderer) is left out of
+/// marked [`renzora_scene_api::NoSelectionBounds`] (a particle renderer) is left out of
 /// every one of them at once.
-pub(crate) type BoundsMeshes = (With<Mesh3d>, Without<renzora::NoSelectionBounds>);
+pub(crate) type BoundsMeshes = (With<Mesh3d>, Without<renzora_scene_api::NoSelectionBounds>);
 pub(crate) use crate::lines::{draw_angle_label, draw_rotation_pie};
 pub(crate) use crate::pivot::compute_gizmo_pivot;
 
@@ -164,20 +164,20 @@ impl Plugin for GizmoPlugin {
             .insert_gizmo_config(SlotTransformGroup3, slot_line_config(3, 3.0))
             .insert_gizmo_config(SlotPlaneGroup3, slot_line_config(3, 6.0))
             .init_resource::<PerSlotGizmo>()
-            .init_resource::<renzora::core::viewport_types::ViewportGizmoSpace>()
+            .init_resource::<renzora_viewport_api::ViewportGizmoSpace>()
             .init_resource::<GizmoMode>()
-            // The plugin-borrowable gizmo (`renzora::GizmoTarget`). Owned here
+            // The plugin-borrowable gizmo (`renzora_editor_api::GizmoTarget`). Owned here
             // rather than in the contract crate because this is what reads it:
             // an editor without the gizmo has nothing to lend.
-            .init_resource::<renzora::GizmoTarget>()
+            .init_resource::<renzora_editor_api::GizmoTarget>()
             .init_resource::<GizmoSpace>()
             .init_resource::<GizmoState>()
             .init_resource::<BoxSelectionState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
             .init_resource::<skeleton_gizmo::DrawnBones>()
             .init_resource::<modal_transform::ModalTransformState>()
-            .init_resource::<renzora::core::ModalTransformHud>()
-            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
+            .init_resource::<renzora_project_api::ModalTransformHud>()
+            .init_resource::<renzora_viewport_api::ViewportOverlayChanged>()
             // The right-click list of everything under the cursor (see
             // `pick_list`). Between right presses it only drains the mouse
             // motion it measures a press by.
@@ -185,8 +185,8 @@ impl Plugin for GizmoPlugin {
                 Update,
                 pick_list::pick_list_system
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             // After the hover test and the drag have settled this frame's
             // handle state, which is what the signal compares.
@@ -195,8 +195,8 @@ impl Plugin for GizmoPlugin {
                 hover::signal_overlay_changes
                     .after(drag::gizmo_drag)
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             // `Last`, so a borrower reading `drag_started` / `drag_ended` in
             // `Update` sees them whatever order the two systems ended up in.
@@ -213,7 +213,7 @@ impl Plugin for GizmoPlugin {
                     shortcuts::handle_file_shortcuts,
                 )
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             )
             // Keep the global `GizmoSpace` (read by the analytic drag/hit-test and
             // any other consumer) in step with the FOCUSED viewport's per-slot
@@ -250,41 +250,41 @@ impl Plugin for GizmoPlugin {
                     // stretched across the viewport for the whole drag. A run
                     // condition rather than a `Res` parameter: this system is
                     // already at Bevy's 16-parameter ceiling.
-                    picking::entity_pick_system.run_if(renzora::core::resize::not_resizing),
+                    picking::entity_pick_system.run_if(renzora_platform_api::resize::not_resizing),
                     box_select::box_selection_system,
                 )
                     .chain()
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             .add_systems(
                 Update,
                 box_select::render_box_selection
                     .after(box_select::box_selection_system)
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             .add_systems(
                 Update,
                 selection_visuals::terrain_chunk_selection_system
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             .init_resource::<collider_handles::ColliderHandleState>()
             .add_systems(
                 Update,
                 collider_gizmo::draw_collider_gizmos
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             .add_systems(
                 Update,
                 light_gizmo::draw_light_gizmos
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             // Entity name labels (Bevy 0.19 stroke-font text gizmos), gated on
             // the Overlays → "Labels" toggle inside the system itself.
@@ -292,16 +292,16 @@ impl Plugin for GizmoPlugin {
                 Update,
                 entity_labels::draw_entity_labels
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             .init_resource::<light_gizmo::SceneIconCache>()
             .add_systems(
                 Update,
                 light_gizmo::update_scene_icon_cache
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             // Always-on (no view gate): keeps the cached 2D camera entity
             // current so the 2D selection-outline overlay can render
@@ -319,8 +319,8 @@ impl Plugin for GizmoPlugin {
                 )
                     .chain()
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             )
             .init_resource::<transforms::LastSelectionCount>()
             .add_systems(
@@ -329,8 +329,8 @@ impl Plugin for GizmoPlugin {
                     .after(picking::entity_pick_system)
                     .after(box_select::box_selection_system)
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                    .run_if(renzora::core::not_in_play_mode)
-                    .run_if(renzora::core::in_three_view),
+                    .run_if(renzora_project_api::not_in_play_mode)
+                    .run_if(renzora_viewport_api::in_three_view),
             );
 
         // 2D picker + drag systems — gated on viewport_view == Two so they
@@ -339,8 +339,8 @@ impl Plugin for GizmoPlugin {
         // click selects an entity *and* captures its drag offset in the
         // same frame.
         app.init_resource::<picker_2d::Drag2dState>();
-        app.init_resource::<renzora::core::viewport_types::ViewportCursorRequest>();
-        app.init_resource::<renzora::core::viewport_types::ViewportBoxSelect2d>();
+        app.init_resource::<renzora_viewport_api::ViewportCursorRequest>();
+        app.init_resource::<renzora_viewport_api::ViewportBoxSelect2d>();
         app.add_systems(
             Update,
             (
@@ -351,11 +351,11 @@ impl Plugin for GizmoPlugin {
             )
                 .chain()
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                .run_if(renzora::core::not_in_play_mode)
-                .run_if(renzora::core::in_two_view)
+                .run_if(renzora_project_api::not_in_play_mode)
+                .run_if(renzora_viewport_api::in_two_view)
                 // Stand down while a viewport brush (e.g. tilemap paint) is
                 // active, so a paint click doesn't re-select or drag the entity.
-                .run_if(|b: Option<Res<renzora::core::ViewportBrushActive>>| {
+                .run_if(|b: Option<Res<renzora_project_api::ViewportBrushActive>>| {
                     b.map(|b| !b.0).unwrap_or(true)
                 }),
         );
@@ -391,11 +391,10 @@ impl Plugin for GizmoPlugin {
     }
 }
 
-renzora::add!(GizmoPlugin, Editor);
 
 /// Drop the one-frame `drag_started` / `drag_ended` edges on
-/// [`renzora::GizmoTarget`].
-fn clear_gizmo_target_edges(target: Option<ResMut<renzora::GizmoTarget>>) {
+/// [`renzora_editor_api::GizmoTarget`].
+fn clear_gizmo_target_edges(target: Option<ResMut<renzora_editor_api::GizmoTarget>>) {
     if let Some(mut target) = target {
         if target.drag_started || target.drag_ended {
             target.clear_edges();

@@ -8,9 +8,22 @@ description = "Screen-space indirect lighting: light bounced between nearby surf
 # renzora_ssil_editor crate (crates/renzora_ssil/editor).
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["postprocess"] }
+
+[dev-dependencies]
+# The SSIL shader's compile-check.
+renzora_shader_api = { path = "../api/renzora_shader_api" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SsilPlugin"

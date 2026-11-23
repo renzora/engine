@@ -1,4 +1,4 @@
-//! The landscape half of [`renzora::terrain_tools`]: painting layer weights,
+//! The landscape half of [`renzora_world_api::terrain_tools`]: painting layer weights,
 //! choosing a terrain's material and listing its layers, for a caller that
 //! cannot link the terrain crates (the MCP server).
 //!
@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use renzora::terrain_tools::{TerrainLayerInfo, TerrainPaint};
+use renzora_world_api::terrain_tools::{TerrainLayerInfo, TerrainPaint};
 use renzora_shader::material::landscape_preset::ALPINE_LANDSCAPE_PATH;
 use renzora_terrain::data::{BrushFalloffType, BrushShape, TerrainChunkData, TerrainChunkOf, TerrainData};
 use renzora_terrain::landscape::weights::{apply_weight_dab, weight_resolution, Texel, WeightTarget};
@@ -174,7 +174,7 @@ pub(crate) fn set_material(world: &mut World, terrain: Option<Entity>, path: &st
     if !path.ends_with(".material") {
         return Err(format!("{path} is not a .material"));
     }
-    let root = world.get_resource::<renzora::CurrentProject>().map(|p| p.path.clone());
+    let root = world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone());
     if path == ALPINE_LANDSCAPE_PATH {
         if let Some(root) = &root {
             migrate::ensure_alpine_material(root)?;

@@ -10,8 +10,8 @@
 
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use renzora::core::AuthSignOutRequest;
-use renzora::SplashState;
+use renzora_platform_api::AuthSignOutRequest;
+use renzora_project_api::SplashState;
 use crate::auth::account::{
     self, AppGrant, CommunicationPrefs, ProfileUpdate, SocialConnection, SOCIAL_PLATFORMS,
 };

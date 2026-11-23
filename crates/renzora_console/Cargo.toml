@@ -5,10 +5,20 @@ edition = "2021"
 
 
 [dependencies]
+renzora_editor_api = { path = "../api/renzora_editor_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = "../renzora_ember" }
 renzora_scripting = { path = "../renzora_scripting" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ConsolePlugin"
+scope = "Editor"

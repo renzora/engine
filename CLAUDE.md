@@ -235,7 +235,7 @@ engine or installed beside it.
 
 | | Crate type | Compiled | Ships in |
 |---|---|---|---|
-| **In-workspace** | `rlib` + `add!` in `crates/` | with the engine, statically | the engine binary |
+| **In-workspace** | `rlib` + plugin table in `crates/` | with the engine, statically | the engine binary |
 | **Native** | `dylib` in `<exe dir>/plugins/<name>/` | on the installing machine, against the staged SDK | the editor, as source |
 
 An in-workspace plugin is an engine feature; a native plugin is something a user
@@ -253,21 +253,37 @@ engine name the plugin anyway.
 
 ### In-workspace plugins are statically linked, via a build-time generator
 
-`renzora::add!(MyPlugin [, Editor|Runtime] [, priority = N])` is **not** a
-runtime registry — it is a directive the build generator reads *as text*. The
-generator finds every `add!` line and writes two committed files,
+A crate declares each plugin in its own `Cargo.toml`:
+
+```toml
+[[package.metadata.renzora.plugin]]
+type = "ParticlesPlugin"   # path from the crate root, e.g. "material::MaterialPlugin"
+scope = "Editor"           # optional; "Runtime" (the default) or "Editor"
+priority = -100            # optional; default 0, lower installs earlier
+```
+
+This is **not** a runtime registry: it is configuration read only by the build
+generator (`cargo renzora sync`, `manifest_plugins` in `xtask/src/sync.rs`),
+never code the crate compiles, so a crate needs no contract dependency just to
+be a plugin. The generator reads every table and writes two committed files,
 `crates/renzora_runtime/src/plugins.rs` and
 `crates/renzora_editor/src/plugins.rs`, each an ordinary list of
-`app.add_plugins(...)` calls. Dropping a crate into `crates/` with an `add!` line
-in it is the whole job.
+`app.add_plugins(...)` calls, plus the dependency entries. Dropping a crate into
+`crates/` with a `[[package.metadata.renzora.plugin]]` table is the whole job.
 
 Because both lists are committed, a plain `cargo build` needs no generator run;
 CI checks that regenerating produces no diff, which is what stops a stale list
-from shipping. Keep the declaration on one line at the top level of the file —
-the parse requires the full `add!(..);` form at line start, so a commented-out or
-string-embedded one is ignored — and keep every module on the plugin's path
-`pub`, since the type is resolved from the module the file defines. A wrong path
-is a compile error in the generated file, never a silently missing plugin.
+from shipping. The parser is strict: an unknown key, an unknown scope or a table
+without `type` is an error. Keep every module on the `type` path `pub`;
+module-level `#[cfg(feature = "x")] pub mod y;` gates on it are detected and
+reproduced. The type must implement `Plugin + Default`, and a wrong type name or
+a missing `Default` impl is a compile error in the generated `plugins.rs` (not in
+the crate's own source), never a silently missing plugin.
+
+Transitional: a single-line `renzora::add!(MyPlugin, Editor);` in source is still
+accepted by the generator (the external `renzora add` scaffolder still writes
+one), but the manifest table is the documented form. Declaring the same plugin
+both ways is reported as a duplicate.
 
 There is no ABI here at all: a named type in a generated list is just a linker
 symbol. Deleting the old `inventory` registry also deleted the three dead-strip
@@ -282,8 +298,9 @@ Bevy and the real contract crate — so it takes `&mut World`, calls
 `app.add_systems`, and sees the same `Transform` the engine does.
 
 That is sound **only** because of the shared images. `dynamic_linking` is in the
-default feature set and pulls three: `bevy_dylib`, `renzora_dylib` and
-`renzora_ember_dylib`. All three are process-global-state problems, not merely
+default feature set and pulls two: `bevy_dylib` and `renzora_dylib`, which
+holds the contract layers and, under its `ui` feature, the UI framework
+(`renzora_ember`). Both are process-global-state problems, not merely
 size ones — the contract crate owns the translation table, the Problems and
 Console buffers and the asset loader; ember owns the theme palette, the
 stylesheet, the UI font scale and the viewport-toolbar lists. A privately linked
@@ -313,7 +330,7 @@ before. A reload therefore leaks one image; a restart reclaims it.
 **The stamp is a content hash**, recorded beside a built plugin and compared on
 load. It has to be: cargo derives a `-C metadata` filename hash from the build
 *configuration*, never from source, so an earlier filename-based stamp did not
-move when `crates/renzora` changed — and Rust mangles symbols from a crate's
+move when `crates/shared/renzora` changed — and Rust mangles symbols from a crate's
 stable id rather than its contents, so nothing downstream caught it either.
 
 Never run `cargo build` inside an installed native plugin's directory. The
@@ -438,14 +455,42 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
 
 ## 5. Architecture (orientation)
 
-- **`crates/renzora` is the contract crate** (`crate-type = ["rlib"]`, zero deps
-  beyond Bevy + serde). It holds the shared types, events, components, resources,
-  the post-process framework, and the editor contract (`editor` feature). **Every
-  boundary-crossing type lives here** so all crates agree on one definition.
-- **Plugin declaration:** every plugin declares itself with `renzora::add!(MyPlugin
-  [, Editor|Runtime] [, priority = N])`. This is read *as text* at build time by a
-  generator that writes the committed `plugins.rs` lists — it emits no `inventory`
-  entry and no FFI (§3). See `crates/renzora/src/plugin_meta.rs`.
+- **The contract is a hierarchy, like Bevy's, in two folders.** `crates/api/`
+  holds the contracts, one `renzora_*_api` crate per job; engine crates build on
+  these, never on each other. `crates/shared/` holds what hands them out:
+  `renzora` and `renzora_sdk` (what plugins import), the shared image
+  `renzora_dylib` (the contract layers plus the UI framework, which plugins
+  import as `renzora::ui`), plus `renzora_text_mesh`, a shared library; none of
+  these is a contract. Every subject is its own layer
+  (`renzora_log_api`, `renzora_lang_api`, `renzora_project_api`,
+  `renzora_scene_api`, `renzora_viewport_api`, `renzora_crash_api`,
+  `renzora_shell_api`, `renzora_editor_api`, `renzora_platform_api`,
+  `renzora_diagnostics_api`, `renzora_save_api`, `renzora_scripting_api`,
+  `renzora_net_api`, `renzora_audio_api`, `renzora_animation_api`,
+  `renzora_physics_api`, `renzora_world_api`, `renzora_render_api`,
+  `renzora_solari_api`, `renzora_material_api`, `renzora_shader_api`), so an
+  edit to one rebuilds only the crates that use it. `crates/shared/renzora` holds
+  no code of its own beyond the legacy `add!`: it re-exports the lowest layers
+  at the paths plugins have always used (the editor contract under its
+  `editor` feature). Only 19 of 175 crates still depend on it. The table of
+  what each layer holds is in the architecture doc.
+  `renzora_sdk` sits on top and re-exports every layer under the one name
+  `renzora`; it is what plugins and Rust scripts get (via `renzora_dylib`, and
+  via the lean exporter's repointed dependency), so `renzora::net` still works
+  for them. **Engine crates depend on the layers they use, never on
+  `renzora_sdk`.** A layer must never depend on `renzora` or `renzora_sdk` (that
+  is a cycle waiting to happen), and any crate holding a static must be
+  reachable from `renzora_sdk`, so that
+  `renzora_dylib` embeds it once. See `docs/r1-alpha8/setup/architecture.md`.
+  `renzora` keeps its name because saved scenes carry it in their type paths.
+  A new layer goes in `crates/api/`, named `renzora_<job>_api`, and the members
+  glob `crates/api/*` picks it up. A layer's proc-macro crate nests inside it
+  (`crates/api/renzora_editor_api/macros`, picked up by `crates/api/*/macros`).
+- **Plugin declaration:** every in-workspace plugin declares itself with a
+  `[[package.metadata.renzora.plugin]]` table (`type`, optional `scope`, optional
+  `priority`) in its crate's `Cargo.toml`. This is read at build time by a
+  generator that writes the committed `plugins.rs` lists; it emits no `inventory`
+  entry and no FFI (§3). See `manifest_plugins` in `xtask/src/sync.rs`.
 - **Editor / runtime split.** A plugin's scope is exclusively `Runtime` or
   `Editor` (there is no "both"). Runtime plugins run in the editor viewport AND
   the shipped game; Editor plugins run only when the editor bundle is present.
@@ -466,8 +511,7 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
   constraint is gone.
 
   **A loadable image must have every shared image in its link graph** —
-  `renzora_editor` depends on `renzora_dylib` and `renzora_ember_dylib` for their
-  side effect only. Without them it embeds a private copy of the contract crate,
+  `renzora_editor` depends on `renzora_dylib` for its side effect only. Without them it embeds a private copy of the contract crate,
   gets its own translation table, Console buffer and theme palette, and every one
   of them fails **silently**: the whole UI renders raw keys (`menu.file`,
   `common.settings`) with nothing logged, because a missing translation is not an
@@ -485,7 +529,7 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
 ## 6. Writing plugins
 
 **Before creating or modifying a plugin, ALWAYS research the plugin API first.**
-Read `docs/r1-alpha8/extending/plugins.md` and `crates/renzora/src/plugin_meta.rs`,
+Read `docs/r1-alpha8/extending/plugins.md` and `xtask/src/sync.rs` (`manifest_plugins`),
 and look at an existing in-workspace plugin (`renzora_cloth`, `renzora_oit`)
 as a template. Use `renzora add <name>` to scaffold.
 
@@ -496,15 +540,17 @@ Principles (in priority order):
 2. **Pick the right of the two kinds.** An optional or third-party feature belongs
    in `plugins/` as a **`dylib` directory shipped as source**, which installs and
    ships independently of the engine. An engine feature belongs in `crates/` as
-   an **`rlib` with an `add!` line**, statically linked by the generator (§3).
+   an **`rlib` with a `[[package.metadata.renzora.plugin]]` table**, statically linked by the generator (§3).
 3. **Refrain from linking crates as much as possible.** Minimize a plugin's
    dependency on other `renzora_*` crates. When a type must cross a crate
-   boundary, **move it into the `renzora` contract crate** rather than depending
-   on the crate that defines it. This is the established pattern (Solari's
+   boundary, **move it into the contract** rather than depending on the crate
+   that defines it: into `renzora` if it is core vocabulary, or into (or as)
+   a subject crate above it if only a few crates use it, re-exported from
+   `renzora_sdk` so plugins reach it. This is the established pattern (Solari's
    settings, etc. live in `renzora`, not in their plugin).
-4. **Multiple `add!` lines per crate are fine** (`renzora_ember` has four) — the
-   old one-per-crate rule died with the FFI exports. Keep each on one line at the
-   top level of its file so the generator's text parse sees it.
+4. **Multiple plugin tables per crate are fine** (`renzora_ember` has four), one
+   `[[package.metadata.renzora.plugin]]` per plugin. The old one-per-crate rule
+   died with the FFI exports.
 5. A plugin that mutates files in parallel with others, or that must initialize
    before another, is the rare case — most ordering should use Bevy's own system
    sets, not plugin `priority`.
@@ -702,8 +748,9 @@ Several may be registered, and two languages coexist in one project. See
 - **Never build the `dev` profile.** Every cargo command takes `--profile dist`;
   a bare one creates a second 300 GB `target/debug/` and a full disk shows up as
   nonsense compile errors in untouched crates, not as a disk error (§2).
-- **Put shared types in `renzora`.** Any type two crates both need must have one
-  definition, and that is where it lives.
+- **Put shared types in the contract.** Any type two crates both need must have
+  one definition: in `renzora`, or in a subject crate layered above it and
+  re-exported from `renzora_sdk` (§5).
 - **Two plugins, not one "both" plugin,** when a feature needs editor tooling +
   runtime behaviour.
 - **A `dlopen`'d plugin shares the engine's Bevy, or is not loaded at all.**
@@ -723,12 +770,15 @@ Several may be registered, and two languages coexist in one project. See
 
 | Path | What it is |
 |---|---|
-| `crates/renzora/` | Contract crate (`rlib`): shared types/events/components, editor contract |
-| `crates/renzora/src/plugin_meta.rs` | `add!`, `plugin!` + `NativePluginScope`; what the build generator parses |
-| `crates/renzora_runtime/src/plugins.rs`, `crates/renzora_editor/src/plugins.rs` | **Generated + committed.** The static plugin lists the `add!` generator writes; CI fails if regenerating them diffs |
+| `crates/shared/renzora/` | Bottom layer of the contract (`rlib`): shared types/events/components, editor contract. Being split into `_api` layers |
+| `crates/api/` | The contract layers, every one named `renzora_<job>_api` (log, lang, project, scene, viewport, crash, shell, editor, platform, diagnostics, save, net, audio, scripting, render, material, world, physics, animation, ...). The table is in `docs/r1-alpha8/setup/architecture.md` |
+| `crates/shared/renzora_sdk/` | Top of the contract: every layer re-exported as `renzora`, for plugins and scripts only |
+| `xtask/src/sync.rs` | The plugin generator (`cargo renzora sync`); `manifest_plugins` reads every crate's `[[package.metadata.renzora.plugin]]` tables |
+| `crates/api/renzora_platform_api/src/native_plugin.rs` | `plugin!` + `NativePluginScope` and the native plugin ABI record (`NATIVE_PLUGIN_ABI_MARKER`, `NATIVE_PLUGIN_ABI_RECORD_LEN`, `native_plugin_abi_record`); re-exported so `renzora::plugin!` works |
+| `crates/renzora_runtime/src/plugins.rs`, `crates/renzora_editor/src/plugins.rs` | **Generated + committed.** The static plugin lists the generator writes from the manifest tables; CI fails if regenerating them diffs |
 | `crates/renzora_native_plugin/` | The plugin loader: one pass over `plugins/<name>/`, rebuilding stale ones and `ManuallyDrop`ping every image. `prebuild.rs` compiles before the `App` exists |
 | `crates/renzora_plugin_build/` | The compiler driver — reads `sdk/manifest.json` and invokes `rustc` directly. Shared by the loader and by xtask |
-| `crates/renzora_dylib/`, `crates/renzora_ember_dylib/` | The shared **contract** and **UI** images. Hold no code of their own; they exist so the process-global statics in `renzora` / `renzora_ember` are singular |
+| `crates/shared/renzora_dylib/` | The shared **contract and UI** image (ember is embedded under its `ui` feature). Holds no code of its own; it exists so the process-global statics in `renzora` / `renzora_ember` are singular |
 | `crates/renzora_rust_script/` | `.rs` scripts — a native plugin per script, dispatched per entity with `&mut World` |
 | `xtask/src/sdk.rs` | Stages the plugin SDK. (`xtask/src/native_plugin.rs` is gone: the first-party plugins left for the marketplace and everything that existed only to build them went with them) |
 | `crates/renzora_plugin_build/examples/check_plugins.rs` | Compiles a directory of native plugins against a staged SDK, the way a user's machine builds an installed one. `cargo check-plugins`; every desktop lane runs it over github.com/renzora/plugins |
@@ -736,7 +786,7 @@ Several may be registered, and two languages coexist in one project. See
 | `bevy/` | **Bevy's own source**, a git subtree of bevyengine/bevy `main`. **Never edit anything in it** (see §8); only the maintainer updates or patches it |
 | `vendor/` | **Every third-party crate built on Bevy**, each pointing at `bevy/` by path (see §8). `crates/` is Renzora's own crates only; crates.io supplies only crates that are not built on Bevy |
 | `crates/renzora_static_plugins/` | **Generated.** The plugins a lean export compiled into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
-| `crates/renzora_cloth`, `crates/renzora_oit` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
+| `crates/renzora_cloth`, `crates/renzora_oit` | In-workspace `rlib` plugin templates (manifest-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
 | `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |
 | `docker/build-all.sh` | In-container build orchestrator (run once per platform container) |

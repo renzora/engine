@@ -1,6 +1,6 @@
 //! The per-frame conversation with the backend.
 //!
-//! One system, running once a frame: hand over whatever [`renzora::net::fetch`]
+//! One system, running once a frame: hand over whatever [`renzora_net_api::net::fetch`]
 //! queued since the last one, pass on any cancellations, then drain the events
 //! the backend has ready and route each to the thread waiting on its tag.
 //!
@@ -9,8 +9,8 @@
 
 use bevy::prelude::*;
 
-use renzora::net::shared;
-use renzora::net_backend::{Backend, BackendInfo, Caps, Event, EventKind, NetBackend};
+use renzora_net_api::net::shared;
+use renzora_net_api::net_backend::{Backend, BackendInfo, Caps, Event, EventKind, NetBackend};
 
 /// The adopted backend, and what it told us about itself.
 #[derive(Resource, Default)]
@@ -75,7 +75,7 @@ impl NetLink {
         let backend = self.backend.as_deref_mut()?;
         // `recoverable::catch`, so the crash reporter does not announce a crash
         // that this line recovers from.
-        match renzora::core::recoverable::catch(|| f(backend)) {
+        match renzora_crash_api::catch(|| f(backend)) {
             Ok(v) => Some(v),
             Err(caught) => {
                 let name = self.name().unwrap_or("?").to_string();
@@ -156,7 +156,7 @@ pub(crate) fn pump(mut link: ResMut<NetLink>) {
         // rather than letting it grow.
         let orphaned = shared().take_queued();
         if !orphaned.is_empty() {
-            shared().fail_all(renzora::net::NO_BACKEND);
+            shared().fail_all(renzora_net_api::net::NO_BACKEND);
         }
         let _ = shared().take_cancels();
         return;

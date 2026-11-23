@@ -18,7 +18,7 @@ use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use renzora::net_backend::{Backend, BackendInfo, Caps, Event, EventKind, Request};
+use renzora_net_api::net_backend::{Backend, BackendInfo, Caps, Event, EventKind, Request};
 
 /// Bytes read per streaming chunk.
 ///

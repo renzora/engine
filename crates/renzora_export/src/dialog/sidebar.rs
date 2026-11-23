@@ -52,7 +52,7 @@ pub(super) fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Enti
     let head_row = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect { left: Val::Px(4.0), bottom: Val::Px(4.0), ..default() }, ..default() })
         .id();
-    let head = txt(commands, fonts, &renzora::lang::t("export.section.presets").to_uppercase(), 10.5, text_muted());
+    let head = txt(commands, fonts, &renzora_lang_api::t("export.section.presets").to_uppercase(), 10.5, text_muted());
     commands.entity(head).insert(Node { flex_grow: 1.0, ..default() });
     // The platform picker lives here, which is the whole reason a bare "+" is
     // enough: adding a preset IS choosing a platform, so there is no separate
@@ -98,7 +98,7 @@ pub(super) fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Enti
     commands.entity(col).add_child(list_scroll);
 
     // Empty state. A project with no presets shows nothing at all otherwise.
-    let empty = txt(commands, fonts, &renzora::lang::t("export.presets.empty"), 11.0, text_muted());
+    let empty = txt(commands, fonts, &renzora_lang_api::t("export.presets.empty"), 11.0, text_muted());
     commands.entity(empty).insert(Node { margin: UiRect::all(Val::Px(6.0)), ..default() });
     bind_display(commands, empty, |w| {
         w.get_resource::<ExportOverlayState>().is_some_and(|s| s.presets.is_empty())
@@ -110,8 +110,8 @@ pub(super) fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Enti
     let actions = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(4.0), margin: UiRect::top(Val::Px(6.0)), ..default() })
         .id();
-    let dup = small_button(commands, fonts, "copy", &renzora::lang::t("export.presets.duplicate"), PresetDupBtn);
-    let del = small_button(commands, fonts, "trash", &renzora::lang::t("export.presets.remove"), PresetDelBtn);
+    let dup = small_button(commands, fonts, "copy", &renzora_lang_api::t("export.presets.duplicate"), PresetDupBtn);
+    let del = small_button(commands, fonts, "trash", &renzora_lang_api::t("export.presets.remove"), PresetDelBtn);
     commands.entity(actions).add_children(&[dup, del]);
     bind_display(commands, actions, |w| {
         w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_preset.is_some())
@@ -177,7 +177,7 @@ fn preset_list_snapshot(world: &Rx) -> KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| match &entries[i] {
             Entry::Family(key) => {
-                let t = txt(c, f, &renzora::lang::t(key).to_uppercase(), 10.0, text_muted());
+                let t = txt(c, f, &renzora_lang_api::t(key).to_uppercase(), 10.0, text_muted());
                 c.entity(t).insert(Node { margin: UiRect { left: Val::Px(6.0), top: Val::Px(8.0), bottom: Val::Px(2.0), ..default() }, ..default() });
                 t
             }
@@ -199,16 +199,16 @@ fn preset_status(w: &Rx, index: usize, p: Platform) -> (String, (u8, u8, u8)) {
         s.presets.get(index).map(|pr| pr.packaging_mode).unwrap_or(s.packaging_mode)
     };
     if mode == PackagingMode::LeanSingleBinary {
-        return (renzora::lang::t("export.preset.lean"), GREEN);
+        return (renzora_lang_api::t("export.preset.lean"), GREEN);
     }
     let installed = w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p));
     let available = s.release_info.as_ref().is_some_and(|r| r.available_platforms.contains(&p));
     if installed {
-        (renzora::lang::t("export.preset.template_installed"), GREEN)
+        (renzora_lang_api::t("export.preset.template_installed"), GREEN)
     } else if available {
-        (renzora::lang::t("export.preset.template_available"), AMBER)
+        (renzora_lang_api::t("export.preset.template_available"), AMBER)
     } else {
-        (renzora::lang::t("export.preset.no_template"), text_muted())
+        (renzora_lang_api::t("export.preset.no_template"), text_muted())
     }
 }
 

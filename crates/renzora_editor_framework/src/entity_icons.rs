@@ -1,5 +1,5 @@
 //! The curated icon set offered by the inspector's entity-icon picker, and the
-//! lookup that turns a stored [`renzora::EntityIcon`] string back into a name
+//! lookup that turns a stored [`renzora_scene_api::EntityIcon`] string back into a name
 //! the UI can draw.
 //!
 //! Why a curated list rather than the whole Phosphor font: the font ships
@@ -9,7 +9,7 @@
 //! a scene fit in one glance-sized grid with no chrome at all, and the answer
 //! to "the one I want isn't here" is to add it to this table.
 //!
-//! The lookup exists because [`renzora::EntityIcon`] holds a `String` loaded
+//! The lookup exists because [`renzora_scene_api::EntityIcon`] holds a `String` loaded
 //! from a scene file, while the hierarchy's `EntityNode` and every icon widget
 //! want a `&'static str`. Resolving through this table gets that lifetime and
 //! validates the name in the same step — an icon the font has no glyph for

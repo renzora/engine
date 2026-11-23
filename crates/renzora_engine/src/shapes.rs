@@ -11,7 +11,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::{ShapeEntry, ShapeRegistry};
+use renzora_scene_api::{ShapeEntry, ShapeRegistry};
 
 use crate::procedural_meshes as pm;
 use crate::procedural_meshes_more as pm2;

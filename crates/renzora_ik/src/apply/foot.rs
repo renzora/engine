@@ -4,7 +4,7 @@
 //! [`PhysicsBackends::cast`] contract, so a backend can read its own state out
 //! of it) while gathering and applying need mutable queries. Gathering writes
 //! the rays into [`FootRays`], one exclusive system casts them, and applying
-//! reads the hits back. Going through `renzora::physics` rather than a physics
+//! reads the hits back. Going through `renzora_physics_api::physics` rather than a physics
 //! crate means the feet stand on whatever the installed backend simulates, and
 //! with no backend at all they stand on the component's fallback plane, so a
 //! scene with no physics still gets planted feet on flat ground.
@@ -14,7 +14,7 @@ use crate::names::NameLookup;
 use crate::pose::{track, world_of, Pose, PoseCache};
 use crate::solve::{approach, foot, two_bone};
 use bevy::prelude::*;
-use renzora::physics::{Cast, CastBatch, CastHit, CollisionShapeData, PhysicsBackends, PhysicsDim};
+use renzora_physics_api::physics::{Cast, CastBatch, CastHit, CollisionShapeData, PhysicsBackends, PhysicsDim};
 
 /// How often, in frames, a character's own colliders are re-collected for the
 /// rays to ignore. They change only when bodies are generated (a ragdoll

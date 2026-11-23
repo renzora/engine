@@ -1028,7 +1028,7 @@ fn the_wind_node_reads_the_world_wind_with_a_bounded_cross_wind() {
     // Strength is the bare speed over the reference: |(3, 0, 4)| = 5, scaled 2.
     let node = VfxNode::new(2, "input/wind").with("scale", f(2.0));
     let s = eval_node(node.clone(), "strength", ValueType::Float, u);
-    assert!(close(s.x, 10.0 / renzora::wind::REFERENCE_WIND_SPEED), "{s}");
+    assert!(close(s.x, 10.0 / renzora_world_api::wind::REFERENCE_WIND_SPEED), "{s}");
 
     let base = TEST_WIND * 2.0;
     let speed = base.length();
@@ -1123,7 +1123,7 @@ fn a_local_emitter_feels_the_wind_in_its_own_space() {
 
 #[test]
 fn frame_input_takes_the_gusting_wind_from_the_wind_state() {
-    let state = renzora::wind::WindState {
+    let state = renzora_world_api::wind::WindState {
         direction: bevy::math::Vec2::new(0.0, 1.0),
         speed: 4.0,
         gust_strength: 0.5,
@@ -1136,7 +1136,7 @@ fn frame_input_takes_the_gusting_wind_from_the_wind_state() {
     assert!(frame.wind.abs_diff_eq(Vec3::new(0.0, 0.0, 6.0), 1e-5), "{}", frame.wind);
     assert!(close(frame.wind_turbulence, 0.3));
     // No wind plugin: the default state is dead calm.
-    let calm = FrameInput::default().with_wind(&renzora::wind::WindState::default());
+    let calm = FrameInput::default().with_wind(&renzora_world_api::wind::WindState::default());
     assert_eq!(calm.wind, Vec3::ZERO);
 }
 

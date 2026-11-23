@@ -239,6 +239,10 @@ const RETIRED_PANELS: &[&str] = &[
     "scene_diagnostics",
     // Never had content: it opened to its own title.
     "physics_debug",
+    // World Partition: the map, stats, switches and stand-in builder are the
+    // World Partition entity's Inspector section now, and partitioning is on
+    // the Hierarchy's right-click menu.
+    "world_partition",
 ];
 
 /// Workspace names that used to be built in and no longer are, dropped from a

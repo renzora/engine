@@ -4,7 +4,7 @@
 //! renders with), but the *session* — what actually lights up the headset —
 //! can start and stop freely. In game mode (`--vr`) `XrSessionPlugin`'s
 //! auto-handler starts it immediately; in an XR-capable editor session this
-//! module drives it from the [`renzora::VrPlayState`] contract instead:
+//! module drives it from the [`renzora_scene_api::VrPlayState`] contract instead:
 //! the viewport play-mode code flips `requested` when the "VR Headset" play
 //! target starts/stops, and the session follows.
 
@@ -15,7 +15,7 @@ use bevy_mod_xr::session::{
 };
 
 pub(crate) fn register(app: &mut App, auto_start: bool) {
-    app.init_resource::<renzora::VrPlayState>();
+    app.init_resource::<renzora_scene_api::VrPlayState>();
     if auto_start {
         // Game mode: the auto-handler owns the lifecycle; just mirror state
         // (and keep `requested` truthful for anything reading the contract).
@@ -25,7 +25,7 @@ pub(crate) fn register(app: &mut App, auto_start: bool) {
     }
 }
 
-fn mirror_state_game_mode(state: Res<XrState>, mut play: ResMut<renzora::VrPlayState>) {
+fn mirror_state_game_mode(state: Res<XrState>, mut play: ResMut<renzora_scene_api::VrPlayState>) {
     play.requested = true;
     play.active = matches!(*state, XrState::Running);
 }
@@ -37,7 +37,7 @@ fn mirror_state_game_mode(state: Res<XrState>, mut play: ResMut<renzora::VrPlayS
 /// flight — the backend ignores messages that don't apply to the current
 /// state, so repeats are harmless.
 fn drive_session_from_play_state(
-    mut play: ResMut<renzora::VrPlayState>,
+    mut play: ResMut<renzora_scene_api::VrPlayState>,
     state: Res<XrState>,
     mut create: MessageWriter<XrCreateSessionMessage>,
     mut begin: MessageWriter<XrBeginSessionMessage>,

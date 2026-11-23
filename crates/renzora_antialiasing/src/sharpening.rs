@@ -27,7 +27,7 @@ impl Default for CasSettings {
 pub(crate) fn sync_cas(
     mut commands: Commands,
     sources: Query<(Entity, Ref<CasSettings>)>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {

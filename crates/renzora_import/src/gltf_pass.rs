@@ -546,7 +546,7 @@ fn extract_glb_materials(glb_bytes: &[u8]) -> Vec<ExtractedPbrMaterial> {
             })
             .unwrap_or([1.0, 1.0, 1.0]);
 
-        let advanced = renzora::core::PbrAdvanced {
+        let advanced = renzora_scene_api::PbrAdvanced {
             clearcoat: ext_f32(clearcoat_ext, "clearcoatFactor", 0.0),
             clearcoat_roughness: ext_f32(clearcoat_ext, "clearcoatRoughnessFactor", 0.0),
             clearcoat_texture: texture_info_uri(
@@ -975,7 +975,7 @@ fn external_texture_outputs(
 /// Magic-byte sniff for embedded image bytes when the GLB doesn't carry a
 /// MIME type. Mirrors the FBX-side helper so both extractors agree on
 /// which extension to write.
-fn sniff_image_extension(data: &[u8]) -> &'static str {
+pub(crate) fn sniff_image_extension(data: &[u8]) -> &'static str {
     if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
         "png"
     } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -1600,7 +1600,7 @@ mod tests {
                 metallic_roughness_texture: None,
                 alpha: crate::glb_build::AlphaKind::Blend,
                 double_sided: false,
-                advanced: renzora::core::PbrAdvanced {
+                advanced: renzora_scene_api::PbrAdvanced {
                     clearcoat: 0.8,
                     clearcoat_roughness: 0.15,
                     clearcoat_texture: Some("/tmp/coat.png".into()),

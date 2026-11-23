@@ -14,7 +14,7 @@ pub struct EditorUiCamera;
 /// during play mode).
 pub fn editor_camera_world_pose(world: &mut World) -> Option<GlobalTransform> {
     let mut q =
-        world.query_filtered::<&GlobalTransform, With<renzora::core::EditorCamera>>();
+        world.query_filtered::<&GlobalTransform, With<renzora_scene_api::EditorCamera>>();
     q.iter(world).next().copied()
 }
 

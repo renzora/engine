@@ -48,7 +48,7 @@ pub(crate) fn activate_doc_tab(w: &mut World, id: u64) {
     let switch = state.activate_tab(idx);
     let layout = state.tabs[idx].kind.layout_name().map(|n| n.to_string());
     if let Some((old_tab_id, new_tab_id)) = switch {
-        w.insert_resource(renzora::TabSwitchRequest { old_tab_id, new_tab_id });
+        w.insert_resource(renzora_project_api::TabSwitchRequest { old_tab_id, new_tab_id });
     }
     let Some(layout) = layout else { return };
     let index = w
@@ -141,7 +141,7 @@ pub(crate) fn sync_workspace_to_active_doc(
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
     context: Option<ResMut<renzora_ui::EditorContext>>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut mru: ResMut<DocTabMru>,
     mut commands: Commands,
     mut last: Local<Option<u64>>,
@@ -200,7 +200,7 @@ pub(crate) fn sync_workspace_to_active_doc(
     match tab.kind {
         renzora_ui::DocTabKind::Script | renzora_ui::DocTabKind::Shader => {
             if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
-                commands.insert_resource(renzora::core::OpenCodeEditorFile {
+                commands.insert_resource(renzora_project_api::OpenCodeEditorFile {
                     path: project.resolve_path(rel),
                 });
             }
@@ -211,7 +211,7 @@ pub(crate) fn sync_workspace_to_active_doc(
         // panel over.
         renzora_ui::DocTabKind::Ui => {
             if let (Some(rel), Some(project)) = (tab.scene_path.as_ref(), project) {
-                commands.insert_resource(renzora::core::OpenUiTemplateFile {
+                commands.insert_resource(renzora_project_api::OpenUiTemplateFile {
                     path: project.resolve_path(rel),
                 });
             }
@@ -295,7 +295,7 @@ pub(crate) fn sync_active_doc_to_workspace(
     // Through `activate_tab` + `TabSwitchRequest` like every other switch, so a
     // scene→scene move still swaps the live scene for the incoming one's buffer.
     if let Some((old_id, new_id)) = state.activate_tab(idx) {
-        commands.insert_resource(renzora::TabSwitchRequest {
+        commands.insert_resource(renzora_project_api::TabSwitchRequest {
             old_tab_id: old_id,
             new_tab_id: new_id,
         });
@@ -306,7 +306,7 @@ pub(crate) fn sync_active_doc_to_workspace(
 /// anywhere (the asset browser, a folder move) leaves every open document
 /// pointing at the file it actually has open rather than at a dead path.
 pub(crate) fn doc_tabs_follow_asset_path(
-    trigger: On<renzora::AssetPathChanged>,
+    trigger: On<renzora_scene_api::AssetPathChanged>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     context: Option<ResMut<renzora_ui::EditorContext>>,
 ) {
@@ -336,7 +336,7 @@ pub(crate) fn doc_tabs_follow_asset_path(
 }
 
 /// Close a document by id and, if it was the active one, fire a
-/// [`renzora::TabSwitchRequest`] so the viewport follows to the newly-active
+/// [`renzora_project_api::TabSwitchRequest`] so the viewport follows to the newly-active
 /// document. `close_tab` only moves the active index and never swaps scene
 /// content, so without this the old scene would linger under a different
 /// active document.
@@ -358,12 +358,12 @@ pub(crate) fn close_doc_tab_by_id(
         // materials and textures, and its snapshot. Nothing fired it after the
         // egui tab bar was replaced, so every scene opened in a session stayed
         // in memory, GPU textures included, until the editor quit.
-        commands.trigger(renzora::core::TabClosed { tab_id: id });
+        commands.trigger(renzora_shell_api::TabClosed { tab_id: id });
     }
     if closed && was_active {
         if let (Some(old), Some(new)) = (prev_active_id, state.active_tab_id()) {
             if old != new {
-                commands.insert_resource(renzora::TabSwitchRequest {
+                commands.insert_resource(renzora_project_api::TabSwitchRequest {
                     old_tab_id: old,
                     new_tab_id: new,
                 });

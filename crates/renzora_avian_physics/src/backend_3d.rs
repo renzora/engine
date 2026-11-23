@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use avian3d::prelude::*;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
-use renzora::physics::{
+use renzora_physics_api::physics::{
     physics_backend_selected, AppPhysicsBackendExt, BodyVelocity, Caps, CastBatch, CastHit,
     CastShape, CollisionShapeData, Contact, JointKind, OverlapBatch, PhysicsBackend, PhysicsBodyData, PhysicsBodyType,
     PhysicsCommand, PhysicsCommands, PhysicsContacts, PhysicsDim, PhysicsJoint, PhysicsSet,
@@ -231,7 +231,7 @@ fn collider_for(shape: &ResolvedShape) -> Option<Collider> {
 /// the OUTER index is X. Every terrain chunk is square; a grid that is not
 /// falls back to triangles ([`collider_for`]) rather than come out transposed,
 /// and returns `None` here.
-fn heightfield_parts(field: &renzora::physics::HeightfieldData) -> Option<(Collider, Vec3)> {
+fn heightfield_parts(field: &renzora_physics_api::physics::HeightfieldData) -> Option<(Collider, Vec3)> {
     if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
         return None;
     }
@@ -248,7 +248,7 @@ fn heightfield_parts(field: &renzora::physics::HeightfieldData) -> Option<(Colli
 /// A heightfield as one collider, for casting a shape and for the uncommon
 /// grid that is not square. A body's own heightfield is never built this way:
 /// see [`HeightfieldPart`].
-fn heightfield_collider(field: &renzora::physics::HeightfieldData) -> Option<Collider> {
+fn heightfield_collider(field: &renzora_physics_api::physics::HeightfieldData) -> Option<Collider> {
     if field.columns < 2 || field.rows < 2 || field.heights.len() != field.columns * field.rows {
         return None;
     }
@@ -436,7 +436,7 @@ fn sync_colliders(
                 }
                 Err(_) => {
                     let child = commands
-                        .spawn((parts, HeightfieldPart(entity), renzora::HideInHierarchy, ChildOf(entity)))
+                        .spawn((parts, HeightfieldPart(entity), renzora_scene_api::HideInHierarchy, ChildOf(entity)))
                         .id();
                     commands.entity(entity).try_insert(HeightfieldChild(child));
                     child
@@ -811,7 +811,7 @@ fn overlap(q: Queries, batch: &mut OverlapBatch) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::physics::HeightfieldData;
+    use renzora_physics_api::physics::HeightfieldData;
 
     /// A slope rising along X only, so a transposed grid (rows and columns
     /// swapped between the engine's layout and avian's) would put the slope

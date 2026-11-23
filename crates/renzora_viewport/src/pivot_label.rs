@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{PivotMarkerState, ViewportState};
-use renzora::core::EditorCamera;
+use renzora_viewport_api::{PivotMarkerState, ViewportState};
+use renzora_scene_api::EditorCamera;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 

@@ -55,7 +55,7 @@ const TILE_PCT: f32 = 100.0 / 3.0;
 /// colour in Add Component, Add Entity and the Inspector's page rail.
 pub fn category_color(name: &str) -> (u8, u8, u8) {
     let norm = name.trim().to_lowercase().replace([' ', '-'], "_");
-    if let Some(page) = renzora::inspector_pages::InspectorPage::from_id(&norm) {
+    if let Some(page) = renzora_shell_api::inspector_pages::InspectorPage::from_id(&norm) {
         return page.hue();
     }
     match norm.as_str() {
@@ -330,7 +330,7 @@ fn search_list_impl(
         .id();
 
     // Fixed search bar just above the list (padded so the field never overflows).
-    let search_ph = renzora::lang::t("common.search");
+    let search_ph = renzora_lang_api::t("common.search");
     let input = text_input(commands, &fonts.ui, &search_ph, "");
     commands.entity(input).insert((
         SearchInput,
@@ -405,7 +405,7 @@ fn search_list_impl(
     }
 
     // "All" opens every section and scrolls to the top.
-    let all_label = renzora::lang::t_or("entity.cat.all", "All");
+    let all_label = renzora_lang_api::t_or("entity.cat.all", "All");
     sidebar_kids.push(sidebar_button(commands, fonts, input, &all_label, None, None, None));
 
     for (cat, items) in order.iter().zip(groups) {
@@ -527,7 +527,7 @@ fn search_list_impl(
         .id();
     let cats_label = commands
         .spawn((
-            Text::new(renzora::lang::t("common.categories")),
+            Text::new(renzora_lang_api::t("common.categories")),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(MUTED)),
             Node {
@@ -802,7 +802,7 @@ pub fn search_grid(
         ))
         .id();
 
-    let search_ph = renzora::lang::t("common.search");
+    let search_ph = renzora_lang_api::t("common.search");
     let input = text_input(commands, &fonts.ui, &search_ph, "");
     commands.entity(input).insert((
         SearchInput,

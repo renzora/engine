@@ -1507,10 +1507,10 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
     // 3D text used to need a special case here: it was the one subsystem outside
     // the UI tree that still pulled `bevy_text`, so a UI-stripped runtime had to
     // drop it too. It is a native plugin now, and the glyph machinery it shares
-    // with the UI emitter sits behind `renzora`'s `text_mesh` feature, which only
-    // `renzora_ember` turns on — and ember is already gone when UI is off. The
-    // dependency is expressed in the manifests now, so there is nothing to
-    // enforce here.
+    // with the UI emitter is the `renzora_text_mesh` crate, which only
+    // `renzora_ember` (and `renzora_sdk`, see `strip_sdk_layers`) depends on, and
+    // ember is already gone when UI is off. The dependency is expressed in the
+    // manifests now, so there is nothing to enforce here.
     //
     // The render_3d cascade is no longer applied here: [`enforce_dependencies`]
     // has already written it into `state`, so it is one rule with one
@@ -1593,8 +1593,7 @@ pub fn enforce_dependencies(state: &mut HashMap<String, bool>) {
         && !state.get("physics_2d").copied().unwrap_or(true)
     {
         state.insert("avian".to_string(), false);
-    }
-    // After the cascade above, so a child of a parent this just turned off goes
+    }    // After the cascade above, so a child of a parent this just turned off goes
     // with it (`bloom` under `postfx`, for one).
     for c in CAPABILITIES {
         let Some(parent) = c.group else { continue };

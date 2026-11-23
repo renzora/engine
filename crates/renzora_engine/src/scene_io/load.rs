@@ -7,8 +7,8 @@
 //! loaded further up the stack — see [`LOADING_STACK`].
 
 use bevy::prelude::*;
-use renzora::console_log::*;
-use renzora::{DefaultCamera, SceneCamera};
+use renzora_log_api::*;
+use renzora_scene_api::{DefaultCamera, SceneCamera};
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicScene;
 use std::path::Path;
@@ -375,7 +375,7 @@ pub fn load_scene(world: &mut World, path: &Path) {
     // without this a scene reloaded once would be reloaded again by its own
     // event.
     world
-        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .get_resource_or_insert_with(renzora_project_api::project_files::SelfWrites::default)
         .record(path, content.as_bytes());
 
     let trimmed = content.trim();
@@ -558,7 +558,7 @@ pub fn load_scene(world: &mut World, path: &Path) {
 
 /// Load the current project's main scene.
 pub fn load_current_scene(world: &mut World) {
-    let Some(project) = world.get_resource::<renzora::CurrentProject>() else {
+    let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() else {
         warn!("load_current_scene: no CurrentProject resource");
         return;
     };

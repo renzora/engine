@@ -1,4 +1,4 @@
-//! Ragdoll activation. The script calls land here as `renzora::ScriptAction`s
+//! Ragdoll activation. The script calls land here as `renzora_scripting_api::ScriptAction`s
 //! (the same indirection `renzora_physics::PhysicsScriptExtension` uses for
 //! `apply_force` etc.) and only edit the `Ragdoll` component;
 //! `apply_ragdoll_state` is the single place that reacts to it changing, so a
@@ -12,8 +12,8 @@ use crate::blend::{BoneBlend, RagdollBlendState};
 use crate::{Ragdoll, RagdollBone};
 use bevy::animation::AnimatedBy;
 use bevy::prelude::*;
-use renzora::physics::{PhysicsBodyData, PhysicsBodyType};
-use renzora::ScriptActionValue;
+use renzora_physics_api::physics::{PhysicsBodyData, PhysicsBodyType};
+use renzora_scripting_api::ScriptActionValue;
 use renzora_animation::{AnimationCommand, AnimationCommandQueue};
 
 /// A `blend` at or above this is a full ragdoll, which takes the bones away
@@ -38,7 +38,7 @@ pub(crate) const FULL_BLEND: f32 = 0.999;
 #[derive(Component, Clone, Copy)]
 pub(crate) struct StashedAnimatedBy(Entity);
 
-fn arg_f32(action: &renzora::ScriptAction, key: &str) -> Option<f32> {
+fn arg_f32(action: &renzora_scripting_api::ScriptAction, key: &str) -> Option<f32> {
     match action.args.get(key)? {
         ScriptActionValue::Float(f) => Some(*f),
         ScriptActionValue::Int(i) => Some(*i as f32),
@@ -47,7 +47,7 @@ fn arg_f32(action: &renzora::ScriptAction, key: &str) -> Option<f32> {
 }
 
 pub fn handle_ragdoll_script_actions(
-    trigger: On<renzora::ScriptAction>,
+    trigger: On<renzora_scripting_api::ScriptAction>,
     mut ragdolls: Query<&mut Ragdoll>,
 ) {
     let action = trigger.event();

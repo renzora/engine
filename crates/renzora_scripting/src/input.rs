@@ -3,9 +3,9 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 // Re-export ScriptInput from renzora
-pub use renzora::ScriptInput;
+pub use renzora_scripting_api::ScriptInput;
 
-use renzora::context::{TouchSnapshot, TouchState, TAP_MAX_SECONDS, TAP_MAX_TRAVEL};
+use renzora_scripting_api::context::{TouchSnapshot, TouchState, TAP_MAX_SECONDS, TAP_MAX_TRAVEL};
 
 /// All buttons mirrored into [`ScriptInput`], in the order scripts index them.
 pub const SCRIPT_GAMEPAD_BUTTONS: [GamepadButton; 16] = [

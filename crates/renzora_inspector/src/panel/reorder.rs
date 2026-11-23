@@ -92,7 +92,7 @@ pub(super) fn build_grip(commands: &mut Commands, fonts: &EmberFonts, root: Enti
         // must not reach the header, which would toggle the section.
         BLOCK,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
-        HoverTooltip::new(renzora::lang::t("inspector.component.reorder")),
+        HoverTooltip::new(renzora_lang_api::t("inspector.component.reorder")),
         SectionGrip { root },
     ));
     grip

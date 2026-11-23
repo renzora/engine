@@ -20,7 +20,7 @@ use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use renzora_ember::UiCursor;
 
-use renzora::{euler_deg_to_quat, euler_slope_of_quat_tangent, quat_tangent_of_euler_slope, quat_to_euler_deg, AnimClip, KeyMode, TrackValue};
+use renzora_animation_api::{euler_deg_to_quat, euler_slope_of_quat_tangent, quat_tangent_of_euler_slope, quat_to_euler_deg, AnimClip, KeyMode, TrackValue};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{menu_item, screen_menu, LANE_INSET};
 use renzora_ember::UiInteraction;
@@ -655,7 +655,7 @@ pub(super) fn graph_sync(world: &mut World) {
     let Some(set) = current_set(world) else { return };
     // F over the timeline frames the selection, as in a viewport.
     let f_key = world.resource::<ButtonInput<KeyCode>>().just_pressed(KeyCode::KeyF)
-        && !world.get_resource::<renzora::InputFocusState>().is_some_and(|f| f.ui_wants_keyboard)
+        && !world.get_resource::<renzora_project_api::InputFocusState>().is_some_and(|f| f.ui_wants_keyboard)
         && {
             let mut q = world.query_filtered::<&UiCursor, With<AnimTimeline>>();
             q.iter(world).any(|r| r.cursor_over)
@@ -746,16 +746,16 @@ pub(super) fn graph_context_menu(world: &mut World) {
         let mut kids = Vec::new();
         if let Some(targets) = targets {
             kids.extend(super::keymode::mode_menu_items(&mut commands, &fonts, targets.clone(), current));
-            kids.push(menu_item(&mut commands, &fonts, "trash", &renzora::lang::t("timeline.delete_keyframe"), move |w| {
+            kids.push(menu_item(&mut commands, &fonts, "trash", &renzora_lang_api::t("timeline.delete_keyframe"), move |w| {
                 w.resource_mut::<SelectedKeys>().set(targets.clone());
                 w.resource_mut::<SelectedKey>().0 = None;
                 super::props::delete_selected_keys(w);
             }));
         } else {
-            kids.push(menu_item(&mut commands, &fonts, "frame-corners", &renzora::lang::t_or("timeline.frame_selected", "Frame selected"), |w| {
+            kids.push(menu_item(&mut commands, &fonts, "frame-corners", &renzora_lang_api::t_or("timeline.frame_selected", "Frame selected"), |w| {
                 w.resource_mut::<GraphDrag>().frame_request = Some(FrameRequest::Selected);
             }));
-            kids.push(menu_item(&mut commands, &fonts, "arrows-out", &renzora::lang::t_or("timeline.frame_all", "Frame all"), |w| {
+            kids.push(menu_item(&mut commands, &fonts, "arrows-out", &renzora_lang_api::t_or("timeline.frame_all", "Frame all"), |w| {
                 w.resource_mut::<GraphDrag>().frame_request = Some(FrameRequest::All);
             }));
         }
@@ -767,7 +767,7 @@ pub(super) fn graph_context_menu(world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::{BoneTrack, KeyCurve};
+    use renzora_animation_api::{BoneTrack, KeyCurve};
 
     fn clip() -> AnimClip {
         let mut c = renzora_animation::extract::create_empty_clip("c", 2.0);

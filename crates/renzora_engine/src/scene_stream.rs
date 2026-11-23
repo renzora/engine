@@ -24,7 +24,7 @@
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
-use renzora::console_log::*;
+use renzora_log_api::*;
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicScene;
 use std::path::Path;
@@ -246,7 +246,7 @@ fn despawn_stream_entities(world: &mut World, stream: SceneStream) {
 /// is true and both then record the same answer. In the editor this is false
 /// outside play, so the exclusive system stops being a per-frame sync point.
 pub fn instance_streaming_live(world: &World, mut was_active: Local<bool>) -> bool {
-    let active = renzora::world_streaming_active(world);
+    let active = renzora_platform_api::world_streaming_active(world);
     let live = active || *was_active;
     *was_active = active;
     live
@@ -295,6 +295,15 @@ pub fn drive_scene_streams(world: &mut World) {
                         let scene = parsed.scene;
                         let mut entity_map = EntityHashMap::default();
                         scene.allocate_entities(world, &mut entity_map);
+                        // Instance content is marked before any component
+                        // lands, so caches that pin assets for the session see
+                        // the marker on the same frame a model arrives, and
+                        // leave streamed content free to unload.
+                        if stream.spawn_parent.is_some() {
+                            for &entity in entity_map.values() {
+                                world.entity_mut(entity).insert(renzora_scene_api::StreamedContent);
+                            }
+                        }
                         stream.stage = StreamStage::Spawning {
                             scene,
                             entity_map,
@@ -443,8 +452,14 @@ fn finish_stream(world: &mut World, stream: SceneStream) {
                 })
                 .copied()
                 .collect();
-            for root in roots {
+            for &root in &roots {
                 world.entity_mut(root).insert(ChildOf(parent));
+            }
+            // A partition cell's contents stay hidden until their models,
+            // materials and textures are ready, so a district never shows
+            // as black geometry while its textures upload.
+            if world.get::<renzora_scene_api::PartitionCell>(parent).is_some() {
+                crate::world_partition::hold_until_ready(world, &roots);
             }
         }
     }
@@ -493,7 +508,7 @@ pub fn cancel_streams_under(world: &mut World, parent: Entity) {
 
 /// Expand/collapse `streamed` scene instances by camera distance. Runs only
 /// while world streaming is in effect (shipped game, or editor play/simulate
-/// — see [`renzora::world_streaming_active`]); in editor edit mode streamed
+/// — see [`renzora_platform_api::world_streaming_active`]); in editor edit mode streamed
 /// instances stay expanded like ordinary ones so designers can work on them.
 ///
 /// Expansion goes through the async stream machinery (parse off-thread,
@@ -503,7 +518,7 @@ pub fn cancel_streams_under(world: &mut World, parent: Entity) {
 pub fn drive_streamed_scene_instances(world: &mut World, mut was_active: Local<bool>) {
     // Gated by `instance_streaming_live`, which lets it run while streaming is
     // active and for the one frame after, where the collapse below is undone.
-    if !renzora::world_streaming_active(world) {
+    if !renzora_platform_api::world_streaming_active(world) {
         // Leaving play/simulate: anything play-time streaming collapsed must
         // come back for edit mode. One expansion on the transition edge —
         // not every frame, so a missing source file can't spam retries.
@@ -514,11 +529,11 @@ pub fn drive_streamed_scene_instances(world: &mut World, mut was_active: Local<b
         return;
     }
     *was_active = true;
-    let Some(camera_pos) = renzora::streaming_camera_pos(world) else {
+    let Some(camera_pos) = renzora_platform_api::streaming_camera_pos(world) else {
         return;
     };
     let Some(project_root) = world
-        .get_resource::<renzora::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone())
     else {
         return;
@@ -538,16 +553,23 @@ pub fn drive_streamed_scene_instances(world: &mut World, mut was_active: Local<b
     {
         let mut q = world.query::<(
             Entity,
-            &renzora::SceneInstance,
+            &renzora_scene_api::SceneInstance,
             &GlobalTransform,
             Option<&Children>,
+            bevy::ecs::query::Has<renzora_scene_api::PartitionCell>,
         )>();
-        for (entity, instance, transform, children) in q.iter(world) {
+        for (entity, instance, transform, children, is_cell) in q.iter(world) {
             if !instance.streamed || instance.source.is_empty() {
                 continue;
             }
             let expanded = children.is_some_and(|c| c.iter().count() > 0);
-            let dist = camera_pos.distance(transform.translation());
+            // Partition cells are a ground grid: measured on X and Z, so a
+            // camera high over a city keeps the streets below it loaded.
+            let dist = if is_cell {
+                crate::world_partition::ground_distance(camera_pos, transform.translation())
+            } else {
+                camera_pos.distance(transform.translation())
+            };
             // Enforce hysteresis at evaluation time rather than trusting the
             // authored values — a zero/inverted unload radius would otherwise
             // load+unload every frame on the boundary.

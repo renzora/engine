@@ -15,11 +15,11 @@
 //! against the world as that step left it.
 
 use bevy::prelude::*;
-use renzora::core::ActionState;
-use renzora::physics::{
+use renzora_scripting_api::ActionState;
+use renzora_physics_api::physics::{
     BodyVelocity, Cast, PhysicsBackends, PhysicsCommand, PhysicsCommands, PhysicsDim, PhysicsSettings,
 };
-use renzora::vehicle::{Vehicle, VehicleControls, VehicleDrive, VehicleState};
+use renzora_physics_api::vehicle::{Vehicle, VehicleControls, VehicleDrive, VehicleState};
 
 use crate::PhysicsBodyData;
 

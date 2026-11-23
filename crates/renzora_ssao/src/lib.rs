@@ -1,12 +1,12 @@
 //! SSAO — the slice-2 piece of the `WorldEnvironment` reconcile. SSAO is now a
-//! section of [`renzora::WorldEnvironment`] (`ssao`); [`reconcile_ssao`] drives
+//! section of [`renzora_world_api::WorldEnvironment`] (`ssao`); [`reconcile_ssao`] drives
 //! `ScreenSpaceAmbientOcclusion` from it.
 
 use bevy::pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Legacy per-effect SSAO settings. Superseded by [`renzora::WorldEnvironment::ssao`];
+/// Legacy per-effect SSAO settings. Superseded by [`renzora_world_api::WorldEnvironment::ssao`];
 /// kept (registered, no longer synced or shown in the inspector) so pre-unification
 /// scenes still deserialize.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
@@ -21,21 +21,21 @@ impl Default for SsaoSettings {
     }
 }
 
-/// Translate the authored [`renzora::SsaoQuality`] + custom counts into Bevy's
+/// Translate the authored [`renzora_world_api::SsaoQuality`] + custom counts into Bevy's
 /// quality enum.
 ///
 /// The `Custom` counts are clamped rather than passed through: Bevy multiplies
 /// them into the per-pixel sample count of a full-resolution compute pass, so a
 /// zero makes the pass produce nothing and a hand-edited scene file with a large
 /// value stalls the GPU. The bounds match the ranges the inspector exposes.
-fn quality_level(s: &renzora::SsaoSection) -> ScreenSpaceAmbientOcclusionQualityLevel {
+fn quality_level(s: &renzora_world_api::SsaoSection) -> ScreenSpaceAmbientOcclusionQualityLevel {
     use ScreenSpaceAmbientOcclusionQualityLevel as Q;
     match s.quality {
-        renzora::SsaoQuality::Low => Q::Low,
-        renzora::SsaoQuality::Medium => Q::Medium,
-        renzora::SsaoQuality::High => Q::High,
-        renzora::SsaoQuality::Ultra => Q::Ultra,
-        renzora::SsaoQuality::Custom => Q::Custom {
+        renzora_world_api::SsaoQuality::Low => Q::Low,
+        renzora_world_api::SsaoQuality::Medium => Q::Medium,
+        renzora_world_api::SsaoQuality::High => Q::High,
+        renzora_world_api::SsaoQuality::Ultra => Q::Ultra,
+        renzora_world_api::SsaoQuality::Custom => Q::Custom {
             slice_count: s.slice_count.clamp(1, 16),
             samples_per_slice_side: s.samples_per_slice_side.clamp(1, 8),
         },
@@ -52,18 +52,18 @@ fn quality_level(s: &renzora::SsaoSection) -> ScreenSpaceAmbientOcclusionQuality
 /// hit the contact-shadows specialization race; if GPU testing shows otherwise,
 /// it escalates to the resident white-AO gate.
 ///
-/// **Solari stands SSAO down.** A camera carrying [`renzora::SolariLit`] gets no
+/// **Solari stands SSAO down.** A camera carrying [`renzora_render_api::SolariLit`] gets no
 /// SSAO whatever the section says: Solari traces its own ambient occlusion, so
 /// screen-space AO on top only darkens every corner a second time, and costs a
 /// full-resolution compute pass for it. The section keeps its value, so turning
 /// Solari off (or running on a GPU that cannot trace) brings SSAO back.
 fn reconcile_ssao(
     mut commands: Commands,
-    sources: Query<Ref<renzora::WorldEnvironment>>,
-    routing: Res<renzora::EffectRouting>,
-    solari: Query<(), With<renzora::SolariLit>>,
-    gained_solari: Query<(), Added<renzora::SolariLit>>,
-    mut lost_solari: RemovedComponents<renzora::SolariLit>,
+    sources: Query<Ref<renzora_world_api::WorldEnvironment>>,
+    routing: Res<renzora_scene_api::EffectRouting>,
+    solari: Query<(), With<renzora_render_api::SolariLit>>,
+    gained_solari: Query<(), Added<renzora_render_api::SolariLit>>,
+    mut lost_solari: RemovedComponents<renzora_render_api::SolariLit>,
 ) {
     let routing_changed = routing.is_changed();
     let lost: Vec<Entity> = lost_solari.read().collect();
@@ -105,7 +105,6 @@ impl Plugin for SsaoPlugin {
     }
 }
 
-renzora::add!(SsaoPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -114,9 +113,9 @@ mod tests {
     fn app() -> (App, Entity) {
         let mut app = App::new();
         app.add_systems(Update, reconcile_ssao);
-        let env = app.world_mut().spawn(renzora::WorldEnvironment::default()).id();
+        let env = app.world_mut().spawn(renzora_world_api::WorldEnvironment::default()).id();
         let camera = app.world_mut().spawn_empty().id();
-        app.insert_resource(renzora::EffectRouting {
+        app.insert_resource(renzora_scene_api::EffectRouting {
             routes: vec![(camera, vec![env])],
         });
         (app, camera)
@@ -135,11 +134,11 @@ mod tests {
         app.update();
         assert!(has_ssao(&app, camera), "SSAO is on by default");
 
-        app.world_mut().entity_mut(camera).insert(renzora::SolariLit);
+        app.world_mut().entity_mut(camera).insert(renzora_render_api::SolariLit);
         app.update();
         assert!(!has_ssao(&app, camera), "Solari should stand SSAO down");
 
-        app.world_mut().entity_mut(camera).remove::<renzora::SolariLit>();
+        app.world_mut().entity_mut(camera).remove::<renzora_render_api::SolariLit>();
         app.update();
         assert!(has_ssao(&app, camera), "SSAO should come back without Solari");
     }

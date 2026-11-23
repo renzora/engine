@@ -350,7 +350,7 @@ pub struct VfxGraph {
     /// the way it draws a material's. Skipped when empty so a graph nobody
     /// annotated saves exactly as it did before the field existed.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub comments: Vec<renzora::GraphComment>,
+    pub comments: Vec<renzora_material_api::GraphComment>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

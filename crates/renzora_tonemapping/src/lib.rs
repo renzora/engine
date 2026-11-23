@@ -72,7 +72,7 @@ fn substitute_if_no_luts(tm: Tonemapping) -> Tonemapping {
 fn sync_tonemapping(
     mut commands: Commands,
     sources: Query<(Entity, Ref<TonemappingSettings>)>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -110,7 +110,7 @@ fn sync_tonemapping(
 /// it was read from would mark it changed and copy it again every frame.
 fn sync_color_grading(
     sources: Query<Ref<ColorGrading>>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     mut commands: Commands,
 ) {
     let routing_changed = routing.is_changed();
@@ -147,7 +147,7 @@ impl Default for DebandDitherSettings {
 fn sync_deband_dither(
     mut commands: Commands,
     sources: Query<(Entity, Ref<DebandDitherSettings>)>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -170,7 +170,7 @@ fn sync_deband_dither(
 fn cleanup_deband_dither(
     mut commands: Commands,
     mut removed: RemovedComponents<DebandDitherSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     alive: Query<()>,
 ) {
     // Despawn vs. deliberate removal — see `cleanup_tonemapping`.
@@ -186,7 +186,7 @@ fn cleanup_deband_dither(
 fn cleanup_tonemapping(
     mut commands: Commands,
     mut removed: RemovedComponents<TonemappingSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     alive: Query<()>,
 ) {
     // Only a *deliberate* removal means "no tone curve".
@@ -277,7 +277,6 @@ fn force_lutless_tonemapping(mut q: Query<&mut Tonemapping, Changed<Tonemapping>
     }
 }
 
-renzora::add!(TonemappingPlugin);
 
 #[cfg(test)]
 mod tests {

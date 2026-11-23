@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use renzora::inspector_pages::InspectorPage;
+use renzora_shell_api::inspector_pages::InspectorPage;
 use renzora_editor_framework::{
     EditorCommands, EditorSelection, EditorSettings, FieldValue, InspectorExpandDefault,
 };
@@ -236,11 +236,11 @@ pub(super) fn reset_click(
 }
 
 /// Queue a keyframe-add when a field's keyframe button is pressed. The timeline
-/// editor drains [`renzora::KeyframeRequests`] and keys the entity's live value
+/// editor drains [`renzora_editor_api::KeyframeRequests`] and keys the entity's live value
 /// at the playhead onto the matching track (the undo is recorded there).
 pub(super) fn add_keyframe_click(
     q: Query<(&UiInteraction, &AddKeyframeBtn), Changed<UiInteraction>>,
-    reqs: Option<ResMut<renzora::KeyframeRequests>>,
+    reqs: Option<ResMut<renzora_editor_api::KeyframeRequests>>,
 ) {
     let Some(mut reqs) = reqs else { return };
     for (interaction, btn) in &q {
@@ -397,7 +397,7 @@ fn open_add_component(world: &mut World) {
         renzora_ember::widgets::search_overlay_focused(
             &mut commands,
             &fonts,
-            &renzora::lang::t("inspector.add_component"),
+            &renzora_lang_api::t("inspector.add_component"),
             entries,
             focus.as_deref(),
         );

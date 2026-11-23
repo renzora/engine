@@ -64,7 +64,7 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, tl.root, ready);
 
     // Track-list head: the filter and "+ Track".
-    let filter = text_input(commands, &fonts.ui, &renzora::lang::t_or("timeline.filter_tracks", "Filter tracks"), "");
+    let filter = text_input(commands, &fonts.ui, &renzora_lang_api::t_or("timeline.filter_tracks", "Filter tracks"), "");
     commands.entity(filter).insert((
         TrackFilterField,
         Node {
@@ -83,13 +83,13 @@ pub(super) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), height: Val::Px(20.0), padding: UiRect::horizontal(Val::Px(7.0)), border_radius: BorderRadius::all(Val::Px(5.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            HoverTooltip::new(renzora::lang::t_or("timeline.add_track_tip", "Add a property track")),
+            HoverTooltip::new(renzora_lang_api::t_or("timeline.add_track_tip", "Add a property track")),
             AddTrackBtn,
         ))
         .id();
     hover_wash(commands, add_track);
     let add_track_lbl = commands
-        .spawn((Text::new(format!("+ {}", renzora::lang::t_or("timeline.track_short", "Track"))), ui_font(&fonts.ui, 12.0), TextColor(rgb((122, 162, 247))), bevy::text::TextLayout::no_wrap(), PASS_THROUGH))
+        .spawn((Text::new(format!("+ {}", renzora_lang_api::t_or("timeline.track_short", "Track"))), ui_font(&fonts.ui, 12.0), TextColor(rgb((122, 162, 247))), bevy::text::TextLayout::no_wrap(), PASS_THROUGH))
         .id();
     commands.entity(add_track).add_child(add_track_lbl);
     commands.entity(tl.header_corner).add_children(&[filter, add_track]);
@@ -177,7 +177,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         state(w.untracked())
             .and_then(|s| s.selected_entity)
             .and_then(|e| w.get::<Name>(e).map(|n| n.as_str().to_string()))
-            .unwrap_or_else(|| renzora::lang::t_or("timeline.no_entity", "No entity"))
+            .unwrap_or_else(|| renzora_lang_api::t_or("timeline.no_entity", "No entity"))
     });
     let slash = commands.spawn((Text::new("/"), ui_font(&fonts.ui, 13.0), TextColor(rgb((90, 90, 102))), PASS_THROUGH)).id();
     let clip_lbl = commands.spawn((Text::new(""), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { max_width: Val::Px(180.0), overflow: Overflow::clip(), ..default() }, PASS_THROUGH)).id();
@@ -187,7 +187,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
         state(w.untracked())
             .and_then(|s| s.selected_clip.clone())
-            .unwrap_or_else(|| renzora::lang::t_or("timeline.no_clip", "No clip"))
+            .unwrap_or_else(|| renzora_lang_api::t_or("timeline.no_clip", "No clip"))
     });
     bind_text_color(commands, clip_lbl, |w| {
         let has = effect_only(w).is_some() || state(w.untracked()).is_some_and(|s| s.selected_clip.is_some());
@@ -198,12 +198,12 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(picker).add_children(&[ent_lbl, slash, clip_lbl, caret]);
 
     let (new_clip, _) = icon_btn(commands, fonts, "plus", text_primary(), NewClipBtn);
-    commands.entity(new_clip).insert(HoverTooltip::new(renzora::lang::t_or("timeline.new_clip_tip", "New clip")));
+    commands.entity(new_clip).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.new_clip_tip", "New clip")));
     bind_display(commands, new_clip, |w| state(w.untracked()).is_some_and(|s| s.selected_entity.is_some()));
 
     let sep1 = vsep(commands);
     let (record, record_ic) = icon_btn_raw(commands, fonts, "record", text_muted(), AnimBtn::Record);
-    commands.entity(record).insert(HoverTooltip::new(renzora::lang::t_or(
+    commands.entity(record).insert(HoverTooltip::new(renzora_lang_api::t_or(
         "timeline.record_tip",
         "Record: every change you make is keyed at the playhead",
     )));
@@ -242,7 +242,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { width: Val::Px(32.0), height: Val::Px(26.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(6.0)), flex_shrink: 0.0, ..default() },
             BackgroundColor(rgb(accent())),
             UiInteraction::default(),
-            HoverTooltip::new(renzora::lang::t_or("timeline.play_tip", "Play / pause (Space)")),
+            HoverTooltip::new(renzora_lang_api::t_or("timeline.play_tip", "Play / pause (Space)")),
             AnimBtn::PlayPause,
         ))
         .id();
@@ -255,7 +255,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let next = tb_icon(commands, fonts, "caret-right", AnimBtn::NextKey, "timeline.next_key", "Next key");
     let last = tb_icon(commands, fonts, "skip-forward", AnimBtn::SkipForward, "timeline.last_frame", "Last frame");
     let (loop_b, loop_ic) = icon_btn(commands, fonts, "repeat", text_muted(), AnimBtn::Loop);
-    commands.entity(loop_b).insert(HoverTooltip::new(renzora::lang::t_or("timeline.loop_tip", "Loop")));
+    commands.entity(loop_b).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.loop_tip", "Loop")));
     bind_text_color(commands, loop_ic, |w| {
         let on = state(w.untracked()).is_some_and(|s| s.preview_looping);
         rgb(if on { accent() } else { text_muted() })
@@ -270,7 +270,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let gap_r = commands.spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH)).id();
 
     // Shown with no clip in place of the transport.
-    let waiting = commands.spawn((Text::new(renzora::lang::t_or("timeline.transport_waits", "Transport appears once there is a clip")), ui_font(&fonts.ui, 12.0), TextColor(rgb((106, 106, 118))), bevy::text::TextLayout::no_wrap())).id();
+    let waiting = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.transport_waits", "Transport appears once there is a clip")), ui_font(&fonts.ui, 12.0), TextColor(rgb((106, 106, 118))), bevy::text::TextLayout::no_wrap())).id();
     bind_display(commands, waiting, |w| !ready(w) && state(w.untracked()).is_some_and(|s| s.selected_entity.is_some()));
 
     // ── Right: curves tools, speed, snap, Keys / Curves, overflow ──
@@ -280,7 +280,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let speed_labels: Vec<String> = SPEEDS.iter().map(|s| if *s >= 1.0 { format!("{s:.1}x") } else { format!("{s}x") }).collect();
     let speed_refs: Vec<&str> = speed_labels.iter().map(|s| s.as_str()).collect();
     let speed_dd = dropdown_compact(commands, fonts, &speed_refs, DEFAULT_SPEED, 58.0);
-    commands.entity(speed_dd).insert(HoverTooltip::new(renzora::lang::t_or("timeline.speed_tip", "Playback speed")));
+    commands.entity(speed_dd).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.speed_tip", "Playback speed")));
     bind_2way(
         commands,
         speed_dd,
@@ -299,7 +299,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let row_height = build_row_height_slider(commands, fonts);
 
     let (snap_b, snap_ic) = icon_btn_raw(commands, fonts, "magnet-straight", text_muted(), AnimBtn::Snap);
-    commands.entity(snap_b).insert(HoverTooltip::new(renzora::lang::t_or("timeline.snap_tip", "Snap keys to frames")));
+    commands.entity(snap_b).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.snap_tip", "Snap keys to frames")));
     bind_text_color(commands, snap_ic, |w| {
         let on = state(w.untracked()).is_some_and(|s| s.snap_enabled);
         rgb(if on { (122, 162, 247) } else { text_muted() })
@@ -317,7 +317,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let sep3 = vsep(commands);
     let mode = super::curves::build_mode_switch(commands, fonts);
     let (overflow, _) = icon_btn(commands, fonts, "dots-three", text_primary(), OverflowBtn);
-    commands.entity(overflow).insert((UiCursor::default(), HoverTooltip::new(renzora::lang::t_or("timeline.more_tip", "More: length, events, zoom, row height, save"))));
+    commands.entity(overflow).insert((UiCursor::default(), HoverTooltip::new(renzora_lang_api::t_or("timeline.more_tip", "More: length, events, zoom, row height, save"))));
     for e in [row_height, speed_dd, snap_b, sep3, mode, overflow] {
         bind_display(commands, e, ready);
     }
@@ -354,7 +354,7 @@ fn build_row_height_slider(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let icon = icon_text(commands, &fonts.phosphor, "rows", text_muted(), 14.0);
     commands.entity(icon).insert(PASS_THROUGH);
     let slider = renzora_ember::widgets::slider_ranged(commands, super::ROW_DEFAULT, super::ROW_MIN, super::ROW_MAX);
-    commands.entity(slider).insert(HoverTooltip::new(renzora::lang::t_or(
+    commands.entity(slider).insert(HoverTooltip::new(renzora_lang_api::t_or(
         "timeline.row_height_slider_tip",
         "Track height (Alt+wheel over the tracks also changes it)",
     )));
@@ -454,7 +454,7 @@ fn build_readout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// A transport button: icon plus a tooltip.
 fn tb_icon<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: M, key: &str, fallback: &str) -> Entity {
     let (b, _) = icon_btn(commands, fonts, icon, text_primary(), marker);
-    commands.entity(b).insert(HoverTooltip::new(renzora::lang::t_or(key, fallback)));
+    commands.entity(b).insert(HoverTooltip::new(renzora_lang_api::t_or(key, fallback)));
     b
 }
 

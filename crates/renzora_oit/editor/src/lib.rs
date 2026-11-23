@@ -7,7 +7,7 @@
 
 use bevy::core_pipeline::oit::OrderIndependentTransparencySettings;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 use renzora_oit::OitSettings;
 
 fn oit_entry() -> InspectorEntry {
@@ -37,8 +37,8 @@ fn oit_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora::int_field!("Layers", OitSettings, layer_count, i32, 1.0, 1.0, 32.0),
-            renzora::float_field!(
+            renzora_editor_api::int_field!("Layers", OitSettings, layer_count, i32, 1.0, 1.0, 32.0),
+            renzora_editor_api::float_field!(
                 "Alpha Threshold",
                 OitSettings,
                 alpha_threshold,
@@ -60,5 +60,3 @@ impl Plugin for OitEditorPlugin {
         app.register_inspector(oit_entry());
     }
 }
-
-renzora::add!(OitEditorPlugin, Editor);

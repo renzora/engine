@@ -14,7 +14,7 @@
 //! The device's feature set is decided before any plugin's `build()` runs, so
 //! this plugin cannot turn them on itself. The host (`renzora_runtime`) probes
 //! the GPU at startup, requests the features when supported, and records the
-//! result in [`renzora::GpuRaytracing`] before the plugin list is installed. We
+//! result in [`renzora_render_api::GpuRaytracing`] before the plugin list is installed. We
 //! read that here and install `SolariPlugins` ONLY when ray tracing is
 //! available, because adding RT render nodes on an incapable GPU would crash the
 //! engine. Flag absent/false means inert (warn + no-op), so the engine still
@@ -22,8 +22,8 @@
 //!
 //! ## Authoring
 //!
-//! [`renzora::SolariGi`] is authored on the "World Environment" source entity
-//! and routed to cameras via [`renzora::EffectRouting`]. While enabled we attach Bevy's `SolariLighting` to each
+//! [`renzora_solari_api::SolariGi`] is authored on the "World Environment" source entity
+//! and routed to cameras via [`renzora_scene_api::EffectRouting`]. While enabled we attach Bevy's `SolariLighting` to each
 //! routed camera (which pulls in the required HDR + prepass components) with
 //! `Msaa::Off`, and mirror every *conforming* mesh into the ray-tracing scene
 //! via `RaytracingMesh3d`. Solari's BLAS builder takes exactly positions,
@@ -63,15 +63,16 @@ use bevy::solari::realtime::SolariLighting;
 use bevy::solari::scene::RaytracingMesh3d;
 use bevy::solari::SolariPlugins;
 use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
-use renzora::{
-    EffectRouting, GpuRaytracing, SolariGi, SolariShadedTransparent, SolariQuality, TracedGeometry, TracedGeometryWanted,
-    TracedStandIn, TracedStandInsWanted,
+use renzora_scene_api::EffectRouting;
+use renzora_render_api::{
+    GpuRaytracing, SolariShadedTransparent, TracedGeometry, TracedGeometryWanted, TracedStandIn,
+    TracedStandInsWanted,
 };
+use renzora_solari_api::{SolariGi, SolariQuality};
 
 mod diagnostics;
 mod dlss;
 
-renzora::add!(SolariPlugin);
 
 #[derive(Default)]
 pub struct SolariPlugin;
@@ -92,7 +93,7 @@ impl Plugin for SolariPlugin {
             warn!(
                 "[runtime] SolariPlugin loaded but GPU ray tracing is unavailable, so \
                  Solari is inert. (Needs an RT-capable GPU on the Vulkan/DX12/Metal \
-                 backend; see renzora::GpuRaytracing.)"
+                 backend; see renzora_render_api::GpuRaytracing.)"
             );
             // Still report DLSS: Super Resolution, the anti-aliasing method,
             // needs no ray tracing, so it can run where Solari cannot.
@@ -101,15 +102,29 @@ impl Plugin for SolariPlugin {
         }
 
         info!("[runtime] SolariPlugin (GI: Bevy Solari hardware ray tracing)");
-        app.add_plugins(SolariPlugins);
         // `bevy_solari`'s plugin globally flips `DefaultOpaqueRendererMethod` to
         // deferred in its `build()`. In Renzora that crashes EVERY camera lacking
         // a deferred prepass (previews, thumbnails, multi-viewport) the instant
         // the plugin loads: `queue_prepass_material_meshes` unwraps the missing
-        // deferred phase. Reset it to forward here; `manage_solari_render_mode`
-        // switches to deferred only while Solari is actually active, and then
-        // gives every 3d camera the deferred prepass so the phase exists.
-        app.insert_resource(DefaultOpaqueRendererMethod::forward());
+        // deferred phase. Put back whatever was there before it;
+        // `manage_solari_render_mode` switches to deferred only while Solari is
+        // actually active, and then gives every 3d camera the deferred prepass so
+        // the phase exists.
+        //
+        // Put back, not reset to forward: the runtime sets the project's
+        // rendering mode in its own `build()`, which runs before this one. A
+        // hard reset threw a Deferred project's choice away, and a game then
+        // drew forward materials through deferred cameras with Solari off, so
+        // its geometry rendered black under a lit sky. The editor hid it by
+        // re-syncing the mode from the project when it opens; a game never
+        // does. Forward is the fallback only when nothing had set a method.
+        let before = app
+            .world()
+            .get_resource::<DefaultOpaqueRendererMethod>()
+            .cloned()
+            .unwrap_or_else(DefaultOpaqueRendererMethod::forward);
+        app.add_plugins(SolariPlugins);
+        app.insert_resource(before);
         app.init_resource::<SolariActive>();
         app.init_resource::<RaytracingProxies>();
         app.init_resource::<TracedTwins>();
@@ -203,12 +218,12 @@ fn on_solari_lighting_inserted(trigger: On<Insert<SolariLighting>>, mut commands
         CameraMainTextureUsages::default().with(TextureUsages::STORAGE_BINDING),
         // Tells crates that stand aside for Solari (SSAO) that this camera is
         // ray traced, however `SolariLighting` got here.
-        renzora::SolariLit,
+        renzora_render_api::SolariLit,
     ));
 }
 
 /// Undo what Solari did to a camera when it stops lighting it: the
-/// [`renzora::SolariLit`] marker goes, and the sky probe is filtered again.
+/// [`renzora_render_api::SolariLit`] marker goes, and the sky probe is filtered again.
 ///
 /// Bevy's Solari switches a camera's `AtmosphereEnvironmentMapLight` to
 /// unfiltered while it runs (it reads the raw cube) and never switches it back.
@@ -225,7 +240,7 @@ fn on_solari_lighting_removed(
     let Ok(mut ec) = commands.get_entity(trigger.entity) else {
         return;
     };
-    ec.try_remove::<renzora::SolariLit>();
+    ec.try_remove::<renzora_render_api::SolariLit>();
     if let Ok(probe) = probes.get(trigger.entity) {
         if !probe.filtered {
             ec.try_insert(AtmosphereEnvironmentMapLight {
@@ -284,7 +299,7 @@ fn on_camera3d_inserted(
     trigger: On<Insert<Camera3d>>,
     state: Res<SolariActive>,
     has_deferred: Query<Has<DeferredPrepass>>,
-    overlays: Query<(), With<renzora::core::ViewportOverlayCamera>>,
+    overlays: Query<(), With<renzora_scene_api::ViewportOverlayCamera>>,
     mut commands: Commands,
 ) {
     if state.0
@@ -445,7 +460,7 @@ fn same_preset(current: &SolariLighting, wanted: &SolariLighting) -> bool {
 type UnforcedCameras = (
     With<Camera3d>,
     Without<DeferredPrepass>,
-    Without<renzora::core::ViewportOverlayCamera>,
+    Without<renzora_scene_api::ViewportOverlayCamera>,
 );
 
 /// Marker on cameras we forced into the deferred prepass while Solari is active,
@@ -1827,7 +1842,7 @@ fn warn_missing_sky_light(
         With<SolariLighting>,
     >,
     ambient: Query<&AmbientLight, With<SolariLighting>>,
-    suns: Query<&renzora::Sun>,
+    suns: Query<&renzora_world_api::Sun>,
     mut warned_sky: Local<bool>,
     mut warned_ambient: Local<bool>,
     // Frames in a row the sky has been missing. Deleting or replacing the
@@ -1913,7 +1928,7 @@ fn log_solari_coverage(
     }
     *last = Some(now);
     // The same tally, for the Ray Tracing panel (diagnostics.rs).
-    tally.0 = renzora::SolariCoverage {
+    tally.0 = renzora_solari_api::SolariCoverage {
         mirrored: now.0,
         stripped_copies: now.1,
         stand_ins: now.4,
@@ -2446,7 +2461,7 @@ mod tests {
 
     #[test]
     fn a_scene_saved_with_the_old_toggles_keeps_its_denoiser() {
-        use renzora::SolariDenoiser;
+        use renzora_solari_api::SolariDenoiser;
         let saved = |denoise, dlss| SolariGi {
             denoise,
             dlss,

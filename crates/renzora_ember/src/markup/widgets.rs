@@ -13,7 +13,7 @@
 //! binding resolver.
 
 use bevy::prelude::*;
-use renzora::PropertyValue;
+use renzora_scripting_api::PropertyValue;
 use renzora_scripting::systems::execution::ReflectionSet;
 use renzora_scripting::systems::ScriptReflectionQueue;
 use renzora_scripting::{ScriptComponent, ScriptValue};

@@ -51,14 +51,18 @@ const IDLE_EXIT: Duration = Duration::from_secs(30);
 /// first look at the plugins.
 const START_TIMEOUT: Duration = Duration::from_secs(90);
 
-/// Thumbnails one worker renders before it is replaced, at the next moment it
-/// has nothing in hand. Its memory grew with every thumbnail while the
-/// capture code kept each image (fixed in the worker), and still grows about
-/// 2 MB a material whose textures the material system's caches keep (which
-/// the editor wants: a material opened again is quick). Starting a fresh one
-/// every 200 bounds that to a few hundred megabytes, for about two seconds of
-/// engine start every couple of minutes of rendering.
-const RECYCLE_AFTER: u32 = 200;
+/// Thumbnails one worker renders before it is replaced: past this it is given
+/// nothing new, and is stopped once its last job is back. Its memory grew with
+/// every thumbnail while the capture code kept each image (fixed in the
+/// worker), and still grows with every material whose textures the material
+/// system's caches keep (which the editor wants: a material opened again is
+/// quick). A fresh worker bounds that, for about two seconds of engine start.
+///
+/// This was 200, which assumed small materials at about 2 MB each. A project whose every material carries its own
+/// large texture (city data: one facade photo per building) grew about 27 MB a
+/// thumbnail and slowed with every one, so 200 came to over 5 GB; 50 keeps the
+/// worker near a gigabyte and costs one engine start per 50 thumbnails.
+const RECYCLE_AFTER: u32 = 50;
 
 /// What the worker's threads report.
 pub(crate) enum WorkerEvent {
@@ -148,6 +152,13 @@ impl RenderWorker {
             }
         }
         match &mut self.state {
+            // A worker that has done its share takes nothing more: the job
+            // waits for the fresh worker started once this one's last job is
+            // back (see `handle`).
+            State::Ready { .. } if self.finished >= RECYCLE_AFTER => {
+                self.waiting.push_back((id, job));
+                None
+            }
             State::Ready { writer, .. } => {
                 self.next_number += 1;
                 let number = self.next_number;
@@ -212,13 +223,28 @@ impl RenderWorker {
             WorkerEvent::Message(Message::Done { id: number, result }) => match self.sent.remove(&number) {
                 Some(id) => {
                     self.finished += 1;
-                    // Between jobs: the moment to replace a worker that has
-                    // done its share. The next job starts a fresh one.
-                    if self.finished >= RECYCLE_AFTER && self.sent.is_empty() && self.waiting.is_empty() {
+                    let mut reports = vec![Report::Done { id, result }];
+                    // A worker past its share has been given nothing new since
+                    // (see `submit`), so its last job coming back is the moment
+                    // to replace it, and whatever queued up meanwhile goes to
+                    // the fresh one.
+                    //
+                    // This used to wait until the worker had nothing in hand
+                    // and nothing queued, which a backlog never allows: the
+                    // queue keeps a few jobs out with the worker at all times.
+                    // One worker then rendered a whole project, 11,000 city
+                    // materials, until it held 58 GB.
+                    if self.finished >= RECYCLE_AFTER && self.sent.is_empty() {
                         log::info(format!("the render worker rendered {} thumbnails; starting a fresh one", self.finished));
                         self.shut_down();
+                        let queued: Vec<(JobId, Job)> = self.waiting.drain(..).collect();
+                        for (id, job) in queued {
+                            if let Some(report) = self.submit(id, job, events) {
+                                reports.push(report);
+                            }
+                        }
                     }
-                    vec![Report::Done { id, result }]
+                    reports
                 }
                 None => Vec::new(),
             },
@@ -295,6 +321,19 @@ impl RenderWorker {
         log::info(format!("starting the render worker (pid {})", child.id()));
         self.state = State::Starting { child, since: Instant::now() };
         Ok(())
+    }
+
+    /// Stop the worker on purpose (thumbnails turned off), failing what it
+    /// had. Nothing happens if none is running.
+    pub(crate) fn stop(&mut self, why: &str) -> Vec<Report> {
+        if matches!(self.state, State::Off) && self.waiting.is_empty() {
+            return Vec::new();
+        }
+        log::info(format!("stopping the render worker: {why}"));
+        self.shut_down();
+        let ids: Vec<JobId> =
+            std::mem::take(&mut self.sent).into_values().chain(self.waiting.drain(..).map(|(id, _)| id)).collect();
+        ids.into_iter().map(|id| Report::Done { id, result: Err(why.to_string()) }).collect()
     }
 
     /// The worker went: everything it had, or was waiting for, fails.
@@ -491,6 +530,43 @@ mod tests {
         let reports = worker.handle(worker.serial, done, &events);
         assert!(matches!(reports.as_slice(), [Report::Done { id, result: Ok(_) }] if *id == own));
         worker.shut_down();
+    }
+
+    /// A worker that has done its share is replaced even under a backlog that
+    /// never lets it go idle: it takes nothing new, and its last job coming
+    /// back hands the queued ones to a fresh worker.
+    #[test]
+    fn a_busy_worker_is_still_replaced_after_its_share() {
+        let (events, _rx) = std::sync::mpsc::channel();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let theirs = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (ours, _) = listener.accept().unwrap();
+        let child = Command::new(std::env::current_exe().unwrap()).arg("--list").stdout(Stdio::null()).spawn().unwrap();
+        let mut worker = worker_without_engine();
+        worker.state = State::Ready { child, writer: ours };
+        let job = || Job::Run { kind: "material_thumbnail".into(), payload: "{}".into(), target: String::new() };
+
+        // One job out with the worker as it reaches its share.
+        assert!(worker.submit(1, job(), &events).is_none());
+        let mut line = String::new();
+        let mut reader = BufReader::new(theirs);
+        reader.read_line(&mut line).unwrap();
+        let Some(Message::Submit { id: number, .. }) = protocol::decode(&line) else { panic!("expected a submit: {line}") };
+        worker.finished = RECYCLE_AFTER;
+
+        // The backlog keeps coming: held here, not sent.
+        assert!(worker.submit(2, job(), &events).is_none());
+        assert_eq!(worker.waiting.len(), 1);
+        assert_eq!(worker.sent.len(), 1);
+
+        // The last job back: the worker goes, and the queued job goes to a
+        // fresh one (which, with no engine here, fails to start).
+        let done = WorkerEvent::Message(Message::Done { id: number, result: Ok("x.png".into()) });
+        let reports = worker.handle(worker.serial, done, &events);
+        assert!(matches!(reports[0], Report::Done { id: 1, result: Ok(_) }));
+        assert!(matches!(&reports[1], Report::Done { id: 2, result: Err(why) } if why.contains("could not start")));
+        assert!(matches!(worker.state, State::Off));
+        assert_eq!(worker.finished, 0);
     }
 
     #[test]

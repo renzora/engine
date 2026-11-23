@@ -7,7 +7,7 @@
 //! also gets a skin job, which `skin.wesl` turns into this frame's deformed
 //! copy of its vertices.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use bevy::asset::UntypedAssetId;
@@ -81,7 +81,7 @@ pub(crate) fn extract(
             Option<&RenderLayers>,
             Has<SkinnedMesh>,
             Option<&Aabb>,
-            Has<renzora::SolariShadedTransparent>,
+            Has<renzora_render_api::SolariShadedTransparent>,
         )>,
     >,
 ) {
@@ -109,7 +109,7 @@ pub(crate) fn extract(
             continue;
         };
         // A see-through mesh Solari lights itself (glass, a clear-coat shell)
-        // is not drawn here as well; see `renzora::SolariShadedTransparent`.
+        // is not drawn here as well; see `renzora_render_api::SolariShadedTransparent`.
         if surface.transparent && ray_traced {
             continue;
         }
@@ -582,6 +582,11 @@ pub(crate) fn prepare(
     // Which entries of `instances` are transparent: their bucket numbers are
     // only known once every masked bucket exists.
     let mut transparent_instances: Vec<usize> = Vec::new();
+    // Which materials `gpu.materials` already lists. A set beside the list
+    // because the list was searched once per instance: a city block is
+    // thousands of instances with thousands of distinct materials, and that
+    // search alone was tens of millions of comparisons every frame.
+    let mut listed: HashSet<UntypedAssetId> = HashSet::with_capacity(scene.instances.len());
     for inst in &scene.instances {
         let Some(slot) = gpu.slots.get(&inst.mesh).copied() else {
             continue;
@@ -645,7 +650,7 @@ pub(crate) fn prepare(
         let mut material_word = 0;
         if !inst.transparent {
             let id = gpu.material_id(inst.material);
-            if !gpu.materials.iter().any(|(m, _)| *m == inst.material) {
+            if listed.insert(inst.material) {
                 gpu.materials.push((inst.material, id));
             }
             material_word = id as u32;

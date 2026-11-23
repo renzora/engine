@@ -40,7 +40,7 @@ pub(super) fn register(app: &mut App) {
 }
 
 fn folder(world: &World) -> Option<std::path::PathBuf> {
-    Some(world.get_resource::<renzora::core::CurrentProject>()?.path.join("animations").join("poses"))
+    Some(world.get_resource::<renzora_project_api::CurrentProject>()?.path.join("animations").join("poses"))
 }
 
 fn read(dir: &std::path::Path) -> Vec<(String, Pose)> {

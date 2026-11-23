@@ -22,7 +22,7 @@ use bevy::ecs::change_detection::Tick;
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectSerializer;
 use bevy::reflect::{PartialReflect, ReflectRef};
-use renzora::SceneEntityId;
+use renzora_scene_api::SceneEntityId;
 use renzora_engine::scene_io::{assign_scene_entity_ids, extract_authored, saveable_entities};
 
 use crate::LinkMessage;

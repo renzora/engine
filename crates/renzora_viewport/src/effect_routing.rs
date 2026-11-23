@@ -15,9 +15,7 @@
 //! EditorCamera route — no dedicated UI canvas preview camera exists.
 
 use bevy::prelude::*;
-use renzora::core::{
-    DefaultCamera, EffectRouting, HideInHierarchy, SceneCamera, ViewportCamera,
-};
+use renzora_scene_api::{DefaultCamera, EffectRouting, HideInHierarchy, SceneCamera, ViewportCamera};
 
 use crate::camera_preview::{CameraPreviewMarker, CameraPreviewState};
 

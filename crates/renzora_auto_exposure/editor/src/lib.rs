@@ -8,7 +8,7 @@
 
 use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, FieldDef, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, FieldDef, InspectorEntry};
 use renzora_auto_exposure::AutoExposureSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -42,23 +42,23 @@ fn inspector_entry() -> InspectorEntry {
         // How fast it adapts is what gets tuned; the metering window and the
         // night curve are set once, so they fold away.
         fields: vec![
-            renzora::float_field!("Speed Brighten", AutoExposureSettings, speed_brighten, 0.1, 0.0, 10.0),
-            renzora::float_field!("Speed Darken", AutoExposureSettings, speed_darken, 0.1, 0.0, 10.0),
+            renzora_editor_api::float_field!("Speed Brighten", AutoExposureSettings, speed_brighten, 0.1, 0.0, 10.0),
+            renzora_editor_api::float_field!("Speed Darken", AutoExposureSettings, speed_darken, 0.1, 0.0, 10.0),
             FieldDef::group(
                 "Metering",
                 vec![
-                    renzora::float_field!("Range Min (EV)", AutoExposureSettings, range_min, 0.1, -16.0, 8.0),
-                    renzora::float_field!("Range Max (EV)", AutoExposureSettings, range_max, 0.1, -8.0, 16.0),
-                    renzora::float_field!("Filter Low (%)", AutoExposureSettings, filter_low, 0.01, 0.0, 0.5),
-                    renzora::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
-                    renzora::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
+                    renzora_editor_api::float_field!("Range Min (EV)", AutoExposureSettings, range_min, 0.1, -16.0, 8.0),
+                    renzora_editor_api::float_field!("Range Max (EV)", AutoExposureSettings, range_max, 0.1, -8.0, 16.0),
+                    renzora_editor_api::float_field!("Filter Low (%)", AutoExposureSettings, filter_low, 0.01, 0.0, 0.5),
+                    renzora_editor_api::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
+                    renzora_editor_api::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
                 ],
             ),
             FieldDef::group(
                 "Night",
                 vec![
-                    renzora::float_field!("Keep Night Dark", AutoExposureSettings, keep_dark_strength, 0.05, 0.0, 1.0),
-                    renzora::float_field!("Keep-Dark Pivot (EV)", AutoExposureSettings, keep_dark_pivot_ev, 0.1, -8.0, 16.0),
+                    renzora_editor_api::float_field!("Keep Night Dark", AutoExposureSettings, keep_dark_strength, 0.05, 0.0, 1.0),
+                    renzora_editor_api::float_field!("Keep-Dark Pivot (EV)", AutoExposureSettings, keep_dark_pivot_ev, 0.1, -8.0, 16.0),
                 ],
             ),
         ],
@@ -73,5 +73,3 @@ impl Plugin for AutoExposureEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(AutoExposureEditorPlugin, Editor);

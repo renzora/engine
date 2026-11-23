@@ -229,13 +229,13 @@ fn action_for(s: &UpdateState) -> Action {
 
 fn action_label(s: &UpdateState) -> String {
     match action_for(s) {
-        Action::Check => renzora::lang::t("update.btn.check"),
-        Action::Download => renzora::lang::t("update.btn.download"),
-        Action::ConfirmOverwrite => renzora::lang::t("update.btn.overwrite"),
+        Action::Check => renzora_lang_api::t("update.btn.check"),
+        Action::Download => renzora_lang_api::t("update.btn.download"),
+        Action::ConfirmOverwrite => renzora_lang_api::t("update.btn.overwrite"),
         Action::Install if s.is_source_checkout() => {
-            renzora::lang::t("update.btn.confirm_overwrite")
+            renzora_lang_api::t("update.btn.confirm_overwrite")
         }
-        Action::Install => renzora::lang::t("update.btn.install"),
+        Action::Install => renzora_lang_api::t("update.btn.install"),
         Action::None => String::new(),
     }
 }
@@ -291,7 +291,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
     let (root, content) = overlay_sized(
         commands,
         fonts,
-        &renzora::lang::t("update.title"),
+        &renzora_lang_api::t("update.title"),
         560.0,
         // Sized for the tallest the card ever gets: the dev-mode row, the
         // install path and the version list are always there, and progress /
@@ -409,25 +409,25 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
             return String::new();
         };
         if s.checking {
-            return renzora::lang::t("update.checking");
+            return renzora_lang_api::t("update.checking");
         }
         if s.downloading() {
-            return renzora::lang::t("update.downloading");
+            return renzora_lang_api::t("update.downloading");
         }
         if s.staged.is_some() {
-            return renzora::lang::t("update.ready");
+            return renzora_lang_api::t("update.ready");
         }
         match s.result.as_ref() {
             Some(r) if r.no_platform_builds => {
-                renzora::lang::t("update.no_platform_build")
+                renzora_lang_api::t("update.no_platform_build")
             }
             Some(r) if r.update_available => format!(
                 "{} {}",
-                renzora::lang::t("update.available"),
+                renzora_lang_api::t("update.available"),
                 r.latest_version.clone().unwrap_or_default()
             ),
-            Some(_) => renzora::lang::t("update.up_to_date"),
-            None => renzora::lang::t("update.checking"),
+            Some(_) => renzora_lang_api::t("update.up_to_date"),
+            None => renzora_lang_api::t("update.checking"),
         }
     });
 
@@ -446,17 +446,17 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
         let Some(s) = w.get_resource::<UpdateState>() else {
             return String::new();
         };
-        let installed = renzora::version::display();
+        let installed = renzora_platform_api::version::display();
         match s.layout.as_ref() {
             Some(l) if l.read_only_medium => format!(
                 "{installed} — {}",
-                renzora::lang::t("update.read_only_medium")
+                renzora_lang_api::t("update.read_only_medium")
             ),
             Some(l) if l.is_source_checkout => format!(
                 "{installed} — {}",
-                renzora::lang::t("update.source_checkout")
+                renzora_lang_api::t("update.source_checkout")
             ),
-            _ => format!("{} {installed}", renzora::lang::t("update.installed")),
+            _ => format!("{} {installed}", renzora_lang_api::t("update.installed")),
         }
     });
 
@@ -471,7 +471,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
         .id();
     let clabel = commands
         .spawn((
-            Text::new(renzora::lang::t("update.channel")),
+            Text::new(renzora_lang_api::t("update.channel")),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_muted())),
             Node {
@@ -486,7 +486,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
         ("stable", "update.channel.stable"),
         ("nightly", "update.channel.nightly"),
     ] {
-        let chip = channel_chip(commands, fonts, pref, &renzora::lang::t(key));
+        let chip = channel_chip(commands, fonts, pref, &renzora_lang_api::t(key));
         // Nightlies are dev-mode-only, so the chip that picks them goes away
         // with the toggle. Hidden rather than disabled: a greyed-out control
         // invites you to work out why, and the answer is a setting three panels
@@ -517,7 +517,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
     // legitimate thing to want, and the check already fetched the whole list.
     let list_label = commands
         .spawn((
-            Text::new(renzora::lang::t("update.versions")),
+            Text::new(renzora_lang_api::t("update.versions")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
@@ -612,7 +612,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
         })
         .id();
 
-    let (notes_link, _, _) = pill(commands, fonts, "arrow-square-out", &renzora::lang::t("update.btn.notes"));
+    let (notes_link, _, _) = pill(commands, fonts, "arrow-square-out", &renzora_lang_api::t("update.btn.notes"));
     commands.entity(notes_link).insert(NotesLinkBtn);
     bind_display(commands, notes_link, |w| {
         w.get_resource::<UpdateState>()
@@ -622,7 +622,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
 
     // Only offered while there is something to skip, and never once it has been
     // skipped — a button that does nothing is worse than no button.
-    let (skip, _, _) = pill(commands, fonts, "bell-slash", &renzora::lang::t("update.btn.skip"));
+    let (skip, _, _) = pill(commands, fonts, "bell-slash", &renzora_lang_api::t("update.btn.skip"));
     commands.entity(skip).insert(SkipBtn);
     bind_display(commands, skip, |w| {
         w.get_resource::<UpdateState>().is_some_and(|s| {
@@ -638,7 +638,7 @@ pub(crate) fn build_body(commands: &mut Commands, fonts: &EmberFonts, in_modal: 
     // hidden, which would leave a `CloseBtn` in the world for `close_click` to
     // find.
     let close = in_modal.then(|| {
-        let (close, _, _) = pill(commands, fonts, "x", &renzora::lang::t("update.btn.later"));
+        let (close, _, _) = pill(commands, fonts, "x", &renzora_lang_api::t("update.btn.later"));
         commands.entity(close).insert(CloseBtn);
         close
     });
@@ -940,7 +940,7 @@ fn version_row(
     // Every listed entry is installable now, so the only trailing note left is
     // "this is what you are running".
     let note = if is_current {
-        Some((renzora::lang::t("update.row.current"), accent()))
+        Some((renzora_lang_api::t("update.row.current"), accent()))
     } else {
         None
     };
@@ -996,7 +996,7 @@ fn action_label_sync(mut q: Query<&mut Text, With<ActionLabel>>, state: Res<Upda
 /// The Developer Mode switch, sat directly under the channel picker.
 ///
 /// The same flag as Settings ▸ Editor ▸ Developer Mode, not a second one: it
-/// drives [`renzora::core::DevMode`], which the settings panel mirrors both
+/// drives [`renzora_project_api::DevMode`], which the settings panel mirrors both
 /// ways. It is repeated here because this is the one screen where the flag's
 /// effect is visible — it is what makes the Nightly chip exist — and sending
 /// someone to a different panel to find out why a channel is missing is how you
@@ -1016,7 +1016,7 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         sw,
         |w| {
-            w.get_resource::<renzora::core::DevMode>()
+            w.get_resource::<renzora_project_api::DevMode>()
                 .is_some_and(|d| d.0)
         },
         |w, &on| {
@@ -1024,7 +1024,7 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // settings panel mirrors and what `watch_dev_mode` re-checks on, so
             // one write keeps the toggle, the Settings tab and the channel
             // resolution in step.
-            if let Some(mut d) = w.get_resource_mut::<renzora::core::DevMode>() {
+            if let Some(mut d) = w.get_resource_mut::<renzora_project_api::DevMode>() {
                 if d.0 != on {
                     d.0 = on;
                 }
@@ -1037,7 +1037,7 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("settings.row.dev_mode")),
+            Text::new(renzora_lang_api::t("settings.row.dev_mode")),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_primary())),
             PASS_THROUGH,
@@ -1045,7 +1045,7 @@ fn dev_mode_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let hint = commands
         .spawn((
-            Text::new(renzora::lang::t("update.dev_mode_hint")),
+            Text::new(renzora_lang_api::t("update.dev_mode_hint")),
             ui_font(&fonts.ui, 10.5),
             TextColor(rgb(text_muted())),
             PASS_THROUGH,
@@ -1087,7 +1087,7 @@ fn plugin_updates_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     bind_display(commands, col, |w| {
-        w.get_resource::<renzora::PluginUpdates>()
+        w.get_resource::<renzora_platform_api::PluginUpdates>()
             .is_some_and(|u| !u.is_empty())
     });
 
@@ -1104,7 +1104,7 @@ fn plugin_updates_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         &fonts.phosphor,
         "puzzle-piece",
-        renzora::PLUGIN_UPDATE_AMBER,
+        renzora_platform_api::PLUGIN_UPDATE_AMBER,
         13.0,
     );
     commands.entity(ic).insert(PASS_THROUGH);
@@ -1118,7 +1118,7 @@ fn plugin_updates_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_text(commands, title, |w| {
-        let Some(u) = w.get_resource::<renzora::PluginUpdates>() else {
+        let Some(u) = w.get_resource::<renzora_platform_api::PluginUpdates>() else {
             return String::new();
         };
         let (ready, blocked) = (u.ready(), u.blocked());
@@ -1135,14 +1135,14 @@ fn plugin_updates_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "storefront",
-        &renzora::lang::t_or("update.btn.plugins", "Update plugins"),
+        &renzora_lang_api::t_or("update.btn.plugins", "Update plugins"),
     );
     commands.entity(open).insert(PluginUpdatesBtn);
     // Only when something can actually be installed now. With every update
     // blocked on a newer editor the button leads to a page that can only repeat
     // what this line already said.
     bind_display(commands, open, |w| {
-        w.get_resource::<renzora::PluginUpdates>().is_some_and(|u| u.ready() > 0)
+        w.get_resource::<renzora_platform_api::PluginUpdates>().is_some_and(|u| u.ready() > 0)
     });
     commands.entity(header).add_children(&[ic, title, open]);
 
@@ -1179,7 +1179,7 @@ fn plural(n: usize) -> &'static str {
 fn rebuild_plugin_updates(world: &mut World) {
     let sig = {
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        if let Some(u) = world.get_resource::<renzora::PluginUpdates>() {
+        if let Some(u) = world.get_resource::<renzora_platform_api::PluginUpdates>() {
             for e in &u.entries {
                 for bytes in [e.id.as_bytes(), e.available_version.as_bytes()] {
                     for b in bytes {
@@ -1205,7 +1205,7 @@ fn rebuild_plugin_updates(world: &mut World) {
     };
 
     let (rows, hidden) = world
-        .get_resource::<renzora::PluginUpdates>()
+        .get_resource::<renzora_platform_api::PluginUpdates>()
         .map(|u| {
             let rows: Vec<(String, String, bool, String)> = u
                 .entries
@@ -1289,7 +1289,7 @@ fn plugin_update_row(
     let (glyph, colour) = if blocked {
         ("lock-simple", text_muted())
     } else {
-        ("arrow-circle-up", renzora::PLUGIN_UPDATE_AMBER)
+        ("arrow-circle-up", renzora_platform_api::PLUGIN_UPDATE_AMBER)
     };
     let ic = icon_text(commands, &fonts.phosphor, glyph, colour, 12.0);
     commands.entity(ic).insert(PASS_THROUGH);
@@ -1314,7 +1314,7 @@ fn plugin_update_row(
         .spawn((
             Text::new(note),
             ui_font(&fonts.ui, 10.5),
-            TextColor(rgb(if blocked { text_muted() } else { renzora::PLUGIN_UPDATE_AMBER })),
+            TextColor(rgb(if blocked { text_muted() } else { renzora_platform_api::PLUGIN_UPDATE_AMBER })),
             PASS_THROUGH,
             bevy::text::TextLayout::no_wrap(),
         ))
@@ -1326,7 +1326,7 @@ fn plugin_update_row(
 /// "Update plugins" → the marketplace's Updates view.
 ///
 /// A resource rather than a call, because this crate cannot link the
-/// marketplace. See [`renzora::PluginUpdatesRequested`].
+/// marketplace. See [`renzora_platform_api::PluginUpdatesRequested`].
 fn plugin_updates_click(
     q: Query<&UiInteraction, (With<PluginUpdatesBtn>, Changed<UiInteraction>)>,
     mut state: ResMut<UpdateState>,
@@ -1335,7 +1335,7 @@ fn plugin_updates_click(
     if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
     }
-    commands.insert_resource(renzora::PluginUpdatesRequested);
+    commands.insert_resource(renzora_platform_api::PluginUpdatesRequested);
     // Get out of the way. The store opens as an overlay of its own, and leaving
     // this modal up behind it would leave two dismissable cards stacked over the
     // editor with only one of them being looked at.
@@ -1364,7 +1364,7 @@ fn install_path_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("update.install_path")),
+            Text::new(renzora_lang_api::t("update.install_path")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
@@ -1423,7 +1423,7 @@ fn install_path_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "folder-open",
-        &renzora::lang::t("update.btn.browse"),
+        &renzora_lang_api::t("update.btn.browse"),
     );
     commands.entity(browse).insert(BrowseBtn);
 
@@ -1451,7 +1451,7 @@ fn browse_click(
     } else {
         state.install_path.clone()
     };
-    let mut dialog = rfd::FileDialog::new().set_title(renzora::lang::t("update.dialog.install_to"));
+    let mut dialog = rfd::FileDialog::new().set_title(renzora_lang_api::t("update.dialog.install_to"));
     if !start.is_empty() {
         dialog = dialog.set_directory(&start);
     }
@@ -1486,7 +1486,7 @@ fn overwrite_warning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         match s.effective_layout() {
             Some(l) => format!(
                 "{} {}",
-                renzora::lang::t("update.overwrite_warning"),
+                renzora_lang_api::t("update.overwrite_warning"),
                 l.target.display()
             ),
             None => String::new(),
@@ -1556,7 +1556,7 @@ fn skip_click(q: Query<&UiInteraction, (With<SkipBtn>, Changed<UiInteraction>)>,
             .get_resource_mut::<UpdateState>()
             .and_then(|mut s| s.skip_target());
         if skipped.is_some() {
-            w.remove_resource::<renzora::core::UpdateAvailable>();
+            w.remove_resource::<renzora_project_api::UpdateAvailable>();
         }
     });
 }

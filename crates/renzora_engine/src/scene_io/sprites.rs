@@ -12,7 +12,8 @@
 //! [`on_sprite_inserted_apply_image_path`] doing the same job from both sides.
 
 use bevy::prelude::*;
-use renzora::{EditorCamera, PlayModeState};
+use renzora_scene_api::EditorCamera;
+use renzora_project_api::PlayModeState;
 
 /// Loads `Sprite.image` from `SpriteImagePath` whenever the path
 /// component is added or its string changes.
@@ -31,13 +32,13 @@ use renzora::{EditorCamera, PlayModeState};
 #[allow(clippy::too_many_arguments)]
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_image_path_inserted(
-    trigger: On<Insert<renzora::core::SpriteImagePath>>,
-    paths: Query<&renzora::core::SpriteImagePath>,
-    sizes: Query<&renzora::core::SpriteCustomSize>,
+    trigger: On<Insert<renzora_scene_api::SpriteImagePath>>,
+    paths: Query<&renzora_scene_api::SpriteImagePath>,
+    sizes: Query<&renzora_scene_api::SpriteCustomSize>,
     has_sprite: Query<(), With<bevy::sprite::Sprite>>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut commands: Commands,
 ) {
     let entity = trigger.entity;
@@ -61,11 +62,11 @@ pub fn on_sprite_image_path_inserted(
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_inserted_apply_image_path(
     trigger: On<Insert<bevy::sprite::Sprite>>,
-    paths: Query<&renzora::core::SpriteImagePath>,
-    sizes: Query<&renzora::core::SpriteCustomSize>,
+    paths: Query<&renzora_scene_api::SpriteImagePath>,
+    sizes: Query<&renzora_scene_api::SpriteCustomSize>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     let entity = trigger.entity;
     let Ok(path) = paths.get(entity) else {
@@ -78,7 +79,7 @@ pub fn on_sprite_inserted_apply_image_path(
 
 /// Editor-side persistence bridge for sprite size: mirror `Sprite.custom_size`
 /// (runtime truth, set by the 2D resize handles / inspector) into the
-/// serializable [`renzora::core::SpriteCustomSize`] so scene save keeps it —
+/// serializable [`renzora_scene_api::SpriteCustomSize`] so scene save keeps it —
 /// bevy's `Sprite` itself doesn't round-trip through reflection serialization
 /// and is dropped wholesale by the save filter. Only meaningful while editing:
 /// gated on an editor camera existing and play mode being off so a shipped
@@ -88,7 +89,7 @@ pub fn mirror_sprite_custom_size(
     editor_camera: Query<(), With<EditorCamera>>,
     play_mode: Option<Res<PlayModeState>>,
     changed: Query<
-        (Entity, &bevy::sprite::Sprite, Option<&renzora::core::SpriteCustomSize>),
+        (Entity, &bevy::sprite::Sprite, Option<&renzora_scene_api::SpriteCustomSize>),
         Changed<bevy::sprite::Sprite>,
     >,
     mut commands: Commands,
@@ -102,12 +103,12 @@ pub fn mirror_sprite_custom_size(
             (Some(size), _) => {
                 commands
                     .entity(entity)
-                    .try_insert(renzora::core::SpriteCustomSize(size));
+                    .try_insert(renzora_scene_api::SpriteCustomSize(size));
             }
             (None, Some(_)) => {
                 commands
                     .entity(entity)
-                    .try_remove::<renzora::core::SpriteCustomSize>();
+                    .try_remove::<renzora_scene_api::SpriteCustomSize>();
             }
             (None, None) => {}
         }
@@ -130,8 +131,8 @@ pub fn mirror_sprite_custom_size(
 /// where `mirror_sprite_custom_size` re-inserts the same size it just read).
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_custom_size_inserted(
-    trigger: On<Insert<renzora::core::SpriteCustomSize>>,
-    sizes: Query<&renzora::core::SpriteCustomSize>,
+    trigger: On<Insert<renzora_scene_api::SpriteCustomSize>>,
+    sizes: Query<&renzora_scene_api::SpriteCustomSize>,
     mut sprites: Query<&mut bevy::sprite::Sprite>,
 ) {
     let entity = trigger.entity;
@@ -146,7 +147,7 @@ pub fn on_sprite_custom_size_inserted(
     }
 }
 
-/// Derive `Sprite.rect` from a [`renzora::core::SpriteSheet`] grid and the
+/// Derive `Sprite.rect` from a [`renzora_scene_api::SpriteSheet`] grid and the
 /// loaded image's pixel dimensions.
 ///
 /// Runs every frame (editor and runtime) rather than on `Changed<SpriteSheet>`
@@ -158,7 +159,7 @@ pub fn on_sprite_custom_size_inserted(
 #[cfg(feature = "render_2d")]
 pub fn apply_sprite_sheet_crop(
     images: Res<Assets<Image>>,
-    mut sprites: Query<(&renzora::core::SpriteSheet, &mut bevy::sprite::Sprite)>,
+    mut sprites: Query<(&renzora_scene_api::SpriteSheet, &mut bevy::sprite::Sprite)>,
 ) {
     for (sheet, mut sprite) in &mut sprites {
         let hframes = sheet.hframes.max(1);
@@ -204,7 +205,7 @@ pub fn apply_sprite_sheet_crop(
     }
 }
 
-/// Derive `Sprite.rect` from a [`renzora::core::SpriteAtlasRegion`] block —
+/// Derive `Sprite.rect` from a [`renzora_scene_api::SpriteAtlasRegion`] block —
 /// the multi-cell counterpart of [`apply_sprite_sheet_crop`]. A painted
 /// tilemap "object" (a tree stamped from a multi-tile palette block) is a
 /// single sprite showing a `w × h` slice of the atlas; this system keeps its
@@ -220,7 +221,7 @@ pub fn apply_sprite_sheet_crop(
 /// frame.
 #[cfg(feature = "render_2d")]
 pub fn apply_sprite_atlas_region(
-    mut sprites: Query<(&renzora::core::SpriteAtlasRegion, &mut bevy::sprite::Sprite)>,
+    mut sprites: Query<(&renzora_scene_api::SpriteAtlasRegion, &mut bevy::sprite::Sprite)>,
 ) {
     for (region, mut sprite) in &mut sprites {
         let w = region.w.max(1);
@@ -240,7 +241,7 @@ pub fn apply_sprite_atlas_region(
 }
 
 /// Y-sort: overwrite `Transform.translation.z` from world Y for every
-/// [`renzora::core::YSort`] entity, so 2D entities lower on screen draw in
+/// [`renzora_scene_api::YSort`] entity, so 2D entities lower on screen draw in
 /// front (Bevy's 2D transparent pass sorts by Z — no render work needed).
 ///
 /// The world Y comes from `GlobalTransform`, i.e. last frame's propagated
@@ -253,7 +254,7 @@ pub fn apply_sprite_atlas_region(
 /// an unchanged scene) every frame.
 #[cfg(feature = "render_2d")]
 pub fn apply_y_sort(
-    mut q: Query<(&renzora::core::YSort, &mut Transform, &GlobalTransform)>,
+    mut q: Query<(&renzora_scene_api::YSort, &mut Transform, &GlobalTransform)>,
 ) {
     /// One world unit of Y = this much Z. f32 around a small `z_base` resolves
     /// steps of ~1e-7, so 1e-5 still separates sub-pixel Y differences.
@@ -272,7 +273,7 @@ pub fn apply_y_sort(
 /// forever — nothing else writes `Sprite.rect`.
 #[cfg(feature = "render_2d")]
 pub fn on_sprite_sheet_removed(
-    trigger: On<Remove<renzora::core::SpriteSheet>>,
+    trigger: On<Remove<renzora_scene_api::SpriteSheet>>,
     mut sprites: Query<&mut bevy::sprite::Sprite>,
 ) {
     if let Ok(mut sprite) = sprites.get_mut(trigger.entity) {
@@ -284,7 +285,7 @@ pub fn on_sprite_sheet_removed(
 /// `Nearest` when no project is loaded — keeps the behaviour
 /// pixel-perfect by default.
 #[cfg(feature = "render_2d")]
-fn sprite_filter(project: Option<&renzora::CurrentProject>) -> renzora::core::TextureFilter {
+fn sprite_filter(project: Option<&renzora_project_api::CurrentProject>) -> renzora_project_api::TextureFilter {
     project
         .map(|p| p.config.rendering_2d.image_filter)
         .unwrap_or_default()
@@ -297,7 +298,7 @@ fn apply_sprite_image_path(
     persisted_size: Option<Vec2>,
     sprites_mut: &mut Query<&mut bevy::sprite::Sprite>,
     asset_server: &AssetServer,
-    filter: renzora::core::TextureFilter,
+    filter: renzora_project_api::TextureFilter,
 ) {
     let Ok(mut sprite) = sprites_mut.get_mut(entity) else {
         return;
@@ -358,12 +359,12 @@ fn apply_sprite_image_path(
 fn load_sprite_image(
     asset_server: &AssetServer,
     path: &str,
-    filter: renzora::core::TextureFilter,
+    filter: renzora_project_api::TextureFilter,
 ) -> Handle<Image> {
     use bevy::image::{ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor};
     let descriptor = match filter {
-        renzora::core::TextureFilter::Nearest => ImageSamplerDescriptor::nearest(),
-        renzora::core::TextureFilter::Linear => ImageSamplerDescriptor::linear(),
+        renzora_project_api::TextureFilter::Nearest => ImageSamplerDescriptor::nearest(),
+        renzora_project_api::TextureFilter::Linear => ImageSamplerDescriptor::linear(),
     };
     asset_server
         .load_builder()
@@ -385,7 +386,7 @@ fn spawn_sprite_for_path(
     persisted_size: Option<Vec2>,
     asset_server: &AssetServer,
     commands: &mut Commands,
-    filter: renzora::core::TextureFilter,
+    filter: renzora_project_api::TextureFilter,
 ) {
     let placeholder_blue = Color::srgba(0.5, 0.7, 1.0, 1.0);
     let sprite = if path.is_empty() {

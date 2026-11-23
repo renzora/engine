@@ -14,7 +14,8 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy::render::gpu_readback::{Readback, ReadbackComplete};
 use bevy::render::render_resource::{TextureFormat, TextureUsages};
-use renzora::{EffectRouting, PostEffect, PostEffects};
+use renzora_scene_api::EffectRouting;
+use renzora_render_api::{PostEffect, PostEffects};
 
 const SIZE: u32 = 16;
 const CLEAR: Color = Color::srgb(0.2, 0.2, 0.2);

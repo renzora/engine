@@ -129,7 +129,7 @@ pub(crate) fn tab_context_menu(
             &mut commands,
             &fonts,
             "arrow-square-out",
-            &renzora::lang::t_or("menu.undock", "Undock"),
+            &renzora_lang_api::t_or("menu.undock", "Undock"),
             move |w: &mut World| {
                 // World-side mirror of `tear_off_panel` (menu items run as
                 // world closures). Route to the tree owning the leaf's area —
@@ -178,7 +178,7 @@ pub(crate) fn tab_context_menu(
             &mut commands,
             &fonts,
             "x",
-            &renzora::lang::t_or("menu.close_panel", "Close panel"),
+            &renzora_lang_api::t_or("menu.close_panel", "Close panel"),
             move |w: &mut World| {
                 let floating = w
                     .get_resource::<DockWindows>()

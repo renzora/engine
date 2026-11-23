@@ -122,7 +122,7 @@ fn rebuild_text_spans(world: &mut World) {
                 commands.entity(ch).despawn();
             }
             if spans.is_empty() {
-                let l = muted_label(&mut commands, &fonts, &renzora::lang::t("comp.text_rich.empty"));
+                let l = muted_label(&mut commands, &fonts, &renzora_lang_api::t("comp.text_rich.empty"));
                 commands.entity(root).add_child(l);
             }
             for span in spans.iter() {
@@ -212,7 +212,7 @@ fn build_span_row(commands: &mut Commands, fonts: &EmberFonts, span: Entity) -> 
 
 /// The editable text field for a span, bound to its `TextSpan` content.
 fn world_span_text(commands: &mut Commands, fonts: &EmberFonts, span: Entity) -> Entity {
-    let ti = text_input(commands, &fonts.ui, &renzora::lang::t("comp.text_rich.span_placeholder"), "");
+    let ti = text_input(commands, &fonts.ui, &renzora_lang_api::t("comp.text_rich.span_placeholder"), "");
     commands.entity(ti).insert(Node {
         flex_grow: 1.0,
         min_width: Val::Px(0.0),
@@ -232,7 +232,7 @@ fn world_span_text(commands: &mut Commands, fonts: &EmberFonts, span: Entity) ->
 }
 
 fn build_add_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
-    let btn = icon_label_button(commands, fonts, "plus", &renzora::lang::t("comp.text_rich.add_span"));
+    let btn = icon_label_button(commands, fonts, "plus", &renzora_lang_api::t("comp.text_rich.add_span"));
     commands.entity(btn).insert((
         Node {
             width: Val::Percent(100.0),

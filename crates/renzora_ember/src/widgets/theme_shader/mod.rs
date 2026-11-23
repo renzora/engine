@@ -41,7 +41,7 @@ use bevy::ui_render::UiMaterialPlugin;
 use crate::theme::{accent, text_primary, window_bg};
 
 /// Built-in animated fallback (matrix rain), compiled in. WESL: it reaches the
-/// GPU through `renzora::shader_source`, which recognises the `import`.
+/// GPU through `renzora_shader_api::shader_source`, which recognises the `import`.
 const BUILTIN_WGSL: &str = include_str!("matrix_rain.wesl");
 /// Built-in image-display shader (cover-fits the theme image), for surfaces that
 /// set an image but no shader of their own.
@@ -336,7 +336,7 @@ fn drive_surface<M: SurfaceMat>(
         None => {
             let _ = shaders.insert(
                 &M::shader_handle(),
-                renzora::shader_source::shader(BUILTIN_WGSL, M::SURFACE.shader_path()),
+                renzora_shader_api::shader_source::shader(BUILTIN_WGSL, M::SURFACE.shader_path()),
             );
             let h = mats.add(M::make(time.elapsed_secs(), default_img.0.clone()));
             *shared = Some(h.clone());
@@ -358,7 +358,7 @@ fn drive_surface<M: SurfaceMat>(
         // `shader_source` translates it so old themes keep working.
         let _ = shaders.insert(
             &M::shader_handle(),
-            renzora::shader_source::shader(source, M::SURFACE.shader_path()),
+            renzora_shader_api::shader_source::shader(source, M::SURFACE.shader_path()),
         );
         *applied = want_key;
     }

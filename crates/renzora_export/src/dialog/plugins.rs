@@ -34,12 +34,12 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             // showing none. (`renzora_native_plugin`'s wasm shim is the other
             // end of the same fact: a wasm build gets its plugins linked in or
             // not at all.)
-            let note = txt(commands, fonts, &renzora::lang::t("export.plugin_link.web_forced"), 11.0, text_muted());
+            let note = txt(commands, fonts, &renzora_lang_api::t("export.plugin_link.web_forced"), 11.0, text_muted());
             commands.entity(lbody).add_child(note);
             // …and linking in still needs the mode that compiles. On the web that
             // means the template mode ships no plugins at all, which is worth
             // saying where the plugin list is rather than only in the log.
-            let warn = txt(commands, fonts, &renzora::lang::t("export.plugin_link.web_needs_lean"), 11.0, AMBER);
+            let warn = txt(commands, fonts, &renzora_lang_api::t("export.plugin_link.web_needs_lean"), 11.0, AMBER);
             bind_display(commands, warn, |w| {
                 w.get_resource::<ExportOverlayState>()
                     .is_some_and(|s| s.packaging_mode != PackagingMode::LeanSingleBinary)
@@ -49,17 +49,17 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             let files = choice_card(
                 commands,
                 fonts,
-                &renzora::lang::t("export.plugin_link.files"),
+                &renzora_lang_api::t("export.plugin_link.files"),
                 None,
-                &renzora::lang::t("export.plugin_link.desc.files"),
+                &renzora_lang_api::t("export.plugin_link.desc.files"),
                 Choice::Link(PluginLinkMode::ShipFiles),
             );
             let linked = choice_card(
                 commands,
                 fonts,
-                &renzora::lang::t("export.plugin_link.linked"),
+                &renzora_lang_api::t("export.plugin_link.linked"),
                 None,
-                &renzora::lang::t("export.plugin_link.desc.linked"),
+                &renzora_lang_api::t("export.plugin_link.desc.linked"),
                 Choice::Link(PluginLinkMode::LinkIn),
             );
             let cards = card_row(commands, &[files, linked]);
@@ -67,7 +67,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             // Linking in needs something to compile into, and only the lean mode
             // compiles. Rather than disable the radio from the other tab (where
             // the reason would be invisible), say so — and only when it applies.
-            let warn = txt(commands, fonts, &renzora::lang::t("export.plugin_link.needs_lean"), 11.0, AMBER);
+            let warn = txt(commands, fonts, &renzora_lang_api::t("export.plugin_link.needs_lean"), 11.0, AMBER);
             bind_display(commands, warn, |w| {
                 w.get_resource::<ExportOverlayState>().is_some_and(|s| {
                     s.plugin_link_mode == PluginLinkMode::LinkIn
@@ -77,14 +77,14 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             commands.entity(lbody).add_child(warn);
             // Lean shows "linked" whatever was picked; say why here, where the
             // choice is, rather than leave a radio that seems to ignore a click.
-            let lean = txt(commands, fonts, &renzora::lang::t("export.plugin_link.lean_forced"), 11.0, text_muted());
+            let lean = txt(commands, fonts, &renzora_lang_api::t("export.plugin_link.lean_forced"), 11.0, text_muted());
             bind_display(commands, lean, |w| {
                 w.get_resource::<ExportOverlayState>()
                     .is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary)
             });
             commands.entity(lbody).add_child(lean);
         }
-        secs.push(group(commands, fonts, &renzora::lang::t("export.section.plugin_link"), &[lbody]));
+        secs.push(group(commands, fonts, &renzora_lang_api::t("export.section.plugin_link"), &[lbody]));
     }
 
     let body = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() }).id();
@@ -100,12 +100,12 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
     let stale_note = txt(
         commands,
         fonts,
-        &renzora::lang::t("export.plugins.updates_available"),
+        &renzora_lang_api::t("export.plugins.updates_available"),
         11.0,
         AMBER,
     );
     bind_display(commands, stale_note, |w| {
-        w.get_resource::<renzora::PluginUpdates>().is_some_and(|u| !u.is_empty())
+        w.get_resource::<renzora_platform_api::PluginUpdates>().is_some_and(|u| !u.is_empty())
     });
     commands.entity(body).add_child(stale_note);
     // A wrapping grid of thumbnail cards, matching Settings → Plugins. This was
@@ -134,7 +134,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
     let native_note = txt(
         commands,
         fonts,
-        &renzora::lang::t("export.plugins.native_host_only"),
+        &renzora_lang_api::t("export.plugins.native_host_only"),
         11.0,
         AMBER,
     );
@@ -168,7 +168,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
             fonts,
             &format!(
                 "{} {}",
-                renzora::lang::t("export.plugins.unsupported_target"),
+                renzora_lang_api::t("export.plugins.unsupported_target"),
                 blocked.join(", ")
             ),
             11.0,
@@ -185,7 +185,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
         // finished, and a per-card binding would be a subscription per plugin
         // for an answer that cannot change while the dialog is open.
         let stale: std::collections::HashSet<String> = world
-            .get_resource::<renzora::PluginUpdates>()
+            .get_resource::<renzora_platform_api::PluginUpdates>()
             .map(|u| u.entries.iter().map(|e| e.id.clone()).collect())
             .unwrap_or_default();
         let plugins: Vec<(String, String, bool)> = world
@@ -202,7 +202,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
         {
             let mut c = Commands::new(&mut queue, world);
             if plugins.is_empty() {
-                let note = c.spawn((Text::new(renzora::lang::t("export.plugins.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+                let note = c.spawn((Text::new(renzora_lang_api::t("export.plugins.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
                 c.entity(list).add_child(note);
             }
             for (id, scope, stale) in plugins.into_iter() {
@@ -240,7 +240,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                 let thumb = renzora_ember::widgets::file_image_tile(
                     &mut c,
                     &fonts,
-                    renzora::core::plugin_thumbnail_path(&id).unwrap_or_default(),
+                    renzora_platform_api::plugin_thumbnail_path(&id).unwrap_or_default(),
                     "puzzle-piece",
                     text_muted(),
                     10.0,
@@ -264,11 +264,11 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
                                 border_radius: BorderRadius::all(Val::Px(9.0)),
                                 ..default()
                             },
-                            BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
+                            BackgroundColor(rgb(renzora_platform_api::PLUGIN_UPDATE_AMBER)),
                             BorderColor::all(Color::srgba(0.06, 0.06, 0.08, 0.75)),
                             PASS_THROUGH,
                             renzora_ember::widgets::HoverTooltip::new(
-                                renzora::lang::t("export.plugins.update_tooltip"),
+                                renzora_lang_api::t("export.plugins.update_tooltip"),
                             ),
                         ))
                         .id();
@@ -353,7 +353,7 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
         }
         queue.apply(world);
     });
-    secs.push(group(commands, fonts, &renzora::lang::t("export.section.plugins"), &[body]));
+    secs.push(group(commands, fonts, &renzora_lang_api::t("export.section.plugins"), &[body]));
     finish_tab(commands, panel, &secs, tab_max);
     panel
 }

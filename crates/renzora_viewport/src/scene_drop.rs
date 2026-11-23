@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, EditorCamera};
+use renzora_scene_api::EditorCamera;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::EditorSelection;
 use renzora_ui::{DocumentTabState, Toasts};
 

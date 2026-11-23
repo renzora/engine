@@ -8,7 +8,7 @@ pub use state::*;
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_ember::markup::MarkupSource;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::game_ui::HtmlTemplatePath;
@@ -198,7 +198,7 @@ pub(crate) fn build_code_editor_toolbar(
         .id();
 
     // Font size → the editor's live zoom (`CodeEditorState.font_size`).
-    let size_label = label(commands, &renzora::lang::t("common.size"));
+    let size_label = label(commands, &renzora_lang_api::t("common.size"));
     let size = drag_value(commands, &fonts.ui, "", value_text(), 14.0, 1.0);
     commands.entity(size).insert(DragRange { min: 8.0, max: 48.0 });
     bind_2way(
@@ -217,7 +217,7 @@ pub(crate) fn build_code_editor_toolbar(
     );
 
     // Minimap + Whitespace → editor settings (toggle switches).
-    let mini_label = label(commands, &renzora::lang::t("code.minimap"));
+    let mini_label = label(commands, &renzora_lang_api::t("code.minimap"));
     let mini = toggle_switch(commands, false);
     bind_2way(
         commands,
@@ -234,7 +234,7 @@ pub(crate) fn build_code_editor_toolbar(
         },
     );
 
-    let ws_label = label(commands, &renzora::lang::t("code.whitespace"));
+    let ws_label = label(commands, &renzora_lang_api::t("code.whitespace"));
     let ws = toggle_switch(commands, false);
     bind_2way(
         commands,
@@ -252,7 +252,7 @@ pub(crate) fn build_code_editor_toolbar(
     );
 
     // Word wrap → soft-wrap long lines instead of horizontal scroll.
-    let wrap_label = label(commands, &renzora::lang::t_or("code.word_wrap", "Word Wrap"));
+    let wrap_label = label(commands, &renzora_lang_api::t_or("code.word_wrap", "Word Wrap"));
     let wrap = toggle_switch(commands, false);
     bind_2way(
         commands,
@@ -323,7 +323,7 @@ fn compile_button(
     commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t_or("code.compile", "Compile")),
+            Text::new(renzora_lang_api::t_or("code.compile", "Compile")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
             PASS_THROUGH,
@@ -379,7 +379,7 @@ fn compile_shader_click(
     }
     // Written out before the request, so what compiles is what is on disk.
     state.save_active();
-    commands.trigger(renzora::core::ShaderCompileRequested { path });
+    commands.trigger(renzora_scene_api::ShaderCompileRequested { path });
 }
 
 /// `.wgsl` or `.wesl` and nothing else. A `.material` carries its compiled
@@ -590,12 +590,12 @@ fn reload_saved_ui_templates(
 /// Consume `OpenCodeEditorFile` resource inserted by other plugins (e.g. asset browser).
 fn consume_open_code_editor_file(
     mut commands: Commands,
-    request: Option<Res<renzora::core::OpenCodeEditorFile>>,
+    request: Option<Res<renzora_project_api::OpenCodeEditorFile>>,
     mut state: ResMut<CodeEditorState>,
 ) {
     let Some(req) = request else { return };
     state.open_file(req.path.clone());
-    commands.remove_resource::<renzora::core::OpenCodeEditorFile>();
+    commands.remove_resource::<renzora_project_api::OpenCodeEditorFile>();
 }
 
 /// While the Scripting workspace is active, restrict the asset browser to text
@@ -629,5 +629,3 @@ fn sync_asset_filter_for_scripting(
         filter.0 = desired;
     }
 }
-
-renzora::add!(CodeEditorPlugin, Editor);

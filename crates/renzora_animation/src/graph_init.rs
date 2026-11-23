@@ -48,7 +48,7 @@ pub fn initialize_animation_graphs(
     mut animators: Query<(Entity, &AnimatorComponent, &mut AnimatorState)>,
     children_query: Query<&Children>,
     player_query: Query<Entity, With<AnimationPlayer>>,
-    name_query: Query<(&Name, Option<&renzora::BindName>)>,
+    name_query: Query<(&Name, Option<&renzora_scene_api::BindName>)>,
     transforms: Query<&Transform>,
 ) {
     for (entity, animator, mut state) in animators.iter_mut() {
@@ -96,7 +96,7 @@ pub fn initialize_animation_graphs(
             .values()
             .filter_map(|h| prop_clips.get(h))
             .filter_map(|c| c.skeletal.as_ref())
-            .flat_map(|c| c.tracks.iter().map(|t| renzora::sanitize_id(&map_bone_name(&animator.bone_map, &t.bone_name))))
+            .flat_map(|c| c.tracks.iter().map(|t| renzora_scene_api::sanitize_id(&map_bone_name(&animator.bone_map, &t.bone_name))))
             .collect();
         let skeleton_missing = need_skeleton && !has_bones(entity, &bone_names, &children_query, &name_query);
         if (sm_pending || source_pending || skel_pending || skeleton_missing) && state.init_wait_frames < INIT_WAIT_LIMIT {
@@ -121,7 +121,7 @@ pub fn initialize_animation_graphs(
                 |e| {
                     let (name, bind) = name_query.get(e).ok()?;
                     let t = transforms.get(e).ok()?;
-                    Some((renzora::BindName::of(name, bind).to_string(), *t))
+                    Some((renzora_scene_api::BindName::of(name, bind).to_string(), *t))
                 },
             );
             if !rest.is_empty() {
@@ -255,12 +255,12 @@ fn has_bones(
     root: Entity,
     bone_names: &HashSet<String>,
     children: &Query<&Children>,
-    names: &Query<(&Name, Option<&renzora::BindName>)>,
+    names: &Query<(&Name, Option<&renzora_scene_api::BindName>)>,
 ) -> bool {
     let mut stack: Vec<Entity> = children.get(root).map(|c| c.iter().collect()).unwrap_or_default();
     while let Some(e) = stack.pop() {
         if let Ok((name, bind)) = names.get(e) {
-            if bone_names.is_empty() || bone_names.contains(&renzora::sanitize_id(renzora::BindName::of(name, bind))) {
+            if bone_names.is_empty() || bone_names.contains(&renzora_scene_api::sanitize_id(renzora_scene_api::BindName::of(name, bind))) {
                 return true;
             }
         }

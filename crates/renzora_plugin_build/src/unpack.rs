@@ -162,6 +162,12 @@ pub fn extract(
     let inner = staging.join("sdk");
     let src = if inner.is_dir() { inner } else { staging.clone() };
 
+    // Before the rename, like everything else, so a tree that lands is whole.
+    if let Err(e) = restore_shared_images(&src, root) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+
     // Stamped before the rename, so the tree that lands is already self-
     // describing. Writing it afterwards would leave a window where a tree is
     // complete but unattributed, which `sdk_state` would read as stale and
@@ -180,6 +186,53 @@ pub fn extract(
         return Err("the SDK archive unpacked without a manifest.json".to_string());
     }
     Ok(final_dir)
+}
+
+/// Put back the shared images a release left out of the archive.
+///
+/// `bevy_dylib` and `renzora_dylib` are the same files the engine runs from,
+/// already beside the executable in `root`, so shipping them inside
+/// `sdk.tar.zst` as well was a second copy of about 200 MB in every download and
+/// every install. The manifest names them (`shared_images`); each one the
+/// archive did not carry is hardlinked from `root`, which costs no disk, or
+/// copied where a hardlink cannot be made (the macOS SDK lives in Application
+/// Support, which need not be on the bundle's volume).
+///
+/// An image the archive did carry is left alone, which is every archive cut
+/// before the list existed. A missing source is an error naming it, rather
+/// than an SDK that loads and then fails every plugin link.
+fn restore_shared_images(tree: &Path, root: &Path) -> Result<(), String> {
+    let Ok(text) = std::fs::read_to_string(tree.join("manifest.json")) else {
+        return Ok(()); // reported by the caller's own manifest check
+    };
+    let Ok(manifest) = serde_json::from_str::<crate::Manifest>(&text) else {
+        return Ok(());
+    };
+    for rel in &manifest.shared_images {
+        let dst = tree.join(rel);
+        if dst.exists() {
+            continue;
+        }
+        let name = Path::new(rel)
+            .file_name()
+            .ok_or_else(|| format!("the SDK manifest names a shared image with no file name: {rel}"))?;
+        let src = root.join(name);
+        if !src.is_file() {
+            return Err(format!(
+                "the SDK expects the engine's {} beside the executable, at {}, and it is not there",
+                name.to_string_lossy(),
+                src.display()
+            ));
+        }
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("could not create {}: {e}", parent.display()))?;
+        }
+        if std::fs::hard_link(&src, &dst).is_err() {
+            std::fs::copy(&src, &dst)
+                .map_err(|e| format!("could not copy {} into the SDK: {e}", src.display()))?;
+        }
+    }
+    Ok(())
 }
 
 /// Was `tree` unpacked from `archive`?

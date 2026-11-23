@@ -13,9 +13,18 @@ edition = "2021"
 dlss = ["bevy/dlss"]
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false }
+renzora_solari_api = { path = "../api/renzora_solari_api" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AntiAliasingPlugin"

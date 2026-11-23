@@ -16,7 +16,7 @@
 
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use renzora::{TracedStandIn, TracedStandInsWanted};
+use renzora_render_api::{TracedStandIn, TracedStandInsWanted};
 
 use super::GraphMaterial;
 

@@ -25,9 +25,9 @@ pub mod preview;
 pub mod state;
 
 use bevy::prelude::*;
-use renzora::core::keybindings::KeyBinding;
-use renzora::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
-use renzora::RenzoraShellExt;
+use renzora_shell_api::keybindings::KeyBinding;
+use renzora_shell_api::create_menu::{CreateMenuItem, RegisterCreateMenuItem};
+use renzora_shell_api::RenzoraShellExt;
 use renzora_editor_framework::{AppEditorExt, ShortcutEntry, SplashState};
 use renzora_ember::dock::{panel_active, Dock, DockTree, DockWindows, FixedDock};
 use renzora_ember::workspace::RegisterWorkspace;
@@ -130,5 +130,3 @@ impl Plugin for TerrainGraphEditorPlugin {
         );
     }
 }
-
-renzora::add!(TerrainGraphEditorPlugin, Editor);

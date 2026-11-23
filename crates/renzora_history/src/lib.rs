@@ -15,5 +15,3 @@ impl Plugin for HistoryPanelPlugin {
         panel::register(app);
     }
 }
-
-renzora::add!(HistoryPanelPlugin, Editor);

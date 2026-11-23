@@ -15,7 +15,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::{EditorLocked, HideInHierarchy};
+use renzora_scene_api::{EditorLocked, HideInHierarchy};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::UiCursor;
 use renzora_ember::interaction::BLOCK;

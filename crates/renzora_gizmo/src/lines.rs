@@ -11,7 +11,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::gizmos::config::{GizmoConfig, GizmoConfigGroup, GizmoLineConfig};
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportSettings;
+use renzora_viewport_api::ViewportSettings;
 use renzora_editor_framework::{EditorCamera, EditorSelection};
 
 use crate::drag::angle_label_text;
@@ -85,7 +85,7 @@ pub(crate) fn slot_line_config(slot: usize, width: f32) -> GizmoConfig {
             ..default()
         },
         render_layers: RenderLayers::layer(
-            renzora::core::viewport_types::VIEWPORT_3D_GIZMO_LAYER_BASE + slot,
+            renzora_viewport_api::VIEWPORT_3D_GIZMO_LAYER_BASE + slot,
         ),
         ..default()
     }
@@ -110,7 +110,7 @@ pub(crate) fn draw_line_gizmos(
     ),
     per_slot: Res<PerSlotGizmo>,
     mode: Res<GizmoMode>,
-    vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    vp_space: Option<Res<renzora_viewport_api::ViewportGizmoSpace>>,
     gizmo_state: Res<GizmoState>,
     selection: Res<EditorSelection>,
     modal: Res<modal_transform::ModalTransformState>,
@@ -127,7 +127,7 @@ pub(crate) fn draw_line_gizmos(
     children_q: Query<&Children>,
     camera_q: Query<&GlobalTransform, With<EditorCamera>>,
     viewport_settings: Option<Res<ViewportSettings>>,
-    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
+    viewports: Option<Res<renzora_viewport_api::Viewports>>,
 ) {
     // Modal transforms (G/R/S) take over input — hide the tool-mode handles so
     // they don't sit under the modal HUD while dragging. The modal *scale* HUD
@@ -194,7 +194,7 @@ pub(crate) fn draw_line_gizmos(
     let focused = viewports.as_ref().map(|v| v.focused).unwrap_or(0);
     let focused_cam = camera_q.single().ok().map(|gt| gt.translation());
 
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     for i in 0..VIEWPORT_COUNT {
         if !per_slot.draw[i] {
             continue;

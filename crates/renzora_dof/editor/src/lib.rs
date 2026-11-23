@@ -7,7 +7,7 @@
 
 use bevy::post_process::dof::DepthOfField;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 use renzora_dof::DepthOfFieldSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -40,10 +40,10 @@ fn inspector_entry() -> InspectorEntry {
         }),
         // Declarative fields render natively (bevy_ui).
         fields: vec![
-            renzora::enum_u32_field!("Mode", DepthOfFieldSettings, mode, ["Gaussian", "Bokeh"]),
-            renzora::float_field!("Focal Distance", DepthOfFieldSettings, focal_distance, 0.1, 0.1, 1000.0),
-            renzora::float_field!("Aperture", DepthOfFieldSettings, aperture_f_stops, 0.1, 0.1, 64.0),
-            renzora::float_field!("Max CoC", DepthOfFieldSettings, max_circle_of_confusion_diameter, 1.0, 1.0, 256.0),
+            renzora_editor_api::enum_u32_field!("Mode", DepthOfFieldSettings, mode, ["Gaussian", "Bokeh"]),
+            renzora_editor_api::float_field!("Focal Distance", DepthOfFieldSettings, focal_distance, 0.1, 0.1, 1000.0),
+            renzora_editor_api::float_field!("Aperture", DepthOfFieldSettings, aperture_f_stops, 0.1, 0.1, 64.0),
+            renzora_editor_api::float_field!("Max CoC", DepthOfFieldSettings, max_circle_of_confusion_diameter, 1.0, 1.0, 256.0),
         ],
     }
 }
@@ -58,5 +58,3 @@ impl Plugin for DepthOfFieldEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(DepthOfFieldEditorPlugin, Editor);

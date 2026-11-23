@@ -43,7 +43,9 @@ use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::light::EnvironmentMapLight;
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponent;
-use renzora::{EffectRouting, ResolvedGraphicsQuality, SolariLit};
+use renzora_scene_api::EffectRouting;
+use renzora_project_api::ResolvedGraphicsQuality;
+use renzora_render_api::SolariLit;
 use serde::{Deserialize, Serialize};
 
 /// The authored SSIL settings, on a World Environment or a camera, routed to
@@ -233,7 +235,6 @@ impl Plugin for SsilPlugin {
     }
 }
 
-renzora::add!(SsilPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -287,7 +288,7 @@ mod tests {
 
     #[test]
     fn the_quality_tier_gates_it() {
-        use renzora::core::viewport_types::GraphicsQuality;
+        use renzora_viewport_api::GraphicsQuality;
         let (mut app, _, camera) = app();
         app.insert_resource(ResolvedGraphicsQuality(GraphicsQuality::Medium));
         app.update();

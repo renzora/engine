@@ -394,7 +394,7 @@ pub fn setup_asset_reader(app: &mut App) -> ProjectAssetPath {
     // whenever the project changes, and pushes through this sink. Returning
     // `None` leaves the source watcher-less, which is silent because no
     // `watch_warning` is configured.
-    let sink = renzora::core::project_files::AssetReloadSink::default();
+    let sink = renzora_project_api::project_files::AssetReloadSink::default();
     app.insert_resource(sink.clone());
     let capture = sink.clone();
     app.register_asset_source(

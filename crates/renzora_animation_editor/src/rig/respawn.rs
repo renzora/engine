@@ -43,7 +43,7 @@ fn respawn_when_reloaded(
     mut events: MessageReader<AssetEvent<bevy::gltf::Gltf>>,
     asset_server: Res<AssetServer>,
     mut pending: ResMut<PendingRespawn>,
-    instances: Query<(Entity, &renzora::core::MeshInstanceData, Option<&Children>)>,
+    instances: Query<(Entity, &renzora_scene_api::MeshInstanceData, Option<&Children>)>,
     mut animators: Query<&mut renzora_animation::AnimatorState>,
     tracker: Option<ResMut<crate::studio_preview::StudioPreviewTracker>>,
     mut commands: Commands,
@@ -68,7 +68,7 @@ fn respawn_when_reloaded(
                 commands.entity(*c).despawn();
             }
             let data = data.clone();
-            commands.entity(e).remove::<renzora::core::MeshInstanceData>().insert(data);
+            commands.entity(e).remove::<renzora_scene_api::MeshInstanceData>().insert(data);
             if let Ok(mut a) = animators.get_mut(e) {
                 a.initialized = false;
             }
@@ -79,6 +79,6 @@ fn respawn_when_reloaded(
         if let Some(t) = tracker.as_mut() {
             t.source_entity = None;
         }
-        renzora::core::console_log::console_info("Rig", format!("Reloaded {rel} in {count} instance(s)"));
+        renzora_log_api::console_info("Rig", format!("Reloaded {rel} in {count} instance(s)"));
     }
 }

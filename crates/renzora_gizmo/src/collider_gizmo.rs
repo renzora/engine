@@ -23,7 +23,7 @@
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{CollisionGizmoVisibility, ViewportSettings};
+use renzora_viewport_api::{CollisionGizmoVisibility, ViewportSettings};
 use renzora_editor_framework::EditorSelection;
 use renzora_physics::{CollisionShapeData, CollisionShapeType};
 

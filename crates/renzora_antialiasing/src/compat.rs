@@ -17,7 +17,8 @@ use bevy::core_pipeline::oit::OrderIndependentTransparencySettings;
 use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::pbr::{AtmosphereSettings, ScreenSpaceAmbientOcclusion};
 use bevy::prelude::*;
-use renzora::{DlssSupport, EffectRouting};
+use renzora_scene_api::EffectRouting;
+use renzora_solari_api::DlssSupport;
 
 use crate::settings::AntiAliasingMethod;
 
@@ -49,7 +50,7 @@ impl RunCaps {
     pub fn from_world(world: &World) -> Self {
         Self {
             taa_off_by_quality: world
-                .get_resource::<renzora::ResolvedGraphicsQuality>()
+                .get_resource::<renzora_project_api::ResolvedGraphicsQuality>()
                 .is_some_and(|q| !q.0.taa()),
             dlss: world.get_resource::<DlssSupport>().copied().unwrap_or_default(),
         }

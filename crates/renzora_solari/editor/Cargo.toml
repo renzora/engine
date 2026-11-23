@@ -2,11 +2,16 @@
 name = "renzora_solari_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only inspector for renzora_solari. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only inspector for renzora_solari. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_shell_api = { path = "../../api/renzora_shell_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+# Downloading NVIDIA's DLSS libraries for Install DLSS.
+renzora_net_api = { path = "../../api/renzora_net_api" }
+renzora_platform_api = { path = "../../api/renzora_platform_api" }
+renzora_solari_api = { path = "../../api/renzora_solari_api" }
 # The Ray Tracing panel (panel.rs).
 renzora_ember = { path = "../../renzora_ember" }
 # Checking the DLSS libraries the Install DLSS button downloads.
@@ -14,3 +19,10 @@ sha2 = "0.10"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SolariEditorPlugin"
+scope = "Editor"

@@ -24,13 +24,13 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::window::{PrimaryWindow, WindowResized};
 
-use renzora::core::{AspectMode, StretchMode};
+use renzora_project_api::{AspectMode, StretchMode};
 
 /// Render layer that holds the blit sprite + blit camera. Separated
 /// from the default game world (layer 0) so the game camera doesn't
 /// re-render the blit sprite on top of the gameplay it already drew.
 /// Allocated in the contract crate's registry, alongside every other rig's.
-use renzora::core::viewport_types::VIEWPORT_STRETCH_BLIT_LAYER as BLIT_RENDER_LAYER;
+use renzora_viewport_api::VIEWPORT_STRETCH_BLIT_LAYER as BLIT_RENDER_LAYER;
 
 /// Resource: the offscreen image the game camera renders to. Only
 /// inserted when stretch mode is `Viewport`. Other systems read this
@@ -69,7 +69,7 @@ impl Plugin for ViewportStretchPlugin {
 /// mode is a no-op — the resource never gets inserted, so every
 /// downstream system can early-out by checking for its absence.
 fn setup_stretch(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
 ) {
@@ -253,7 +253,7 @@ fn on_camera_2d_added_redirect(
 /// blit camera's clear colour.
 fn update_blit_layout(
     stretch: Option<Res<ViewportStretchImage>>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut blit: Query<(&mut Sprite, &mut Transform), With<BlitSprite>>,
     mut resize_events: MessageReader<WindowResized>,

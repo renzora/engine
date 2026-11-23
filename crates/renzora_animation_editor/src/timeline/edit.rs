@@ -17,7 +17,7 @@ use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use renzora_ember::UiCursor;
 
-use renzora::AnimMarker;
+use renzora_animation_api::AnimMarker;
 use renzora_animation::AnimatorComponent;
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::EmberFonts;
@@ -1073,14 +1073,14 @@ pub(super) fn track_context_menu(
     }
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
     let (icon, label) = if muted {
-        ("eye", renzora::lang::t_or("timeline.enable_track", "Enable track"))
+        ("eye", renzora_lang_api::t_or("timeline.enable_track", "Enable track"))
     } else {
-        ("eye-slash", renzora::lang::t_or("timeline.disable_track", "Disable track"))
+        ("eye-slash", renzora_lang_api::t_or("timeline.disable_track", "Disable track"))
     };
     let toggle = menu_item(&mut commands, &fonts, icon, &label, move |w| {
         super::props::set_track_muted(w, kind, !muted);
     });
-    let del = menu_item(&mut commands, &fonts, "trash", &renzora::lang::t_or("timeline.delete_track", "Delete track"), move |w| {
+    let del = menu_item(&mut commands, &fonts, "trash", &renzora_lang_api::t_or("timeline.delete_track", "Delete track"), move |w| {
         super::props::delete_track(w, kind);
     });
     commands.entity(menu).add_children(&[toggle, del]);
@@ -1121,7 +1121,7 @@ pub(super) fn key_context_menu(
     if p.y < 16.0 {
         if let Some(mi) = clip.markers.iter().position(|m| (x_of(m.time, zoom, scroll) - p.x).abs() < 7.0) {
             let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-            let label = format!("{} '{}'", renzora::lang::t("timeline.delete_marker"), clip.markers[mi].name);
+            let label = format!("{} '{}'", renzora_lang_api::t("timeline.delete_marker"), clip.markers[mi].name);
             let del = menu_item(&mut commands, &fonts, "trash", &label, move |w| {
                 if let Some(mut cache) = w.get_resource_mut::<TimelineClip>() {
                     if let Some(clip) = cache.clip.as_mut() {
@@ -1149,7 +1149,7 @@ pub(super) fn key_context_menu(
         }
         let menu = screen_menu(&mut commands, cursor.x, cursor.y);
         let (lane_ref, idx) = (pick.key.lane, pick.key.index);
-        let del = menu_item(&mut commands, &fonts, "trash", &renzora::lang::t("timeline.delete_keyframe"), move |w| {
+        let del = menu_item(&mut commands, &fonts, "trash", &renzora_lang_api::t("timeline.delete_keyframe"), move |w| {
             if let Some(mut cache) = w.get_resource_mut::<TimelineClip>() {
                 if let Some(mut chan) = cache.lane_times(lane_ref) {
                     chan.remove(idx);
@@ -1178,7 +1178,7 @@ pub(super) fn key_context_menu(
             kids.extend(super::keymode::mode_menu_items(&mut commands, &fonts, targets, current));
         }
         if let Lane::Prop { track } = lane_ref {
-            let set_item = menu_item(&mut commands, &fonts, "crosshair", &renzora::lang::t("timeline.set_to_current_pose"), move |w| {
+            let set_item = menu_item(&mut commands, &fonts, "crosshair", &renzora_lang_api::t("timeline.set_to_current_pose"), move |w| {
                 let entity = clip_entity(w);
                 set_key_to_live(w, entity, track, idx);
             });
@@ -1208,7 +1208,7 @@ pub(super) fn key_context_menu(
     if matches!(kind, RowKind::FxEmitter(..) | RowKind::FxTrack(_)) {
         if fx_editable {
             let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-            let add = menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("timeline.add_keyframe_here"), move |w| {
+            let add = menu_item(&mut commands, &fonts, "plus", &renzora_lang_api::t("timeline.add_keyframe_here"), move |w| {
                 if let Some(mut cache) = w.get_resource_mut::<TimelineClip>() {
                     super::fx::add_key(&mut cache, kind, time);
                 }
@@ -1224,7 +1224,7 @@ pub(super) fn key_context_menu(
     }
     let entity = cache.key.as_ref().map(|(e, _)| *e);
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-    let add = menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("timeline.add_keyframe_here"), move |w| {
+    let add = menu_item(&mut commands, &fonts, "plus", &renzora_lang_api::t("timeline.add_keyframe_here"), move |w| {
         add_key_at(w, entity, pi, time);
     });
     commands.entity(menu).add_children(&[add]);
@@ -1298,7 +1298,7 @@ pub(super) fn unused_clip_name(world: &World, entity: Entity, base: &str) -> Str
         .get::<AnimatorComponent>(entity)
         .map(|a| a.clips.iter().map(|c| c.name.clone()).collect())
         .unwrap_or_default();
-    let root = world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone());
+    let root = world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone());
     let taken = |n: &str| {
         slots.iter().any(|s| s == n)
             || root.as_ref().is_some_and(|r| r.join(format!("animations/{n}.anim")).exists())
@@ -1334,7 +1334,7 @@ pub(super) fn timeline_shortcuts(
     bridge: Option<Res<AnimEditorBridge>>,
     mut selected: ResMut<SelectedKey>,
     mut all: ResMut<SelectedKeys>,
-    focus: Option<Res<renzora::InputFocusState>>,
+    focus: Option<Res<renzora_project_api::InputFocusState>>,
     drag_editing: Option<Res<renzora_ember::widgets::AnyDragValueEditing>>,
     popover: Res<PopoverState>,
     mut ops: ResMut<TimelineOps>,
@@ -1409,7 +1409,7 @@ pub(super) fn timeline_delete_guard(
     root: Query<&UiCursor, With<AnimTimeline>>,
     selected: Res<SelectedKey>,
     all: Res<SelectedKeys>,
-    focus: Option<ResMut<renzora::InputFocusState>>,
+    focus: Option<ResMut<renzora_project_api::InputFocusState>>,
 ) {
     let active = (selected.0.is_some() || !all.keys.is_empty()) && root.iter().any(|r| r.cursor_over);
     if let Some(mut focus) = focus {

@@ -31,10 +31,11 @@ use std::time::SystemTime;
 
 use bevy::prelude::*;
 use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
-use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
-use renzora::core::console_log::{console_error, console_success};
-use renzora::core::project_files::ProjectFileChanged;
-use renzora::{CurrentProject, RustToolchain};
+use renzora_diagnostics_api::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
+use renzora_log_api::{console_error, console_success};
+use renzora_project_api::project_files::ProjectFileChanged;
+use renzora_project_api::CurrentProject;
+use renzora_platform_api::RustToolchain;
 
 use crate::{load_library, sdk_dir, LoadedScripts};
 
@@ -54,7 +55,7 @@ pub struct ScriptWatcher {
     /// Builds handed to the companion, by its job id. rustc is the work, and
     /// in the companion its file reading, staging and waiting happen in a
     /// process the OS schedules below the editor's.
-    remote: HashMap<renzora::CompanionJobId, PathBuf>,
+    remote: HashMap<renzora_platform_api::CompanionJobId, PathBuf>,
     /// Companion builds that answered, waiting for [`finish`] to load them.
     remote_done: Vec<(PathBuf, Result<PathBuf, String>)>,
     /// The one-off project walk that runs when a project opens.
@@ -146,9 +147,9 @@ pub fn watch(
     mut watcher: ResMut<ScriptWatcher>,
     project: Option<Res<CurrentProject>>,
     mut changes: MessageReader<ProjectFileChanged>,
-    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
     toolchain: Res<RustToolchain>,
-    session: Option<Res<renzora::EditorSession>>,
+    session: Option<Res<renzora_project_api::EditorSession>>,
 ) {
     let Some(project) = project else {
         // Drained rather than left: without a project there is nothing to build,
@@ -234,7 +235,7 @@ pub fn watch(
 
         // The companion when there is one; this process otherwise, as always.
         if let Some(jobs) = jobs.as_deref_mut() {
-            let args = renzora::job_args::RustScriptBuild {
+            let args = renzora_platform_api::job_args::RustScriptBuild {
                 sdk_dir: sdk_dir.clone(),
                 project: project_path.clone(),
                 source: src.clone(),
@@ -262,7 +263,7 @@ pub fn watch(
 }
 
 /// Take in the companion's answers for the builds handed to it.
-pub fn collect_remote(mut answers: MessageReader<renzora::CompanionJobDone>, mut watcher: ResMut<ScriptWatcher>) {
+pub fn collect_remote(mut answers: MessageReader<renzora_platform_api::CompanionJobDone>, mut watcher: ResMut<ScriptWatcher>) {
     for answer in answers.read() {
         if let Some(src) = watcher.remote.remove(&answer.id) {
             let result = answer.result.clone().map(PathBuf::from);

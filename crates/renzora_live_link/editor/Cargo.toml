@@ -5,8 +5,10 @@ edition = "2021"
 description = "Live link, editor side: mirrors the game Play is running into the editor, sends edits to it, and puts the scene back when it stops. Installed only by the editor bundle."
 
 [dependencies]
+renzora_scene_api = { path = "../../api/renzora_scene_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
+renzora_log_api = { path = "../../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false }
 # Snapshots, for putting back entities the game despawned.
 renzora_engine = { path = "../../renzora_engine" }
 renzora_live_link = { path = ".." }
@@ -17,3 +19,10 @@ ron = "0.8"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "LiveLinkEditorPlugin"
+scope = "Editor"

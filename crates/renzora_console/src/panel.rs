@@ -67,10 +67,10 @@ fn level_color(level: LogLevel) -> (u8, u8, u8) {
 
 fn level_label(level: LogLevel) -> String {
     match level {
-        LogLevel::Info => renzora::lang::t_or("console.filter.info", "Info"),
-        LogLevel::Success => renzora::lang::t_or("console.filter.success", "Success"),
-        LogLevel::Warning => renzora::lang::t_or("console.filter.warn", "Warn"),
-        LogLevel::Error => renzora::lang::t_or("console.filter.error", "Error"),
+        LogLevel::Info => renzora_lang_api::t_or("console.filter.info", "Info"),
+        LogLevel::Success => renzora_lang_api::t_or("console.filter.success", "Success"),
+        LogLevel::Warning => renzora_lang_api::t_or("console.filter.warn", "Warn"),
+        LogLevel::Error => renzora_lang_api::t_or("console.filter.error", "Error"),
     }
 }
 
@@ -465,7 +465,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bar.push(vsep(commands));
 
     // Fields start empty; `console_text_sync` mirrors them into `ConsoleState`.
-    let search = search_input(commands, fonts, &renzora::lang::t_or("console.search", "Filter messages"), "");
+    let search = search_input(commands, fonts, &renzora_lang_api::t_or("console.search", "Filter messages"), "");
     commands.entity(search).insert(ConsoleField::Search);
     commands.entity(search).entry::<Node>().and_modify(|mut n| {
         n.width = Val::Px(300.0);
@@ -486,9 +486,9 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, cat_label, |w| {
         let hidden = w.get_resource::<ConsoleState>().map(|s| s.hidden_categories.len()).unwrap_or(0);
         if hidden == 0 {
-            renzora::lang::t_or("console.all_categories", "All categories")
+            renzora_lang_api::t_or("console.all_categories", "All categories")
         } else {
-            renzora::lang::t_or("console.categories_hidden", "{n} hidden").replace("{n}", &hidden.to_string())
+            renzora_lang_api::t_or("console.categories_hidden", "{n} hidden").replace("{n}", &hidden.to_string())
         }
     });
     let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 10.0);
@@ -505,8 +505,8 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         format!("{} / {}", s.filtered_entries().count(), s.entries.len())
     });
     bar.push(count_label);
-    bar.push(icon_button(commands, fonts, "copy", &renzora::lang::t_or("console.copy_visible", "Copy what is shown"), ConsoleBtn::Copy));
-    bar.push(icon_button(commands, fonts, "trash", &renzora::lang::t("console.clear"), ConsoleBtn::Clear));
+    bar.push(icon_button(commands, fonts, "copy", &renzora_lang_api::t_or("console.copy_visible", "Copy what is shown"), ConsoleBtn::Copy));
+    bar.push(icon_button(commands, fonts, "trash", &renzora_lang_api::t("console.clear"), ConsoleBtn::Clear));
 
     // ── Log (scrollable, flex-fills, reactive) ──
     let log_list = commands
@@ -527,7 +527,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Follow: lit while the log is following its newest line; pressing it
     // jumps back there after scrolling up to read.
-    let (follow, follow_label) = pill(commands, fonts, Some("arrow-down"), &renzora::lang::t_or("console.follow", "Follow"));
+    let (follow, follow_label) = pill(commands, fonts, Some("arrow-down"), &renzora_lang_api::t_or("console.follow", "Follow"));
     commands.entity(follow).insert(ConsoleBtn::Follow);
     commands.entity(follow).entry::<Node>().and_modify(|mut n| n.border_radius = BorderRadius::all(Val::Px(6.0)));
     let following = move |w: &Rx| {
@@ -622,7 +622,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let prompt = text(commands, &fonts.mono, ">", rgb(accent()), 13.0);
-    let input = text_input(commands, &fonts.mono, &renzora::lang::t_or("console.command_hint", "Type / for commands"), "");
+    let input = text_input(commands, &fonts.mono, &renzora_lang_api::t_or("console.command_hint", "Type / for commands"), "");
     commands.entity(input).insert(ConsoleField::Command);
     commands.entity(input).insert(Node {
         flex_grow: 1.0,
@@ -631,7 +631,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         align_items: AlignItems::Center,
         ..default()
     });
-    let hint = text(commands, &fonts.ui, &renzora::lang::t_or("console.enter_to_run", "Enter to run"), rgb(text_muted()), 11.0);
+    let hint = text(commands, &fonts.ui, &renzora_lang_api::t_or("console.enter_to_run", "Enter to run"), rgb(text_muted()), 11.0);
     commands.entity(input_row).add_children(&[prompt, input, hint]);
 
     // ── Suggestions (over the log, above the bar) ──
@@ -669,9 +669,9 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
     commands.entity(hints).insert(BorderColor::all(rgb(border())));
-    let h1 = text(commands, &fonts.ui, &renzora::lang::t_or("console.suggest_tab", "Tab to complete"), rgb(text_muted()), 11.0);
-    let h2 = text(commands, &fonts.ui, &renzora::lang::t_or("console.suggest_arrows", "Up / Down to choose"), rgb(text_muted()), 11.0);
-    let h3 = text(commands, &fonts.ui, &renzora::lang::t_or("console.suggest_esc", "Esc to close"), rgb(text_muted()), 11.0);
+    let h1 = text(commands, &fonts.ui, &renzora_lang_api::t_or("console.suggest_tab", "Tab to complete"), rgb(text_muted()), 11.0);
+    let h2 = text(commands, &fonts.ui, &renzora_lang_api::t_or("console.suggest_arrows", "Up / Down to choose"), rgb(text_muted()), 11.0);
+    let h3 = text(commands, &fonts.ui, &renzora_lang_api::t_or("console.suggest_esc", "Esc to close"), rgb(text_muted()), 11.0);
     commands.entity(hints).add_children(&[h1, h2, h3]);
     commands.entity(suggest).add_children(&[suggest_list, hints]);
 
@@ -825,7 +825,7 @@ fn log_snapshot(world: &Rx) -> KeyedSnapshot {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
-                let t = text(c, &f.ui, &renzora::lang::t("console.empty"), rgb(text_muted()), 13.0);
+                let t = text(c, &f.ui, &renzora_lang_api::t("console.empty"), rgb(text_muted()), 13.0);
                 c.entity(t).insert(Node { margin: UiRect::all(Val::Px(14.0)), ..default() });
                 t
             }),
@@ -899,7 +899,7 @@ fn build_detail(commands: &mut Commands, fonts: &EmberFonts, e: &LogEntry) -> En
     let when = format!("{} at {}", level_label(e.level), fmt_time(e.timestamp));
     head_kids.push(text(commands, &fonts.ui, &when, rgb(text_muted()), 12.0));
     head_kids.push(spacer(commands));
-    let (copy, _) = pill(commands, fonts, Some("copy"), &renzora::lang::t("console.copy"));
+    let (copy, _) = pill(commands, fonts, Some("copy"), &renzora_lang_api::t("console.copy"));
     commands.entity(copy).insert(ConsoleBtn::CopyEntry);
     commands.entity(copy).entry::<Node>().and_modify(|mut n| {
         n.height = Val::Px(24.0);
@@ -910,7 +910,7 @@ fn build_detail(commands: &mut Commands, fonts: &EmberFonts, e: &LogEntry) -> En
         _ => rgb(faint_bg()),
     });
     head_kids.push(copy);
-    head_kids.push(icon_button(commands, fonts, "x", &renzora::lang::t_or("console.close_details", "Close"), ConsoleBtn::CloseDetail));
+    head_kids.push(icon_button(commands, fonts, "x", &renzora_lang_api::t_or("console.close_details", "Close"), ConsoleBtn::CloseDetail));
     commands.entity(head).add_children(&head_kids);
 
     let msg_box = commands
@@ -944,7 +944,7 @@ fn build_detail(commands: &mut Commands, fonts: &EmberFonts, e: &LogEntry) -> En
         font.weight = bevy::text::FontWeight::SEMIBOLD;
         let heading = commands
             .spawn((
-                Text::new(renzora::lang::t_or("console.entities", "ENTITIES")),
+                Text::new(renzora_lang_api::t_or("console.entities", "ENTITIES")),
                 font,
                 TextColor(rgb(text_muted())),
             ))
@@ -974,7 +974,7 @@ fn build_detail(commands: &mut Commands, fonts: &EmberFonts, e: &LogEntry) -> En
                         BackgroundColor(rgb(accent()).with_alpha(0.14)),
                         UiInteraction::default(),
                         hover_pointer(),
-                        HoverTooltip::new(renzora::lang::t_or("console.select_entity", "Select this entity")),
+                        HoverTooltip::new(renzora_lang_api::t_or("console.select_entity", "Select this entity")),
                         ConsoleEntityChip(id.clone()),
                     ))
                     .id();
@@ -994,11 +994,11 @@ fn build_detail(commands: &mut Commands, fonts: &EmberFonts, e: &LogEntry) -> En
     }
 
     let seen = if e.count > 1 {
-        renzora::lang::t_or("console.seen_times", "Seen {n} times").replace("{n}", &e.count.to_string())
+        renzora_lang_api::t_or("console.seen_times", "Seen {n} times").replace("{n}", &e.count.to_string())
     } else {
-        renzora::lang::t_or("console.seen_once", "Seen once")
+        renzora_lang_api::t_or("console.seen_once", "Seen once")
     };
-    let footer = format!("{seen}    {} {}", renzora::lang::t_or("console.frame", "Frame"), e.frame);
+    let footer = format!("{seen}    {} {}", renzora_lang_api::t_or("console.frame", "Frame"), e.frame);
     kids.push(text(commands, &fonts.ui, &footer, rgb(text_muted()), 11.0));
     commands.entity(col).add_children(&kids);
     col
@@ -1090,7 +1090,7 @@ fn build_suggestion(commands: &mut Commands, fonts: &EmberFonts, cmd: &'static C
 
 /// Wire the console into the editor (a single call from `ConsolePlugin`).
 pub fn register(app: &mut App) {
-    use renzora::SplashState;
+    use renzora_project_api::SplashState;
     app.init_resource::<ConsoleView>();
     // `scroll = false`: the console manages its own internal log scroll.
     app.register_panel_content(PANEL_ID, false, build_console);
@@ -1200,7 +1200,7 @@ pub(crate) fn console_rows(
 pub(crate) fn console_entity_chips(
     q: Query<(&UiInteraction, &ConsoleEntityChip), Changed<UiInteraction>>,
     entities: Query<Entity>,
-    selection: Option<Res<renzora::EditorSelection>>,
+    selection: Option<Res<renzora_editor_api::EditorSelection>>,
     mut state: ResMut<ConsoleState>,
 ) {
     let Some(selection) = selection else { return };
@@ -1244,7 +1244,7 @@ pub(crate) fn console_category_menu(
         &mut commands,
         &fonts,
         "eye",
-        &renzora::lang::t_or("console.show_all_categories", "Show all"),
+        &renzora_lang_api::t_or("console.show_all_categories", "Show all"),
         text_muted(),
         text_primary(),
         |w| {

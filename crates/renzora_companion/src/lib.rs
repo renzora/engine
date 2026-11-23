@@ -60,5 +60,3 @@ pub fn install_companion(app: &mut App) {
     #[cfg(target_arch = "wasm32")]
     let _ = app;
 }
-
-renzora::add!(CompanionHostPlugin, Editor);

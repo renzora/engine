@@ -11,8 +11,8 @@
 //! The image links the real Bevy and takes `&mut App` across a `dlopen`
 //! boundary, which is only safe while both sides agree on what `App` is.
 //! `bevy_dylib` is what makes that true, exactly as it does for a native plugin;
-//! `renzora_dylib` and `renzora_ember_dylib` do the same for the contract
-//! crate's and the UI toolkit's process-global statics.
+//! `renzora_dylib` does the same for the contract crate's and the UI toolkit's
+//! process-global statics (the toolkit rides in that image under `ui`).
 //!
 //! Crates the executable and the image both depend on are linked into each, and
 //! that is fine: a `TypeId` comes from a crate's stable id rather than from
@@ -34,9 +34,14 @@
 //! lock is the deadlock the plugin loader hit twice. The image is held for the
 //! life of the process.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
-/// The symbol the editor image exports — see `renzora_editor::renzora_editor_install`.
+// The five items below serve only the desktop loader: the web has no image to
+// open (its editor is a second `.wasm` bundle), so they are gated with it.
+
+/// The symbol the editor image exports: see `renzora_editor::renzora_editor_install`.
+#[cfg(not(target_arch = "wasm32"))]
 const INSTALL_SYMBOL: &[u8] = b"renzora_editor_install\0";
 
 /// The companion's entry point in the same image: see
@@ -44,13 +49,16 @@ const INSTALL_SYMBOL: &[u8] = b"renzora_editor_install\0";
 /// flag to the first, because installing the editor and installing the
 /// companion share nothing: the companion is a small app of its own and must
 /// not pick up a single editor plugin on the way.
+#[cfg(not(target_arch = "wasm32"))]
 const COMPANION_SYMBOL: &[u8] = b"renzora_companion_install\0";
 
 /// Its signature. A plain Rust `fn` taking `&mut App`, sound only because both
 /// sides link one shared Bevy.
+#[cfg(not(target_arch = "wasm32"))]
 type InstallFn = fn(&mut bevy::app::App);
 
 /// `renzora_editor.dll` / `librenzora_editor.so` / `librenzora_editor.dylib`.
+#[cfg(not(target_arch = "wasm32"))]
 fn image_name() -> &'static str {
     if cfg!(target_os = "windows") {
         "renzora_editor.dll"
@@ -62,6 +70,7 @@ fn image_name() -> &'static str {
 }
 
 /// Where the running executable lives.
+#[cfg(not(target_arch = "wasm32"))]
 fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(|p| p.to_path_buf())
 }

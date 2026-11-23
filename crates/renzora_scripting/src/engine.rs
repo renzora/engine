@@ -216,7 +216,7 @@ impl ScriptEngine {
         height: f32,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
-    ) -> Result<Vec<renzora::DrawCmd>, String> {
+    ) -> Result<Vec<renzora_scripting_api::DrawCmd>, String> {
         let resolved = self.resolve_path(path);
         let backend = self
             .backend_for(path)
@@ -229,7 +229,7 @@ impl ScriptEngine {
         &self,
         path: &Path,
         rpc_name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        args: &std::collections::HashMap<String, renzora_scripting_api::ScriptActionValue>,
         from: u64,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
@@ -250,7 +250,7 @@ impl ScriptEngine {
         &self,
         path: &Path,
         name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        args: &std::collections::HashMap<String, renzora_scripting_api::ScriptActionValue>,
         entity_bits: u64,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
@@ -335,7 +335,7 @@ impl ScriptEngine {
         &self,
         path: &Path,
         name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        args: &std::collections::HashMap<String, renzora_scripting_api::ScriptActionValue>,
         ctx: &mut ScriptContext,
         vars: &mut ScriptVariables,
     ) -> Result<(), String> {

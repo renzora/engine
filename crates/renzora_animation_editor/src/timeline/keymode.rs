@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use renzora::{AnimClip, Interp, KeyCurve, KeyMode};
+use renzora_animation_api::{AnimClip, Interp, KeyCurve, KeyMode};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::menu_item;
 
@@ -38,7 +38,7 @@ pub(super) fn mode_label_tr(mode: KeyMode, fallback: &str) -> String {
         KeyMode::Free => "timeline.key_free",
         KeyMode::Broken => "timeline.key_broken",
     };
-    renzora::lang::t_or(key, fallback)
+    renzora_lang_api::t_or(key, fallback)
 }
 
 /// The nearest property easing for a bone mode, for a mixed selection. The
@@ -186,7 +186,7 @@ pub(super) fn menu_targets(world: &World, picked: SelKey) -> Vec<SelKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::BoneTrack;
+    use renzora_animation_api::BoneTrack;
 
     fn clip() -> AnimClip {
         let mut c = renzora_animation::extract::create_empty_clip("c", 2.0);
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn a_blend_shape_key_takes_a_mode_like_a_bone_key() {
         let mut c = clip();
-        let mut m = renzora::MorphTrack::new("Face", 0, "");
+        let mut m = renzora_animation_api::MorphTrack::new("Face", 0, "");
         m.keys = vec![(0.0, 0.0), (1.0, 1.0)];
         c.morph_tracks.push(m);
         let k = SelKey { lane: Lane::Morph { track: 0 }, index: 0 };

@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{mpsc, Arc, Mutex};
 
 use bevy::prelude::*;
-use renzora::core::{CurrentProject, WindowMode};
+use renzora_project_api::{CurrentProject, WindowMode};
 use renzora_import::optimize::MeshOptSettings;
 use renzora_rpak::{
     pack_project_filtered, pack_project_with_progress, pack_selected_with_progress, RpakPacker,
@@ -1002,7 +1002,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // can carry it: compiled into a lean binary, and its libraries shipped
     // beside the executable in every mode. See `build::export_has_dlss`.
     let dlss_compiled = world
-        .get_resource::<renzora::DlssSupport>()
+        .get_resource::<renzora_solari_api::DlssSupport>()
         .is_some_and(|s| s.compiled);
     let dlss = crate::build::export_has_dlss(
         platform,
@@ -1068,7 +1068,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         included_files,
         dlss,
     };
-    let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
+    let remote = world.get_resource::<renzora_platform_api::CompanionJobs>().map(|j| j.remote());
     crate::remote::start(job, tx, cancel, remote);
 }
 
@@ -1077,7 +1077,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
 /// logged and the export carries on.
 fn ensure_virtual_geometry(root: &std::path::Path, tx: &mpsc::Sender<ExportMsg>) {
     use renzora_rvg::bake::{ensure_current, find_models, Ensured};
-    let models = find_models(root, renzora::core::project_files::is_ignored);
+    let models = find_models(root, renzora_project_api::project_files::is_ignored);
     for model in models {
         let name = model
             .strip_prefix(root)
@@ -1238,7 +1238,7 @@ pub(crate) fn export_worker(
     export_config.window.resizable = matches!(window_mode, WindowMode::Windowed);
     export_config.console_logging = console_logging;
     // The key the companion presents; without it the game never opens a port.
-    export_config.profiling_key = allow_profiling.then(renzora::profiling::machine_key);
+    export_config.profiling_key = allow_profiling.then(renzora_diagnostics_api::profiling::machine_key);
     // Editor-only fields shouldn't ship in exported builds. Both of these are
     // `skip_serializing` now, so a fresh `project.toml` never carries them —
     // this clears them from the in-memory copy anyway, because an export can be
@@ -1415,7 +1415,7 @@ pub(crate) fn export_worker(
             let wanted: Vec<(String, bool)> = selected_plugins
                 .iter()
                 .map(|p| {
-                    (p.id.clone(), p.scope == renzora::NativePluginScope::Editor)
+                    (p.id.clone(), p.scope == renzora_platform_api::NativePluginScope::Editor)
                 })
                 .collect();
             // Not `engine_dir`: a plugin's source lives beside the editor now,
@@ -1701,7 +1701,7 @@ pub(crate) fn export_worker(
                             //   The code execution cannot proceed because
                             //   renzora_ember_dylib.dll was not found.
                             //
-                            // The pattern covers all three today and any shared
+                            // The pattern covers every one today and any shared
                             // image added later, so the next rename cannot
                             // silently drop one the same way. `bevy_dylib` also
                             // carries a `-<hash>` suffix, which is why this is a
@@ -1743,7 +1743,7 @@ pub(crate) fn export_worker(
                     let from = if libs.join(file).is_file() {
                         libs.join(file)
                     } else if *file == "DLSS_LICENSE.txt" {
-                        match renzora::dlss_runtime::install_root() {
+                        match renzora_platform_api::dlss_runtime::install_root() {
                             Some(root) => root.join("LICENSE.txt"),
                             None => continue,
                         }

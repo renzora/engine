@@ -9,13 +9,9 @@ description = "One filesystem watcher over the open project. Publishes renzora::
 # nothing for this to watch outside the editor.
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-# The contract crate only. This plugin's whole output is
-# `renzora::ProjectFileEvent`, its whole input is `CurrentProject`, and the
-# `AssetReloadSink` it pushes through is a contract type too, so it links no
-# sibling crate at all. That is the point: every consumer subscribes to an event
-# rather than depending on the watcher.
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
 # The channel type `bevy_asset` hands its watchers. Bevy does not re-export it,
 # so it is named directly; the version matches what `bevy_asset` resolves, and
 # cargo unifies the two into one compilation rather than forking it.
@@ -33,3 +29,10 @@ bevy = { workspace = true, features = ["file_watcher"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ProjectWatchPlugin"
+scope = "Editor"

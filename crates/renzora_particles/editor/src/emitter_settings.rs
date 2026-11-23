@@ -46,7 +46,7 @@ use crate::state::VfxEditorState;
 pub const PANEL: &str = "vfx_emitter";
 
 /// The shared image list, so the texture slot takes SVG like every other slot.
-const IMG_EXTS: &[&str] = renzora::IMAGE_EXTENSIONS;
+const IMG_EXTS: &[&str] = renzora_project_api::IMAGE_EXTENSIONS;
 
 pub struct EmitterSettingsPanel;
 
@@ -1222,7 +1222,7 @@ fn set_path(state: &mut VfxEditorState, slot: Slot, path: Option<String>) {
 fn tex_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     zones: Query<(&UiCursor, &TexDropZone)>,
     state: Option<ResMut<VfxEditorState>>,
 ) {
@@ -1253,7 +1253,7 @@ fn tex_clear(q: Query<(&UiInteraction, &TexClearBtn), Changed<UiInteraction>>, s
 fn tex_browse(
     q: Query<(&UiInteraction, &TexDropZone), Changed<UiInteraction>>,
     payload: Option<Res<AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     state: Option<ResMut<VfxEditorState>>,
 ) {
     if payload.as_ref().is_some_and(|p| p.is_detached) {

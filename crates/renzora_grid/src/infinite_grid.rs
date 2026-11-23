@@ -95,7 +95,7 @@ impl Plugin for InfiniteGridPlugin {
 // leaving them here meant no plugin could put a ground plane under its own
 // preview. This crate keeps what actually needs the render graph: the pipeline,
 // the uniform, the draw command and the phase item below.
-pub use renzora::grid::{InfiniteGrid, InfiniteGridSettings};
+pub use renzora_render_api::grid::{InfiniteGrid, InfiniteGridSettings};
 
 #[derive(Debug, Clone, PartialEq, ShaderType)]
 struct InfiniteGridUniform {
@@ -312,14 +312,14 @@ fn extract_per_camera_grid_settings(
 }
 
 /// Render-world tag on a view that renders a reflection of the scene (see
-/// [`renzora::ReflectionCamera`]). The grid is editor chrome on the scene's own
+/// [`renzora_scene_api::ReflectionCamera`]). The grid is editor chrome on the scene's own
 /// layer, so layer filtering alone would draw it into every planar mirror; a
 /// reflected floor grid reads as part of the level, which is worse than the
 /// mirror simply not showing it.
 #[derive(Component, Clone, Copy, Default)]
 pub struct ReflectionView;
 
-type ReflectionCameraFilter = (With<Camera>, With<renzora::ReflectionCamera>);
+type ReflectionCameraFilter = (With<Camera>, With<renzora_scene_api::ReflectionCamera>);
 
 /// Tag reflection cameras' render entities with [`ReflectionView`]. The marker
 /// is permanent on those cameras, so there is nothing to remove: the render

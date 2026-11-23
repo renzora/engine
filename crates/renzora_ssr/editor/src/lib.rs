@@ -7,7 +7,7 @@
 
 use bevy::pbr::ScreenSpaceReflections;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 use renzora_ssr::SsrSettings;
 
 fn ssr_entry() -> InspectorEntry {
@@ -41,12 +41,12 @@ fn ssr_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora::FieldDef {
+            renzora_editor_api::FieldDef {
                 name: "Solari",
-                field_type: renzora::FieldType::ReadOnly,
+                field_type: renzora_editor_api::FieldType::ReadOnly,
                 get_fn: |world, entity| {
                     renzora_ssr::stood_down_by_solari(world, entity).then(|| {
-                        renzora::FieldValue::ReadOnly(
+                        renzora_editor_api::FieldValue::ReadOnly(
                             "Off while Solari ray-traced GI is on: it traces its own reflections."
                                 .to_string(),
                         )
@@ -54,10 +54,10 @@ fn ssr_entry() -> InspectorEntry {
                 },
                 set_fn: |_, _, _| {},
             },
-            renzora::float_field!("Thickness", SsrSettings, thickness, 0.01, 0.0, 5.0),
-            renzora::int_field!("Linear Steps", SsrSettings, linear_steps, u32, 1.0, 1.0, 64.0),
-            renzora::int_field!("Bisection Steps", SsrSettings, bisection_steps, u32, 1.0, 0.0, 16.0),
-            renzora::bool_field!("Secant Refine", SsrSettings, use_secant),
+            renzora_editor_api::float_field!("Thickness", SsrSettings, thickness, 0.01, 0.0, 5.0),
+            renzora_editor_api::int_field!("Linear Steps", SsrSettings, linear_steps, u32, 1.0, 1.0, 64.0),
+            renzora_editor_api::int_field!("Bisection Steps", SsrSettings, bisection_steps, u32, 1.0, 0.0, 16.0),
+            renzora_editor_api::bool_field!("Secant Refine", SsrSettings, use_secant),
         ],
     }
 }
@@ -72,5 +72,3 @@ impl Plugin for SsrEditorPlugin {
         app.register_inspector(ssr_entry());
     }
 }
-
-renzora::add!(SsrEditorPlugin, Editor);

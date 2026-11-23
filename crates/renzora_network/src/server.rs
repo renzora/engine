@@ -193,15 +193,15 @@ fn start_server(mut commands: Commands, config: Res<ServerNetworkConfig>) {
 /// clients, and report join/leave to scripts and status.
 fn server_poll(
     server: Option<ResMut<NetworkServer>>,
-    mut inbox: ResMut<renzora::ScriptRpcInbox>,
-    mut lifecycle: ResMut<renzora::ScriptNetLifecycleInbox>,
+    mut inbox: ResMut<renzora_scripting_api::ScriptRpcInbox>,
+    mut lifecycle: ResMut<renzora_scripting_api::ScriptNetLifecycleInbox>,
     mut status: ResMut<NetworkStatus>,
 ) {
     let Some(mut server) = server else { return };
     let update = server.update();
 
     for (from, event) in update.events {
-        inbox.pending.push(renzora::IncomingRpc {
+        inbox.pending.push(renzora_scripting_api::IncomingRpc {
             name: event.name.clone(),
             args: crate::rpc::args_from_bytes(&event.data),
             from,
@@ -215,11 +215,11 @@ fn server_poll(
             client_id: id,
             rtt_ms: 0.0,
         });
-        lifecycle.pending.push(renzora::NetPlayerEvent { id, joined: true });
+        lifecycle.pending.push(renzora_scripting_api::NetPlayerEvent { id, joined: true });
     }
     for id in update.left {
         status.connected_clients.retain(|c| c.client_id != id);
-        lifecycle.pending.push(renzora::NetPlayerEvent { id, joined: false });
+        lifecycle.pending.push(renzora_scripting_api::NetPlayerEvent { id, joined: false });
     }
 }
 

@@ -14,7 +14,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 use renzora_editor_framework::{EditorCommands, ShapeDragState, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -151,7 +151,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let hint = commands
         .spawn((
-            Text::new(renzora::lang::t_or(
+            Text::new(renzora_lang_api::t_or(
                 "shapes.hint",
                 "Click to add at the origin, or drag into the viewport",
             )),
@@ -160,7 +160,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node { flex_shrink: 1.0, min_width: Val::Px(0.0), ..default() },
         ))
         .id();
-    ellipsize(commands, hint, renzora::lang::t_or("shapes.hint", "Click to add at the origin, or drag into the viewport"), None);
+    ellipsize(commands, hint, renzora_lang_api::t_or("shapes.hint", "Click to add at the origin, or drag into the viewport"), None);
     let small = icon_text(commands, &fonts.phosphor, "square", text_muted(), 10.0);
     let size = slider_ranged(commands, SIZE_DEFAULT, SIZE_MIN, SIZE_MAX);
     commands.entity(size).entry::<Node>().and_modify(|mut n| {
@@ -199,7 +199,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    let bend_label = commands.spawn((Text::new(renzora::lang::t_or("shapes.bendable", "Bendable")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    let bend_label = commands.spawn((Text::new(renzora_lang_api::t_or("shapes.bendable", "Bendable")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
     commands.entity(bend).add_children(&[bend_box, bend_label]);
     commands.entity(bar).add_children(&[search, bend, spacer, hint, small, size, large]);
 
@@ -330,7 +330,7 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, group: Option<&'sta
     };
     let name = commands
         .spawn((
-            Text::new(renzora::lang::t_or(&format!("shapes.group.{}", label.to_lowercase().replace(' ', "_")), label)),
+            Text::new(renzora_lang_api::t_or(&format!("shapes.group.{}", label.to_lowercase().replace(' ', "_")), label)),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(color)),
             Node { flex_grow: 1.0, ..default() },
@@ -366,7 +366,7 @@ fn grid_snapshot(world: &Rx) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new(renzora::lang::t_or("shapes.none", "No shapes match.")),
+                    Text::new(renzora_lang_api::t_or("shapes.none", "No shapes match.")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                     Node { margin: UiRect::all(Val::Px(8.0)), ..default() },
@@ -431,7 +431,7 @@ fn section(
     let caret = icon_text(commands, &fonts.phosphor, if folded { "caret-right" } else { "caret-down" }, text_muted(), 10.0);
     let name = commands
         .spawn((
-            Text::new(renzora::lang::t_or(&format!("shapes.group.{}", group.to_lowercase().replace(' ', "_")), group)),
+            Text::new(renzora_lang_api::t_or(&format!("shapes.group.{}", group.to_lowercase().replace(' ', "_")), group)),
             ui_font(&fonts.ui, 12.5),
             TextColor(rgb(color_of(group))),
         ))
@@ -603,8 +603,8 @@ fn shape_drag_or_click(
                 let bendable = world.get_resource::<ShapeDragState>().is_some_and(|s| s.bendable);
                 let spawned = world.get_resource::<renzora_editor_framework::EditorSelection>().and_then(|s| s.get());
                 if let (true, Some(entity)) = (bendable, spawned) {
-                    if let Some(mut asks) = world.get_resource_mut::<Messages<renzora::core::MakeBendable>>() {
-                        asks.write(renzora::core::MakeBendable { entity, segments: 4 });
+                    if let Some(mut asks) = world.get_resource_mut::<Messages<renzora_scene_api::MakeBendable>>() {
+                        asks.write(renzora_scene_api::MakeBendable { entity, segments: 4 });
                     }
                 }
             });

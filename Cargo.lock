@@ -694,6 +694,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bcdec_rs"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d521509f38a9ab0fce76656a0416161ee5d42c1eab6672b958391e2ac7a0e31"
+
+[[package]]
 name = "bevy"
 version = "0.20.0-dev"
 dependencies = [
@@ -3417,32 +3423,11 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
-dependencies = [
- "dirs-sys 0.4.1",
-]
-
-[[package]]
-name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
 dependencies = [
- "dirs-sys 0.5.0",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
-dependencies = [
- "libc",
- "option-ext",
- "redox_users 0.4.6",
- "windows-sys 0.48.0",
+ "dirs-sys",
 ]
 
 [[package]]
@@ -3453,7 +3438,7 @@ checksum = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab"
 dependencies = [
  "libc",
  "option-ext",
- "redox_users 0.5.2",
+ "redox_users",
  "windows-sys 0.61.2",
 ]
 
@@ -7367,17 +7352,6 @@ dependencies = [
 
 [[package]]
 name = "redox_users"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
-dependencies = [
- "getrandom 0.2.17",
- "libredox",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "redox_users"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
@@ -7431,10 +7405,14 @@ dependencies = [
  "bevy_shape",
  "naga",
  "renzora_companion_proto",
- "renzora_legacy_shaders",
- "renzora_macros",
- "renzora_native_build",
- "ron 0.8.1",
+ "renzora_crash_api",
+ "renzora_editor_api",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
+ "renzora_viewport_api",
  "serde",
  "serde_json",
  "toml 0.8.23",
@@ -7462,8 +7440,21 @@ name = "renzora_animation"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_animation_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
+ "ron 0.8.1",
+ "serde",
+]
+
+[[package]]
+name = "renzora_animation_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora_scripting_api",
  "ron 0.8.1",
  "serde",
 ]
@@ -7475,16 +7466,26 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_animation",
+ "renzora_animation_api",
  "renzora_audio",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_inspector",
+ "renzora_lang_api",
+ "renzora_log_api",
  "renzora_particles",
  "renzora_particles_editor",
+ "renzora_platform_api",
+ "renzora_project_api",
  "renzora_rig",
+ "renzora_scene_api",
+ "renzora_scripting_api",
+ "renzora_shell_api",
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
+ "renzora_viewport_api",
  "rfd",
  "ron 0.8.1",
  "serde",
@@ -7495,7 +7496,10 @@ name = "renzora_antialiasing"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_solari_api",
+ "renzora_viewport_api",
  "serde",
 ]
 
@@ -7504,8 +7508,8 @@ name = "renzora_antialiasing_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_antialiasing",
+ "renzora_editor_api",
 ]
 
 [[package]]
@@ -7513,11 +7517,11 @@ name = "renzora_app"
 version = "0.2.0"
 dependencies = [
  "bevy",
- "getrandom 0.2.17",
  "getrandom 0.3.4",
  "getrandom 0.4.3",
  "log",
  "renzora",
+ "renzora_platform_api",
  "renzora_postprocess",
  "renzora_runtime",
  "renzora_static_plugins",
@@ -7533,11 +7537,17 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "image",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_platform_api",
+ "renzora_project_api",
  "renzora_rmip",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_shell_api",
+ "renzora_viewport_api",
  "renzora_webfs",
 ]
 
@@ -7546,7 +7556,7 @@ name = "renzora_asset_registry"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
  "renzora_splash",
  "renzora_webfs",
  "tempfile",
@@ -7557,7 +7567,10 @@ name = "renzora_atmosphere"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_shader_api",
+ "renzora_world_api",
  "serde",
 ]
 
@@ -7566,8 +7579,8 @@ name = "renzora_atmosphere_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_atmosphere",
+ "renzora_editor_api",
 ]
 
 [[package]]
@@ -7576,9 +7589,22 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "cfg-if",
- "renzora",
+ "renzora_audio_api",
+ "renzora_crash_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_scripting_api",
  "serde",
  "symphonia",
+]
+
+[[package]]
+name = "renzora_audio_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_crash_api",
 ]
 
 [[package]]
@@ -7587,7 +7613,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "cpal",
- "renzora",
+ "renzora_audio_api",
  "rtrb",
  "symphonia",
 ]
@@ -7597,7 +7623,8 @@ name = "renzora_auto_exposure"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
 ]
 
 [[package]]
@@ -7605,8 +7632,8 @@ name = "renzora_auto_exposure_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_auto_exposure",
+ "renzora_editor_api",
 ]
 
 [[package]]
@@ -7614,7 +7641,8 @@ name = "renzora_autosave"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_shell_api",
 ]
 
 [[package]]
@@ -7624,9 +7652,11 @@ dependencies = [
  "avian2d",
  "avian3d",
  "bevy",
- "renzora",
  "renzora_parkour",
  "renzora_physics",
+ "renzora_physics_api",
+ "renzora_scene_api",
+ "renzora_scripting_api",
 ]
 
 [[package]]
@@ -7634,8 +7664,7 @@ name = "renzora_bloom_effect"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
- "renzora_macros",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -7644,8 +7673,8 @@ name = "renzora_bloom_effect_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_bloom_effect",
+ "renzora_editor_api",
 ]
 
 [[package]]
@@ -7663,8 +7692,12 @@ name = "renzora_camera"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
+ "renzora_viewport_api",
  "serde",
 ]
 
@@ -7674,7 +7707,8 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_silk",
- "renzora",
+ "renzora_project_api",
+ "renzora_world_api",
 ]
 
 [[package]]
@@ -7682,7 +7716,12 @@ name = "renzora_clouds"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_shader_api",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "serde",
 ]
 
@@ -7691,8 +7730,8 @@ name = "renzora_clouds_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_clouds",
+ "renzora_editor_api",
 ]
 
 [[package]]
@@ -7701,9 +7740,12 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "log",
- "renzora",
+ "renzora_diagnostics_api",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_scripting",
 ]
 
@@ -7712,9 +7754,10 @@ name = "renzora_command_palette"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_project_api",
+ "renzora_shell_api",
 ]
 
 [[package]]
@@ -7727,22 +7770,28 @@ dependencies = [
  "renzora",
  "renzora_asset_browser",
  "renzora_companion_proto",
+ "renzora_diagnostics_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
  "renzora_export",
  "renzora_http",
  "renzora_import",
+ "renzora_log_api",
  "renzora_marketplace",
  "renzora_material_editor",
  "renzora_net",
+ "renzora_platform_api",
  "renzora_plugin_build",
  "renzora_profiler",
+ "renzora_project_api",
  "renzora_rmip",
  "renzora_rust_script",
  "renzora_rvg",
+ "renzora_scene_api",
  "renzora_shader",
  "renzora_shape_library",
+ "renzora_shell_api",
  "renzora_svg",
  "serde",
  "serde_json",
@@ -7777,8 +7826,11 @@ name = "renzora_console"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_project_api",
  "renzora_scripting",
 ]
 
@@ -7787,9 +7839,25 @@ name = "renzora_context_menu"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_scene_api",
+ "renzora_shell_api",
+ "renzora_viewport_api",
+]
+
+[[package]]
+name = "renzora_crash_api"
+version = "0.1.0"
+
+[[package]]
+name = "renzora_diagnostics_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_companion_proto",
+ "renzora_scene_api",
 ]
 
 [[package]]
@@ -7797,7 +7865,8 @@ name = "renzora_distance_fog"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_scene_api",
+ "renzora_world_api",
  "serde",
 ]
 
@@ -7806,9 +7875,9 @@ name = "renzora_distance_fog_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
- "renzora_distance_fog",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_world_api",
 ]
 
 [[package]]
@@ -7816,8 +7885,7 @@ name = "renzora_dof"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
- "renzora_macros",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -7826,15 +7894,15 @@ name = "renzora_dof_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_dof",
+ "renzora_editor_api",
 ]
 
 [[package]]
 name = "renzora_dylib"
 version = "0.1.0"
 dependencies = [
- "renzora",
+ "renzora_sdk",
 ]
 
 [[package]]
@@ -7861,13 +7929,11 @@ dependencies = [
  "renzora_companion",
  "renzora_console",
  "renzora_context_menu",
- "renzora_distance_fog",
  "renzora_distance_fog_editor",
  "renzora_dof",
  "renzora_dof_editor",
  "renzora_dylib",
  "renzora_editor_framework",
- "renzora_ember_dylib",
  "renzora_ember_editor",
  "renzora_engine",
  "renzora_engine_editor",
@@ -7918,7 +7984,6 @@ dependencies = [
  "renzora_solari_editor",
  "renzora_splash",
  "renzora_sprite_anim_editor",
- "renzora_ssao",
  "renzora_ssao_editor",
  "renzora_ssil",
  "renzora_ssil_editor",
@@ -7927,7 +7992,6 @@ dependencies = [
  "renzora_terrain",
  "renzora_terrain_editor",
  "renzora_terrain_graph_editor",
- "renzora_test_component",
  "renzora_theme_status",
  "renzora_tilemap_editor",
  "renzora_tonemapping",
@@ -7942,15 +8006,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_editor_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora_editor_api_macros",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_shell_api",
+ "serde",
+]
+
+[[package]]
+name = "renzora_editor_api_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "renzora_editor_app"
 version = "0.2.0"
 dependencies = [
  "bevy",
- "getrandom 0.2.17",
  "getrandom 0.3.4",
  "getrandom 0.4.3",
  "log",
- "renzora",
  "renzora_editor",
  "renzora_native_plugin",
  "renzora_postprocess",
@@ -7965,12 +8048,17 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "raw-window-handle",
- "renzora",
+ "renzora_animation_api",
+ "renzora_editor_api",
  "renzora_ember",
- "renzora_macros",
- "renzora_postprocess",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_theme",
  "renzora_ui",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "rfd",
  "serde",
 ]
@@ -7986,21 +8074,22 @@ dependencies = [
  "image",
  "nom 7.1.3",
  "raw-window-handle",
- "renzora",
- "renzora_net",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_net_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
+ "renzora_shader_api",
+ "renzora_shell_api",
+ "renzora_text_mesh",
+ "renzora_viewport_api",
  "serde",
  "tempfile",
  "toml 0.8.23",
  "uuid",
-]
-
-[[package]]
-name = "renzora_ember_dylib"
-version = "0.1.0"
-dependencies = [
- "renzora_dylib",
- "renzora_ember",
 ]
 
 [[package]]
@@ -8010,8 +8099,12 @@ dependencies = [
  "bevy",
  "bevy_hui",
  "image",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8020,26 +8113,40 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "bevy",
- "dirs 6.0.0",
+ "dirs",
  "futures-lite",
  "renzora",
  "renzora_animation",
+ "renzora_animation_api",
  "renzora_audio",
  "renzora_bsn",
+ "renzora_crash_api",
  "renzora_lighting",
- "renzora_macros",
+ "renzora_log_api",
+ "renzora_material_api",
  "renzora_network",
  "renzora_physics",
+ "renzora_physics_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_render_api",
  "renzora_rmip",
  "renzora_rpak",
  "renzora_rvg",
+ "renzora_save_api",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
  "renzora_shader",
+ "renzora_shell_api",
  "renzora_terrain",
+ "renzora_viewport_api",
  "renzora_webfs",
+ "renzora_world_api",
  "rfd",
  "ron 0.8.1",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "toml 0.8.23",
  "web-time",
@@ -8051,10 +8158,15 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
  "renzora_engine",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_terrain",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8062,8 +8174,10 @@ name = "renzora_environment_map"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_diagnostics_api",
  "renzora_lighting",
+ "renzora_project_api",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -8072,7 +8186,7 @@ name = "renzora_environment_map_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_environment_map",
 ]
 
@@ -8087,14 +8201,19 @@ dependencies = [
  "rand_core 0.6.4",
  "rcgen",
  "renzora",
+ "renzora_diagnostics_api",
  "renzora_ember",
  "renzora_import",
+ "renzora_lang_api",
  "renzora_native_plugin",
- "renzora_net",
+ "renzora_net_api",
+ "renzora_platform_api",
  "renzora_plugin_build",
+ "renzora_project_api",
  "renzora_rpak",
  "renzora_rust_script",
  "renzora_rvg",
+ "renzora_solari_api",
  "rfd",
  "serde",
  "serde_json",
@@ -8109,10 +8228,10 @@ name = "renzora_foliage_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_terrain",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8120,7 +8239,7 @@ name = "renzora_forward_decal"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -8129,7 +8248,6 @@ name = "renzora_forward_decal_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_forward_decal",
 ]
@@ -8141,7 +8259,8 @@ dependencies = [
  "bevy",
  "bevy_gaussian_splatting",
  "image",
- "renzora",
+ "renzora_editor_api",
+ "renzora_scene_api",
  "serde",
  "serde_json",
  "zip",
@@ -8152,13 +8271,21 @@ name = "renzora_gizmo"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_animation_api",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_lang_api",
  "renzora_lighting",
  "renzora_physics",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_scripting_api",
+ "renzora_shell_api",
  "renzora_terrain",
  "renzora_undo",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8166,7 +8293,10 @@ name = "renzora_grid"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8174,15 +8304,22 @@ name = "renzora_hierarchy"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
- "renzora_macros",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_material_api",
  "renzora_physics",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_shell_api",
  "renzora_ui",
  "renzora_undo",
+ "renzora_viewport_api",
  "rfd",
 ]
 
@@ -8191,7 +8328,6 @@ name = "renzora_history"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_undo",
@@ -8202,8 +8338,7 @@ name = "renzora_http"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
- "renzora_net",
+ "renzora_net_api",
  "ureq",
 ]
 
@@ -8212,9 +8347,11 @@ name = "renzora_ik"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
- "renzora_macros",
+ "renzora_editor_api",
+ "renzora_physics_api",
+ "renzora_project_api",
  "renzora_scripting",
+ "renzora_scripting_api",
 ]
 
 [[package]]
@@ -8233,8 +8370,12 @@ dependencies = [
  "quick-xml 0.37.5",
  "rayon",
  "renzora",
+ "renzora_animation_api",
+ "renzora_platform_api",
+ "renzora_project_api",
  "renzora_rmip",
  "renzora_rvg",
+ "renzora_scene_api",
  "ron 0.8.1",
  "serde",
  "serde_json",
@@ -8251,11 +8392,15 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "log",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_grid",
  "renzora_import",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
+ "renzora_viewport_api",
  "rfd",
  "serde_json",
 ]
@@ -8265,7 +8410,8 @@ name = "renzora_input"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_scripting_api",
  "ron 0.10.1",
  "serde",
 ]
@@ -8275,15 +8421,24 @@ name = "renzora_inspector"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_bsn",
  "renzora_camera",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
+ "renzora_shell_api",
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
+ "renzora_viewport_api",
+ "renzora_world_api",
 ]
 
 [[package]]
@@ -8291,7 +8446,8 @@ name = "renzora_keybindings"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_shell_api",
 ]
 
 [[package]]
@@ -8299,9 +8455,19 @@ name = "renzora_lang"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_lang_api",
+ "renzora_project_api",
  "renzora_scripting",
  "tempfile",
+]
+
+[[package]]
+name = "renzora_lang_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "serde",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -8313,23 +8479,25 @@ name = "renzora_level_presets"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_antialiasing",
  "renzora_atmosphere",
  "renzora_bloom_effect",
- "renzora_distance_fog",
- "renzora_dof",
+ "renzora_editor_api",
  "renzora_ember",
  "renzora_environment_map",
+ "renzora_lang_api",
  "renzora_lighting",
- "renzora_motion_blur",
- "renzora_ssao",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_solari_api",
  "renzora_ssil",
  "renzora_ssr",
  "renzora_terrain",
  "renzora_tonemapping",
  "renzora_ui",
- "renzora_volumetric_fog",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "serde",
 ]
 
@@ -8339,7 +8507,10 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_firefly",
- "renzora",
+ "renzora_editor_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8347,7 +8518,8 @@ name = "renzora_lighting"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_scripting_api",
+ "renzora_world_api",
  "serde",
 ]
 
@@ -8356,8 +8528,9 @@ name = "renzora_lighting_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_lighting",
+ "renzora_world_api",
 ]
 
 [[package]]
@@ -8366,8 +8539,9 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "image",
- "renzora",
  "renzora_engine",
+ "renzora_project_api",
+ "renzora_scene_api",
  "ron 0.8.1",
  "serde",
  "serde_json",
@@ -8378,21 +8552,18 @@ name = "renzora_live_link_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_engine",
  "renzora_live_link",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "ron 0.8.1",
  "serde_json",
 ]
 
 [[package]]
-name = "renzora_macros"
+name = "renzora_log_api"
 version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
 
 [[package]]
 name = "renzora_marketplace"
@@ -8400,19 +8571,25 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "crossbeam-channel",
- "dirs 6.0.0",
+ "dirs",
  "image",
- "renzora",
  "renzora_audio",
  "renzora_ember",
  "renzora_grid",
- "renzora_import",
+ "renzora_lang_api",
+ "renzora_log_api",
  "renzora_native_build",
  "renzora_native_plugin",
+ "renzora_net_api",
+ "renzora_platform_api",
  "renzora_plugin_build",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shell_api",
  "renzora_splash",
  "renzora_theme",
+ "renzora_viewport_api",
  "rfd",
  "serde",
  "serde_json",
@@ -8421,17 +8598,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_material_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "renzora_material_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "image",
- "renzora",
+ "renzora_diagnostics_api",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_log_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shader_api",
+ "renzora_shell_api",
  "renzora_splash",
  "renzora_undo",
+ "renzora_viewport_api",
  "renzora_webfs",
  "rfd",
  "serde",
@@ -8444,10 +8640,12 @@ name = "renzora_mixer"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_audio",
+ "renzora_editor_api",
  "renzora_ember",
  "renzora_inspector",
+ "renzora_lang_api",
+ "renzora_project_api",
 ]
 
 [[package]]
@@ -8455,8 +8653,7 @@ name = "renzora_motion_blur"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
- "renzora_macros",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -8465,7 +8662,7 @@ name = "renzora_motion_blur_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_motion_blur",
 ]
 
@@ -8480,8 +8677,14 @@ dependencies = [
  "bevy",
  "libloading 0.8.9",
  "renzora",
+ "renzora_crash_api",
+ "renzora_log_api",
  "renzora_native_build",
+ "renzora_net_api",
+ "renzora_platform_api",
  "renzora_plugin_build",
+ "renzora_project_api",
+ "renzora_shell_api",
  "serde",
 ]
 
@@ -8491,8 +8694,11 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "polyanya",
- "renzora",
+ "renzora_log_api",
+ "renzora_physics_api",
+ "renzora_project_api",
  "renzora_scripting",
+ "renzora_scripting_api",
  "renzora_terrain",
  "renzora_test_harness",
  "ron 0.8.1",
@@ -8505,9 +8711,11 @@ name = "renzora_navmesh_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_log_api",
  "renzora_navmesh",
+ "renzora_project_api",
  "renzora_ui",
  "vleue_navigator",
 ]
@@ -8517,7 +8725,17 @@ name = "renzora_net"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_crash_api",
+ "renzora_net_api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "renzora_net_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
  "serde",
  "serde_json",
 ]
@@ -8529,7 +8747,8 @@ dependencies = [
  "bevy",
  "bincode",
  "log",
- "renzora",
+ "renzora_project_api",
+ "renzora_scripting_api",
  "serde",
  "serde_json",
 ]
@@ -8539,9 +8758,11 @@ name = "renzora_network_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_lang_api",
  "renzora_network",
+ "renzora_project_api",
 ]
 
 [[package]]
@@ -8549,7 +8770,7 @@ name = "renzora_oit"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -8558,7 +8779,7 @@ name = "renzora_oit_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_oit",
 ]
 
@@ -8567,11 +8788,13 @@ name = "renzora_parkour"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_animation",
- "renzora_macros",
+ "renzora_editor_api",
  "renzora_physics",
+ "renzora_physics_api",
+ "renzora_project_api",
  "renzora_scripting",
+ "renzora_scripting_api",
  "serde",
 ]
 
@@ -8580,10 +8803,10 @@ name = "renzora_parkour_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_gizmo",
  "renzora_parkour",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8592,10 +8815,17 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "naga",
- "renzora",
  "renzora_bsn",
+ "renzora_log_api",
+ "renzora_material_api",
+ "renzora_physics_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_scripting_api",
  "renzora_shader",
+ "renzora_shader_api",
  "renzora_test_harness",
+ "renzora_world_api",
  "ron 0.8.1",
  "serde",
 ]
@@ -8605,13 +8835,20 @@ name = "renzora_particles_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_gizmo",
  "renzora_inspector",
+ "renzora_log_api",
+ "renzora_material_api",
  "renzora_particles",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shader_api",
+ "renzora_shell_api",
  "renzora_undo",
+ "renzora_viewport_api",
  "rfd",
  "ron 0.8.1",
 ]
@@ -8621,8 +8858,22 @@ name = "renzora_physics"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_log_api",
+ "renzora_physics_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
+ "renzora_shell_api",
+ "serde",
+]
+
+[[package]]
+name = "renzora_physics_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "ron 0.8.1",
  "serde",
 ]
 
@@ -8631,9 +8882,13 @@ name = "renzora_physics_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_log_api",
  "renzora_physics",
+ "renzora_physics_api",
+ "renzora_project_api",
+ "renzora_scene_api",
 ]
 
 [[package]]
@@ -8641,9 +8896,11 @@ name = "renzora_planar_reflection"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_shader",
  "renzora_test_harness",
+ "renzora_viewport_api",
  "serde",
 ]
 
@@ -8652,10 +8909,26 @@ name = "renzora_planar_reflection_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_gizmo",
+ "renzora_log_api",
  "renzora_planar_reflection",
+ "renzora_scene_api",
+]
+
+[[package]]
+name = "renzora_platform_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora_companion_proto",
+ "renzora_log_api",
+ "renzora_native_build",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -8678,7 +8951,9 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "naga",
- "renzora",
+ "renzora_log_api",
+ "renzora_render_api",
+ "renzora_scene_api",
  "renzora_test_harness",
 ]
 
@@ -8687,9 +8962,12 @@ name = "renzora_postprocess_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_lang_api",
  "renzora_postprocess",
+ "renzora_project_api",
+ "renzora_render_api",
  "renzora_ui",
 ]
 
@@ -8702,19 +8980,11 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "getrandom 0.4.3",
- "js-sys",
- "renzora",
- "renzora_animation",
- "renzora_lighting",
- "renzora_macros",
  "renzora_particles",
  "renzora_shader",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -8722,9 +8992,22 @@ name = "renzora_profiler"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_companion_proto",
+ "renzora_diagnostics_api",
+ "renzora_platform_api",
+ "renzora_project_api",
  "serde_json",
+]
+
+[[package]]
+name = "renzora_project_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora_companion_proto",
+ "renzora_log_api",
+ "serde",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -8733,7 +9016,8 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "bevy",
- "renzora",
+ "renzora_platform_api",
+ "renzora_project_api",
  "serde_json",
 ]
 
@@ -8742,17 +9026,21 @@ name = "renzora_ragdoll"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_animation",
- "renzora_macros",
+ "renzora_editor_api",
+ "renzora_physics_api",
  "renzora_scripting",
+ "renzora_scripting_api",
 ]
 
 [[package]]
-name = "renzora_render_link"
+name = "renzora_render_api"
 version = "0.1.0"
 dependencies = [
- "memmap2",
+ "bevy",
+ "renzora",
+ "renzora_scene_api",
+ "serde",
 ]
 
 [[package]]
@@ -8809,11 +9097,11 @@ dependencies = [
  "renzora_bloom_effect",
  "renzora_cloth",
  "renzora_clouds",
+ "renzora_diagnostics_api",
  "renzora_distance_fog",
  "renzora_dof",
  "renzora_dylib",
  "renzora_ember",
- "renzora_ember_dylib",
  "renzora_engine",
  "renzora_environment_map",
  "renzora_forward_decal",
@@ -8834,12 +9122,18 @@ dependencies = [
  "renzora_particles",
  "renzora_physics",
  "renzora_planar_reflection",
+ "renzora_platform_api",
  "renzora_postprocess",
  "renzora_profiler",
+ "renzora_project_api",
  "renzora_ragdoll",
+ "renzora_render_api",
  "renzora_rust_script",
+ "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
  "renzora_shader",
+ "renzora_shell_api",
  "renzora_skybox",
  "renzora_solari",
  "renzora_sprite_anim",
@@ -8851,6 +9145,7 @@ dependencies = [
  "renzora_terrain_graph",
  "renzora_tilemap",
  "renzora_tonemapping",
+ "renzora_viewport_api",
  "renzora_virtual_geometry",
  "renzora_volumetric_fog",
  "renzora_xr",
@@ -8866,8 +9161,16 @@ dependencies = [
  "bevy",
  "libloading 0.8.9",
  "renzora",
+ "renzora_crash_api",
+ "renzora_diagnostics_api",
+ "renzora_log_api",
+ "renzora_net_api",
+ "renzora_physics_api",
+ "renzora_platform_api",
  "renzora_plugin_build",
+ "renzora_project_api",
  "renzora_scripting",
+ "renzora_scripting_api",
  "renzora_static_scripts",
 ]
 
@@ -8884,23 +9187,56 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_scene"
+name = "renzora_save_api"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "renzora_scripting_api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "renzora_scene"
+version = "0.1.0"
+dependencies = [
+ "bcdec_rs",
+ "bevy",
  "image",
- "renzora",
+ "meshopt",
+ "renzora_bsn",
  "renzora_camera",
+ "renzora_diagnostics_api",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
  "renzora_keybindings",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_material_api",
+ "renzora_project_api",
+ "renzora_rmip",
+ "renzora_rvg",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shell_api",
  "renzora_splash",
  "renzora_ui",
  "renzora_undo",
  "renzora_viewport",
+ "renzora_viewport_api",
  "rfd",
+ "serde_json",
+]
+
+[[package]]
+name = "renzora_scene_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "serde",
+ "web-time",
 ]
 
 [[package]]
@@ -8910,9 +9246,25 @@ dependencies = [
  "bevy",
  "log",
  "renzora",
- "renzora_net",
+ "renzora_animation_api",
+ "renzora_diagnostics_api",
+ "renzora_log_api",
+ "renzora_net_api",
+ "renzora_physics_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_scripting_api",
+ "renzora_shell_api",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "renzora_scripting_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "serde",
 ]
 
 [[package]]
@@ -8920,9 +9272,34 @@ name = "renzora_scripting_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_platform_api",
+ "renzora_project_api",
  "renzora_scripting",
+]
+
+[[package]]
+name = "renzora_sdk"
+version = "0.1.0"
+dependencies = [
+ "renzora",
+ "renzora_animation_api",
+ "renzora_audio_api",
+ "renzora_diagnostics_api",
+ "renzora_ember",
+ "renzora_material_api",
+ "renzora_net_api",
+ "renzora_physics_api",
+ "renzora_platform_api",
+ "renzora_render_api",
+ "renzora_save_api",
+ "renzora_scripting_api",
+ "renzora_shader_api",
+ "renzora_shell_api",
+ "renzora_solari_api",
+ "renzora_text_mesh",
+ "renzora_world_api",
 ]
 
 [[package]]
@@ -8930,12 +9307,16 @@ name = "renzora_settings"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_input",
  "renzora_keybindings",
- "renzora_splash",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_physics_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_theme",
  "renzora_viewport",
  "rfd",
@@ -8948,8 +9329,14 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "naga",
- "renzora",
+ "renzora_diagnostics_api",
+ "renzora_log_api",
+ "renzora_material_api",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shader_api",
  "renzora_test_harness",
  "serde",
  "serde_json",
@@ -8959,15 +9346,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_shader_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "naga",
+ "renzora_legacy_shaders",
+]
+
+[[package]]
 name = "renzora_shader_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "crossbeam-channel",
  "notify-debouncer-full",
- "renzora",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_project_api",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8975,10 +9374,13 @@ name = "renzora_shape_library"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_platform_api",
+ "renzora_scene_api",
  "renzora_undo",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -8992,12 +9394,21 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "raw-window-handle",
  "renzora",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_lang_api",
+ "renzora_log_api",
  "renzora_native_build",
+ "renzora_net_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_theme",
  "renzora_ui",
  "renzora_viewport",
+ "renzora_viewport_api",
  "rfd",
  "serde",
  "serde_json",
@@ -9005,11 +9416,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_shell_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora_lang_api",
+ "serde",
+]
+
+[[package]]
 name = "renzora_skybox"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -9018,9 +9439,10 @@ name = "renzora_skybox_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
  "renzora_inspector",
+ "renzora_project_api",
  "renzora_skybox",
  "rfd",
 ]
@@ -9030,9 +9452,21 @@ name = "renzora_solari"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_solari_api",
  "renzora_test_harness",
+ "renzora_viewport_api",
+ "renzora_world_api",
+]
+
+[[package]]
+name = "renzora_solari_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "serde",
 ]
 
 [[package]]
@@ -9040,8 +9474,12 @@ name = "renzora_solari_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_net_api",
+ "renzora_platform_api",
+ "renzora_shell_api",
+ "renzora_solari_api",
  "sha2 0.10.9",
 ]
 
@@ -9050,11 +9488,17 @@ name = "renzora_splash"
 version = "0.2.0"
 dependencies = [
  "bevy",
- "dirs 6.0.0",
- "renzora",
+ "dirs",
  "renzora_ember",
- "renzora_net",
+ "renzora_lang_api",
+ "renzora_net_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_ui",
+ "renzora_viewport_api",
  "renzora_webfs",
  "rfd",
  "serde",
@@ -9068,7 +9512,8 @@ name = "renzora_sprite_anim"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_animation_api",
+ "renzora_scene_api",
  "renzora_test_harness",
 ]
 
@@ -9077,10 +9522,14 @@ name = "renzora_sprite_anim_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_animation",
+ "renzora_animation_api",
  "renzora_animation_editor",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_ui",
 ]
 
@@ -9089,7 +9538,9 @@ name = "renzora_ssao"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_world_api",
  "serde",
 ]
 
@@ -9098,9 +9549,9 @@ name = "renzora_ssao_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
- "renzora_ssao",
+ "renzora_world_api",
 ]
 
 [[package]]
@@ -9108,7 +9559,11 @@ name = "renzora_ssil"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_shader_api",
+ "renzora_viewport_api",
  "serde",
 ]
 
@@ -9117,7 +9572,7 @@ name = "renzora_ssil_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ssil",
 ]
 
@@ -9126,7 +9581,8 @@ name = "renzora_ssr"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_render_api",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -9135,7 +9591,7 @@ name = "renzora_ssr_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ssr",
 ]
 
@@ -9151,7 +9607,7 @@ name = "renzora_static_scripts"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_sdk",
 ]
 
 [[package]]
@@ -9159,7 +9615,8 @@ name = "renzora_svg"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_crash_api",
+ "renzora_log_api",
  "resvg",
  "serde",
  "thiserror 2.0.18",
@@ -9175,10 +9632,19 @@ dependencies = [
  "bytemuck",
  "flate2",
  "png 0.17.16",
- "renzora",
+ "renzora_log_api",
+ "renzora_material_api",
  "renzora_physics",
+ "renzora_physics_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_render_api",
  "renzora_rvg",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shader_api",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "serde",
  "serde_json",
 ]
@@ -9188,17 +9654,24 @@ name = "renzora_terrain_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_foliage_editor",
+ "renzora_log_api",
+ "renzora_material_api",
+ "renzora_platform_api",
+ "renzora_project_api",
  "renzora_rmip",
  "renzora_rvg",
+ "renzora_scene_api",
  "renzora_shader",
  "renzora_terrain",
  "renzora_terrain_graph",
  "renzora_terrain_graph_editor",
  "renzora_undo",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "rfd",
  "serde_json",
 ]
@@ -9208,7 +9681,8 @@ name = "renzora_terrain_graph"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
+ "renzora_shell_api",
  "renzora_terrain",
  "serde",
  "serde_json",
@@ -9219,21 +9693,14 @@ name = "renzora_terrain_graph_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_shell_api",
  "renzora_terrain",
  "renzora_terrain_graph",
  "renzora_undo",
-]
-
-[[package]]
-name = "renzora_test_component"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_macros",
 ]
 
 [[package]]
@@ -9244,11 +9711,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_text_mesh"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "renzora_theme"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora_macros",
  "serde",
  "serde_json",
  "toml 0.8.23",
@@ -9259,7 +9732,7 @@ name = "renzora_theme_status"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_project_api",
  "renzora_theme",
 ]
 
@@ -9268,8 +9741,8 @@ name = "renzora_tilemap"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_physics",
+ "renzora_scene_api",
  "renzora_test_harness",
  "serde",
 ]
@@ -9279,12 +9752,16 @@ name = "renzora_tilemap_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
  "renzora_physics",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_tilemap",
  "renzora_ui",
  "renzora_undo",
+ "renzora_viewport_api",
 ]
 
 [[package]]
@@ -9292,7 +9769,7 @@ name = "renzora_tonemapping"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_scene_api",
  "ron 0.8.1",
  "serde",
 ]
@@ -9302,7 +9779,7 @@ name = "renzora_tonemapping_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_tonemapping",
 ]
 
@@ -9316,7 +9793,12 @@ dependencies = [
  "renzora_code_editor",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_theme",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "toml 0.8.23",
 ]
 
@@ -9325,9 +9807,7 @@ name = "renzora_ui"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "dirs 5.0.1",
  "serde",
- "toml 0.8.23",
 ]
 
 [[package]]
@@ -9336,10 +9816,13 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "log",
- "renzora",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
+ "renzora_shell_api",
  "renzora_ui",
 ]
 
@@ -9348,9 +9831,12 @@ name = "renzora_update"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_ember",
- "renzora_net",
+ "renzora_lang_api",
+ "renzora_net_api",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_shell_api",
  "renzora_splash",
  "rfd",
  "serde",
@@ -9368,21 +9854,41 @@ dependencies = [
  "raw-window-handle",
  "renzora",
  "renzora_animation",
- "renzora_console",
+ "renzora_diagnostics_api",
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_ember_editor",
  "renzora_engine",
  "renzora_import",
- "renzora_keybindings",
+ "renzora_lang_api",
+ "renzora_log_api",
+ "renzora_material_api",
  "renzora_particles",
  "renzora_physics",
+ "renzora_platform_api",
+ "renzora_project_api",
+ "renzora_render_api",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shell_api",
  "renzora_terrain",
  "renzora_theme",
  "renzora_ui",
  "renzora_undo",
+ "renzora_viewport_api",
+ "renzora_world_api",
  "serde_json",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "renzora_viewport_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora_project_api",
+ "renzora_scene_api",
+ "serde",
  "toml 0.8.23",
 ]
 
@@ -9393,11 +9899,18 @@ dependencies = [
  "bevy",
  "bytemuck",
  "offset-allocator",
- "renzora",
+ "renzora_diagnostics_api",
+ "renzora_log_api",
+ "renzora_project_api",
+ "renzora_render_api",
  "renzora_rvg",
+ "renzora_scene_api",
  "renzora_shader",
+ "renzora_shader_api",
  "renzora_solari",
+ "renzora_solari_api",
  "renzora_test_harness",
+ "renzora_viewport_api",
  "serde_json",
  "wgpu",
 ]
@@ -9407,9 +9920,13 @@ name = "renzora_virtual_geometry_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_ember",
+ "renzora_log_api",
+ "renzora_platform_api",
+ "renzora_project_api",
  "renzora_rvg",
+ "renzora_scene_api",
  "renzora_virtual_geometry",
  "serde_json",
 ]
@@ -9419,7 +9936,7 @@ name = "renzora_volumetric_fog"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -9428,7 +9945,7 @@ name = "renzora_volumetric_fog_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
+ "renzora_editor_api",
  "renzora_volumetric_fog",
 ]
 
@@ -9443,6 +9960,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_world_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "renzora_xr"
 version = "0.2.0"
 dependencies = [
@@ -9451,7 +9977,7 @@ dependencies = [
  "bevy_mod_xr",
  "bevy_xr_utils",
  "openxr",
- "renzora",
+ "renzora_scene_api",
  "serde",
 ]
 
@@ -9822,17 +10348,6 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
-]
-
-[[package]]
-name = "serde-wasm-bindgen"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -11963,15 +12478,6 @@ dependencies = [
 
 [[package]]
 name = "windows-sys"
-version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
-dependencies = [
- "windows-targets 0.48.5",
-]
-
-[[package]]
-name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
@@ -12019,21 +12525,6 @@ dependencies = [
  "windows_x86_64_gnu 0.42.2",
  "windows_x86_64_gnullvm 0.42.2",
  "windows_x86_64_msvc 0.42.2",
-]
-
-[[package]]
-name = "windows-targets"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a2fa6e2155d7247be68c096456083145c183cbbbc2764150dda45a87197940c"
-dependencies = [
- "windows_aarch64_gnullvm 0.48.5",
- "windows_aarch64_msvc 0.48.5",
- "windows_i686_gnu 0.48.5",
- "windows_i686_msvc 0.48.5",
- "windows_x86_64_gnu 0.48.5",
- "windows_x86_64_gnullvm 0.48.5",
- "windows_x86_64_msvc 0.48.5",
 ]
 
 [[package]]
@@ -12086,12 +12577,6 @@ checksum = "597a5118570b68bc08d8d59125332c54f1ba9d9adeedeef5b99b02ba2b0698f8"
 
 [[package]]
 name = "windows_aarch64_gnullvm"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b38e32f0abccf9987a4e3079dfb67dcd799fb61361e53e2882c3cbaf0d905d8"
-
-[[package]]
-name = "windows_aarch64_gnullvm"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
@@ -12110,12 +12595,6 @@ checksum = "e08e8864a60f06ef0d0ff4ba04124db8b0fb3be5776a5cd47641e942e58c4d43"
 
 [[package]]
 name = "windows_aarch64_msvc"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc35310971f3b2dbbf3f0690a219f40e2d9afcf64f9ab7cc1be722937c26b4bc"
-
-[[package]]
-name = "windows_aarch64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
@@ -12131,12 +12610,6 @@ name = "windows_i686_gnu"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c61d927d8da41da96a81f029489353e68739737d3beca43145c8afec9a31a84f"
-
-[[package]]
-name = "windows_i686_gnu"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a75915e7def60c94dcef72200b9a8e58e5091744960da64ec734a6c6e9b3743e"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -12170,12 +12643,6 @@ checksum = "44d840b6ec649f480a41c8d80f9c65108b92d89345dd94027bfe06ac444d1060"
 
 [[package]]
 name = "windows_i686_msvc"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f55c233f70c4b27f66c523580f78f1004e8b5a8b659e05a4eb49d4166cca406"
-
-[[package]]
-name = "windows_i686_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
@@ -12191,12 +12658,6 @@ name = "windows_x86_64_gnu"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8de912b8b8feb55c064867cf047dda097f92d51efad5b491dfb98f6bbb70cb36"
-
-[[package]]
-name = "windows_x86_64_gnu"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53d40abd2583d23e4718fddf1ebec84dbff8381c07cae67ff7768bbf19c6718e"
 
 [[package]]
 name = "windows_x86_64_gnu"
@@ -12218,12 +12679,6 @@ checksum = "26d41b46a36d453748aedef1486d5c7a85db22e56aff34643984ea85514e94a3"
 
 [[package]]
 name = "windows_x86_64_gnullvm"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b7b52767868a23d5bab768e390dc5f5c55825b6d30b86c844ff2dc7414044cc"
-
-[[package]]
-name = "windows_x86_64_gnullvm"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
@@ -12239,12 +12694,6 @@ name = "windows_x86_64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aec5da331524158c6d1a4ac0ab1541149c0b9505fde06423b02f5ef0106b9f0"
-
-[[package]]
-name = "windows_x86_64_msvc"
-version = "0.48.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
 
 [[package]]
 name = "windows_x86_64_msvc"

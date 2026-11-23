@@ -16,7 +16,7 @@
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::core::EditorCamera;
+use renzora_scene_api::EditorCamera;
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::theme::*;
 use renzora_ember::UiInteraction;

@@ -207,7 +207,7 @@ Templates are matched to the engine **by version**, not by an ABI hash. The old 
 
 What still has to line up is the **runtime and the editor**, because they share the scene format and the project config. That is what the version-scoped template store enforces: `~/.renzora/templates/<version>/` can only ever hand this editor a runtime published for its own version.
 
-The single source of that version is `renzora::version::ENGINE_VERSION` (`crates/renzora/src/version.rs`). It is what the About dialog shows, what the splash shows, what the release workflow tags with, and what the downloader asks GitHub for — bump it and the docs directory together.
+The single source of that version is `renzora::version::ENGINE_VERSION` (`crates/api/renzora_platform_api/src/version.rs`). It is what the About dialog shows, what the splash shows, what the release workflow tags with, and what the downloader asks GitHub for — bump it and the docs directory together.
 
 CI stamps two further values into a published binary, read by `option_env!` when the contract crate compiles:
 

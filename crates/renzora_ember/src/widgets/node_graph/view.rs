@@ -1887,8 +1887,8 @@ fn ngv_comment_request(
 pub fn comment_search_entry(viewport: Entity, canvas: Vec2) -> crate::widgets::SearchEntry {
     crate::widgets::SearchEntry::new(
         "chat-text",
-        renzora::lang::t_or("node_graph.comment", "Comment"),
-        renzora::lang::t_or("node_graph.category.layout", "Layout"),
+        renzora_lang_api::t_or("node_graph.comment", "Comment"),
+        renzora_lang_api::t_or("node_graph.category.layout", "Layout"),
         move |w: &mut World| {
             if let Some(mut g) = w.get_mut::<NodeGraphView>(viewport) {
                 g.request_comment(Some(canvas));
@@ -1896,7 +1896,7 @@ pub fn comment_search_entry(viewport: Entity, canvas: Vec2) -> crate::widgets::S
         },
     )
     .with_detail("C")
-    .with_description(renzora::lang::t_or(
+    .with_description(renzora_lang_api::t_or(
         "node_graph.comment_desc",
         "Group the selected nodes in a titled box, or add an empty one here",
     ))

@@ -89,7 +89,7 @@ fn ensure_depth_prepass(
     mut commands: Commands,
     cameras: Query<Entity, (With<Camera3d>, Without<DepthPrepass>)>,
     decals: Query<(), With<DecalSettings>>,
-    routing: Res<renzora::core::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     if decals.is_empty() {
         return;
@@ -115,5 +115,3 @@ impl Plugin for DecalPlugin {
         app.add_systems(Update, (sync_decals, cleanup_decals, ensure_depth_prepass));
     }
 }
-
-renzora::add!(DecalPlugin);

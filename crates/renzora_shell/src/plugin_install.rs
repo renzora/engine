@@ -200,7 +200,7 @@ pub(crate) fn install_buttons(
 
     let (title, body) = match install(&pending.source) {
         Ok(dest) => {
-            renzora::core::console_log::console_info(
+            renzora_log_api::console_info(
                 "Plugins",
                 format!("Installed {}", dest.display()),
             );

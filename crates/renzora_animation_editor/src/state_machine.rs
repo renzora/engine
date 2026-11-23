@@ -231,21 +231,21 @@ fn ready(w: &Rx) -> bool {
 }
 
 fn project_root(w: &Rx) -> Option<PathBuf> {
-    w.get_resource::<renzora::CurrentProject>().map(|p| p.path.clone())
+    w.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone())
 }
 
 fn empty_msg(w: &Rx) -> String {
     match selected_entity(&Rx::new(w.untracked())) {
-        None => renzora::lang::t("animation.select_animated_entity"),
+        None => renzora_lang_api::t("animation.select_animated_entity"),
         Some(e) => match w.get::<AnimatorComponent>(e) {
-            None => renzora::lang::t("animation.no_animator"),
+            None => renzora_lang_api::t("animation.no_animator"),
             Some(a) if a.clips.is_empty() => {
-                renzora::lang::t("animation.no_clips_scan_first")
+                renzora_lang_api::t("animation.no_clips_scan_first")
             }
             Some(a) if a.state_machine.is_none() => {
-                renzora::lang::t("animation.sm_description")
+                renzora_lang_api::t("animation.sm_description")
             }
-            Some(_) if project_root(&Rx::new(w.untracked())).is_none() => renzora::lang::t("animation.no_project_open"),
+            Some(_) if project_root(&Rx::new(w.untracked())).is_none() => renzora_lang_api::t("animation.no_project_open"),
             Some(_) => String::new(),
         },
     }
@@ -295,7 +295,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "plus-circle",
-        &renzora::lang::t("animation.create_state_machine"),
+        &renzora_lang_api::t("animation.create_state_machine"),
         crate::setup::CreateSmBtn,
     );
     bind_display(commands, create_btn, crate::setup::can_create_sm);
@@ -375,7 +375,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, path_lbl, |w| {
         animator(&Rx::new(w.untracked()))
             .and_then(|a| a.state_machine.clone())
-            .unwrap_or_else(|| renzora::lang::t("animation.no_animsm_assigned"))
+            .unwrap_or_else(|| renzora_lang_api::t("animation.no_animsm_assigned"))
     });
     bind_text_color(commands, path_lbl, |w| {
         let has = animator(&Rx::new(w.untracked())).is_some_and(|a| a.state_machine.is_some());
@@ -402,7 +402,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let save_ic = icon_text(commands, &fonts.phosphor, "floppy-disk", text_muted(), 11.0);
     let save_lbl = commands
         .spawn((
-            Text::new(renzora::lang::t("common.save")),
+            Text::new(renzora_lang_api::t("common.save")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
@@ -452,8 +452,8 @@ fn build_states_column(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         })
         .id();
 
-    let heading = section_heading(commands, fonts, &renzora::lang::t("animation.states"));
-    let add = add_button(commands, fonts, &renzora::lang::t("animation.add_state"), AddStateBtn, |_w| true);
+    let heading = section_heading(commands, fonts, &renzora_lang_api::t("animation.states"));
+    let add = add_button(commands, fonts, &renzora_lang_api::t("animation.add_state"), AddStateBtn, |_w| true);
 
     let list = commands
         .spawn(Node {
@@ -956,9 +956,9 @@ fn build_transitions_column(commands: &mut Commands, fonts: &EmberFonts) -> Enti
         })
         .id();
 
-    let heading = section_heading(commands, fonts, &renzora::lang::t("animation.transitions"));
+    let heading = section_heading(commands, fonts, &renzora_lang_api::t("animation.transitions"));
     // Add enabled only when there is at least one state.
-    let add = add_button(commands, fonts, &renzora::lang::t("animation.add_transition"), AddTransitionBtn, |w| {
+    let add = add_button(commands, fonts, &renzora_lang_api::t("animation.add_transition"), AddTransitionBtn, |w| {
         sm(&Rx::new(w)).is_some_and(|s| !s.sm.states.is_empty())
     });
 
@@ -1374,7 +1374,7 @@ fn cond_discriminant(c: &AnimCondition) -> u8 {
 /// English `cond_kind_label` / `COND_LABELS` strings stay the stable identity
 /// (round-tripped through `cond_from_label`); this maps them to the UI text.
 fn cond_label_tr(label: &str) -> String {
-    renzora::lang::t(match label {
+    renzora_lang_api::t(match label {
         "Float >" => "animation.cond_float_gt",
         "Float <" => "animation.cond_float_lt",
         "Bool true" => "animation.cond_bool_true",
@@ -1523,7 +1523,7 @@ fn load_state_machine(
     mut state: ResMut<SmEditorState>,
     anim_state: Res<AnimationEditorState>,
     animators: Query<&AnimatorComponent>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     let (Some(entity), Some(project)) = (anim_state.selected_entity, project) else {
         return;

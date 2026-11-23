@@ -17,7 +17,7 @@ use crate::OverlayGizmoGroup;
 pub fn draw_camera_gizmo(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     transform_q: Query<
         (&GlobalTransform, Option<&Projection>),
         (With<Camera3d>, Without<EditorCamera>),

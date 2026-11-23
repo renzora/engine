@@ -142,10 +142,10 @@ pub(crate) struct SectionSpec {
     /// header, so a tier that silently switched the effect off doesn't read as a
     /// broken effect. The tier travels with the gate because the tooltip names
     /// it: "Low" is the answer the user needs, not "a tier".
-    /// See [`renzora::core::viewport_types::GraphicsQuality::inspector_gate`].
+    /// See [`renzora_viewport_api::GraphicsQuality::inspector_gate`].
     pub(crate) gate: Option<(
-        renzora::core::viewport_types::GraphicsQuality,
-        renzora::core::viewport_types::QualityGate,
+        renzora_viewport_api::GraphicsQuality,
+        renzora_viewport_api::QualityGate,
     )>,
     pub(crate) fields: Vec<FieldSpec>,
 }
@@ -216,14 +216,14 @@ fn loc_slug(s: &str) -> String {
 /// Localized component header name, falling back to the English `display_name`.
 /// Keyed `comp.<slug>.name` (e.g. "Clouds" → `comp.clouds.name`).
 pub(crate) fn comp_name_loc(display_name: &str) -> String {
-    renzora::lang::t_or(&format!("comp.{}.name", loc_slug(display_name)), display_name)
+    renzora_lang_api::t_or(&format!("comp.{}.name", loc_slug(display_name)), display_name)
 }
 
 /// Localized field label, falling back to the English `name`. Keyed in a SHARED
 /// `field.<slug>` namespace (e.g. "Wind Direction" → `field.wind_direction`) so a
 /// field name common to many components is translated once, not per component.
 pub(crate) fn field_label_loc(name: &str) -> String {
-    renzora::lang::t_or(&format!("field.{}", loc_slug(name)), name)
+    renzora_lang_api::t_or(&format!("field.{}", loc_slug(name)), name)
 }
 
 pub(crate) fn format_value(v: Option<&FieldValue>) -> String {

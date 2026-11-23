@@ -24,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::warn;
-use renzora::core::WindowMode;
+use renzora_project_api::WindowMode;
 use serde::{Deserialize, Serialize};
 
 use crate::overlay::{ExportOverlayState, PackagingMode, PluginLinkMode};

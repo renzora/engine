@@ -1,13 +1,13 @@
 //! Per-frame profiles from the recorder, for the companion's profiler.
 //!
-//! `renzora::profiling` records when each span starts and ends, per thread.
+//! `renzora_diagnostics_api::profiling` records when each span starts and ends, per thread.
 //! Once a frame, while recording is on, [`collect_frame`] drains those events
 //! and turns them into a [`ProfileFrame`]: the spans that finished, each render
 //! pass's GPU time and a few counters. The last [`HISTORY`] frames are kept in
 //! [`Profiler`]; the companion's stream reads them from there.
 //!
 //! In every build and cheap while off: one atomic load a frame, and nothing
-//! else, until something calls `renzora::profiling::set_recording(true)`.
+//! else, until something calls `renzora_diagnostics_api::profiling::set_recording(true)`.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use std::time::Duration;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::ecs::entity::Entities;
 use bevy::prelude::*;
-use renzora::profiling;
+use renzora_diagnostics_api::profiling;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
@@ -63,6 +63,8 @@ impl Profiler {
     /// [`Self::frames_since`], as shared handles to hand to another thread.
     /// Newest first in the search, since a reader is almost always one frame
     /// behind: this is called every frame and should not walk the history.
+    /// Only the server calls it, and there is no server on the web.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn shared_since(&self, index: u64) -> impl Iterator<Item = &Arc<ProfileFrame>> {
         let behind = self.frames.iter().rev().take_while(|f| f.index >= index).count();
         self.frames.iter().skip(self.frames.len() - behind)
@@ -78,7 +80,7 @@ impl Plugin for ProfilerPlugin {
 
         let editor = app
             .world()
-            .get_resource::<renzora::EditorSession>()
+            .get_resource::<renzora_project_api::EditorSession>()
             .is_some_and(|s| s.0);
         // A game started with a key (Play, a profiling export) may be profiled.
         // The editor is given its access by the companion, which owns the key.
@@ -86,7 +88,7 @@ impl Plugin for ProfilerPlugin {
         if !editor {
             let name = app
                 .world()
-                .get_resource::<renzora::CurrentProject>()
+                .get_resource::<renzora_project_api::CurrentProject>()
                 .map(|p| p.config.name.clone())
                 .filter(|n| !n.is_empty())
                 .unwrap_or_else(|| "Game".to_string());
@@ -95,16 +97,16 @@ impl Plugin for ProfilerPlugin {
             // profiling build is usually on a phone or headset.
             let baked = app
                 .world()
-                .get_resource::<renzora::CurrentProject>()
+                .get_resource::<renzora_project_api::CurrentProject>()
                 .and_then(|p| p.config.profiling_key.clone());
-            let access = renzora::profiling::ProfilingAccess::from_args(name.clone()).or_else(|| {
-                baked.map(|key| renzora::profiling::ProfilingAccess { key, lan: true, name })
+            let access = renzora_diagnostics_api::profiling::ProfilingAccess::from_args(name.clone()).or_else(|| {
+                baked.map(|key| renzora_diagnostics_api::profiling::ProfilingAccess { key, lan: true, name })
             });
             if let Some(access) = access {
                 app.insert_resource(access);
             }
         }
-        let profilable = editor || app.world().contains_resource::<renzora::profiling::ProfilingAccess>();
+        let profilable = editor || app.world().contains_resource::<renzora_diagnostics_api::profiling::ProfilingAccess>();
 
         // GPU pass times come from Bevy's render diagnostics, which time every
         // pass every frame once added and cannot be added later. So they are on
@@ -121,8 +123,8 @@ impl Plugin for ProfilerPlugin {
         // Probes' reports, in `Last` so a report sees the frame's finished
         // state, and apart from the frame stream: a companion can watch
         // probes without recording.
-        app.init_resource::<renzora::probes::ProbeRegistry>()
-            .init_resource::<renzora::probes::WatchedProbes>();
+        app.init_resource::<renzora_diagnostics_api::probes::ProbeRegistry>()
+            .init_resource::<renzora_diagnostics_api::probes::WatchedProbes>();
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Last, server::serve_probes);
         #[cfg(target_arch = "wasm32")]
@@ -329,7 +331,6 @@ fn gpu_passes(diagnostics: &DiagnosticsStore) -> Vec<GpuPass> {
         .collect()
 }
 
-renzora::add!(ProfilerPlugin);
 
 #[cfg(test)]
 mod tests {

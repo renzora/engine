@@ -16,7 +16,7 @@ use bevy::ui::ComputedNode;
 use renzora_ember::UiCursor;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::Viewports;
+use renzora_viewport_api::Viewports;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::tracked::bind_with;
@@ -60,7 +60,7 @@ pub fn register(app: &mut App) {
 /// the edit↔simulate transition (tracked in a `Local`), so it costs nothing per
 /// frame while the state is steady.
 fn simulate_border(
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut viewports: Query<(&mut Node, &mut BorderColor), With<NativeViewport>>,
     mut was_simulating: Local<bool>,
 ) {

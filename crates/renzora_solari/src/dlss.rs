@@ -14,7 +14,7 @@
 //! compiled, so the inspector can say why the toggle does nothing.
 
 use bevy::prelude::*;
-use renzora::DlssSupport;
+use renzora_solari_api::DlssSupport;
 
 /// A query filter for cameras DLSS Ray Reconstruction is attached to. Matches
 /// nothing in a build without the `dlss` feature.
@@ -88,7 +88,8 @@ mod imp {
     use bevy::prelude::*;
     use bevy::render::camera::{MipBias, TemporalJitter};
     use bevy::solari::realtime::{SolariDebug, SolariDebugView, SolariLighting};
-    use renzora::{DlssMode, DlssSupport, EffectRouting, SolariGi};
+    use renzora_scene_api::EffectRouting;
+    use renzora_solari_api::{DlssMode, DlssSupport, SolariGi};
 
     type RayReconstruction = Dlss<DlssRayReconstructionFeature>;
     type SuperResolution = Dlss<DlssSuperResolutionFeature>;
@@ -136,10 +137,10 @@ mod imp {
         mut commands: Commands,
         support: Option<Res<DlssSupport>>,
         sources: Query<&SolariGi>,
-        viewport: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+        viewport: Option<Res<renzora_viewport_api::ViewportSettings>>,
         mut cameras: Query<(
             Has<SolariLighting>,
-            Has<renzora::EditorCamera>,
+            Has<renzora_scene_api::EditorCamera>,
             Option<&mut RayReconstruction>,
             Option<&DlssByRenzora>,
             Has<TemporalAntiAliasing>,
@@ -164,7 +165,7 @@ mod imp {
         // images, which turned the colours into textured grey wherever its
         // history was trusted, more of it the more the camera moved.
         let vg_debug_view = viewport.is_some_and(|v| {
-            use renzora::core::viewport_types::VisualizationMode as Mode;
+            use renzora_viewport_api::VisualizationMode as Mode;
             matches!(
                 v.visualization_mode,
                 Mode::VgClusters | Mode::VgTriangles | Mode::VgLod | Mode::VgInstances | Mode::VgResidency

@@ -39,12 +39,12 @@ use renzora_ember::widgets::{
 
 use crate::contributors::{Contributor, Contributors};
 
-/// Version line for the About modal. `renzora::version::display()` renders the
+/// Version line for the About modal. `renzora_platform_api::version::display()` renders the
 /// docs/release scheme (`r1-alphaN`) rather than the crate's semver — and appends
 /// the nightly date or `(dev)` when this isn't a tagged release, so a bug report
 /// from a nightly names the exact build.
 fn version_line() -> String {
-    renzora::version::display()
+    renzora_platform_api::version::display()
 }
 
 /// One-paragraph "what is this" blurb shown under the title.

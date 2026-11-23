@@ -69,6 +69,7 @@ mod dlss;
 mod sdk;
 mod sync;
 mod wasm;
+mod web_serve;
 
 /// Host-platform naming. Filled at compile time from `cfg!` because xtask is
 /// built for — and run on — the very platform it stages for.
@@ -255,7 +256,7 @@ fn main() -> ExitCode {
                 }
             }
         }
-        // Regenerate the plugin wiring from the `renzora::add!` declarations
+        // Regenerate the plugin wiring from the plugin declarations
         // under `crates/`. Runs automatically before every build; standalone
         // here for the case where you want the diff without a compile, and with
         // `--check` for CI, which must fail if a declaration was added without
@@ -288,7 +289,9 @@ fn main() -> ExitCode {
             coverage::run(&repo, &args)
         }
         // Build + stage the two WEB bundles into `dist/web-wasm32/`, the same
-        // place and layout the container's `build_wasm` lane produces.
+        // place and layout the container's `build_wasm` lane produces, then
+        // serve them on localhost and open the editor (`--no-serve` stops
+        // after staging).
         //
         // The one `cargo renzora` command that cross-compiles — every other
         // builds for the host. Nothing links a host artefact here, so that costs
@@ -313,7 +316,7 @@ fn main() -> ExitCode {
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | xr | dist | sdk | wasm [--no-opt] | profile | \
+                 (expected: run | xr | dist | sdk | wasm [--no-opt] [--no-serve] | profile | \
                  coverage [--check|--bless] | sync [--check] | check-bevy | remove <crate-name>)"
             );
             ExitCode::from(2)
@@ -322,7 +325,7 @@ fn main() -> ExitCode {
 }
 
 fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<PathBuf, ExitCode> {
-    // Wire in any plugin crate whose `renzora::add!` declaration isn't reflected
+    // Wire in any plugin crate whose plugin declaration isn't reflected
     // in the generated lists yet — this is what makes "drop a crate into
     // `crates/`" the whole job. Cheap (a source scan) and a no-op when nothing
     // moved, so it runs before every build rather than being something to
@@ -599,7 +602,8 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     // A `dylib`, not a second `.exe`. That was possible again the moment Bevy
     // became a shared image: the editor takes `&mut App` across the boundary,
     // which is sound only while both sides link one `bevy_dylib`, one
-    // `renzora_dylib`, one `renzora_ember_dylib` and one `renzora_runtime_dylib`.
+    // `renzora_dylib` (which carries the UI framework) and one
+    // `renzora_runtime_dylib`.
     let editor_name = format!("{}renzora_editor.{}", plat.lib_prefix, plat.ext);
     let editor_src = src.join(&editor_name);
     if editor_src.exists() {
@@ -776,7 +780,7 @@ fn imported_libs(exe: &Path, plat: &Platform) -> Vec<String> {
     // Every shared image, plus the Rust std the binary imports. A stem missing
     // from this list is not staged, and the binary then fails to start with
     // Windows' "code execution cannot proceed" dialog naming it.
-    for stem in ["bevy_dylib", "renzora_dylib", "renzora_ember_dylib", "std"] {
+    for stem in ["bevy_dylib", "renzora_dylib", "std"] {
         let prefix = format!("{}{stem}", plat.lib_prefix);
         let suffix = format!(".{}", plat.ext);
         let pat = prefix.as_bytes();

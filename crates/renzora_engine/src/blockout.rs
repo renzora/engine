@@ -19,7 +19,8 @@
 use bevy::prelude::*;
 use bevy::render::mesh::VertexAttributeValues;
 use std::collections::HashSet;
-use renzora::core::{GridTexture, MeshColor, MeshPrimitive};
+use renzora_scene_api::{MeshColor, MeshPrimitive};
+use renzora_render_api::GridTexture;
 
 /// The material a primitive wears until it is given one of its own: the
 /// blockout grid, tinted by `base_color`.
@@ -59,7 +60,7 @@ pub fn blockout_material(base_color: Color, grid: Option<&GridTexture>) -> Stand
 /// too: `ScriptCommand::Spawn` inserts a `MeshColor`, and a script that changed
 /// one later was silently ignored.
 ///
-/// Skips anything with a [`MaterialRef`](renzora::core::MaterialRef): there the
+/// Skips anything with a [`MaterialRef`](renzora_material_api::MaterialRef): there the
 /// resolver owns the material, and writing a base colour over a compiled graph
 /// would fight it every frame the graph recompiled.
 ///
@@ -73,7 +74,7 @@ pub fn apply_mesh_color(
         (&MeshColor, &MeshMaterial3d<StandardMaterial>),
         (
             Changed<MeshColor>,
-            Without<renzora::core::MaterialRef>,
+            Without<renzora_material_api::MaterialRef>,
         ),
     >,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
@@ -126,10 +127,10 @@ const TILE: f32 = 1.0;
 /// last baked without any handshake between the two: re-projecting an
 /// already-projected mesh computes the same UVs and writes nothing.
 ///
-/// Entities with a [`MaterialRef`](renzora::core::MaterialRef) are left alone:
+/// Entities with a [`MaterialRef`](renzora_material_api::MaterialRef) are left alone:
 /// once a real material is on the mesh, its UVs are the author's business.
 pub fn project_blockout_uvs(
-    query: Query<(Ref<Mesh3d>, Ref<GlobalTransform>), (With<MeshPrimitive>, Without<renzora::core::MaterialRef>)>,
+    query: Query<(Ref<Mesh3d>, Ref<GlobalTransform>), (With<MeshPrimitive>, Without<renzora_material_api::MaterialRef>)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut mesh_events: MessageReader<AssetEvent<Mesh>>,
 ) {

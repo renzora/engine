@@ -333,7 +333,7 @@ fn build_tile_object_sprites(
         Entity,
         &TileObject,
         Option<&TileObjectBaked>,
-        Option<&renzora::core::SpriteCustomSize>,
+        Option<&renzora_scene_api::SpriteCustomSize>,
     )>,
 ) {
     for (entity, obj, baked, custom) in &objects {
@@ -418,7 +418,6 @@ impl Plugin for TilemapPlugin {
     }
 }
 
-renzora::add!(TilemapPlugin);
 
 /// Runtime marker on a generated tile-collider child. Lets a rebuild find and
 /// despawn the previous generation; never saved (the entities also carry
@@ -449,7 +448,7 @@ struct TileColliderKey(u64);
 fn rebuild_tile_colliders(
     mut commands: Commands,
     dirty_layers: Query<(), Changed<TilemapLayer>>,
-    dirty_tiles: Query<(), (With<TilemapTile>, Or<(Changed<TilemapTile>, Changed<renzora::core::SpriteSheet>)>)>,
+    dirty_tiles: Query<(), (With<TilemapTile>, Or<(Changed<TilemapTile>, Changed<renzora_scene_api::SpriteSheet>)>)>,
     mut removed_tiles: RemovedComponents<TilemapTile>,
     // Every entity that can OWN tiles: a tilemap root, or one of its paint
     // layers. Colliders hang under whichever entity owns the tiles.
@@ -458,7 +457,7 @@ fn rebuild_tile_colliders(
         Or<(With<TilemapLayer>, With<TilemapPaintLayer>)>,
     >,
     configs: Query<&TilemapLayer>,
-    tiles: Query<(&TilemapTile, &renzora::core::SpriteSheet, &ChildOf)>,
+    tiles: Query<(&TilemapTile, &renzora_scene_api::SpriteSheet, &ChildOf)>,
     shapes: Query<(Entity, &ChildOf), With<TilemapColliderShape>>,
 ) {
     let any_removed = removed_tiles.read().next().is_some();
@@ -532,7 +531,7 @@ fn rebuild_tile_colliders(
                     "Tile Collider ({}..{}, {}..{})",
                     min.x, max.x, min.y, max.y
                 )),
-                renzora::core::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 renzora_physics::Physics2d,
                 renzora_physics::auto_fit::SkipAutoFit,
                 renzora_physics::CollisionShapeData {

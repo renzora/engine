@@ -14,7 +14,7 @@
 
 use bevy::prelude::*;
 
-use renzora::AppEditorExt;
+use renzora_editor_api::AppEditorExt;
 use renzora_ember::game_ui::components::{self};
 use renzora_ember::game_ui::{UiCanvas, UiWidget, UiWidgetType};
 
@@ -80,7 +80,7 @@ fn core_inspectors(app: &mut App) {
     // decomposition). Each constituent component gets its own
     // collapsible in the main inspector. Fill/stroke/etc. are still
     // grouped under a "UI Style" lump until Phase B splits them.
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_canvas",
         display_name: "UI Canvas",
         icon: "frame-corners",
@@ -109,41 +109,41 @@ fn core_inspectors(app: &mut App) {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
-            renzora::int_field!("Sort Order", components::UiCanvas, sort_order, i32, 1.0, -100.0, 100.0),
-            renzora::FieldDef {
+            renzora_editor_api::int_field!("Sort Order", components::UiCanvas, sort_order, i32, 1.0, -100.0, 100.0),
+            renzora_editor_api::FieldDef {
                 name: "Visibility",
-                field_type: renzora::FieldType::Enum {
+                field_type: renzora_editor_api::FieldType::Enum {
                     options: &["always", "play_only", "editor_only"],
                 },
                 get_fn: |w, e| {
                     w.get::<components::UiCanvas>(e)
-                        .map(|c| renzora::FieldValue::Enum(c.visibility_mode.clone()))
+                        .map(|c| renzora_editor_api::FieldValue::Enum(c.visibility_mode.clone()))
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                    if let (renzora_editor_api::FieldValue::Enum(s), Some(mut c)) =
                         (v, w.get_mut::<components::UiCanvas>(e))
                     {
                         c.visibility_mode = s;
                     }
                 },
             },
-            renzora::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
-            renzora::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
+            renzora_editor_api::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
+            renzora_editor_api::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
             // How the reference resolution above maps onto a window that isn't
             // that size. `fit` keeps the canvas exactly as composed here and
             // letterboxes it; `expand` lets it re-flow to the window's aspect;
             // `constant` leaves authored pixels alone. See `CanvasScaleMode`.
-            renzora::FieldDef {
+            renzora_editor_api::FieldDef {
                 name: "Scale Mode",
-                field_type: renzora::FieldType::Enum {
+                field_type: renzora_editor_api::FieldType::Enum {
                     options: &["fit", "expand", "constant"],
                 },
                 get_fn: |w, e| {
                     w.get::<components::UiCanvas>(e)
-                        .map(|c| renzora::FieldValue::Enum(c.scale_mode.clone()))
+                        .map(|c| renzora_editor_api::FieldValue::Enum(c.scale_mode.clone()))
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                    if let (renzora_editor_api::FieldValue::Enum(s), Some(mut c)) =
                         (v, w.get_mut::<components::UiCanvas>(e))
                     {
                         c.scale_mode = s;
@@ -152,17 +152,17 @@ fn core_inspectors(app: &mut App) {
             },
             // Screen (normal fullscreen UI) vs world (projected onto a plane in
             // the 3D scene, placed by the entity's Transform).
-            renzora::FieldDef {
+            renzora_editor_api::FieldDef {
                 name: "Render Space",
-                field_type: renzora::FieldType::Enum {
+                field_type: renzora_editor_api::FieldType::Enum {
                     options: &["screen", "world"],
                 },
                 get_fn: |w, e| {
                     w.get::<components::UiCanvas>(e)
-                        .map(|c| renzora::FieldValue::Enum(c.render_space.clone()))
+                        .map(|c| renzora_editor_api::FieldValue::Enum(c.render_space.clone()))
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                    if let (renzora_editor_api::FieldValue::Enum(s), Some(mut c)) =
                         (v, w.get_mut::<components::UiCanvas>(e))
                     {
                         c.render_space = s;
@@ -170,17 +170,17 @@ fn core_inspectors(app: &mut App) {
                 },
             },
             // World space only: RTT texture-on-quad vs Unity-style emitted mesh.
-            renzora::FieldDef {
+            renzora_editor_api::FieldDef {
                 name: "Render Mode",
-                field_type: renzora::FieldType::Enum {
+                field_type: renzora_editor_api::FieldType::Enum {
                     options: &["texture", "mesh"],
                 },
                 get_fn: |w, e| {
                     w.get::<components::UiCanvas>(e)
-                        .map(|c| renzora::FieldValue::Enum(c.render_mode.clone()))
+                        .map(|c| renzora_editor_api::FieldValue::Enum(c.render_mode.clone()))
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                    if let (renzora_editor_api::FieldValue::Enum(s), Some(mut c)) =
                         (v, w.get_mut::<components::UiCanvas>(e))
                     {
                         c.render_mode = s;
@@ -189,7 +189,7 @@ fn core_inspectors(app: &mut App) {
             },
         ],
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_widget",
         display_name: "UI Widget",
         icon: "squares-four",
@@ -201,7 +201,7 @@ fn core_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::widget_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_layout",
         display_name: "Layout",
         icon: "square-half",
@@ -246,7 +246,7 @@ fn style_inspectors(app: &mut App) {
     // from that file on the next hot-reload. Touching only the entity meant a
     // removed component came back and an added one vanished, at whatever moment
     // the next drag or insert happened to trigger a rebuild.
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_fill",
         display_name: "UI Fill",
         icon: "drop-half",
@@ -266,7 +266,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: Vec::new(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_stroke",
         display_name: "UI Border",
         icon: "bounding-box",
@@ -291,7 +291,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: Vec::new(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_border_radius",
         display_name: "UI Border Radius",
         icon: "frame-corners",
@@ -313,7 +313,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::border_radius_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_text",
         display_name: "UI Text",
         icon: "text-aa",
@@ -333,7 +333,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::text_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_padding",
         display_name: "UI Padding",
         icon: "columns",
@@ -353,7 +353,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::padding_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_opacity",
         display_name: "UI Opacity",
         icon: "circle-half",
@@ -369,7 +369,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::opacity_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_shadow",
         display_name: "UI Shadow",
         icon: "sun-dim",
@@ -387,7 +387,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::shadow_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_clip",
         display_name: "UI Clip Content",
         icon: "crop",
@@ -407,7 +407,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::clip_content_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_cursor",
         display_name: "UI Cursor",
         icon: "cursor",
@@ -425,7 +425,7 @@ fn style_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::cursor_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_interaction",
         display_name: "UI Interaction States",
         icon: "cursor-click",
@@ -456,7 +456,7 @@ fn widget_data_inspectors(app: &mut App) {
     // Per-widget-type data components — Phase C. Each is its own
     // entry; users can swap a slider's data, drop a tooltip's data,
     // etc. via the Add Component overlay.
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_slider_data",
         display_name: "Slider",
         icon: "sliders-horizontal",
@@ -474,7 +474,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::slider_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_checkbox_data",
         display_name: "Checkbox",
         icon: "check-square",
@@ -494,7 +494,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::checkbox_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_toggle_data",
         display_name: "Toggle",
         icon: "toggle-left",
@@ -512,7 +512,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::toggle_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_radio_data",
         display_name: "Radio Button",
         icon: "radio-button",
@@ -532,7 +532,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::radio_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_dropdown_data",
         display_name: "Dropdown",
         icon: "caret-circle-down",
@@ -552,7 +552,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: Vec::new(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_text_input_data",
         display_name: "Text Input",
         icon: "textbox",
@@ -572,7 +572,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::text_input_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_scroll_view_data",
         display_name: "Scroll View",
         icon: "scroll",
@@ -592,7 +592,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::scroll_view_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_tooltip_data",
         display_name: "Tooltip",
         icon: "chat-circle",
@@ -610,7 +610,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::tooltip_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_modal_data",
         display_name: "Modal",
         icon: "browser",
@@ -628,7 +628,7 @@ fn widget_data_inspectors(app: &mut App) {
         set_enabled_fn: None,
         fields: inspector::modal_fields(),
     });
-    app.register_inspector(renzora::InspectorEntry {
+    app.register_inspector(renzora_editor_api::InspectorEntry {
         type_id: "ui_draggable_window_data",
         display_name: "Draggable Window",
         icon: "app-window",
@@ -657,7 +657,7 @@ fn widget_data_inspectors(app: &mut App) {
 
 /// What a UI entity draws as in the hierarchy.
 fn hierarchy_icons(app: &mut App) {
-    app.register_component_icon(renzora::ComponentIconEntry {
+    app.register_component_icon(renzora_editor_api::ComponentIconEntry {
         // Outranks `HtmlTemplatePath` (66): a canvas holding a template is
         // still a canvas, and holding one is the entity's whole purpose — so
         // letting the path win meant every canvas rendered as a template.
@@ -668,7 +668,7 @@ fn hierarchy_icons(app: &mut App) {
         priority: 70,
         dynamic_icon_fn: None,
     });
-    app.register_component_icon(renzora::ComponentIconEntry {
+    app.register_component_icon(renzora_editor_api::ComponentIconEntry {
         type_id: std::any::TypeId::of::<components::UiWidget>(),
         name: "UI Widget",
         icon: "squares-four",
@@ -739,7 +739,7 @@ fn render_target_and_systems(app: &mut App) {
 /// reordering canvases in the hierarchy panel updates their z-index.
 /// Top of hierarchy (lowest HierarchyOrder) gets the highest sort_order → renders on top.
 fn sync_canvas_sort_order_from_hierarchy(
-    mut canvases: Query<(&mut UiCanvas, &renzora::HierarchyOrder), Without<ChildOf>>,
+    mut canvases: Query<(&mut UiCanvas, &renzora_scene_api::HierarchyOrder), Without<ChildOf>>,
 ) {
     let max_order = canvases.iter().map(|(_, h)| h.0).max().unwrap_or(0) as i32;
     for (mut canvas, order) in &mut canvases {
@@ -797,13 +797,13 @@ fn ensure_ui_visibility_components(
 /// saved scenes and broke shipped runtime visibility.
 fn sync_ui_canvas_target_camera(
     mut commands: Commands,
-    play_mode: Res<renzora::PlayModeState>,
+    play_mode: Res<renzora_project_api::PlayModeState>,
     render: Option<Res<canvas_render::UiCanvasRender>>,
-    editor_cam: Query<Entity, With<renzora::core::EditorCamera>>,
-    editor_cam_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
+    editor_cam: Query<Entity, With<renzora_scene_api::EditorCamera>>,
+    editor_cam_2d: Query<Entity, With<renzora_scene_api::EditorCamera2d>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>, &UiCanvas)>,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed: Option<Res<renzora_ember::dock::FixedDock>>,
     wins: Option<Res<renzora_ember::dock::DockWindows>>,
@@ -903,7 +903,7 @@ fn sync_ui_canvas_target_camera(
 fn scale_canvas_for_viewport_preview(
     mut commands: Commands,
     render: Option<Res<canvas_render::UiCanvasRender>>,
-    render_target: Option<Res<renzora::ViewportRenderTarget>>,
+    render_target: Option<Res<renzora_project_api::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
     mut canvases: Query<
         (
@@ -913,7 +913,7 @@ fn scale_canvas_for_viewport_preview(
             &mut bevy::ui::Node,
             Option<&mut bevy::ui::UiTransform>,
         ),
-        Without<renzora::HideInHierarchy>,
+        Without<renzora_scene_api::HideInHierarchy>,
     >,
 ) {
     let offscreen = render.as_ref().map(|r| r.camera_entity);
@@ -999,7 +999,7 @@ fn scale_canvas_for_viewport_preview(
 }
 
 fn debug_ui_tree(
-    play_mode: Res<renzora::PlayModeState>,
+    play_mode: Res<renzora_project_api::PlayModeState>,
     canvases: Query<
         (
             Entity,
@@ -1108,14 +1108,14 @@ pub(crate) fn spawn_ui_canvas(world: &mut World) -> Entity {
     // and they were producing a second entity called "UI Canvas". Three rows you
     // cannot tell apart, all racing for `ui/ui_canvas.html`, since the template
     // "+" names the file after the canvas.
-    let id = renzora::unique_entity_name(world, "UI Canvas", entity);
+    let id = renzora_scene_api::unique_entity_name(world, "UI Canvas", entity);
     world.entity_mut(entity).insert(Name::new(id));
     entity
 }
 
 /// Register the UI Canvas entity preset and the "New UI Canvas" scene starter.
 fn register_ui_presets(app: &mut App) {
-    use renzora::{AppEditorExt, EntityPreset, SceneStarter};
+    use renzora_editor_api::{AppEditorExt, EntityPreset, SceneStarter};
 
     // UI Canvas — always spawned at root.
     app.register_entity_preset(EntityPreset {
@@ -1138,7 +1138,7 @@ fn register_ui_presets(app: &mut App) {
         produces: &["UiCanvas"],
         spawn_fn: |world: &mut World| {
             let canvas = spawn_ui_canvas(world);
-            if let Some(selection) = world.get_resource::<renzora::EditorSelection>() {
+            if let Some(selection) = world.get_resource::<renzora_editor_api::EditorSelection>() {
                 selection.set(Some(canvas));
             }
         },

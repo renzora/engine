@@ -29,7 +29,7 @@ pub struct ShapeDragState {
     /// native release handler owns the drop, not the egui viewport's `ui()`).
     pub native_drag: bool,
     /// The shape library's Bendable option: a shape added while it is on
-    /// arrives as a model with a chain of bones (`renzora::core::MakeBendable`),
+    /// arrives as a model with a chain of bones (`renzora_scene_api::MakeBendable`),
     /// whether it was clicked in or dropped. Kept here because both the
     /// library and the viewport's drop spawn shapes.
     pub bendable: bool,

@@ -1,0 +1,32 @@
+[package]
+name = "renzora_scripting_api"
+version = "0.1.0"
+edition = "2021"
+description = "The language-backend half of scripting: ScriptCtx and the script! macro, the hooks, the command vocabulary, script variables, the property bridge and reflection paths; plugins see it all at `renzora::...`"
+
+# A contract subject layer that needs nothing from `renzora` at all, so it sits
+# beside it rather than above it, and an edit to either rebuilds none of the
+# other's users. A language backend is meant to be a marketplace plugin, so
+# these are contract types (a plugin must name `ScriptBackend`), and
+# `get_handler`'s thread-local must be singular: both hold because
+# `renzora_sdk` re-exports this crate and `renzora_dylib` embeds it. The
+# engine's own crates depend on it directly.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[features]
+# Compile the project's Rust scripts INTO the binary instead of loading each as
+# a dylib. Changes only what `script!` emits: without it the entry point is
+# `#[no_mangle]` so a dylib exports one findable symbol; with it the attribute is
+# dropped so many scripts can be linked into one binary without fifty
+# definitions of `renzora_script_update` colliding.
+#
+# Set by the lean exporter on its throwaway workspace copy (through
+# `renzora_sdk`'s feature of the same name), never in the dev tree. Cargo
+# compiles this crate once per build and unifies features across it, which is
+# exactly what makes one flag here apply to every script in the build.
+static_scripts = []
+
+[lints]
+workspace = true

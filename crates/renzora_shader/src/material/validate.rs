@@ -3,14 +3,14 @@
 //!
 //! Material codegen writes WESL; a `.material` saved before Bevy 0.20 embeds
 //! the old naga_oil dialect instead. Both reach the GPU through
-//! [`renzora::shader_source`], which passes WESL through and translates the
+//! [`renzora_shader_api::shader_source`], which passes WESL through and translates the
 //! old dialect, so this compiles what that produces and maps errors back to
 //! lines of the source the material holds, which is what the node source map
 //! indexes.
 
 use bevy::prelude::*;
 use bevy::shader::{Shader, ShaderDefVal, ShaderImport, Source};
-use renzora::content_problems::{ContentProblem, ProblemSeverity};
+use renzora_diagnostics_api::content_problems::{ContentProblem, ProblemSeverity};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -277,7 +277,7 @@ impl ShaderValidator {
         let wgsl = wesl::compile(&main, &options, &resolver)
             .map_err(|err| err.diagnostic().render_plain())?
             .to_string();
-        renzora::wgsl::check(&wgsl).map(|_| ())
+        renzora_shader_api::wgsl::check(&wgsl).map(|_| ())
     }
 
     /// Libraries that could not be registered, each as `module: reason`.
@@ -424,7 +424,7 @@ impl ShaderValidator {
         // What wgpu then does with the output. The WESL compiler resolves
         // names and conditionals but does not type-check, so a wrong type in a
         // user snippet only surfaces here, against the compiled text.
-        if let Err(message) = renzora::wgsl::check(&wgsl) {
+        if let Err(message) = renzora_shader_api::wgsl::check(&wgsl) {
             let line = first_reported_line(&message)
                 .and_then(|l| wgsl.lines().nth(l.saturating_sub(1) as usize))
                 .and_then(|text| prepared.line_of_text(text));
@@ -448,7 +448,7 @@ impl Prepared {
     fn new(source: &str) -> Self {
         Self {
             original: source.to_string(),
-            wesl: renzora::shader_source::to_wesl(source).source,
+            wesl: renzora_shader_api::shader_source::to_wesl(source).source,
         }
     }
 

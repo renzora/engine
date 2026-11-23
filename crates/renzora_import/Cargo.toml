@@ -5,6 +5,9 @@ edition = "2021"
 description = "3D model import and GLB conversion for Renzora"
 
 [dependencies]
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 # GLB output
 # `extras` carries the imported camera's field of view on its view node (see
 # `fbx_ufbx::MovingParts`). Bevy's glTF loader already switches it on for the
@@ -18,7 +21,8 @@ stl_io = "0.10"
 ply-rs = "0.1"
 
 # Core types (AnimClip, BoneTrack, write_anim_file)
-renzora = { path = "../renzora", default-features = false }
+renzora = { path = "../shared/renzora", default-features = false }
+renzora_animation_api = { path = "../api/renzora_animation_api" }
 
 # USDZ archive extraction.
 #

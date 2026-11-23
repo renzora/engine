@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 
-use renzora::inspector_pages::InspectorPage;
+use renzora_shell_api::inspector_pages::InspectorPage;
 use renzora_editor_framework::{
     EditorSettings, FieldType, FieldValue, InspectorRegistry, NativeInspectorRegistry,
 };
@@ -68,7 +68,7 @@ pub(crate) fn collect_sections(
     // seeder ran) means "gate nothing" rather than a guessed tier: a warning on
     // an effect that is actually rendering would be worse than none.
     let tier = world
-        .get_resource::<renzora::ResolvedGraphicsQuality>()
+        .get_resource::<renzora_project_api::ResolvedGraphicsQuality>()
         .map(|q| q.0);
     let gate_for = |type_id: &str| tier.and_then(|t| t.inspector_gate(type_id).map(|g| (t, g)));
 

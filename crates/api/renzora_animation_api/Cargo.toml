@@ -1,0 +1,18 @@
+[package]
+name = "renzora_animation_api"
+version = "0.1.0"
+edition = "2021"
+description = "The .anim clip format and property keyframes, how a skeleton is drawn, and multi-sheet sprites; plugins see them at `renzora::...`"
+
+# A contract subject layer, two up: it names `renzora_scripting_api`'s
+# `PropertyValue` (a property track keys the same values a script sets), so it
+# sits above that, and an edit here rebuilds only the animation crates.
+[dependencies]
+bevy = { workspace = true }
+renzora_scripting_api = { path = "../renzora_scripting_api" }
+serde = { version = "1", features = ["derive"] }
+# `.anim` clips are RON.
+ron = "0.8"
+
+[lints]
+workspace = true

@@ -370,14 +370,14 @@ pub(crate) fn drag_ghost(
 /// Edge length of the thumbnail preview in the drag ghost.
 const GHOST_THUMB: f32 = 32.0;
 
-/// Consume [`AssetDropScrollRequest`](renzora::core::AssetDropScrollRequest) and
+/// Consume [`AssetDropScrollRequest`](renzora_project_api::AssetDropScrollRequest) and
 /// pin the grid's scroll view to the bottom for ~1.2 s afterwards. The window
 /// (not a one-shot) matters because the dropped file isn't on disk / in the
 /// listing yet the frame it's requested — `scroll_to(f32::MAX)` re-clamps to the
 /// growing bottom each frame until the rescan has surfaced the new tile.
 pub(crate) fn scroll_grid_on_drop(
     time: Res<Time>,
-    mut req: ResMut<renzora::core::AssetDropScrollRequest>,
+    mut req: ResMut<renzora_project_api::AssetDropScrollRequest>,
     mut until: Local<Option<f32>>,
     grid_area: Query<&Children, With<GridArea>>,
     mut scrolls: Query<&mut EmberScroll>,

@@ -8,7 +8,7 @@
 use bevy::asset::LoadState;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use renzora::PostEffects;
+use renzora_render_api::PostEffects;
 
 use crate::effect_file::{self, EffectInfo};
 
@@ -128,13 +128,13 @@ pub(crate) fn read_effects(
             entry.status = match effect_file::parse(shader.source.as_str(), &effect_file::title_case(stem)) {
                 Ok(info) => EffectStatus::Ready(info),
                 Err(e) => {
-                    renzora::console_log::console_warn("Post Process", format!("{path}: {e}"));
+                    renzora_log_api::console_warn("Post Process", format!("{path}: {e}"));
                     EffectStatus::Failed(e)
                 }
             };
         } else if matches!(asset_server.load_state(&entry.handle), LoadState::Failed(_)) {
             let message = format!("could not load {path}");
-            renzora::console_log::console_warn("Post Process", message.clone());
+            renzora_log_api::console_warn("Post Process", message.clone());
             entry.status = EffectStatus::Failed(message);
         }
     }

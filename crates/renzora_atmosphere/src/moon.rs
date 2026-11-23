@@ -33,7 +33,7 @@ use bevy::pbr::{Material, MaterialPlugin};
 use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
-use renzora::Sun;
+use renzora_world_api::Sun;
 
 /// How far from the camera the moon is drawn, in metres. Inside the star
 /// dome (800 m) and inside the scene camera's 1000 m far plane.
@@ -190,7 +190,7 @@ fn sync_moon(
                 // Chrome, not scene content: see the cloud dome for why a
                 // `Name` would be wrong and nothing at all would get it
                 // despawned.
-                renzora::core::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 bevy::light::NotShadowCaster,
                 bevy::light::NotShadowReceiver,
             ))
@@ -210,11 +210,11 @@ mod tests {
     /// Full moon: lit from the viewer's side. Waxing: lit from the right.
     #[test]
     fn the_shading_light_follows_the_phase() {
-        let (full, _, _) = moon_uniform(&night(renzora::sun::SYNODIC_MONTH_DAYS * 0.5), Vec3::ZERO).unwrap();
+        let (full, _, _) = moon_uniform(&night(renzora_world_api::sun::SYNODIC_MONTH_DAYS * 0.5), Vec3::ZERO).unwrap();
         let toward_moon = -night(0.0).moon_direction();
         assert!(full.light.truncate().dot(-toward_moon) > 0.99);
 
-        let (waxing, _, _) = moon_uniform(&night(renzora::sun::SYNODIC_MONTH_DAYS * 0.25), Vec3::ZERO).unwrap();
+        let (waxing, _, _) = moon_uniform(&night(renzora_world_api::sun::SYNODIC_MONTH_DAYS * 0.25), Vec3::ZERO).unwrap();
         assert!(waxing.light.truncate().dot(waxing.right.truncate()) > 0.99);
     }
 
@@ -241,7 +241,7 @@ mod tests {
             )
             .collect::<Vec<_>>()
             .join("\n");
-        renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("moon.wesl: {err}"));
+        renzora_shader_api::wgsl::check(&source).unwrap_or_else(|err| panic!("moon.wesl: {err}"));
     }
 
     #[test]

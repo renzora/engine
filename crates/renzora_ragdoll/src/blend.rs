@@ -109,7 +109,7 @@ mod tests {
     use super::*;
     use crate::generate::RagdollBuilt;
     use crate::{RagdollBone, RagdollPlugin};
-    use renzora::physics::{PhysicsBodyData, PhysicsBodyType};
+    use renzora_physics_api::physics::{PhysicsBodyData, PhysicsBodyType};
 
     fn app() -> App {
         let mut app = App::new();

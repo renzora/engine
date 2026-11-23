@@ -13,7 +13,7 @@ use std::time::Instant;
 use bevy::log::tracing;
 use bevy::log::tracing_subscriber::prelude::*;
 use bevy::log::tracing_subscriber::Registry;
-use renzora::profiling;
+use renzora_diagnostics_api::profiling;
 use renzora_profiler::{wire::GamePacket, ProfileFrame, SpanBuilder};
 
 const SYSTEMS: usize = 2000;

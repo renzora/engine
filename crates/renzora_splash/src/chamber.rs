@@ -46,7 +46,7 @@ use crate::SplashState;
 
 /// This chamber's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's — see the registry there for why.
-use renzora::core::viewport_types::SPLASH_CHAMBER_LAYER as CHAMBER_LAYER;
+use renzora_viewport_api::SPLASH_CHAMBER_LAYER as CHAMBER_LAYER;
 
 /// Offscreen render size. Deliberately below 1080p: this scene's cost is
 /// dominated by the volumetric raymarch, which is pure fill rate, and the image
@@ -246,7 +246,7 @@ fn chamber_built(scene: Res<ChamberScene>) -> bool {
 fn manage_chamber(
     mut commands: Commands,
     state: Res<State<SplashState>>,
-    integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    integrated: Option<Res<renzora_render_api::GpuIsIntegrated>>,
     effects: crate::effects::SplashEffects,
     mut scene: ResMut<ChamberScene>,
     mut images: ResMut<Assets<Image>>,
@@ -356,7 +356,7 @@ fn spawn_camera(commands: &mut Commands, layer: &RenderLayers, image: Handle<Ima
         layer.clone(),
         ChamberCamera,
         ChamberEntity,
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         Name::new("Splash Chamber Camera"),
     ));
 }
@@ -392,7 +392,7 @@ fn spawn_fog(commands: &mut Commands, layer: &RenderLayers) {
         Transform::from_xyz(0.0, 0.0, -30.0).with_scale(Vec3::new(130.0, 100.0, 100.0)),
         layer.clone(),
         ChamberEntity,
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
         Name::new("Splash Chamber Fog"),
     ));
 }
@@ -418,7 +418,7 @@ fn spawn_lights(commands: &mut Commands, layer: &RenderLayers) {
             layer.clone(),
             KeyLight { phase, hue: *hue },
             ChamberEntity,
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             Name::new("Splash Chamber Key"),
         ));
     }
@@ -461,7 +461,7 @@ fn spawn_gates(
                 Gate { base_z, roll, roll_rate },
                 layer.clone(),
                 ChamberEntity,
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 Name::new("Splash Chamber Gate"),
             ))
             .id();
@@ -479,7 +479,7 @@ fn spawn_gates(
                             layer.clone(),
                             Slat,
                             ChamberEntity,
-                            renzora::HideInHierarchy,
+                            renzora_scene_api::HideInHierarchy,
                             Name::new("Splash Chamber Slat"),
                         ))
                         .id(),
@@ -529,7 +529,7 @@ fn spawn_motes(
             layer.clone(),
             Mote { base, wobble: hash01(n * 13 + 4) * std::f32::consts::TAU, scale },
             ChamberEntity,
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             Name::new("Splash Chamber Mote"),
         ));
     }

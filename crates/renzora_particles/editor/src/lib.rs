@@ -55,7 +55,8 @@ pub mod timeline;
 pub mod workspace;
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry, RenzoraShellExt};
+use renzora_editor_api::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_shell_api::RenzoraShellExt;
 use renzora_editor_framework::SplashState;
 use renzora_particles::{OneShot, ParticlePlayback, ParticleSystem, PlayState};
 
@@ -129,7 +130,7 @@ pub(crate) fn edit_effect(w: &mut World, e: Entity) {
         templates::request_gallery(w);
         return;
     }
-    let Some(abs) = w.get_resource::<renzora::core::CurrentProject>().map(|p| p.resolve_path(&path)) else { return };
+    let Some(abs) = w.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.resolve_path(&path)) else { return };
     renzora_editor_framework::open_asset_tab(w, &abs, renzora_editor_framework::DocTabKind::Particle);
 }
 
@@ -316,5 +317,3 @@ impl Plugin for ParticlesEditorPlugin {
         app.add_systems(Update, animate::pin_context_menu.run_if(in_state(SplashState::Editor)));
     }
 }
-
-renzora::add!(ParticlesEditorPlugin, Editor);

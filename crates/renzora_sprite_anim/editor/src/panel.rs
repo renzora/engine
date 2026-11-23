@@ -10,8 +10,9 @@ use std::hash::{Hash, Hasher};
 
 use bevy::prelude::*;
 
-use renzora::core::{SpriteImagePath, SpriteImages};
-use renzora::RenzoraShellExt;
+use renzora_scene_api::SpriteImagePath;
+use renzora_animation_api::SpriteImages;
+use renzora_shell_api::RenzoraShellExt;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::UiCursor;
 use renzora_ember::panel::RegisterPanelContent;

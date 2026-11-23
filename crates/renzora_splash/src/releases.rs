@@ -120,7 +120,7 @@ impl ReleaseFeed {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_releases() -> Result<Vec<ReleaseEntry>, String> {
-    let response = renzora_net::Request::get(RELEASES_API)
+    let response = renzora_net_api::net::Request::get(RELEASES_API)
         // GitHub rejects an API request with no User-Agent outright.
         .header("User-Agent", "renzora-splash")
         .header("Accept", "application/vnd.github+json")

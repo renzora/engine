@@ -8,8 +8,10 @@ use bevy::core_pipeline::prepass::DeferredPrepass;
 use bevy::pbr::{AtmosphereSettings, ScreenSpaceAmbientOcclusion};
 use bevy::prelude::*;
 use bevy::render::camera::{MipBias, TemporalJitter};
-use renzora::core::viewport_types::ViewportSettings;
-use renzora::{DlssMode, DlssSupport, EditorCamera, EffectRouting, ResolvedGraphicsQuality};
+use renzora_viewport_api::ViewportSettings;
+use renzora_scene_api::{EditorCamera, EffectRouting};
+use renzora_project_api::ResolvedGraphicsQuality;
+use renzora_solari_api::{DlssMode, DlssSupport};
 
 use crate::compat::{blocker, CameraCaps, RunCaps};
 use crate::settings::{AntiAliasing, AntiAliasingMethod};

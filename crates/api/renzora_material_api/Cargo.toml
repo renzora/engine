@@ -1,0 +1,21 @@
+[package]
+name = "renzora_material_api"
+version = "0.1.0"
+edition = "2021"
+description = "Materials: MaterialRef and what resolves it, the material node catalogue and the node-graph vocabulary; plugins see them at `renzora::...`"
+
+# A contract subject layer, two up: it names `renzora`'s `PbrAlphaMode` and
+# `renzora_render_api`'s post-effect file check (a `.wgsl` effect is not a
+# material). An edit here rebuilds the material and shader crates, not the whole
+# engine.
+[dependencies]
+renzora_scene_api = { path = "../renzora_scene_api" }
+bevy = { workspace = true }
+renzora = { path = "../../shared/renzora", default-features = false }
+renzora_render_api = { path = "../renzora_render_api" }
+serde = { version = "1", features = ["derive"] }
+# `MaterialTarget::of_file` peeks at a `.material` file's JSON.
+serde_json = "1"
+
+[lints]
+workspace = true

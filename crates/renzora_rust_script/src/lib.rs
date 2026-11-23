@@ -82,8 +82,8 @@ use bevy::prelude::*;
 use libloading::{Library, Symbol};
 #[cfg(target_arch = "wasm32")]
 use wasm_dl::{Library, Symbol};
-use renzora::core::console_log::console_error;
-use renzora::SplashState;
+use renzora_log_api::console_error;
+use renzora_project_api::SplashState;
 use renzora_scripting::{scripts_should_run, ScriptComponent};
 
 /// `libloading`'s shape, for a platform that has no dynamic loading at all.
@@ -160,9 +160,8 @@ pub const SCRIPT_HOOK_SYMBOL: &[u8] = b"renzora_script_hook\0";
 /// Its signature. Same soundness argument as [`ScriptFn`]: one shared
 /// `bevy_dylib`, so `&mut World` and `ScriptHook` mean the same thing on both
 /// sides.
-pub type ScriptHookFn = fn(&mut World, Entity, &renzora::ScriptHook<'_>);
+pub type ScriptHookFn = fn(&mut World, Entity, &renzora_scripting_api::ScriptHook<'_>);
 
-renzora::add!(RustScriptPlugin, Runtime);
 
 #[derive(Default)]
 pub struct RustScriptPlugin;
@@ -216,9 +215,9 @@ impl Plugin for RustScriptPlugin {
             .init_resource::<watch::ScriptWatcher>()
             // The compiler check and the install prompt's answer. The prompt
             // itself is editor UI and lives in `renzora_scripting_editor`.
-            .init_resource::<renzora::RustToolchain>()
+            .init_resource::<renzora_platform_api::RustToolchain>()
             .init_resource::<toolchain::ToolchainTasks>()
-            .add_message::<renzora::RustToolchainAnswer>()
+            .add_message::<renzora_platform_api::RustToolchainAnswer>()
             // Registered here as well as by `renzora_project_watch`, and
             // `add_message` is idempotent so the second call is free.
             //
@@ -228,10 +227,10 @@ impl Plugin for RustScriptPlugin {
             // nobody registered has no resource to read. Same shape as the
             // `ScriptsActive` problem `finish` handles below, and the same worst
             // place to discover it: a shipped game rather than the editor.
-            .add_message::<renzora::core::project_files::ProjectFileChanged>()
+            .add_message::<renzora_project_api::project_files::ProjectFileChanged>()
             // Builds go to the companion when one is connected; registered
             // here too so a game, which has none, still has the messages.
-            .add_message::<renzora::CompanionJobDone>()
+            .add_message::<renzora_platform_api::CompanionJobDone>()
             // Recompile on save. Unlike `dispatch` these are NOT gated on play
             // mode: a script should build when you save it, so the error is in
             // front of you while you are still looking at the code — not the next
@@ -336,7 +335,7 @@ impl Plugin for RustScriptPlugin {
         app.init_resource::<renzora_scripting::ScriptsActive>()
             .configure_sets(
                 Update,
-                renzora_scripting::ScriptingSet::PreScript.after(renzora::physics::PhysicsSet::Read),
+                renzora_scripting::ScriptingSet::PreScript.after(renzora_physics_api::physics::PhysicsSet::Read),
             )
             .add_systems(
                 Update,
@@ -348,7 +347,7 @@ impl Plugin for RustScriptPlugin {
 
 /// A game process rather than the editor: Play's child, or an exported game.
 /// Absent counts as a game, matching `EditorSession`'s own default.
-fn not_editor_session(session: Option<Res<renzora::EditorSession>>) -> bool {
+fn not_editor_session(session: Option<Res<renzora_project_api::EditorSession>>) -> bool {
     !session.is_some_and(|s| s.is_editor())
 }
 
@@ -707,7 +706,7 @@ pub fn dispatch(
     // ONLY those, so the rest of the scene stays static — same rule as the Lua
     // executor.
     let preview_only = world
-        .get_resource::<renzora::PlayModeState>()
+        .get_resource::<renzora_project_api::PlayModeState>()
         .map(|pm| !pm.is_scripts_running())
         .unwrap_or(false);
 
@@ -752,7 +751,7 @@ pub fn dispatch(
         // Through `recoverable::catch` rather than bare `catch_unwind`, which is
         // what keeps the crash reporter's dialog from announcing a crash that
         // this line is about to recover from.
-        if let Err(caught) = renzora::core::recoverable::catch(|| f(world, entity)) {
+        if let Err(caught) = renzora_crash_api::catch(|| f(world, entity)) {
             let why = describe_panic(&name, &caught);
             error!("[rust-script] {name} panicked on {entity}: {why}");
             // Deliberately not per-frame-guarded: a panicking script panics every
@@ -770,7 +769,7 @@ pub fn dispatch(
 /// `<project>/.renzora/scripts/<stem>/src/lib.rs`, which is overwritten on every
 /// build and which the author has never opened. The line and column are the
 /// same in both, so only the file is swapped for the script's own name.
-pub(crate) fn describe_panic(name: &str, caught: &renzora::core::recoverable::CaughtPanic) -> String {
+pub(crate) fn describe_panic(name: &str, caught: &renzora_crash_api::CaughtPanic) -> String {
     let at = caught.location.as_deref().map(|loc| {
         match loc.rsplit_once("lib.rs:") {
             Some((staged, line_col)) if staged.contains(".renzora") => format!("{name}:{line_col}"),
@@ -797,7 +796,7 @@ mod tests {
     use super::*;
 
     fn update(_: &mut World, _: Entity) {}
-    fn hook(_: &mut World, _: Entity, _: &renzora::ScriptHook<'_>) {}
+    fn hook(_: &mut World, _: Entity, _: &renzora_scripting_api::ScriptHook<'_>) {}
 
     /// A shipped script is indexed by path and by file name, and looked up by
     /// file name. Both names must reach its hooks, or it never hears `Ready`.

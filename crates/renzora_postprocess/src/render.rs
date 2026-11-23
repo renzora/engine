@@ -28,8 +28,8 @@ use bevy::render::{
     view::ViewTarget,
     Render, RenderApp, RenderStartup, RenderSystems,
 };
-use renzora::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
-use renzora::RenderPhase;
+use renzora_render_api::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
+use renzora_scene_api::RenderPhase;
 
 use crate::PostEffectChain;
 
@@ -142,7 +142,7 @@ fn init_pipelines(
         layout: vec![blit_layout.clone()],
         vertex: fullscreen.to_vertex_state(),
         fragment: Some(FragmentState {
-            shader: asset_server.load("embedded://renzora/postprocess_copy.wesl"),
+            shader: asset_server.load("embedded://renzora_render_api/postprocess_copy.wesl"),
             targets: vec![Some(ColorTargetState {
                 format: HDR_FORMAT,
                 blend: None,

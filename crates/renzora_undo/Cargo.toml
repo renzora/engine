@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# The undo core this crate drives and re-exports.
+renzora_render_api = { path = "../api/renzora_render_api" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_ember = { path = "../renzora_ember" }
@@ -14,3 +18,10 @@ log = "0.4"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "UndoPlugin"
+scope = "Editor"

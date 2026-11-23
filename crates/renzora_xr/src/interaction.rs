@@ -41,7 +41,7 @@ pub(crate) fn register(app: &mut App) {
 fn grab_begin(
     mut commands: Commands,
     input: Res<VrInput>,
-    play: Option<Res<renzora::VrPlayState>>,
+    play: Option<Res<renzora_scene_api::VrPlayState>>,
     left_hand: Query<Entity, With<XrTrackedLeftGrip>>,
     right_hand: Query<Entity, With<XrTrackedRightGrip>>,
     transforms: Query<&GlobalTransform>,
@@ -50,7 +50,7 @@ fn grab_begin(
         (Entity, &GlobalTransform, Option<&ChildOf>),
         (
             With<Name>,
-            Without<renzora::HideInHierarchy>,
+            Without<renzora_scene_api::HideInHierarchy>,
             Without<VrControllerVisual>,
             Without<bevy_mod_xr::session::XrTracker>,
             Without<Grabbed>,

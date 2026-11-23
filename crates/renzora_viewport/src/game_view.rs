@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::PlayModeState;
+use renzora_project_api::PlayModeState;
 use renzora_ember::dock::FocusPanelRequest;
 
 pub fn register(app: &mut App) {

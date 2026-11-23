@@ -122,7 +122,7 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
 }
 
 fn tab_label(tab: ExportTab) -> String {
-    renzora::lang::t(match tab {
+    renzora_lang_api::t(match tab {
         ExportTab::Output => "export.tab.output",
         ExportTab::Packaging => "export.tab.packaging",
         ExportTab::Features => "export.tab.features",
@@ -145,7 +145,7 @@ fn tab_count(w: &renzora_ember::reactive::Rx, tab: ExportTab) -> Option<String> 
                 .count()
                 .to_string()
         } else {
-            renzora::lang::t("export.tab.count_all")
+            renzora_lang_api::t("export.tab.count_all")
         }),
         ExportTab::Plugins => Some(s.selected_plugins.len().to_string()),
         ExportTab::Files => s.included_files.as_ref().map(|f| f.len().to_string()),

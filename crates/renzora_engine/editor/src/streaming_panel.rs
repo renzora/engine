@@ -91,8 +91,8 @@ fn snap<R: Default>(w: &Rx, f: impl FnOnce(&StreamingDebugSnapshot) -> R) -> R {
 
 /// Exclusive refresh — every streaming subsystem queried in one pass.
 pub fn update_streaming_debug_snapshot(world: &mut World) {
-    let streaming_active = renzora::world_streaming_active(world);
-    let camera_pos = renzora::streaming_camera_pos(world);
+    let streaming_active = renzora_platform_api::world_streaming_active(world);
+    let camera_pos = renzora_platform_api::streaming_camera_pos(world);
     let cam = camera_pos.unwrap_or(Vec3::ZERO);
 
     let (load_phase, load_progress, load_path) = world
@@ -125,7 +125,7 @@ pub fn update_streaming_debug_snapshot(world: &mut World) {
     let mut instances: Vec<InstanceRow> = Vec::new();
     {
         let candidates: Vec<Entity> = {
-            let mut q = world.query_filtered::<Entity, With<renzora::SceneInstance>>();
+            let mut q = world.query_filtered::<Entity, With<renzora_scene_api::SceneInstance>>();
             q.iter(world).collect()
         };
         let in_flight: Vec<Entity> = world
@@ -139,7 +139,7 @@ pub fn update_streaming_debug_snapshot(world: &mut World) {
             .unwrap_or_default();
         let mut q = world.query::<(
             Entity,
-            &renzora::SceneInstance,
+            &renzora_scene_api::SceneInstance,
             Option<&Name>,
             Option<&GlobalTransform>,
             Option<&Children>,
@@ -204,7 +204,7 @@ pub fn update_streaming_debug_snapshot(world: &mut World) {
     {
         // Model roots only (MeshInstanceData carriers).
         let mut q = world.query::<(
-            &renzora::MeshInstanceData,
+            &renzora_scene_api::MeshInstanceData,
             Option<&Name>,
             Option<&GlobalTransform>,
             Option<&LodApplied>,

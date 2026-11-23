@@ -49,18 +49,18 @@ impl Default for SsrSettings {
 /// Whether Solari lights a camera this SSR source is routed to, so the
 /// inspector can show SSR off while it is stood down (see [`sync_ssr`]).
 pub fn stood_down_by_solari(world: &World, source: Entity) -> bool {
-    let Some(routing) = world.get_resource::<renzora::EffectRouting>() else {
+    let Some(routing) = world.get_resource::<renzora_scene_api::EffectRouting>() else {
         return false;
     };
     routing.iter().any(|(target, sources)| {
-        sources.contains(&source) && world.get::<renzora::SolariLit>(*target).is_some()
+        sources.contains(&source) && world.get::<renzora_render_api::SolariLit>(*target).is_some()
     })
 }
 
 /// Drive `ScreenSpaceReflections` on every routed camera from its
 /// [`SsrSettings`].
 ///
-/// **Solari stands SSR down.** A camera carrying [`renzora::SolariLit`] gets no
+/// **Solari stands SSR down.** A camera carrying [`renzora_render_api::SolariLit`] gets no
 /// SSR whatever the settings say: Solari traces its own reflections, and
 /// screen-space reflections composited over them flicker as the two disagree
 /// from frame to frame. The settings keep their value, so turning Solari off
@@ -74,10 +74,10 @@ fn sync_ssr(
     mut commands: Commands,
     sources: Query<Ref<SsrSettings>>,
     deferred_cameras: Query<(), With<DeferredPrepass>>,
-    routing: Res<renzora::EffectRouting>,
-    solari: Query<(), With<renzora::SolariLit>>,
-    gained_solari: Query<(), Added<renzora::SolariLit>>,
-    mut lost_solari: RemovedComponents<renzora::SolariLit>,
+    routing: Res<renzora_scene_api::EffectRouting>,
+    solari: Query<(), With<renzora_render_api::SolariLit>>,
+    gained_solari: Query<(), Added<renzora_render_api::SolariLit>>,
+    mut lost_solari: RemovedComponents<renzora_render_api::SolariLit>,
     jittered: Query<(), With<TemporalJitter>>,
     gained_jitter: Query<(), Added<TemporalJitter>>,
     mut lost_jitter: RemovedComponents<TemporalJitter>,
@@ -127,6 +127,14 @@ fn sync_ssr(
                             bisection_steps: settings.bisection_steps,
                             use_secant: settings.use_secant,
                             max_perceptual_roughness,
+                            // Smooth surfaces reflect too. Bevy's default
+                            // starts SSR at 0.08 roughness and fades it in up
+                            // to 0.12, so anything smoother (water, a mirror,
+                            // polished floors: exactly the surfaces a
+                            // reflection is for) got none at all and showed
+                            // only the environment map. An empty range is a
+                            // step at 0 in the shader: every roughness counts.
+                            min_perceptual_roughness: 0.0..0.0,
                             // The other ranges keep bevy's tuned defaults.
                             ..defaults
                         });
@@ -149,7 +157,7 @@ fn sync_ssr(
 fn cleanup_ssr(
     mut commands: Commands,
     mut removed: RemovedComponents<SsrSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
@@ -171,7 +179,6 @@ impl Plugin for SsrPlugin {
     }
 }
 
-renzora::add!(SsrPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -182,7 +189,7 @@ mod tests {
         app.add_systems(Update, sync_ssr);
         let source = app.world_mut().spawn(SsrSettings::default()).id();
         let camera = app.world_mut().spawn(DeferredPrepass).id();
-        app.insert_resource(renzora::EffectRouting {
+        app.insert_resource(renzora_scene_api::EffectRouting {
             routes: vec![(camera, vec![source])],
         });
         (app, source, camera)
@@ -202,13 +209,13 @@ mod tests {
         assert!(has_ssr(&app, camera), "SSR is on by default");
         assert!(!stood_down_by_solari(app.world(), source));
 
-        app.world_mut().entity_mut(camera).insert(renzora::SolariLit);
+        app.world_mut().entity_mut(camera).insert(renzora_render_api::SolariLit);
         app.update();
         assert!(!has_ssr(&app, camera), "Solari should stand SSR down");
         assert!(stood_down_by_solari(app.world(), source));
         assert!(app.world().get::<SsrSettings>(source).unwrap().enabled, "the setting is kept");
 
-        app.world_mut().entity_mut(camera).remove::<renzora::SolariLit>();
+        app.world_mut().entity_mut(camera).remove::<renzora_render_api::SolariLit>();
         app.update();
         assert!(has_ssr(&app, camera), "SSR should come back without Solari");
     }

@@ -64,7 +64,7 @@ impl Plugin for DockPlugin {
         // runtime as well as the editor. The watcher is Editor-scope, so without
         // this a build that took the dock but not the watcher would read a
         // message nobody registered and panic on its first frame.
-        app.add_message::<renzora::core::project_files::ProjectFileChanged>()
+        app.add_message::<renzora_project_api::project_files::ProjectFileChanged>()
             .init_resource::<Dock>()
             .init_resource::<DockDirty>()
             .init_resource::<FixedDock>()

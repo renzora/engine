@@ -6,8 +6,8 @@ use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::ViewportState;
-use renzora::core::EditorCamera;
+use renzora_viewport_api::ViewportState;
+use renzora_scene_api::EditorCamera;
 use renzora_terrain::data::*;
 use renzora_editor_framework::EditorSelection;
 use renzora_terrain::landscape::{LandscapeStroke, TerrainChunkWeights, TerrainLandscape};

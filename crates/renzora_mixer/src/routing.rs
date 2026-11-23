@@ -136,17 +136,17 @@ fn header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(r).entry::<Node>().and_modify(|mut n| n.height = Val::Px(26.0));
     let mut kids = Vec::new();
     for (text, w) in [
-        (renzora::lang::t_or("mixer.bus", "Bus"), NAME_W + 12.0),
-        (renzora::lang::t_or("mixer.output", "Output"), OUTPUT_W),
-        (renzora::lang::t_or("mixer.reverb_send", "Reverb send"), SEND_W),
-        (renzora::lang::t_or("mixer.delay_send", "Delay send"), SEND_W),
+        (renzora_lang_api::t_or("mixer.bus", "Bus"), NAME_W + 12.0),
+        (renzora_lang_api::t_or("mixer.output", "Output"), OUTPUT_W),
+        (renzora_lang_api::t_or("mixer.reverb_send", "Reverb send"), SEND_W),
+        (renzora_lang_api::t_or("mixer.delay_send", "Delay send"), SEND_W),
     ] {
         let c = cell(commands, w);
         let t = label(commands, fonts, &text.to_uppercase(), text_muted(), 10.0);
         commands.entity(c).add_child(t);
         kids.push(c);
     }
-    let path = label(commands, fonts, &renzora::lang::t_or("mixer.signal_path", "Signal path").to_uppercase(), text_muted(), 10.0);
+    let path = label(commands, fonts, &renzora_lang_api::t_or("mixer.signal_path", "Signal path").to_uppercase(), text_muted(), 10.0);
     kids.push(path);
     commands.entity(r).add_children(&kids);
     r
@@ -262,12 +262,12 @@ fn master_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(r).entry::<Node>().and_modify(|mut n| n.margin = UiRect::top(Val::Px(6.0)));
     let name = name_cell(commands, fonts, BusRef::Master);
     let out = cell(commands, OUTPUT_W);
-    let t = label(commands, fonts, &renzora::lang::t_or("mixer.audio_device", "Audio device"), text_muted(), 12.0);
+    let t = label(commands, fonts, &renzora_lang_api::t_or("mixer.audio_device", "Audio device"), text_muted(), 12.0);
     commands.entity(out).add_child(t);
     let note = label(
         commands,
         fonts,
-        &renzora::lang::t_or("mixer.master_note", "Everything ends here. Reverb and delay return to Master."),
+        &renzora_lang_api::t_or("mixer.master_note", "Everything ends here. Reverb and delay return to Master."),
         text_muted(),
         12.0,
     );

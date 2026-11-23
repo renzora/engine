@@ -6,13 +6,13 @@ description = "Browser filesystem bridge — the File System Access API behind a
 
 # Deliberately NOT a bevy plugin (yet). This is a leaf utility that the splash
 # screen calls; it grows into the project VFS, at which point it will gain a
-# plugin. Keeping bevy out for now means it compiles in about a second.
-[dependencies]
-bevy = { workspace = true }
+# plugin.
 
 # Everything below is web-only. On desktop this crate is a set of stubs with the
-# same signatures, so callers never need `#[cfg]` around a call — see lib.rs.
+# same signatures, so callers never need `#[cfg]` around a call (see lib.rs).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# Only for `bevy::log` in the web half; the desktop stubs log nothing.
+bevy = { workspace = true }
 wasm-bindgen = "0.2.108"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"

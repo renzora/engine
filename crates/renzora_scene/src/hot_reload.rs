@@ -34,10 +34,10 @@
 //! than plainly losing the selection.
 
 use bevy::prelude::*;
-use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
-use renzora::core::console_log::{console_info, console_warn};
-use renzora::core::project_files::{AssetKind, ProjectFileChanged, SelfWrites};
-use renzora::core::CurrentProject;
+use renzora_diagnostics_api::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
+use renzora_log_api::{console_info, console_warn};
+use renzora_project_api::project_files::{AssetKind, ProjectFileChanged, SelfWrites};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::ExternalSceneEdits;
 
 /// Scene files that changed on disk this frame, collected for the exclusive
@@ -94,7 +94,7 @@ impl SceneConflicts {
 pub(crate) fn collect_scene_changes(
     mut pending: ResMut<PendingSceneReloads>,
     mut changes: MessageReader<ProjectFileChanged>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
 ) {
     if changes.is_empty() {
         return;
@@ -256,7 +256,7 @@ pub(crate) fn apply_scene_reloads(world: &mut World) {
         // does, so this takes the identical path rather than a parallel one that
         // has to remember the same steps.
         world
-            .resource_mut::<renzora::PendingSceneLoad>()
+            .resource_mut::<renzora_project_api::PendingSceneLoad>()
             .requests
             .push(rel.clone());
     }

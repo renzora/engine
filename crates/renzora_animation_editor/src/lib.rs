@@ -310,7 +310,7 @@ pub(crate) fn loop_range(start: f32, end: Option<f32>, duration: f32) -> (f32, f
 fn cache_clip_duration(
     mut editor_state: ResMut<AnimationEditorState>,
     animators: Query<&renzora_animation::AnimatorComponent>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     timeline_clip: Option<Res<timeline::clip::TimelineClip>>,
 ) {
     // A particle effect shown with no animation clip: the playhead runs over
@@ -366,7 +366,7 @@ fn cache_clip_duration(
 fn resolve_animation_entity(
     raw: Entity,
     animators: &Query<&renzora_animation::AnimatorComponent>,
-    models: &Query<&renzora::core::MeshInstanceData>,
+    models: &Query<&renzora_scene_api::MeshInstanceData>,
     parents: &Query<&ChildOf>,
 ) -> Entity {
     let ancestry = |start: Entity| {
@@ -389,7 +389,7 @@ fn sync_selection(
     selection: Res<renzora_editor_framework::EditorSelection>,
     mut editor_state: ResMut<AnimationEditorState>,
     animators: Query<&renzora_animation::AnimatorComponent>,
-    models: Query<&renzora::core::MeshInstanceData>,
+    models: Query<&renzora_scene_api::MeshInstanceData>,
     parents: Query<&ChildOf>,
     alive: Query<()>,
 ) {
@@ -434,7 +434,7 @@ impl Plugin for AnimationEditorPlugin {
         let bridge = AnimEditorBridge::default();
 
         {
-            use renzora::AppEditorExt;
+            use renzora_editor_api::AppEditorExt;
             app.register_inspector(inspector::animator_inspector_entry());
             app.register_inspector(inspector::follow_node_inspector_entry());
         }
@@ -474,7 +474,7 @@ impl Plugin for AnimationEditorPlugin {
             Update,
             advance_preview_time
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                .run_if(renzora::not_in_play_mode)
+                .run_if(renzora_project_api::not_in_play_mode)
                 .run_if(|s: Res<AnimationEditorState>| s.is_previewing),
         );
 
@@ -490,7 +490,7 @@ impl Plugin for AnimationEditorPlugin {
             preview::update_animation_preview
                 .after(advance_preview_time)
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-                .run_if(renzora::not_in_play_mode)
+                .run_if(renzora_project_api::not_in_play_mode)
                 .run_if(|s: Res<AnimationEditorState>| s.selected_entity.is_some()),
         );
 
@@ -525,5 +525,3 @@ impl Plugin for AnimationEditorPlugin {
         app.add_plugins(stage::StagePlugin);
     }
 }
-
-renzora::add!(AnimationEditorPlugin, Editor);

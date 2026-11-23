@@ -22,7 +22,7 @@ use bevy::render::render_resource::{
 };
 use uuid::Uuid;
 
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor_framework::EditorSelection;
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::runtime::{
@@ -33,7 +33,7 @@ use crate::{MaterialEditMode, MaterialEditorState};
 
 /// This preview's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's — see the registry there for why.
-pub use renzora::core::viewport_types::MATERIAL_PREVIEW_LAYER;
+pub use renzora_viewport_api::MATERIAL_PREVIEW_LAYER;
 
 /// Side length of the preview's render target, in pixels.
 ///
@@ -1152,7 +1152,7 @@ fn update_preview_material(
     let preview_handle: Handle<Shader> = Handle::Uuid(preview_uuid, PhantomData);
     // Unique per compile: Bevy's shader cache is keyed by module path, and a
     // shared one let each recompile replace the shader under the previous one.
-    let shader = renzora::shader_source::shader(
+    let shader = renzora_shader_api::shader_source::shader(
         result.fragment_shader.clone(),
         format!("graph_material/preview_{preview_uuid}.wesl"),
     );
@@ -1205,7 +1205,7 @@ fn update_preview_material(
         if tb.asset_path.is_empty() {
             continue;
         }
-        let handle: Handle<Image> = asset_server.load(&tb.asset_path);
+        let handle: Handle<Image> = renzora_shader::material::codegen::load_texture_binding(&asset_server, tb);
         if !material.extension.set_texture(tb.kind, tb.binding, handle) {
             warn!(
                 "[material_preview] Texture binding slot {:?}/{} not routed!",

@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy::tasks::{futures::check_ready, IoTaskPool, Task};
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{DocTabKind, DocumentTabState, EditorContext, Toasts};
 use renzora_particles::legacy::{InlineLegacyEffect, CONSOLE_CATEGORY};
 use renzora_particles::ParticleSystem;
@@ -145,7 +145,7 @@ pub fn finish_scan(mut scan: ResMut<LegacyScan>, project: Option<Res<CurrentProj
             Ok(None) => {}
             Err(e) => {
                 failed += 1;
-                renzora::console_log::console_warn(
+                renzora_log_api::console_warn(
                     CONSOLE_CATEGORY,
                     format!("{}: {e}. It was left as it is and will not play until it is fixed.", rel(&r.particle)),
                 );
@@ -159,7 +159,7 @@ pub fn finish_scan(mut scan: ResMut<LegacyScan>, project: Option<Res<CurrentProj
         if failed > 0 {
             line.push_str(&format!("; {failed} could not be read"));
         }
-        renzora::console_log::console_info(CONSOLE_CATEGORY, line);
+        renzora_log_api::console_info(CONSOLE_CATEGORY, line);
     }
 }
 
@@ -238,7 +238,7 @@ pub fn write_inline_effects(
                 system.path = rel;
             }
             Err(e) => {
-                renzora::console_log::console_error(
+                renzora_log_api::console_error(
                     CONSOLE_CATEGORY,
                     format!("The inline effect \"{display}\" plays, but could not be written to a .vfx, so saving the scene will lose it: {e}"),
                 );
@@ -276,7 +276,7 @@ pub fn open_particle_documents_as_vfx(world: &mut World, mut failed: Local<Optio
             Ok(Some(converted)) => convert_actions::log(&path, &converted),
             Ok(None) => {}
             Err(e) => {
-                renzora::console_log::console_error(CONSOLE_CATEGORY, format!("{path}: {e}"));
+                renzora_log_api::console_error(CONSOLE_CATEGORY, format!("{path}: {e}"));
                 if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
                     toasts.warning(format!("Could not open {path}: it is not a valid effect"));
                 }

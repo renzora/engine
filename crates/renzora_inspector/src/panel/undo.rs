@@ -64,12 +64,12 @@ impl renzora_undo::UndoCommand for RemoveComponentCmd {
         "Remove component"
     }
     fn execute(&mut self, world: &mut World) {
-        self.captured = renzora::core::reflection::capture_component(world, self.entity, self.type_id);
+        self.captured = renzora_scripting_api::reflection::capture_component(world, self.entity, self.type_id);
         (self.remove_fn)(world, self.entity);
     }
     fn undo(&mut self, world: &mut World) {
         if let Some(value) = &self.captured {
-            renzora::core::reflection::insert_component_reflected(
+            renzora_scripting_api::reflection::insert_component_reflected(
                 world,
                 self.entity,
                 self.type_id,

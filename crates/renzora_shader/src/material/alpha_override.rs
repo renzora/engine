@@ -24,7 +24,8 @@ use std::collections::HashMap;
 use bevy::asset::UntypedAssetId;
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
-use renzora::core::{MaterialAlphaOverride, MaterialRef, MaterialResolved, PbrAlphaMode};
+use renzora_scene_api::PbrAlphaMode;
+use renzora_material_api::{MaterialAlphaOverride, MaterialRef, MaterialResolved};
 
 use super::runtime::GraphMaterial;
 

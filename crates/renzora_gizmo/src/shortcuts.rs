@@ -7,9 +7,9 @@
 
 use bevy::prelude::*;
 
-use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::ViewportState;
-use renzora::core::InputFocusState;
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
+use renzora_viewport_api::ViewportState;
+use renzora_project_api::InputFocusState;
 use renzora_editor_framework::EditorSelection;
 
 use crate::modal_transform;
@@ -83,7 +83,7 @@ pub(crate) fn handle_selection_shortcuts(
     }
 
     if keybindings.just_pressed(EditorAction::CreateNode, &keyboard) {
-        commands.insert_resource(renzora::core::CreateNodeRequested);
+        commands.insert_resource(renzora_project_api::CreateNodeRequested);
     }
 
     // Copy (Ctrl+C) — snapshot the current selection into the clipboard.
@@ -217,27 +217,27 @@ pub(crate) fn handle_file_shortcuts(
 
     // Save (Ctrl+S)
     if keybindings.just_pressed(EditorAction::SaveScene, &keyboard) {
-        commands.insert_resource(renzora::core::SaveSceneRequested);
+        commands.insert_resource(renzora_project_api::SaveSceneRequested);
     }
 
     // Save As (Ctrl+Shift+S)
     if keybindings.just_pressed(EditorAction::SaveSceneAs, &keyboard) {
-        commands.insert_resource(renzora::core::SaveAsSceneRequested);
+        commands.insert_resource(renzora_project_api::SaveAsSceneRequested);
     }
 
     // Open Scene (Ctrl+O)
     if keybindings.just_pressed(EditorAction::OpenScene, &keyboard) {
-        commands.insert_resource(renzora::core::OpenSceneRequested);
+        commands.insert_resource(renzora_project_api::OpenSceneRequested);
     }
 
     // New Scene (Ctrl+N)
     if keybindings.just_pressed(EditorAction::NewScene, &keyboard) {
-        commands.insert_resource(renzora::core::NewSceneRequested);
+        commands.insert_resource(renzora_project_api::NewSceneRequested);
     }
 
     // Settings (Ctrl+,)
     if keybindings.just_pressed(EditorAction::OpenSettings, &keyboard) {
-        commands.insert_resource(renzora::core::ToggleSettingsRequested);
+        commands.insert_resource(renzora_project_api::ToggleSettingsRequested);
     }
 }
 
@@ -249,7 +249,7 @@ pub(crate) fn switch_gizmo_mode(
     input_focus: Res<InputFocusState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
-    viewport_settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    viewport_settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     mut mode: ResMut<GizmoMode>,
     mut active_tool: ResMut<renzora_editor_framework::ActiveTool>,
 ) {
@@ -262,7 +262,7 @@ pub(crate) fn switch_gizmo_mode(
     // cut's `Ctrl+R` the same way.
     if !matches!(
         viewport_settings.as_deref().map(|s| s.viewport_mode),
-        None | Some(renzora::core::viewport_types::ViewportMode::Scene)
+        None | Some(renzora_viewport_api::ViewportMode::Scene)
     ) {
         return;
     }

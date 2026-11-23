@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 #[derive(Resource, Default)]
 pub struct MaterialThumbnailRegistry {
@@ -94,7 +94,7 @@ impl MaterialThumbnailRegistry {
 /// editor caches (compiled shaders, asset import state, etc.) can share
 /// the same gitignored umbrella without colliding with thumbnails.
 pub fn thumbnail_cache_dir(project: &CurrentProject, kind: &str) -> PathBuf {
-    renzora::core::project_files::thumbnail_cache_dir(&project.path, kind)
+    renzora_project_api::project_files::thumbnail_cache_dir(&project.path, kind)
 }
 
 /// Best-effort migration from the legacy `<project>/.thumbs/` directory
@@ -148,5 +148,5 @@ pub fn material_thumb_path(material_abs: &Path, project: &CurrentProject) -> Pat
     });
     // The rule is shared with the companion, which deletes a material's
     // thumbnail when the material goes.
-    renzora::core::project_files::cached_thumbnail(&project.path, &rel, "materials")
+    renzora_project_api::project_files::cached_thumbnail(&project.path, &rel, "materials")
 }

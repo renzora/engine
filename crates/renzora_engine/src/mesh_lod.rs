@@ -28,11 +28,12 @@ use bevy::camera::visibility::VisibilityRange;
 #[cfg(feature = "gltf")]
 use bevy::gltf::Gltf;
 use bevy::prelude::*;
-use renzora::MeshLod;
+use renzora_scene_api::MeshLod;
 // Only the LOD-variant probe and spawn use these, and both are `gltf`-only —
 // the taggers below work off whatever subtrees exist and need none of it.
 #[cfg(feature = "gltf")]
-use renzora::{CurrentProject, MeshInstanceData};
+use renzora_scene_api::MeshInstanceData;
+use renzora_project_api::CurrentProject;
 #[cfg(feature = "gltf")]
 use crate::scene_io::MeshInstanceLoadFailed;
 #[cfg(feature = "gltf")]

@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::RenzoraShellExt;
+use renzora_shell_api::RenzoraShellExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};

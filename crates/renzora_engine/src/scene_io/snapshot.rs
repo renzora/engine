@@ -5,7 +5,7 @@
 //! under its original parent rather than at the scene root.
 
 use bevy::prelude::*;
-use renzora::MeshInstanceData;
+use renzora_scene_api::MeshInstanceData;
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicSceneBuilder;
 use std::collections::BTreeSet;
@@ -80,7 +80,7 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
                 return false;
             }
             // Gaussian-splat runtime components are resolved on load from the
-            // serializable renzora::GaussianSplat — same filter as `save_scene`.
+            // serializable renzora_scene_api::GaussianSplat — same filter as `save_scene`.
             if type_name.starts_with("bevy_gaussian_splatting::") {
                 return false;
             }

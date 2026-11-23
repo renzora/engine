@@ -86,9 +86,9 @@ pub fn setup_ui_canvas_render(mut commands: Commands, mut images: ResMut<Assets<
             },
             RenderTarget::Image(image_handle.clone().into()),
             UiEditorRenderCamera,
-            renzora::IsolatedCamera,
-            renzora::HideInHierarchy,
-            renzora::EditorLocked,
+            renzora_scene_api::IsolatedCamera,
+            renzora_scene_api::HideInHierarchy,
+            renzora_scene_api::EditorLocked,
             Name::new("UI Editor Render Camera"),
         ))
         .id();

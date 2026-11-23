@@ -5,11 +5,17 @@ edition = "2021"
 description = "Virtual geometry: clustered meshes with per-cluster LOD, culled and rasterized on the GPU, shaded by each material's own Bevy shader."
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 # `render_3d` for the 3D-only contract types it reads (`SolariShadedTransparent`).
 # Without it the crate built only when another crate in the same build turned
 # the feature on.
-renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["render_3d"] }
+# Marks its stage of a project load on the load timeline.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
 renzora_rvg = { path = "../renzora_rvg" }
 # Plain-old-data GPU structs. Already in the lockfile through Bevy.
 bytemuck = { version = "1", features = ["derive"] }
@@ -22,6 +28,8 @@ offset-allocator = "0.2"
 # models stored as `.rvg` through the real model loader.
 renzora_rvg = { path = "../renzora_rvg", features = ["bake", "model"] }
 serde_json = "1"
+# The GPU tests build their shaders the way the engine does.
+renzora_shader_api = { path = "../api/renzora_shader_api" }
 # And render a real compiled node-graph material, which is registered for
 # virtual geometry by the runtime rather than by this crate.
 renzora_shader = { path = "../renzora_shader", features = ["editor"] }
@@ -29,6 +37,8 @@ renzora_shader = { path = "../renzora_shader", features = ["editor"] }
 # editor does: what Solari traces for a converted mesh is decided between the
 # two crates.
 renzora_solari = { path = "../renzora_solari" }
+# The Solari settings and diagnostics those tests set and read.
+renzora_solari_api = { path = "../api/renzora_solari_api" }
 # Which of those can run here: CI's GPU job has a software Vulkan with no ray
 # tracing, so the Solari tests ask the adapter before they build an app.
 wgpu = { version = "30", default-features = false }
@@ -38,3 +48,9 @@ renzora_test_harness = { path = "../renzora_test_harness" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "VirtualGeometryPlugin"

@@ -15,8 +15,8 @@
 //!
 //! # How the chrome opens something it knows nothing about
 //!
-//! [`renzora::ShellActionItem`] — the shell draws a registered icon, and a press
-//! writes [`renzora::ShellActionInvoked`] carrying the id. The id is the only
+//! [`renzora_shell_api::ShellActionItem`] — the shell draws a registered icon, and a press
+//! writes [`renzora_shell_api::ShellActionInvoked`] carrying the id. The id is the only
 //! thing that crosses: no callback, no type, nothing the shell has to link. The
 //! asset browser reaches the same overlay by writing the same message, which is
 //! why neither of those crates has ever heard of this one.
@@ -24,21 +24,21 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use renzora::RenzoraShellExt;
+use renzora_shell_api::RenzoraShellExt;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::overlay_val;
 
 /// The id the shell button and the asset browser both write. Defined in the
 /// contract crate, because the asset browser writes it too and neither crate
 /// should depend on the other to agree on a string.
-pub use renzora::ACTION_MARKETPLACE as ACTION_ID;
+pub use renzora_shell_api::ACTION_MARKETPLACE as ACTION_ID;
 
 /// Marks the overlay root, so a second press closes rather than stacks.
 #[derive(Component)]
 pub(crate) struct StoreOverlayRoot;
 
 pub(crate) fn register(app: &mut App) {
-    app.register_shell_action(renzora::ShellActionItem {
+    app.register_shell_action(renzora_shell_api::ShellActionItem {
         id: ACTION_ID,
         icon: "storefront",
         // Labelled and tinted. As a bare glyph beside the gear it was one more
@@ -48,11 +48,11 @@ pub(crate) fn register(app: &mut App) {
         // Functions, not strings: registration happens during `App` assembly,
         // long before the chrome is built and before the user has had a chance
         // to change language.
-        label: Some(|| renzora::lang::t_or("marketplace.title", "Marketplace")),
+        label: Some(|| renzora_lang_api::t_or("marketplace.title", "Marketplace")),
         // Violet, deliberately not the update chip's blue — two tinted pills of
         // the same hue side by side read as one control in two halves.
         color: Some([167, 130, 245]),
-        tooltip: || renzora::lang::t_or("marketplace.title", "Marketplace"),
+        tooltip: || renzora_lang_api::t_or("marketplace.title", "Marketplace"),
         order: 0,
     });
     app.add_systems(
@@ -60,10 +60,10 @@ pub(crate) fn register(app: &mut App) {
         (
             // Both only react to a request: the shell's action message, or the
             // marker resource the updater and Settings insert.
-            open_on_action.run_if(on_message::<renzora::ShellActionInvoked>),
-            open_on_updates_request.run_if(resource_exists::<renzora::PluginUpdatesRequested>),
+            open_on_action.run_if(on_message::<renzora_shell_api::ShellActionInvoked>),
+            open_on_updates_request.run_if(resource_exists::<renzora_platform_api::PluginUpdatesRequested>),
         )
-            .run_if(in_state(renzora::SplashState::Editor)),
+            .run_if(in_state(renzora_project_api::SplashState::Editor)),
     );
 }
 
@@ -71,12 +71,12 @@ pub(crate) fn register(app: &mut App) {
 /// Settings plugin section or the exporter's plugin tab.
 ///
 /// None of those three can link this crate, so they write
-/// [`renzora::PluginUpdatesRequested`] and this serves it. Unlike the shell
+/// [`renzora_platform_api::PluginUpdatesRequested`] and this serves it. Unlike the shell
 /// action it does **not** toggle: every caller is asking to arrive somewhere
 /// specific, and closing the overlay because it happened to be open already
 /// would be the opposite of what was asked.
 fn open_on_updates_request(
-    request: Option<Res<renzora::PluginUpdatesRequested>>,
+    request: Option<Res<renzora_platform_api::PluginUpdatesRequested>>,
     open: Query<Entity, With<StoreOverlayRoot>>,
     mut data: Option<ResMut<crate::store::HubStoreData>>,
     mut commands: Commands,
@@ -84,7 +84,7 @@ fn open_on_updates_request(
     if request.is_none() {
         return;
     }
-    commands.remove_resource::<renzora::PluginUpdatesRequested>();
+    commands.remove_resource::<renzora_platform_api::PluginUpdatesRequested>();
     if let Some(data) = data.as_deref_mut() {
         crate::store::show_updates(data);
     }
@@ -94,13 +94,13 @@ fn open_on_updates_request(
         return;
     }
     commands.queue(|world: &mut World| {
-        renzora::ShellActionInvoked::invoke(world, ACTION_ID)
+        renzora_shell_api::ShellActionInvoked::invoke(world, ACTION_ID)
     });
 }
 
 /// Open (or close) the overlay when the action fires.
 fn open_on_action(
-    mut invoked: MessageReader<renzora::ShellActionInvoked>,
+    mut invoked: MessageReader<renzora_shell_api::ShellActionInvoked>,
     open: Query<Entity, With<StoreOverlayRoot>>,
     mut commands: Commands,
 ) {
@@ -127,7 +127,7 @@ fn open_on_action(
             let (root, content) = overlay_val(
                 &mut commands,
                 &fonts,
-                &renzora::lang::t_or("marketplace.title", "Marketplace"),
+                &renzora_lang_api::t_or("marketplace.title", "Marketplace"),
                 Val::Percent(88.0),
                 Val::Percent(88.0),
                 true,

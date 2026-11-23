@@ -9,7 +9,7 @@ mod panels;
 
 use bevy::prelude::*;
 
-use renzora::{bool_field, AppEditorExt, InspectorEntry};
+use renzora_editor_api::{bool_field, AppEditorExt, InspectorEntry};
 use renzora_network::{NetworkTransform, Networked};
 
 // ============================================================================
@@ -21,7 +21,7 @@ use renzora_network::{NetworkTransform, Networked};
 /// registration, so this one-time leak per label is bounded (it does not grow
 /// per frame). The trade-off: labels won't re-localize on a live language swap.
 fn loc(key: &str) -> &'static str {
-    Box::leak(renzora::lang::t(key).into_boxed_str())
+    Box::leak(renzora_lang_api::t(key).into_boxed_str())
 }
 
 /// `Networked` — the "replicate this entity" marker. Adding it makes the
@@ -84,5 +84,3 @@ impl Plugin for NetworkEditorPlugin {
         app.register_inspector(network_transform_inspector());
     }
 }
-
-renzora::add!(NetworkEditorPlugin, Editor);

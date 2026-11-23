@@ -17,7 +17,7 @@
 //! # Failure
 //!
 //! A load never panics the asset task: parsing and rendering run under
-//! `renzora::core::recoverable::catch`, and every error is returned to Bevy
+//! `renzora_crash_api::catch`, and every error is returned to Bevy
 //! (which marks the handle failed and logs it) and written to the editor
 //! Console with the file's path. Problems that do not stop the image (a missing
 //! or refused embedded file, a bad sidecar) are Console warnings, and the
@@ -31,7 +31,7 @@ use bevy::asset::{AssetLoader, AssetPath, LoadContext, ReadAssetError};
 use bevy::image::{Image, ImageLoaderSettings};
 use bevy::log::warn;
 use bevy::reflect::TypePath;
-use renzora::core::console_log::{console_error, console_warn};
+use renzora_log_api::{console_error, console_warn};
 use resvg::usvg;
 
 use crate::fonts;
@@ -183,7 +183,7 @@ async fn load_svg(
         }
     }
 
-    let rendered = renzora::core::recoverable::catch(|| {
+    let rendered = renzora_crash_api::catch(|| {
         raster::rasterize(&text, &images, fontdb, &settings, image_settings)
     });
     match rendered {

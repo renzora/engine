@@ -5,7 +5,10 @@ use glam::{DMat3, DVec3};
 use glam::{Mat3, Vec3};
 
 #[cfg(feature = "bevy_reflect")]
-use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize, std_traits::ReflectDefault};
+use bevy_reflect::Reflect;
+// Only the `reflect(...)` attribute names these, and it is gated on serde too.
+#[cfg(all(feature = "bevy_reflect", feature = "serde"))]
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize, std_traits::ReflectDefault};
 
 use crate::SquareMatExt;
 #[cfg(feature = "f64")]

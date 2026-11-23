@@ -36,7 +36,7 @@ pub fn is_editor_process() -> bool {
 // broken plugin or script system no longer takes the whole editor down.
 //
 // The panic hook runs BEFORE that catch and cannot see it coming, which is the
-// same problem `renzora::core::recoverable` solves for the engine's own catches.
+// same problem `renzora_crash_api` solves for the engine's own catches.
 // Here the catcher is Bevy's, so the hook cannot be told in advance. Instead it
 // defers: on a thread that runs systems it parks the report on the thread
 // ([`DEFERRED`]) and in [`LAST_DEFERRED`], and shows nothing. The handler runs on
@@ -268,9 +268,9 @@ pub fn install_panic_hook(is_editor: bool) {
         // for a script that panics every frame. Only the location is kept, for
         // the catcher's own Console line; the backtrace is skipped too, since
         // capturing one per frame is what a looping panic would otherwise cost.
-        if renzora::core::recoverable::panic_will_be_caught() {
+        if renzora_crash_api::panic_will_be_caught() {
             if let Some(loc) = panic_info.location() {
-                renzora::core::recoverable::record_location(sanitize_paths(&format!(
+                renzora_crash_api::record_location(sanitize_paths(&format!(
                     "{}:{}:{}",
                     loc.file(),
                     loc.line(),

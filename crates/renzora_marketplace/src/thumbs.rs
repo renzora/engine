@@ -84,7 +84,7 @@ pub fn fetch_hub_thumbnail(args: &HubThumbnail) -> Result<(), String> {
     // The 10 MiB cap is enforced by the backend as the body arrives, not after:
     // this URL came from a server, and a limit applied once the bytes are
     // already in memory protects nothing.
-    let response = renzora::net::Request::get(&args.url)
+    let response = renzora_net_api::net::Request::get(&args.url)
         .max_bytes(10 * 1024 * 1024)
         .send()
         .map_err(|e| format!("could not fetch {}: {e}", args.url))?;
@@ -140,7 +140,7 @@ pub(crate) struct HubThumbs {
     /// Requested and not started yet, oldest first.
     queue: VecDeque<String>,
     running: usize,
-    remote: Option<renzora::CompanionRemote>,
+    remote: Option<renzora_platform_api::CompanionRemote>,
     tx: Sender<Result<Downloaded, String>>,
     rx: Receiver<Result<Downloaded, String>>,
 }
@@ -185,7 +185,7 @@ impl HubThumbs {
 
 /// Fetch (unless cached) and read back one image, on a thread of its own.
 #[cfg(not(target_arch = "wasm32"))]
-fn start_download(url: String, remote: Option<renzora::CompanionRemote>, tx: Sender<Result<Downloaded, String>>) {
+fn start_download(url: String, remote: Option<renzora_platform_api::CompanionRemote>, tx: Sender<Result<Downloaded, String>>) {
     std::thread::spawn(move || {
         let result = (|| -> Result<Downloaded, String> {
             let args = HubThumbnail::for_url(&url).ok_or_else(|| url.clone())?;
@@ -222,7 +222,7 @@ fn start_download(url: String, remote: Option<renzora::CompanionRemote>, tx: Sen
 }
 
 #[cfg(target_arch = "wasm32")]
-fn start_download(_url: String, _remote: Option<renzora::CompanionRemote>, _tx: Sender<Result<Downloaded, String>>) {}
+fn start_download(_url: String, _remote: Option<renzora_platform_api::CompanionRemote>, _tx: Sender<Result<Downloaded, String>>) {}
 
 /// Run condition for [`poll_thumbs`]: it has work only when a fetch is queued
 /// or a finished one is waiting on the channel. A full set of running fetches
@@ -239,7 +239,7 @@ pub(crate) fn poll_thumbs(
     mut thumbs: ResMut<HubThumbs>,
     mut images: ResMut<Assets<Image>>,
     mut sizes: ResMut<GpuImageSizes>,
-    companion: Option<Res<renzora::CompanionJobs>>,
+    companion: Option<Res<renzora_platform_api::CompanionJobs>>,
 ) {
     if thumbs.remote.is_none() {
         thumbs.remote = companion.map(|c| c.remote());

@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
 renzora_splash = { path = "../renzora_splash" }
 
 [dev-dependencies]

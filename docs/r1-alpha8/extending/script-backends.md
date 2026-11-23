@@ -111,7 +111,8 @@ renzora::plugin!(WrenPlugin, Runtime);
 
 **Everything a backend needs is in `renzora`, not `renzora_scripting`.** That is
 what makes a language installable at all: a native plugin compiles against the
-staged SDK, which offers `bevy`, `renzora` and `renzora_ember` and nothing else.
+staged SDK, which offers `bevy` and `renzora` (UI framework included, as
+`renzora::ui`) and nothing else.
 While `ScriptBackend` lived in `renzora_scripting` no plugin could name it, and
 the Lua backend had been unbuildable ever since the FFI it used instead was
 removed. `renzora_scripting` still re-exports all of it, so engine-side code that

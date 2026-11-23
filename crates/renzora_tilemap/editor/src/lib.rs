@@ -37,12 +37,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
-use renzora::core::{
-    CurrentProject, EditorCamera2d, Node2d, PlayModeState, SpriteAtlasRegion, SpriteCustomSize,
-    SpriteImagePath, SpriteSheet, ViewportBrushActive,
-};
-use renzora::{AppEditorExt, EditorSelection, SplashState, ToolEntry, ToolSection};
+use renzora_viewport_api::{ViewportSettings, ViewportState, ViewportView};
+use renzora_scene_api::{EditorCamera2d, Node2d, SpriteAtlasRegion, SpriteCustomSize, SpriteImagePath, SpriteSheet};
+use renzora_project_api::{CurrentProject, PlayModeState, ViewportBrushActive};
+use renzora_editor_api::{AppEditorExt, EditorSelection, ToolEntry, ToolSection};
+use renzora_project_api::SplashState;
 use renzora_tilemap::{
     TileObject, TileObjectCell, TileObjectCollider, TilemapLayer, TilemapPaintLayer, TilemapTile,
     TilesetHandle,
@@ -69,7 +68,7 @@ type TileQuery<'w, 's> = Query<
 /// (the shared list, SVG included). A vector tileset rasterizes at its
 /// intrinsic size, so its cells line up exactly as authored.
 pub(crate) fn is_tileset(path: &std::path::Path) -> bool {
-    renzora::is_image_path(path)
+    renzora_project_api::is_image_path(path)
 }
 
 /// The tilemap the panel and paint brush operate on. Driven by the panel's tab
@@ -298,7 +297,6 @@ impl Plugin for TilemapEditorPlugin {
     }
 }
 
-renzora::add!(TilemapEditorPlugin, Editor);
 
 // ── Undo integration ─────────────────────────────────────────────────────────
 //
@@ -791,7 +789,7 @@ fn sync_paint_mode(
     active: Res<ActiveTilemap>,
     mut paint: ResMut<TilemapPaintMode>,
 ) {
-    use renzora::core::viewport_types::ViewportMode;
+    use renzora_viewport_api::ViewportMode;
     let mode = settings.map(|s| s.viewport_mode).unwrap_or_default();
     let want = matches!(mode, ViewportMode::Paint | ViewportMode::Erase) && active.0.is_some();
     let erase = mode == ViewportMode::Erase;
@@ -822,7 +820,7 @@ fn toggle_paint_mode_shortcut(
     active: Res<ActiveTilemap>,
     mut settings: Option<ResMut<ViewportSettings>>,
 ) {
-    use renzora::core::viewport_types::ViewportMode;
+    use renzora_viewport_api::ViewportMode;
     if !keys.just_pressed(KeyCode::Tab) || active.0.is_none() {
         return;
     }
@@ -848,7 +846,7 @@ fn escape_to_scene_mode(
     paint: Res<TilemapPaintMode>,
     mut settings: Option<ResMut<ViewportSettings>>,
 ) {
-    use renzora::core::viewport_types::ViewportMode;
+    use renzora_viewport_api::ViewportMode;
     if !paint.active || !keys.just_pressed(KeyCode::Escape) {
         return;
     }
@@ -877,7 +875,7 @@ fn right_click_to_select(
     mut press: Local<Option<Vec2>>,
     mut dragged: Local<bool>,
 ) {
-    use renzora::core::viewport_types::ViewportMode;
+    use renzora_viewport_api::ViewportMode;
     /// Movement (window px) past which a right hold is a pan, not a click.
     const RIGHT_CLICK_DRAG_PX: f32 = 5.0;
 
@@ -1216,7 +1214,7 @@ fn paint_tiles(
             // a tree sorts by its base, so a character above it draws behind
             // the canopy and one below draws in front. Toggleable per entity
             // in the inspector's Sprite Image card.
-            renzora::core::YSort {
+            renzora_scene_api::YSort {
                 offset: -ch * 0.5,
                 ..Default::default()
             },
@@ -1287,7 +1285,7 @@ fn paint_tiles(
                 Transform::from_xyz(center_x, center_y, 0.0),
                 Visibility::default(),
                 // Bottom-edge y-sort, same as the atlas-crop object path.
-                renzora::core::YSort {
+                renzora_scene_api::YSort {
                     offset: -ch * 0.5,
                     ..Default::default()
                 },

@@ -25,9 +25,9 @@
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::ViewportState;
-use renzora::core::EditorCamera;
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
+use renzora_viewport_api::ViewportState;
+use renzora_scene_api::EditorCamera;
 use renzora_editor_framework::{
     ActiveTool, EditorSelection, InspectorRegistry, OpenAddComponentMenuRequest,
     SpawnRegistry, SplashState,
@@ -395,7 +395,7 @@ pub fn spawn_preset_at(world: &mut World, preset_id: &'static str, position: Vec
     // spawn_fn set with a unique, snake_case id derived from the preset id
     // (`directional_light`, `directional_light_2`, …). The preset id is already
     // clean, so this is really just the dedupe pass.
-    let id = renzora::unique_entity_name(world, preset_id, entity);
+    let id = renzora_scene_api::unique_entity_name(world, preset_id, entity);
     if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
         entity_mut.insert(Name::new(id));
         if let Some(mut xform) = entity_mut.get_mut::<Transform>() {
@@ -406,5 +406,3 @@ pub fn spawn_preset_at(world: &mut World, preset_id: &'static str, position: Vec
         sel.set(Some(entity));
     }
 }
-
-renzora::add!(ContextMenuPlugin, Editor);

@@ -5,8 +5,9 @@ edition = "2021"
 
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 
 [lints]
 workspace = true

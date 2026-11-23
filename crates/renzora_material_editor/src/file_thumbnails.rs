@@ -28,7 +28,8 @@ use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrep
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use uuid::Uuid;
 
-use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{
     material_thumb_path, migrate_legacy_thumbnail_cache, MaterialThumbnailRegistry,
 };
@@ -41,7 +42,7 @@ use renzora_splash::{LoadingTaskHandle, LoadingTasks, SplashState};
 
 /// This capture rig's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's — see the registry there for why.
-pub use renzora::core::viewport_types::MATERIAL_THUMBNAIL_LAYER;
+pub use renzora_viewport_api::MATERIAL_THUMBNAIL_LAYER;
 /// Off-screen render target resolution. The asset browser displays
 /// thumbnails at roughly 96px, but rendering at higher resolution gives
 /// noticeably cleaner detail (normals, silhouettes, fine procedural noise)
@@ -184,7 +185,11 @@ fn intake_thumbnail_requests(
     asset_server: Res<AssetServer>,
     project: Option<Res<CurrentProject>>,
     job: Option<Res<MaterialThumbnailLoadingJob>>,
-    (jobs, mut companion): (Option<ResMut<renzora::CompanionJobs>>, ResMut<CompanionCaptures>),
+    (jobs, mut companion, rendering): (
+        Option<ResMut<renzora_platform_api::CompanionJobs>>,
+        ResMut<CompanionCaptures>,
+        Option<Res<renzora_project_api::ThumbnailRendering>>,
+    ),
 ) {
     let mut jobs = jobs;
     let advance_skip =
@@ -233,10 +238,18 @@ fn intake_thumbnail_requests(
             }
         }
 
+        // Render thumbnails is off: a missing one stays the file icon, and
+        // nothing is rendered here or in the companion.
+        if !rendering.as_ref().is_none_or(|r| r.0) {
+            registry.cancel(&material_path);
+            advance_skip(&mut tasks, &job, &short_name);
+            continue;
+        }
+
         // Miss: the companion renders it when one is connected (see
         // `CompanionCaptures`).
         if !companion.local_only.contains(&material_path) {
-            let args = renzora::job_args::MaterialThumbnail { project: project.path.clone(), material: material_path.clone() };
+            let args = renzora_platform_api::job_args::MaterialThumbnail { project: project.path.clone(), material: material_path.clone() };
             if let Some(id) = jobs.as_mut().and_then(|j| j.submit("material_thumbnail", short_name.clone(), &args)) {
                 companion.jobs.insert(id, (material_path, thumb_path));
                 continue;
@@ -310,7 +323,7 @@ fn intake_thumbnail_requests(
                 c.texture_bindings
                     .iter()
                     .filter(|tb| !tb.asset_path.is_empty())
-                    .map(|tb| asset_server.load(&tb.asset_path))
+                    .map(|tb| codegen::load_texture_binding(&asset_server, tb))
                     .collect()
             })
             .unwrap_or_default();
@@ -336,6 +349,18 @@ fn intake_thumbnail_requests(
             waited_frames: 0,
         });
     }
+}
+
+/// The id a thumbnail shader is cached under: a hash of its source, so the
+/// same source always finds the shader (and pipelines) already built, and
+/// different source never shares a path with it. Two FNV-1a passes with
+/// different offsets fill the 128 bits; nothing here needs to resist an
+/// adversary, only to keep distinct shaders apart.
+fn thumbnail_shader_id(source: &str) -> Uuid {
+    let fnv = |offset: u64| {
+        source.bytes().fold(offset, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
+    };
+    Uuid::from_u64_pair(fnv(0xcbf2_9ce4_8422_2325), fnv(0x6c62_272e_07bb_0142))
 }
 
 /// True iff the cached thumbnail file is fresh — exists and its mtime is at
@@ -551,7 +576,7 @@ fn arm_one_capture(
                 if tb.asset_path.is_empty() {
                     continue;
                 }
-                let h: Handle<Image> = asset_server.load(&tb.asset_path);
+                let h: Handle<Image> = codegen::load_texture_binding(asset_server, tb);
                 match (tb.kind, tb.binding) {
                     (TextureKind::D2, 0) => mat.extension.texture_0 = Some(h),
                     (TextureKind::D2, 1) => mat.extension.texture_1 = Some(h),
@@ -564,16 +589,25 @@ fn arm_one_capture(
                 }
             }
 
-            let uuid = Uuid::new_v4();
+            // One shader per distinct source, named by it. Bevy's shader cache
+            // is keyed by module path, so every thumbnail sharing one path
+            // meant each new capture replaced the last one's shader
+            // mid-warmup. A fresh random id per capture fixed that but
+            // compiled a whole new set of pipelines for every thumbnail, and
+            // Bevy keeps compiled pipelines for good: imported models whose
+            // thousands of materials all compile to the same source (a city's
+            // facade materials) took seconds more per thumbnail as the caches
+            // grew and held gigabytes. Identical source now shares one shader
+            // and its pipelines; different source still gets a path of its own.
+            let uuid = thumbnail_shader_id(&compile.fragment_shader);
             let shader_handle: Handle<Shader> = Handle::Uuid(uuid, PhantomData);
-            // A path of its own per shader. Bevy's shader cache is keyed by
-            // module path, so every thumbnail sharing one path meant each new
-            // capture replaced the last one's shader mid-warmup.
-            let shader = renzora::shader_source::shader(
-                compile.fragment_shader.clone(),
-                format!("graph_material/thumbnail_{uuid}.wesl"),
-            );
-            let _ = shaders.insert(&shader_handle, shader);
+            if shaders.get(&shader_handle).is_none() {
+                let shader = renzora_shader_api::shader_source::shader(
+                    compile.fragment_shader.clone(),
+                    format!("graph_material/thumbnail_{uuid}.wesl"),
+                );
+                let _ = shaders.insert(&shader_handle, shader);
+            }
             mat.extension.shader_uuid = Some(uuid);
             // Without this the deferred G-buffer pass (a project in deferred
             // mode puts every 3D camera there, thumbnail cameras included)
@@ -973,7 +1007,7 @@ pub struct MaterialFileThumbnailPlugin;
 impl Plugin for MaterialFileThumbnailPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] MaterialFileThumbnailPlugin");
-        renzora::init_companion_jobs(app);
+        renzora_platform_api::init_companion_jobs(app);
         app.init_resource::<MaterialThumbnailRegistry>()
             .init_resource::<PendingCaptures>()
             .init_resource::<ArmedCaptures>()
@@ -1032,7 +1066,7 @@ fn thumbnail_work_pending(
 #[derive(Resource, Default)]
 struct CompanionCaptures {
     /// Job id to the material and its cache file.
-    jobs: std::collections::HashMap<renzora::CompanionJobId, (PathBuf, PathBuf)>,
+    jobs: std::collections::HashMap<renzora_platform_api::CompanionJobId, (PathBuf, PathBuf)>,
     /// Materials the companion failed on: captured here from now on.
     local_only: std::collections::HashSet<PathBuf>,
 }
@@ -1040,7 +1074,7 @@ struct CompanionCaptures {
 /// Turn finished companion captures into cache loads, and failed ones back
 /// into requests the editor captures itself.
 fn collect_companion_captures(
-    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut done: MessageReader<renzora_platform_api::CompanionJobDone>,
     mut captures: ResMut<CompanionCaptures>,
     mut registry: ResMut<MaterialThumbnailRegistry>,
     mut disk_loads: ResMut<PendingDiskLoads>,
@@ -1109,4 +1143,26 @@ fn setup_shared_thumbnail_lights(mut commands: Commands) {
 
 fn clear_loading_job(mut commands: Commands) {
     commands.remove_resource::<MaterialThumbnailLoadingJob>();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::thumbnail_shader_id;
+
+    /// Thousands of materials that compile to the same source share one
+    /// shader, and so one set of pipelines, instead of each building its own.
+    #[test]
+    fn the_same_source_reuses_one_thumbnail_shader() {
+        let source = "fn fragment() -> vec4<f32> { return vec4(1.0); }";
+        assert_eq!(thumbnail_shader_id(source), thumbnail_shader_id(&source.to_string()));
+    }
+
+    /// Different source never lands on another shader's path, which is what
+    /// once swapped one capture's shader for another's mid-warmup.
+    #[test]
+    fn different_source_gets_its_own_thumbnail_shader() {
+        let a = thumbnail_shader_id("fn fragment() -> vec4<f32> { return vec4(1.0); }");
+        let b = thumbnail_shader_id("fn fragment() -> vec4<f32> { return vec4(0.5); }");
+        assert_ne!(a, b);
+    }
 }

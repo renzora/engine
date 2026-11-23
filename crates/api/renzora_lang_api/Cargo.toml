@@ -1,0 +1,16 @@
+[package]
+name = "renzora_lang_api"
+version = "0.1.0"
+edition = "2021"
+description = "The translation table every crate reads: `t`, `t_or`, language packs and the active language. Plugins see it as `renzora::lang`"
+
+# A contract layer. Bevy only for the `LanguageChanged` message; the table
+# itself is plain process-global state, so a crate that only translates its
+# labels depends on this and nothing heavier.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[lints]
+workspace = true

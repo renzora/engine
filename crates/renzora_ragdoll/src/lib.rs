@@ -35,7 +35,7 @@ mod toggle;
 
 use bevy::prelude::*;
 #[cfg(feature = "editor")]
-use renzora::AppEditorExt;
+use renzora_editor_api::AppEditorExt;
 
 /// Marker placed on a skeleton root (an ancestor of the `SkinnedMesh` entity,
 /// typically the same entity as `renzora_animation::AnimatorComponent`).
@@ -49,15 +49,15 @@ use renzora::AppEditorExt;
 /// created — editing them afterward has no effect on an already-built
 /// ragdoll. To re-tune, remove and re-add `Ragdoll` (or edit the fields
 /// before the skeleton finishes generating, e.g. before the first Play).
-// `renzora::Inspectable` is itself gated behind `renzora`'s `editor` feature,
+// `renzora_editor_api::Inspectable` is itself gated behind `renzora`'s `editor` feature,
 // so the derive (and its `#[inspectable(...)]` attribute) must be applied
-// through `cfg_attr` rather than directly — a plain `#[derive(renzora::Inspectable)]`
+// through `cfg_attr` rather than directly — a plain `#[derive(renzora_editor_api::Inspectable)]`
 // would fail to resolve in a lean build with `editor` off. Going through
 // `renzora_macros` (always present, feature-independent) rather than the
-// gated `renzora::Inspectable` re-export keeps the macro *name* resolvable
+// gated `renzora_editor_api::Inspectable` re-export keeps the macro *name* resolvable
 // even when the attribute itself is compiled out.
 #[derive(Component, Reflect, Clone)]
-#[cfg_attr(feature = "editor", derive(renzora_macros::Inspectable))]
+#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]
 // `Default` (the manual impl below) must be in the reflect attribute, not just
 // derived, so `ReflectDefault` is registered. Without it, loading a scene saved
 // before this struct gained `linear_damping`/`angular_damping`/`gravity_scale`
@@ -219,5 +219,3 @@ impl Plugin for RagdollPlugin {
         }
     }
 }
-
-renzora::add!(RagdollPlugin);

@@ -7,7 +7,7 @@
 
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_bloom_effect::BloomSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -151,5 +151,3 @@ impl Plugin for BloomEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(BloomEditorPlugin, Editor);

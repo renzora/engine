@@ -1,0 +1,21 @@
+[package]
+name = "renzora_viewport_api"
+version = "0.1.0"
+edition = "2021"
+description = "The viewport vocabulary: render-target state, viewport slots and settings, render layers, visualization modes. Plugins see it as `renzora::core::viewport_types`"
+
+# A contract layer, moved out of `renzora::core`. Runtime render crates and the
+# editor both read it, so it is neither editor-only nor gated.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+# `RenderResolution` and `GraphicsQuality` are re-exported here at the paths
+# they had in `viewport_types`.
+renzora_scene_api = { path = "../renzora_scene_api" }
+renzora_project_api = { path = "../renzora_project_api" }
+
+[dev-dependencies]
+toml = "0.8"
+
+[lints]
+workspace = true

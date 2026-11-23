@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
 renzora_ember = { path = "../renzora_ember" }
 serde = { version = "1", features = ["derive"] }
 
@@ -13,7 +16,7 @@ serde = { version = "1", features = ["derive"] }
 # tab has no filesystem to install into and no process to spawn, so the whole
 # update path is compiled out on wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-renzora_net = { path = "../renzora_net" }
+renzora_net_api = { path = "../api/renzora_net_api" }
 # The splash dashboard's page registry, for the Updates page. The dependency runs
 # THIS way on purpose: `renzora_splash` is linked into the runtime, so a splash
 # that depended on this crate would drag `rfd`, `zip` and the release client into
@@ -29,3 +32,10 @@ zip = "9.0.5"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "UpdatePlugin"
+scope = "Editor"

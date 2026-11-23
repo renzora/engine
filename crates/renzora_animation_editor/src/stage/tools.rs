@@ -72,7 +72,7 @@ pub(super) fn register(app: &mut App) {
             .after(super::view::StageInputSet)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor))
             .run_if(super::stage_mounted)
-            .run_if(renzora::not_in_play_mode),
+            .run_if(renzora_project_api::not_in_play_mode),
     );
 }
 
@@ -433,7 +433,7 @@ fn draw(
         let colour = |e: Entity| {
             let name = rig.names.get(&e).map(String::as_str).unwrap_or("");
             let lit = selected.contains(&e) || painting.as_deref() == Some(name);
-            let c = renzora::core::bone_style::bone_colour(name, lit, false);
+            let c = renzora_animation_api::bone_style::bone_colour(name, lit, false);
             if lit { c } else { c.with_alpha(0.9) }
         };
         for &j in &rig.joints {
@@ -447,7 +447,7 @@ fn draw(
                     let len = pp.distance(pj);
                     if len > 1e-5 {
                         let dir = (pj - pp) / len;
-                        let r = renzora::core::bone_style::ring_radius(len, cam_pos.distance(pp));
+                        let r = renzora_animation_api::bone_style::ring_radius(len, cam_pos.distance(pp));
                         gizmos.circle(Isometry3d::new(pp + dir * len * 0.25, Quat::from_rotation_arc(Vec3::Z, dir)), r, c);
                     }
                 }

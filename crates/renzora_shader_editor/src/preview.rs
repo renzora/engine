@@ -8,14 +8,14 @@ use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache};
 
 use crate::ShaderEditorState;
 
 /// This preview's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's — see the registry there for why.
-pub use renzora::core::viewport_types::SHADER_PREVIEW_LAYER;
+pub use renzora_viewport_api::SHADER_PREVIEW_LAYER;
 
 // ---- Preview mesh selection -------------------------------------------------
 
@@ -221,7 +221,7 @@ fn sync_shader_preview_camera(
 
 fn update_shader_preview(
     editor_state: Res<ShaderEditorState>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     asset_server: Res<AssetServer>,
     mut shaders: ResMut<Assets<Shader>>,
     mut shader_cache: ResMut<ShaderCache>,

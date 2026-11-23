@@ -6,7 +6,7 @@
 //! The session, the sign-in form and the API client all live in
 //! `renzora_marketplace`, which this crate must not depend on (see
 //! [`super::sections`] for why). It does not need to: the contract crate carries
-//! the whole boundary already — [`renzora::core::AuthBridge`] to read who is
+//! the whole boundary already — [`renzora_platform_api::AuthBridge`] to read who is
 //! signed in *and* their profile picture, already downloaded, and the two
 //! request markers to ask for the modal or a sign-out.
 //! The modal that answers is the *same* one the editor's title bar opens, and its
@@ -69,7 +69,7 @@ pub(crate) fn build_account_row(commands: &mut Commands, fonts: &EmberFonts) -> 
         ))
         .id();
     // No account plugin in this build → no account controls. See the module doc.
-    bind_display(commands, block, |w| w.get_resource::<renzora::core::AuthBridge>().is_some());
+    bind_display(commands, block, |w| w.get_resource::<renzora_platform_api::AuthBridge>().is_some());
 
     let signed_out = sign_in_button(commands, fonts);
     bind_display(commands, signed_out, |w| !signed_in(w));
@@ -82,12 +82,12 @@ pub(crate) fn build_account_row(commands: &mut Commands, fonts: &EmberFonts) -> 
 }
 
 fn signed_in(w: &Rx) -> bool {
-    w.get_resource::<renzora::core::AuthBridge>()
+    w.get_resource::<renzora_platform_api::AuthBridge>()
         .is_some_and(|b| b.signed_in_username.is_some())
 }
 
 fn username(w: &Rx) -> String {
-    w.get_resource::<renzora::core::AuthBridge>()
+    w.get_resource::<renzora_platform_api::AuthBridge>()
         .and_then(|b| b.signed_in_username.clone())
         .unwrap_or_default()
 }
@@ -96,7 +96,7 @@ fn username(w: &Rx) -> String {
 /// downloaded it. `None` for a signed-out user, an account with no picture, and
 /// the moments before it arrives.
 fn avatar(w: &Rx) -> Option<Handle<Image>> {
-    w.get_resource::<renzora::core::AuthBridge>()
+    w.get_resource::<renzora_platform_api::AuthBridge>()
         .and_then(|b| b.avatar.clone())
 }
 
@@ -130,7 +130,7 @@ fn sign_in_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(ic).insert(PASS_THROUGH);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("splash.sign_in")),
+            Text::new(renzora_lang_api::t("splash.sign_in")),
             ui_font(&fonts.ui, 12.5),
             TextColor(text()),
             PASS_THROUGH,
@@ -168,7 +168,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     //
     // This crate still reaches for nothing: the avatar cache and the API client
     // live with the account plugin, and what arrives here is a handle already
-    // loaded, on the same [`renzora::core::AuthBridge`] the username comes from.
+    // loaded, on the same [`renzora_platform_api::AuthBridge`] the username comes from.
     // See the module doc.
     const BADGE: f32 = 24.0;
     let badge = commands
@@ -269,7 +269,7 @@ fn signed_in_block(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             UiInteraction::default(),
             BLOCK,
             SignOutBtn,
-            HoverTooltip::new(renzora::lang::t("splash.sign_out")),
+            HoverTooltip::new(renzora_lang_api::t("splash.sign_out")),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
@@ -292,7 +292,7 @@ fn sign_in_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+        commands.insert_resource(renzora_platform_api::AuthToggleWindowRequest);
     }
 }
 
@@ -301,7 +301,7 @@ fn sign_out_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::core::AuthSignOutRequest);
+        commands.insert_resource(renzora_platform_api::AuthSignOutRequest);
     }
 }
 
@@ -314,8 +314,8 @@ fn sign_out_click(
 /// editor opens. Uses the shared ember `Popup`/`menu_item` widgets — their toggle
 /// systems run in every state, including Splash.
 pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let langs = renzora::lang::available();
-    let active = renzora::lang::active_code();
+    let langs = renzora_lang_api::available();
+    let active = renzora_lang_api::active_code();
 
     let panel = commands
         .spawn((
@@ -348,8 +348,8 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
         let label = if m.name.is_empty() { m.code.clone() } else { m.name.clone() };
         let icon = if m.code == active { "check" } else { "globe" };
         rows.push(menu_item(commands, fonts, icon, &label, move |_w| {
-            renzora::lang::set_active(&code);
-            let _ = renzora::save_language(&code);
+            renzora_lang_api::set_active(&code);
+            let _ = renzora_project_api::save_language(&code);
         }));
     }
     let content = commands
@@ -364,7 +364,7 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
         .find(|m| m.code == active)
         .map(|m| if m.name.is_empty() { m.code.clone() } else { m.name.clone() })
         .unwrap_or_else(|| {
-            if active.is_empty() { renzora::lang::t("splash.language") } else { active.clone() }
+            if active.is_empty() { renzora_lang_api::t("splash.language") } else { active.clone() }
         });
 
     let icon = icon_text(commands, &fonts.phosphor, "globe", ICON_MUTED, 13.0);
@@ -467,11 +467,11 @@ pub(crate) fn build_status_bar(commands: &mut Commands, fonts: &EmberFonts) -> E
         ))
         .id();
     let website =
-        social_button(commands, fonts, "globe", &renzora::lang::t("splash.website"), WEBSITE_URL, false);
+        social_button(commands, fonts, "globe", &renzora_lang_api::t("splash.website"), WEBSITE_URL, false);
     let youtube = social_button(commands, fonts, "youtube-logo", "YouTube", YOUTUBE_URL, false);
     let discord = social_button(commands, fonts, "discord-logo", "Discord", DISCORD_URL, false);
     let star =
-        social_button(commands, fonts, "star", &renzora::lang::t("splash.star_github"), GITHUB_URL, true);
+        social_button(commands, fonts, "star", &renzora_lang_api::t("splash.star_github"), GITHUB_URL, true);
     commands.entity(right).add_children(&[website, youtube, discord, star]);
 
     commands.entity(bar).add_children(&[left, right]);
@@ -560,7 +560,7 @@ fn social_button(
     if starred {
         bind_text(commands, t, |w| {
             let stars = w.get_resource::<GithubStats>().and_then(|s| s.stars);
-            let label = renzora::lang::t("splash.star_github");
+            let label = renzora_lang_api::t("splash.star_github");
             match stars {
                 Some(n) => format!("{label}  ({})", format_count(n)),
                 None => label,

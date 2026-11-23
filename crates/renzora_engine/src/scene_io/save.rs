@@ -9,8 +9,9 @@
 //! into this one on every save.
 
 use bevy::prelude::*;
-use renzora::console_log::*;
-use renzora::{CurrentProject, EditorCamera, HideInHierarchy, MeshInstanceData, SceneEntityId};
+use renzora_log_api::*;
+use renzora_scene_api::{EditorCamera, HideInHierarchy, MeshInstanceData, SceneEntityId};
+use renzora_project_api::CurrentProject;
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicSceneBuilder;
 use std::path::Path;
@@ -125,7 +126,7 @@ pub fn extract_authored(
             }
             // Gaussian-splat runtime components (CloudSettings, selection
             // markers) are resolved on load from the serializable
-            // renzora::GaussianSplat by the renzora_gaussian_splatting
+            // renzora_scene_api::GaussianSplat by the renzora_gaussian_splatting
             // plugin's sync system. Persisting them duplicates that state
             // and makes scenes warn on hosts running without the plugin.
             if type_name.starts_with("bevy_gaussian_splatting::") {
@@ -200,7 +201,7 @@ pub fn saveable_entities(world: &mut World) -> Vec<Entity> {
         // Saving them would bake a copy into every scene that happened to be
         // open, so the next load spawns two of each: two music players, two
         // HUD roots.
-        Without<renzora::Persistent>,
+        Without<renzora_scene_api::Persistent>,
     )>();
     let mut entities: Vec<Entity> = query.iter(world).collect();
 
@@ -218,7 +219,7 @@ pub fn saveable_entities(world: &mut World) -> Vec<Entity> {
     // holds the model_path) should be saved.
     let generated_roots: std::collections::HashSet<Entity> = {
         let mut q = world.query_filtered::<Entity, Or<(
-            With<renzora::SceneInstance>,
+            With<renzora_scene_api::SceneInstance>,
             With<MeshInstanceData>,
         )>>();
         q.iter(world).collect()
@@ -270,9 +271,9 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     std::fs::write(path, &serialized)?;
     // Claim the write, so the watcher event it is about to cause is recognised
     // as our own echo rather than as somebody editing the scene behind us. See
-    // `renzora::core::project_files::SelfWrites` and `renzora_scene::hot_reload`.
+    // `renzora_project_api::project_files::SelfWrites` and `renzora_scene::hot_reload`.
     world
-        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .get_resource_or_insert_with(renzora_project_api::project_files::SelfWrites::default)
         .record(path, serialized.as_bytes());
     console_info(
         "Scene",
@@ -301,7 +302,7 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         Without<EditorCamera>,
         Without<bevy::input::gamepad::Gamepad>,
         // Global/autoload scene content — see the matching filter above.
-        Without<renzora::Persistent>,
+        Without<renzora_scene_api::Persistent>,
     )>();
     for entity in query.iter(world) {
         entities.push(entity);
@@ -347,9 +348,9 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
 
 /// Save the current project's main scene.
 pub fn save_current_scene(world: &mut World) {
-    // See `renzora::LivePlaySession`: while the editor mirrors a running game,
+    // See `renzora_project_api::LivePlaySession`: while the editor mirrors a running game,
     // its world is not the level.
-    if let Some(mut live) = world.get_resource_mut::<renzora::LivePlaySession>() {
+    if let Some(mut live) = world.get_resource_mut::<renzora_project_api::LivePlaySession>() {
         live.pending_save = true;
         return;
     }

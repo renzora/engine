@@ -286,7 +286,7 @@ fn download_and_stage(
     // Streamed rather than buffered whole: an engine zip is well over 100 MB,
     // and this is also the only way to report progress — the transport reports
     // no length of its own, so the size from the release manifest is the total.
-    let mut stream = renzora_net::Request::get(url)
+    let mut stream = renzora_net_api::net::Request::get(url)
         .header("User-Agent", USER_AGENT)
         .timeout(DOWNLOAD_TIMEOUT)
         .send_stream()
@@ -695,10 +695,10 @@ pub fn launch_sidecar(staged_source: &Path, layout: &InstallLayout) -> Result<()
     // immediate exit rather than `AppExit` for the same reason the editor's own
     // quit path uses one: a full Bevy teardown can hang on a plugin's
     // `FreeLibrary`, and an editor that never dies is an update that never
-    // happens. `renzora::exit_now` rather than `std::process::exit` because the
+    // happens. `renzora_shell_api::exit_now` rather than `std::process::exit` because the
     // latter still runs libc's atexit chain and every DSO's destructors, which
     // is seconds the sidecar spends watching a PID that is already finished.
-    renzora::exit_now(0);
+    renzora_shell_api::exit_now(0);
 }
 
 fn hex(bytes: &[u8]) -> String {

@@ -36,8 +36,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::Extent3d;
 use bevy::render::view::Msaa;
 
-use renzora::core::viewport_types::{Viewports, VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
-use renzora::core::{ViewportCamera, ViewportOverlayCamera};
+use renzora_viewport_api::{Viewports, VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
+use renzora_scene_api::{ViewportCamera, ViewportOverlayCamera};
 
 /// Each slot's overlay image and camera.
 #[derive(Resource, Default)]
@@ -152,9 +152,9 @@ fn spawn_overlay_camera(
             // Kept out of effect routing, the sky and contact shadows, which
             // all leave offscreen utility cameras alone; and out of the redraw
             // gate's scene scan, which skips isolated cameras.
-            renzora::core::IsolatedCamera,
-            renzora::core::HideInHierarchy,
-            renzora::core::EditorLocked,
+            renzora_scene_api::IsolatedCamera,
+            renzora_scene_api::HideInHierarchy,
+            renzora_scene_api::EditorLocked,
             Name::new(format!("Editor Overlay Camera {slot}")),
         ))
         .id()

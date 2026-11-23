@@ -37,8 +37,8 @@ impl Plugin for AvianPhysicsPlugin {
         info!("[plugin] AvianPhysicsPlugin");
         // Owned by the engine's physics plugin, initialised here too so a backend
         // system never fails validation whichever is added first.
-        app.init_resource::<renzora::physics::PhysicsSettings>()
-            .init_resource::<renzora::physics::PhysicsCommands>();
+        app.init_resource::<renzora_physics_api::physics::PhysicsSettings>()
+            .init_resource::<renzora_physics_api::physics::PhysicsCommands>();
         // 3D first: the 2D backend leaves out the one avian plugin both crates
         // share, and relies on the 3D one having added it (see `backend_2d`).
         app.add_plugins(backend_3d::Avian3dPlugin);
@@ -46,7 +46,6 @@ impl Plugin for AvianPhysicsPlugin {
     }
 }
 
-renzora::add!(AvianPhysicsPlugin, Runtime);
 
 /// True if any ANCESTOR of `entity` carries `PhysicsBodyData`, i.e. this
 /// entity's collider should attach to that body rather than get a body of
@@ -59,7 +58,7 @@ renzora::add!(AvianPhysicsPlugin, Runtime);
 /// because nothing in the editor asked for one.
 pub(crate) fn has_body_ancestor(
     entity: Entity,
-    bodies: &Query<(), With<renzora::physics::PhysicsBodyData>>,
+    bodies: &Query<(), With<renzora_physics_api::physics::PhysicsBodyData>>,
     parents: &Query<&ChildOf>,
 ) -> bool {
     parents.iter_ancestors(entity).any(|e| bodies.contains(e))

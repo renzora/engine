@@ -84,7 +84,7 @@ sudo apt install pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
 | `cargo renzora` | Build, stage `dist/<platform>/`, and launch the editor. |
 | `cargo renzora dist` | Build and stage without launching. |
 | `cargo renzora profile` | Profiling build with Tracy instrumentation compiled in. |
-| `cargo renzora sync` | Regenerate the plugin wiring from the `renzora::add!` declarations. |
+| `cargo renzora sync` | Regenerate the plugin wiring from the crates' `[[package.metadata.renzora.plugin]]` tables. |
 | `cargo renzora remove <crate>` | Delete a plugin crate and every reference to it. |
 
 Building the editor always builds the runtime too. The runtime doubles as a dedicated server: run it with `--server`.

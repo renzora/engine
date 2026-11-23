@@ -67,7 +67,7 @@ pub(crate) fn tab_plugins(
 /// itself drifts from the engine the first time a rule moves, and then shows a
 /// list that is confidently wrong.
 ///
-/// So the loader reports into [`renzora::PluginInventory`] as it runs and this
+/// So the loader reports into [`renzora_platform_api::PluginInventory`] as it runs and this
 /// renders that. It reads only contract-crate types, which is why the settings
 /// crate needs no dependency on the loader.
 ///
@@ -96,12 +96,12 @@ pub(crate) fn plugins_section(
         commands,
         true,
         |w| {
-            w.get_resource::<renzora::PluginUpdateReminders>()
+            w.get_resource::<renzora_platform_api::PluginUpdateReminders>()
                 .map(|r| r.0)
                 .unwrap_or(true)
         },
         |w, &v| {
-            if let Some(mut r) = w.get_resource_mut::<renzora::PluginUpdateReminders>() {
+            if let Some(mut r) = w.get_resource_mut::<renzora_platform_api::PluginUpdateReminders>() {
                 if r.0 == v {
                     return;
                 }
@@ -112,7 +112,7 @@ pub(crate) fn plugins_section(
             // crashed before a deferred save would discard the one instruction
             // the user gave it.
             #[cfg(not(target_arch = "wasm32"))]
-            if let Err(e) = renzora::core::save_plugin_update_reminders(v) {
+            if let Err(e) = renzora_project_api::save_plugin_update_reminders(v) {
                 warn!("[plugins] could not save the update-reminder preference: {e}");
             }
         },
@@ -201,20 +201,20 @@ fn update_summary_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border_radius: BorderRadius::all(Val::Px(5.0)),
                 ..default()
             },
-            BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER).with_alpha(0.14)),
-            BorderColor::all(rgb(renzora::PLUGIN_UPDATE_AMBER).with_alpha(0.5)),
+            BackgroundColor(rgb(renzora_platform_api::PLUGIN_UPDATE_AMBER).with_alpha(0.14)),
+            BorderColor::all(rgb(renzora_platform_api::PLUGIN_UPDATE_AMBER).with_alpha(0.5)),
             Name::new("plugin-update-summary"),
         ))
         .id();
     renzora_ember::reactive::tracked::bind_display(commands, row, |w| {
-        w.get_resource::<renzora::PluginUpdates>().is_some_and(|u| !u.is_empty())
+        w.get_resource::<renzora_platform_api::PluginUpdates>().is_some_and(|u| !u.is_empty())
     });
 
     let ic = renzora_ember::font::icon_text(
         commands,
         &fonts.phosphor,
         "arrow-circle-up",
-        renzora::PLUGIN_UPDATE_AMBER,
+        renzora_platform_api::PLUGIN_UPDATE_AMBER,
         14.0,
     );
     commands.entity(ic).insert(PASS_THROUGH);
@@ -228,7 +228,7 @@ fn update_summary_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
-        let Some(u) = w.get_resource::<renzora::PluginUpdates>() else {
+        let Some(u) = w.get_resource::<renzora_platform_api::PluginUpdates>() else {
             return String::new();
         };
         let (ready, blocked) = (u.ready(), u.blocked());
@@ -279,7 +279,7 @@ struct PluginCard {
     update: Option<(String, bool)>,
     /// Whether this plugin can be deleted — false for one sealed inside the
     /// macOS `.app`, which is read-only in every sense that matters (see
-    /// `renzora::core::delete_plugin`). Decided once here rather than in the
+    /// `renzora_platform_api::delete_plugin`). Decided once here rather than in the
     /// card builder, which has no world to ask.
     removable: bool,
 }
@@ -291,16 +291,16 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         items: Vec::new(),
         build: Box::new(|c: &mut Commands, _: &EmberFonts, _| c.spawn(Node::default()).id()),
     };
-    let Some(inventory) = rx.get_resource::<renzora::PluginInventory>() else {
+    let Some(inventory) = rx.get_resource::<renzora_platform_api::PluginInventory>() else {
         return empty();
     };
     // Read even when nothing is disabled, so the binding subscribes to it and a
     // toggle repaints the card it just changed.
-    let disabled = rx.get_resource::<renzora::DisabledPlugins>();
+    let disabled = rx.get_resource::<renzora_platform_api::DisabledPlugins>();
     // Same reason: read unconditionally so the snapshot subscribes, and the grid
     // repaints when the check comes back rather than at the next unrelated
     // change to the inventory.
-    let updates = rx.get_resource::<renzora::PluginUpdates>();
+    let updates = rx.get_resource::<renzora_platform_api::PluginUpdates>();
 
     let cards: Vec<PluginCard> = inventory
         .sorted()
@@ -311,24 +311,24 @@ fn plugin_cards(rx: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
                 // Both halves matter: "Active" is this launch, the switch is
                 // intent for the next one. A plugin that is running but toggled
                 // off has to say so, or the panel looks like it did nothing.
-                renzora::PluginState::Loaded if enabled => (tr("settings.plugin.active"), false),
-                renzora::PluginState::Loaded => (tr("settings.plugin.until_restart"), false),
-                renzora::PluginState::Disabled if enabled => {
+                renzora_platform_api::PluginState::Loaded if enabled => (tr("settings.plugin.active"), false),
+                renzora_platform_api::PluginState::Loaded => (tr("settings.plugin.until_restart"), false),
+                renzora_platform_api::PluginState::Disabled if enabled => {
                     (tr("settings.plugin.on_restart"), false)
                 }
-                renzora::PluginState::Disabled => (tr("settings.plugin.disabled"), false),
-                renzora::PluginState::Skipped(why) => (why.clone(), false),
+                renzora_platform_api::PluginState::Disabled => (tr("settings.plugin.disabled"), false),
+                renzora_platform_api::PluginState::Skipped(why) => (why.clone(), false),
                 // A compile error is dozens of lines of rustc output; the whole
                 // thing is in the Console, and a card eight pixels tall gets the
                 // first line.
-                renzora::PluginState::Failed(why) => {
+                renzora_platform_api::PluginState::Failed(why) => {
                     (why.lines().next().unwrap_or(why).to_string(), true)
                 }
             };
             // Asked here rather than in the card builder, which has no world —
             // and answered by the same rule `delete_plugin` enforces, so a
             // button is never offered for something that would be refused.
-            let removable = renzora::core::plugin_is_removable(&e.id);
+            let removable = renzora_platform_api::plugin_is_removable(&e.id);
             // Suppressed on a plugin that failed to build: that card's one line
             // has to carry the compile error, which is the thing standing between
             // the user and a working plugin. An update it cannot build either is
@@ -430,7 +430,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
     let thumb = renzora_ember::widgets::file_image_tile(
         commands,
         fonts,
-        renzora::core::plugin_thumbnail_path(&card.id).unwrap_or_default(),
+        renzora_platform_api::plugin_thumbnail_path(&card.id).unwrap_or_default(),
         "puzzle-piece",
         placeholder(),
         10.0,
@@ -453,7 +453,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
                     border_radius: BorderRadius::all(Val::Px(9.0)),
                     ..default()
                 },
-                BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
+                BackgroundColor(rgb(renzora_platform_api::PLUGIN_UPDATE_AMBER)),
                 // A dark ring, so the disc reads as a badge on the artwork
                 // rather than as part of it. Plugin artwork is arbitrary.
                 BorderColor::all(Color::srgba(0.06, 0.06, 0.08, 0.75)),
@@ -560,7 +560,7 @@ fn plugin_card(commands: &mut Commands, fonts: &EmberFonts, card: &PluginCard) -
         ),
         Some((version, false)) => (
             tr("settings.plugin.update_available").replace("{v}", version),
-            renzora::PLUGIN_UPDATE_AMBER,
+            renzora_platform_api::PLUGIN_UPDATE_AMBER,
         ),
         None if card.problem => (card.status.clone(), warn_amber()),
         None => (card.status.clone(), text_muted()),
@@ -606,7 +606,7 @@ pub(crate) struct OpenPluginUpdates;
 ///
 /// Writes a resource rather than calling anything: the settings crate cannot
 /// link the marketplace, and a request with no payload needs no more than this.
-/// See [`renzora::PluginUpdatesRequested`].
+/// See [`renzora_platform_api::PluginUpdatesRequested`].
 ///
 /// Fires on a press, like [`open_plugins_folder_click`] and for the same reason:
 /// the worst a spurious one can do is open a panel.
@@ -615,7 +615,7 @@ pub(crate) fn open_plugin_updates_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::PluginUpdatesRequested);
+        commands.insert_resource(renzora_platform_api::PluginUpdatesRequested);
     }
 }
 
@@ -638,8 +638,8 @@ pub(crate) fn open_plugins_folder_click(
         return;
     }
     #[cfg(not(target_arch = "wasm32"))]
-    match renzora::core::plugins_dir() {
-        Some(dir) => renzora::core::reveal_in_explorer(&dir),
+    match renzora_platform_api::plugins_dir() {
+        Some(dir) => renzora_platform_api::reveal_in_explorer(&dir),
         None => warn!("[plugins] could not work out where the plugins folder is"),
     }
 }
@@ -710,8 +710,8 @@ pub(crate) fn plugin_delete_click(
 pub(crate) fn plugin_delete_confirm_click(
     q: Query<(&UiInteraction, &PluginDeleteConfirm), Changed<UiInteraction>>,
     overlays: Query<Entity, With<renzora_ember::widgets::Overlay>>,
-    mut inventory: Option<ResMut<renzora::PluginInventory>>,
-    mut disabled: Option<ResMut<renzora::DisabledPlugins>>,
+    mut inventory: Option<ResMut<renzora_platform_api::PluginInventory>>,
+    mut disabled: Option<ResMut<renzora_platform_api::DisabledPlugins>>,
     mut commands: Commands,
 ) {
     for (interaction, answer) in &q {
@@ -733,11 +733,11 @@ pub(crate) fn plugin_delete_confirm_click(
 /// The delete itself, lifted out so the click system stays about the click.
 fn delete_one(
     answer: &PluginDeleteConfirm,
-    inventory: Option<&mut renzora::PluginInventory>,
-    disabled: Option<&mut renzora::DisabledPlugins>,
+    inventory: Option<&mut renzora_platform_api::PluginInventory>,
+    disabled: Option<&mut renzora_platform_api::DisabledPlugins>,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
-    if let Err(e) = renzora::core::delete_plugin(&answer.id) {
+    if let Err(e) = renzora_platform_api::delete_plugin(&answer.id) {
         // Left in the inventory on failure, so the card stays and the user can
         // see the plugin is still there rather than watching it vanish from a
         // list while its directory sits on disk.
@@ -753,7 +753,7 @@ fn delete_one(
     // under the same name does not come back mysteriously switched off.
     if let Some(disabled) = disabled {
         if disabled.set_enabled(&answer.id, true) {
-            if let Err(e) = renzora::save_disabled_plugins(&disabled.0) {
+            if let Err(e) = renzora_project_api::save_disabled_plugins(&disabled.0) {
                 warn!("[plugins] could not save the disabled-plugin list: {e}");
             }
         }
@@ -783,7 +783,7 @@ fn delete_one(
 pub(crate) fn plugin_toggle_click(
     changed: Query<(Entity, &UiInteraction, &PluginToggle), Changed<UiInteraction>>,
     mut armed: Local<Option<Entity>>,
-    mut disabled: Option<ResMut<renzora::DisabledPlugins>>,
+    mut disabled: Option<ResMut<renzora_platform_api::DisabledPlugins>>,
 ) {
     for (entity, interaction, toggle) in &changed {
         match interaction {
@@ -806,7 +806,7 @@ pub(crate) fn plugin_toggle_click(
                 // whole point of this switch is what happens at the NEXT launch,
                 // and an editor that crashed before a deferred save would
                 // silently discard the one instruction the user gave it.
-                if let Err(e) = renzora::save_disabled_plugins(&disabled.0) {
+                if let Err(e) = renzora_project_api::save_disabled_plugins(&disabled.0) {
                     warn!("[plugins] could not save the disabled-plugin list: {e}");
                 }
             }

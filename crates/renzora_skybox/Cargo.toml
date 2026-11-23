@@ -8,9 +8,16 @@ edition = "2021"
 # nested renzora_skybox_editor crate (crates/renzora_skybox/editor).
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora_render_api = { path = "../api/renzora_render_api" }
 serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SkyboxPlugin"

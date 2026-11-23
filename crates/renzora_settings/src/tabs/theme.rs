@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;

@@ -106,7 +106,7 @@ fn poll_fetch(mut state: ResMut<AccountAvatar>, mut cache: ResMut<AvatarCache>) 
 fn publish_handle(
     state: Res<AccountAvatar>,
     cache: Res<AvatarCache>,
-    mut bridge: ResMut<renzora::core::AuthBridge>,
+    mut bridge: ResMut<renzora_platform_api::AuthBridge>,
 ) {
     let want = state.url.as_ref().and_then(|u| cache.get(u));
     // Guarded: `AuthBridge` is read by reactive bindings, and writing an

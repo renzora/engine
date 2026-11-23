@@ -4,7 +4,7 @@ Systems hold all the logic in a Renzora game; they are plain Bevy 0.20 functions
 
 ## Systems live in plugins
 
-Renzora never hand-wires systems in a `main()`. Every feature is a Bevy `Plugin`, the plugin's `build(&mut App)` calls `add_systems`, and the plugin self-registers with `renzora::add!`. At startup the engine walks a global registry and installs each matching plugin, so a feature drops into the build just by existing.
+Renzora never hand-wires systems in a `main()`. Every feature is a Bevy `Plugin`, the plugin's `build(&mut App)` calls `add_systems`, and the plugin is declared in a `[[package.metadata.renzora.plugin]]` table in its crate's `Cargo.toml`. A build-time generator turns those tables into the committed plugin lists the engine installs at startup, so a feature drops into the build just by existing.
 
 ```rust
 use bevy::prelude::*; // Component, Query, Commands, Plugin, Res, Time, ...
@@ -26,24 +26,37 @@ impl Plugin for ScoreboardPlugin {
 fn setup_scoreboard(/* ... */) { /* spawn UI once */ }
 fn award_points(mut score: ResMut<Score>) { score.points += 1; }
 fn refresh_label(score: Res<Score>) { info!("score: {}", score.points); }
-
-// Register the plugin in the global inventory. Runtime scope by default.
-renzora::add!(ScoreboardPlugin);
 ```
 
-That single `renzora::add!(ScoreboardPlugin)` line is the whole registration. There is no central list of plugins to edit.
+```toml
+# Cargo.toml: register the plugin. Runtime scope by default.
+[[package.metadata.renzora.plugin]]
+type = "ScoreboardPlugin"
+```
 
-> Import Bevy's ECS types from `use bevy::prelude::*;` and the registration macro from `renzora`. There is **no `renzora::prelude`** — reach engine items with `use renzora::*;` or by path (`use renzora::Inspectable;`). The macro path `renzora::add!` works regardless of imports.
+That single table is the whole registration. There is no central list of plugins to edit.
+
+> Import Bevy's ECS types from `use bevy::prelude::*;`. There is **no `renzora::prelude`** — reach engine items with `use renzora::*;` or by path (`use renzora::Inspectable;`). Declaring the plugin needs no import at all, since the table lives in `Cargo.toml`.
 
 ## Runtime vs Editor scope
 
-The second argument to `renzora::add!` decides **which session a plugin's systems run in**. It is the most important scheduling switch Renzora adds on top of Bevy.
+The `scope` key of the plugin table decides **which session a plugin's systems run in**. It is the most important scheduling switch Renzora adds on top of Bevy.
 
-```rust
-renzora::add!(MyGameplay);                       // Runtime (the default)
-renzora::add!(MyGameplay, Runtime);              // Runtime, stated explicitly
-renzora::add!(MyEditorTool, Editor);             // Editor only
-renzora::add!(MyFoundation, Runtime, priority = -100); // earlier in the fan-out
+```toml
+[[package.metadata.renzora.plugin]]
+type = "MyGameplay"                # Runtime (the default)
+
+[[package.metadata.renzora.plugin]]
+type = "MyOtherGameplay"
+scope = "Runtime"                  # Runtime, stated explicitly
+
+[[package.metadata.renzora.plugin]]
+type = "MyEditorTool"
+scope = "Editor"                   # Editor only
+
+[[package.metadata.renzora.plugin]]
+type = "MyFoundation"
+priority = -100                    # earlier in the fan-out
 ```
 
 `PluginScope` is exactly `{ Editor, Runtime }`, and matching is **exact equality** — there is no "both" scope.
@@ -70,7 +83,7 @@ Because a `Runtime` plugin's systems run inside the editor viewport too, your ga
 | 3 | `ScriptingPlugin` | `renzora_scripting` | Hooks and command queue; language backends are plugins |
 | 4 | `PhysicsPlugin` | `renzora_physics` | physics integration + script bindings |
 | 5 | `ViewportStretchPlugin` | `renzora_runtime` | pixel-art scaling — **game builds only** (`!is_editor`) |
-| 6+ | every `Runtime`-scope `add!` plugin | various | the generated `renzora_runtime::plugins` list |
+| 6+ | every `Runtime`-scope manifest-declared plugin | various | the generated `renzora_runtime::plugins` list |
 
 `Editor`-scope plugins are **not** installed here. They come from the editor image's own generated list, layered on top when an editor session is detected; a shipped game does not have that image beside it. There is no compile-time `editor` feature.
 

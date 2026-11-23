@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{open_asset_tab, AssetDragPayload, DocTabKind};
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, rgb};

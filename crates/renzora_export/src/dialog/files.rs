@@ -202,7 +202,7 @@ pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_m
         .spawn(Node { flex_grow: 1.0, flex_basis: Val::Px(0.0), min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
         .id();
     let headline = txt(commands, fonts, "", 13.5, text_primary());
-    let note = txt(commands, fonts, &renzora::lang::t("export.files.note"), 11.0, text_muted());
+    let note = txt(commands, fonts, &renzora_lang_api::t("export.files.note"), 11.0, text_muted());
     commands.entity(text).add_children(&[headline, note]);
     commands.entity(card).add_child(text);
     commands.entity(body).add_child(card);
@@ -211,11 +211,11 @@ pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_m
     // back from a mistake, and it re-runs the crawl rather than restoring a
     // snapshot, so it also picks up anything added since the dialog opened.
     let actions = commands.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, column_gap: Val::Px(6.0), ..default() }).id();
-    let all = pill_button(commands, fonts, "check-square", &renzora::lang::t("export.files.all"));
+    let all = pill_button(commands, fonts, "check-square", &renzora_lang_api::t("export.files.all"));
     commands.entity(all).insert(FilesBulk(FilesAction::All));
-    let none = pill_button(commands, fonts, "square", &renzora::lang::t("export.files.none"));
+    let none = pill_button(commands, fonts, "square", &renzora_lang_api::t("export.files.none"));
     commands.entity(none).insert(FilesBulk(FilesAction::None));
-    let reset = pill_button(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t("export.files.reset"));
+    let reset = pill_button(commands, fonts, "arrow-counter-clockwise", &renzora_lang_api::t("export.files.reset"));
     commands.entity(reset).insert(FilesBulk(FilesAction::Detected));
     commands.entity(actions).add_children(&[all, none, reset]);
     commands.entity(card).add_child(actions);
@@ -225,8 +225,8 @@ pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_m
             return String::new();
         };
         match &s.included_files {
-            None => renzora::lang::t("export.files.auto"),
-            Some(set) => renzora::lang::t("export.files.will_ship")
+            None => renzora_lang_api::t("export.files.auto"),
+            Some(set) => renzora_lang_api::t("export.files.will_ship")
                 .replace("{n}", &set.len().to_string())
                 .replace("{total}", &s.project_files.len().to_string()),
         }
@@ -257,7 +257,7 @@ pub(super) fn build_files_tab(commands: &mut Commands, fonts: &EmberFonts, tab_m
         queue.apply(world);
     });
 
-    let sec = group(commands, fonts, &renzora::lang::t("export.section.files"), &[body]);
+    let sec = group(commands, fonts, &renzora_lang_api::t("export.section.files"), &[body]);
     finish_tab(commands, panel, &[sec], tab_max);
     panel
 }

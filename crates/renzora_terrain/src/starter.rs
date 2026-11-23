@@ -158,7 +158,7 @@ pub fn spawn_starter_terrain(world: &mut World) -> Entity {
             Transform::default(),
             Visibility::default(),
             data.clone(),
-            renzora::SelectionStop,
+            renzora_scene_api::SelectionStop,
         ))
         .id();
     for chunk in spawn_terrain_chunks(world, terrain, &data, None) {
@@ -242,14 +242,14 @@ pub fn shape_pending_chunks(
 const WORK_ID: &str = "terrain_build";
 
 /// Report the chunks still to shape or build to a loading scene
-/// ([`SceneLoadWork`](renzora::core::SceneLoadWork)), so a loading screen
+/// ([`SceneLoadWork`](renzora_platform_api::SceneLoadWork)), so a loading screen
 /// stays up until the ground is all there.
 ///
 /// Not gated on a terrain being in the scene like the systems that do the
 /// building: a scene without one has to report zero, or the last scene's count
 /// would hold the next one's loading screen up.
 pub fn report_terrain_load_work(
-    work: Option<ResMut<renzora::core::SceneLoadWork>>,
+    work: Option<ResMut<renzora_platform_api::SceneLoadWork>>,
     shaping: Query<(), With<PendingShape>>,
     building: Query<
         (),
@@ -269,14 +269,14 @@ pub fn report_terrain_load_work(
 }
 
 /// Report terrain that is still shaping or building to the viewport's
-/// progress card ([`ViewportWork`](renzora::core::viewport_types::ViewportWork)).
+/// progress card ([`ViewportWork`](renzora_viewport_api::ViewportWork)).
 ///
 /// Counts the chunks still waiting, out of the most that were waiting since
 /// the card appeared, so the bar only moves forwards. Ordinary streaming as
 /// the camera moves brings in a few chunks at a time, which is over before a
 /// card could be read, so it only appears for a real backlog.
 pub fn report_terrain_progress(
-    work: Option<ResMut<renzora::core::viewport_types::ViewportWork>>,
+    work: Option<ResMut<renzora_viewport_api::ViewportWork>>,
     shaping: Query<(), With<PendingShape>>,
     building: Query<
         (),
@@ -303,7 +303,7 @@ pub fn report_terrain_progress(
     }
     *peak = (*peak).max(waiting);
     let label = if shaping > 0 { "Shaping terrain" } else { "Building terrain" };
-    let next = renzora::core::viewport_types::WorkItem {
+    let next = renzora_viewport_api::WorkItem {
         id: WORK_ID,
         label: label.to_string(),
         done: *peak - waiting,

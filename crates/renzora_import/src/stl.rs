@@ -271,7 +271,7 @@ pub fn convert(path: &Path, settings: &ImportSettings) -> Result<ConvertedGlb, I
             metallic_roughness_texture: None,
             alpha: crate::glb_build::AlphaKind::Opaque,
             double_sided: false,
-            advanced: renzora::core::PbrAdvanced::default(),
+            advanced: renzora_scene_api::PbrAdvanced::default(),
         });
     }
 

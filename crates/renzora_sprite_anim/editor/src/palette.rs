@@ -11,7 +11,7 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, ScrollPosition};
 
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb};
 use renzora_ember::widgets::{EmberScroll, ScrollThumb, ScrollbarBusy};

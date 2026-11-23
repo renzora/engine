@@ -8,7 +8,7 @@
 //! The registry's post-compile step handles injecting `ShaderUniforms` if missing.
 
 use crate::backend::{ShaderBackend, ShaderCompileError};
-use renzora::shader_source::Severity;
+use renzora_shader_api::shader_source::Severity;
 
 pub struct BevyBackend;
 
@@ -22,7 +22,7 @@ impl ShaderBackend for BevyBackend {
     }
 
     fn to_wgsl(&self, source: &str) -> Result<String, ShaderCompileError> {
-        let t = renzora::shader_source::to_wesl(source);
+        let t = renzora_shader_api::shader_source::to_wesl(source);
         // An error means part of the shader could not be translated; the
         // result would fail to compile anyway, so say where, here.
         if let Some(d) = t.diagnostics.iter().find(|d| d.severity == Severity::Error) {

@@ -5,7 +5,7 @@
 //! the scene switcher (`renzora_shell::scene_switcher`).
 
 use bevy::prelude::*;
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_camera::OrbitCameraState;
 use renzora_engine::scene_io;
 
@@ -34,7 +34,7 @@ pub(crate) fn open_scene(world: &mut World, path: &std::path::Path) {
                 .get_resource_mut::<renzora_ui::DocumentTabState>()
                 .and_then(|mut ts| ts.activate_tab(idx));
             if let Some((old_id, new_id)) = ids {
-                world.insert_resource(renzora::core::TabSwitchRequest {
+                world.insert_resource(renzora_project_api::TabSwitchRequest {
                     old_tab_id: old_id,
                     new_tab_id: new_id,
                 });
@@ -66,18 +66,21 @@ pub(crate) fn open_scene(world: &mut World, path: &std::path::Path) {
                 let def = OrbitCameraState::default();
                 (def.focus.to_array(), def.distance, def.yaw, def.pitch)
             };
-        let snapshot = renzora::core::TabSceneSnapshot {
+        let snapshot = renzora_project_api::TabSceneSnapshot {
             scene_ron,
             camera_focus: focus,
             camera_distance: distance,
             camera_yaw: yaw,
             camera_pitch: pitch,
         };
-        if let Some(mut buffers) = world.get_resource_mut::<renzora::core::SceneTabBuffers>() {
+        if let Some(mut buffers) = world.get_resource_mut::<renzora_project_api::SceneTabBuffers>() {
             buffers.buffers.insert(old_id, snapshot);
         }
         // Pin assets the leaving tab's entities reference before they
-        // despawn — see `tab_asset_cache` module doc.
+        // despawn (see the `tab_asset_cache` module doc). Loaded world
+        // partition cells are written back first: their edits live only in
+        // the world.
+        crate::world_partition::before_scene_despawn(world);
         crate::tab_asset_cache::pin_live_tab_handles(world, old_id);
     }
 

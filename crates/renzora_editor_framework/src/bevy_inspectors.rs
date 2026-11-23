@@ -119,7 +119,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                     Visibility::default(),
                     LightProbe::default(),
                     ParallaxCorrection::Auto,
-                    renzora::core::ReflectionProbeSource::default(),
+                    renzora_scene_api::ReflectionProbeSource::default(),
                 ))
                 .id()
         },
@@ -151,7 +151,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         category: "camera",
         spawn_fn: |world| {
             let mut count = 0u32;
-            let mut q = world.query_filtered::<(), With<renzora::SceneCamera>>();
+            let mut q = world.query_filtered::<(), With<renzora_scene_api::SceneCamera>>();
             for _ in q.iter(world) {
                 count += 1;
             }
@@ -170,13 +170,13 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                         is_active: false,
                         ..default()
                     },
-                    renzora::SceneCamera,
+                    renzora_scene_api::SceneCamera,
                 ))
                 .id();
             if is_first {
                 world
                     .entity_mut(entity)
-                    .insert(renzora::core::DefaultCamera);
+                    .insert(renzora_scene_api::DefaultCamera);
             }
             entity
         },
@@ -194,7 +194,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
             // camera in the world. Without these, the Play button stays
             // disabled and the play-mode picker can't find the camera.
             let mut count = 0u32;
-            let mut q = world.query_filtered::<(), With<renzora::SceneCamera>>();
+            let mut q = world.query_filtered::<(), With<renzora_scene_api::SceneCamera>>();
             for _ in q.iter(world) {
                 count += 1;
             }
@@ -218,13 +218,13 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                         is_active: false,
                         ..default()
                     },
-                    renzora::SceneCamera,
+                    renzora_scene_api::SceneCamera,
                 ))
                 .id();
             if is_first {
                 world
                     .entity_mut(entity)
-                    .insert(renzora::core::DefaultCamera);
+                    .insert(renzora_scene_api::DefaultCamera);
             }
             entity
         },
@@ -251,7 +251,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                         custom_size: Some(Vec2::new(100.0, 100.0)),
                         ..default()
                     },
-                    renzora::core::SpriteImagePath::default(),
+                    renzora_scene_api::SpriteImagePath::default(),
                 ))
                 .id()
         },
@@ -267,7 +267,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                 .spawn((
                     Name::new("Node 2D"),
                     Transform::default(),
-                    renzora::core::Node2d,
+                    renzora_scene_api::Node2d,
                 ))
                 .id()
         },
@@ -301,7 +301,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
         dynamic_icon_fn: None,
     });
     registry.register(ComponentIconEntry {
-        type_id: std::any::TypeId::of::<renzora::core::Node2d>(),
+        type_id: std::any::TypeId::of::<renzora_scene_api::Node2d>(),
         name: "Node 2D",
         icon: "shapes",
         color: [180, 220, 130],
@@ -402,7 +402,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
 /// Read the `i`-th LOD boundary, falling back to the same geometric extension
 /// the runtime band solver uses — the inspector must show the distance that
 /// will actually apply, not a blank.
-fn lod_distance(cfg: &renzora::MeshLod, i: usize) -> f32 {
+fn lod_distance(cfg: &renzora_scene_api::MeshLod, i: usize) -> f32 {
     if let Some(&d) = cfg.distances.get(i) {
         return d;
     }
@@ -415,7 +415,7 @@ fn lod_distance(cfg: &renzora::MeshLod, i: usize) -> f32 {
 
 /// Write the `i`-th LOD boundary, growing the vec through the same extension
 /// so intermediate levels keep their effective values instead of zeroing.
-fn set_lod_distance(cfg: &mut renzora::MeshLod, i: usize, value: f32) {
+fn set_lod_distance(cfg: &mut renzora_scene_api::MeshLod, i: usize, value: f32) {
     while cfg.distances.len() <= i {
         let next = lod_distance(cfg, cfg.distances.len());
         cfg.distances.push(next);
@@ -423,7 +423,7 @@ fn set_lod_distance(cfg: &mut renzora::MeshLod, i: usize, value: f32) {
     cfg.distances[i] = value.max(1.0);
 }
 
-/// Distance-LOD tuning for models ([`renzora::MeshLod`]). The runtime applies
+/// Distance-LOD tuning for models ([`renzora_scene_api::MeshLod`]). The runtime applies
 /// default bands to any model with baked `_lodN.glb` variants even without
 /// this component — adding it is only for overriding distances/culling, or
 /// for turning LODs off on one model. Three boundary fields cover the levels
@@ -434,21 +434,21 @@ fn mesh_lod_entry() -> InspectorEntry {
         display_name: "Mesh LOD",
         icon: "stack",
         category: "rendering",
-        has_fn: |world, entity| world.get::<renzora::MeshLod>(entity).is_some(),
+        has_fn: |world, entity| world.get::<renzora_scene_api::MeshLod>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(renzora::MeshLod::default());
+            world.entity_mut(entity).insert(renzora_scene_api::MeshLod::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<renzora::MeshLod>();
+            world.entity_mut(entity).remove::<renzora_scene_api::MeshLod>();
         }),
         is_enabled_fn: Some(|world, entity| {
             world
-                .get::<renzora::MeshLod>(entity)
+                .get::<renzora_scene_api::MeshLod>(entity)
                 .map(|l| l.enabled)
                 .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut l) = world.get_mut::<renzora::MeshLod>(entity) {
+            if let Some(mut l) = world.get_mut::<renzora_scene_api::MeshLod>(entity) {
                 l.enabled = val;
             }
         }),
@@ -461,12 +461,12 @@ fn mesh_lod_entry() -> InspectorEntry {
                     max: 10000.0,
                 },
                 get_fn: |w, e| {
-                    w.get::<renzora::MeshLod>(e)
+                    w.get::<renzora_scene_api::MeshLod>(e)
                         .map(|l| FieldValue::Float(lod_distance(l, 0)))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(d) = v {
-                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                        if let Some(mut l) = w.get_mut::<renzora_scene_api::MeshLod>(e) {
                             set_lod_distance(&mut l, 0, d);
                         }
                     }
@@ -480,12 +480,12 @@ fn mesh_lod_entry() -> InspectorEntry {
                     max: 10000.0,
                 },
                 get_fn: |w, e| {
-                    w.get::<renzora::MeshLod>(e)
+                    w.get::<renzora_scene_api::MeshLod>(e)
                         .map(|l| FieldValue::Float(lod_distance(l, 1)))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(d) = v {
-                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                        if let Some(mut l) = w.get_mut::<renzora_scene_api::MeshLod>(e) {
                             set_lod_distance(&mut l, 1, d);
                         }
                     }
@@ -499,12 +499,12 @@ fn mesh_lod_entry() -> InspectorEntry {
                     max: 10000.0,
                 },
                 get_fn: |w, e| {
-                    w.get::<renzora::MeshLod>(e)
+                    w.get::<renzora_scene_api::MeshLod>(e)
                         .map(|l| FieldValue::Float(lod_distance(l, 2)))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(d) = v {
-                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                        if let Some(mut l) = w.get_mut::<renzora_scene_api::MeshLod>(e) {
                             set_lod_distance(&mut l, 2, d);
                         }
                     }
@@ -518,12 +518,12 @@ fn mesh_lod_entry() -> InspectorEntry {
                     max: 100.0,
                 },
                 get_fn: |w, e| {
-                    w.get::<renzora::MeshLod>(e)
+                    w.get::<renzora_scene_api::MeshLod>(e)
                         .map(|l| FieldValue::Float(l.crossfade))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(f) = v {
-                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                        if let Some(mut l) = w.get_mut::<renzora_scene_api::MeshLod>(e) {
                             l.crossfade = f.max(0.0);
                         }
                     }
@@ -537,12 +537,12 @@ fn mesh_lod_entry() -> InspectorEntry {
                     max: 100000.0,
                 },
                 get_fn: |w, e| {
-                    w.get::<renzora::MeshLod>(e)
+                    w.get::<renzora_scene_api::MeshLod>(e)
                         .map(|l| FieldValue::Float(l.cull_distance))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(d) = v {
-                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                        if let Some(mut l) = w.get_mut::<renzora_scene_api::MeshLod>(e) {
                             l.cull_distance = d.max(0.0);
                         }
                     }
@@ -568,7 +568,7 @@ fn sprite_image_entry() -> InspectorEntry {
         remove_fn: Some(|world, entity| {
             world
                 .entity_mut(entity)
-                .remove::<renzora::core::SpriteImagePath>();
+                .remove::<renzora_scene_api::SpriteImagePath>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
@@ -584,12 +584,12 @@ fn sprite_image_entry() -> InspectorEntry {
                 name: "Image",
                 field_type: FieldType::DynamicEnum {
                     options: |world, entity| {
-                        if let Some(imgs) = world.get::<renzora::core::SpriteImages>(entity) {
+                        if let Some(imgs) = world.get::<renzora_animation_api::SpriteImages>(entity) {
                             imgs.images
                                 .iter()
                                 .map(|p| p.rsplit(['/', '\\']).next().unwrap_or(p).to_string())
                                 .collect()
-                        } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity)
+                        } else if let Some(p) = world.get::<renzora_scene_api::SpriteImagePath>(entity)
                         {
                             if p.0.is_empty() {
                                 Vec::new()
@@ -602,9 +602,9 @@ fn sprite_image_entry() -> InspectorEntry {
                     },
                 },
                 get_fn: |world, entity| {
-                    if let Some(imgs) = world.get::<renzora::core::SpriteImages>(entity) {
+                    if let Some(imgs) = world.get::<renzora_animation_api::SpriteImages>(entity) {
                         (!imgs.images.is_empty()).then_some(FieldValue::Float(imgs.index as f32))
-                    } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity) {
+                    } else if let Some(p) = world.get::<renzora_scene_api::SpriteImagePath>(entity) {
                         (!p.0.is_empty()).then_some(FieldValue::Float(0.0))
                     } else {
                         None
@@ -614,7 +614,7 @@ fn sprite_image_entry() -> InspectorEntry {
                     // Switching only applies to a multi-sheet list; a single
                     // image has one option and nothing to switch.
                     if let (FieldValue::Float(v), Some(mut s)) =
-                        (val, world.get_mut::<renzora::core::SpriteImages>(entity))
+                        (val, world.get_mut::<renzora_animation_api::SpriteImages>(entity))
                     {
                         s.index = v.round().max(0.0) as u32;
                     }
@@ -627,7 +627,7 @@ fn sprite_image_entry() -> InspectorEntry {
                 name: "Add Sheet",
                 field_type: FieldType::Asset {
                     // Every format that loads as an `Image`, SVG included.
-                    extensions: renzora::IMAGE_EXTENSIONS
+                    extensions: renzora_project_api::IMAGE_EXTENSIONS
                         .iter()
                         .map(|e| (*e).to_string())
                         .collect(),
@@ -641,7 +641,7 @@ fn sprite_image_entry() -> InspectorEntry {
                     if path.is_empty() {
                         return;
                     }
-                    if let Some(mut imgs) = world.get_mut::<renzora::core::SpriteImages>(entity) {
+                    if let Some(mut imgs) = world.get_mut::<renzora_animation_api::SpriteImages>(entity) {
                         if !imgs.images.contains(&path) {
                             imgs.images.push(path.clone());
                         }
@@ -649,7 +649,7 @@ fn sprite_image_entry() -> InspectorEntry {
                     } else {
                         // Migrate the single SpriteImagePath into a list + append.
                         let mut images: Vec<String> = world
-                            .get::<renzora::core::SpriteImagePath>(entity)
+                            .get::<renzora_scene_api::SpriteImagePath>(entity)
                             .map(|p| p.0.clone())
                             .filter(|s| !s.is_empty())
                             .into_iter()
@@ -660,7 +660,7 @@ fn sprite_image_entry() -> InspectorEntry {
                         let index = images.len().saturating_sub(1) as u32;
                         world
                             .entity_mut(entity)
-                            .insert(renzora::core::SpriteImages { images, index });
+                            .insert(renzora_animation_api::SpriteImages { images, index });
                     }
                 },
             },
@@ -680,7 +680,7 @@ fn sprite_image_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     Some(FieldValue::Float(
                         world
-                            .get::<renzora::core::SpriteSheet>(entity)
+                            .get::<renzora_scene_api::SpriteSheet>(entity)
                             .map(|s| s.hframes)
                             .unwrap_or(1) as f32,
                     ))
@@ -688,10 +688,10 @@ fn sprite_image_entry() -> InspectorEntry {
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
                         let h = (v.round().max(1.0)) as u32;
-                        if let Some(mut s) = world.get_mut::<renzora::core::SpriteSheet>(entity) {
+                        if let Some(mut s) = world.get_mut::<renzora_scene_api::SpriteSheet>(entity) {
                             s.hframes = h;
                         } else {
-                            world.entity_mut(entity).insert(renzora::core::SpriteSheet {
+                            world.entity_mut(entity).insert(renzora_scene_api::SpriteSheet {
                                 hframes: h,
                                 vframes: 1,
                                 frame: 0,
@@ -709,7 +709,7 @@ fn sprite_image_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     Some(FieldValue::Float(
                         world
-                            .get::<renzora::core::SpriteSheet>(entity)
+                            .get::<renzora_scene_api::SpriteSheet>(entity)
                             .map(|s| s.vframes)
                             .unwrap_or(1) as f32,
                     ))
@@ -717,10 +717,10 @@ fn sprite_image_entry() -> InspectorEntry {
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
                         let vf = (v.round().max(1.0)) as u32;
-                        if let Some(mut s) = world.get_mut::<renzora::core::SpriteSheet>(entity) {
+                        if let Some(mut s) = world.get_mut::<renzora_scene_api::SpriteSheet>(entity) {
                             s.vframes = vf;
                         } else {
-                            world.entity_mut(entity).insert(renzora::core::SpriteSheet {
+                            world.entity_mut(entity).insert(renzora_scene_api::SpriteSheet {
                                 hframes: 1,
                                 vframes: vf,
                                 frame: 0,
@@ -739,7 +739,7 @@ fn sprite_image_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     Some(FieldValue::Float(
                         world
-                            .get::<renzora::core::SpriteSheet>(entity)
+                            .get::<renzora_scene_api::SpriteSheet>(entity)
                             .map(|s| s.frame)
                             .unwrap_or(0) as f32,
                     ))
@@ -747,10 +747,10 @@ fn sprite_image_entry() -> InspectorEntry {
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
                         let f = (v.round().max(0.0)) as u32;
-                        if let Some(mut s) = world.get_mut::<renzora::core::SpriteSheet>(entity) {
+                        if let Some(mut s) = world.get_mut::<renzora_scene_api::SpriteSheet>(entity) {
                             s.frame = f;
                         } else {
-                            world.entity_mut(entity).insert(renzora::core::SpriteSheet {
+                            world.entity_mut(entity).insert(renzora_scene_api::SpriteSheet {
                                 hframes: 1,
                                 vframes: 1,
                                 frame: f,
@@ -805,19 +805,19 @@ fn sprite_image_entry() -> InspectorEntry {
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
                     Some(FieldValue::Bool(
-                        world.get::<renzora::core::YSort>(entity).is_some(),
+                        world.get::<renzora_scene_api::YSort>(entity).is_some(),
                     ))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(b) = val {
                         if b {
-                            if world.get::<renzora::core::YSort>(entity).is_none() {
+                            if world.get::<renzora_scene_api::YSort>(entity).is_none() {
                                 world
                                     .entity_mut(entity)
-                                    .insert(renzora::core::YSort::default());
+                                    .insert(renzora_scene_api::YSort::default());
                             }
                         } else {
-                            world.entity_mut(entity).remove::<renzora::core::YSort>();
+                            world.entity_mut(entity).remove::<renzora_scene_api::YSort>();
                         }
                     }
                 },
@@ -833,12 +833,12 @@ fn sprite_image_entry() -> InspectorEntry {
                 },
                 get_fn: |world, entity| {
                     world
-                        .get::<renzora::core::YSort>(entity)
+                        .get::<renzora_scene_api::YSort>(entity)
                         .map(|y| FieldValue::Float(y.offset))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut y) = world.get_mut::<renzora::core::YSort>(entity) {
+                        if let Some(mut y) = world.get_mut::<renzora_scene_api::YSort>(entity) {
                             y.offset = v;
                         }
                     }
@@ -855,12 +855,12 @@ fn sprite_image_entry() -> InspectorEntry {
                 },
                 get_fn: |world, entity| {
                     world
-                        .get::<renzora::core::YSort>(entity)
+                        .get::<renzora_scene_api::YSort>(entity)
                         .map(|y| FieldValue::Float(y.z_base))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Float(v) = val {
-                        if let Some(mut y) = world.get_mut::<renzora::core::YSort>(entity) {
+                        if let Some(mut y) = world.get_mut::<renzora_scene_api::YSort>(entity) {
                             y.z_base = v;
                         }
                     }
@@ -871,7 +871,7 @@ fn sprite_image_entry() -> InspectorEntry {
     }
 }
 
-// Sprite-sheet frame cropping (`renzora::core::SpriteSheet`): slice the bound
+// Sprite-sheet frame cropping (`renzora_scene_api::SpriteSheet`): slice the bound
 // texture into an hframes × vframes grid and show one cell. Merged into the
 // Sprite Image section above; the `frame` field is the one users animate from
 // the animation panel (it shows up in the Add Property picker via reflection).
@@ -918,13 +918,13 @@ fn transform_entry() -> InspectorEntry {
                     // Prefer the typed-Euler cache (so the field holds 0..360+ and
                     // the middle axis doesn't snap at 90°); fall back to deriving
                     // from the quaternion when something else moved the entity.
-                    let cache = world.get::<renzora::EditorEulerCache>(entity);
-                    let deg = renzora::rotation_euler_deg(t.rotation, cache, "transform");
+                    let cache = world.get::<renzora_animation_api::EditorEulerCache>(entity);
+                    let deg = renzora_animation_api::rotation_euler_deg(t.rotation, cache, "transform");
                     Some(FieldValue::Vec3(deg.to_array()))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Vec3(v) = val {
-                        let q = renzora::cache_euler_deg(
+                        let q = renzora_animation_api::cache_euler_deg(
                             world,
                             entity,
                             "transform",
@@ -1061,7 +1061,7 @@ fn directional_light_entry() -> InspectorEntry {
                 name: "Shadows",
                 field_type: FieldType::Group { fields: directional_shadow_fields() },
                 get_fn: |world, entity| {
-                    if world.get::<renzora::Sun>(entity).is_some() {
+                    if world.get::<renzora_world_api::Sun>(entity).is_some() {
                         return Some(FieldValue::ReadOnly(String::new()));
                     }
                     world
@@ -1075,7 +1075,7 @@ fn directional_light_entry() -> InspectorEntry {
                         }
                         // A `Sun` rewrites this flag from its own copy whenever
                         // the Sun changes, which would quietly undo the edit.
-                        if let Some(mut sun) = world.get_mut::<renzora::Sun>(entity) {
+                        if let Some(mut sun) = world.get_mut::<renzora_world_api::Sun>(entity) {
                             sun.shadows_enabled = v;
                         }
                     }
@@ -1085,7 +1085,7 @@ fn directional_light_entry() -> InspectorEntry {
                 name: "Contact Shadows",
                 field_type: FieldType::Bool,
                 get_fn: |world, entity| {
-                    if world.get::<renzora::Sun>(entity).is_some() {
+                    if world.get::<renzora_world_api::Sun>(entity).is_some() {
                         return None;
                     }
                     world
@@ -1097,7 +1097,7 @@ fn directional_light_entry() -> InspectorEntry {
                         if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
                             l.contact_shadows_enabled = v;
                         }
-                        if let Some(mut sun) = world.get_mut::<renzora::Sun>(entity) {
+                        if let Some(mut sun) = world.get_mut::<renzora_world_api::Sun>(entity) {
                             sun.contact_shadows = v;
                         }
                     }
@@ -1709,7 +1709,7 @@ fn text_rich_entry() -> InspectorEntry {
 /// `GeneratedEnvironmentMapLight` is attached by `renzora_environment_map` only
 /// once a valid cube is ready, so it's not edited directly here.
 fn light_probe_entry() -> InspectorEntry {
-    use renzora::core::ReflectionProbeSource;
+    use renzora_scene_api::ReflectionProbeSource;
     InspectorEntry {
         type_id: "light_probe",
         display_name: "Reflection Probe",
@@ -2033,22 +2033,22 @@ fn camera_entry() -> InspectorEntry {
                 },
                 get_fn: |world, entity| {
                     let r = world
-                        .get::<renzora::core::CameraRenderResolution>(entity)
+                        .get::<renzora_scene_api::CameraRenderResolution>(entity)
                         .map(|c| c.0)
                         .unwrap_or_default();
                     Some(FieldValue::Enum(r.label().to_string()))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Enum(label) = val {
-                        let r = renzora::core::viewport_types::RenderResolution::from_label(&label);
+                        let r = renzora_viewport_api::RenderResolution::from_label(&label);
                         if let Some(mut c) =
-                            world.get_mut::<renzora::core::CameraRenderResolution>(entity)
+                            world.get_mut::<renzora_scene_api::CameraRenderResolution>(entity)
                         {
                             c.0 = r;
                         } else {
                             world
                                 .entity_mut(entity)
-                                .insert(renzora::core::CameraRenderResolution(r));
+                                .insert(renzora_scene_api::CameraRenderResolution(r));
                         }
                     }
                 },
@@ -2151,14 +2151,14 @@ fn environment_map_light_entry() -> InspectorEntry {
                     let l = world.get::<EnvironmentMapLight>(entity)?;
                     // Same typed-Euler cache as Transform, but under its own key so
                     // the two rotation fields on one entity don't collide.
-                    let cache = world.get::<renzora::EditorEulerCache>(entity);
+                    let cache = world.get::<renzora_animation_api::EditorEulerCache>(entity);
                     let deg =
-                        renzora::rotation_euler_deg(l.rotation, cache, "environment_map_light");
+                        renzora_animation_api::rotation_euler_deg(l.rotation, cache, "environment_map_light");
                     Some(FieldValue::Vec3(deg.to_array()))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Vec3(v) = val {
-                        let q = renzora::cache_euler_deg(
+                        let q = renzora_animation_api::cache_euler_deg(
                             world,
                             entity,
                             "environment_map_light",

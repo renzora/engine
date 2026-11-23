@@ -235,7 +235,7 @@ pub(crate) fn marquee_autoscroll(
 /// grid being hovered so it doesn't hijack select-all from the viewport,
 /// hierarchy, or a focused text field elsewhere in the editor.
 ///
-/// It also publishes [`SelectAllClaimed`](renzora::core::SelectAllClaimed) every
+/// It also publishes [`SelectAllClaimed`](renzora_project_api::SelectAllClaimed) every
 /// frame from the grid-hover state, so the hierarchy's "select all entities"
 /// stands down while the cursor is over the file grid — otherwise both fire on
 /// the same `Ctrl+A`.
@@ -243,7 +243,7 @@ pub(crate) fn select_all_shortcut(
     keys: Res<ButtonInput<KeyCode>>,
     grid: Query<&renzora_ember::UiCursor, With<GridArea>>,
     mut state: ResMut<NativeAssets>,
-    mut claimed: ResMut<renzora::core::SelectAllClaimed>,
+    mut claimed: ResMut<renzora_project_api::SelectAllClaimed>,
 ) {
     let over_grid = grid.iter().any(|r| r.cursor_over) && state.renaming.is_none();
     claimed.0 = over_grid;

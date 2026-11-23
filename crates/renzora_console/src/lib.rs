@@ -44,7 +44,7 @@ impl Plugin for ConsolePlugin {
         info!("[editor] ConsolePlugin");
         app.insert_resource(ConsoleState::default());
 
-        use renzora::SplashState;
+        use renzora_project_api::SplashState;
         app.add_systems(
             Update,
             (drain_log_buffer, drain_script_logs).run_if(in_state(SplashState::Editor)),
@@ -54,5 +54,3 @@ impl Plugin for ConsolePlugin {
         panel::register(app);
     }
 }
-
-renzora::add!(ConsolePlugin, Editor);

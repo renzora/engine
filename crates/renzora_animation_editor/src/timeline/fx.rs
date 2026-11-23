@@ -94,7 +94,7 @@ impl FxDoc {
         } else {
             self.doc.name.clone()
         };
-        format!("{} · {}", renzora::lang::t_or("timeline.particles", "Particles"), name)
+        format!("{} · {}", renzora_lang_api::t_or("timeline.particles", "Particles"), name)
     }
 
     /// The effect's name alone, for the clip picker of a stand-in clip.
@@ -589,29 +589,29 @@ pub(super) fn delete_track(world: &mut World, track: usize) {
 /// an effect parameter.
 pub(super) fn interp_choices() -> [(&'static str, String, KeyInterp); 3] {
     [
-        ("minus", renzora::lang::t("animation.interp_linear"), KeyInterp::Linear),
-        ("chart-line", renzora::lang::t("animation.interp_smooth"), KeyInterp::Smooth),
-        ("stairs", renzora::lang::t("animation.interp_stepped"), KeyInterp::Step),
+        ("minus", renzora_lang_api::t("animation.interp_linear"), KeyInterp::Linear),
+        ("chart-line", renzora_lang_api::t("animation.interp_smooth"), KeyInterp::Smooth),
+        ("stairs", renzora_lang_api::t("animation.interp_stepped"), KeyInterp::Step),
     ]
 }
 
 /// The interpolation a clip-style choice stands for on an effect key, for the
-/// key card and the Curves toolbar, which speak [`renzora::Interp`].
-pub(super) fn interp_from_clip(interp: renzora::Interp) -> Option<KeyInterp> {
+/// key card and the Curves toolbar, which speak [`renzora_animation_api::Interp`].
+pub(super) fn interp_from_clip(interp: renzora_animation_api::Interp) -> Option<KeyInterp> {
     use bevy::curve::EaseFunction as E;
     match interp {
-        renzora::Interp::Linear => Some(KeyInterp::Linear),
-        renzora::Interp::Stepped => Some(KeyInterp::Step),
-        renzora::Interp::Eased(E::SmoothStep) => Some(KeyInterp::Smooth),
+        renzora_animation_api::Interp::Linear => Some(KeyInterp::Linear),
+        renzora_animation_api::Interp::Stepped => Some(KeyInterp::Step),
+        renzora_animation_api::Interp::Eased(E::SmoothStep) => Some(KeyInterp::Smooth),
         _ => None,
     }
 }
 
-pub(super) fn interp_to_clip(interp: KeyInterp) -> renzora::Interp {
+pub(super) fn interp_to_clip(interp: KeyInterp) -> renzora_animation_api::Interp {
     match interp {
-        KeyInterp::Linear => renzora::Interp::Linear,
-        KeyInterp::Step => renzora::Interp::Stepped,
-        KeyInterp::Smooth => renzora::Interp::Eased(bevy::curve::EaseFunction::SmoothStep),
+        KeyInterp::Linear => renzora_animation_api::Interp::Linear,
+        KeyInterp::Step => renzora_animation_api::Interp::Stepped,
+        KeyInterp::Smooth => renzora_animation_api::Interp::Eased(bevy::curve::EaseFunction::SmoothStep),
     }
 }
 
@@ -702,7 +702,7 @@ pub(super) fn open_add_track_menu(world: &mut World, pos: Vec2) {
         let menu = screen_menu(&mut commands, pos.x, pos.y);
         let mut kids = Vec::new();
         if !effect_only {
-            kids.push(menu_item(&mut commands, &fonts, "sliders-horizontal", &renzora::lang::t_or("timeline.property_track", "Property track"), |w| {
+            kids.push(menu_item(&mut commands, &fonts, "sliders-horizontal", &renzora_lang_api::t_or("timeline.property_track", "Property track"), |w| {
                 if let Some(mut ops) = w.get_resource_mut::<TimelineOps>() {
                     ops.add_empty_track = true;
                 }
@@ -710,7 +710,7 @@ pub(super) fn open_add_track_menu(world: &mut World, pos: Vec2) {
         }
         match fx {
             Some((doc, true)) => {
-                let (row, content) = menu_submenu(&mut commands, &fonts, "sparkle", &renzora::lang::t_or("timeline.particle_parameter", "Particle parameter"));
+                let (row, content) = menu_submenu(&mut commands, &fonts, "sparkle", &renzora_lang_api::t_or("timeline.particle_parameter", "Particle parameter"));
                 let several = doc.emitters.len() > 1;
                 let mut sub_kids = Vec::new();
                 for (e, emitter) in doc.emitters.iter().enumerate() {
@@ -727,7 +727,7 @@ pub(super) fn open_add_track_menu(world: &mut World, pos: Vec2) {
                 kids.push(row);
             }
             Some((_, false)) => {
-                kids.push(menu_header(&mut commands, &fonts, &renzora::lang::t_or("timeline.builtin_effect", "Built-in effect: copy it into the project to key it")));
+                kids.push(menu_header(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.builtin_effect", "Built-in effect: copy it into the project to key it")));
             }
             None => {}
         }
@@ -741,12 +741,12 @@ fn emitter_items(commands: &mut Commands, fonts: &EmberFonts, doc: &VfxAsset, e:
     let mut items = Vec::new();
     let enabled = doc.emitters.get(e).is_some_and(|em| em.enabled);
     if params::find_track(doc, e, &ParamTarget::Enabled).is_none() {
-        items.push(menu_item(commands, fonts, "toggle-right", &renzora::lang::t_or("timeline.fx_enabled", "Enabled"), move |w| {
+        items.push(menu_item(commands, fonts, "toggle-right", &renzora_lang_api::t_or("timeline.fx_enabled", "Enabled"), move |w| {
             let keys = vec![params::ParamKey { time: 0.0, value: PinValue::Bool(enabled), interp: KeyInterp::Step }];
             add_track(w, ParamTrack { emitter: e, target: ParamTarget::Enabled, keys });
         }));
     }
-    items.push(menu_item(commands, fonts, "asterisk", &renzora::lang::t_or("timeline.fx_burst", "Burst"), move |w| {
+    items.push(menu_item(commands, fonts, "asterisk", &renzora_lang_api::t_or("timeline.fx_burst", "Burst"), move |w| {
         let mut track = ParamTrack { emitter: e, target: ParamTarget::Burst, keys: Vec::new() };
         track.upsert(scrub.max(0.0), PinValue::Float(10.0));
         add_track(w, track);
@@ -776,7 +776,7 @@ fn emitter_items(commands: &mut Commands, fonts: &EmberFonts, doc: &VfxAsset, e:
 /// The right-click menu of an effect key: delete, and the interpolations a
 /// parameter key has.
 pub(super) fn key_menu_items(commands: &mut Commands, fonts: &EmberFonts, cache: &TimelineClip, track: usize, idx: usize) -> Vec<Entity> {
-    let mut kids = vec![menu_item(commands, fonts, "trash", &renzora::lang::t("timeline.delete_keyframe"), move |w| {
+    let mut kids = vec![menu_item(commands, fonts, "trash", &renzora_lang_api::t("timeline.delete_keyframe"), move |w| {
         if let Some(mut cache) = w.get_resource_mut::<TimelineClip>() {
             if let Some(mut chan) = cache.lane_times(Lane::Fx { track }) {
                 chan.remove(idx);
@@ -806,8 +806,8 @@ pub(super) fn row_menu_items(commands: &mut Commands, fonts: &EmberFonts, kind: 
         _ => return Vec::new(),
     };
     let label = match kind {
-        RowKind::FxEmitter(..) => renzora::lang::t_or("timeline.remove_on_off_keys", "Remove on/off keys"),
-        _ => renzora::lang::t_or("timeline.delete_track", "Delete track"),
+        RowKind::FxEmitter(..) => renzora_lang_api::t_or("timeline.remove_on_off_keys", "Remove on/off keys"),
+        _ => renzora_lang_api::t_or("timeline.delete_track", "Delete track"),
     };
     vec![menu_item(commands, fonts, "trash", &label, move |w| delete_track(w, track))]
 }

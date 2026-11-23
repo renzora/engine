@@ -2,7 +2,7 @@
 //! caches the companion keeps in step with them.
 //!
 //! The editor asks for a listing of the project when one opens (job
-//! `"project_index"`, see `renzora::core::project_index`). The companion
+//! `"project_index"`, see `renzora_platform_api::project_index`). The companion
 //! answers it from here rather than from a worker, because the same request
 //! is how it learns which project is open: it keeps the listing, watches the
 //! project with a watcher of its own, and from then on:
@@ -39,8 +39,8 @@ use std::time::Duration;
 
 use bevy::asset::io::AssetSourceEvent;
 use bevy::prelude::*;
-use renzora::core::project_index::{walk_project, IndexedFile};
-use renzora::job_args::{MaterialThumbnail, ModelThumbnail, ProjectIndexWalk};
+use renzora_platform_api::project_index::{walk_project, IndexedFile};
+use renzora_platform_api::job_args::{MaterialThumbnail, ModelThumbnail, ProjectIndexWalk};
 
 use super::jobs::JobQueue;
 use crate::protocol::{Job, JobId};
@@ -72,7 +72,7 @@ struct Asked {
 pub(crate) struct ProjectCache {
     /// The open project, as the editor last said.
     pub root: Option<PathBuf>,
-    project: Option<renzora::core::CurrentProject>,
+    project: Option<renzora_project_api::CurrentProject>,
     /// Every file, from the walk, kept current from the watcher.
     pub files: BTreeMap<String, IndexedFile>,
     asked: Vec<Asked>,
@@ -132,7 +132,7 @@ impl ProjectCache {
     }
 
     fn open(&mut self, root: PathBuf) {
-        self.project = renzora::core::session::open_project(&root.join("project.toml")).ok();
+        self.project = renzora_project_api::session::open_project(&root.join("project.toml")).ok();
         self.files.clear();
         self.backlog.clear();
         self.thumbnails = None;

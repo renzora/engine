@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use renzora::core::RenzoraShellExt;
-use renzora::SplashState;
+use renzora_shell_api::RenzoraShellExt;
+use renzora_project_api::SplashState;
 use crate::auth::docs::{DocPage, DocSearchResult, DocVersions, Sidebar};
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{ui_font, EmberFonts};

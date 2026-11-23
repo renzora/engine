@@ -10,7 +10,9 @@ use bevy::ecs::system::SystemState;
 use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, EditorCamera, MaterialTarget};
+use renzora_scene_api::EditorCamera;
+use renzora_project_api::CurrentProject;
+use renzora_material_api::MaterialTarget;
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::MaterialResolved;
 
@@ -34,7 +36,7 @@ pub(crate) fn commit_material_drop(
     // An effect shader shares the `.wesl` extension but is not a material:
     // put on a mesh it crashes wgpu. Whatever routed it here, it goes to the
     // Post Process list instead.
-    if renzora::is_effect_file(&path) {
+    if renzora_render_api::is_effect_file(&path) {
         crate::effect_drop::commit_effect_drop(world, path);
         return;
     }

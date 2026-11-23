@@ -33,7 +33,7 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{AppEditorExt, SplashState};
 use renzora_ember::reactive::Rx;
 
@@ -73,7 +73,7 @@ impl Plugin for MaterialDrawer {
                 // is skipped (see `track_material_files`). Only the opening walk
                 // is gated on the picker, and that runs once per project.
                 index::track_material_files
-                    .run_if(on_message::<renzora::core::project_files::ProjectFileChanged>)
+                    .run_if(on_message::<renzora_project_api::project_files::ProjectFileChanged>)
                     .before(index::refresh_material_index),
                 index::refresh_material_index.run_if(any_with_component::<picker::MatPickerPanel>),
                 // The condition is the system's own first check: nothing to
@@ -228,7 +228,7 @@ pub(super) fn sig_of(entity: Entity, path: &str, rev: u64, expanded: bool, tint:
 /// own file; putting a tint control on it would offer to change something that
 /// would not change.
 pub(super) fn shows_tint(w: &Rx, entity: Entity) -> bool {
-    w.get::<renzora::core::MeshPrimitive>(entity).is_some()
+    w.get::<renzora_scene_api::MeshPrimitive>(entity).is_some()
         && w.get::<MaterialRef>(entity).is_none()
 }
 

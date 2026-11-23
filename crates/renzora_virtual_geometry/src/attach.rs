@@ -25,7 +25,7 @@ use bevy::ecs::world::DeferredWorld;
 use bevy::mesh::morph::MeshMorphWeights;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, IoTaskPool, Task};
-use renzora::TracedGeometry;
+use renzora_render_api::TracedGeometry;
 use renzora_rvg::RvgFile;
 
 use crate::material::VgMaterial;
@@ -41,7 +41,7 @@ pub struct VirtualGeometry {
     pub source: AssetId<Mesh>,
 }
 
-pub use renzora::StandardGeometry;
+pub use renzora_scene_api::StandardGeometry;
 
 /// Global switch, read every frame. Off reverts every converted mesh to
 /// ordinary geometry; on converts them back.
@@ -200,7 +200,7 @@ fn rvg_path(model: &AssetPath<'static>) -> AssetPath<'static> {
 pub(crate) fn poll_files(
     mut files: ResMut<VgFiles>,
     asset_server: Res<AssetServer>,
-    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
 ) {
     // A model is drawn as ordinary geometry until its clusters are ready, so a
     // late file is a slow, heavy first stretch of a load. Recorded once every
@@ -357,7 +357,7 @@ pub(crate) fn attach(
     // reason: otherwise the only sign is a debug view that leaves them grey.
     for ((model, reason), (count, example)) in kept {
         let example = example.unwrap_or_default();
-        renzora::console_log::console_info(
+        renzora_log_api::console_info(
             "Virtual Geometry",
             format!("{model}: {count} mesh(es) stay ordinary geometry ({example} among them): {reason}"),
         );
@@ -421,7 +421,7 @@ pub struct RvgUpdated {
 
 /// Follow the project's `[rendering] virtual_geometry` switch.
 pub(crate) fn follow_project(
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut settings: ResMut<VirtualGeometrySettings>,
 ) {
     let Some(project) = project.filter(|p| p.is_changed()) else {
@@ -636,7 +636,7 @@ pub(crate) struct TracedMeshes(HashMap<(AssetId<RvgFile>, u32), Handle<Mesh>>);
 #[allow(clippy::type_complexity)]
 pub(crate) fn traced_geometry(
     mut commands: Commands,
-    wanted: Option<Res<renzora::TracedGeometryWanted>>,
+    wanted: Option<Res<renzora_render_api::TracedGeometryWanted>>,
     rvg_files: Res<Assets<RvgFile>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut traced: ResMut<TracedMeshes>,
@@ -799,13 +799,13 @@ mod tests {
         world.run_system_once(traced_geometry).unwrap();
         assert!(traced(&world).is_none(), "built with nothing asking for it");
 
-        world.insert_resource(renzora::TracedGeometryWanted);
+        world.insert_resource(renzora_render_api::TracedGeometryWanted);
         world.run_system_once(traced_geometry).unwrap();
         let mesh = traced(&world).expect("no full detail while a ray tracer wants it");
         let indices = world.resource::<Assets<Mesh>>().get(&mesh).unwrap().indices().unwrap().len();
         assert_eq!(indices, triangles * 3, "not the full detail");
 
-        world.remove_resource::<renzora::TracedGeometryWanted>();
+        world.remove_resource::<renzora_render_api::TracedGeometryWanted>();
         world.run_system_once(traced_geometry).unwrap();
         assert!(traced(&world).is_none(), "kept after the ray tracer stopped");
         assert!(world.resource::<TracedMeshes>().0.is_empty());

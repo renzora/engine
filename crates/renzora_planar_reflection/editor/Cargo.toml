@@ -2,11 +2,13 @@
 name = "renzora_planar_reflection_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only half of renzora_planar_reflection: the Planar Reflection inspector entry (also offered by Add Component) and the Add Entity > Mirror preset. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only half of renzora_planar_reflection: the Planar Reflection inspector entry (also offered by Add Component) and the Add Entity > Mirror preset. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_scene_api = { path = "../../api/renzora_scene_api" }
+renzora_log_api = { path = "../../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_planar_reflection = { path = ".." }
 # The viewport gizmo: the overlay gizmo group and the selection it follows.
 renzora_gizmo = { path = "../../renzora_gizmo" }
@@ -14,3 +16,10 @@ renzora_editor_framework = { path = "../../renzora_editor_framework" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "PlanarReflectionEditorPlugin"
+scope = "Editor"

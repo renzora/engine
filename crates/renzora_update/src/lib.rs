@@ -87,7 +87,7 @@ pub struct UpdateState {
     pub progress: Option<(u64, u64)>,
     /// The stored channel preference (`auto` / `stable` / `nightly`).
     pub channel_pref: String,
-    /// Mirror of [`renzora::core::DevMode`]. Nightlies are only offered while
+    /// Mirror of [`renzora_project_api::DevMode`]. Nightlies are only offered while
     /// this is on; see [`UpdateChannel::resolve`].
     pub dev_mode: bool,
     /// The release tag the user asked not to be told about again, if any. Only
@@ -143,7 +143,7 @@ impl UpdateState {
             return;
         }
         self.channel_pref = pref.to_string();
-        let _ = renzora::core::save_update_channel(pref);
+        let _ = renzora_project_api::save_update_channel(pref);
         self.result = None;
         self.staged = None;
         self.progress = None;
@@ -212,13 +212,13 @@ impl UpdateState {
     ///
     /// Persisted, and only ever one tag: skipping is "stop nagging me about
     /// *this one*", so the next release asks again. Returns the tag so the
-    /// caller can drop [`renzora::core::UpdateAvailable`] with it.
+    /// caller can drop [`renzora_project_api::UpdateAvailable`] with it.
     pub fn skip_target(&mut self) -> Option<String> {
         let tag = self
             .result
             .as_ref()
             .and_then(|r| r.latest_version.clone())?;
-        let _ = renzora::core::save_skipped_update(Some(&tag));
+        let _ = renzora_project_api::save_skipped_update(Some(&tag));
         self.skipped = Some(tag.clone());
         Some(tag)
     }
@@ -289,19 +289,19 @@ impl Plugin for UpdatePlugin {
 
 /// Read the stored channel and do one check at startup.
 ///
-/// The check is silent — it only inserts [`renzora::core::UpdateAvailable`], so
+/// The check is silent — it only inserts [`renzora_project_api::UpdateAvailable`], so
 /// the Help menu can offer "Update to …" instead of "Check for Updates". Nothing
 /// is downloaded and no window appears; an editor that interrupts you at launch
 /// to talk about itself is worse than one that is out of date.
 ///
 #[cfg(not(target_arch = "wasm32"))]
 fn load_prefs_and_check(mut state: ResMut<UpdateState>) {
-    state.channel_pref = renzora::core::load_update_channel();
-    state.skipped = renzora::core::load_skipped_update();
-    // Read straight off disk rather than from `renzora::core::DevMode`: this is
+    state.channel_pref = renzora_project_api::load_update_channel();
+    state.skipped = renzora_project_api::load_skipped_update();
+    // Read straight off disk rather than from `renzora_project_api::DevMode`: this is
     // Startup, and the framework's mirror system has not run a frame yet.
     // `watch_dev_mode` takes over from here.
-    state.dev_mode = renzora::load_dev_mode();
+    state.dev_mode = renzora_project_api::load_dev_mode();
     match install::detect_layout() {
         Ok(layout) => {
             state.install_path = layout.target.display().to_string();
@@ -322,7 +322,7 @@ fn load_prefs_and_check(mut state: ResMut<UpdateState>) {
 /// the toggle reads as the toggle not working.
 #[cfg(not(target_arch = "wasm32"))]
 fn watch_dev_mode(
-    dev: Option<Res<renzora::core::DevMode>>,
+    dev: Option<Res<renzora_project_api::DevMode>>,
     mut state: ResMut<UpdateState>,
     mut commands: Commands,
 ) {
@@ -336,20 +336,20 @@ fn watch_dev_mode(
     state.progress = None;
     state.selected_tag = None;
     state.overwrite_armed = false;
-    commands.remove_resource::<renzora::core::UpdateAvailable>();
+    commands.remove_resource::<renzora_project_api::UpdateAvailable>();
     state.start_check();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn open_on_request(
-    marker: Option<Res<renzora::core::UpdateRequested>>,
+    marker: Option<Res<renzora_project_api::UpdateRequested>>,
     mut state: ResMut<UpdateState>,
     mut commands: Commands,
 ) {
     if marker.is_none() {
         return;
     }
-    commands.remove_resource::<renzora::core::UpdateRequested>();
+    commands.remove_resource::<renzora_project_api::UpdateRequested>();
     state.visible = true;
     // Opening the dialog is also how you ask "is there anything?", so a checkout
     // (which skipped the startup check) still gets an answer here.
@@ -384,15 +384,15 @@ fn poll_check(mut state: ResMut<UpdateState>, mut commands: Commands) {
                     // installing it later. Only the chip and the Help menu item
                     // go quiet.
                     if state.skipped.as_deref() == Some(tag.as_str()) {
-                        commands.remove_resource::<renzora::core::UpdateAvailable>();
+                        commands.remove_resource::<renzora_project_api::UpdateAvailable>();
                     } else {
-                        commands.insert_resource(renzora::core::UpdateAvailable(tag));
+                        commands.insert_resource(renzora_project_api::UpdateAvailable(tag));
                     }
                 }
             } else {
                 // A channel switch can make a previously-available update
                 // disappear; the menu must follow.
-                commands.remove_resource::<renzora::core::UpdateAvailable>();
+                commands.remove_resource::<renzora_project_api::UpdateAvailable>();
             }
             state.result = Some(result);
             state.error = None;
@@ -449,7 +449,7 @@ pub(crate) fn start_download(state: &mut UpdateState) {
     // chip for the very release about to be installed.
     if state.skipped.as_deref() == Some(entry.tag.as_str()) {
         state.skipped = None;
-        let _ = renzora::core::save_skipped_update(None);
+        let _ = renzora_project_api::save_skipped_update(None);
     }
     match install::spawn_download(&entry, &layout) {
         Ok(handle) => {
@@ -474,5 +474,3 @@ pub(crate) fn install_and_restart(state: &mut UpdateState) {
         state.error = Some(e);
     }
 }
-
-renzora::add!(UpdatePlugin, Editor);

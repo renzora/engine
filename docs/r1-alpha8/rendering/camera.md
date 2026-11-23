@@ -10,8 +10,11 @@ Renzora has two distinct camera stories. The **editor viewport** is driven by an
 
 The editor viewport camera lives in `renzora_camera::CameraPlugin`, registered as:
 
-```rust
-renzora::add!(CameraPlugin, Editor);
+```toml
+# crates/renzora_camera/Cargo.toml
+[[package.metadata.renzora.plugin]]
+type = "CameraPlugin"
+scope = "Editor"
 ```
 
 Because the scope is `Editor`, the controller is installed **only** when the editor bundle is loaded — it never runs in an exported game or on a `--server` host.

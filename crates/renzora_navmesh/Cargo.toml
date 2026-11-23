@@ -27,10 +27,13 @@ physics = []
 # (crates/renzora_navmesh/editor), installed only by the editor bundle.
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
-renzora = { path = "../renzora", default-features = false }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 vleue_navigator = { path = "../../vendor/vleue_navigator", default-features = false, features = ["debug-with-gizmos"] }
 # The same 0.18 line vleue_navigator asks for, so its `Mesh` type is the one
@@ -48,3 +51,9 @@ renzora_test_harness = { path = "../renzora_test_harness" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "NavMeshPlugin"

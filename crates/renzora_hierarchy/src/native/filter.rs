@@ -36,7 +36,7 @@ pub(crate) struct HierSearchInput;
 
 /// Build the header search box (filters the tree by entity name).
 pub(crate) fn build_search_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let input = text_input(commands, &fonts.ui, &renzora::lang::t("hierarchy.search"), "");
+    let input = text_input(commands, &fonts.ui, &renzora_lang_api::t("hierarchy.search"), "");
     commands.entity(input).insert((
         HierSearchInput,
         Node {
@@ -65,9 +65,9 @@ pub(crate) fn hier_search_placeholder(
     filter: Option<Res<renzora_editor_framework::HierarchyFilter>>,
 ) {
     let want = if crate::state::ui_scoped_for(filter.as_deref()) {
-        renzora::lang::t_or("hierarchy.search_ui", "Search UI…")
+        renzora_lang_api::t_or("hierarchy.search_ui", "Search UI…")
     } else {
-        renzora::lang::t("hierarchy.search")
+        renzora_lang_api::t("hierarchy.search")
     };
     for mut input in &mut inputs {
         if input.placeholder != want {
@@ -230,7 +230,7 @@ fn filter_row(commands: &mut Commands, fonts: &EmberFonts, row: &FRow) -> Entity
                 .id();
             let t = commands
                 .spawn((
-                    Text::new(renzora::lang::t("hierarchy.filter.clear")),
+                    Text::new(renzora_lang_api::t("hierarchy.filter.clear")),
                     ui_font(&fonts.ui, 11.0),
                     TextColor(rgb(renzora_ember::theme::close_red())),
                 ))
@@ -239,7 +239,7 @@ fn filter_row(commands: &mut Commands, fonts: &EmberFonts, row: &FRow) -> Entity
             r
         }
         FRow::Type(name, icon, color) => check_row(commands, fonts, name, Some((*icon, *color)), name),
-        FRow::Other => check_row(commands, fonts, &renzora::lang::t("hierarchy.filter.other"), None, "__other__"),
+        FRow::Other => check_row(commands, fonts, &renzora_lang_api::t("hierarchy.filter.other"), None, "__other__"),
     }
 }
 

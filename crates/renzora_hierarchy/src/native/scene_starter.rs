@@ -19,7 +19,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 use renzora_editor_framework::{
     EditorCommands, HierarchyFilter, SceneStarterRegistry, SplashState,
 };
@@ -161,7 +161,7 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     // false, and the false part is the one the user has to act on.
     let title = commands
         .spawn((
-            Text::new(renzora::lang::t("hierarchy.starter.title")),
+            Text::new(renzora_lang_api::t("hierarchy.starter.title")),
             ui_font(&fonts.ui, 15.0),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::justify(bevy::text::Justify::Center),
@@ -170,14 +170,14 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .id();
     bind_text(commands, title, |w| {
         if is_scoped(w) {
-            renzora::lang::t_or("hierarchy.starter.title_scoped", "No UI canvases here")
+            renzora_lang_api::t_or("hierarchy.starter.title_scoped", "No UI canvases here")
         } else {
-            renzora::lang::t("hierarchy.starter.title")
+            renzora_lang_api::t("hierarchy.starter.title")
         }
     });
     let sub = commands
         .spawn((
-            Text::new(renzora::lang::t("hierarchy.starter.subtitle")),
+            Text::new(renzora_lang_api::t("hierarchy.starter.subtitle")),
             ui_font(&fonts.ui, 11.5),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::justify(bevy::text::Justify::Center),
@@ -186,12 +186,12 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .id();
     bind_text(commands, sub, |w| {
         if is_scoped(w) {
-            renzora::lang::t_or(
+            renzora_lang_api::t_or(
                 "hierarchy.starter.subtitle_scoped",
                 "Add a canvas, then give it a UI template.",
             )
         } else {
-            renzora::lang::t("hierarchy.starter.subtitle")
+            renzora_lang_api::t("hierarchy.starter.subtitle")
         }
     });
 
@@ -222,7 +222,7 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let common_label = section_label(
         commands,
         fonts,
-        &renzora::lang::t_or("hierarchy.starter.common", "Common entities"),
+        &renzora_lang_api::t_or("hierarchy.starter.common", "Common entities"),
     );
     let common_grid = commands
         .spawn(Node {
@@ -395,7 +395,7 @@ fn build_common_tile(commands: &mut Commands, fonts: &EmberFonts, label: &str, i
     let key = format!("hierarchy.starter.quick.{}", label.to_lowercase());
     let t = commands
         .spawn((
-            Text::new(renzora::lang::t_or(&key, label)),
+            Text::new(renzora_lang_api::t_or(&key, label)),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             bevy::text::TextLayout::no_wrap(),

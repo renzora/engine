@@ -45,7 +45,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let empty = commands
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() })
         .id();
-    let empty_lbl = commands.spawn((Text::new(renzora::lang::t("viewport.no_cameras")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
+    let empty_lbl = commands.spawn((Text::new(renzora_lang_api::t("viewport.no_cameras")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
     commands.entity(empty).add_child(empty_lbl);
     bind_display(commands, empty, |w| previewing(w).is_none());
 
@@ -66,7 +66,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     let star = icon_text(commands, &fonts.phosphor, "star", (255, 200, 80), 10.0);
     bind_display(commands, star, |w| {
-        previewing(w).is_some_and(|e| w.get::<renzora::core::DefaultCamera>(e).is_some())
+        previewing(w).is_some_and(|e| w.get::<renzora_scene_api::DefaultCamera>(e).is_some())
     });
     commands.entity(header).add_children(&[name, star]);
 

@@ -58,7 +58,7 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
     };
 
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|cp| cp.path.clone());
 
     // Scoped so the `Assets<HtmlTemplate>` borrow ends before the commit below,
@@ -230,7 +230,7 @@ pub fn remove_attr_from_markup(world: &mut World, entity: Entity, attr_ident: &s
         return;
     };
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|cp| cp.path.clone());
 
     let Some((before_bytes, after_bytes)) = ({
@@ -317,7 +317,7 @@ pub fn write_content_to_markup(world: &mut World, entity: Entity, new_text: &str
         return;
     };
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|cp| cp.path.clone());
 
     let Some((before_bytes, after_bytes)) = ({
@@ -617,7 +617,7 @@ pub fn move_node_in_markup(
         return;
     };
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|cp| cp.path.clone());
 
     let (before_bytes, new_source) = {
@@ -717,7 +717,7 @@ pub fn remove_node_in_markup(world: &mut World, entity: Entity) -> bool {
         return false;
     };
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|cp| cp.path.clone());
 
     let (before_bytes, new_source) = {
@@ -769,7 +769,7 @@ struct MarkupEdit {
     label: &'static str,
 }
 
-impl renzora::undo::UndoCommand for MarkupEdit {
+impl renzora_shell_api::undo::UndoCommand for MarkupEdit {
     fn label(&self) -> &str {
         self.label
     }
@@ -801,7 +801,7 @@ fn write_and_rebuild(world: &mut World, disk: &Path, asset_path: &str, bytes: &[
 /// exact thing `TemplateReloadRequests` was introduced to gate against.
 fn claim_write(world: &mut World, disk: &Path, bytes: &[u8]) {
     world
-        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .get_resource_or_insert_with(renzora_project_api::project_files::SelfWrites::default)
         .record(disk, bytes);
 }
 
@@ -853,9 +853,9 @@ fn commit_with(
     }
     // Recorded, not executed: the write above already happened, and `execute`
     // would repeat it.
-    renzora::undo::record(
+    renzora_shell_api::undo::record(
         world,
-        renzora::undo::UndoContext::Scene,
+        renzora_shell_api::undo::UndoContext::Scene,
         Box::new(MarkupEdit {
             asset_path: asset_path.to_string(),
             disk_path,
@@ -927,7 +927,7 @@ pub fn insert_node_in_markup(
         return;
     };
     let project_root = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|cp| cp.path.clone());
 
     let (before_bytes, new_source) = {

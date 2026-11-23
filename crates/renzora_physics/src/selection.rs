@@ -9,11 +9,11 @@
 //! better than a game with no physics at all.
 
 use bevy::prelude::*;
-use renzora::physics::{
+use renzora_physics_api::physics::{
     PhysicsBackends, PhysicsDim, PhysicsJoint, PhysicsSettings, ResolvedCollider, RuntimePhysics,
     RuntimePhysics2d,
 };
-use renzora::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 use crate::resolve::PendingMeshCollider;
 
@@ -74,7 +74,7 @@ pub fn switch_backend(world: &mut World, dim: PhysicsDim, name: &str) -> bool {
         PhysicsDim::D2 => "2D",
     };
     info!("[Physics] {label} world moved from `{from}` to `{name}` ({} entities)", entities.len());
-    renzora::console_log::console_info(
+    renzora_log_api::console_info(
         "Physics",
         format!("{label} physics now runs on {name} (was {from})"),
     );
@@ -122,7 +122,7 @@ pub(crate) fn follow_project_backends(world: &mut World, mut last: Local<LastReq
                         "project.toml asks for physics backend `{name}`, which is not installed; using the default"
                     );
                     warn!("[Physics] {msg}");
-                    renzora::console_log::console_warn("Physics", msg);
+                    renzora_log_api::console_warn("Physics", msg);
                 }
                 match backends.default_for(dim) {
                     Some(b) => b.name().to_string(),
@@ -159,14 +159,14 @@ fn announce_running(world: &World, announced: &mut Option<(String, String)>) {
     }
     if backends.is_none_or(|b| b.iter().next().is_none()) {
         warn!("[Physics] no physics engine is installed; bodies and colliders will not simulate");
-        renzora::console_log::console_warn(
+        renzora_log_api::console_warn(
             "Physics",
             "No physics engine is installed, so bodies and colliders will not move or collide. \
              Install a physics plugin (Avian Physics or Rapier Physics) from the marketplace.",
         );
     } else {
         info!("[Physics] running 3D on `{}`, 2D on `{}`", now.0, now.1);
-        renzora::console_log::console_info("Physics", format!("3D physics: {}, 2D physics: {}", now.0, now.1));
+        renzora_log_api::console_info("Physics", format!("3D physics: {}, 2D physics: {}", now.0, now.1));
     }
     *announced = Some(now);
 }

@@ -81,13 +81,13 @@ impl AnimationLayer {
 /// entry is outside the mask.
 pub fn mask_includes(mask: &[String], path: &[&str]) -> bool {
     for bone in path {
-        let key = renzora::sanitize_id(bone);
+        let key = renzora_scene_api::sanitize_id(bone);
         for entry in mask {
             let (exclude, name) = match entry.strip_prefix('!') {
                 Some(rest) => (true, rest),
                 None => (false, entry.as_str()),
             };
-            if renzora::sanitize_id(name.trim()) == key {
+            if renzora_scene_api::sanitize_id(name.trim()) == key {
                 return !exclude;
             }
         }

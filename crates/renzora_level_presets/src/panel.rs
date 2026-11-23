@@ -21,7 +21,7 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_te
 use renzora_ember::theme::*;
 use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{drag_value, DragRange};
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 
 use crate::state::{LevelCommand, LevelPreset, LevelPresetsState};
 

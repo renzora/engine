@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bevy::prelude::*;
-use renzora::profiling::{self, ProfilingAccess};
+use renzora_diagnostics_api::profiling::{self, ProfilingAccess};
 
 use crate::wire::{self, ControlPacket, GamePacket};
 use crate::{ProfileFrame, Profiler};
@@ -144,7 +144,7 @@ fn announce(port: u16, lan: bool, name: String) {
     let beacon = format!(
         "{BEACON_MAGIC}\n{port}\n{name}\n{}\n{}\n{}\n",
         std::env::consts::OS,
-        renzora::version::ENGINE_VERSION,
+        renzora_platform_api::version::ENGINE_VERSION,
         std::process::id()
     );
     std::thread::Builder::new()
@@ -240,7 +240,7 @@ fn connect(stream: TcpStream, access: Option<&ProfilingAccess>, profiler: &Profi
         version: wire::VERSION,
         name: access.map(|a| a.name.clone()).unwrap_or_default(),
         platform: std::env::consts::OS.to_string(),
-        build: renzora::version::ENGINE_VERSION.to_string(),
+        build: renzora_platform_api::version::ENGINE_VERSION.to_string(),
     };
     wire::write(&mut writer, &hello.encode()).ok()?;
 
@@ -322,7 +322,7 @@ fn connect(stream: TcpStream, access: Option<&ProfilingAccess>, profiler: &Profi
 ///
 /// Exclusive, because a probe builds its report from the whole `World`.
 pub(crate) fn serve_probes(world: &mut World, mut last: Local<Option<std::time::Instant>>) {
-    use renzora::probes::{ProbeRegistry, WatchedProbes};
+    use renzora_diagnostics_api::probes::{ProbeRegistry, WatchedProbes};
     let Some(registry) = world.get_resource::<ProbeRegistry>().cloned() else { return };
     let Some(mut server) = world.remove_resource::<Server>() else { return };
 

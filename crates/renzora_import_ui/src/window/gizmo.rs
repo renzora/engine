@@ -21,7 +21,7 @@ use bevy::math::Rot2;
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     AXIS_NEG_X, AXIS_NEG_Y, AXIS_NEG_Z, AXIS_X, AXIS_Y, AXIS_Z,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};

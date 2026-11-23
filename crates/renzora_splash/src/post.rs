@@ -132,9 +132,9 @@ fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             },
             RenderTarget::Image(image.clone().into()),
             PostCamera,
-            renzora::IsolatedCamera,
-            renzora::EditorLocked,
-            renzora::HideInHierarchy,
+            renzora_scene_api::IsolatedCamera,
+            renzora_scene_api::EditorLocked,
+            renzora_scene_api::HideInHierarchy,
             Name::new("Splash Post Camera"),
         ))
         .id();
@@ -159,7 +159,7 @@ fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 /// (`Color::NONE`), so the backdrop reads as flat rather than broken.
 fn gate_post_camera(
     state: Res<State<SplashState>>,
-    integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    integrated: Option<Res<renzora_render_api::GpuIsIntegrated>>,
     effects: crate::effects::SplashEffects,
     mut cam: Query<&mut Camera, With<PostCamera>>,
 ) {

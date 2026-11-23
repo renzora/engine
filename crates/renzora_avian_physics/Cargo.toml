@@ -9,14 +9,18 @@ description = "Avian as a physics backend: simulates the 3D world, the 2D world 
 # pick another engine for every world, leaves it out.
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# The `PhysicsBackend` contract this crate implements.
+renzora_physics_api = { path = "../api/renzora_physics_api" }
 # `xpbd_joints` is avian's joint SOLVER. Without it a joint component is
 # accepted, kept and silently ignored: bodies move as if unjoined.
 avian3d = { workspace = true, features = ["3d", "default-collider", "parry-f32", "xpbd_joints"] }
 avian2d = { workspace = true, features = ["2d", "default-collider", "parry-f32", "xpbd_joints"] }
 
 [dev-dependencies]
+# The script actions the tests fire at the physics plugin.
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 # The tests drive the backend through the engine's own physics plugin, and the
 # parkour traversal tests need real colliders to probe, which is why they live
 # here rather than in `renzora_parkour`.
@@ -26,3 +30,9 @@ renzora_parkour = { path = "../renzora_parkour" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AvianPhysicsPlugin"

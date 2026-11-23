@@ -15,7 +15,8 @@ use bevy::prelude::*;
 use bevy::ui::UiTransform;
 use bevy::window::SystemCursorIcon;
 
-use renzora::{EditorSelection, SplashState};
+use renzora_editor_api::EditorSelection;
+use renzora_project_api::SplashState;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::{KeyedSnapshot};

@@ -21,7 +21,7 @@ use std::sync::Arc;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver};
-use renzora::RenzoraShellExt;
+use renzora_shell_api::RenzoraShellExt;
 
 use crate::auth::marketplace::AssetSummary;
 use crate::auth::session::AuthSession;
@@ -175,16 +175,16 @@ pub(crate) fn register(app: &mut App) {
     // A background install is invisible without this: the confirm overlay
     // closes on Install and the next thing that happens is a modal, minutes
     // later. The status bar is where a job that outlives its dialog belongs.
-    app.register_shell_status_item(renzora::ShellStatusItem {
+    app.register_shell_status_item(renzora_shell_api::ShellStatusItem {
         id: "marketplace.install",
-        align: renzora::ShellStatusAlign::Left,
+        align: renzora_shell_api::ShellStatusAlign::Left,
         order: -50,
         render: install_status_segments,
     });
 }
 
 /// One status-bar segment per running install.
-fn install_status_segments(world: &World) -> Vec<renzora::ShellStatusSegment> {
+fn install_status_segments(world: &World) -> Vec<renzora_shell_api::ShellStatusSegment> {
     let Some(jobs) = world.get_resource::<InstallJobs>() else {
         return Vec::new();
     };
@@ -202,8 +202,8 @@ fn install_status_segments(world: &World) -> Vec<renzora::ShellStatusSegment> {
                 Phase::Writing => format!("Installing {} — writing files", job.name),
                 Phase::Building => format!("Installing {}: building", job.name),
             };
-            renzora::ShellStatusSegment::new("download-simple", text, accent_rgb())
-                .bar(renzora::ShellStatusBar::Busy)
+            renzora_shell_api::ShellStatusSegment::new("download-simple", text, accent_rgb())
+                .bar(renzora_shell_api::ShellStatusBar::Busy)
         })
         .collect()
 }
@@ -239,7 +239,7 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
-    let Some(project) = world.get_resource::<renzora::core::CurrentProject>() else {
+    let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() else {
         return;
     };
     let root = project.path.clone();
@@ -501,7 +501,7 @@ fn install_buttons(
     pending: Option<Res<PendingInstall>>,
     pick: Res<FolderPick>,
     mut jobs: ResMut<InstallJobs>,
-    companion: Option<Res<renzora::CompanionJobs>>,
+    companion: Option<Res<renzora_platform_api::CompanionJobs>>,
     checks: Query<&renzora_ember::reactive::Bound<bool>>,
     mut commands: Commands,
 ) {
@@ -598,14 +598,14 @@ fn poll_install_result(
         if outcome.is_ok() && install::install_dir_for_category(&category) == "models" {
             if let Some(root) = installed {
                 commands.queue(move |world: &mut World| {
-                    world.get_resource_or_insert_with(renzora::core::ImportInPlaceQueue::default).0.push(root);
+                    world.get_resource_or_insert_with(renzora_project_api::ImportInPlaceQueue::default).0.push(root);
                 });
             }
         }
         let dir = install::install_dir_for_category(&category);
         // Side effects first, and once, however the result is then reported.
         if let Ok(msg) = &outcome {
-            renzora::core::console_log::console_info("Marketplace", msg.clone());
+            renzora_log_api::console_info("Marketplace", msg.clone());
             // A freshly installed flat theme is only picked up by the picker on
             // a rescan; do it now so it appears without reopening the project.
             if dir == "themes" {
@@ -659,7 +659,7 @@ fn poll_install_result(
 /// "Restart Editor" on the install notice.
 fn restart_button(q: Query<&UiInteraction, (With<InstallRestartBtn>, Changed<UiInteraction>)>) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        renzora::restart_process();
+        renzora_shell_api::restart_process();
     }
 }
 
@@ -672,7 +672,7 @@ fn spawn_install(
     dest: PathBuf,
     tx: crossbeam_channel::Sender<Result<String, String>>,
     shared: Arc<InstallShared>,
-    remote: Option<renzora::CompanionRemote>,
+    remote: Option<renzora_platform_api::CompanionRemote>,
 ) {
     std::thread::spawn(move || {
         let signed_in = session.as_ref().filter(|s| s.is_signed_in());
@@ -694,7 +694,7 @@ fn spawn_install(
     _dest: PathBuf,
     tx: crossbeam_channel::Sender<Result<String, String>>,
     _shared: Arc<InstallShared>,
-    _remote: Option<renzora::CompanionRemote>,
+    _remote: Option<renzora_platform_api::CompanionRemote>,
 ) {
     let _ = tx.send(Err("Downloads aren't supported in the browser yet".into()));
 }

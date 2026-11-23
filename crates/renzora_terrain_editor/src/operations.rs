@@ -1,4 +1,4 @@
-//! The terrain editor's side of [`renzora::terrain_tools`]: ground lookups,
+//! The terrain editor's side of [`renzora_world_api::terrain_tools`]: ground lookups,
 //! sculpt strokes, the generator, erosion and terrain graph builds, callable
 //! with `&mut World` by a
 //! crate that cannot link this one (the MCP server).
@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use renzora::terrain_tools::{GroundHit, TerrainErode, TerrainGenerate, TerrainGraphBuild, TerrainSculpt, TerrainTools};
+use renzora_world_api::terrain_tools::{GroundHit, TerrainErode, TerrainGenerate, TerrainGraphBuild, TerrainSculpt, TerrainTools};
 use renzora_terrain::data::{
     compute_brush_falloff, NoiseMode, StampBlendMode, TerrainBrushType, TerrainChunkData, TerrainChunkOf, TerrainData,
     TerrainSculptState, TerrainSettings,

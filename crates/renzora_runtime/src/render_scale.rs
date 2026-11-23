@@ -5,7 +5,7 @@
 //! upscales that image to fill the OS window with the UI composited on top at
 //! native resolution. `final_scale` is the project's `[rendering] render_scale`
 //! (a fraction of the design/logical window) times the per-camera
-//! [`renzora::core::CameraRenderResolution`] (Full/Half/Quarter).
+//! [`renzora_scene_api::CameraRenderResolution`] (Full/Half/Quarter).
 //!
 //! **Sizing off the LOGICAL window is deliberate — it makes the DPI fix free.**
 //! At `render_scale = 1.0` the offscreen is the *design* resolution (e.g.
@@ -40,12 +40,13 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, T
 use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{PrimaryWindow, WindowResized};
 
-use renzora::core::{CameraRenderResolution, StretchMode};
+use renzora_scene_api::CameraRenderResolution;
+use renzora_project_api::StretchMode;
 
 /// Render layer for the upscale blit sprite + camera. Distinct from
 /// `viewport_stretch`'s so the two present passes never collide — both are
 /// allocated in the contract crate's registry, alongside every offscreen rig's.
-use renzora::core::viewport_types::RENDER_SCALE_BLIT_LAYER as RS_BLIT_LAYER;
+use renzora_viewport_api::RENDER_SCALE_BLIT_LAYER as RS_BLIT_LAYER;
 
 /// Marker on the sprite that displays the downscaled offscreen image.
 #[derive(Component)]
@@ -136,7 +137,7 @@ fn apply_render_scale(
     >,
     mut blit: Query<(&mut Sprite, &mut Transform), With<RsBlitSprite>>,
     mut resize_events: MessageReader<WindowResized>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     let Ok(window) = windows.single() else {
         return;

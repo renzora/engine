@@ -21,7 +21,7 @@ pub(crate) struct HierRenameInput(pub Entity);
 /// Build the inline rename field (used by `build_row` in place of the label),
 /// seeded with the current name.
 pub(crate) fn build_rename_field(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, name: &str) -> Entity {
-    let input = text_input(commands, &fonts.ui, &renzora::lang::t("common.name"), name);
+    let input = text_input(commands, &fonts.ui, &renzora_lang_api::t("common.name"), name);
     commands.entity(input).insert((
         HierRenameInput(entity),
         Node {
@@ -119,7 +119,7 @@ pub(crate) fn rename_commit(
         // Enforce the id rule at the input: sanitize (spaces/punctuation → `_`,
         // lowercased) and de-duplicate, so a hierarchy rename can never introduce
         // a spaced or colliding id.
-        let new = renzora::unique_entity_name(world, &new, entity);
+        let new = renzora_scene_api::unique_entity_name(world, &new, entity);
         if old == new {
             return;
         }

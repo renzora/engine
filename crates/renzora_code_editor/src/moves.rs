@@ -10,7 +10,8 @@
 //! and all: a tab with changes keeps them, with the new path among them.
 
 use bevy::prelude::*;
-use renzora::core::{AssetPathChanged, CurrentProject};
+use renzora_scene_api::AssetPathChanged;
+use renzora_project_api::CurrentProject;
 
 use crate::state::CodeEditorState;
 

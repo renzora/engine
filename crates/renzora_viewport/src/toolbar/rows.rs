@@ -2,7 +2,7 @@
 //! two macros that bind a row straight to a `ViewportSettings` field.
 //!
 //! The macros spell their paths out in full (`crate::toolbar::rows::…`,
-//! `renzora::core::viewport_types::ViewportSettings`) rather than relying on
+//! `renzora_viewport_api::ViewportSettings`) rather than relying on
 //! what happens to be imported: they expand in four different modules, and a
 //! macro that compiles only where its author happened to be standing is a trap
 //! for whoever adds the fifth dropdown.
@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::core::viewport_types::{ProjectionMode, ViewportSettings};
+use renzora_viewport_api::{ProjectionMode, ViewportSettings};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::bind_2way;
@@ -32,13 +32,13 @@ macro_rules! toggle_row {
             $f,
             $label,
             |w: &renzora_ember::reactive::Rx| {
-                w.get_resource::<renzora::core::viewport_types::ViewportSettings>()
+                w.get_resource::<renzora_viewport_api::ViewportSettings>()
                     .map(|s| s.$($field)+)
                     .unwrap_or(false)
             },
             |w: &mut bevy::prelude::World, v: bool| {
                 if let Some(mut s) =
-                    w.get_resource_mut::<renzora::core::viewport_types::ViewportSettings>()
+                    w.get_resource_mut::<renzora_viewport_api::ViewportSettings>()
                 {
                     s.$($field)+ = v;
                 }
@@ -54,13 +54,13 @@ macro_rules! drag_row {
         crate::toolbar::rows::drag_row_build(
             $c, $f, $label, $min, $max, $step,
             |w: &renzora_ember::reactive::Rx| {
-                w.get_resource::<renzora::core::viewport_types::ViewportSettings>()
+                w.get_resource::<renzora_viewport_api::ViewportSettings>()
                     .map(|s| s.$($field)+)
                     .unwrap_or($min)
             },
             |w: &mut bevy::prelude::World, v: f32| {
                 if let Some(mut s) =
-                    w.get_resource_mut::<renzora::core::viewport_types::ViewportSettings>()
+                    w.get_resource_mut::<renzora_viewport_api::ViewportSettings>()
                 {
                     s.$($field)+ = v;
                 }

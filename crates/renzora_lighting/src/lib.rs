@@ -6,7 +6,7 @@
 use bevy::light::{ShadowFilteringMethod, SunDisk};
 use bevy::pbr::ContactShadows;
 use bevy::prelude::*;
-use renzora::sun::CONTACT_SHADOW_STEPS;
+use renzora_world_api::sun::CONTACT_SHADOW_STEPS;
 
 // ============================================================================
 // Sun component
@@ -20,7 +20,7 @@ use renzora::sun::CONTACT_SHADOW_STEPS;
 /// definitions would compile and then simply never match each other's queries.
 ///
 /// Re-exported here so every existing `renzora_lighting::Sun` path still works.
-pub use renzora::Sun;
+pub use renzora_world_api::Sun;
 
 // ============================================================================
 // Sync system — keeps DirectionalLight + Transform in sync with Sun
@@ -37,7 +37,7 @@ pub use renzora::Sun;
 /// horizon the procedural sky cubemap is dark anyway, and applying the
 /// same horizon fade ensures no residual ambient leaks in.
 pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
-    renzora::sun::horizon_factor(elevation_deg)
+    renzora_world_api::sun::horizon_factor(elevation_deg)
 }
 
 /// How far the moon has risen, 0 to 1: nothing while the sun is up, rising as
@@ -47,7 +47,7 @@ pub fn sun_horizon_factor(elevation_deg: f32) -> f32 {
 /// the scene at once: the light is the sun's until the sun is gone, then the
 /// moon's. Twilight between them is the sky's.
 pub fn moon_factor(elevation_deg: f32) -> f32 {
-    renzora::sun::moon_factor(elevation_deg)
+    renzora_world_api::sun::moon_factor(elevation_deg)
 }
 
 /// What the scene's one directional light should be for this `Sun`: the sun
@@ -181,12 +181,12 @@ fn match_shadow_filtering(
 pub struct LightingPlugin;
 
 /// Observer: handle sun angle changes from scripts via ScriptAction.
-fn handle_sun_script_actions(trigger: On<renzora::ScriptAction>, mut sun_query: Query<&mut Sun>) {
+fn handle_sun_script_actions(trigger: On<renzora_scripting_api::ScriptAction>, mut sun_query: Query<&mut Sun>) {
     let action = trigger.event();
     if action.name != "set_sun_angles" {
         return;
     }
-    use renzora::ScriptActionValue;
+    use renzora_scripting_api::ScriptActionValue;
     let azimuth = match action.args.get("azimuth") {
         Some(ScriptActionValue::Float(v)) => *v,
         _ => return,
@@ -339,8 +339,8 @@ mod tests {
         old.insert("sun_disk_intensity", 1.0_f32);
         let sun = Sun::from_reflect(&old).expect("old scene loads");
         assert_eq!(sun.azimuth, 200.0);
-        assert_eq!(sun.contact_shadow_length, renzora::sun::default_contact_shadow_length());
-        assert_eq!(sun.contact_shadow_steps, renzora::sun::default_contact_shadow_steps());
+        assert_eq!(sun.contact_shadow_length, renzora_world_api::sun::default_contact_shadow_length());
+        assert_eq!(sun.contact_shadow_steps, renzora_world_api::sun::default_contact_shadow_steps());
     }
 
     #[test]
@@ -452,7 +452,7 @@ mod tests {
         let night = sun_light(&Sun {
             elevation: -30.0,
             moon_follows_calendar: false,
-            moon_day: renzora::sun::SYNODIC_MONTH_DAYS * 0.5,
+            moon_day: renzora_world_api::sun::SYNODIC_MONTH_DAYS * 0.5,
             ..Sun::default()
         });
         assert!((night.illuminance - Sun::default().moon_illuminance).abs() < 0.01);
@@ -540,5 +540,3 @@ mod tests {
         approx_eq(a.direction(), b.direction());
     }
 }
-
-renzora::add!(LightingPlugin);

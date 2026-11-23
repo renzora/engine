@@ -15,7 +15,7 @@
 //! Resolution, in order:
 //!
 //! 1. **This binary's own tag**, when CI stamped one in
-//!    (`renzora::version::release_tag`). A published build never has to guess.
+//!    (`renzora_platform_api::version::release_tag`). A published build never has to guess.
 //! 2. **A release tagged exactly [`ENGINE_VERSION`]** — the normal case once the
 //!    version has shipped.
 //! 3. **The newest nightly for this version** (`r1-alpha7-nightly-*`) — the case
@@ -133,7 +133,7 @@ pub fn fetch_release_info() -> Result<ReleaseInfo, String> {
 /// Fetch one release by tag. `Ok(None)` for a 404 (no such release), which is an
 /// expected answer during resolution rather than an error.
 fn release_by_tag(tag: &str) -> Result<Option<ReleaseManifest>, String> {
-    let response = renzora_net::Request::get(&format!("{RELEASES_API}/tags/{tag}"))
+    let response = renzora_net_api::net::Request::get(&format!("{RELEASES_API}/tags/{tag}"))
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
         .send()
@@ -154,7 +154,7 @@ fn release_by_tag(tag: &str) -> Result<Option<ReleaseManifest>, String> {
 /// reached by the nightly fallback.
 fn resolve_release() -> Result<(ReleaseManifest, bool), String> {
     // 1. A published binary knows its own tag.
-    if let Some(tag) = renzora::version::release_tag() {
+    if let Some(tag) = renzora_platform_api::version::release_tag() {
         return match release_by_tag(tag)? {
             Some(r) => Ok((r, false)),
             None => Err(format!(
@@ -164,7 +164,7 @@ fn resolve_release() -> Result<(ReleaseManifest, bool), String> {
     }
 
     // 2. A release for this exact version.
-    let version = renzora::version::ENGINE_VERSION;
+    let version = renzora_platform_api::version::ENGINE_VERSION;
     if let Some(r) = release_by_tag(version)? {
         return Ok((r, false));
     }
@@ -172,8 +172,8 @@ fn resolve_release() -> Result<(ReleaseManifest, bool), String> {
     // 3. The newest nightly for this version. `?per_page=100` is one request;
     //    GitHub returns releases newest-first, so the first tag matching the
     //    prefix is the one we want.
-    let prefix = renzora::version::fallback_tag_prefix();
-    let response = renzora_net::Request::get(&format!("{RELEASES_API}?per_page=100"))
+    let prefix = renzora_platform_api::version::fallback_tag_prefix();
+    let response = renzora_net_api::net::Request::get(&format!("{RELEASES_API}?per_page=100"))
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
         .send()
@@ -305,7 +305,7 @@ fn fetch_verified(
         asset.size as f64 / 1_000_000.0
     )));
 
-    let response = renzora_net::Request::get(&asset.url)
+    let response = renzora_net_api::net::Request::get(&asset.url)
         .header("User-Agent", USER_AGENT)
         .send()
         .map_err(|e| format!("Download failed: {e}"))?;
@@ -351,7 +351,7 @@ fn download_and_install(
         asset.size as f64 / 1_000_000.0
     )));
 
-    let response = renzora_net::Request::get(&asset.url)
+    let response = renzora_net_api::net::Request::get(&asset.url)
         .header("User-Agent", USER_AGENT)
         .send()
         .map_err(|e| format!("Download failed: {e}"))?;

@@ -4,7 +4,7 @@
 //! Offered only where it would help: a build with the `dlss` feature, an
 //! NVIDIA GPU, and the libraries nowhere the loader looks. Anywhere else the
 //! download would sit unused (no DLSS code to load it, or no GPU it runs on).
-//! Where they go and why is `renzora::dlss_runtime`.
+//! Where they go and why is `renzora_platform_api::dlss_runtime`.
 //!
 //! DLSS support is decided while the GPU is set up, so a fresh install takes
 //! effect on the next launch, and the inspector then offers the restart.
@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::render::renderer::RenderAdapterInfo;
-use renzora::dlss_runtime::{self, DlssInstall, Library};
-use renzora::DlssSupport;
+use renzora_platform_api::dlss_runtime::{self, DlssInstall, Library};
+use renzora_solari_api::DlssSupport;
 use sha2::{Digest, Sha256};
 
 /// NVIDIA's PCI vendor id.
@@ -83,7 +83,7 @@ fn install(state: &Arc<Mutex<DlssInstall>>) -> Result<(), String> {
     // a line-ending conversion anywhere on the way would fail a hash and
     // change nothing that matters.
     if let Some(root) = dlss_runtime::install_root() {
-        if let Ok(response) = renzora::net::Request::get(&dlss_runtime::license_url()).send() {
+        if let Ok(response) = renzora_net_api::net::Request::get(&dlss_runtime::license_url()).send() {
             if response.is_ok() {
                 let _ = std::fs::write(root.join("LICENSE.txt"), response.text());
             }
@@ -105,7 +105,7 @@ fn fetch(
     let mut file = std::fs::File::create(&partial)
         .map_err(|e| format!("could not write {} ({e})", partial.display()))?;
     // A 60 MB file on a slow line is minutes, not the default minute.
-    let mut stream = renzora::net::Request::get(&url)
+    let mut stream = renzora_net_api::net::Request::get(&url)
         .timeout(Duration::from_secs(30 * 60))
         .max_bytes(library.size as u32 + 1024 * 1024)
         .send_stream()

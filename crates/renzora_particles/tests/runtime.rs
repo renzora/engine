@@ -11,7 +11,7 @@ use std::time::Duration;
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 use renzora_particles::asset::parse_vfx;
 use renzora_particles::presets::PRESETS;
 use renzora_particles::render::ParticleRenderer;
@@ -125,7 +125,7 @@ fn script_actions_drive_playback() {
 
     let extensions = app
         .world()
-        .resource::<renzora::script_extension::ScriptExtensions>();
+        .resource::<renzora_scripting_api::script_extension::ScriptExtensions>();
     for name in ["vfx_play", "vfx_pause", "vfx_stop", "vfx_restart", "vfx_burst", "vfx_set_time_scale"] {
         assert!(
             extensions.bindings().iter().any(|b| b.name == name),
@@ -228,7 +228,7 @@ fn a_project_material_is_worn_through_a_material_ref() {
     for (e, path) in [(mesh_e, "materials/rock.material"), (quad_e, "materials/spark.material")] {
         let renderer = app.world().get::<ParticleRuntime>(e).unwrap().renderers[0].expect("renderer");
         let world = app.world();
-        assert_eq!(world.get::<renzora::MaterialRef>(renderer).map(|m| m.0.as_str()), Some(path));
+        assert_eq!(world.get::<renzora_material_api::MaterialRef>(renderer).map(|m| m.0.as_str()), Some(path));
         assert!(world.get::<MeshMaterial3d<renzora_particles::render::ParticleMaterial3d>>(renderer).is_none());
         let slot = world.get::<ParticleSurfaceSlot>(renderer).expect("surface slot");
         assert!(!slot.adopted(), "nothing resolved it in a test app");
@@ -476,8 +476,8 @@ fn a_fire_lights_the_scene_with_a_hidden_point_light_child() {
     let light = lights[0];
     let world = app.world();
     assert_eq!(world.get::<ChildOf>(light).map(|c| c.parent()), Some(e));
-    assert!(world.get::<renzora::HideInHierarchy>(light).is_some(), "hidden, so never saved");
-    assert!(world.get::<renzora::NoSelectionBounds>(light).is_some());
+    assert!(world.get::<renzora_scene_api::HideInHierarchy>(light).is_some(), "hidden, so never saved");
+    assert!(world.get::<renzora_scene_api::NoSelectionBounds>(light).is_some());
     assert_eq!(world.get::<RenderLayers>(light), Some(&RenderLayers::layer(3)));
     let point = world.get::<PointLight>(light).expect("a point light");
     assert!(point.intensity > 10_000.0, "lit by the flames: {}", point.intensity);

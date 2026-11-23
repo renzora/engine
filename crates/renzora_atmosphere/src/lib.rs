@@ -116,8 +116,8 @@ fn sync_atmosphere(
     sources: Query<(Entity, Ref<AtmosphereComponentSettings>)>,
     planet: Query<(Entity, Has<Atmosphere>), With<AtmospherePlanet>>,
     mut cameras: Query<SkyCamera, SkyCameraFilter>,
-    routing: Res<renzora::EffectRouting>,
-    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
+    routing: Res<renzora_scene_api::EffectRouting>,
+    suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
 ) {
     let routing_changed = routing.is_changed();
 
@@ -245,7 +245,7 @@ fn sync_atmosphere(
                 atmosphere,
                 xform,
                 Name::new("Sky Atmosphere"),
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
             ));
         }
     }
@@ -282,9 +282,9 @@ struct SpaceBackdrop;
 /// deleting it) hands back exactly the default it had.
 fn sync_space_backdrop(
     mut commands: Commands,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     sources: Query<&AtmosphereComponentSettings>,
-    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
+    suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
     mut cameras: Query<(Entity, &mut Camera, Has<SpaceBackdrop>)>,
 ) {
     let sky_hidden = suppressed.as_deref().is_some_and(|s| s.active);
@@ -323,5 +323,3 @@ impl Plugin for AtmospherePlugin {
         moon::build(app);
     }
 }
-
-renzora::add!(AtmospherePlugin);

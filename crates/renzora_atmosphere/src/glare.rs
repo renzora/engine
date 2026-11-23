@@ -38,8 +38,9 @@ use bevy::render::{
     view::{ExtractedView, ViewTarget},
     Render, RenderApp, RenderStartup, RenderSystems,
 };
-use renzora::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
-use renzora::{RenderPhase, Sun};
+use renzora_render_api::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
+use renzora_scene_api::RenderPhase;
+use renzora_world_api::Sun;
 
 /// The HDR frame format; the glare is only drawn into an HDR camera.
 const HDR_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
@@ -484,7 +485,7 @@ mod tests {
             )
             .collect::<Vec<_>>()
             .join("\n");
-        renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("glare.wesl: {err}"));
+        renzora_shader_api::wgsl::check(&source).unwrap_or_else(|err| panic!("glare.wesl: {err}"));
     }
 
     /// The tint is the light's colour at full brightness, so the glare's

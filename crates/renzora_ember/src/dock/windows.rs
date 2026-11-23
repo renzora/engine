@@ -209,8 +209,8 @@ pub(crate) fn spawn_dock_windows(
     mut wins: ResMut<DockWindows>,
     mut drag: ResMut<FloatDrag>,
     fonts: Option<Res<EmberFonts>>,
-    splash: Option<Res<State<renzora::SplashState>>>,
-    registry: Option<Res<renzora::core::ShellPanelRegistry>>,
+    splash: Option<Res<State<renzora_project_api::SplashState>>>,
+    registry: Option<Res<renzora_shell_api::ShellPanelRegistry>>,
     mut commands: Commands,
 ) {
     if requests.0.is_empty() {
@@ -223,7 +223,7 @@ pub(crate) fn spawn_dock_windows(
     let Some(fonts) = fonts else {
         return;
     };
-    if splash.is_some_and(|s| *s.get() != renzora::SplashState::Editor) {
+    if splash.is_some_and(|s| *s.get() != renzora_project_api::SplashState::Editor) {
         return;
     }
     for req in requests.0.drain(..) {
@@ -231,7 +231,7 @@ pub(crate) fn spawn_dock_windows(
         let title = registry
             .as_ref()
             .and_then(|r| r.panels.get(lead))
-            .map(|info| renzora::lang::t_or(&format!("panel.{lead}"), &info.title))
+            .map(|info| renzora_lang_api::t_or(&format!("panel.{lead}"), &info.title))
             .unwrap_or_else(|| humanize(lead));
 
         let window = commands
@@ -263,7 +263,7 @@ pub(crate) fn spawn_dock_windows(
                 // Engine chrome, not scene content: keep it out of the
                 // hierarchy panel AND out of the scene-clear sweep (which
                 // despawns named entities without this marker).
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 Name::new("dock-window"),
             ))
             .id();
@@ -272,7 +272,7 @@ pub(crate) fn spawn_dock_windows(
                 Camera2d,
                 Camera::default(),
                 bevy::camera::RenderTarget::Window(bevy::window::WindowRef::Entity(window)),
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 Name::new("dock-window-camera"),
             ))
             .id();
@@ -297,7 +297,7 @@ pub(crate) fn spawn_dock_windows(
                 BackgroundColor(rgb(crate::theme::window_bg())),
                 BorderColor::all(rgb(border())),
                 bevy::ui::UiTargetCamera(camera),
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 Name::new("dock-window-root"),
             ))
             .id();

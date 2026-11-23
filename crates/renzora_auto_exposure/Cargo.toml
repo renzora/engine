@@ -9,8 +9,15 @@ description = "Auto exposure: Bevy's histogram metering, driven by the camera's 
 # (crates/renzora_auto_exposure/editor), linked only by the editor bundle.
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+renzora_render_api = { path = "../api/renzora_render_api" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AutoExposurePlugin"

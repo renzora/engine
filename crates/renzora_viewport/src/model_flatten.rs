@@ -336,7 +336,7 @@ pub struct WrappersPending {
 ///
 /// **Match case-insensitively and strip every trailing `_<digits>` group.** Both
 /// halves are load-bearing, and getting this wrong is silent:
-/// [`renzora::core::entity_id::sanitize_id`] lowercases every `Name` and rewrites
+/// [`renzora_scene_api::entity_id::sanitize_id`] lowercases every `Name` and rewrites
 /// `.` to `_`, so the loader's `RootNode.001` reaches us as `rootnode_001`, and
 /// `unique_id` can append a further `_1` on collision. This function used to
 /// compare against the PascalCase spelling only, so when canonical ids landed it
@@ -408,11 +408,11 @@ pub fn hide_gltf_wrappers(
         // Use `MeshInstanceData` rather than `ImportedRoot` so rehydrated
         // scenes loaded from disk get the same treatment — `ImportedRoot`
         // is a runtime-only marker that isn't serialized.
-        (With<renzora::MeshInstanceData>, Without<WrappersHidden>),
+        (With<renzora_scene_api::MeshInstanceData>, Without<WrappersHidden>),
     >,
     name_query: Query<&Name>,
     children_query: Query<&Children>,
-    hidden_query: Query<(), With<renzora::HideInHierarchy>>,
+    hidden_query: Query<(), With<renzora_scene_api::HideInHierarchy>>,
 ) {
     for (root, root_children, pending_marker) in pending.iter() {
         let has_children = root_children.map(|c| !c.is_empty()).unwrap_or(false);
@@ -449,7 +449,7 @@ pub fn hide_gltf_wrappers(
                 let wrapper =
                     is_gltf_wrapper_name(name) || (at_top && is_top_level_wrapper_name(name));
                 if wrapper {
-                    commands.entity(entity).try_insert(renzora::HideInHierarchy);
+                    commands.entity(entity).try_insert(renzora_scene_api::HideInHierarchy);
                 }
                 wrapper
             } else {
@@ -490,8 +490,8 @@ pub fn rearm_wrapper_hiding_on_ready(
     trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     parents: Query<&ChildOf>,
-    mesh_instances: Query<(), With<renzora::MeshInstanceData>>,
-    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    mesh_instances: Query<(), With<renzora_scene_api::MeshInstanceData>>,
+    timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
 ) {
     let mut cursor = trigger.event().entity;
     if cursor == Entity::PLACEHOLDER {

@@ -39,7 +39,7 @@ pub(crate) fn tab_editor(
     let dv = ctl_drag(
         commands,
         fonts,
-        renzora::core::console_log::DEFAULT_MAX_LOG_ENTRIES as f32,
+        renzora_log_api::DEFAULT_MAX_LOG_ENTRIES as f32,
         10.0,
         10000.0,
         10.0,
@@ -48,7 +48,7 @@ pub(crate) fn tab_editor(
             let limit = (v.round() as usize).clamp(10, 10000);
             w.resource_mut::<EditorSettings>().console_log_limit = limit;
             // Apply immediately to the live buffer cap, then persist.
-            renzora::core::console_log::set_max_log_entries(limit);
+            renzora_log_api::set_max_log_entries(limit);
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.console_log_limit"), dv);
@@ -60,11 +60,11 @@ pub(crate) fn tab_editor(
     let t = ctl_toggle(
         commands,
         true,
-        |w| w.resource::<renzora::AutoSaveSettings>().enabled,
+        |w| w.resource::<renzora_project_api::AutoSaveSettings>().enabled,
         |w, &v| {
-            w.resource_mut::<renzora::AutoSaveSettings>().enabled = v;
-            let snap = *w.resource::<renzora::AutoSaveSettings>();
-            let _ = renzora::save_autosave(&snap);
+            w.resource_mut::<renzora_project_api::AutoSaveSettings>().enabled = v;
+            let snap = *w.resource::<renzora_project_api::AutoSaveSettings>();
+            let _ = renzora_project_api::save_autosave(&snap);
         },
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.enable_autosave"), t);
@@ -75,12 +75,12 @@ pub(crate) fn tab_editor(
         10.0,
         3600.0,
         10.0,
-        |w| w.resource::<renzora::AutoSaveSettings>().interval_secs as f32,
+        |w| w.resource::<renzora_project_api::AutoSaveSettings>().interval_secs as f32,
         |w, &v| {
             let secs = v.round().clamp(10.0, 3600.0) as u32;
-            w.resource_mut::<renzora::AutoSaveSettings>().interval_secs = secs;
-            let snap = *w.resource::<renzora::AutoSaveSettings>();
-            let _ = renzora::save_autosave(&snap);
+            w.resource_mut::<renzora_project_api::AutoSaveSettings>().interval_secs = secs;
+            let snap = *w.resource::<renzora_project_api::AutoSaveSettings>();
+            let _ = renzora_project_api::save_autosave(&snap);
         },
     );
     settings_row(commands, fonts, body, 1, &tr("settings.row.interval_secs"), dv);
@@ -89,7 +89,7 @@ pub(crate) fn tab_editor(
     let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.renderer"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "renderer");
-    let avail: Vec<renzora::RendererBackend> = renzora::RendererBackend::available().to_vec();
+    let avail: Vec<renzora_project_api::RendererBackend> = renzora_project_api::RendererBackend::available().to_vec();
     let label_strs: Vec<String> = avail.iter().map(|b| loc_opt(b.label())).collect();
     let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
     let av1 = avail.clone();
@@ -113,10 +113,10 @@ pub(crate) fn tab_editor(
     settings_row(commands, fonts, body, 0, &tr("settings.row.graphics_backend"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.restart_editor"));
 
-    const SPLASH_EFFECTS: [renzora::SplashEffects; 3] = [
-        renzora::SplashEffects::Auto,
-        renzora::SplashEffects::Full,
-        renzora::SplashEffects::Reduced,
+    const SPLASH_EFFECTS: [renzora_project_api::SplashEffects; 3] = [
+        renzora_project_api::SplashEffects::Auto,
+        renzora_project_api::SplashEffects::Full,
+        renzora_project_api::SplashEffects::Reduced,
     ];
     let label_strs = [
         tr("settings.option.splash_effects_auto"),
@@ -162,6 +162,13 @@ pub(crate) fn tab_editor(
         |w, &v| w.resource_mut::<EditorSettings>().auto_import_on_drop = v,
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.drop_import"), t);
+    let t = ctl_toggle(
+        commands, true,
+        |w| w.resource::<EditorSettings>().render_thumbnails,
+        |w, &v| w.resource_mut::<EditorSettings>().render_thumbnails = v,
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.render_thumbnails"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.render_thumbnails"));
 
     // Scene files — how to resolve the open scene changing on disk while the
     // editor has unsaved changes to it. Only that case: a clean scene always

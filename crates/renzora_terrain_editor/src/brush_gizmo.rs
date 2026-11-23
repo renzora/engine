@@ -23,7 +23,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::gizmos::config::{GizmoConfig, GizmoConfigGroup};
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportOverlayChanged;
+use renzora_viewport_api::ViewportOverlayChanged;
 use renzora_terrain::data::{BrushShape, TerrainChunkData, TerrainData};
 
 /// The brush cursor's gizmo group: on render layer 1, so the viewport's overlay

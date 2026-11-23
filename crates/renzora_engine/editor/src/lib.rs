@@ -2,7 +2,7 @@
 //!
 //! `renzora_engine` compiles lean — no `editor` cargo feature — so its
 //! game-startup code is always present and branches at RUNTIME on
-//! `renzora::EditorSession`. The editor-only pieces that used to live behind
+//! `renzora_project_api::EditorSession`. The editor-only pieces that used to live behind
 //! `#[cfg(feature = "editor")]` in `renzora_engine` moved here: the editor
 //! camera lifecycle, the save-scene observer, the 2D selection auto-view-switch,
 //! and the native (ember) crash-report overlay.
@@ -35,10 +35,10 @@ impl Plugin for EngineEditorPlugin {
         // *at spawn* — they can't be retrofitted. `OnEnter(Editor)` is the only
         // place both conditions hold (the long-form rationale lived in
         // renzora_engine before the split).
-        app.init_resource::<renzora::viewport_types::EditorCameraMatrix>()
+        app.init_resource::<renzora_viewport_api::EditorCameraMatrix>()
             .init_resource::<LastSelectionForView2dSwitch>()
             .add_systems(
-                OnEnter(renzora::SplashState::Editor),
+                OnEnter(renzora_project_api::SplashState::Editor),
                 (
                     // MUST run before camera spawn — updates ResolvedRenderingMode
                     // from the loaded project so the camera attaches the right
@@ -71,7 +71,7 @@ impl Plugin for EngineEditorPlugin {
             // `despawn_scene_entities` cannot do this job either — it excludes
             // `EditorCamera` and `HideInHierarchy` on purpose, so a scene clear
             // deliberately preserves exactly these entities.
-            .add_systems(OnExit(renzora::SplashState::Editor), despawn_editor_cameras)
+            .add_systems(OnExit(renzora_project_api::SplashState::Editor), despawn_editor_cameras)
             .add_systems(
                 Update,
                 (
@@ -110,7 +110,7 @@ impl Plugin for EngineEditorPlugin {
                 crash_overlay::manage_crash_overlay,
                 crash_overlay::crash_overlay_buttons,
             )
-                .run_if(in_state(renzora::SplashState::Editor))
+                .run_if(in_state(renzora_project_api::SplashState::Editor))
                 // The manager is exclusive, a sync point for the schedule even
                 // when it returns at once. Both act only while a report is to be
                 // shown or the overlay is still up to be torn down.
@@ -129,7 +129,7 @@ impl Plugin for EngineEditorPlugin {
                 .systems(
                     Update,
                     streaming_panel::update_streaming_debug_snapshot
-                        .run_if(in_state(renzora::SplashState::Editor))
+                        .run_if(in_state(renzora_project_api::SplashState::Editor))
                         .run_if(bevy::time::common_conditions::on_timer(
                             std::time::Duration::from_millis(250),
                         )),
@@ -138,10 +138,9 @@ impl Plugin for EngineEditorPlugin {
     }
 }
 
-renzora::add!(EngineEditorPlugin, Editor);
 
 /// Listen for the editor's save-scene event and persist the current scene.
-fn on_save_current_scene(_trigger: On<renzora::SaveCurrentScene>, mut commands: Commands) {
+fn on_save_current_scene(_trigger: On<renzora_shell_api::SaveCurrentScene>, mut commands: Commands) {
     commands.queue(|world: &mut World| {
         renzora_engine::scene_io::save_current_scene(world);
     });
@@ -156,7 +155,7 @@ pub struct LastSelectionForView2dSwitch(pub Option<Entity>);
 /// Run condition for [`auto_switch_view_on_2d_selection`]: the same comparison
 /// the system opens with, so it starts only on a frame it would act.
 fn selection_moved_since_view_switch(
-    selection: Option<Res<renzora::EditorSelection>>,
+    selection: Option<Res<renzora_editor_api::EditorSelection>>,
     last: Option<Res<LastSelectionForView2dSwitch>>,
 ) -> bool {
     selection.and_then(|s| s.get()) != last.and_then(|l| l.0)
@@ -172,10 +171,10 @@ fn selection_moved_since_view_switch(
 /// Other view transitions (3D ↔ UI) are left to the UI auto-switch system or
 /// the user.
 pub fn auto_switch_view_on_2d_selection(world: &mut World) {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+    use renzora_viewport_api::{ViewportSettings, ViewportView};
 
     let current_sel = world
-        .get_resource::<renzora::EditorSelection>()
+        .get_resource::<renzora_editor_api::EditorSelection>()
         .and_then(|s| s.get());
     let last_sel = world
         .get_resource::<LastSelectionForView2dSwitch>()
@@ -191,7 +190,7 @@ pub fn auto_switch_view_on_2d_selection(world: &mut World) {
 
     let is_2d = world.get::<bevy::sprite::Sprite>(entity).is_some()
         || world.get::<Camera2d>(entity).is_some()
-        || world.get::<renzora::core::Node2d>(entity).is_some();
+        || world.get::<renzora_scene_api::Node2d>(entity).is_some();
     let is_3d = world.get::<Mesh3d>(entity).is_some()
         || world.get::<Camera3d>(entity).is_some()
         || world.get::<DirectionalLight>(entity).is_some()
@@ -231,8 +230,8 @@ fn despawn_editor_cameras(
     cameras: Query<
         Entity,
         Or<(
-            With<renzora::ViewportCamera>,
-            With<renzora::ViewportCamera2d>,
+            With<renzora_scene_api::ViewportCamera>,
+            With<renzora_scene_api::ViewportCamera2d>,
         )>,
     >,
 ) {

@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 // `register_shell_panel` — this crate declares its own panel metadata now that
 // the shell's static table no longer lists the Marketplace entries.
-use renzora::core::RenzoraShellExt;
+use renzora_shell_api::RenzoraShellExt;
 use crossbeam_channel::{unbounded, Receiver};
 
 use crate::auth::marketplace::AssetSummary;
@@ -20,7 +20,7 @@ use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with, keyed
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
 use renzora_ember::UiInteraction;
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 
 use crate::install;
 use crate::thumbs::HubThumbs;
@@ -439,7 +439,7 @@ fn library_next_click(q: Query<&UiInteraction, (With<LibNextBtn>, Changed<UiInte
     }
 }
 
-fn poll_library(mut data: ResMut<HubLibraryData>, imports: Option<ResMut<renzora::core::ImportInPlaceQueue>>) {
+fn poll_library(mut data: ResMut<HubLibraryData>, imports: Option<ResMut<renzora_project_api::ImportInPlaceQueue>>) {
     let mut imports = imports;
     let Some(rx) = data.rx.as_ref() else { return };
     let mut got = Vec::new();
@@ -518,8 +518,8 @@ fn library_install_click(
     q: Query<(&UiInteraction, &LibInstallBtn), Changed<UiInteraction>>,
     mut data: ResMut<HubLibraryData>,
     session: Option<Res<AuthSession>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    companion: Option<Res<renzora::CompanionJobs>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    companion: Option<Res<renzora_platform_api::CompanionJobs>>,
 ) {
     let (Some(session), Some(project)) = (session, project) else { return };
     if data.installing_id.is_some() {
@@ -548,7 +548,7 @@ fn install_asset(
     session: &AuthSession,
     asset: &AssetSummary,
     project_path: std::path::PathBuf,
-    remote: Option<renzora::CompanionRemote>,
+    remote: Option<renzora_platform_api::CompanionRemote>,
 ) {
     let session = clone_session(session);
     let asset = asset.clone();
@@ -575,7 +575,7 @@ fn install_asset(
     _s: &AuthSession,
     _a: &AssetSummary,
     _p: std::path::PathBuf,
-    _r: Option<renzora::CompanionRemote>,
+    _r: Option<renzora_platform_api::CompanionRemote>,
 ) {
 }
 

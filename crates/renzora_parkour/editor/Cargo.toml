@@ -2,11 +2,11 @@
 name = "renzora_parkour_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only diagnostic gizmo for renzora_parkour: draws the controller's swept capsule, its ground and ledge probes, and the traversal path it is playing. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only diagnostic gizmo for renzora_parkour: draws the controller's swept capsule, its ground and ledge probes, and the traversal path it is playing. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_viewport_api = { path = "../../api/renzora_viewport_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_parkour = { path = ".." }
 # The overlay gizmo group (depth-biased, render layer 1) every other editor
 # gizmo draws into, plus its capsule helper — so the parkour capsule is drawn
@@ -17,3 +17,10 @@ renzora_editor_framework = { path = "../../renzora_editor_framework" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "ParkourEditorPlugin"
+scope = "Editor"

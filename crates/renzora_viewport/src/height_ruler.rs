@@ -42,8 +42,8 @@ use bevy::prelude::*;
 
 use bevy::ui::ComputedNode;
 
-use renzora::core::viewport_types::{NavOverlayState, EDITOR_ZOOM_MAX};
-use renzora::core::EditorCamera;
+use renzora_viewport_api::{NavOverlayState, EDITOR_ZOOM_MAX};
+use renzora_scene_api::EditorCamera;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb, text_muted};

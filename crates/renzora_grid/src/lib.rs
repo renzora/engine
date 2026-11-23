@@ -12,7 +12,7 @@ mod infinite_grid;
 
 use bevy::prelude::*;
 use infinite_grid::InfiniteGridPlugin;
-use renzora::core::viewport_types::ViewportSettings;
+use renzora_viewport_api::ViewportSettings;
 
 // Re-export the grid primitives so other editor crates can drop a grid onto their
 // own offscreen preview cameras (e.g. the marketplace 3D model viewer) without
@@ -63,7 +63,7 @@ impl Plugin for GridPlugin {
                     apply_grid_config,
                     sync_per_camera_grid,
                 )
-                    .run_if(in_state(renzora::SplashState::Editor)),
+                    .run_if(in_state(renzora_project_api::SplashState::Editor)),
             );
     }
 }
@@ -83,7 +83,7 @@ fn spawn_grid(mut commands: Commands, config: Res<GridConfig>) {
             scale: config.scale,
         },
         EditorGrid,
-        renzora::HideInHierarchy,
+        renzora_scene_api::HideInHierarchy,
     ));
 }
 
@@ -140,7 +140,7 @@ fn sync_per_camera_grid(
     config: Res<GridConfig>,
     cameras: Query<
         (Entity, &GlobalTransform, Option<&InfiniteGridSettings>),
-        With<renzora::core::ViewportCamera>,
+        With<renzora_scene_api::ViewportCamera>,
     >,
 ) {
     for (entity, cam_tf, existing) in &cameras {
@@ -173,7 +173,6 @@ fn sync_per_camera_grid(
     }
 }
 
-renzora::add!(GridPlugin, Editor);
 
 #[cfg(test)]
 mod tests {

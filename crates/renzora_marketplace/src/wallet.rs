@@ -9,8 +9,8 @@
 
 use bevy::prelude::*;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use renzora::core::RenzoraShellExt;
-use renzora::SplashState;
+use renzora_shell_api::RenzoraShellExt;
+use renzora_project_api::SplashState;
 use crate::auth::billing::{DonateResponse, DonationLeader, CREDIT_USD_CENTS};
 use crate::auth::AuthSession;
 use renzora_ember::dock::panel_active;

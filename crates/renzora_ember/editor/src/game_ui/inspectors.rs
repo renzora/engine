@@ -6,7 +6,8 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use renzora::{AppEditorExt, SplashState};
+use renzora_editor_api::AppEditorExt;
+use renzora_project_api::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field_rgba, inspector_body, inspector_row};
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display};

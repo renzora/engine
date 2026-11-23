@@ -24,7 +24,8 @@ That last line is the only Renzora-specific thing about it. Everything above it 
 
 This is the plugin you write unless you are working on the engine itself. The
 other kind is an **in-workspace plugin**: a crate under `crates/` with a
-`renzora::add!` line, compiled straight into the binary. That one is for engine
+`[[package.metadata.renzora.plugin]]` table in its `Cargo.toml`, compiled
+straight into the binary. That one is for engine
 features and needs an engine checkout; see [Building Plugins](plugins.md).
 
 **A native plugin is not editor-only.** Declare it `Runtime` (see
@@ -64,7 +65,7 @@ A **lean single-binary** export takes a different route. It links Bevy staticall
 
 `Editor` is the default deliberately. It is what every native plugin written before scopes existed was, so those keep behaving as they did; and it is the safe way to guess, because an editor plugin missing from a game is an absence, while a runtime plugin that should not have shipped is in the player's hands. A plugin built before this existed exports no scope symbol at all, and the loader reads that as `Editor` for the same reason.
 
-A plugin is exclusively one or the other. A feature that needs editor tooling on top of runtime behaviour ships two plugins — the same rule `add!` follows.
+A plugin is exclusively one or the other. A feature that needs editor tooling on top of runtime behaviour ships two plugins — the same rule in-workspace plugins follow.
 
 ## Layout
 
@@ -72,7 +73,7 @@ Every plugin is a **directory** under `plugins/`, named by its id.
 
 ```
 <editor dir>/
-  bevy_dylib-<hash>.dll     renzora_dylib.dll     renzora_ember_dylib.dll
+  bevy_dylib-<hash>.dll     renzora_dylib.dll
   sdk/                                            the plugin SDK
   plugins/
     my-plugin/                                    shipped as source
@@ -106,9 +107,13 @@ Compiling against the engine you already have needs what `rustc` reads at compil
 
 It rides inside the engine download as a single compressed `sdk.tar.zst` (~444 MB) beside the executables, and is unpacked to `sdk/` once per update. Rust scripts need it as much as plugins do, so that unpack is part of setting the engine up rather than an optional extra. Bundling it rather than fetching it from somewhere is deliberate: there is no URL, no resume, no checksum and no offline case to handle, and a version mismatch is structurally impossible because the SDK in the folder is by construction the one that built the editor next to it.
 
+The two shared images (`bevy_dylib` and `renzora_dylib`) are not in the archive. They are the same files the engine runs from, so the manifest lists them as `shared_images` and the unpacker hardlinks each one in from beside the executable (or copies it where a hardlink cannot be made). The archive and the install each hold them once, not twice.
+
 zstd rather than xz, even though xz is 103 MB smaller: unpacking is on everyone's path now, so its cost is paid by every user while the download's is paid once. Measured, that trade buys a 29.8 s unpack down to ~2 s of decode, and removes a 1.9 GB temporary file along the way.
 
-The metadata is staged as `.rmeta` files rather than the `.rlib` archives cargo produced. An `.rlib` holds two things — the crate's metadata and its compiled object code — and a plugin build consumes only the first: it typechecks against the metadata and takes the *code* from the three shared images (`bevy_dylib`, `renzora_dylib`, `renzora_ember_dylib`), which is what those exist for. Dropping the object half is what takes the extracted SDK from 3.3 GB to 1.5 GB, with byte-identical plugins out the other end.
+The metadata is staged as `.rmeta` files rather than the `.rlib` archives cargo produced. An `.rlib` holds two things — the crate's metadata and its compiled object code — and a plugin build consumes only the first: it typechecks against the metadata and takes the *code* from the two shared images (`bevy_dylib`, and `renzora_dylib`, which carries the contract and the UI framework), which is what those exist for. Dropping the object half is what takes the extracted SDK from 3.3 GB to 1.5 GB, with byte-identical plugins out the other end.
+
+The SDK also holds only what a plugin can reach. A plugin is handed `bevy` and `renzora` and nothing else, so the editor, its panels and the engine's implementation crates are left out, and of each crate that remains only the build `renzora_dylib` was actually linked against is staged (cargo builds some crates several times, for other feature sets or for build scripts). The stager reads that from cargo's own fingerprints. Together these bring the SDK to about 1.2 GB.
 
 This is safe because `rustc` will not link a crate's code from thin air. Under `-C prefer-dynamic` a crate whose objects are already inside a dylib being linked is taken from there; anything else demands its archive and says so — `error[E0461]: crate 'X' required to be available in rlib format`. There is no quiet failure. The one crate staged whole is the `bevy` facade itself: it lives inside `renzora_dylib` rather than `bevy_dylib`, so a plugin that imported `bevy` and touched nothing else would hit E0461 from metadata alone. That plugin could never load anyway — `renzora::plugin!` writes the symbol the loader looks for — but 42 KB buys the simpler rule, so `bevy` keeps its `.rlib`.
 
@@ -176,11 +181,13 @@ The list lives in `~/.renzora/editor.toml` under `disabled_plugins`, keyed by th
 
 ## What you can reach
 
-Three crates, and they are enough for almost anything:
+Two crates, and they are enough for almost anything:
 
 - **`bevy`** — all of it. Queries, assets, schedules, render, UI, gizmos, `bsn!`.
 - **`renzora`** — the contract crate. Every type that crosses a boundary in this engine lives here on purpose, so a plugin shares them rather than mirroring them: `EditorSelection`, `PlayModeState`, `SplashState`, `CurrentProject`, `lang::t()`, the Console buffer, the post-process framework, the shell registries. See **[Editor Features from Code](editor-api.md)** for what each of those registries does.
-- **`renzora_ember`** — the editor's UI framework. See **[Editor Panels from a Plugin](panels.md)**.
+  - **`renzora::ui`** is the editor's UI framework (ember): panels, widgets, theme, reactive bindings, fonts. See **[Editor Panels from a Plugin](panels.md)**.
+
+The UI framework is `renzora::ui`. Plugins written before it existed imported a separate `renzora_ember` crate; that name is no longer offered, so such a plugin needs its `renzora_ember::` paths changed to `renzora::ui::` (the items are the same).
 
 Anything else in the workspace is not reachable. If your plugin needs a type from another `renzora_*` crate, that type belongs in `renzora` — that is the rule the engine's own crates follow.
 
@@ -272,7 +279,7 @@ That is all.
 
 What is refused, with a message naming it, is a dependency that would need a Bevy crate *different* from the engine's: another version, or a cargo feature the engine was not built with. The graph is checked before anything compiles, so that costs seconds rather than a half-hour build of a Bevy that must not exist. A second Bevy is not a size problem: its types have different `TypeId`s from the engine's, so the plugin would build, load, and then read the `World` through the wrong layouts. A dependency on the engine's own `renzora_*` crates is refused too; reach those types through `renzora::`.
 
-**A duplicate crate is usually harmless.** Depend on something the engine also links and you get a second, privately linked copy. That matters only for crates holding process-global state — which is exactly why `renzora` and `renzora_ember` are shared images and not ordinary dependencies. And if such a type tried to cross into an engine API, the two copies are different types to the compiler: a compile error, not silent corruption.
+**A duplicate crate is usually harmless.** Depend on something the engine also links and you get a second, privately linked copy. That matters only for crates holding process-global state — which is exactly why `renzora` and its UI framework live in a shared image and are not ordinary dependencies. And if such a type tried to cross into an engine API, the two copies are different types to the compiler: a compile error, not silent corruption.
 
 **`serde` is the exception, and it will bite you.** Write `serde = "1"` in your manifest and derive `Serialize` on a component holding any Bevy type, and it does not compile:
 
@@ -323,7 +330,7 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 **The editor contract is glob-re-exported at the crate root.** Write `renzora::EditorSelection`, never `renzora::editor_contract::EditorSelection`.
 
-**rustc's diagnostics name `renzora_dylib` and `renzora_ember_dylib`.** Those are the shared images' real crate names; the `--extern` alias hides them everywhere except error messages.
+**rustc's diagnostics name `renzora_dylib`.** Those are the real crate names; the `--extern` alias hides them everywhere except error messages.
 
 **On macOS the build rewrites your plugin's install names, and it has to.** Linux and Windows identify a shared library by name — a SONAME, or a bare filename in an import table — so a plugin and its host land on one image no matter which copy each of them linked. Mach-O records the dependency's *install name*, and dyld keys images by the path that resolves to. The SDK stages the shared dylibs as hardlinks carrying the build tree's absolute path, so an untreated plugin asks for `/…/target/dist/deps/libbevy_dylib-<hash>.dylib` while the engine asks for `@rpath/libbevy_dylib-<hash>.dylib` beside itself: two paths, two images, and two of every process-global static in 118 MB of Bevy. The plugin gets the half nobody initialised, and the first symptom is a panic accusing Bevy of an ordering bug the engine does not have — `The IoTaskPool has not been initialized yet`, from a `Plugin::finish` that only loaded an asset.
 
@@ -340,7 +347,7 @@ Prefer `HideInHierarchy` over giving it a `Name`: a name silences the guard too,
 
 Native plugins are distributed through the marketplace and built where they are installed, so the plugins repository (`github.com/renzora/plugins`) holds the real examples.
 
-The engine's own crates are a good reference too: an in-workspace plugin under `crates/` is an ordinary Bevy plugin with a `renzora::add!` line, and everything inside it (the systems, the resources, the `&mut World` access, the contract-crate calls) is written exactly as a native plugin writes it. The only difference is the one line at the bottom of the file and how it gets linked.
+The engine's own crates are a good reference too: an in-workspace plugin under `crates/` is an ordinary Bevy plugin declared by a `[[package.metadata.renzora.plugin]]` table in its `Cargo.toml`, and everything inside it (the systems, the resources, the `&mut World` access, the contract-crate calls) is written exactly as a native plugin writes it. The only differences are that table in place of the `plugin!` line, and how it gets linked.
 
 - `crates/renzora_cloth` is a small, self-contained feature plugin.
 - The built-in panels are the model for [panel code](panels.md); `crates/renzora_ember/src/widgets/gallery.rs` is the shortest complete example of building a large ember tree from one `build` function.

@@ -257,16 +257,21 @@ pub struct EditorSettings {
     /// Graphics backend wgpu requests at startup. Persisted to disk (not held
     /// only in this resource) because the renderer is created before this
     /// resource exists; changing it requires an editor restart to take effect.
-    pub renderer_backend: renzora::RendererBackend,
+    pub renderer_backend: renzora_project_api::RendererBackend,
     /// Launcher cinematic and loading-screen haze: on, off, or decided by the
-    /// display (see [`renzora::SplashEffects`]).
-    pub splash_effects: renzora::SplashEffects,
+    /// display (see [`renzora_project_api::SplashEffects`]).
+    pub splash_effects: renzora_project_api::SplashEffects,
     /// Hold the editor to about 60 frames a second while its window is not
     /// focused (Bevy's `WinitSettings::game()` unfocused mode). On by default to
     /// save power and heat while you work in another window; off runs the
     /// editor at full speed whatever has focus, which is what a profile taken
     /// with the editor in the background needs.
     pub throttle_when_unfocused: bool,
+    /// Render thumbnails for models and materials that have none on disk, in
+    /// the editor or the companion's render worker. Off shows only the
+    /// thumbnails already rendered and stops the worker, whose memory a
+    /// project with thousands of imported materials can fill.
+    pub render_thumbnails: bool,
     /// Enable game viewport preview behind the UI canvas by default when entering the UI workspace.
     pub ui_preview_by_default: bool,
     /// New scripts and UI templates are created with commented boilerplate
@@ -352,7 +357,7 @@ impl EditorSettings {
     /// The two session-only fields (`settings_tab`, `show_settings`) are
     /// `#[serde(skip)]` and so take their `Default` here regardless.
     pub fn from_disk() -> Self {
-        renzora::core::settings_file::load_section("editor").unwrap_or_default()
+        renzora_project_api::settings_file::load_section("editor").unwrap_or_default()
     }
 
     /// Write the whole section. Cheap enough to call on change: it is a
@@ -360,7 +365,7 @@ impl EditorSettings {
     /// [`persist_editor_settings`] so a slider drag writes once rather than once
     /// per frame.
     pub fn save(&self) {
-        if let Err(e) = renzora::core::settings_file::save_section("editor", self) {
+        if let Err(e) = renzora_project_api::settings_file::save_section("editor", self) {
             bevy::log::warn!("[settings] could not save editor settings: {e}");
         }
     }
@@ -382,9 +387,10 @@ impl Default for EditorSettings {
             embed_game: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,
-            renderer_backend: renzora::RendererBackend::default(),
-            splash_effects: renzora::SplashEffects::default(),
+            renderer_backend: renzora_project_api::RendererBackend::default(),
+            splash_effects: renzora_project_api::SplashEffects::default(),
             throttle_when_unfocused: true,
+            render_thumbnails: true,
             // Off: the backdrop needs a viewport panel on screen to have
             // anything to show — an undocked viewport slot renders at 64×64 —
             // and the UI workspace ships without one.
@@ -402,7 +408,7 @@ impl Default for EditorSettings {
             code_word_wrap: false,
             code_open_switch_layout: false,
             bottom_panel_reopen_after_drag: true,
-            console_log_limit: renzora::core::console_log::DEFAULT_MAX_LOG_ENTRIES,
+            console_log_limit: renzora_log_api::DEFAULT_MAX_LOG_ENTRIES,
         }
     }
 }

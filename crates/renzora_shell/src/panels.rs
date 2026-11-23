@@ -10,13 +10,13 @@
 
 use bevy::prelude::*;
 
-use renzora::NativePanelIds;
+use renzora_shell_api::NativePanelIds;
 use renzora_ember::dock::{tab_pane, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{placeholder, rgb};
 
 /// Chrome metadata (id, title, icon, category) for every editor panel, seeded
-/// into [`renzora::ShellPanelRegistry`] at startup. Without this the dock tabs
+/// into [`renzora_shell_api::ShellPanelRegistry`] at startup. Without this the dock tabs
 /// fall back to ember's generic circle glyph and the Add-Panel `+` picker is
 /// empty (nothing else populates the registry). Icons are kebab-case Phosphor
 /// names, resolved to glyphs via `renzora_ember::font::icon_glyph`.
@@ -93,11 +93,11 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("plugin_resources", "Plugin Resources", "puzzle-piece", "Tools"),
 ];
 
-/// Seed [`renzora::ShellPanelRegistry`] from [`PANEL_META`] (as defaults — a
+/// Seed [`renzora_shell_api::ShellPanelRegistry`] from [`PANEL_META`] (as defaults — a
 /// plugin that already called `register_shell_panel` for an id wins).
 pub(crate) fn seed_panel_meta(app: &mut App) {
-    use renzora::ShellPanelInfo;
-    let mut reg = app.world_mut().resource_mut::<renzora::ShellPanelRegistry>();
+    use renzora_shell_api::ShellPanelInfo;
+    let mut reg = app.world_mut().resource_mut::<renzora_shell_api::ShellPanelRegistry>();
     for &(id, title, icon, category) in PANEL_META {
         reg.panels.entry(id.to_string()).or_insert_with(|| ShellPanelInfo {
             title: title.to_string(),
@@ -107,11 +107,11 @@ pub(crate) fn seed_panel_meta(app: &mut App) {
     }
 }
 
-/// Apply real panel titles/icons from [`renzora::ShellPanelRegistry`] onto the
+/// Apply real panel titles/icons from [`renzora_shell_api::ShellPanelRegistry`] onto the
 /// dock tabs (overriding ember's humanized defaults). Cheap; only writes on a
 /// real change.
 pub(crate) fn apply_panel_meta(
-    registry: Res<renzora::ShellPanelRegistry>,
+    registry: Res<renzora_shell_api::ShellPanelRegistry>,
     tabs: Query<&DockTab>,
     mut texts: Query<&mut Text>,
 ) {
@@ -126,7 +126,7 @@ pub(crate) fn apply_panel_meta(
             // Localize the tab title via `panel.<id>`, falling back to the
             // registry's English title. Compared against the *localized* value so
             // it doesn't thrash, and re-localizes live (this system runs each frame).
-            let title = renzora::lang::t_or(&format!("panel.{}", tab.id), &info.title);
+            let title = renzora_lang_api::t_or(&format!("panel.{}", tab.id), &info.title);
             if let Ok(mut t) = texts.get_mut(tab.label) {
                 if t.0 != title {
                     t.0 = title;

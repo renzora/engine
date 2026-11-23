@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Hardware ray-traced global illumination. Wraps Bevy's experimental bevy_solari."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, which the build
 # generator wires into the committed plugin list and the linker pulls straight
 # into the binary. Linked by `renzora_runtime`'s `solari` feature, which the
 # exporter strips together with `bevy/bevy_solari`.
@@ -22,8 +22,12 @@ crate-type = ["rlib"]
 dlss = ["bevy/dlss"]
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["render_3d"] }
+renzora_solari_api = { path = "../api/renzora_solari_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
 
 [dev-dependencies]
 # tests/shaders.rs compiles the forked bevy_solari's WESL against Bevy's own
@@ -33,3 +37,9 @@ renzora_test_harness = { path = "../renzora_test_harness" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SolariPlugin"

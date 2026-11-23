@@ -18,7 +18,7 @@ use crate::sim::{EffectSim, FrameInput, ParticleBuffer, SEEK_STEP};
 use crate::tests::{graph, out_node, simple_effect};
 
 fn check(source: &str) {
-    renzora::wgsl::check(source).unwrap_or_else(|e| panic!("generated WGSL does not validate:\n{e}"));
+    renzora_shader_api::wgsl::check(source).unwrap_or_else(|e| panic!("generated WGSL does not validate:\n{e}"));
 }
 
 fn rule(trigger: SubEmitterTrigger, inherit_color: bool, target_space: SimulationSpace) -> GpuRule {
@@ -52,7 +52,7 @@ fn every_trigger_space_and_role_generates_valid_wgsl() {
                             target,
                         };
                         let p = generate_with(&compiled, &config).expect("codegen");
-                        renzora::wgsl::check(&p.source)
+                        renzora_shader_api::wgsl::check(&p.source)
                             .unwrap_or_else(|e| panic!("{trigger:?} {space:?}->{target_space:?} tint {tint} target {target}:\n{e}"));
                         assert_eq!(p.source.contains("fn deliver("), target, "only a target delivers");
                     }

@@ -176,7 +176,7 @@ impl Plugin for MarketplacePlugin {
                 // session did not change cannot be the one that ended it.
                 sign_out_cleanup.run_if(resource_changed::<auth::AuthSession>),
             )
-                .run_if(in_state(renzora::SplashState::Editor)),
+                .run_if(in_state(renzora_project_api::SplashState::Editor)),
         );
         // Both image caches register their finished downloads on the dashboard
         // as well as in the editor, because both have something to draw there:
@@ -197,8 +197,8 @@ impl Plugin for MarketplacePlugin {
                 avatars::poll_avatars.run_if(avatars::downloads_landed),
             )
                 .run_if(
-                    in_state(renzora::SplashState::Editor)
-                        .or_else(in_state(renzora::SplashState::Splash)),
+                    in_state(renzora_project_api::SplashState::Editor)
+                        .or_else(in_state(renzora_project_api::SplashState::Splash)),
                 ),
         );
 
@@ -260,4 +260,3 @@ fn sign_out_cleanup(
 // links statically, not a native plugin. `add!` defaults to `Runtime`, so the
 // scope has to be spelled out: nothing here runs in a shipped game, because a
 // game does not sign in, browse a catalogue, or publish.
-renzora::add!(MarketplacePlugin, Editor);

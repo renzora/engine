@@ -9,8 +9,8 @@ use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{SnapSettings, ViewportSettings};
-use renzora::core::{EditorCamera, ShapeRegistry};
+use renzora_viewport_api::{SnapSettings, ViewportSettings};
+use renzora_scene_api::{EditorCamera, ShapeRegistry};
 use renzora_ui::shape_drag::{
     PendingShapeDrop, ShapeDragPreview, ShapeDragPreviewState, ShapeDragState,
 };
@@ -286,7 +286,7 @@ pub fn update_shape_drag_preview(
     mut drag_state: ResMut<ShapeDragState>,
     registry: Res<ShapeRegistry>,
     settings: Option<Res<ViewportSettings>>,
-    grid: Option<Res<renzora::core::GridTexture>>,
+    grid: Option<Res<renzora_render_api::GridTexture>>,
     mut preview_state: ResMut<ShapeDragPreviewState>,
     mut transform_query: Query<&mut Transform, With<ShapeDragPreview>>,
     visibility_query: Query<&Visibility, With<ShapeDragPreview>>,
@@ -439,8 +439,8 @@ pub fn handle_shape_spawn(world: &mut World) {
     let bendable = world.get_resource::<ShapeDragState>().is_some_and(|s| s.bendable);
     let spawned = world.get_resource::<renzora_editor_framework::EditorSelection>().and_then(|s| s.get());
     if let (true, Some(entity)) = (bendable, spawned) {
-        if let Some(mut asks) = world.get_resource_mut::<Messages<renzora::core::MakeBendable>>() {
-            asks.write(renzora::core::MakeBendable { entity, segments: 4 });
+        if let Some(mut asks) = world.get_resource_mut::<Messages<renzora_scene_api::MakeBendable>>() {
+            asks.write(renzora_scene_api::MakeBendable { entity, segments: 4 });
         }
     }
 }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use renzora::core::keybindings::KeyBindings;
+use renzora_shell_api::keybindings::KeyBindings;
 use renzora_editor_framework::{EditorCommands, ShortcutRegistry, SplashState, ToolbarRegistry};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};

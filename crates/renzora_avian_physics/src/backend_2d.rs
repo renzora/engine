@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use avian2d::prelude::*;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
-use renzora::physics::{
+use renzora_physics_api::physics::{
     physics_backend_selected, AppPhysicsBackendExt, BodyVelocity, Caps, CastBatch, CastHit,
     CastShape, CollisionShapeData, Contact, JointKind, OverlapBatch, PhysicsBackend,
     PhysicsBodyData, PhysicsBodyType, PhysicsCommand, PhysicsCommands, PhysicsContacts,

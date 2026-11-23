@@ -12,10 +12,8 @@
 mod gizmo;
 
 use bevy::prelude::*;
-use renzora::{
-    AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry, MeshColor,
-    MeshPrimitive, ShapeRegistry,
-};
+use renzora_editor_api::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_scene_api::{MeshColor, MeshPrimitive, ShapeRegistry};
 use renzora_planar_reflection::{NormalAxis, PlanarReflection};
 
 fn with_reflection(world: &mut World, entity: Entity, apply: impl FnOnce(&mut PlanarReflection)) {
@@ -138,14 +136,14 @@ fn planar_reflection_entry() -> InspectorEntry {
             normal_axis_field(),
             flip_field(),
             fit_to_mesh_field(),
-            renzora::float_field!("Plane Offset", PlanarReflection, plane_offset, 0.005, -100.0, 100.0),
-            renzora::float_field!("Resolution Scale", PlanarReflection, resolution_scale, 0.01, 0.25, 1.0),
-            renzora::float_field!("Strength", PlanarReflection, strength, 0.01, 0.0, 1.0),
+            renzora_editor_api::float_field!("Plane Offset", PlanarReflection, plane_offset, 0.005, -100.0, 100.0),
+            renzora_editor_api::float_field!("Resolution Scale", PlanarReflection, resolution_scale, 0.01, 0.25, 1.0),
+            renzora_editor_api::float_field!("Strength", PlanarReflection, strength, 0.01, 0.0, 1.0),
             tint_field(),
-            renzora::float_field!("Fresnel", PlanarReflection, fresnel, 0.01, 0.0, 1.0),
-            renzora::float_field!("Blur", PlanarReflection, blur, 0.01, 0.0, 1.0),
-            renzora::float_field!("Clip Offset", PlanarReflection, clip_offset, 0.001, 0.0, 1.0),
-            renzora::float_field!("Max Distance", PlanarReflection, max_distance, 1.0, 0.0, 10_000.0),
+            renzora_editor_api::float_field!("Fresnel", PlanarReflection, fresnel, 0.01, 0.0, 1.0),
+            renzora_editor_api::float_field!("Blur", PlanarReflection, blur, 0.01, 0.0, 1.0),
+            renzora_editor_api::float_field!("Clip Offset", PlanarReflection, clip_offset, 0.001, 0.0, 1.0),
+            renzora_editor_api::float_field!("Max Distance", PlanarReflection, max_distance, 1.0, 0.0, 10_000.0),
             update_every_field(),
         ],
     }
@@ -215,5 +213,3 @@ impl Plugin for PlanarReflectionEditorPlugin {
         app.register_entity_preset(mirror_preset());
     }
 }
-
-renzora::add!(PlanarReflectionEditorPlugin, Editor);

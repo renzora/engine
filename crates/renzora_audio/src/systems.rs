@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use renzora::audio_backend::{EmitterState, PlayRequest, StopRequest, StopTarget, UpdateRequest};
+use renzora_audio_api::audio_backend::{EmitterState, PlayRequest, StopRequest, StopTarget, UpdateRequest};
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::components::{AudioPlayer, RolloffType};
@@ -129,7 +129,7 @@ pub fn process_audio_commands(
     mut voices: ResMut<ActiveVoices>,
     mut music: ResMut<MusicVoice>,
     mut master: ResMut<MasterVolume>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     if queue.is_empty() {
         return;
@@ -147,7 +147,7 @@ pub fn process_audio_commands(
         link: &mut AudioLink,
         cache: &mut SoundCache,
         voices: &mut ActiveVoices,
-        project: Option<&renzora::core::CurrentProject>,
+        project: Option<&renzora_project_api::CurrentProject>,
         master: f32,
         path: &str,
         entity: Option<Entity>,

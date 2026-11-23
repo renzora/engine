@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use renzora::job_args::{ProfilerQuery, ProfilerRecord};
+use renzora_platform_api::job_args::{ProfilerQuery, ProfilerRecord};
 use renzora_profiler::ProfileFrame;
 use serde::Serialize;
 use serde_json::{json, Value};

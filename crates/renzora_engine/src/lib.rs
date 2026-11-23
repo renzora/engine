@@ -30,16 +30,12 @@ pub use shapes::builtin_shapes;
 #[cfg(feature = "render_3d")]
 pub mod texture_stream;
 pub mod vfs;
+pub mod world_partition;
 
 pub use asset_progress::{AssetLoadProgress, LoadProgressState};
 pub use asset_reader::{setup_asset_reader, ProjectAssetPath, SharedArchive};
-pub use renzora::{
-    open_project, CurrentProject, DefaultCamera, EditorCamera, EditorCamera2d, EditorLocked,
-    EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive,
-    PendingSceneLoad, Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig,
-    PrimaryViewportCamera, RenderingMode, ResolvedRenderingMode, SceneCamera,
-    ShapeEntry, ShapeRegistry, ViewportCamera, ViewportCamera2d, ViewportRenderTarget, WindowConfig,
-};
+pub use renzora_scene_api::{DefaultCamera, EditorCamera, EditorCamera2d, EditorLocked, EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive, Persistent, PrimaryViewportCamera, SceneCamera, ShapeEntry, ShapeRegistry, ViewportCamera, ViewportCamera2d};
+pub use renzora_project_api::{open_project, CurrentProject, PendingSceneLoad, PlayModeCamera, PlayModeState, PlayState, ProjectConfig, RenderingMode, ResolvedRenderingMode, ViewportRenderTarget, WindowConfig};
 pub use vfs::Vfs;
 
 // Re-export audio crate so downstream can use renzora_engine::audio types.
@@ -86,7 +82,7 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
 type CamerasWithoutDeferred = (
     With<Camera3d>,
     Without<DeferredPrepass>,
-    Without<renzora::core::ViewportOverlayCamera>,
+    Without<renzora_scene_api::ViewportOverlayCamera>,
 );
 
 /// Safety net: when the project is in Deferred mode, every `Camera3d`
@@ -283,7 +279,7 @@ impl Plugin for RuntimePlugin {
         // game (`false`) if absent — the safe shipping behaviour.
         let is_editor = app
             .world()
-            .get_resource::<renzora::EditorSession>()
+            .get_resource::<renzora_project_api::EditorSession>()
             .map(|s| s.0)
             .unwrap_or(false);
         // Default rendering mode (auto-resolved by platform). Gets
@@ -298,48 +294,50 @@ impl Plugin for RuntimePlugin {
         // (clouds, environment-map IBL, the enforcement below). Exists in both
         // editor and game so downstream reads never miss it; the runtime seeds
         // it from project config, the editor from live viewport settings.
-        app.init_resource::<renzora::ResolvedGraphicsQuality>();
+        app.init_resource::<renzora_project_api::ResolvedGraphicsQuality>();
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
-            .register_type::<renzora::core::EditedMesh>()
+            .register_type::<renzora_scene_api::EditedMesh>()
             .register_type::<MeshInstanceData>()
-            .register_type::<renzora::MeshLod>()
-            .register_type::<renzora::StandardGeometry>()
+            .register_type::<renzora_scene_api::MeshLod>()
+            .register_type::<renzora_scene_api::StandardGeometry>()
             .register_type::<SceneCamera>()
-            .register_type::<renzora::SceneInstance>()
+            .register_type::<renzora_scene_api::SceneInstance>()
+            .register_type::<renzora_scene_api::WorldPartition>()
+            .register_type::<renzora_scene_api::PartitionCell>()
             // Registered by the HOST (not just the gaussian-splatting plugin)
             // so scenes containing splats still load/save cleanly when the
             // plugin is absent from plugins/ — the component rides along as
             // inert data instead of failing type-path resolution.
-            .register_type::<renzora::GaussianSplat>()
-            .register_type::<renzora::DefaultCamera>()
-            .register_type::<renzora::core::CameraRenderResolution>()
-            .register_type::<renzora::core::viewport_types::RenderResolution>()
-            .register_type::<renzora::core::viewport_types::GraphicsQuality>()
-            .register_type::<renzora::CameraPreset>()
-            .register_type::<renzora::CameraPresets>()
-            .register_type::<renzora::EntityGroup>()
+            .register_type::<renzora_scene_api::GaussianSplat>()
+            .register_type::<renzora_scene_api::DefaultCamera>()
+            .register_type::<renzora_scene_api::CameraRenderResolution>()
+            .register_type::<renzora_viewport_api::RenderResolution>()
+            .register_type::<renzora_viewport_api::GraphicsQuality>()
+            .register_type::<renzora_scene_api::CameraPreset>()
+            .register_type::<renzora_scene_api::CameraPresets>()
+            .register_type::<renzora_scene_api::EntityGroup>()
             // Authored identity: the icon and label colour picked in the
             // inspector's entity header. Registered by the host, not the
             // editor, so a scene carrying them still loads in the shipped game.
-            .register_type::<renzora::EntityIcon>()
-            .register_type::<renzora::EntityLabelColor>()
+            .register_type::<renzora_scene_api::EntityIcon>()
+            .register_type::<renzora_scene_api::EntityLabelColor>()
             // The hierarchy's root order, saved so a scene reopens in the
             // order it was left in.
-            .register_type::<renzora::HierarchyOrder>()
+            .register_type::<renzora_scene_api::HierarchyOrder>()
             // The editor's "select as one object" choice. Saved with the scene,
             // so registered by the host for the same reason as the two above.
-            .register_type::<renzora::PickAsUnit>()
-            .register_type::<renzora::Persistent>()
-            .register_type::<renzora::core::Node2d>()
-            .register_type::<renzora::core::YSort>()
-            .register_type::<renzora::core::SpriteImagePath>()
-            .register_type::<renzora::core::SpriteCustomSize>()
-            .register_type::<renzora::core::SpriteSheet>()
-            .register_type::<renzora::core::SpriteAtlasRegion>()
-            .register_type::<renzora::core::SpriteImages>()
-            .register_type::<renzora::core::ReflectionProbeSource>()
-            .register_type::<renzora::WorldEnvironment>()
+            .register_type::<renzora_scene_api::PickAsUnit>()
+            .register_type::<renzora_scene_api::Persistent>()
+            .register_type::<renzora_scene_api::Node2d>()
+            .register_type::<renzora_scene_api::YSort>()
+            .register_type::<renzora_scene_api::SpriteImagePath>()
+            .register_type::<renzora_scene_api::SpriteCustomSize>()
+            .register_type::<renzora_scene_api::SpriteSheet>()
+            .register_type::<renzora_scene_api::SpriteAtlasRegion>()
+            .register_type::<renzora_animation_api::SpriteImages>()
+            .register_type::<renzora_scene_api::ReflectionProbeSource>()
+            .register_type::<renzora_world_api::WorldEnvironment>()
             .register_type::<Sun>();
 
         // Saved games go in a folder named for the game, known once the
@@ -362,9 +360,9 @@ impl Plugin for RuntimePlugin {
         #[cfg(feature = "render_3d")]
         if app.world().contains_resource::<Assets<Image>>() {
             let mut images = app.world_mut().resource_mut::<Assets<Image>>();
-            let grid = renzora::core::GridTexture {
-                color: images.add(renzora::core::build_grid_image()),
-                normal: images.add(renzora::core::build_grid_normal_image()),
+            let grid = renzora_render_api::GridTexture {
+                color: images.add(renzora_render_api::build_grid_image()),
+                normal: images.add(renzora_render_api::build_grid_normal_image()),
             };
             app.insert_resource(grid);
         }
@@ -453,7 +451,7 @@ impl Plugin for RuntimePlugin {
         // contract crate and holds no dependency beyond Bevy and serde. One
         // override covers every `VirtualFileReader` consumer.
         #[cfg(target_arch = "wasm32")]
-        app.insert_resource(renzora::VirtualFileReader::new(|path| {
+        app.insert_resource(renzora_project_api::VirtualFileReader::new(|path| {
             renzora_webfs::read_text_cached(std::path::Path::new(path))
         }));
 
@@ -508,7 +506,7 @@ impl Plugin for RuntimePlugin {
                 // Provide a VirtualFileReader backed by Vfs so material/shader
                 // resolution reads from the rpak archive instead of disk.
                 let vfs_for_reader = vfs.clone();
-                app.insert_resource(renzora::VirtualFileReader::new(move |path| {
+                app.insert_resource(renzora_project_api::VirtualFileReader::new(move |path| {
                     vfs_for_reader.read_string(path)
                 }));
                 app.insert_resource(vfs);
@@ -619,7 +617,7 @@ impl Plugin for RuntimePlugin {
                     scene_io::rehydrate_mesh_instances,
                     scene_io::finish_mesh_instance_rehydrate,
                 )
-                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                    .run_if(not(resource_exists::<renzora_project_api::DedicatedServer>)),
             );
 
             // Re-link spawned glTF meshes to the `.material` graphs the
@@ -634,7 +632,7 @@ impl Plugin for RuntimePlugin {
                 .add_systems(
                     Update,
                     material_binding::bind_material_refs
-                        .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                        .run_if(not(resource_exists::<renzora_project_api::DedicatedServer>)),
                 );
         }
 
@@ -671,12 +669,12 @@ impl Plugin for RuntimePlugin {
             app.add_systems(
                 Update,
                 (mesh_lod::probe_mesh_lods, mesh_lod::finish_lod_spawn)
-                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                    .run_if(not(resource_exists::<renzora_project_api::DedicatedServer>)),
             );
             app.add_systems(
                 Update,
                 (mesh_lod::tag_new_lod_meshes, mesh_lod::reapply_lod_config)
-                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                    .run_if(not(resource_exists::<renzora_project_api::DedicatedServer>)),
             );
             // Second tagger pass right before visibility is computed: glTF
             // world-asset instantiation can land meshes after Update's pass,
@@ -688,7 +686,7 @@ impl Plugin for RuntimePlugin {
                 PostUpdate,
                 mesh_lod::tag_new_lod_meshes
                     .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility)
-                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                    .run_if(not(resource_exists::<renzora_project_api::DedicatedServer>)),
             );
             // Texture tier streaming: coarse timer — tier flips don't need
             // frame-rate reactivity and each tick walks all material users.
@@ -696,7 +694,7 @@ impl Plugin for RuntimePlugin {
                 .add_systems(
                     Update,
                     texture_stream::stream_texture_tiers
-                        .run_if(not(resource_exists::<renzora::DedicatedServer>))
+                        .run_if(not(resource_exists::<renzora_project_api::DedicatedServer>))
                         .run_if(bevy::time::common_conditions::on_timer(
                             std::time::Duration::from_millis(500),
                         )),
@@ -761,12 +759,12 @@ impl Plugin for RuntimePlugin {
         }
 
         app.init_resource::<ViewportRenderTarget>()
-            .init_resource::<renzora::core::viewport_types::Viewports>()
+            .init_resource::<renzora_viewport_api::Viewports>()
             .init_resource::<camera::ViewportTargetsBound>()
             .init_resource::<scene_io::SceneLoadState>()
             .init_resource::<scene_io::SceneReferenceCache>()
             .init_resource::<asset_progress::AssetLoadProgress>()
-            .init_resource::<renzora::core::SceneLoadWork>()
+            .init_resource::<renzora_platform_api::SceneLoadWork>()
             .add_systems(
                 Update,
                 (
@@ -789,8 +787,8 @@ impl Plugin for RuntimePlugin {
             .add_observer(autoload::on_unload_autoload_scenes)
             .add_systems(Update, autoload::propagate_persistent_to_children);
         app.insert_resource(shapes::builtin_shapes());
-        app.init_resource::<renzora::EffectRouting>();
-        app.init_resource::<renzora::PendingSceneLoad>();
+        app.init_resource::<renzora_scene_api::EffectRouting>();
+        app.init_resource::<renzora_project_api::PendingSceneLoad>();
         app.init_resource::<scene_stream::SceneStreams>();
         // The stream driver runs right after the request drain so a swap's
         // parse task is polled the same frame it was queued; the instance
@@ -803,7 +801,7 @@ impl Plugin for RuntimePlugin {
                 // schedule even on a frame its own first check sends it home.
                 // Each condition is that first check.
                 process_pending_scene_loads
-                    .run_if(|p: Res<renzora::PendingSceneLoad>| !p.requests.is_empty()),
+                    .run_if(|p: Res<renzora_project_api::PendingSceneLoad>| !p.requests.is_empty()),
                 scene_stream::drive_streamed_scene_instances
                     .run_if(scene_stream::instance_streaming_live),
                 scene_stream::drive_scene_streams
@@ -811,6 +809,25 @@ impl Plugin for RuntimePlugin {
             )
                 .chain(),
         );
+        // A world partition's cells carry their own copy of its radii (a game
+        // streams them as plain instances); keep it in step when it is edited.
+        app.add_systems(
+            Update,
+            (
+                world_partition::sync_partition_cell_radii,
+                world_partition::file_cells_under_partition.run_if(world_partition::has_loose_cells),
+                world_partition::reveal_ready_cells.run_if(world_partition::reveals_pending),
+                (
+                    world_partition::clean_up_cell_hlods,
+                    world_partition::spawn_cell_hlods,
+                    world_partition::swap_cell_hlods,
+                    world_partition::report_stand_in_gaps,
+                )
+                    .chain(),
+            ),
+        );
+        #[cfg(feature = "render_3d")]
+        app.add_systems(Update, world_partition::manage_stream_upload_budget);
 
         // In a game session, populate EffectRouting from scene cameras. The
         // editor wires effect routing through its own viewport cameras (the
@@ -874,13 +891,36 @@ fn setup_vfs_script_reader(
     info!("[runtime] VFS file reader set on scripting engine");
 }
 
-/// In a game session, route effects from the default scene camera (and all
-/// non-camera entities with Settings) to the active rendering camera. Gated at
+/// UI nodes are never effect sources; in a build without bevy_ui there are none.
+#[cfg(feature = "ui")]
+type NotUiNode = Without<bevy::ui::Node>;
+#[cfg(not(feature = "ui"))]
+type NotUiNode = ();
+
+/// The entities a game routes effects from: the same filter the editor's
+/// routing uses (`renzora_viewport::effect_routing`), so a game and the editor
+/// agree on what a source is.
+///
+/// It used to be every entity without a `Camera`, so anything a game spawned or
+/// despawned changed the source set: a short-lived unnamed entity every second
+/// or so rebuilt the routing, which made every effect re-apply itself to the
+/// camera and re-baked the sky. Effect settings live on named scene entities
+/// (the World Environment above all), so unnamed entities, hidden editor
+/// chrome and UI nodes are left out.
+type RuntimeEffectSources = (
+    Without<Camera>,
+    With<Name>,
+    Without<renzora_scene_api::HideInHierarchy>,
+    NotUiNode,
+);
+
+/// In a game session, route effects from the default scene camera (and every
+/// [`RuntimeEffectSources`] entity) to the active rendering camera. Gated at
 /// the call site by `EditorSession` (added only when `!is_editor`).
 fn update_runtime_effect_routing(
-    mut routing: ResMut<renzora::EffectRouting>,
+    mut routing: ResMut<renzora_scene_api::EffectRouting>,
     cameras: Query<(Entity, Option<&DefaultCamera>, &Camera), With<SceneCamera>>,
-    all_entities: Query<Entity, Without<Camera>>,
+    all_entities: Query<Entity, RuntimeEffectSources>,
 ) {
     // Find the active camera (DefaultCamera > first active SceneCamera)
     let active_cam = cameras
@@ -922,7 +962,7 @@ fn update_runtime_effect_routing(
 /// then loads the requested scene.
 fn process_pending_scene_loads(world: &mut World) {
     let requests = {
-        let mut pending = world.resource_mut::<renzora::PendingSceneLoad>();
+        let mut pending = world.resource_mut::<renzora_project_api::PendingSceneLoad>();
         if pending.requests.is_empty() {
             return;
         }
@@ -935,7 +975,7 @@ fn process_pending_scene_loads(world: &mut World) {
     let scene_path = if let Some(project) = world.get_resource::<CurrentProject>() {
         project.resolve_path(scene_name)
     } else {
-        renzora::console_log::console_error("Scene", "No project loaded — cannot load scene");
+        renzora_log_api::console_error("Scene", "No project loaded — cannot load scene");
         return;
     };
 
@@ -948,7 +988,7 @@ fn process_pending_scene_loads(world: &mut World) {
         .get_resource::<autoload::AutoloadedEntities>()
         .is_some_and(|a| a.is_resident(&scene_path))
     {
-        renzora::console_log::console_warn(
+        renzora_log_api::console_warn(
             "Scene",
             format!(
                 "'{}' is a global scene and is already loaded — ignoring load_scene()",
@@ -958,7 +998,7 @@ fn process_pending_scene_loads(world: &mut World) {
         return;
     }
 
-    renzora::console_log::console_info(
+    renzora_log_api::console_info(
         "Scene",
         format!("Loading scene '{}' → {}", scene_name, scene_path.display()),
     );
@@ -999,7 +1039,7 @@ fn process_pending_scene_loads(world: &mut World) {
         }
     }
 
-    renzora::console_log::console_info(
+    renzora_log_api::console_info(
         "Scene",
         format!(
             "Despawning {} entities from current scene",
@@ -1028,10 +1068,10 @@ fn process_pending_scene_loads(world: &mut World) {
 /// scene is already despawned by the time this fires.
 fn push_scene_loaded_to_scripts(
     trigger: On<scene_io::SceneLoaded>,
-    inbox: Option<ResMut<renzora::ScriptSceneInbox>>,
+    inbox: Option<ResMut<renzora_scripting_api::ScriptSceneInbox>>,
 ) {
     if let Some(mut inbox) = inbox {
-        inbox.pending.push(renzora::SceneEvent {
+        inbox.pending.push(renzora_scripting_api::SceneEvent {
             path: trigger.event().path.clone(),
             error: None,
         });
@@ -1044,11 +1084,11 @@ fn push_scene_loaded_to_scripts(
 /// has no way to tell "still working" from "never arriving", so it hangs.
 fn push_scene_load_failed_to_scripts(
     trigger: On<scene_io::SceneLoadFailed>,
-    inbox: Option<ResMut<renzora::ScriptSceneInbox>>,
+    inbox: Option<ResMut<renzora_scripting_api::ScriptSceneInbox>>,
 ) {
     if let Some(mut inbox) = inbox {
         let ev = trigger.event();
-        inbox.pending.push(renzora::SceneEvent {
+        inbox.pending.push(renzora_scripting_api::SceneEvent {
             path: ev.path.clone(),
             error: Some(ev.error.clone()),
         });
@@ -1112,7 +1152,7 @@ fn install_audio_asset_loader(
     }
     let root = project.path.clone();
     let archive = vfs.as_ref().and_then(|v| v.archive_arc());
-    renzora::core::set_asset_byte_loader(Box::new(move |key: &str| {
+    renzora_scene_api::set_asset_byte_loader(Box::new(move |key: &str| {
         if let Some(ref archive) = archive {
             if let Some(bytes) = archive.get(key) {
                 return Some(bytes);
@@ -1155,7 +1195,7 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
 /// Runs for renames from anywhere — the tab strip, the asset browser, a folder
 /// move — because it observes the same event they all fire.
 fn follow_project_scene_paths(
-    trigger: On<renzora::AssetPathChanged>,
+    trigger: On<renzora_scene_api::AssetPathChanged>,
     project: Option<ResMut<CurrentProject>>,
 ) {
     let (ev, Some(mut project)) = (trigger.event(), project) else {
@@ -1193,7 +1233,7 @@ fn follow_project_scene_paths(
 }
 
 fn apply_asset_path_changes_to_mesh_instances(
-    trigger: On<renzora::AssetPathChanged>,
+    trigger: On<renzora_scene_api::AssetPathChanged>,
     mut query: Query<&mut MeshInstanceData>,
 ) {
     let ev = trigger.event();

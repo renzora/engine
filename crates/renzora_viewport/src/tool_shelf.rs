@@ -40,7 +40,7 @@
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+use renzora_viewport_api::{ViewportSettings, ViewportView};
 use renzora_editor_framework::{ToolSection, ToolbarRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::{panel_bg, rgb};

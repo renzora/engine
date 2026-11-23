@@ -241,7 +241,7 @@ pub fn paint_masks_into_chunk(
 /// Convert every old terrain in the scene. Exclusive: it writes files and
 /// rewrites components across the terrain and its chunks.
 pub(crate) fn migrate_old_terrains(world: &mut World) {
-    let Some(project_root) = world.get_resource::<renzora::CurrentProject>().map(|p| p.path.clone()) else {
+    let Some(project_root) = world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone()) else {
         return;
     };
     let mut surfaced = world.query_filtered::<(Entity, &TerrainSurface, Option<&Name>), (With<TerrainData>, Without<TerrainMaterial>)>();
@@ -277,7 +277,7 @@ pub(crate) fn migrate_old_terrains(world: &mut World) {
         };
         let names: Vec<String> = spec.layers.iter().map(|l| l.name.clone()).collect();
         info!("[terrain] converted the surface of {root} into the landscape material {path}");
-        renzora::console_log::console_info("Terrain", format!("Converted the terrain surface into {path}"));
+        renzora_log_api::console_info("Terrain", format!("Converted the terrain surface into {path}"));
         world
             .entity_mut(root)
             .remove::<(TerrainSurface, SurfaceBuild)>()

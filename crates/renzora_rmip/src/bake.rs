@@ -514,6 +514,22 @@ mod tests {
         );
     }
 
+    /// PLATEAU ships its textures as TIFF. Before the decoder was enabled every
+    /// one failed here and stayed embedded raw in the model, which crashed
+    /// Bevy's glTF loader on the next load.
+    #[test]
+    fn a_tiff_bakes_like_any_other_texture() {
+        let mut tiff = Vec::new();
+        image::RgbaImage::from_raw(8, 8, solid(8, 8, [200, 100, 50, 255]))
+            .unwrap()
+            .write_to(&mut std::io::Cursor::new(&mut tiff), image::ImageFormat::Tiff)
+            .unwrap();
+        assert!(tiff.starts_with(b"II*\0") || tiff.starts_with(b"MM\0*"), "a TIFF");
+        let rmip = bake_image(&tiff, BakeParams::default()).expect("a TIFF decodes");
+        assert_eq!(header(&rmip).1, 8);
+        assert_payload_matches(&rmip);
+    }
+
     #[test]
     fn format_block_math() {
         // BC7: 1 byte/px → 16 bytes per 4×4 block.

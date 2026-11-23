@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use renzora_ember::UiCursor;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{AssetDragPayload, DocTabKind};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::theme::*;
@@ -270,7 +270,7 @@ fn pick_project_file(world: &World, what: &str, exts: &[&str]) -> Option<String>
 /// Weather the whole terrain through the same operation the MCP's
 /// erode_terrain uses, so it is one undo step and erodes the same way.
 fn erode_all(world: &mut World, terrain: Entity) {
-    let Some(tools) = world.get_resource::<renzora::terrain_tools::TerrainTools>().copied() else { return };
+    let Some(tools) = world.get_resource::<renzora_world_api::terrain_tools::TerrainTools>().copied() else { return };
     // The default rain count suits a 512 m terrain; scale it with the area so
     // every terrain gets the same density.
     //
@@ -281,9 +281,9 @@ fn erode_all(world: &mut World, terrain: Entity) {
     let area = world
         .get::<TerrainData>(terrain)
         .map_or(1.0, |t| t.total_width() * t.total_depth() / (512.0 * 512.0));
-    let base = renzora::terrain_tools::TerrainErode::default().droplets;
+    let base = renzora_world_api::terrain_tools::TerrainErode::default().droplets;
     let droplets = ((base as f32 * area) as u32).clamp(500, 2_000_000);
-    let request = renzora::terrain_tools::TerrainErode { terrain: Some(terrain), droplets, ..default() };
+    let request = renzora_world_api::terrain_tools::TerrainErode { terrain: Some(terrain), droplets, ..default() };
     if let Err(e) = (tools.erode)(world, &request) {
         warn!("[terrain] {e}");
     }

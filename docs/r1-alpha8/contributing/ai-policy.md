@@ -62,7 +62,7 @@ Auditing is not skimming for plausibility. Concretely, before you submit:
 |---|---|
 | Running a bare `cargo build` / `cargo test` | Every cargo command in this repo takes **`--profile dist`**. A `dev`-profile build creates a second full artefact tree; ours once hit 314 GB and filled the disk, and a full disk shows up as nonsense compile errors in crates nobody touched. |
 | "The plugin ABI depends on a shared `bevy_dylib` hash" | Stale, and so is any mention of a C ABI. In-workspace plugins are statically linked `rlib`s wired in by a build-time generator; installed plugins ship as source and are compiled against the staged SDK. There is no ABI version and no hash to keep in sync — a plugin's stamp is a content hash, and a mismatch rebuilds it. |
-| Registering a plugin in a runtime registry | `renzora::add!(...)` is parsed **as text** at build time into the committed `plugins.rs` lists. Keep the declaration on one line at the top level. |
+| Registering a plugin in a runtime registry | A `[[package.metadata.renzora.plugin]]` table in the crate's `Cargo.toml` is read at build time into the committed `plugins.rs` lists. The parser is strict: an unknown key or scope, or a missing `type`, is an error. |
 | Inventing a scripting function | The API is what's declared in the domain crate's `ScriptExtension` plus whatever the language backend registers. If a function doesn't exist, extend the API properly — don't write a script against a hallucinated one. |
 | Editing frozen docs | Only `docs/r1-alpha8/` is live. `r1-alpha7` and older are frozen releases. |
 | Skipping the docs update | A feature without its `docs/r1-alpha8/` page update is unfinished. |

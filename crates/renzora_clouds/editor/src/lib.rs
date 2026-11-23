@@ -6,7 +6,7 @@
 //! bundle.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_clouds::CloudsData;
 
 /// One scalar slider. The volumetric model has enough knobs that spelling every
@@ -203,5 +203,3 @@ impl Plugin for CloudsEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(CloudsEditorPlugin, Editor);

@@ -26,8 +26,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
-use renzora::SplashState;
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera};
+use renzora_project_api::SplashState;
 use crate::auth::marketplace::AssetSummary;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -45,7 +45,7 @@ use renzora_shader::runtime::{CodeShaderMaterial, ShaderCache, ShaderUniforms};
 /// This viewer's private render layer. Allocated in the contract crate
 /// alongside every other offscreen rig's, which is what keeps it distinct from
 /// the model viewer and every preview so nothing cross-contaminates.
-use renzora::core::viewport_types::MATERIAL_VIEWER_LAYER;
+use renzora_viewport_api::MATERIAL_VIEWER_LAYER;
 
 /// Offscreen render-target resolution (16:9, matches the overlay header viewer).
 const RTT_W: u32 = 640;

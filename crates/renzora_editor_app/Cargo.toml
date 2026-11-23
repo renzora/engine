@@ -55,7 +55,6 @@ renzora_runtime = { path = "../renzora_runtime" }
 # editor cannot be a `dlopen`'d file any more — a cdylib linking static Bevy
 # would carry a SECOND copy of Bevy, i.e. a second `World` type.
 renzora_editor = { path = "../renzora_editor" }
-renzora = { path = "../renzora", default-features = false }
 # Native plugins. Depended on here only for `prebuild`, which runs BEFORE the
 # `App` exists: the SDK has to be unpacked and every stale plugin compiled before
 # the loader (which runs during `App` assembly) goes looking for them.
@@ -65,7 +64,7 @@ toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
 # WASM support: getrandom needs JS backend on wasm32 targets. One handle per
-# getrandom major in the graph — see the root Cargo.toml, which carries the full
+# getrandom major in the graph: see the root Cargo.toml, which carries the full
 # explanation and must stay in step with this.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Pick the WebGPU backend explicitly. `renzora_app` gets this through its `wasm`
@@ -81,7 +80,6 @@ log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] 
 # the names are worth their small cost here. Drop this once the web editor is
 # past the shakedown phase.
 bevy = { workspace = true, features = ["webgpu", "debug"] }
-getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 

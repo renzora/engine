@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use renzora::audio_backend::{PlayRequest, StopRequest, StopTarget};
+use renzora_audio_api::audio_backend::{PlayRequest, StopRequest, StopTarget};
 
 use crate::link::{AudioLink, VoiceId};
 use crate::runtime::{ActiveVoices, SoundCache};
@@ -30,7 +30,7 @@ impl AudioPreviewState {
         link: &mut AudioLink,
         cache: &mut SoundCache,
         voices: &mut ActiveVoices,
-        project: Option<&renzora::core::CurrentProject>,
+        project: Option<&renzora_project_api::CurrentProject>,
         path: &str,
         bus: &str,
         entity: Entity,

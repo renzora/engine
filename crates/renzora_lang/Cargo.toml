@@ -16,10 +16,9 @@ default = []
 scripting = ["dep:renzora_scripting"]
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
-# Contract dylib: the global translation table + `t()` live here, so the plugin
-# only *populates* it. No other `renzora_*` dep is needed for the core feature.
-renzora = { path = "../renzora" }
 # Only for the `ScriptExtension` trait, which is now pure declaration.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 
@@ -30,3 +29,10 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "LangPlugin"
+priority = -50

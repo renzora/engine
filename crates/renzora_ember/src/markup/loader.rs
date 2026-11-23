@@ -614,7 +614,7 @@ fn apply_xnode_to(
     // `HideInHierarchy` deliberately does not cascade to children (it is how
     // dropped-model wrapper nodes are skipped without hiding the meshes under
     // them); the scene *saver* does cascade, via `has_hidden_ancestor`.
-    ec.insert(renzora::HideInHierarchy);
+    ec.insert(renzora_scene_api::HideInHierarchy);
 
     // `hover:` / `pressed:` color overrides + tween timing → `Interactive`.
     // bevy_hui parses these into `StyleAttr::Hover/Pressed(inner)`; collect the

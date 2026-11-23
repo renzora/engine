@@ -11,29 +11,16 @@ crate-type = ["cdylib", "rlib"]
 default = []
 
 [dependencies]
-renzora_macros = { path = "../renzora_macros" }
 bevy = { workspace = true }
 
 # Engine crates
 renzora_shader = { path = "../renzora_shader" }
-renzora_lighting = { path = "../renzora_lighting" }
 renzora_particles = { path = "../renzora_particles" }
-renzora_animation = { path = "../renzora_animation" }
-renzora = { path = "../renzora", default-features = false }
 
 # WASM bridge
 wasm-bindgen = "0.2.108"
-wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = [
-    "Window",
-    "Document",
-    "HtmlCanvasElement",
-    "console",
-] }
-js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"
 
 # WASM support: getrandom needs JS backend on wasm32 targets. One handle per

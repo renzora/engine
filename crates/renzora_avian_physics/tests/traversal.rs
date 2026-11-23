@@ -261,7 +261,7 @@ fn a_tall_wall_is_neither_a_ledge_nor_a_traversal() {
 
 #[test]
 fn script_actions_become_movement_intent() {
-    use renzora::{ScriptAction, ScriptActionValue};
+    use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 
     let mut app = parkour_app();
     floor(&mut app);

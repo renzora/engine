@@ -1,7 +1,7 @@
 //! Editor-viewport mouse -> world-UI pointer ray publisher.
 //!
 //! World panels (`WorldUiPanel`, renzora_ember game_ui) consume rays from the
-//! `renzora::WorldUiPointers` contract; in VR the wands publish ids 0/1, and
+//! `renzora_scene_api::WorldUiPointers` contract; in VR the wands publish ids 0/1, and
 //! this module publishes the mouse as id 2 so in-world UI is hoverable and
 //! clickable from the flat editor viewport too. The shipped-game equivalent
 //! lives with the panel system itself and gates off in editor sessions.
@@ -15,14 +15,14 @@ use bevy::prelude::*;
 /// the editor picker still selects the panel entity on click — both firing
 /// is intentional (select it AND press the button under the cursor).
 pub(crate) fn publish_viewport_mouse_ray(
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     viewport: Option<Res<crate::ViewportState>>,
     windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
-    cameras: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera>>,
+    cameras: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    pointers: Option<ResMut<renzora::WorldUiPointers>>,
+    pointers: Option<ResMut<renzora_scene_api::WorldUiPointers>>,
 ) {
-    use renzora::core::viewport_types::ViewportView;
+    use renzora_viewport_api::ViewportView;
 
     let Some(mut pointers) = pointers else { return };
     pointers.0.retain(|r| r.id != 2);
@@ -52,7 +52,7 @@ pub(crate) fn publish_viewport_mouse_ray(
     let Ok(ray) = camera.viewport_to_world(camera_tf, render_pos) else {
         return;
     };
-    pointers.0.push(renzora::core::WorldUiPointerRay {
+    pointers.0.push(renzora_scene_api::WorldUiPointerRay {
         id: 2,
         ray,
         trigger: if mouse.pressed(MouseButton::Left) { 1.0 } else { 0.0 },

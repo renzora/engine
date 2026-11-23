@@ -439,7 +439,7 @@ fn mixed_scene(setup: Setup) {
 /// including the ordinary cube standing in front of a converted sphere.
 #[test]
 fn debug_view_colours_only_visible_virtual_geometry() {
-    use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
+    use renzora_viewport_api::{ViewportSettings, VisualizationMode};
     let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let Some((mut app, target)) = app_with(Setup::ForwardWithPrepass, |world| {
         let input = sphere(32, 64);
@@ -468,7 +468,7 @@ fn debug_view_colours_only_visible_virtual_geometry() {
         .query_filtered::<Entity, With<Camera3d>>()
         .single(world)
         .unwrap();
-    world.entity_mut(camera).insert(renzora::EditorCamera);
+    world.entity_mut(camera).insert(renzora_scene_api::EditorCamera);
 
     let image = capture(&mut app, &target);
     {
@@ -679,6 +679,160 @@ fn back_of_double_sided_card_deferred() {
 /// graph from the UVs, so the graph body itself (not the base approximation)
 /// is what has to come out the same through the visibility buffer.
 fn graph_material(setup: Setup) {
+    graph_material_with(setup, false);
+}
+
+/// The same checkerboard with the Surface output's normal wired (to the
+/// mesh's own world normal, so the image must not change). Wiring the normal
+/// made a graph vanish on virtual geometry: terrain chunks with a landscape
+/// material drew nothing.
+fn graph_material_normal(setup: Setup) {
+    graph_material_with(setup, true);
+}
+
+/// A landscape material, as a terrain wears it: two layers blended by painted
+/// weights (red on the -X half, yellow on the +X half) through a Layer Blend,
+/// with the weight atlas and the landscape uniform bound as a terrain binds
+/// them. Terrain chunks with a landscape drew nothing on virtual geometry.
+fn landscape_material(setup: Setup) {
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    use renzora_shader::material::codegen::{compile, supports_deferred, supports_virtual_geometry};
+    use renzora_shader::material::graph::{MaterialDomain, MaterialGraph, PinValue};
+    use renzora_shader::material::surface_ext::{new_graph_material, GraphMaterial};
+
+    let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let Some((mut app, target)) = app_with_plugins(
+        setup,
+        |app| {
+            use crate::VirtualGeometryAppExt;
+            app.add_plugins(renzora_shader::material::runtime::GraphMaterialPlugin);
+            app.add_virtual_geometry_material::<GraphMaterial>(|m| {
+                m.extension
+                    .virtual_geometry
+                    .then(|| crate::classify_standard(&m.base))
+                    .flatten()
+            });
+        },
+        |world| {
+            let mut graph = MaterialGraph::new("Land", MaterialDomain::Surface);
+            let out = graph.output_node().unwrap().id;
+            let blend = graph.add_node("landscape/layer_blend", [0.0, 0.0]);
+            // A layer is active only while something is wired into it.
+            for (i, (name, colour)) in [("Red", [0.9, 0.1, 0.1, 1.0]), ("Yellow", [0.9, 0.8, 0.1, 1.0])].into_iter().enumerate() {
+                let c = graph.add_node("color/constant", [-300.0, i as f32 * 200.0]);
+                graph.get_node_mut(c).unwrap().input_values.insert("color".into(), PinValue::Color(colour));
+                let node = graph.get_node_mut(blend).unwrap();
+                node.input_values.insert(format!("name_{i}"), PinValue::String(name.into()));
+                node.input_values.insert(format!("blend_{i}"), PinValue::String("Weight".into()));
+                graph.connect(c, "color", blend, &format!("layer_{i}"));
+            }
+            graph.connect(blend, "result", out, "base_color");
+            // Diagnosis: a real landscape graph from a file in place of the
+            // two-colour one.
+            if let Ok(path) = std::env::var("RENZORA_VG_LANDSCAPE_GRAPH") {
+                graph = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+            }
+            let compiled = compile(&graph);
+            assert!(compiled.errors.is_empty(), "{:?}", compiled.errors);
+            assert!(supports_virtual_geometry(&compiled.fragment_shader), "{}", compiled.fragment_shader);
+            let texture_count = compiled.texture_bindings.len();
+
+            let uuid = bevy::asset::uuid::Uuid::new_v4();
+            let shader = renzora_shader_api::shader_source::shader(compiled.fragment_shader.clone(), "test/land.wesl");
+            let _ = world
+                .resource_mut::<Assets<Shader>>()
+                .insert(&Handle::<Shader>::Uuid(uuid, std::marker::PhantomData), shader);
+
+            // Weights: 8 x 8 texels over x, z in -2..2, layer 0 on the -X half
+            // and layer 1 on the +X half, in the atlas's two RGBA slices.
+            let (w, h) = (8u32, 8u32);
+            let mut data = vec![0u8; (w * h * 4 * 2) as usize];
+            for z in 0..h {
+                for x in 0..w {
+                    let i = ((z * w + x) * 4) as usize;
+                    data[i + if x < w / 2 { 0 } else { 1 }] = 255;
+                }
+            }
+            let weights = Image::new(
+                Extent3d { width: w, height: h, depth_or_array_layers: 2 },
+                TextureDimension::D2,
+                data,
+                TextureFormat::Rgba8Unorm,
+                bevy::asset::RenderAssetUsages::RENDER_WORLD,
+            );
+            let weights = world.resource_mut::<Assets<Image>>().add(weights);
+
+            let fallback = world.resource::<renzora_shader::material::runtime::FallbackTexture>().clone();
+            let mut material = new_graph_material(&fallback);
+            material.extension.shader_uuid = Some(uuid);
+            material.extension.writes_gbuffer = supports_deferred(&compiled.fragment_shader);
+            material.extension.virtual_geometry = true;
+            material.extension.landscape.bounds = Vec4::new(-2.0, -2.0, 4.0, 4.0);
+            material.extension.landscape.info = Vec4::new(1.0, 2.0, 0.0, 0.0);
+            material.extension.landscape.channels_a = UVec4::new(0, 1, 2, 3);
+            material.extension.landscape.channels_b = UVec4::new(4, 5, 6, 7);
+            material.extension.landscape_weights = Some(weights);
+            // Every texture the graph samples, as a plain grey image.
+            for slot in 0..texture_count as u32 {
+                let grey = Image::new_fill(
+                    Extent3d { width: 4, height: 4, depth_or_array_layers: 1 },
+                    TextureDimension::D2,
+                    &[128, 128, 255, 255],
+                    TextureFormat::Rgba8Unorm,
+                    bevy::asset::RenderAssetUsages::RENDER_WORLD,
+                );
+                let grey = world.resource_mut::<Assets<Image>>().add(grey);
+                material.extension.set_texture(renzora_shader::material::codegen::TextureKind::D2, slot, grey);
+            }
+            let material = world.resource_mut::<Assets<GraphMaterial>>().add(material);
+
+            let input = sphere(48, 96);
+            let rvg = build_mesh(&input).expect("sphere builds");
+            let file = world.resource_mut::<Assets<RvgFile>>().add(RvgFile {
+                builder_version: renzora_rvg::BUILDER_VERSION,
+                source_hash: 0,
+                meshes: vec![Arc::new(rvg)],
+                scene: None,
+            });
+            let mesh = world.resource_mut::<Assets<Mesh>>().add(ordinary_mesh(&input));
+            world.spawn((
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material),
+                Transform::default(),
+                VirtualGeometry { file, mesh: 0, source: mesh.id() },
+            ));
+        },
+    ) else {
+        return;
+    };
+    let virtual_image = capture(&mut app, &target);
+    app.world_mut().resource_mut::<VirtualGeometrySettings>().enabled = false;
+    let ordinary_image = capture(&mut app, &target);
+    if let Ok(dir) = std::env::var("RENZORA_GPU_TEST_OUT") {
+        for (kind, data) in [("virtual", &virtual_image), ("ordinary", &ordinary_image)] {
+            let path = std::path::Path::new(&dir).join(format!("land_{setup:?}_{kind}.ppm").to_lowercase());
+            let mut ppm = format!("P6 {SIZE} {SIZE} 255\n").into_bytes();
+            ppm.extend(data.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]));
+            std::fs::write(path, ppm).unwrap();
+        }
+    }
+    for (kind, image) in [("ordinary", &ordinary_image), ("virtual", &virtual_image)] {
+        let mut red = false;
+        let mut yellow = false;
+        for x in 20..108 {
+            let p = pixel(image, x, SIZE / 2);
+            let (r, g) = (p[0] as i32, p[1] as i32);
+            red |= r > 80 && r - g > 60;
+            yellow |= r > 80 && (r - g).abs() < 40;
+        }
+        assert!(red && yellow, "the {kind} landscape did not render both layers (red {red}, yellow {yellow})");
+    }
+    let total: u64 = virtual_image.iter().zip(&ordinary_image).map(|(a, b)| a.abs_diff(*b) as u64).sum();
+    let mean = total as f64 / virtual_image.len() as f64;
+    assert!(mean < 2.5, "mean difference {mean:.3} between virtual and ordinary");
+}
+
+fn graph_material_with(setup: Setup, wire_normal: bool) {
     use renzora_shader::material::codegen::{compile, supports_deferred, supports_virtual_geometry};
     use renzora_shader::material::graph::{MaterialDomain, MaterialGraph, PinValue};
     use renzora_shader::material::surface_ext::{new_graph_material, GraphMaterial};
@@ -713,6 +867,10 @@ fn graph_material(setup: Setup) {
             graph.connect(uv, "uv", checker, "uv");
             graph.connect(checker, "value", lerp, "t");
             graph.connect(lerp, "color", out, "base_color");
+            if wire_normal {
+                let normal = graph.add_node("input/world_normal", [400.0, 200.0]);
+                graph.connect(normal, "normal", out, "normal");
+            }
             let compiled = compile(&graph);
             assert!(compiled.errors.is_empty(), "{:?}", compiled.errors);
             assert!(
@@ -722,7 +880,7 @@ fn graph_material(setup: Setup) {
             );
 
             let uuid = bevy::asset::uuid::Uuid::new_v4();
-            let shader = renzora::shader_source::shader(compiled.fragment_shader.clone(), "test/checker.wesl");
+            let shader = renzora_shader_api::shader_source::shader(compiled.fragment_shader.clone(), "test/checker.wesl");
             let _ = world
                 .resource_mut::<Assets<Shader>>()
                 .insert(&Handle::<Shader>::Uuid(uuid, std::marker::PhantomData), shader);
@@ -1098,7 +1256,7 @@ fn evicts_what_the_camera_left() {
 /// stand-ins show red; with room, once streaming has caught up, none do.
 #[test]
 fn residency_view_shows_stand_ins() {
-    use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
+    use renzora_viewport_api::{ViewportSettings, VisualizationMode};
     let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
     let run = |budget_mb: u32, lod_error_pixels: f32| -> (usize, usize) {
         let (mut app, target) = app_with(Setup::ForwardWithPrepass, |world| {
@@ -1114,7 +1272,7 @@ fn residency_view_shows_stand_ins() {
         .expect("GPU tests are on");
         let world = app.world_mut();
         let camera = world.query_filtered::<Entity, With<Camera3d>>().single(world).unwrap();
-        world.entity_mut(camera).insert(renzora::EditorCamera);
+        world.entity_mut(camera).insert(renzora_scene_api::EditorCamera);
         let image = capture(&mut app, &target);
         dump(&format!("residency_{budget_mb}mb"), &image);
         let (mut red, mut green) = (0, 0);
@@ -1333,7 +1491,7 @@ fn solari_traces_an_rvg_model_as_drawn_from_the_start() {
     // the frame it was read on.
     for frame in 0..FIRST_FRAMES {
         app.update();
-        if let Some(stats) = app.world_mut().resource_mut::<renzora::SolariDiagnostics>().frame.take() {
+        if let Some(stats) = app.world_mut().resource_mut::<renzora_solari_api::SolariDiagnostics>().frame.take() {
             timeline.push((frame, stats.not_traced_fraction, stats.covered_pixels));
         }
     }
@@ -1373,7 +1531,7 @@ fn solari_keeps_tracing_a_model_while_virtual_geometry_is_switched() {
         let mut covered = 0;
         for frame in 0..SWITCH_SETTLE_FRAMES {
             app.update();
-            if let Some(stats) = app.world_mut().resource_mut::<renzora::SolariDiagnostics>().frame.take() {
+            if let Some(stats) = app.world_mut().resource_mut::<renzora_solari_api::SolariDiagnostics>().frame.take() {
                 if frame >= SWITCH_SETTLE_FRAMES / 2 {
                     worst = worst.max(stats.not_traced_fraction);
                     covered = stats.covered_pixels;
@@ -1434,7 +1592,7 @@ fn solari_traces_a_glowing_mesh_too_big_to_sample_as_a_light() {
     let mut traced = None;
     for _ in 0..SWITCH_SETTLE_FRAMES {
         app.update();
-        if let Some(stats) = app.world_mut().resource_mut::<renzora::SolariDiagnostics>().frame.take() {
+        if let Some(stats) = app.world_mut().resource_mut::<renzora_solari_api::SolariDiagnostics>().frame.take() {
             traced = Some(stats.not_traced_fraction);
         }
     }
@@ -1492,7 +1650,7 @@ fn solari_traces_a_surface_with_its_own_mask_in_a_reused_slot() {
         let mut last = None;
         for _ in 0..SWITCH_SETTLE_FRAMES {
             app.update();
-            if let Some(stats) = app.world_mut().resource_mut::<renzora::SolariDiagnostics>().frame.take() {
+            if let Some(stats) = app.world_mut().resource_mut::<renzora_solari_api::SolariDiagnostics>().frame.take() {
                 last = Some(stats.not_traced_fraction);
             }
         }
@@ -1672,7 +1830,7 @@ fn solari_rvg_app(name: &str, virtual_geometry: bool, camera: Transform) -> (App
     std::fs::write(dir.join("bumpy.rvg"), rvg.to_bytes()).unwrap();
 
     let mut app = App::new();
-    app.insert_resource(renzora::GpuRaytracing { enabled: true });
+    app.insert_resource(renzora_render_api::GpuRaytracing { enabled: true });
     app.add_plugins(
         DefaultPlugins
             .build()
@@ -1724,14 +1882,14 @@ fn solari_rvg_app(name: &str, virtual_geometry: bool, camera: Transform) -> (App
             camera,
             // The figures come through the Ray Tracing panel's own path, which
             // measures the editor's focused camera.
-            renzora::EditorCamera,
+            renzora_scene_api::EditorCamera,
         ))
         .id();
-    let source = world.spawn(renzora::SolariGi::default()).id();
-    world.insert_resource(renzora::EffectRouting {
+    let source = world.spawn(renzora_solari_api::SolariGi::default()).id();
+    world.insert_resource(renzora_scene_api::EffectRouting {
         routes: vec![(camera, vec![source])],
     });
-    world.insert_resource(renzora::SolariDiagnosticsRequest {
+    world.insert_resource(renzora_solari_api::SolariDiagnosticsRequest {
         stats: true,
         ..default()
     });
@@ -1780,6 +1938,26 @@ fn skinned_deferred() {
 #[test]
 fn graph_material_forward() {
     graph_material(Setup::ForwardWithPrepass);
+}
+
+#[test]
+fn landscape_material_forward() {
+    landscape_material(Setup::ForwardWithPrepass);
+}
+
+#[test]
+fn landscape_material_deferred() {
+    landscape_material(Setup::Deferred);
+}
+
+#[test]
+fn graph_material_normal_forward() {
+    graph_material_normal(Setup::ForwardWithPrepass);
+}
+
+#[test]
+fn graph_material_normal_deferred() {
+    graph_material_normal(Setup::Deferred);
 }
 
 #[test]

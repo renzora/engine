@@ -7,7 +7,7 @@ description = "OpenXR/VR boot mode for the Renzora runtime — stereo rendering 
 # NOT an installable plugin: OpenXR must replace Bevy's render init (device
 # creation goes through the XR runtime), which happens before any plugin is
 # loaded — so this crate is linked statically and wired in by
-# `renzora_runtime::add_xr_rendering`. Deliberately no `renzora::add!` and no
+# `renzora_runtime::add_xr_rendering`. Deliberately no plugin table and no
 # contract-crate dependency: nothing here crosses a plugin boundary.
 
 [features]
@@ -16,9 +16,8 @@ description = "OpenXR/VR boot mode for the Renzora runtime — stereo rendering 
 dlss = ["bevy_mod_openxr/bevy_raw_vulkan_init"]
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
-# Contract crate: only for `renzora::VrPlayState`, the editor↔XR play handshake.
-renzora = { path = "../renzora", default-features = false }
 bevy_mod_openxr = { path = "../../vendor/bevy_oxr/crates/bevy_openxr", features = ["raw_vulkan_init"] }
 bevy_mod_xr = { path = "../../vendor/bevy_oxr/crates/bevy_xr" }
 bevy_xr_utils = { path = "../../vendor/bevy_oxr/crates/bevy_xr_utils" }

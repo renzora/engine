@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Compile a native plugin from source against a staged Renzora SDK."
 
-# Not a Bevy plugin and deliberately not one: no `renzora::add!` line, no
+# Not a Bevy plugin and deliberately not one: no plugin table, no
 # systems, no `App`. It is a function library the editor's install flow calls,
 # the same shape as `renzora_export`.
 #

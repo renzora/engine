@@ -291,9 +291,9 @@ pub fn process_animation_commands(
     mut cmd_queue: ResMut<AnimationCommandQueue>,
     mut animators: Query<(&mut AnimatorComponent, &mut AnimatorState)>,
     mut players: Query<&mut AnimationPlayer>,
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
 ) {
-    let running = renzora::core::game_running(play_mode);
+    let running = renzora_project_api::game_running(play_mode);
     if !cmd_queue.commands.is_empty() {
         debug!(
             "[animation] Processing {} command(s): {:?}",
@@ -623,9 +623,9 @@ pub fn update_state_machines(
     time: Res<Time>,
     sm_assets: Res<Assets<AnimationStateMachine>>,
     mut animators: Query<&mut AnimatorState>,
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
 ) {
-    let running = renzora::core::game_running(play_mode);
+    let running = renzora_project_api::game_running(play_mode);
     for mut state in animators.iter_mut() {
         if !state.initialized || state.is_paused {
             continue;
@@ -713,7 +713,7 @@ pub(crate) fn add_animation_targets(
     root: Entity,
     player_entity: Entity,
     children_query: &Query<&Children>,
-    name_query: &Query<(&Name, Option<&renzora::BindName>)>,
+    name_query: &Query<(&Name, Option<&renzora_scene_api::BindName>)>,
 ) {
     visit_skeleton(root, player_entity, commands, children_query, name_query);
 }
@@ -723,7 +723,7 @@ fn visit_skeleton(
     player_entity: Entity,
     commands: &mut Commands,
     children_query: &Query<&Children>,
-    name_query: &Query<(&Name, Option<&renzora::BindName>)>,
+    name_query: &Query<(&Name, Option<&renzora_scene_api::BindName>)>,
 ) {
     if let Ok((name, bind)) = name_query.get(entity) {
         // Bevy 0.18 requires two components on an animated entity:
@@ -734,8 +734,8 @@ fn visit_skeleton(
         // Through `bone_target` rather than `from_name` directly, so this agrees
         // with the clip loader no matter whether `enforce_entity_ids` has
         // renamed the bone yet. See [`crate::bone_target`]. A name made
-        // unique with a suffix binds by the name it had (`renzora::BindName`).
-        let target_id = crate::bone_target(renzora::BindName::of(name, bind));
+        // unique with a suffix binds by the name it had (`renzora_scene_api::BindName`).
+        let target_id = crate::bone_target(renzora_scene_api::BindName::of(name, bind));
         commands
             .entity(entity)
             .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));
@@ -765,7 +765,7 @@ pub fn ensure_animation_targets(
     mut commands: Commands,
     mut animators: Query<(Entity, &mut AnimatorState)>,
     children_query: Query<&Children>,
-    name_query: Query<(&Name, Option<&renzora::BindName>)>,
+    name_query: Query<(&Name, Option<&renzora_scene_api::BindName>)>,
     target_query: Query<(), With<AnimationTargetId>>,
     fresh_names: Query<Entity, (Added<Name>, Without<AnimationTargetId>)>,
     parents: Query<&ChildOf>,
@@ -816,7 +816,7 @@ pub fn ensure_animation_targets(
         while let Some(current) = stack.pop() {
             if let Ok((name, bind)) = name_query.get(current) {
                 if target_query.get(current).is_err() {
-                    let target_id = crate::bone_target(renzora::BindName::of(name, bind));
+                    let target_id = crate::bone_target(renzora_scene_api::BindName::of(name, bind));
                     commands
                         .entity(current)
                         .try_insert((target_id, bevy::animation::AnimatedBy(player_entity)));

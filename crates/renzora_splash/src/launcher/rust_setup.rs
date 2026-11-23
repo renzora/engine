@@ -22,7 +22,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::{RustToolchain, RustToolchainAnswer};
+use renzora_platform_api::{RustToolchain, RustToolchainAnswer};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -106,9 +106,9 @@ fn icon(s: &RustToolchain) -> &'static str {
 fn button_label(s: &RustToolchain) -> Option<String> {
     match s {
         RustToolchain::Missing { .. } | RustToolchain::Declined => {
-            Some(renzora::lang::t_or("splash.rust.install", "Install Rust"))
+            Some(renzora_lang_api::t_or("splash.rust.install", "Install Rust"))
         }
-        RustToolchain::Failed(_) => Some(renzora::lang::t_or("splash.rust.retry", "Try again")),
+        RustToolchain::Failed(_) => Some(renzora_lang_api::t_or("splash.rust.retry", "Try again")),
         _ => None,
     }
 }

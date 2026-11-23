@@ -60,5 +60,3 @@ impl Plugin for DecalEditorPlugin {
         app.register_inspector(decal_entry());
     }
 }
-
-renzora::add!(DecalEditorPlugin, Editor);

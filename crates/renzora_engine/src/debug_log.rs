@@ -8,11 +8,9 @@
 
 use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
-use renzora::console_log::*;
-use renzora::{
-    DefaultCamera, EditorCamera, EffectRouting, IsolatedCamera, PlayModeCamera, PlayModeState,
-    PlayState, SceneCamera, ViewportRenderTarget,
-};
+use renzora_log_api::*;
+use renzora_scene_api::{DefaultCamera, EditorCamera, EffectRouting, IsolatedCamera, SceneCamera};
+use renzora_project_api::{PlayModeCamera, PlayModeState, PlayState, ViewportRenderTarget};
 
 // ---------------------------------------------------------------------------
 // Toggle resource
@@ -517,7 +515,7 @@ struct PostProcessDebugState {
 
 /// Logs when meshes are rehydrated from MeshPrimitive.
 pub fn debug_log_rehydrate_meshes(
-    query: Query<(Entity, &renzora::MeshPrimitive, Option<&Name>), Without<Mesh3d>>,
+    query: Query<(Entity, &renzora_scene_api::MeshPrimitive, Option<&Name>), Without<Mesh3d>>,
     debug: Option<Res<RenderingDebugLog>>,
 ) {
     if !is_enabled(&debug) {

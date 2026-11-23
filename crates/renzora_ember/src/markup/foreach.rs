@@ -14,7 +14,7 @@
 
 use bevy::prelude::*;
 use bevy_hui::prelude::HtmlTemplate;
-use renzora::EntityGroup;
+use renzora_scene_api::EntityGroup;
 
 use crate::markup::loader::build_for_children;
 

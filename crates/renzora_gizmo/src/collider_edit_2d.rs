@@ -18,10 +18,10 @@
 use bevy::prelude::*;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
 };
-use renzora::core::PlayModeState;
+use renzora_project_api::PlayModeState;
 use renzora_editor_framework::EditorSelection;
 use renzora_physics::{ColliderEditMode, CollisionShapeData, CollisionShapeType};
 
@@ -131,7 +131,7 @@ pub fn collider_edit_2d_system(
     mut drag: ResMut<ColliderDrag2d>,
     mut request: ResMut<ViewportCursorRequest>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
     mut shapes: Query<(&mut CollisionShapeData, &GlobalTransform)>,
     mut commands: Commands,
 ) {

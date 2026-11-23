@@ -4,15 +4,16 @@ version = "0.1.0"
 edition = "2021"
 description = "Live link between the editor and the game Play is running: edits reach the game, the game's state shows in the editor, and tools can play it."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, which the build
 # generator wires into the committed plugin list and the linker pulls straight
 # into the binary. Inert in any game not launched with `--live-link`.
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
 # `extract_authored`, `saveable_entities`, `assign_scene_entity_ids`: what a
 # save writes is what travels, so the two can never disagree.
 renzora_engine = { path = "../renzora_engine" }
@@ -24,3 +25,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "LiveLinkPlugin"

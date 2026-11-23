@@ -64,7 +64,7 @@ fn levels(world: &Rx) -> Vec<(String, PathBuf)> {
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| renzora::lang::t("common.project"));
+        .unwrap_or_else(|| renzora_lang_api::t("common.project"));
     let mut out = vec![(root_name, root.clone())];
     if let Ok(rel) = cur.strip_prefix(&root) {
         let mut acc = root.clone();
@@ -305,7 +305,7 @@ fn ellipsis(commands: &mut Commands, fonts: &EmberFonts, folded: &[PathBuf]) -> 
             UiInteraction::default(),
             UiCursor::default(),
             HoverCursor(SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or(
                 "assets.crumb.hidden",
                 "Show hidden folders",
             )),
@@ -347,7 +347,7 @@ pub(crate) fn fit_breadcrumb(
     spacer: Query<Ref<ComputedNode>, With<CrumbSpacer>>,
     segs: Query<(Ref<ComputedNode>, &CrumbSeg)>,
     nodes: Query<&ComputedNode>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut state: ResMut<NativeAssets>,
     mut widths: Local<HashMap<PathBuf, f32>>,
     mut last_path: Local<Option<PathBuf>>,
@@ -486,7 +486,7 @@ pub(crate) fn crumb_menu_open(
             &mut commands,
             &fonts,
             "folder-dashed",
-            &renzora::lang::t_or("assets.crumb.no_subfolders", "No subfolders"),
+            &renzora_lang_api::t_or("assets.crumb.no_subfolders", "No subfolders"),
             text_muted(),
             text_muted(),
             |_| {},

@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use std::collections::{HashSet, VecDeque};
 
 // Re-export core logging types so existing `renzora_console::state::*` imports keep working.
-pub use renzora::core::console_log::{
+pub use renzora_log_api::{
     clear_log_history, console_log, get_global_log_buffer, init_global_log_buffer, max_log_entries,
     record_history, LogEntry, LogLevel, SharedLogBuffer, DEFAULT_MAX_LOG_ENTRIES,
 };
@@ -250,7 +250,7 @@ mod tests {
     fn log_caps_at_max_entries() {
         // Pin the cap so this is deterministic regardless of any other test in
         // the binary that might change the runtime limit.
-        renzora::core::console_log::set_max_log_entries(DEFAULT_MAX_LOG_ENTRIES);
+        renzora_log_api::set_max_log_entries(DEFAULT_MAX_LOG_ENTRIES);
         let mut state = ConsoleState::default();
         state.entries.clear();
         // Push a few past the cap; oldest should fall out.

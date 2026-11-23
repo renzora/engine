@@ -161,7 +161,7 @@ pub(crate) fn rail_entries(world: &World) -> Vec<RailEntry> {
             s.iter()
                 .map(|s| {
                     let label =
-                        renzora::lang::t_or(&format!("splash.section.{}", s.id), &s.label);
+                        renzora_lang_api::t_or(&format!("splash.section.{}", s.id), &s.label);
                     (s.id, s.icon, label)
                 })
                 .collect()
@@ -202,7 +202,7 @@ pub(crate) fn build_rail(
         .id();
 
     let mut rows: Vec<Entity> = Vec::new();
-    rows.push(rail_heading(commands, fonts, &renzora::lang::t("splash.dashboard")));
+    rows.push(rail_heading(commands, fonts, &renzora_lang_api::t("splash.dashboard")));
     for (id, icon, label) in entries {
         rows.push(nav_row(commands, fonts, id, icon, label));
     }

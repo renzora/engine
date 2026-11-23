@@ -13,23 +13,23 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Mutex;
 
 use bevy::prelude::*;
-use renzora::core::project_files::ProjectFileChanged;
-use renzora::core::project_index::{walk_project, IndexChange, IndexedFile, ProjectIndex};
-use renzora::core::{CurrentProject, FileChange};
-use renzora::job_args::ProjectIndexWalk;
+use renzora_project_api::project_files::ProjectFileChanged;
+use renzora_platform_api::project_index::{walk_project, IndexChange, IndexedFile, ProjectIndex};
+use renzora_project_api::{CurrentProject, FileChange};
+use renzora_platform_api::job_args::ProjectIndexWalk;
 
 /// The walk that is out, if one is.
 #[derive(Resource, Default)]
 struct Walk {
     root: Option<PathBuf>,
     /// Handed to the companion.
-    job: Option<renzora::CompanionJobId>,
+    job: Option<renzora_platform_api::CompanionJobId>,
     /// Running on a thread here.
     local: Option<Mutex<Receiver<Vec<IndexedFile>>>>,
 }
 
 pub(crate) fn build(app: &mut App) {
-    renzora::init_companion_jobs(app);
+    renzora_platform_api::init_companion_jobs(app);
     app.init_resource::<ProjectIndex>()
         .init_resource::<Walk>()
         // After `drain`, so a change and the walk that might miss it land in
@@ -42,7 +42,7 @@ fn begin_walk(
     project: Option<Res<CurrentProject>>,
     mut index: ResMut<ProjectIndex>,
     mut walk: ResMut<Walk>,
-    jobs: Option<ResMut<renzora::CompanionJobs>>,
+    jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
 ) {
     let Some(project) = project else { return };
     if index.root() == Some(project.path.as_path()) {
@@ -73,7 +73,7 @@ fn walk_here(root: PathBuf) -> Receiver<Vec<IndexedFile>> {
 /// Take the walk's result, from the companion or from the thread. A
 /// companion that could not walk is done over here.
 fn finish_walk(
-    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut done: MessageReader<renzora_platform_api::CompanionJobDone>,
     mut walk: ResMut<Walk>,
     mut index: ResMut<ProjectIndex>,
 ) {

@@ -5,7 +5,7 @@ use std::sync::{mpsc, Mutex};
 
 use crate::kinds::QueuedAsset;
 use bevy::prelude::*;
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
 use renzora_import::settings::ImportSettings;
 
@@ -449,7 +449,7 @@ pub(crate) fn run_import(world: &mut World) {
         state.converted_with = Some(converted_with);
     };
 
-    let companion = world.get_resource::<renzora::CompanionJobs>().map(|jobs| jobs.remote());
+    let companion = world.get_resource::<renzora_platform_api::CompanionJobs>().map(|jobs| jobs.remote());
 
     // Spawn background thread
     std::thread::spawn(move || {
@@ -557,7 +557,7 @@ pub(crate) fn apply_decision(world: &mut World, decision: PreviewDecision) {
     // Then build the model's `.rvg` from it, off the main thread: seconds for
     // a big model. The rest of the commit waits for it in `finish_commits`.
     let glb_path = st.glb_path.clone();
-    let companion = world.get_resource::<renzora::CompanionJobs>().map(|jobs| jobs.remote());
+    let companion = world.get_resource::<renzora_platform_api::CompanionJobs>().map(|jobs| jobs.remote());
     let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
         // In the companion when one is connected; its answer is the extension
         // the model was stored with, as the local build's is.
@@ -745,7 +745,7 @@ struct ImportJob {
     /// a batch added while an earlier one is still staged cannot overwrite it.
     staging_base: usize,
     /// Converts models in the companion process while one is connected.
-    companion: Option<renzora::CompanionRemote>,
+    companion: Option<renzora_platform_api::CompanionRemote>,
 }
 
 /// Convert `source` in the companion. `None` when there is no companion to
@@ -756,7 +756,7 @@ struct ImportJob {
 /// goes to `on_texture` as the editor's own conversion would send it, so the
 /// import window's bar moves the same either way.
 fn convert_in_companion(
-    companion: Option<&renzora::CompanionRemote>,
+    companion: Option<&renzora_platform_api::CompanionRemote>,
     source: &std::path::Path,
     settings: &ImportSettings,
     scratch: &std::path::Path,
@@ -977,7 +977,7 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                 // finally live, not where the tree is staged — the observer
                 // that writes them runs after the commit has moved everything.
                 let final_mat_dir = model_dir.join("materials");
-                let mut staged_material_events: Vec<renzora::core::PbrMaterialExtracted> =
+                let mut staged_material_events: Vec<renzora_scene_api::PbrMaterialExtracted> =
                     Vec::new();
                 let mut staged_textures: Vec<crate::staged::TextureRow> = Vec::new();
                 let mut staged_animations: Vec<String> = Vec::new();
@@ -1013,7 +1013,7 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                     };
                     for mat in &result.extracted_materials {
                         let event =
-                            renzora::core::PbrMaterialExtracted {
+                            renzora_scene_api::PbrMaterialExtracted {
                                 name: mat.name.clone(),
                                 output_dir: mat_dir.clone(),
                                 project_root: project.path.clone(),
@@ -1038,13 +1038,13 @@ fn import_worker(tx: mpsc::Sender<ImportMsg>, job: ImportJob) {
                                 advanced: mat.advanced.rewrite_textures(rewrite_uri),
                                 alpha_mode: match mat.alpha_mode {
                                     renzora_import::ExtractedAlphaMode::Opaque => {
-                                        renzora::core::PbrAlphaMode::Opaque
+                                        renzora_scene_api::PbrAlphaMode::Opaque
                                     }
                                     renzora_import::ExtractedAlphaMode::Mask => {
-                                        renzora::core::PbrAlphaMode::Mask
+                                        renzora_scene_api::PbrAlphaMode::Mask
                                     }
                                     renzora_import::ExtractedAlphaMode::Blend => {
-                                        renzora::core::PbrAlphaMode::Blend
+                                        renzora_scene_api::PbrAlphaMode::Blend
                                     }
                                 },
                                 alpha_cutoff: mat.alpha_cutoff,

@@ -27,7 +27,7 @@ impl Plugin for FoliageEditorPlugin {
                 systems::FoliageBrushGizmos,
                 systems::foliage_brush_gizmo_config(),
             )
-            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>()
+            .init_resource::<renzora_viewport_api::ViewportOverlayChanged>()
             .add_systems(
                 Update,
                 (
@@ -74,7 +74,6 @@ fn ensure_density_maps(
     }
 }
 
-renzora::add!(FoliageEditorPlugin, Editor);
 
 #[cfg(test)]
 mod tests {

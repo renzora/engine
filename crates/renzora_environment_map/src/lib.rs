@@ -86,11 +86,11 @@ fn kick_routing_on_environment_load(
         (),
         (
             Added<GeneratedEnvironmentMapLight>,
-            Without<renzora::core::PlayModeCamera>,
+            Without<renzora_project_api::PlayModeCamera>,
         ),
     >,
     added_source: Query<(), Added<EnvironmentMapComponentSettings>>,
-    mut routing: ResMut<renzora::EffectRouting>,
+    mut routing: ResMut<renzora_scene_api::EffectRouting>,
     mut frames_left: Local<u32>,
 ) {
     // ~10 frames comfortably covers WorldEnvironment spawn → routing rebuild →
@@ -112,8 +112,8 @@ fn sync_environment_map(
         Option<Ref<renzora_lighting::Sun>>,
     )>,
     mut probe_holders: Query<ProbeHolder>,
-    routing: Res<renzora::EffectRouting>,
-    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    routing: Res<renzora_scene_api::EffectRouting>,
+    quality: Option<Res<renzora_project_api::ResolvedGraphicsQuality>>,
     atmospheres: Query<(), With<Atmosphere>>,
     added_atmosphere: Query<(), Added<Atmosphere>>,
     mut removed_atmosphere: RemovedComponents<Atmosphere>,
@@ -251,7 +251,7 @@ fn cleanup_environment_map(
     mut commands: Commands,
     mut removed: RemovedComponents<EnvironmentMapComponentSettings>,
     mut probe_holders: Query<ProbeHolder>,
-    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    quality: Option<Res<renzora_project_api::ResolvedGraphicsQuality>>,
 ) {
     if removed.read().next().is_some() {
         // Keep the face size identical to the spawn/sync value; a different
@@ -288,7 +288,7 @@ struct SkyBakeDirty {
 /// sky next changes.
 fn mark_sky_dirty(
     mut dirty: ResMut<SkyBakeDirty>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     changed_sun: Query<(), Changed<renzora_lighting::Sun>>,
     changed_env: Query<(), Changed<EnvironmentMapComponentSettings>>,
     changed_atmosphere: Query<(), Changed<Atmosphere>>,
@@ -356,5 +356,3 @@ impl Plugin for EnvironmentMapPlugin {
         app.add_systems(Update, probe::apply_reflection_probe_source);
     }
 }
-
-renzora::add!(EnvironmentMapPlugin);

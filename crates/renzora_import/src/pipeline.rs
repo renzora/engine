@@ -56,7 +56,7 @@ pub fn convert_in_place(
     source: &Path,
     dest: &Path,
     model_dir: &Path,
-    remote: Option<&renzora::CompanionRemote>,
+    remote: Option<&renzora_platform_api::CompanionRemote>,
 ) -> Option<ConvertedInPlace> {
     use crate::{convert_to_glb, ImportSettings};
 
@@ -74,7 +74,7 @@ pub fn convert_in_place(
         let out_dir = std::env::temp_dir().join(format!(
             "renzora-in-place-{}-{:016x}",
             std::process::id(),
-            renzora::SceneEntityId::new_random().0
+            renzora_scene_api::SceneEntityId::new_random().0
         ));
         let args = crate::remote::ConvertArgs { source: source.to_path_buf(), settings: settings.clone(), out_dir: out_dir.clone() };
         let name = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -165,7 +165,7 @@ pub fn announce_materials(
         };
 
         for mat in &done.materials {
-            world.trigger(renzora::core::PbrMaterialExtracted {
+            world.trigger(renzora_scene_api::PbrMaterialExtracted {
                 name: mat.name.clone(),
                 output_dir: mat_dir.clone(),
                 project_root: project_path.to_path_buf(),
@@ -186,10 +186,10 @@ pub fn announce_materials(
                 advanced: mat.advanced.rewrite_textures(prefix),
                 alpha_mode: match mat.alpha_mode {
                     crate::ExtractedAlphaMode::Opaque => {
-                        renzora::core::PbrAlphaMode::Opaque
+                        renzora_scene_api::PbrAlphaMode::Opaque
                     }
-                    crate::ExtractedAlphaMode::Mask => renzora::core::PbrAlphaMode::Mask,
-                    crate::ExtractedAlphaMode::Blend => renzora::core::PbrAlphaMode::Blend,
+                    crate::ExtractedAlphaMode::Mask => renzora_scene_api::PbrAlphaMode::Mask,
+                    crate::ExtractedAlphaMode::Blend => renzora_scene_api::PbrAlphaMode::Blend,
                 },
                 alpha_cutoff: mat.alpha_cutoff,
                 double_sided: mat.double_sided,
@@ -209,7 +209,7 @@ pub fn announce_materials(
 /// seconds while it converted.
 pub fn import_tree_in_background(
     root: &Path,
-    remote: Option<&renzora::CompanionRemote>,
+    remote: Option<&renzora_platform_api::CompanionRemote>,
     done: &mut dyn FnMut(ConvertedInPlace),
 ) {
     let mut sources: Vec<std::path::PathBuf> = Vec::new();
@@ -250,11 +250,11 @@ pub fn import_tree_in_background(
 ///
 /// It has three now, and they must agree exactly: a marketplace install, a model
 /// dropped into the viewport, and anything draining
-/// [`renzora::ImportInPlaceQueue`] — which is how a plugin that cannot link this
+/// [`renzora_project_api::ImportInPlaceQueue`] — which is how a plugin that cannot link this
 /// crate asks for an import. Three copies that agree today is the shape that
 /// stops agreeing quietly.
 pub fn import_tree_in_place(world: &mut renzora::bevy::ecs::world::World, root: &Path) {
-    let Some(project) = world.get_resource::<renzora::CurrentProject>() else {
+    let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() else {
         warn!("[import] no project open, so {:?} cannot be imported", root);
         return;
     };

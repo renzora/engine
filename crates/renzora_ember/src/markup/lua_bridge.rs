@@ -14,7 +14,7 @@
 
 use bevy::app::AppExit;
 use bevy::prelude::*;
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 use crate::game_ui::{HtmlTemplatePath, UiCanvas};
 
 /// `action("hui_spawn", { template = "templates/foo.html" })` — spawn a new

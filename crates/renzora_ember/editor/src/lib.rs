@@ -39,5 +39,3 @@ impl Plugin for HuiEditorBundlePlugin {
         app.add_plugins((HuiEditorPlugin, HuiInspectorPlugin));
     }
 }
-
-renzora::add!(HuiEditorBundlePlugin, Editor);

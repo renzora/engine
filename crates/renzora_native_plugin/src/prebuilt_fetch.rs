@@ -70,7 +70,7 @@ pub fn fetch_and_install(
         url_encode(stamp),
         url_encode(prebuilt::platform_id())
     );
-    let response = renzora::net::Request::get(&url)
+    let response = renzora_net_api::net::Request::get(&url)
         .maybe_bearer(token)
         .send()
         .map_err(|e| format!("the marketplace could not be reached ({e})"))?;
@@ -88,7 +88,7 @@ pub fn fetch_and_install(
         return Err(format!("the prebuilt is version {}, the source is {version}", info.version));
     }
 
-    let mut stream = renzora::net::Request::get(&format!("{base}{}", info.download_url))
+    let mut stream = renzora_net_api::net::Request::get(&format!("{base}{}", info.download_url))
         .maybe_bearer(token)
         .max_bytes(MAX_PREBUILT)
         .send_stream()

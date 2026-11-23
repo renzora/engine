@@ -72,11 +72,9 @@ use bevy::render::render_resource::{
     Extent3d, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
     TextureViewDimension,
 };
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-use renzora::{
-    DefaultCamera, EditorLocked, HideInHierarchy, IsolatedCamera, ReflectionCamera,
-    ResolvedRenderingMode, SceneCamera, ViewportCamera,
-};
+use renzora_viewport_api::{ViewportSettings, ViewportView};
+use renzora_scene_api::{DefaultCamera, EditorLocked, HideInHierarchy, IsolatedCamera, ReflectionCamera, SceneCamera, ViewportCamera};
+use renzora_project_api::ResolvedRenderingMode;
 
 use crate::component::{PlanarReflection, PlanarReflectionSettings};
 use crate::material::{OverlayParams, ReflectionOverlayMaterial};

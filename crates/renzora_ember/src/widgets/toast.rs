@@ -120,7 +120,7 @@ pub(crate) fn drain_toasts(
                     },
                     GlobalZIndex(TOAST_Z),
                     Name::new("toasts"),
-                    renzora::HideInHierarchy,
+                    renzora_scene_api::HideInHierarchy,
                 ))
                 .id();
             stack.container = Some(e);

@@ -18,7 +18,7 @@
 //! scripts are held, and a prompt that cannot be closed is worse than none.
 
 use bevy::prelude::*;
-use renzora::{RustToolchain, RustToolchainAnswer};
+use renzora_platform_api::{RustToolchain, RustToolchainAnswer};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::UiInteraction;
 

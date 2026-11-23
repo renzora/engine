@@ -50,7 +50,20 @@ pub(crate) fn build(app: &mut App) -> bool {
                     .in_set(RenderSystems::PrepareViews),
                 (view::prepare_bind_groups, scene::prepare_skin_bind_group)
                     .in_set(RenderSystems::PrepareBindGroups),
-                (materials::queue, masked::queue, transparent::queue).in_set(RenderSystems::QueueMeshes),
+                // After Bevy rebuilds material bind groups, not in
+                // `QueueMeshes` (which runs before it). These capture each
+                // material's bind group, and Bevy clears a bindless slab's
+                // group whenever a material joins or leaves it, rebuilding it
+                // in `PrepareBindGroups`. Queued earlier, any frame a material
+                // arrived found every material sharing its slab with no group,
+                // skipped their shading, and left their pixels unshaded:
+                // whole districts drew black for as long as models kept
+                // streaming in. Bevy's own meshes never saw it because they
+                // fetch the group at draw time.
+                (materials::queue, masked::queue, transparent::queue)
+                    .in_set(RenderSystems::PrepareBindGroups)
+                    .after(bevy::render::material_bind_groups::prepare_material_bind_groups)
+                    .before(view::prepare_bind_groups),
                 scene::read_back.in_set(RenderSystems::Cleanup),
             ),
         )

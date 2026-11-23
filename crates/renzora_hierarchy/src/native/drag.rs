@@ -352,7 +352,7 @@ fn apply_drop(
                 if world.get::<Name>(e).is_none() {
                     continue;
                 }
-                if world.get::<renzora::core::HideInHierarchy>(e).is_some() {
+                if world.get::<renzora_scene_api::HideInHierarchy>(e).is_some() {
                     continue;
                 }
                 // Never touch editor chrome (bevy_ui nodes).

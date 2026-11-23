@@ -26,7 +26,7 @@
 
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
-use renzora::ScriptHook;
+use renzora_scripting_api::ScriptHook;
 use renzora_scripting::ScriptComponent;
 
 use crate::{LoadedScripts, ScriptHookFn};
@@ -68,10 +68,10 @@ fn call(world: &mut World, entity: Entity, name: &str, f: ScriptHookFn, hook: &S
     if world.get_entity(entity).is_err() {
         return;
     }
-    if let Err(caught) = renzora::core::recoverable::catch(|| f(world, entity, hook)) {
+    if let Err(caught) = renzora_crash_api::catch(|| f(world, entity, hook)) {
         let why = crate::describe_panic(name, &caught);
         error!("[rust-script] {name} panicked in {} hook on {entity}: {why}", hook.name());
-        renzora::core::console_log::console_error(
+        renzora_log_api::console_error(
             "Script",
             format!("{name} panicked in the {} hook on {entity}: {why}", hook.name()),
         );
@@ -139,7 +139,7 @@ pub fn dispatch_hooks(world: &mut World) {
     // renderer publishes those sizes; a script with no canvas would otherwise
     // paint into a buffer nothing drains. Same rule the Lua path applies.
     let surfaces: Vec<(Entity, Vec2)> = world
-        .get_resource::<renzora::core::ScriptDrawSurfaces>()
+        .get_resource::<renzora_scripting_api::ScriptDrawSurfaces>()
         .map(|s| s.per_entity.iter().map(|(e, v)| (*e, *v)).collect())
         .unwrap_or_default();
     for (entity, size) in surfaces {
@@ -168,24 +168,24 @@ pub fn dispatch_hooks(world: &mut World) {
     //
     // Copied out before any script runs: a script holds `&mut World` and may
     // despawn or replace the resources these came from.
-    let scene_events: Vec<renzora::SceneEvent> = world
-        .get_resource::<renzora::ScriptSceneInbox>()
+    let scene_events: Vec<renzora_scripting_api::SceneEvent> = world
+        .get_resource::<renzora_scripting_api::ScriptSceneInbox>()
         .map(|i| i.pending.clone())
         .unwrap_or_default();
-    let ui_events: Vec<renzora::UiCallback> = world
-        .get_resource::<renzora::ScriptUiInbox>()
+    let ui_events: Vec<renzora_scripting_api::UiCallback> = world
+        .get_resource::<renzora_scripting_api::ScriptUiInbox>()
         .map(|i| i.pending.clone())
         .unwrap_or_default();
-    let rpc_events: Vec<renzora::IncomingRpc> = world
-        .get_resource::<renzora::ScriptRpcInbox>()
+    let rpc_events: Vec<renzora_scripting_api::IncomingRpc> = world
+        .get_resource::<renzora_scripting_api::ScriptRpcInbox>()
         .map(|i| i.pending.clone())
         .unwrap_or_default();
-    let anim_events: Vec<renzora::AnimEvent> = world
-        .get_resource::<renzora::ScriptAnimEventInbox>()
+    let anim_events: Vec<renzora_scripting_api::AnimEvent> = world
+        .get_resource::<renzora_scripting_api::ScriptAnimEventInbox>()
         .map(|i| i.pending.clone())
         .unwrap_or_default();
-    let player_events: Vec<renzora::NetPlayerEvent> = world
-        .get_resource::<renzora::ScriptNetLifecycleInbox>()
+    let player_events: Vec<renzora_scripting_api::NetPlayerEvent> = world
+        .get_resource::<renzora_scripting_api::ScriptNetLifecycleInbox>()
         .map(|i| i.pending.clone())
         .unwrap_or_default();
 

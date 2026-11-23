@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-renzora = { path = "../renzora", default-features = false }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 ron = "0.10"
 
 [lints]

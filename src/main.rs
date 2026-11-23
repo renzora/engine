@@ -64,6 +64,10 @@ pub fn build_runtime_app() -> App {
 /// The consequence worth stating plainly: **this binary can no longer become
 /// the editor under any circumstance.** It is always a game, a dedicated server
 /// or a listen server, which is exactly what makes it safe to ship.
+///
+/// Uncalled on the web: `start` builds the app without it, since a browser has
+/// no `plugins/` to scan and a web export compiles no plugins in.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code, unused_variables))]
 fn load_global_plugins(app: &mut App, is_editor: bool) {
     let _ = is_editor;
     // Plugins a lean export linked INTO this binary rather than leaving on disk.
@@ -157,7 +161,7 @@ fn main() {
     // set up, and the libraries the Solari inspector installs are found
     // through it. See `renzora::dlss_runtime`.
     #[cfg(not(target_arch = "wasm32"))]
-    renzora::dlss_runtime::point_env_at_install();
+    renzora_platform_api::dlss_runtime::point_env_at_install();
 
     // `cargo renzora` runs this straight after staging, so a source checkout
     // compiles its installed plugins in the build's own terminal. Without it the

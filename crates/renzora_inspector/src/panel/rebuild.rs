@@ -40,7 +40,7 @@ const TOOLBAR_H: f32 = 28.0;
 /// is room for it.
 pub(super) fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let add_btn = add_bar(commands, fonts);
-    let input = search_input(commands, fonts, &renzora::lang::t("inspector.filter_placeholder"), "");
+    let input = search_input(commands, fonts, &renzora_lang_api::t("inspector.filter_placeholder"), "");
     commands.entity(input).insert((
         InspectorFilter,
         Node {
@@ -137,7 +137,7 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             UiInteraction::default(),
             BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("inspector.add_component")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t("inspector.add_component")),
             AddButton,
             Name::new("add-component"),
         ))
@@ -149,7 +149,7 @@ fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let plus = phosphor_glyph(commands, fonts, "plus", (255, 255, 255), 13.0);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t_or("inspector.add_short", "Add")),
+            Text::new(renzora_lang_api::t_or("inspector.add_short", "Add")),
             renzora_ember::font::ui_font(&fonts.ui, 13.0),
             TextColor(Color::WHITE),
             bevy::text::TextLayout::no_wrap(),
@@ -185,8 +185,8 @@ pub(super) fn rebuild_inspector(
     mut container_q: Local<QueryState<Entity, With<InspectorRoot>>>,
     // Both cached for the same reason as `container_q`; only read while
     // nothing is selected, for the Scene page.
-    mut env_q: Local<QueryState<Entity, With<renzora::WorldEnvironment>>>,
-    mut cam_q: Local<QueryState<&Name, With<renzora::core::DefaultCamera>>>,
+    mut env_q: Local<QueryState<Entity, With<renzora_world_api::WorldEnvironment>>>,
+    mut cam_q: Local<QueryState<&Name, With<renzora_scene_api::DefaultCamera>>>,
 ) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
@@ -236,7 +236,7 @@ pub(super) fn rebuild_inspector(
         .then(|| super::scene_page::scene_facts(world, start_camera.clone()));
     let env_sections: Vec<_> = match world_env.filter(|_| entity.is_none()) {
         Some(env) => {
-            use renzora::inspector_pages::InspectorPage;
+            use renzora_shell_api::inspector_pages::InspectorPage;
             let rx = Rx::new(&*world);
             let mut out = collect_sections(&rx, Some(env), Some(InspectorPage::Environment));
             out.extend(collect_sections(&rx, Some(env), Some(InspectorPage::Lighting)));
@@ -337,7 +337,7 @@ pub(super) fn rebuild_inspector(
                 let mut kids = vec![sp::group_heading(
                     &mut commands,
                     &fonts,
-                    &renzora::lang::t_or("inspector.scene.world", "World"),
+                    &renzora_lang_api::t_or("inspector.scene.world", "World"),
                 )];
                 match world_env {
                     // The world environment entity's own cards, editing it
@@ -357,7 +357,7 @@ pub(super) fn rebuild_inspector(
                     kids.push(sp::group_heading(
                         &mut commands,
                         &fonts,
-                        &renzora::lang::t_or("inspector.scene.scene", "Scene"),
+                        &renzora_lang_api::t_or("inspector.scene.scene", "Scene"),
                     ));
                     kids.push(sp::build_game_card(&mut commands, &fonts, facts, theme));
                 }
@@ -377,9 +377,9 @@ pub(super) fn rebuild_inspector(
             Some(entity) => {
                 if sections.is_empty() {
                     let msg = if filter_active {
-                        renzora::lang::t("inspector.no_match")
+                        renzora_lang_api::t("inspector.no_match")
                     } else {
-                        renzora::lang::t("inspector.no_components")
+                        renzora_lang_api::t("inspector.no_components")
                     };
                     let l = empty_label(&mut commands, &fonts, &msg);
                     commands.entity(container).add_child(l);
@@ -446,7 +446,7 @@ fn inspector_signature(
     // it changes without the component set changing at all — so without this the
     // warning would only appear on the next reselect, which is precisely when the
     // user has stopped wondering why the effect vanished.
-    if let Some(q) = world.get_resource::<renzora::ResolvedGraphicsQuality>() {
+    if let Some(q) = world.get_resource::<renzora_project_api::ResolvedGraphicsQuality>() {
         (q.0 as u8).hash(&mut h);
     }
     // A section dropped somewhere new changes nothing about the *set* of

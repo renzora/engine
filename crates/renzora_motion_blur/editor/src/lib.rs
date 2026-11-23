@@ -7,7 +7,7 @@
 
 use bevy::post_process::motion_blur::MotionBlur;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_motion_blur::MotionBlurSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -93,5 +93,3 @@ impl Plugin for MotionBlurEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(MotionBlurEditorPlugin, Editor);

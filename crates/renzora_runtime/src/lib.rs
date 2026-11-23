@@ -22,25 +22,19 @@ use bevy::prelude::*;
 // dylib rather than embedding a private copy in each binary and each plugin,
 // which is what keeps the contract crate's process-global statics (translations,
 // the Problems and Console buffers, the asset loader) singular. See
-// `crates/renzora_dylib/src/lib.rs` for why a second copy fails silently.
+// `crates/shared/renzora_dylib/src/lib.rs` for why a second copy fails silently.
 //
 // It lives here rather than in either `main.rs` because both binaries depend on
 // this crate and only one of them has a feature table to gate on.
 #[cfg(feature = "dynamic_linking")]
 extern crate renzora_dylib;
 
-// The same, for the UI framework. Linked for its side effect only: its presence
-// is what makes rustc resolve `renzora_ember` to one dylib, so a native plugin
+// The UI framework (`renzora_ember`, `renzora::ui`) is inside that same image:
+// `dynamic_linking` turns on `renzora_dylib/ui`. So the line above is also what
+// makes rustc resolve `renzora_ember` to the shared copy, and a native plugin
 // drawing a panel shares the editor's theme palette, stylesheet, UI font scale
 // and viewport-toolbar lists instead of getting a private set that fails
-// silently. See `crates/renzora_ember_dylib/src/lib.rs`.
-//
-// Gated on `ui` as well because that is what makes `renzora_ember` present at
-// all; the `dynamic_linking` feature pulls the dependency, and this line is what
-// keeps a hand-built combination without `ui` compiling rather than failing to
-// resolve the crate.
-#[cfg(all(feature = "dynamic_linking", feature = "ui"))]
-extern crate renzora_ember_dylib;
+// silently. It used to be a second image, `renzora_ember_dylib`.
 
 pub use renzora;
 
@@ -117,7 +111,7 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
     #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
     {
         use bevy::render::settings::{Backends, WgpuFeatures, WgpuSettings};
-        use renzora::RendererBackend;
+        use renzora_project_api::RendererBackend;
 
         // Per-OS default, used when the preference is `Auto`. Vulkan is the
         // standard backend on Windows, Linux and the BSDs — it's the one path
@@ -142,7 +136,7 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         // User override persisted under `~/.renzora/renderer.toml`. Read here
         // because wgpu selects the backend at render-plugin build time and
         // can't change it afterwards; `Auto` keeps the per-OS default above.
-        let backends = match renzora::load_renderer_backend() {
+        let backends = match renzora_project_api::load_renderer_backend() {
             RendererBackend::Auto => default_backend,
             RendererBackend::Dx12 => Backends::DX12,
             RendererBackend::Vulkan => Backends::VULKAN,
@@ -198,7 +192,7 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
 /// is created, with its feature set frozen, *before* any plugin builds, so the
 /// only way the `renzora_solari` plugin can know in time to gate
 /// `SolariPlugins` in its `build()` is for the host to find out first and stash
-/// it in [`renzora::GpuRaytracing`]. We spin up a throwaway wgpu adapter on the
+/// it in [`renzora_render_api::GpuRaytracing`]. We spin up a throwaway wgpu adapter on the
 /// same backend the renderer will use and check it reports
 /// `SolariPlugins::required_wgpu_features()`. Any failure ⇒ `false` (Solari
 /// stays inert; the engine boots normally on non-RT GPUs).
@@ -207,7 +201,7 @@ pub fn raytracing_supported() -> bool {
     use std::sync::OnceLock;
     static SUPPORTED: OnceLock<bool> = OnceLock::new();
     *SUPPORTED.get_or_init(|| {
-        use renzora::RendererBackend;
+        use renzora_project_api::RendererBackend;
         use wgpu::Backends;
 
         // Mirror `platform_wgpu_settings`' backend selection so the probe sees
@@ -219,7 +213,7 @@ pub fn raytracing_supported() -> bool {
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
         let default_backend = Backends::VULKAN;
 
-        let backends = match renzora::load_renderer_backend() {
+        let backends = match renzora_project_api::load_renderer_backend() {
             RendererBackend::Auto => default_backend,
             RendererBackend::Dx12 => Backends::DX12,
             RendererBackend::Vulkan => Backends::VULKAN,
@@ -269,7 +263,7 @@ pub fn raytracing_supported() -> bool {
 /// selection for the same reason `raytracing_supported` does: the probe must see
 /// the same adapter the renderer will, or the answer is about the wrong GPU.
 ///
-/// Used only as a hint — see [`renzora::GpuIsIntegrated`]. `Other` is treated as
+/// Used only as a hint — see [`renzora_render_api::GpuIsIntegrated`]. `Other` is treated as
 /// *not* integrated: it usually means a driver that did not report a type, and
 /// wrongly nudging a discrete-GPU user toward `Low` is worse than staying quiet.
 #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
@@ -277,7 +271,7 @@ pub fn gpu_is_integrated() -> bool {
     use std::sync::OnceLock;
     static INTEGRATED: OnceLock<bool> = OnceLock::new();
     *INTEGRATED.get_or_init(|| {
-        use renzora::RendererBackend;
+        use renzora_project_api::RendererBackend;
         use wgpu::Backends;
 
         #[cfg(target_os = "windows")]
@@ -287,7 +281,7 @@ pub fn gpu_is_integrated() -> bool {
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
         let default_backend = Backends::VULKAN;
 
-        let backends = match renzora::load_renderer_backend() {
+        let backends = match renzora_project_api::load_renderer_backend() {
             RendererBackend::Auto => default_backend,
             RendererBackend::Dx12 => Backends::DX12,
             RendererBackend::Vulkan => Backends::VULKAN,
@@ -420,12 +414,12 @@ fn runtime_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
 /// The recorder has to be installed here, with the subscriber, because a log
 /// layer cannot be added later; and it has to see each span being created,
 /// which for a system happens once, at setup. It costs one atomic load per span
-/// until `renzora::profiling::set_recording` turns it on.
+/// until `renzora_diagnostics_api::profiling::set_recording` turns it on.
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 fn engine_log_layers(app: &mut App) -> Option<bevy::log::BoxedLayer> {
     use bevy::log::tracing_subscriber::Layer;
-    let recorder = renzora::profiling::ProfileLayer;
-    Some(match renzora::runtime_warnings::runtime_warnings_layer(app) {
+    let recorder = renzora_diagnostics_api::profiling::ProfileLayer;
+    Some(match renzora_diagnostics_api::runtime_warnings::runtime_warnings_layer(app) {
         Some(warnings) => Box::new(warnings.and_then(recorder)),
         None => Box::new(recorder),
     })
@@ -583,7 +577,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // Initial values — `apply_window_config` overwrites these
                     // from `CurrentProject` once the project is loaded. The
                     // editor wears the OS frame unless
-                    // `renzora::EDITOR_OS_FRAME` says it draws its own; the
+                    // `renzora_shell_api::EDITOR_OS_FRAME` says it draws its own; the
                     // runtime uses the OS title
                     // bar and needs decorations on **at creation time** so
                     // winit sizes the inner (renderable) area correctly.
@@ -595,7 +589,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // Runtime: true (OS title bar). Editor: whatever
                     // `EDITOR_OS_FRAME` asks for. Decided at runtime via
                     // `is_editor`.
-                    decorations: (!is_editor || renzora::EDITOR_OS_FRAME)
+                    decorations: (!is_editor || renzora_shell_api::EDITOR_OS_FRAME)
                         && embed::embed_parent().is_none(),
                     resizable: true,
                     // A game going into the editor's Game panel starts hidden,
@@ -841,16 +835,16 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // Same shape and the same reason as the ray-tracing probe below: resolve it
     // here, before dlopen plugins load, and publish it so the editor can point an
     // integrated-GPU user at the Graphics Quality tier instead of leaving them on
-    // the default `Medium`. See `renzora::GpuIsIntegrated`.
-    app.insert_resource(renzora::GpuIsIntegrated {
+    // the default `Medium`. See `renzora_render_api::GpuIsIntegrated`.
+    app.insert_resource(renzora_render_api::GpuIsIntegrated {
         yes: gpu_is_integrated(),
     });
     // Record GPU ray-tracing capability so the `renzora_solari` plugin can gate
     // `SolariPlugins` in its `build()`. This runs before the plugin list is
     // installed (`add_engine_plugins`), and the `RenderDevice`'s feature set is
     // frozen by then, so the plugin can't probe the device itself in time. See
-    // `renzora::GpuRaytracing`.
-    app.insert_resource(renzora::GpuRaytracing {
+    // `renzora_render_api::GpuRaytracing`.
+    app.insert_resource(renzora_render_api::GpuRaytracing {
         enabled: raytracing_supported(),
     });
     // Render recovery: by default any `RenderError` quits the app, so a GPU
@@ -872,7 +866,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         // project is being opened.
         app.add_systems(
             Update,
-            sync_editor_title.run_if(resource_changed_or_removed::<renzora::CurrentProject>),
+            sync_editor_title.run_if(resource_changed_or_removed::<renzora_project_api::CurrentProject>),
         );
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Update, apply_editor_window_icon);
@@ -1013,12 +1007,12 @@ fn restart_after_device_lost(description: &str, main_world: &mut World) -> ! {
         .is_some_and(|before| now.saturating_sub(before) < DEVICE_LOST_RELAUNCH_WINDOW_SECS);
     if lost_again_soon {
         error!("[runtime] the GPU device was lost again right after a restart; exiting instead of restarting again");
-        renzora::exit_now(1);
+        renzora_shell_api::exit_now(1);
     }
     // The relaunched process inherits the environment, so it knows when this
     // one restarted.
     std::env::set_var(DEVICE_LOST_RELAUNCH_ENV, now.to_string());
-    renzora::restart_process()
+    renzora_shell_api::restart_process()
 }
 
 /// Save the open scene beside the project's other editor state, in
@@ -1026,7 +1020,7 @@ fn restart_after_device_lost(description: &str, main_world: &mut World) -> ! {
 /// with no project open or when the save failed (logged).
 #[cfg(not(target_arch = "wasm32"))]
 fn save_recovery_scene(world: &mut World) -> Option<std::path::PathBuf> {
-    let project = world.get_resource::<renzora::CurrentProject>()?.path.clone();
+    let project = world.get_resource::<renzora_project_api::CurrentProject>()?.path.clone();
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -1135,13 +1129,13 @@ pub fn add_xr_rendering(app: &mut App) {
         })
         .set(bevy::log::LogPlugin {
             #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-            custom_layer: renzora::runtime_warnings::runtime_warnings_layer,
+            custom_layer: renzora_diagnostics_api::runtime_warnings::runtime_warnings_layer,
             fmt_layer: runtime_fmt_layer,
             ..default()
         });
     app.add_plugins(plugins);
     app.add_plugins(renzora_xr::XrPlugin { auto_start: true });
-    app.insert_resource(renzora::GpuRaytracing { enabled: false });
+    app.insert_resource(renzora_render_api::GpuRaytracing { enabled: false });
 }
 
 pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
@@ -1255,7 +1249,7 @@ pub fn add_companion_rendering(app: &mut App) {
 /// system reads the project config (loaded from the rpak by `RuntimePlugin`
 /// before `Startup` runs) and applies the user's choices.
 fn apply_window_config(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
     use bevy::window::WindowMode as BevyWindowMode;
@@ -1318,16 +1312,16 @@ fn apply_window_config(
         };
 
         match cfg.mode {
-            renzora::WindowMode::Windowed => {
+            renzora_project_api::WindowMode::Windowed => {
                 window.decorations = true;
                 window.mode = BevyWindowMode::Windowed;
             }
-            renzora::WindowMode::Fullscreen => {
+            renzora_project_api::WindowMode::Fullscreen => {
                 window.decorations = false;
                 window.mode =
                     BevyWindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current);
             }
-            renzora::WindowMode::Borderless => {
+            renzora_project_api::WindowMode::Borderless => {
                 window.decorations = false;
                 window.mode = BevyWindowMode::Windowed;
             }
@@ -1382,7 +1376,7 @@ pub fn attach_console() {
 /// nothing to apply).
 fn apply_window_icon(
     mut applied: Local<bool>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
     vfs: Option<Res<renzora_engine::vfs::Vfs>>,
     _main_thread: bevy::ecs::system::NonSendMarker,
@@ -1470,7 +1464,7 @@ fn set_native_window_icon(_entity: Entity, _icon: winit::window::Icon) -> bool {
 /// text and offers no way to centre it, so the order is the only placement
 /// there is.
 fn editor_title(project: Option<&std::path::Path>) -> String {
-    let base = format!("Renzora Engine {}", renzora::version::display());
+    let base = format!("Renzora Engine {}", renzora_platform_api::version::display());
     match project {
         Some(dir) if !dir.as_os_str().is_empty() => format!("{base} - {}", dir.display()),
         _ => base,
@@ -1484,7 +1478,7 @@ fn editor_title(project: Option<&std::path::Path>) -> String {
 /// a save that touches the project without moving it does not re-title the
 /// window.
 fn sync_editor_title(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let want = editor_title(project.as_deref().map(|p| p.path.as_path()));
@@ -1570,7 +1564,7 @@ pub fn apply_editor_window_icon(
 /// table.
 /// `Last`, so it runs after every other system in the final frame.
 ///
-/// Leaves through [`renzora::exit_now`], which skips libc's atexit chain and the
+/// Leaves through [`renzora_shell_api::exit_now`], which skips libc's atexit chain and the
 /// dynamic loader's destructors as well as the World — `std::process::exit` ran
 /// both, and they were seconds of their own.
 /// `RENZORA_FULL_TEARDOWN=1` restores the unwinding exit for debugging.
@@ -1593,14 +1587,14 @@ fn fast_exit_on_app_exit(mut exits: MessageReader<bevy::app::AppExit>) {
         bevy::app::AppExit::Error(n) => i32::from(n.get()),
     };
     info!("[exit] fast exit (code {code})");
-    renzora::exit_now(code);
+    renzora_shell_api::exit_now(code);
 }
 
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     // Runtime editor-vs-game signal for the dual-mode crates (they're compiled
     // without an `editor` cargo feature now, so they branch on this at runtime).
     // Must exist BEFORE the foundation plugins build — RuntimePlugin reads it.
-    app.insert_resource(renzora::EditorSession(is_editor));
+    app.insert_resource(renzora_project_api::EditorSession(is_editor));
 
     // ── Foundation (explicit, ordered) ─────────────────────────────────
     info!("[runtime] foundation: RuntimePlugin");
@@ -1714,7 +1708,7 @@ fn resolve_script_font(
 /// system family). Runs in the editor and shipped games.
 #[cfg(feature = "ui")]
 fn handle_font_script_actions(
-    trigger: On<renzora::ScriptAction>,
+    trigger: On<renzora_scripting_api::ScriptAction>,
     registry: Option<Res<renzora_ember::font::FontRegistry>>,
     asset: Res<AssetServer>,
     mut fonts: Option<ResMut<renzora_ember::font::EmberFonts>>,
@@ -1725,7 +1719,7 @@ fn handle_font_script_actions(
         return;
     }
     let name = match action.args.get("name") {
-        Some(renzora::ScriptActionValue::String(s)) => s.clone(),
+        Some(renzora_scripting_api::ScriptActionValue::String(s)) => s.clone(),
         _ => return,
     };
     let src = resolve_script_font(&name, registry.as_deref(), &asset);
@@ -1759,8 +1753,8 @@ fn handle_font_script_actions(
 #[cfg(feature = "ui")]
 fn apply_game_ui_font(
     mut done: Local<bool>,
-    session: Option<Res<renzora::EditorSession>>,
-    project: Option<Res<renzora::CurrentProject>>,
+    session: Option<Res<renzora_project_api::EditorSession>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     registry: Option<Res<renzora_ember::font::FontRegistry>>,
     asset: Res<AssetServer>,
     fonts: Option<ResMut<renzora_ember::font::EmberFonts>>,

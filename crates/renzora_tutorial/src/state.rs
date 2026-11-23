@@ -20,10 +20,10 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 use bevy::window::PrimaryWindow;
 
-use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::ViewportSettings;
-use renzora::core::{CurrentProject, PlayModeState, TutorialRequested};
-use renzora::WorldEnvironment;
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
+use renzora_viewport_api::ViewportSettings;
+use renzora_project_api::{CurrentProject, PlayModeState, TutorialRequested};
+use renzora_world_api::WorldEnvironment;
 use renzora_camera::OrbitCameraState;
 use renzora_code_editor::CodeEditorState;
 use renzora_editor_framework::EditorSelection;
@@ -823,7 +823,7 @@ fn count_assets(project: &CurrentProject) -> usize {
         "wesl", "toml",
     ];
     count_files(&project.path, |ext| {
-        ASSET_EXTS.contains(&ext) || renzora::is_image_extension(ext)
+        ASSET_EXTS.contains(&ext) || renzora_project_api::is_image_extension(ext)
     })
 }
 

@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_shell_api = { path = "../../api/renzora_shell_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
+renzora_log_api = { path = "../../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+# Registers "New Terrain Graph" in the create-file menu.
 renzora_editor_framework = { path = "../../renzora_editor_framework" }
 renzora_ember = { path = "../../renzora_ember" }
 renzora_undo = { path = "../../renzora_undo" }
@@ -14,3 +17,10 @@ renzora_terrain_graph = { path = ".." }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "TerrainGraphEditorPlugin"
+scope = "Editor"

@@ -1,0 +1,11 @@
+[package]
+name = "renzora_crash_api"
+version = "0.1.0"
+edition = "2021"
+description = "Panics the engine catches on purpose, and how the crash reporter tells them from real crashes: `catch`, `panic_will_be_caught`. Plugins see it as `renzora::core::recoverable`"
+
+# A contract layer with no dependencies at all.
+[dependencies]
+
+[lints]
+workspace = true

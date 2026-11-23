@@ -2,14 +2,28 @@
 name = "renzora_ember_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only markup editor (folded in from renzora_hui): the HTML-template entity preset + hierarchy icons + template-path inspector, and the bevy_ui style-component inspectors (Node/Background/Border/TextFont/TextColor/ImageNode) with markup writeback. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only markup editor (folded in from renzora_hui): the HTML-template entity preset + hierarchy icons + template-path inspector, and the bevy_ui style-component inspectors (Node/Background/Border/TextFont/TextColor/ImageNode) with markup writeback. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_shell_api = { path = "../../api/renzora_shell_api" }
+renzora_viewport_api = { path = "../../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../../api/renzora_scene_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = ".." }
 bevy_hui = { path = "../../../vendor/bevy_hui" }
 image = { version = "0.25", default-features = false }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "HuiEditorBundlePlugin"
+scope = "Editor"
+[[package.metadata.renzora.plugin]]
+type = "game_ui::GameUiEditorPlugin"
+scope = "Editor"

@@ -192,7 +192,7 @@ pub(crate) fn exit_prompt_buttons(
 
     if save {
         // Run the same Save the title bar uses, then exit once it lands.
-        commands.insert_resource(renzora::core::SaveSceneRequested);
+        commands.insert_resource(renzora_project_api::SaveSceneRequested);
         commands.insert_resource(PendingExitAfterSave);
     } else if discard {
         exit.write(AppExit::Success);
@@ -205,8 +205,8 @@ pub(crate) fn exit_prompt_buttons(
 /// unsaved), abort the exit instead of losing work.
 pub(crate) fn pending_exit_after_save(
     pending: Option<Res<PendingExitAfterSave>>,
-    save_req: Option<Res<renzora::core::SaveSceneRequested>>,
-    save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
+    save_req: Option<Res<renzora_project_api::SaveSceneRequested>>,
+    save_as_req: Option<Res<renzora_project_api::SaveAsSceneRequested>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
     mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
@@ -288,7 +288,7 @@ pub(crate) fn process_tab_close_request(
     // Bring the tab forward if it's in the background.
     if state.active_tab != idx {
         if let Some((old_id, new_id)) = state.activate_tab(idx) {
-            commands.insert_resource(renzora::TabSwitchRequest {
+            commands.insert_resource(renzora_project_api::TabSwitchRequest {
                 old_tab_id: old_id,
                 new_tab_id: new_id,
             });
@@ -335,7 +335,7 @@ pub(crate) fn close_tab_prompt_buttons(
 
     if save {
         // Save the now-foregrounded tab, then close it once the save lands.
-        commands.insert_resource(renzora::core::SaveSceneRequested);
+        commands.insert_resource(renzora_project_api::SaveSceneRequested);
         commands.insert_resource(PendingCloseAfterSave { id });
     } else if discard {
         if let Some(mut state) = state {
@@ -350,8 +350,8 @@ pub(crate) fn close_tab_prompt_buttons(
 /// tab is still dirty), abort the close instead of losing work.
 pub(crate) fn pending_close_after_save(
     pending: Option<Res<PendingCloseAfterSave>>,
-    save_req: Option<Res<renzora::core::SaveSceneRequested>>,
-    save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
+    save_req: Option<Res<renzora_project_api::SaveSceneRequested>>,
+    save_as_req: Option<Res<renzora_project_api::SaveAsSceneRequested>>,
     state: Option<ResMut<renzora_ui::DocumentTabState>>,
     mut commands: Commands,
 ) {
@@ -411,7 +411,7 @@ impl ProjectSwitch {
                 commands.queue(|w: &mut World| renzora_editor_framework::handle_open_project(w));
             }
             ProjectSwitch::Recent(path) => {
-                commands.insert_resource(renzora::RequestOpenProjectPath(path));
+                commands.insert_resource(renzora_project_api::RequestOpenProjectPath(path));
             }
         }
     }
@@ -444,12 +444,12 @@ pub(crate) struct SwitchPromptCancel;
 /// Handle a pending [`ProjectSwitchRequest`]: switch immediately when nothing is
 /// dirty, otherwise open the save-confirmation prompt.
 ///
-/// [`renzora::RequestSwitchProject`] is the same request made from outside the
+/// [`renzora_project_api::RequestSwitchProject`] is the same request made from outside the
 /// shell (the MCP plugin reopening a project to time its load), and is treated
 /// exactly as File > Recent Projects, so it gets the same prompt.
 pub(crate) fn process_project_switch_request(
     req: Option<Res<ProjectSwitchRequest>>,
-    external: Option<Res<renzora::RequestSwitchProject>>,
+    external: Option<Res<renzora_project_api::RequestSwitchProject>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
     fonts: Option<Res<EmberFonts>>,
     open: Query<(), With<SwitchPromptRoot>>,
@@ -465,7 +465,7 @@ pub(crate) fn process_project_switch_request(
             req.0.clone()
         }
         (None, Some(external)) => {
-            commands.remove_resource::<renzora::RequestSwitchProject>();
+            commands.remove_resource::<renzora_project_api::RequestSwitchProject>();
             ProjectSwitch::Recent(external.0.clone())
         }
         (None, None) => return,
@@ -532,7 +532,7 @@ pub(crate) fn switch_prompt_buttons(
     let Some(switch) = target else { return };
 
     if save {
-        commands.insert_resource(renzora::core::SaveSceneRequested);
+        commands.insert_resource(renzora_project_api::SaveSceneRequested);
         commands.insert_resource(PendingSwitchAfterSave(switch));
     } else if discard {
         switch.perform(&mut commands);
@@ -548,8 +548,8 @@ pub(crate) fn switch_prompt_buttons(
 /// throw this away" is still no.
 pub(crate) fn pending_switch_after_save(
     pending: Option<Res<PendingSwitchAfterSave>>,
-    save_req: Option<Res<renzora::core::SaveSceneRequested>>,
-    save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
+    save_req: Option<Res<renzora_project_api::SaveSceneRequested>>,
+    save_as_req: Option<Res<renzora_project_api::SaveAsSceneRequested>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
     mut commands: Commands,
 ) {

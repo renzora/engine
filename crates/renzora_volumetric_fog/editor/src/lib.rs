@@ -7,7 +7,7 @@
 
 use bevy::light::{FogVolume, VolumetricFog, VolumetricLight};
 use bevy::prelude::*;
-use renzora::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_volumetric_fog::VolumetricFogSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -42,10 +42,10 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora::tuple_color_field!("Color", VolumetricFogSettings, ambient_color),
-            renzora::float_field!("Ambient Intensity", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
-            renzora::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
-            renzora::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
+            renzora_editor_api::tuple_color_field!("Color", VolumetricFogSettings, ambient_color),
+            renzora_editor_api::float_field!("Ambient Intensity", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
+            renzora_editor_api::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
+            renzora_editor_api::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
         ],
     }
 }
@@ -180,15 +180,15 @@ fn fog_volume_entry() -> InspectorEntry {
             FieldDef::group(
                 "Sky Light",
                 vec![
-                    renzora::tuple_color_field!("Sky Color", VolumetricFogSettings, ambient_color),
-                    renzora::float_field!("Sky Brightness", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
+                    renzora_editor_api::tuple_color_field!("Sky Color", VolumetricFogSettings, ambient_color),
+                    renzora_editor_api::float_field!("Sky Brightness", VolumetricFogSettings, ambient_intensity, 0.01, 0.0, 4.0),
                 ],
             ),
             FieldDef::group(
                 "Quality",
                 vec![
-                    renzora::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
-                    renzora::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
+                    renzora_editor_api::int_field!("Step Count", VolumetricFogSettings, step_count, u32, 1.0, 8.0, 256.0),
+                    renzora_editor_api::float_field!("Jitter", VolumetricFogSettings, jitter, 0.01, 0.0, 1.0),
                 ],
             ),
         ],
@@ -207,5 +207,3 @@ impl Plugin for VolumetricFogEditorPlugin {
         app.register_entity_preset(fog_volume_preset());
     }
 }
-
-renzora::add!(VolumetricFogEditorPlugin, Editor);

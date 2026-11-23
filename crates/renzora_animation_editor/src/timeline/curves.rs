@@ -21,7 +21,7 @@ use bevy::prelude::*;
 use bevy::ui::ComputedNode;
 use renzora_ember::UiCursor;
 
-use renzora::{euler_slope_of_quat_tangent, quat_to_euler_deg, wrap_deg_near, ChannelSpline, Interp, KeyMode, TrackValue};
+use renzora_animation_api::{euler_slope_of_quat_tangent, quat_to_euler_deg, wrap_deg_near, ChannelSpline, Interp, KeyMode, TrackValue};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text_color};
@@ -134,7 +134,7 @@ pub(super) fn build_mode_switch(commands: &mut Commands, fonts: &EmberFonts) -> 
         .spawn((Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(2.0), padding: UiRect::all(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(7.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(window_bg()))))
         .id();
     for (curves, key, fallback) in [(false, "timeline.keys", "Keys"), (true, "timeline.curves", "Curves")] {
-        let b = seg_button(commands, fonts, &renzora::lang::t_or(key, fallback), ModeBtn(curves));
+        let b = seg_button(commands, fonts, &renzora_lang_api::t_or(key, fallback), ModeBtn(curves));
         bind_bg(commands, b, move |w| {
             let on = w.get_resource::<TimelineMode>().is_some_and(|m| m.curves == curves);
             if on {
@@ -172,7 +172,7 @@ pub(super) fn build_interp_buttons(commands: &mut Commands, fonts: &EmberFonts) 
 
     let groups = seg_group(commands);
     for (g, key, fallback) in [(0u8, "timeline.position", "Position"), (1, "timeline.rotation", "Rotation"), (2, "timeline.scale", "Scale")] {
-        let b = seg_button(commands, fonts, &renzora::lang::t_or(key, fallback), GroupBtn(g));
+        let b = seg_button(commands, fonts, &renzora_lang_api::t_or(key, fallback), GroupBtn(g));
         bind_bg(commands, b, move |w| {
             let on = w.get_resource::<TimelineMode>().is_some_and(|m| m.group == g);
             if on {
@@ -190,7 +190,7 @@ pub(super) fn build_interp_buttons(commands: &mut Commands, fonts: &EmberFonts) 
     for (c, label) in ["X", "Y", "Z", "W"].into_iter().enumerate() {
         let color = if c < 3 { channel_color(c as u8) } else { (200, 200, 210) };
         let b = seg_button(commands, fonts, label, ChannelBtn(c));
-        commands.entity(b).insert(HoverTooltip::new(renzora::lang::t_or("timeline.channel_tip", "Show or hide this channel's curve")));
+        commands.entity(b).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.channel_tip", "Show or hide this channel's curve")));
         bind_bg(commands, b, move |w| {
             let on = w.get_resource::<TimelineMode>().is_some_and(|m| !m.hidden[c]);
             if on {
@@ -216,7 +216,7 @@ pub(super) fn build_interp_buttons(commands: &mut Commands, fonts: &EmberFonts) 
     }
 
     // A bone key's mode.
-    let mode_label = commands.spawn((Text::new(renzora::lang::t_or("timeline.key_mode", "Key")), ui_font(&fonts.ui, 12.0), TextColor(rgb((154, 154, 166))), bevy::text::TextLayout::no_wrap())).id();
+    let mode_label = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.key_mode", "Key")), ui_font(&fonts.ui, 12.0), TextColor(rgb((154, 154, 166))), bevy::text::TextLayout::no_wrap())).id();
     let modes = seg_group(commands);
     for (mode, _, tip) in super::keymode::mode_choices() {
         let b = seg_button(commands, fonts, &super::keymode::mode_label_tr(mode, mode.label()), KeyModeBtn(mode));
@@ -237,7 +237,7 @@ pub(super) fn build_interp_buttons(commands: &mut Commands, fonts: &EmberFonts) 
     }
 
     // A property key's easing.
-    let label = commands.spawn((Text::new(renzora::lang::t_or("timeline.interpolation", "Interpolation")), ui_font(&fonts.ui, 12.0), TextColor(rgb((154, 154, 166))), bevy::text::TextLayout::no_wrap())).id();
+    let label = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.interpolation", "Interpolation")), ui_font(&fonts.ui, 12.0), TextColor(rgb((154, 154, 166))), bevy::text::TextLayout::no_wrap())).id();
     let interps = seg_group(commands);
     use bevy::curve::EaseFunction as E;
     for (interp, key, fallback) in [
@@ -245,8 +245,8 @@ pub(super) fn build_interp_buttons(commands: &mut Commands, fonts: &EmberFonts) 
         (Interp::Linear, "timeline.ease_linear", "Linear"),
         (Interp::Stepped, "timeline.ease_step", "Step"),
     ] {
-        let b = seg_button(commands, fonts, &renzora::lang::t_or(key, fallback), InterpBtn(interp));
-        commands.entity(b).insert(HoverTooltip::new(renzora::lang::t_or("timeline.interp_tip", "Apply to the selected property keys")));
+        let b = seg_button(commands, fonts, &renzora_lang_api::t_or(key, fallback), InterpBtn(interp));
+        commands.entity(b).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.interp_tip", "Apply to the selected property keys")));
         bind_bg(commands, b, move |w| {
             let world = w.untracked();
             let current = world.get_resource::<SelectedKey>().and_then(|s| s.0).and_then(|k| match k.lane {
@@ -265,9 +265,9 @@ pub(super) fn build_interp_buttons(commands: &mut Commands, fonts: &EmberFonts) 
         bind_display(commands, e, prop_selected);
     }
 
-    let fit_sel = text_btn(commands, fonts, &renzora::lang::t_or("timeline.frame_selected", "Frame selected"), FrameSelBtn);
-    commands.entity(fit_sel).insert(HoverTooltip::new(renzora::lang::t_or("timeline.frame_selected_tip", "Fit the view to the selected keys (F)")));
-    let fit = text_btn(commands, fonts, &renzora::lang::t_or("timeline.frame_all", "Frame all"), AnimBtn::FrameAll);
+    let fit_sel = text_btn(commands, fonts, &renzora_lang_api::t_or("timeline.frame_selected", "Frame selected"), FrameSelBtn);
+    commands.entity(fit_sel).insert(HoverTooltip::new(renzora_lang_api::t_or("timeline.frame_selected_tip", "Fit the view to the selected keys (F)")));
+    let fit = text_btn(commands, fonts, &renzora_lang_api::t_or("timeline.frame_all", "Frame all"), AnimBtn::FrameAll);
     commands.entity(wrap).add_children(&[groups, chans, mode_label, modes, label, interps, fit_sel, fit]);
     wrap
 }
@@ -433,9 +433,9 @@ pub(super) fn curve_set(clip: &renzora_animation::AnimClip, row: RowKind, group:
             let raw: Vec<Vec4> = keys.iter().map(|k| k.1).collect();
             let vals: Vec<[f32; 3]> = if group == 1 { unwrapped_euler(&raw) } else { raw.iter().map(|v| v.truncate().to_array()).collect() };
             let name = match group {
-                0 => renzora::lang::t_or("timeline.position", "Position"),
-                1 => renzora::lang::t_or("timeline.rotation", "Rotation"),
-                _ => renzora::lang::t_or("timeline.scale", "Scale"),
+                0 => renzora_lang_api::t_or("timeline.position", "Position"),
+                1 => renzora_lang_api::t_or("timeline.rotation", "Rotation"),
+                _ => renzora_lang_api::t_or("timeline.scale", "Scale"),
             };
             let chans = (0..3)
                 .filter(|c| !hidden[*c])
@@ -481,7 +481,7 @@ pub(super) fn curve_set(clip: &renzora_animation::AnimClip, row: RowKind, group:
             let raw: Vec<Vec4> = m.keys.iter().map(|k| Vec4::new(k.1, 0.0, 0.0, 0.0)).collect();
             bone = Some(BoneCurves { spline: m.spline(), modes: (0..raw.len()).map(|i| m.key_curve(i).mode).collect(), raw, rotation: false });
             let chans = vec![Channel { label: "", color: MORPH, keys: m.keys.clone(), lane, comp: 0 }];
-            (format!("{} · {}", m.label(), renzora::lang::t_or("timeline.blend_shape", "Blend shape")), "", chans)
+            (format!("{} · {}", m.label(), renzora_lang_api::t_or("timeline.blend_shape", "Blend shape")), "", chans)
         }
     };
     let (vmin, vmax) = span_of(channels.iter().flat_map(|c| c.keys.iter().map(|k| k.1)));
@@ -514,7 +514,7 @@ impl CurveSet {
         match ch.lane {
             Lane::Prop { track } => {
                 let p = clip.property_tracks.get(track)?;
-                renzora::sample_property_track(p, t).map(|v| comps(&v).get(ch.comp).copied().unwrap_or(0.0))
+                renzora_animation_api::sample_property_track(p, t).map(|v| comps(&v).get(ch.comp).copied().unwrap_or(0.0))
             }
             Lane::Bone { .. } | Lane::Morph { .. } => {
                 let b = self.bone.as_ref()?;
@@ -697,7 +697,7 @@ pub(super) fn curves_snapshot(world: &Rx) -> KeyedSnapshot {
     let mut elems: Vec<CurveElem> = Vec::new();
 
     let Some(set) = current_set(w) else {
-        elems.push(CurveElem::Text(width * 0.5 - 120.0, height * 0.5 - 8.0, renzora::lang::t_or("timeline.curves_pick_track", "Select a track on the left to see its curves"), (138, 138, 150), 12.0));
+        elems.push(CurveElem::Text(width * 0.5 - 120.0, height * 0.5 - 8.0, renzora_lang_api::t_or("timeline.curves_pick_track", "Select a track on the left to see its curves"), (138, 138, 150), 12.0));
         return build_snapshot(elems);
     };
     let frame = frame_of(w, &set, height);
@@ -934,7 +934,7 @@ pub(super) fn curves_hover(world: &mut World) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::{BoneTrack, KeyCurve};
+    use renzora_animation_api::{BoneTrack, KeyCurve};
 
     fn clip_with_spin() -> renzora_animation::AnimClip {
         let mut c = renzora_animation::extract::create_empty_clip("c", 2.0);

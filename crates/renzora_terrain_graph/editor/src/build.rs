@@ -93,7 +93,7 @@ pub fn start_builds(world: &mut World) {
         let state = match start(world, r.terrain) {
             Ok(()) => BuildState::Running { progress: 0.0 },
             Err(error) => {
-                renzora::console_log::console_warn("Terrain Graph", format!("build failed: {error}"));
+                renzora_log_api::console_warn("Terrain Graph", format!("build failed: {error}"));
                 BuildState::Failed { error }
             }
         };
@@ -132,11 +132,11 @@ pub fn poll_builds(world: &mut World) {
             Ok(_) if world.get_entity(terrain).is_err() => BuildState::Cancelled,
             Ok(result) => match renzora_terrain_graph::world::commit(world, terrain, &result, "Build Terrain Graph") {
                 Ok(summary) => {
-                    renzora::console_log::console_info("Terrain Graph", summary.clone());
+                    renzora_log_api::console_info("Terrain Graph", summary.clone());
                     BuildState::Done { summary }
                 }
                 Err(error) => {
-                    renzora::console_log::console_warn("Terrain Graph", format!("build failed: {error}"));
+                    renzora_log_api::console_warn("Terrain Graph", format!("build failed: {error}"));
                     BuildState::Failed { error }
                 }
             },
@@ -162,7 +162,7 @@ pub fn cancel_build(world: &mut World, terrain: Entity) {
 pub fn build_open_graph(world: &mut World) {
     let Some(path) = world.resource::<TerrainGraphEditorState>().path.clone() else { return };
     let Some(terrain) = target_terrain(world) else {
-        renzora::console_log::console_warn("Terrain Graph", "select a terrain to build this graph into");
+        renzora_log_api::console_warn("Terrain Graph", "select a terrain to build this graph into");
         return;
     };
     let mut generator = world.get::<TerrainGenerator>(terrain).cloned().unwrap_or_else(|| TerrainGenerator::new("", 1337));

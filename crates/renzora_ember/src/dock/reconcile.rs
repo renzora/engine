@@ -473,7 +473,7 @@ fn build_tree(
             let ic = icon_text(commands, phosphor, "plus", text_muted(), 14.0);
             let t = commands
                 .spawn((
-                    Text::new(renzora::lang::t("menu.add_panel")),
+                    Text::new(renzora_lang_api::t("menu.add_panel")),
                     ui_font(font, 13.0),
                     TextColor(rgb(text_muted())),
                 ))
@@ -684,7 +684,7 @@ pub(crate) fn add_panel_click(
     q: Query<(&UiInteraction, &AddPanelButton), Changed<UiInteraction>>,
     leaves: Query<&DockLeaf>,
     fonts: Option<Res<EmberFonts>>,
-    registry: Option<Res<renzora::core::ShellPanelRegistry>>,
+    registry: Option<Res<renzora_shell_api::ShellPanelRegistry>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else {
@@ -702,7 +702,7 @@ pub(crate) fn add_panel_click(
             .unwrap_or_default();
         let mut entries: Vec<crate::widgets::SearchEntry> = Vec::new();
         if let Some(reg) = &registry {
-            let mut items: Vec<(&String, &renzora::core::ShellPanelInfo)> =
+            let mut items: Vec<(&String, &renzora_shell_api::ShellPanelInfo)> =
                 reg.panels.iter().collect();
             items.sort_by(|a, b| a.1.title.cmp(&b.1.title));
             for (id, info) in items {
@@ -729,10 +729,10 @@ pub(crate) fn add_panel_click(
                     .chars()
                     .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
                     .collect();
-                let category = renzora::lang::t_or(&format!("panel.cat.{}", slug), &category_en);
+                let category = renzora_lang_api::t_or(&format!("panel.cat.{}", slug), &category_en);
                 // Localized panel display name — reuses the `panel.<id>` keys seeded
                 // by the chrome pass; falls back to the registry's English title.
-                let label = renzora::lang::t_or(&format!("panel.{}", id), &info.title);
+                let label = renzora_lang_api::t_or(&format!("panel.{}", id), &info.title);
                 entries.push(crate::widgets::SearchEntry::new(
                     icon,
                     label,
@@ -784,7 +784,7 @@ pub(crate) fn add_panel_click(
                 ));
             }
         }
-        let title = renzora::lang::t("menu.add_panel");
+        let title = renzora_lang_api::t("menu.add_panel");
         crate::widgets::grid_overlay(&mut commands, &fonts, &title, entries);
     }
 }

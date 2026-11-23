@@ -112,7 +112,7 @@ pub enum CompareOp {
 /// header. The contract crate's test, so the editor's drop targets and the
 /// renderer agree on what is an effect.
 pub fn is_effect(source: &str) -> bool {
-    renzora::is_effect_source(source)
+    renzora_render_api::is_effect_source(source)
 }
 
 /// Parse an effect. `fallback_name` names it when the header does not, and
@@ -279,7 +279,7 @@ pub fn parse(source: &str, fallback_name: &str) -> Result<EffectInfo, String> {
 
 impl EffectInfo {
     /// The settings buffer for one effect instance.
-    pub fn pack(&self, effect: &renzora::PostEffect, time: f32) -> Vec<u8> {
+    pub fn pack(&self, effect: &renzora_render_api::PostEffect, time: f32) -> Vec<u8> {
         let mut bytes = vec![0u8; self.uniform_size as usize];
         for f in &self.fields {
             let value = match f.role {
@@ -300,7 +300,7 @@ impl EffectInfo {
     }
 
     /// Whether the snapshot should hold its frame this frame.
-    pub fn frozen(&self, effect: &renzora::PostEffect) -> bool {
+    pub fn frozen(&self, effect: &renzora_render_api::PostEffect) -> bool {
         let Some(rule) = &self.freeze else {
             return false;
         };
@@ -604,7 +604,7 @@ pub fn title_case(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::PostEffect;
+    use renzora_render_api::PostEffect;
 
     const CRT: &str = r#"
 // @effect(name = "CRT", icon = "television-simple")

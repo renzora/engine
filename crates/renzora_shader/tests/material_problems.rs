@@ -3,7 +3,7 @@
 //! asserted is what the editor's Problems panel shows.
 
 use bevy::prelude::*;
-use renzora::content_problems::{ContentProblems, ProblemSeverity};
+use renzora_diagnostics_api::content_problems::{ContentProblems, ProblemSeverity};
 use renzora_shader::material::graph::{MaterialDomain, MaterialGraph, PinValue};
 use renzora_shader::material::material_ref::MaterialRef;
 use renzora_shader::material::resolver::{MaterialCache, MaterialResolved};
@@ -124,14 +124,14 @@ impl Fixture {
                 renzora_shader::material::resolver::MaterialResolverPlugin,
             ));
         });
-        app.insert_resource(renzora::CurrentProject {
+        app.insert_resource(renzora_project_api::CurrentProject {
             path: dir.clone(),
             config: Default::default(),
         });
         // The Problems-panel validator only runs in an editor session, so a
         // fixture that asserts on its output has to be one. `renzora_runtime`
         // inserts this in a real app; a headless test has no runtime setup.
-        app.insert_resource(renzora::EditorSession(is_editor));
+        app.insert_resource(renzora_project_api::EditorSession(is_editor));
 
         wait_for_shader_libraries(&mut app);
 
@@ -246,7 +246,7 @@ impl Fixture {
             .unwrap_or(0)
     }
 
-    fn problems(&self) -> Vec<renzora::content_problems::ContentProblem> {
+    fn problems(&self) -> Vec<renzora_diagnostics_api::content_problems::ContentProblem> {
         self.app
             .world()
             .resource::<ContentProblems>()
@@ -386,8 +386,8 @@ fn a_broken_material_is_reported_against_its_own_path() {
 /// panel alone leaves anyone watching the console blind.
 #[test]
 fn a_broken_material_reaches_the_console() {
-    renzora::console_log::init_global_log_buffer();
-    let buffer = renzora::console_log::get_global_log_buffer().unwrap();
+    renzora_log_api::init_global_log_buffer();
+    let buffer = renzora_log_api::get_global_log_buffer().unwrap();
 
     let mut f = Fixture::new("console");
     f.write(BROKEN);
@@ -400,7 +400,7 @@ fn a_broken_material_reaches_the_console() {
     let reached_console = || {
         let entries = buffer.0.lock().expect("console buffer");
         entries.iter().any(|e| {
-            e.level == renzora::console_log::LogLevel::Error
+            e.level == renzora_log_api::LogLevel::Error
                 && e.category == "Material"
                 && e.message.contains("t.material")
                 && e.message.contains("no_such_symbol")

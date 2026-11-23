@@ -30,7 +30,7 @@
 //! widget drawn over every panel's content: the scrollbar inside it.
 //!
 //! The flag itself is defined in the contract crate
-//! ([`renzora::core::resize`]) and re-exported here, because consumers of it
+//! ([`renzora_platform_api::resize`]) and re-exported here, because consumers of it
 //! reach past the UI crates entirely — the viewport's picking lives in
 //! `renzora_gizmo`, which links no UI crate. This module keeps what only makes
 //! sense next to bevy_ui: the handle marker and the refresh.
@@ -42,7 +42,7 @@ use bevy::ui::UiSystems;
 
 use crate::UiInteraction;
 
-pub use renzora::core::resize::ResizeBusy;
+pub use renzora_platform_api::resize::ResizeBusy;
 
 /// Marks a node whose press starts a resize gesture: a dock split's divider
 /// handle, a leaf's tab-bar filler (which doubles as one), the global bottom

@@ -37,6 +37,7 @@ strength, tint and fresnel you set.
 | Works on any surface shape | Flat surfaces only | Any surface |
 | Cost | One extra scene render per visible mirror | One screen-space pass for the whole view |
 | Needs the deferred renderer | No | Yes |
+| Works on mirror-smooth surfaces | Yes | Yes, any roughness up to about 0.6 |
 
 Use a planar reflection where the reflection is the point: mirrors, windows you
 look at head on, a marble floor in a hall, a calm water surface. Use SSR for the

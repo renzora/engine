@@ -27,7 +27,7 @@ use renzora_net::{Backend, BackendInfo, Caps, Event, EventKind};
 /// ran.
 #[derive(Default)]
 struct Fake {
-    pending: Vec<renzora::net_backend::Request>,
+    pending: Vec<renzora_net_api::net_backend::Request>,
 }
 
 impl Backend for Fake {
@@ -44,7 +44,7 @@ impl Backend for Fake {
 
     fn start(
         &mut self,
-        request: &renzora::net_backend::Request,
+        request: &renzora_net_api::net_backend::Request,
         body: &[u8],
     ) -> Result<(), String> {
         let mut request = request.clone();
@@ -259,7 +259,7 @@ impl Backend for Panics {
     fn init(&mut self) -> Result<BackendInfo, String> {
         Ok(BackendInfo { agent: "panics/1".to_string(), caps: Caps::CANCEL })
     }
-    fn start(&mut self, _request: &renzora::net_backend::Request, _body: &[u8]) -> Result<(), String> {
+    fn start(&mut self, _request: &renzora_net_api::net_backend::Request, _body: &[u8]) -> Result<(), String> {
         Ok(())
     }
     fn poll(&mut self) -> Vec<Event> {

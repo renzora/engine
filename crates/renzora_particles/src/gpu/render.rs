@@ -81,7 +81,7 @@ pub fn build(app: &mut App) {
     }
     let support = app.world_mut().get_resource_or_insert_with(GpuSupport::default).clone();
     let Some(mut shaders) = app.world_mut().get_resource_mut::<Assets<Shader>>() else { return };
-    let shader = shaders.add(renzora::shader_source::shader(kernels_source(), "renzora_particles/gpu/kernels.wgsl"));
+    let shader = shaders.add(renzora_shader_api::shader_source::shader(kernels_source(), "renzora_particles/gpu/kernels.wgsl"));
     app.insert_resource(GpuCommonShader(shader.clone()));
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else { return };
     render_app

@@ -23,7 +23,7 @@
 //!
 //! # What has not changed
 //!
-//! The contract. This implements `renzora::audio_backend::Backend` and installs
+//! The contract. This implements `renzora_audio_api::audio_backend::Backend` and installs
 //! itself with one `add_audio_backend` call, taking the ordinary registration
 //! slot and being reported like any other backend. Nothing in the engine knows
 //! this one is compiled in, which is what lets a second backend (WebAudio on
@@ -109,9 +109,9 @@ impl bevy::app::Plugin for RenzoraAudioPlugin {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut bevy::app::App) {
-        // One call. `RenzoraAudio` implements `renzora::audio_backend::Backend`
+        // One call. `RenzoraAudio` implements `renzora_audio_api::audio_backend::Backend`
         // and this hands it over; the audio link adopts it and runs `init`.
-        renzora::audio_backend::AppAudioBackendExt::add_audio_backend(
+        renzora_audio_api::audio_backend::AppAudioBackendExt::add_audio_backend(
             app,
             crate::backend::RenzoraAudio::default(),
         );
@@ -123,7 +123,6 @@ impl bevy::app::Plugin for RenzoraAudioPlugin {
 // job. `Runtime` is what puts the mixer in a shipped game as well as the editor,
 // which is the property the plugin form was supposed to provide and could not
 // guarantee.
-renzora::add!(RenzoraAudioPlugin);
 
 #[cfg(test)]
 mod tests;

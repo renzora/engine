@@ -255,8 +255,8 @@ pub fn register(app: &mut App) {
     // Bridge to the timeline editor's per-property keyframe buttons.
     // `init_resource` is idempotent — the timeline editor inits these too, so
     // they exist whichever crate loads first (and stay default when it's absent).
-    app.init_resource::<renzora::ActiveTimeline>();
-    app.init_resource::<renzora::KeyframeRequests>();
+    app.init_resource::<renzora_editor_api::ActiveTimeline>();
+    app.init_resource::<renzora_editor_api::KeyframeRequests>();
     // `scroll: false` — we manage scrolling ourselves so the top bar (Add
     // Component + filter input + expand-all) stays *fixed* while only the
     // component list scrolls.

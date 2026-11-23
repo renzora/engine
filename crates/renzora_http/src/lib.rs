@@ -15,7 +15,7 @@
 //! That argument is about **games**, and it still holds — nothing here changes
 //! how a game gets its client. What it never covered is the editor, which is not
 //! a program that might want a network stack. Nine crates reach for
-//! `renzora_net::Request`: the marketplace, the update check, the update
+//! `renzora_net_api::net::Request`: the marketplace, the update check, the update
 //! installer, engine-source and runtime-template downloads, toolchain
 //! provisioning, the splash's release feed, the markdown widget and scripting.
 //! Remove the client and all nine fail at once, in nine unrelated-looking ways.
@@ -69,9 +69,9 @@ impl bevy::app::Plugin for RenzoraHttpPlugin {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut bevy::app::App) {
-        // One call. `Ureq` implements `renzora::net_backend::Backend` and this
+        // One call. `Ureq` implements `renzora_net_api::net_backend::Backend` and this
         // hands it over; the pump adopts it on the next frame and runs `init`.
-        renzora_net::AppNetBackendExt::add_net_backend(app, crate::client::Ureq::default());
+        renzora_net_api::net_backend::AppNetBackendExt::add_net_backend(app, crate::client::Ureq::default());
     }
 }
 
@@ -79,4 +79,3 @@ impl bevy::app::Plugin for RenzoraHttpPlugin {
 // into the editor's generated plugin list, so adding the crate is the whole job
 // — and `Editor` is what keeps the client out of a shipped game, which is the
 // property the plugin form was protecting.
-renzora::add!(RenzoraHttpPlugin, Editor);

@@ -96,7 +96,7 @@ mod enabled {
         let project_toml = std::path::PathBuf::from("project.toml");
         if project_toml.exists() {
             if let Ok(content) = std::fs::read_to_string(&project_toml) {
-                if let Ok(project_config) = toml::from_str::<renzora::ProjectConfig>(&content) {
+                if let Ok(project_config) = toml::from_str::<renzora_project_api::ProjectConfig>(&content) {
                     if let Some(net) = &project_config.network {
                         if !args.iter().any(|a| a == "--port") {
                             config.port = net.port;

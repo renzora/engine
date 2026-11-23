@@ -8,7 +8,7 @@ use bevy::curve::iterable::IterableCurve;
 use bevy::curve::UnevenSampleAutoCurve;
 use bevy::prelude::*;
 
-use renzora::ChannelSpline;
+use renzora_animation_api::ChannelSpline;
 
 use crate::clip::AnimClip;
 
@@ -171,9 +171,9 @@ pub fn to_animation_clip(anim_clip: &AnimClip) -> AnimationClip {
 /// the animator) and a blend shape clip plays on any model whose face mesh
 /// has the same name.
 pub fn morph_curves(anim_clip: &AnimClip) -> Vec<(bevy::animation::AnimationTargetId, MorphWeightsCurve)> {
-    let mut groups: Vec<(String, Vec<&renzora::MorphTrack>)> = Vec::new();
+    let mut groups: Vec<(String, Vec<&renzora_animation_api::MorphTrack>)> = Vec::new();
     for track in anim_clip.morph_tracks.iter().filter(|t| !t.muted && !t.keys.is_empty()) {
-        let key = renzora::sanitize_id(&track.target);
+        let key = renzora_scene_api::sanitize_id(&track.target);
         match groups.iter_mut().find(|(k, _)| *k == key) {
             Some((_, tracks)) => tracks.push(track),
             None => groups.push((key, vec![track])),
@@ -283,7 +283,7 @@ impl Curve<Quat> for QuatSpline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::{BoneTrack, KeyCurve, KeyMode};
+    use renzora_animation_api::{BoneTrack, KeyCurve, KeyMode};
 
     fn track(mode: Option<KeyMode>) -> BoneTrack {
         let mut t = BoneTrack::new("hips");
@@ -318,8 +318,8 @@ mod tests {
         assert_eq!(built.curves().len(), 1);
     }
 
-    fn morph(target: &str, index: usize, keys: Vec<(f32, f32)>) -> renzora::MorphTrack {
-        let mut m = renzora::MorphTrack::new(target, index, "");
+    fn morph(target: &str, index: usize, keys: Vec<(f32, f32)>) -> renzora_animation_api::MorphTrack {
+        let mut m = renzora_animation_api::MorphTrack::new(target, index, "");
         m.keys = keys;
         m
     }

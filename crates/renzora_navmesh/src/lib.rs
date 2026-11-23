@@ -280,7 +280,7 @@ fn sync_terrain_obstacles(
         }
 
         if obstacle_count > 0 {
-            renzora::clog_info!(
+            renzora_log_api::clog_info!(
                 "NavMesh",
                 "Injected {obstacle_count} terrain slope obstacles (step={}, max_slope={}deg)",
                 volume.terrain_sample_step,
@@ -380,7 +380,7 @@ fn update_agent_paths(
                          outside the volume bounds"
                     );
                     warn!("[nav] {msg}");
-                    renzora::clog_warn!("NavMesh", "{msg}");
+                    renzora_log_api::clog_warn!("NavMesh", "{msg}");
                     path.waypoints.clear();
                     continue;
                 }
@@ -390,13 +390,13 @@ fn update_agent_paths(
                          inside a wall, or outside the volume bounds"
                     );
                     warn!("[nav] {msg}");
-                    renzora::clog_warn!("NavMesh", "{msg}");
+                    renzora_log_api::clog_warn!("NavMesh", "{msg}");
                     path.waypoints.clear();
                     continue;
                 }
                 match find_path(navmesh, from, dest) {
                     Some(wps) => {
-                        renzora::clog_info!(
+                        renzora_log_api::clog_info!(
                             "NavMesh",
                             "Agent {entity:?} heading to ({:.1}, {:.1}, {:.1}) — {} waypoints",
                             dest.x,
@@ -413,7 +413,7 @@ fn update_agent_paths(
                              (corridor may be narrower than agent_radius)"
                         );
                         warn!("[nav] {msg}");
-                        renzora::clog_warn!("NavMesh", "{msg}");
+                        renzora_log_api::clog_warn!("NavMesh", "{msg}");
                         path.waypoints.clear();
                     }
                 }
@@ -457,7 +457,7 @@ fn advance_agents(
                     "[nav] Agent {entity:?} arrived at ({:.1}, {:.1}, {:.1})",
                     dest.x, dest.y, dest.z
                 );
-                renzora::clog_success!(
+                renzora_log_api::clog_success!(
                     "NavMesh",
                     "Agent {entity:?} arrived at ({:.1}, {:.1}, {:.1})",
                     dest.x,
@@ -557,8 +557,8 @@ fn update_nav_read_state(mut q: Query<(&NavAgent, &NavPath, &GlobalTransform, &m
     }
 }
 
-fn handle_nav_script_actions(trigger: On<renzora::ScriptAction>, mut agents: Query<&mut NavAgent>) {
-    use renzora::ScriptActionValue;
+fn handle_nav_script_actions(trigger: On<renzora_scripting_api::ScriptAction>, mut agents: Query<&mut NavAgent>) {
+    use renzora_scripting_api::ScriptActionValue;
     let action = trigger.event();
     match action.name.as_str() {
         "nav_set_destination" => {
@@ -595,7 +595,7 @@ pub struct NavMeshPlugin;
 impl Plugin for NavMeshPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] NavMeshPlugin");
-        renzora::clog_info!("NavMesh", "NavMeshPlugin loaded");
+        renzora_log_api::clog_info!("NavMesh", "NavMeshPlugin loaded");
         app.register_type::<NavMeshVolume>()
             .register_type::<NavMeshObstacle>()
             .register_type::<NavAgent>()
@@ -610,7 +610,7 @@ impl Plugin for NavMeshPlugin {
                     sync_volume_changes,
                     // Agents only walk during Play; while editing, one with a
                     // saved target used to set off across the scene.
-                    (update_agent_paths, advance_agents).run_if(renzora::core::game_running),
+                    (update_agent_paths, advance_agents).run_if(renzora_project_api::game_running),
                     auto_init_nav_read_state,
                     update_nav_read_state,
                     draw_agent_paths,
@@ -651,14 +651,13 @@ impl Plugin for NavMeshPlugin {
 // `renzora_navmesh_editor` crate (Editor scope). Previously NavMeshPlugin was
 // never registered at all (no `add!`), so navmesh was dormant — this activates
 // it. See [`ShowAgentPathsOverride`] for the editor↔runtime gizmo seam.
-renzora::add!(NavMeshPlugin, Runtime);
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    use renzora::{ScriptAction, ScriptActionValue};
+    use renzora_scripting_api::{ScriptAction, ScriptActionValue};
     use renzora_test_harness::{minimal_app, pump, with_manual_time};
 
     // ── settings derived from the volume ─────────────────────────────────────

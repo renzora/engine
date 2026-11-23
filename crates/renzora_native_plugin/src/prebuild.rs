@@ -184,7 +184,7 @@ pub fn needed() -> bool {
     if !stale_marketplace_plugins(&root).is_empty() {
         return true;
     }
-    let disabled = renzora::load_disabled_plugins();
+    let disabled = renzora_project_api::load_disabled_plugins();
     let sdk = Sdk::load(crate::sdk_dir(&root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     for p in crate::plugin_entries(&root) {
@@ -285,7 +285,7 @@ fn stale_marketplace_plugins(root: &Path) -> Vec<(PathBuf, String)> {
     };
     let sdk = Sdk::load(crate::sdk_dir(root)).ok();
     let writable = renzora_native_build::install::plugins_write_dir(root);
-    let disabled = renzora::load_disabled_plugins();
+    let disabled = renzora_project_api::load_disabled_plugins();
     crate::plugin_entries(root)
         .into_iter()
         .filter(|p| p.parent() == Some(writable.as_path()))
@@ -394,7 +394,7 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     // The same list the loader will walk, minus the plugins the user switched
     // off — compiling one of those would be work for something that will not run.
-    let disabled = renzora::load_disabled_plugins();
+    let disabled = renzora_project_api::load_disabled_plugins();
     let mut pending: Vec<PathBuf> = Vec::new();
     for p in crate::plugin_entries(root) {
         if disabled.iter().any(|d| d == &name_of(&p)) {
@@ -630,7 +630,7 @@ pub fn build_installed(
 ) -> Result<InstalledBuild, String> {
     let Some(root) = exe_dir() else { return Ok(InstalledBuild::Deferred) };
     let Ok(sdk) = Sdk::load(crate::sdk_dir(&root)) else { return Ok(InstalledBuild::Deferred) };
-    if !is_native_source(plugin) || renzora::load_disabled_plugins().iter().any(|d| *d == name_of(plugin)) {
+    if !is_native_source(plugin) || renzora_project_api::load_disabled_plugins().iter().any(|d| *d == name_of(plugin)) {
         return Ok(InstalledBuild::Deferred);
     }
     let stamp = sdk.stamp();
@@ -664,13 +664,13 @@ pub fn build_installed(
 /// the marketplace needs the same restart for the same reason and should not
 /// have to reach into the prebuild module to get it.
 ///
-/// Desktop-only, following `renzora::restart_process`, which is: a page has no
+/// Desktop-only, following `renzora_shell_api::restart_process`, which is: a page has no
 /// process to relaunch. Both callers already gate the block they use it from,
 /// and on the web [`needed`] answers false anyway — there is no SDK beside a
 /// bundle and nothing a browser could compile if there were.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn restart() -> ! {
-    renzora::restart_process()
+    renzora_shell_api::restart_process()
 }
 
 #[cfg(test)]

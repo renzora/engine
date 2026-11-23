@@ -801,7 +801,7 @@ pub(crate) struct PbrMaterialDef {
     /// Extended PBR channels (clearcoat, transmission, ior, anisotropy) read
     /// from modern FBX PBR materials. Texture URIs are model-relative, resolved
     /// at extraction time. Default for legacy Phong / OBJ.
-    pub advanced: renzora::core::PbrAdvanced,
+    pub advanced: renzora_scene_api::PbrAdvanced,
 }
 
 /// glTF's three transparency modes. Kept as its own type rather than a bool so
@@ -1360,6 +1360,21 @@ fn pack_embedded_images(root: &mut gltf_json::Root, bundle: &MaterialBundle, bin
         });
         if let Some(image) = root.images.get_mut(i) {
             image.buffer_view = Some(Index::new(view as u32));
+            // glTF requires a type on an image in a buffer view, and the `gltf`
+            // crate panics reading one without it. A format with no glTF type
+            // (TIFF, say) is left without one: the texture pass bakes it into an
+            // `.rmip` and drops the buffer view, and the model loader blanks
+            // whatever is still left (`renzora_rvg::model`).
+            let mime = match crate::gltf_pass::sniff_image_extension(bytes) {
+                "png" => Some("image/png"),
+                "jpg" => Some("image/jpeg"),
+                "webp" => Some("image/webp"),
+                "gif" => Some("image/gif"),
+                "bmp" => Some("image/bmp"),
+                "dds" => Some("image/vnd-ms.dds"),
+                _ => None,
+            };
+            image.mime_type = mime.map(|m| gltf_json::image::MimeType(m.to_string()));
         }
     }
 
@@ -1551,7 +1566,7 @@ mod tests {
                 metallic_roughness_texture: None,
                 alpha: AlphaKind::Opaque,
                 double_sided: false,
-                advanced: renzora::core::PbrAdvanced::default(),
+                advanced: renzora_scene_api::PbrAdvanced::default(),
             }],
             textures: Vec::new(),
         };
@@ -1582,7 +1597,7 @@ mod tests {
             metallic_roughness_texture: None,
             alpha: AlphaKind::Opaque,
             double_sided: false,
-            advanced: renzora::core::PbrAdvanced::default(),
+            advanced: renzora_scene_api::PbrAdvanced::default(),
         }
     }
 

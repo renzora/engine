@@ -22,9 +22,9 @@
 //! That last measurement is the whole argument. An `.rlib` is an `ar` archive of
 //! exactly two things: `lib.rmeta`, the crate's metadata, and the object code
 //! `rustc` produced for it. A plugin build consumes only the first — it
-//! typechecks against the metadata and takes the *code* from the three shared
-//! images (`bevy_dylib`, `renzora_dylib`, `renzora_ember_dylib`), which is the
-//! point of them existing. The object half is dead weight in this directory:
+//! typechecks against the metadata and takes the *code* from the two shared
+//! images (`bevy_dylib`, and `renzora_dylib`, which carries the UI framework
+//! too), which is the point of them existing. The object half is dead weight in this directory:
 //! 3325 MB of staged rlib against 1492 MB of the metadata inside it.
 //!
 //! So [`metadata_only`] swaps each `.rlib` cargo names for the sibling `.rmeta`
@@ -47,9 +47,11 @@
 //! no silent path: a crate that needed its objects and lost them is a hard
 //! error naming the crate.
 //!
-//! Staged metadata is sound because all 950 of these crates are inside
-//! `bevy_dylib`, `renzora_dylib` or `renzora_ember_dylib`. That is what those
-//! images ARE.
+//! Staged metadata is sound because every one of these crates is inside
+//! `bevy_dylib` or `renzora_dylib`. That is what those images ARE. It is also
+//! why only those crates are staged: the units `renzora_dylib` was linked from
+//! (see `unit_closure`), about 400 of them, rather than every crate the
+//! workspace built.
 //!
 //! # The one crate that keeps its `.rlib`
 //!
@@ -116,7 +118,7 @@
 //! `compiler-artifact` lines name the exact files this build produced. That is
 //! the only source that is right by construction.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
@@ -240,7 +242,6 @@ pub fn build_from(
     for (what, got) in [
         ("bevy", &externs.bevy),
         ("renzora", &externs.renzora),
-        ("renzora_ember", &externs.ember),
     ] {
         if got.is_none() {
             eprintln!(
@@ -342,9 +343,10 @@ fn outputs_key(profile_dir: &Path, plat: &Platform) -> String {
         format!("{}renzora_editor.{}", plat.lib_prefix, plat.ext),
         format!("{}bevy_dylib.{}", plat.lib_prefix, plat.ext),
         format!("{}renzora_dylib.{}", plat.lib_prefix, plat.ext),
-        format!("{}renzora_ember_dylib.{}", plat.lib_prefix, plat.ext),
     ];
-    let mut key = String::new();
+    // The staging rules themselves, so changing what gets staged (and how)
+    // restages an SDK cut by the old rules even when no engine output moved.
+    let mut key = format!("rules:{STAGING_RULES};");
     for name in names {
         let meta = std::fs::metadata(profile_dir.join(&name)).ok();
         let len = meta.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -356,6 +358,112 @@ fn outputs_key(profile_dir: &Path, plat: &Platform) -> String {
         key.push_str(&format!("{name}:{len}:{secs};"));
     }
     key
+}
+
+/// Bump when the rules for what is staged, or how, change. Part of
+/// [`outputs_key`], so an SDK staged under older rules is never mistaken for
+/// current just because the engine outputs did not move.
+///
+/// 2: only the crates a plugin can reach (see [`plugin_closure`]), and an
+///    uplifted `.rlib`'s metadata found at its hashed twin (see
+///    [`metadata_only`]).
+/// 3: of each reachable crate, only the build units `renzora_dylib` linked (see
+///    [`unit_closure`]), and native library directories only for reachable
+///    packages.
+/// 4: the manifest lists `shared_images`, the engine's own images, so a release
+///    can ship them once.
+const STAGING_RULES: &str = "4";
+
+/// The library crates a plugin can reach: everything `renzora_dylib` depends
+/// on, through normal edges, under the exact feature resolution of the build
+/// being staged. That includes the `bevy` facade, `bevy_dylib`, every contract
+/// layer and the UI framework, and the proc-macros their code expands.
+///
+/// A plugin is handed `bevy` and `renzora` and nothing else, so a crate outside
+/// this set is one no plugin can name: the editor, its panels, the engine's
+/// implementation crates. Staging their metadata cost about 1.6 GB.
+///
+/// From `cargo tree` with the same package selection and features as
+/// [`artifact_files`]'s build: under resolver v2, features unify over the
+/// selected packages, so a narrower query could resolve a different feature set
+/// and with it a different set of optional dependencies. The output is the
+/// deduplicated tree (a package already expanded prints as `(*)`), so the graph
+/// is rebuilt from it and walked, rather than read off one subtree. Missing a
+/// crate here fails loudly (`can't find crate` in a plugin build), never
+/// silently.
+fn plugin_closure(repo: &Path, from: &From) -> Result<BTreeSet<String>, String> {
+    let mut cmd = crate::cargo_command();
+    cmd.current_dir(repo).args([
+        "tree",
+        "--workspace",
+        "--exclude",
+        "renzora-android",
+        "--exclude",
+        "renzora-ios",
+        "--exclude",
+        crate::COMPANION_PACKAGE,
+        "-e",
+        "normal",
+        "--prefix",
+        "depth",
+        "-f",
+        "{p}|{lib}",
+    ]);
+    if let Some(target) = &from.target {
+        cmd.args(["--target", target]);
+    }
+    if !from.features.is_empty() {
+        cmd.args(["--features", &from.features.join(",")]);
+    }
+    let out = cmd
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("spawn cargo tree: {e}"))?;
+    if !out.status.success() {
+        eprint!("{}", String::from_utf8_lossy(&out.stderr));
+        return Err(format!("cargo tree exited {}", out.status));
+    }
+    closure_from_tree(&String::from_utf8_lossy(&out.stdout), "renzora_dylib")
+}
+
+/// Rebuild the package graph from `cargo tree --prefix depth -f "{p}|{lib}"`
+/// output and collect the library names reachable from `root`.
+fn closure_from_tree(text: &str, root: &str) -> Result<BTreeSet<String>, String> {
+    let mut libs: BTreeMap<String, String> = BTreeMap::new();
+    let mut children: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    // The package at each depth on the current path.
+    let mut path: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let digits = line.chars().take_while(|c| c.is_ascii_digit()).count();
+        let Ok(depth) = line[..digits].parse::<usize>() else { continue };
+        let rest = line[digits..].trim_end();
+        let rest = rest.strip_suffix("(*)").unwrap_or(rest).trim_end();
+        let Some((pkg, lib)) = rest.rsplit_once('|') else { continue };
+        let (pkg, lib) = (pkg.trim().to_string(), lib.trim().replace('-', "_"));
+        if !lib.is_empty() {
+            libs.insert(pkg.clone(), lib);
+        }
+        path.truncate(depth);
+        if let Some(parent) = path.last() {
+            children.entry(parent.clone()).or_default().insert(pkg.clone());
+        }
+        path.push(pkg);
+    }
+    let start: Vec<String> = libs.iter().filter(|(_, l)| *l == root).map(|(p, _)| p.clone()).collect();
+    if start.is_empty() {
+        return Err(format!("`{root}` is not in the dependency tree"));
+    }
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut stack = start;
+    while let Some(pkg) = stack.pop() {
+        if !seen.insert(pkg.clone()) {
+            continue;
+        }
+        if let Some(kids) = children.get(&pkg) {
+            stack.extend(kids.iter().cloned());
+        }
+    }
+    Ok(seen.iter().filter_map(|p| libs.get(p).cloned()).collect())
 }
 
 /// Run the build and collect the `.rlib` / proc-macro / import-library paths it
@@ -374,7 +482,6 @@ fn outputs_key(profile_dir: &Path, plat: &Platform) -> String {
 pub struct Externs {
     bevy: Option<String>,
     renzora: Option<String>,
-    ember: Option<String>,
 }
 
 fn artifact_files(
@@ -440,6 +547,8 @@ fn artifact_files(
     }
 
     let text = String::from_utf8_lossy(&out.stdout);
+    // Only what a plugin can reach is staged; see [`plugin_closure`].
+    let closure = plugin_closure(repo, from)?;
     let mut files = BTreeSet::new();
     for line in text.lines() {
         // Cargo reports every build script's `rustc-link-search` here, fresh or
@@ -447,13 +556,27 @@ fn artifact_files(
         // the artifacts. See [`stage_native`] for why they are not read from
         // `target/` instead.
         if line.contains("\"reason\":\"build-script-executed\"") {
-            link_search.extend(json_string_array(line, "linked_paths"));
+            // Only for a package a plugin can reach: a native library directory
+            // belongs to the crate whose build script announced it.
+            let reachable = json_string(line, "package_id")
+                .map(|id| package_name(&id).replace('-', "_"))
+                .is_none_or(|name| closure.contains(&name));
+            if reachable {
+                link_search.extend(json_string_array(line, "linked_paths"));
+            }
             continue;
         }
         if !line.contains("\"reason\":\"compiler-artifact\"") {
             continue;
         }
         capture_extern(line, externs);
+        // A crate no plugin can reach: the editor and its panels, the engine's
+        // implementation crates, and their dependencies.
+        let reachable = json_string(line, "name")
+            .is_some_and(|n| closure.contains(&n.replace('-', "_")));
+        if !reachable {
+            continue;
+        }
         // Classify by cargo's own `target.kind`, NEVER by file extension. A
         // proc-macro and a linkable dylib are both a `.dll` here, and they must
         // land in different directories — but a linkable dylib also ships a
@@ -472,13 +595,166 @@ fn artifact_files(
             // `.so`/`.dylib` directly and has no analogue).
             if f.ends_with(".rlib") {
                 let p = Path::new(&f);
-                files.insert((if extern_target { p.to_path_buf() } else { metadata_only(p) }, proc_macro));
+                files.insert((
+                    if extern_target { p.to_path_buf() } else { metadata_only(p) },
+                    proc_macro,
+                ));
             } else if f.ends_with(".lib") || is_shared_lib(&f) {
                 files.insert((PathBuf::from(f), proc_macro));
             }
         }
     }
+
+    // The name closure keeps every build of a reachable crate; cargo compiles
+    // some several times (other feature sets, build-script and proc-macro
+    // dependencies), and only the units `renzora_dylib` actually linked matter.
+    // Narrowed to those when cargo's fingerprints can be read; see
+    // [`unit_closure`]. Kept as is otherwise, which only costs disk.
+    let proc_units: BTreeSet<PathBuf> =
+        files.iter().filter(|(_, p)| *p).filter_map(|(f, _)| unit_dir(f)).collect();
+    let root = externs.renzora.as_ref().map(|name| from.profile_dir(repo).join(name));
+    if let Some(units) = root.and_then(|r| unit_closure(&from.profile_dir(repo), &r, &proc_units)) {
+        files.retain(|(f, _)| unit_dir(f).is_none_or(|u| units.contains(&u)));
+    } else {
+        eprintln!("[xtask] sdk: unit graph unreadable, staging every build of each reachable crate");
+    }
     Ok(files.into_iter().collect())
+}
+
+/// A package's name from a cargo package id:
+/// `registry+https://...#windows_x86_64_msvc@0.52.6` names it after `#`, while
+/// `path+file:///C:/engine/crates/renzora_x#0.1.0` leaves it to the last path
+/// segment.
+fn package_name(id: &str) -> String {
+    let (source, tail) = id.rsplit_once('#').unwrap_or((id, ""));
+    match tail.split_once('@') {
+        Some((name, _)) => name.to_string(),
+        None => source.rsplit(['/', '\\']).next().unwrap_or(source).to_string(),
+    }
+}
+
+/// The unit directory a build artifact belongs to, `.../build/<package>/<hash>`,
+/// or `None` for a file outside it (the uplifted top-level outputs).
+fn unit_dir(file: &Path) -> Option<PathBuf> {
+    let parts: Vec<_> = file.components().collect();
+    let i = parts.iter().rposition(|c| c.as_os_str() == "build")?;
+    let hash = parts.get(i + 2)?.as_os_str().to_str()?;
+    if hash.len() != 16 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(parts[..i + 3].iter().collect())
+}
+
+/// The exact build units `root` (the uplifted `renzora_dylib` image) was linked
+/// from: the unit that produced it, and everything it depends on, unit by unit.
+///
+/// Read from cargo's own fingerprints. Each unit directory holds
+/// `fingerprint/lib-<name>` (its fingerprint, as little-endian bytes in hex) and
+/// `fingerprint/lib-<name>.json`, whose `deps` lists each dependency as
+/// `[package, "name", public, fingerprint]` with the fingerprint in decimal. So
+/// every unit is indexed by fingerprint and the graph walked from the root.
+/// Proc-macro units are kept but not descended into: their dependencies exist
+/// to build the macro, and a plugin only runs the macro's dll. A dependency
+/// that is not a library unit (a build-script run) has no `lib-` file and is
+/// skipped.
+///
+/// `None` when anything is missing or unreadable, and the caller keeps the
+/// wider name closure. Measured on a dist build: 435 units reached, and 707 MB
+/// of metadata belonged to builds `renzora_dylib` never linked (a second
+/// `windows` at 106 MB, a second `ash` at 68 MB, two extra `glam`, ...).
+fn unit_closure(profile_dir: &Path, root: &Path, proc_units: &BTreeSet<PathBuf>) -> Option<BTreeSet<PathBuf>> {
+    let build = profile_dir.join("build");
+    // Every library unit, by fingerprint.
+    let mut index: BTreeMap<u64, PathBuf> = BTreeMap::new();
+    for package in std::fs::read_dir(&build).ok()?.flatten() {
+        let Ok(units) = std::fs::read_dir(package.path()) else { continue };
+        for unit in units.flatten() {
+            let Ok(files) = std::fs::read_dir(unit.path().join("fingerprint")) else { continue };
+            for f in files.flatten() {
+                let name = f.file_name();
+                let Some(name) = name.to_str() else { continue };
+                if !name.starts_with("lib-") || name.ends_with(".json") {
+                    continue;
+                }
+                if let Some(fp) = std::fs::read_to_string(f.path()).ok().and_then(|t| le_hex_u64(t.trim())) {
+                    index.insert(fp, unit.path());
+                }
+            }
+        }
+    }
+    // The unit whose output `root` was copied from: same length and mtime.
+    let meta = std::fs::metadata(root).ok()?;
+    let (len, time) = (meta.len(), meta.modified().ok()?);
+    let stem = root.file_name()?.to_str()?;
+    let package = stem.split('.').next()?.trim_start_matches("lib").to_string();
+    let mut start = None;
+    for unit in std::fs::read_dir(build.join(&package)).ok()?.flatten() {
+        let Ok(outs) = std::fs::read_dir(unit.path().join("out")) else { continue };
+        for f in outs.flatten() {
+            let Ok(m) = f.metadata() else { continue };
+            if m.len() == len && m.modified().ok() == Some(time) {
+                start = Some(unit.path());
+            }
+        }
+    }
+    let mut seen = BTreeSet::new();
+    let mut stack = vec![start?];
+    while let Some(unit) = stack.pop() {
+        if !seen.insert(unit.clone()) {
+            continue;
+        }
+        if proc_units.contains(&unit) {
+            continue;
+        }
+        for fp in unit_deps(&unit) {
+            if let Some(dep) = index.get(&fp) {
+                stack.push(dep.clone());
+            }
+        }
+    }
+    // A root with no dependencies found means the format was not what this
+    // expects: let the caller fall back rather than stage almost nothing.
+    (seen.len() > 1).then_some(seen)
+}
+
+/// `fingerprint/lib-<name>` holds the fingerprint as its little-endian bytes in
+/// hex: `17be4304ff9f7be5` is `0xe57b9fff0443be17`.
+fn le_hex_u64(hex: &str) -> Option<u64> {
+    if hex.len() != 16 {
+        return None;
+    }
+    let mut bytes = [0u8; 8];
+    for (i, b) in bytes.iter_mut().enumerate() {
+        *b = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(u64::from_le_bytes(bytes))
+}
+
+/// The dependency fingerprints in a unit's `fingerprint/lib-<name>.json`: the
+/// last field of each `[package, "name", public, fingerprint]` in `deps`.
+fn unit_deps(unit: &Path) -> Vec<u64> {
+    let Ok(files) = std::fs::read_dir(unit.join("fingerprint")) else { return Vec::new() };
+    let Some(json) = files.flatten().map(|f| f.path()).find(|p| {
+        p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("lib-") && n.ends_with(".json"))
+    }) else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(json) else { return Vec::new() };
+    let Some(rest) = after_key(&text, "deps") else { return Vec::new() };
+    let Some(rest) = rest.strip_prefix('[') else { return Vec::new() };
+    let mut out = Vec::new();
+    // Entries are flat arrays whose only string is a crate name (no `[`, `]`
+    // or `,` inside), so splitting on the brackets is exact.
+    for entry in rest.split(']') {
+        let entry = entry.trim_start_matches([',', '[', ' ']);
+        if entry.is_empty() {
+            break; // the `]` that closes `deps` itself
+        }
+        if let Some(fp) = entry.rsplit(',').next().and_then(|n| n.trim().parse::<u64>().ok()) {
+            out.push(fp);
+        }
+    }
+    out
 }
 
 fn is_shared_lib(f: &str) -> bool {
@@ -497,21 +773,74 @@ fn is_bevy_extern(line: &str) -> bool {
         && json_string_array(line, "features").iter().any(|f| f == "dynamic_linking")
 }
 
-/// The metadata half of an `.rlib`: the sibling `.rmeta` cargo emitted for the
-/// same compilation unit.
+/// The metadata half of an `.rlib`: the `.rmeta` cargo emitted for the same
+/// compilation unit.
 ///
-/// Falls back to the `.rlib` itself when there is none, which is what happens
-/// for a unit cargo did not pipeline. Staging the archive there costs disk and
-/// nothing else, so the fallback is silent — the point is that no unit can go
-/// missing because its metadata was not written separately.
+/// Usually that is the sibling of the path cargo reported. A workspace member is
+/// the exception: cargo reports its rlib at the uplifted path
+/// (`target/<profile>/libfoo.rlib`), which has no `.rmeta` beside it, and the
+/// unit's real output lives at `build/<package>/<hash>/out/libfoo-<hash>.rlib`
+/// with its `.rmeta` next to it. Staging the uplifted archive whole instead cost
+/// 1.5 GB of object code no plugin links (`librenzora_ember.rlib` alone was
+/// 244 MB). See [`uplifted_twin_rmeta`].
 ///
-/// This is safe in a way a directory scan is not (see the module docs). The
-/// `.rmeta` is not *searched for* by crate name among the many `-C metadata`
-/// variants in `deps/`; it is derived from the exact path cargo just reported,
-/// keeping the same hash, so it can only be the metadata of that one unit.
+/// (Taking the `lib.rmeta` member out of the archive does not work: on Windows
+/// that member is a COFF object wrapping the metadata in a section, not the
+/// metadata itself, and ELF and Mach-O do the same on the other platforms.)
+///
+/// Falls back to the `.rlib` itself when no `.rmeta` can be found. Staging the
+/// archive there costs disk and nothing else, so the fallback is silent: the
+/// point is that no unit can go missing because its metadata was not written
+/// separately.
 fn metadata_only(rlib: &Path) -> PathBuf {
     let rmeta = rlib.with_extension("rmeta");
-    if rmeta.is_file() { rmeta } else { rlib.to_path_buf() }
+    if rmeta.is_file() {
+        return rmeta;
+    }
+    uplifted_twin_rmeta(rlib).unwrap_or_else(|| rlib.to_path_buf())
+}
+
+/// For an uplifted `target/<profile>/lib<name>.rlib`, the `.rmeta` beside the
+/// hashed rlib it was copied from: the one in `build/<package>/*/out/` with the
+/// same length and modification time. Only an unambiguous match counts.
+///
+/// Still not a search by crate name among `-C metadata` variants (module docs):
+/// an uplifted file is a copy of exactly one unit's output, and length plus
+/// modification time pick that unit out of its package's directory. Measured on
+/// a dist build: 180 of the 182 uplifted rlibs matched exactly one twin, and the
+/// other two (the editor image and the preview, both dual-type crates no plugin
+/// reaches) matched none and fall back.
+fn uplifted_twin_rmeta(rlib: &Path) -> Option<PathBuf> {
+    let lib = rlib.file_stem()?.to_str()?.strip_prefix("lib")?;
+    let meta = std::fs::metadata(rlib).ok()?;
+    let (len, time) = (meta.len(), meta.modified().ok()?);
+    let build = rlib.parent()?.join("build");
+    let mut found = None;
+    for package in [lib.to_string(), lib.replace('_', "-")] {
+        let Ok(units) = std::fs::read_dir(build.join(&package)) else { continue };
+        for unit in units.flatten() {
+            let Ok(entries) = std::fs::read_dir(unit.path().join("out")) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+                if !(name.starts_with(&format!("lib{lib}-")) && name.ends_with(".rlib")) {
+                    continue;
+                }
+                let Ok(m) = entry.metadata() else { continue };
+                if m.len() != len || m.modified().ok() != Some(time) {
+                    continue;
+                }
+                let twin = path.with_extension("rmeta");
+                if twin.is_file() {
+                    if found.is_some() {
+                        return None; // ambiguous: fall back rather than guess
+                    }
+                    found = Some(twin);
+                }
+            }
+        }
+    }
+    found
 }
 
 /// Note which artifacts a plugin build should point `--extern` at.
@@ -540,13 +869,8 @@ fn metadata_only(rlib: &Path) -> PathBuf {
 ///   `librenzora.rlib` instead compiles AND links, and silently gives the plugin
 ///   a private copy of the contract crate's process-global state — a dead
 ///   translation table, warnings and logs going to buffers nobody drains.
-///
-/// * **`renzora_ember` → the `renzora_ember_dylib` shared library, aliased.**
-///   The same shape as `renzora`, one layer up, and it fails the same way:
-///   `librenzora_ember.rlib` compiles and links, and hands the plugin a private
-///   theme palette, stylesheet and toolbar list. Its panel then paints in
-///   ember's default colours no matter what theme the user picked. Measured, a
-///   one-panel plugin is 32.2 MB the wrong way and 0.09 MB the right way.
+///   The UI framework rides in the same image as `renzora::ui`, so its theme
+///   palette, stylesheet and toolbar lists are shared the same way.
 fn capture_extern(line: &str, out: &mut Externs) {
     let Some(name) = json_string(line, "name") else {
         return;
@@ -565,13 +889,6 @@ fn capture_extern(line: &str, out: &mut Externs) {
         }
         "renzora_dylib" => {
             out.renzora = files
-                .iter()
-                .filter(|f| is_shared_lib(f))
-                .filter_map(|f| Path::new(f).file_name()?.to_str().map(str::to_string))
-                .next();
-        }
-        "renzora_ember_dylib" => {
-            out.ember = files
                 .iter()
                 .filter(|f| is_shared_lib(f))
                 .filter_map(|f| Path::new(f).file_name()?.to_str().map(str::to_string))
@@ -659,6 +976,11 @@ fn stage(
     }
 
     let (mut n_meta, mut n_proc, mut n_imp) = (0usize, 0usize, 0usize);
+    // The linkable shared images (`bevy_dylib`, `renzora_dylib`): the very files
+    // the engine ships beside its executable. Listed in the manifest so a
+    // release can leave them out of `sdk.tar.zst` and the unpacker can link
+    // them back in from the install (see `renzora_plugin_build::unpack`).
+    let mut shared_images = Vec::new();
     for (src, proc_macro) in artifacts {
         let Some(name) = src.file_name().and_then(|n| n.to_str()) else {
             continue;
@@ -680,6 +1002,9 @@ fn stage(
         if src.exists() {
             link_or_copy(src, &dst_dir.join(name))?;
             *counter += 1;
+            if !*proc_macro && is_shared_lib(name) {
+                shared_images.push(format!("deps/{name}"));
+            }
         }
     }
 
@@ -688,7 +1013,7 @@ fn stage(
 
     let build_id = build_id(out, externs);
     let counts = Counts { metadata: n_meta, proc_macro: n_proc, import_lib: n_imp };
-    let manifest = manifest_json(plat, triple, &native_dirs, externs, &build_id, &counts);
+    let manifest = manifest_json(plat, triple, &native_dirs, externs, &build_id, &counts, &shared_images);
     std::fs::write(out.join("manifest.json"), manifest)?;
 
     println!(
@@ -950,7 +1275,9 @@ fn manifest_json(
     externs: &Externs,
     build_id: &str,
     counts: &Counts,
+    shared_images: &[String],
 ) -> String {
+    let shared = shared_images.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(", ");
     let natives = native_dirs
         .iter()
         .map(|d| format!("\"native/{d}\""))
@@ -958,15 +1285,14 @@ fn manifest_json(
         .join(", ");
     let bevy = externs.bevy.as_deref().unwrap_or_default();
     let renzora = externs.renzora.as_deref().unwrap_or_default();
-    let ember = externs.ember.as_deref().unwrap_or_default();
     let rustc = rustc_version().unwrap_or_default();
     format!(
         "{{\n  \"triple\": \"{triple}\",\n  \"rustc\": \"{rustc}\",\n  \"lib_ext\": \"{}\",\n  \
          \"build_id\": \"{build_id}\",\n  \
-         \"extern\": {{\n    \"bevy\": \"deps/{bevy}\",\n    \"renzora\": \"deps/{renzora}\",\n    \
-         \"renzora_ember\": \"deps/{ember}\"\n  }},\n  \
+         \"extern\": {{\n    \"bevy\": \"deps/{bevy}\",\n    \"renzora\": \"deps/{renzora}\"\n  }},\n  \
          \"link_search\": {{\n    \"dependency\": [\"deps\", \"host-deps\"],\n    \
          \"native\": [{natives}]\n  }},\n  \
+         \"shared_images\": [{shared}],\n  \
          \"counts\": {{ \"metadata\": {}, \"proc_macro\": {}, \"import_lib\": {} }}\n}}\n",
         plat.ext, counts.metadata, counts.proc_macro, counts.import_lib
     )
@@ -999,7 +1325,7 @@ fn manifest_json(
 /// the result out of the manifest.
 ///
 /// The dependency filenames go in too, cheaply: a dep whose metadata hash moved
-/// (a version bump, a feature change) is a real incompatibility that the three
+/// (a version bump, a feature change) is a real incompatibility that the
 /// extern artifacts might not reflect.
 /// A hash of what staging would copy: every artifact's name, length and mtime.
 ///
@@ -1032,6 +1358,13 @@ fn input_stamp(artifacts: &[(PathBuf, bool)]) -> String {
         };
         let meta = std::fs::metadata(path).ok();
         let len = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        // Not only the inputs: the rules that turn them into an SDK. A rules
+        // change that stages the same files (rules 4 only added a manifest
+        // field) otherwise matched this stamp, skipped staging, and recorded the
+        // new rules as applied when nothing had been rewritten.
+        if rows.is_empty() {
+            rows.push(format!("rules:{STAGING_RULES}"));
+        }
         // Seconds since the epoch. A file whose mtime cannot be read hashes as
         // 0, which differs from any real timestamp and so forces a restage.
         let secs = meta
@@ -1077,9 +1410,9 @@ fn build_id(out: &Path, externs: &Externs) -> String {
         }
     }
 
-    // The three images a plugin links, by content. This is the half that sees a
+    // The images a plugin links, by content. This is the half that sees a
     // source edit.
-    for name in [&externs.bevy, &externs.renzora, &externs.ember]
+    for name in [&externs.bevy, &externs.renzora]
         .into_iter()
         .flatten()
     {
@@ -1125,4 +1458,69 @@ fn rustc_vv(field: &str) -> Result<String, String> {
         .find_map(|l| l.strip_prefix(field))
         .map(|s| s.trim().to_string())
         .ok_or_else(|| format!("no `{}` line in `rustc -vV`", field.trim_end()))
+}
+
+#[cfg(test)]
+mod closure_tests {
+    use super::closure_from_tree;
+
+    /// A deduplicated `cargo tree`: `c` is expanded under `a` and only marked
+    /// `(*)` under `b`, so `b`'s reach through it must come from the graph, not
+    /// from reading `b`'s subtree. `editor` depends on `a` but is not reachable
+    /// from the root, so it stays out, as does its own dependency `x`.
+    #[test]
+    fn walks_the_graph_from_the_root_through_deduplicated_nodes() {
+        let tree = "\
+0editor v0.1.0 (/e)|editor
+1a v1.0.0|a
+2c v1.0.0|c
+3d v1.0.0|d
+1x v1.0.0|x
+0renzora_dylib v0.1.0 (/r)|renzora_dylib
+1b v1.0.0|b
+2c v1.0.0|c (*)
+1a v1.0.0|a (*)
+";
+        let got = closure_from_tree(tree, "renzora_dylib").unwrap();
+        let want: Vec<&str> = vec!["a", "b", "c", "d", "renzora_dylib"];
+        assert_eq!(got.iter().map(String::as_str).collect::<Vec<_>>(), want);
+    }
+
+    /// No root, no SDK: an error rather than an empty set that stages nothing.
+    #[test]
+    fn a_missing_root_is_an_error() {
+        assert!(closure_from_tree("0a v1.0.0|a\n", "renzora_dylib").is_err());
+    }
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::{le_hex_u64, package_name, unit_dir};
+    use std::path::{Path, PathBuf};
+
+    /// The pair measured in a real build: `renzora_dylib` recorded its
+    /// `renzora_sdk` dependency as 16535986374457933335, and that unit's
+    /// `fingerprint/lib-renzora_sdk` read `17be4304ff9f7be5`.
+    #[test]
+    fn a_fingerprint_file_is_little_endian_hex() {
+        assert_eq!(le_hex_u64("17be4304ff9f7be5"), Some(16535986374457933335));
+        assert_eq!(le_hex_u64("17be"), None);
+    }
+
+    #[test]
+    fn package_names_come_from_either_shape_of_id() {
+        assert_eq!(
+            package_name("registry+https://github.com/rust-lang/crates.io-index#windows_x86_64_msvc@0.52.6"),
+            "windows_x86_64_msvc"
+        );
+        assert_eq!(package_name("path+file:///C:/engine/crates/renzora_ember#0.1.0"), "renzora_ember");
+    }
+
+    #[test]
+    fn a_unit_dir_is_build_package_hash() {
+        let f = Path::new("C:/t/dist/build/ash/692dba85265c705e/out/libash-692dba85265c705e.rmeta");
+        assert_eq!(unit_dir(f), Some(PathBuf::from("C:/t/dist/build/ash/692dba85265c705e")));
+        // An uplifted top-level output belongs to no unit directory.
+        assert_eq!(unit_dir(Path::new("C:/t/dist/renzora_dylib.dll")), None);
+    }
 }

@@ -2,7 +2,7 @@
 //!
 //! Conversion is the heavy part of an import: parsing the source, baking every
 //! texture to `.rmip`, optimizing the meshes. The editor's import worker hands
-//! it to the companion when one is connected (`renzora::CompanionRemote`) and
+//! it to the companion when one is connected (`renzora_platform_api::CompanionRemote`) and
 //! does it itself otherwise; both ends call into this module, so the two paths
 //! run the same code.
 //!

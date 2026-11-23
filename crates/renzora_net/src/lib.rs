@@ -52,21 +52,21 @@ mod pump;
 use bevy::prelude::*;
 
 /// The client contract, re-exported so a backend implementing it and a caller
-/// checking a capability both name one crate. It *lives* in the contract crate
+/// checking a capability both name one crate. It *lives* in `renzora_net_api`
 /// because `net`'s process-global queue holds these types.
-pub use renzora::net_backend::{
+pub use renzora_net_api::net_backend::{
     AppNetBackendExt, Backend, BackendInfo, Caps, Event, EventKind, NetBackend,
 };
 
-/// The request vocabulary and the submission queue now live in the **contract
-/// crate**, because the queue is a process-global `OnceLock` and a native plugin
-/// linking a private copy would get its own empty one — `is_available()` false,
-/// every request failing, nothing logged.
+/// The request vocabulary and the submission queue live in `renzora_net_api`,
+/// which `renzora_dylib` embeds, because the queue is a process-global
+/// `OnceLock` and a native plugin linking a private copy would get its own empty
+/// one: `is_available()` false, every request failing, nothing logged.
 ///
 /// This crate keeps the half that cannot move: the frame pump that hands queued
 /// requests to whichever backend plugin is loaded. Re-exported so every existing
 /// `renzora_net::Request` path still resolves.
-pub use renzora::net::{fetch, fetch_stream, is_available, Chunk, Error, Request, Response, Stream};
+pub use renzora_net_api::net::{fetch, fetch_stream, is_available, Chunk, Error, Request, Response, Stream};
 pub use pump::NetLink;
 
 /// Wires the frame pump in. Add it once; everything else is free functions,
@@ -92,4 +92,3 @@ impl Plugin for NetPlugin {
 // check, whatever a script's `http_get` asks for. A game that ships without the
 // HTTP plugin still runs this; it just has no backend to hand requests to, and
 // `fetch` says so.
-renzora::add!(NetPlugin);

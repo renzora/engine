@@ -4,12 +4,12 @@ How Renzora's material node graph is built, how to add a new built-in node to th
 
 ## Where this lives
 
-Materials are owned by the **`renzora_shader`** crate (`crates/renzora_shader`). It registers two runtime plugins through `renzora::add!`, so they ship in both the editor and exported games:
+Materials are owned by the **`renzora_shader`** crate (`crates/renzora_shader`). It declares two runtime plugins in `[[package.metadata.renzora.plugin]]` tables in its `Cargo.toml`, so they ship in both the editor and exported games:
 
 - **`ShaderPlugin`** (`renzora_shader::ShaderPlugin`) — installs the code-shader runtime and registers the built-in shader-language backends (Bevy / WGSL / GLSL / ShaderToy).
 - **`MaterialPlugin`** (`renzora_shader::material::MaterialPlugin`) — installs the node-graph material runtime (`GraphMaterialPlugin`) and the `MaterialResolverPlugin` that turns a `.material` graph into a renderable Bevy material.
 
-The two editor front-ends are separate, editor-only plugins: `renzora_material_editor::MaterialEditorPlugin` (the visual node graph) and `renzora_shader_editor::ShaderEditorPlugin` (the code editor). Both are registered with `renzora::add!(..., Editor)`.
+The two editor front-ends are separate, editor-only plugins: `renzora_material_editor::MaterialEditorPlugin` (the visual node graph) and `renzora_shader_editor::ShaderEditorPlugin` (the code editor). Both are declared with `scope = "Editor"` in their crates' plugin tables.
 
 ## How a material graph compiles
 

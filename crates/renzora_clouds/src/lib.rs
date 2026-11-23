@@ -20,7 +20,7 @@
 //!
 //! The engine core names no cloud type: a World Environment gets its clouds
 //! from `add_to_world_environment`, an observer on
-//! `renzora::WorldEnvironmentSpawned`, and the Inspector section is the nested
+//! `renzora_world_api::WorldEnvironmentSpawned`, and the Inspector section is the nested
 //! `renzora_clouds_editor` crate, linked only by the editor bundle.
 
 use bevy::light::atmosphere::ScatteringMedium;
@@ -338,14 +338,14 @@ fn sync_clouds(
         &GlobalTransform,
         &DirectionalLight,
         Option<&bevy::camera::visibility::RenderLayers>,
-        Option<&renzora::Sun>,
+        Option<&renzora_world_api::Sun>,
     )>,
     atmosphere_query: Query<&Atmosphere>,
     media: Res<Assets<ScatteringMedium>>,
     // Earth's medium, built once, for scenes with no `Atmosphere` to measure.
     fallback_medium: Local<ScatteringMedium>,
-    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
-    wind: Option<Res<renzora::WindState>>,
+    quality: Option<Res<renzora_project_api::ResolvedGraphicsQuality>>,
+    wind: Option<Res<renzora_world_api::WindState>>,
     noise: Option<Res<CloudNoiseTextures>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
@@ -562,7 +562,7 @@ fn sync_clouds(
 
     // ── Step budget ──
     let (view_steps, shadow_steps) = match tier {
-         Some(renzora::core::viewport_types::GraphicsQuality::High) | None => {
+         Some(renzora_viewport_api::GraphicsQuality::High) | None => {
             (clouds_data.raymarch_steps, clouds_data.shadow_steps)
         }
         _ => (
@@ -686,7 +686,7 @@ fn sync_clouds(
                 CloudDomeMarker,
                 // Its material moves with the wind every frame; the viewport's
                 // render-on-change holds animated clouds still while idle.
-                renzora::core::ViewportRedrawExempt,
+                renzora_scene_api::ViewportRedrawExempt,
                 // REQUIRED, not cosmetic. `reject_unnamed_entities` despawns
                 // anything with a `Transform` and no `Name`, and it enforces
                 // **always** in a shipped game (and in the editor's play mode) —
@@ -698,7 +698,7 @@ fn sync_clouds(
                 // chrome, not scene content. Naming it would also serialise it
                 // into saved scenes, and a camera-centred dome rebuilt on every
                 // run has no business being in a scene file.
-                renzora::core::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
                 bevy::light::NotShadowCaster,
                 bevy::light::NotShadowReceiver,
             ))
@@ -743,7 +743,7 @@ fn sync_clouds(
 ///
 /// The New Environment look is broken cloud a little under half the sky: at
 /// half, the sky over its hills read grey rather than blue.
-fn add_to_world_environment(spawned: On<renzora::WorldEnvironmentSpawned>, mut commands: Commands) {
+fn add_to_world_environment(spawned: On<renzora_world_api::WorldEnvironmentSpawned>, mut commands: Commands) {
     let coverage = if spawned.outdoor_daylight { 0.4 } else { CloudsData::default().coverage };
     commands.entity(spawned.entity).insert(CloudsData { coverage, ..default() });
 }
@@ -776,7 +776,6 @@ impl Plugin for CloudsPlugin {
     }
 }
 
-renzora::add!(CloudsPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -862,7 +861,7 @@ mod tests {
 
     /// Compile a WGSL module exactly as wgpu will.
     fn validate(name: &str, source: &str) {
-        renzora::wgsl::check(source).unwrap_or_else(|err| panic!("{name}: {err}"));
+        renzora_shader_api::wgsl::check(source).unwrap_or_else(|err| panic!("{name}: {err}"));
     }
 
     /// Reads a `const NAME: f32 = ...;` out of the shader. Handles a bare literal

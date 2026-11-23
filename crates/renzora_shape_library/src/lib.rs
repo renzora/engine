@@ -13,7 +13,7 @@
 //! artefact the live one's comment describes.
 
 use bevy::prelude::*;
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 
 pub mod capture;
 mod groups;
@@ -129,5 +129,3 @@ impl Plugin for ShapeLibraryPlugin {
         app.add_plugins((capture::ShapeCapturePlugin, panel::ShapeLibraryPanel));
     }
 }
-
-renzora::add!(ShapeLibraryPlugin, Editor);

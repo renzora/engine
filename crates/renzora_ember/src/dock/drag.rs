@@ -814,7 +814,7 @@ fn spawn_ghost(
             bevy::ui::GlobalZIndex(1000),
             PASS_THROUGH,
             TabGhost,
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             Name::new("tab-ghost"),
         ))
         .id();

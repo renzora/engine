@@ -14,7 +14,7 @@
 // Only the types moved. Everything that DOES anything with them (the engine,
 // the systems, the command-apply pass) stayed. Re-exported under the old paths
 // so no caller, in this crate or outside it, had to change.
-pub use renzora::{backend, command, component, context, get_handler};
+pub use renzora_scripting_api::{backend, command, component, context, get_handler};
 
 mod engine;
 pub mod extension;
@@ -26,20 +26,20 @@ pub mod api;
 // Moved to the contract crate so the Scripting diagnostics panel could become a
 // native plugin. Timing is still collected in `systems::execution`; only the
 // types moved. Re-exported under the old path so `perf::…` still resolves.
-pub use renzora::diagnostics::script as perf;
+pub use renzora_diagnostics_api::diagnostics::script as perf;
 pub mod resources;
 pub mod systems;
 
 #[cfg(test)]
 pub(crate) mod test_util;
 
-pub use renzora::backend::*;
-pub use renzora::command::*;
-pub use renzora::component::*;
-pub use renzora::context::*;
+pub use renzora_scripting_api::backend::*;
+pub use renzora_scripting_api::command::*;
+pub use renzora_scripting_api::component::*;
+pub use renzora_scripting_api::context::*;
 pub use engine::*;
 pub use extension::*;
-pub use renzora::get_handler::{
+pub use renzora_scripting_api::get_handler::{
     AssetProgressBridge, AssetProgressSnapshot, SceneLoadBridge, SceneLoadSnapshot,
 };
 pub use input::*;

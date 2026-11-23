@@ -9,7 +9,7 @@
 
 use bevy::pbr::{DistanceFog, FogFalloff};
 use bevy::prelude::*;
-use renzora::{FogSection, WorldEnvironment};
+use renzora_world_api::{FogSection, WorldEnvironment};
 use serde::{Deserialize, Serialize};
 
 /// Legacy per-effect fog settings. Superseded by [`WorldEnvironment::fog`]; kept
@@ -114,7 +114,7 @@ fn fog_from(section: &FogSection) -> DistanceFog {
 fn reconcile_world_environment(
     mut fogs: Query<(Entity, &mut DistanceFog)>,
     sources: Query<Ref<WorldEnvironment>>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
     mut removed: RemovedComponents<WorldEnvironment>,
 ) {
     // A World Environment deleted (or its component removed) has to take its
@@ -179,7 +179,7 @@ mod tests {
         env.fog.enabled = true;
         let source = app.world_mut().spawn(env).id();
         let camera = app.world_mut().spawn(no_fog()).id();
-        app.insert_resource(renzora::EffectRouting { routes: vec![(camera, vec![source])] });
+        app.insert_resource(renzora_scene_api::EffectRouting { routes: vec![(camera, vec![source])] });
         (app, source, camera)
     }
 
@@ -207,7 +207,7 @@ mod tests {
         let (mut app, source, camera) = self::app();
         app.update();
         app.world_mut().despawn(source);
-        app.insert_resource(renzora::EffectRouting::default());
+        app.insert_resource(renzora_scene_api::EffectRouting::default());
         app.update();
         assert!(!fogged(&app, camera));
     }
@@ -223,5 +223,3 @@ impl Plugin for DistanceFogPlugin {
         app.add_systems(Update, reconcile_world_environment);
     }
 }
-
-renzora::add!(DistanceFogPlugin);

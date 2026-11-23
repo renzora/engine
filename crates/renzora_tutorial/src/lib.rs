@@ -33,7 +33,7 @@
 //! target mesh), [`persistence`] (first-run + per-chapter tracking).
 
 use bevy::prelude::*;
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 
 mod chapters;
 mod confetti;
@@ -79,5 +79,3 @@ impl Plugin for TutorialPlugin {
         );
     }
 }
-
-renzora::add!(TutorialPlugin, Editor);

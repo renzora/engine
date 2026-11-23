@@ -55,5 +55,3 @@ impl Plugin for FoliagePlugin {
             );
     }
 }
-
-renzora::add!(FoliagePlugin);

@@ -41,7 +41,7 @@
 //! image, so they can change without the scene rendering. The overlay renders
 //! whenever the scene does, and on its own for a short burst
 //! ([`OVERLAY_SETTLE_FRAMES`]) when something on the overlay layers changes or
-//! [`renzora::core::viewport_types::ViewportOverlayChanged`] is touched (the
+//! [`renzora_viewport_api::ViewportOverlayChanged`] is touched (the
 //! gizmo handle under the cursor lighting up). That is the case plain mouse
 //! movement used to wake the whole scene for.
 //!
@@ -73,8 +73,8 @@ use bevy::light::Cascades;
 use bevy::pbr::PreviousGlobalTransform;
 use bevy::prelude::*;
 use bevy::transform::components::TransformTreeChanged;
-use renzora::core::viewport_types::{ViewportSettings, Viewports};
-use renzora::core::{IsolatedCamera, ViewportCamera, ViewportCamera2d, ViewportRedrawIdle};
+use renzora_viewport_api::{ViewportSettings, Viewports};
+use renzora_scene_api::{IsolatedCamera, ViewportCamera, ViewportCamera2d, ViewportRedrawIdle};
 use renzora_editor_framework::EditorSelection;
 use renzora_shader::material::GraphMaterial;
 
@@ -159,7 +159,7 @@ pub(crate) struct DetectState {
 type SceneFilter = (
     With<GlobalTransform>,
     Without<Node>,
-    Without<renzora::core::ViewportRedrawExempt>,
+    Without<renzora_scene_api::ViewportRedrawExempt>,
     Without<ViewportCamera>,
     Without<ViewportCamera2d>,
     Without<IsolatedCamera>,
@@ -219,12 +219,12 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         .get_resource::<ViewportSettings>()
         .is_some_and(|s| s.realtime);
     let playing = world
-        .get_resource::<renzora::core::PlayModeState>()
+        .get_resource::<renzora_project_api::PlayModeState>()
         .is_some_and(|p| !p.is_editing());
 
     // A renderer feature can ask for longer settling, or for every frame (see
     // `ViewportRedrawDemand`).
-    let demand = world.get_resource::<renzora::core::ViewportRedrawDemand>().copied().unwrap_or_default();
+    let demand = world.get_resource::<renzora_scene_api::ViewportRedrawDemand>().copied().unwrap_or_default();
     let settle_frames = demand.settle_frames.max(SETTLE_FRAMES);
 
     let mut overlay_changed = false;
@@ -245,9 +245,9 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
         ticks.is_some_and(|t| t.is_changed(last_run, this_run))
     };
     if resource_changed(
-        world.get_resource_change_ticks::<renzora::core::viewport_types::ViewportOverlayChanged>(),
+        world.get_resource_change_ticks::<renzora_viewport_api::ViewportOverlayChanged>(),
     ) || resource_changed(
-        world.get_resource_change_ticks::<renzora::core::viewport_types::PivotMarkerState>(),
+        world.get_resource_change_ticks::<renzora_viewport_api::PivotMarkerState>(),
     ) {
         overlay_changed = true;
     }
@@ -286,7 +286,7 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
             // To the Console panel, not only the log: a viewport that never
             // idles renders the whole scene every frame for nothing, and the
             // log is a terminal nobody is watching.
-            renzora::console_log::console_info(
+            renzora_log_api::console_info(
                 "Viewport",
                 format!(
                     "The viewport renders on change, but something has changed every frame for {NEVER_IDLE_FRAMES} frames, so it never stops. Last change: {}",
@@ -365,7 +365,7 @@ fn find_change(
     // Editor state that changes the picture without touching the scene.
     if changed(world.get_resource_change_ticks::<ViewportSettings>())
         || changed(world.get_resource_change_ticks::<EditorSelection>())
-        || changed(world.get_resource_change_ticks::<renzora::EffectRouting>())
+        || changed(world.get_resource_change_ticks::<renzora_scene_api::EffectRouting>())
         || changed(world.get_resource_change_ticks::<ClearColor>())
         || changed(world.get_resource_change_ticks::<GizmoConfigStore>())
     {
@@ -409,7 +409,7 @@ fn find_change(
     // preview, thumbnails) on their own render layers don't keep it awake.
     let mut primary_layers = world.query_filtered::<
         Option<&RenderLayers>,
-        With<renzora::core::PrimaryViewportCamera>,
+        With<renzora_scene_api::PrimaryViewportCamera>,
     >();
     let view_layers = primary_layers
         .iter(world)
@@ -420,7 +420,7 @@ fn find_change(
     // What the overlay cameras draw: the shared overlay layer and every slot's
     // private gizmo layer (see `VIEWPORT_3D_GIZMO_LAYER_BASE`).
     let overlay_layers = {
-        use renzora::core::viewport_types::{VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
+        use renzora_viewport_api::{VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
         (0..VIEWPORT_COUNT).fold(RenderLayers::layer(1), |l, i| {
             l.with(VIEWPORT_3D_GIZMO_LAYER_BASE + i)
         })

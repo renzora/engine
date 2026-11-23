@@ -147,8 +147,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let header = page_header(
         commands,
         fonts,
-        &renzora::lang::t("splash.section.projects"),
-        &renzora::lang::t("splash.projects_subtitle"),
+        &renzora_lang_api::t("splash.section.projects"),
+        &renzora_lang_api::t("splash.projects_subtitle"),
     );
 
     // Actions + search share a line: they are the two ways to get to a project,
@@ -165,10 +165,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             PASS_THROUGH,
         ))
         .id();
-    let new = pill_button(commands, fonts, "plus", &renzora::lang::t("splash.new_project"), true);
+    let new = pill_button(commands, fonts, "plus", &renzora_lang_api::t("splash.new_project"), true);
     commands.entity(new).insert(NewProjectBtn);
     let template =
-        pill_button(commands, fonts, "blueprint", &renzora::lang::t("splash.new_from_template"), false);
+        pill_button(commands, fonts, "blueprint", &renzora_lang_api::t("splash.new_from_template"), false);
     commands.entity(template).insert(NewFromTemplateBtn);
     // Hidden when nothing registered the Templates page — a build without the
     // marketplace has no way to get a template, and a button that switches to a
@@ -178,14 +178,14 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             .is_some_and(|s| s.get(crate::TEMPLATES_SECTION_ID).is_some())
     });
     let open =
-        pill_button(commands, fonts, "folder-open", &renzora::lang::t("splash.open_project"), false);
+        pill_button(commands, fonts, "folder-open", &renzora_lang_api::t("splash.open_project"), false);
     commands.entity(open).insert(OpenProjectBtn);
     let search = build_search(commands, fonts);
     commands.entity(toolbar).add_children(&[new, template, open, search]);
 
     let heading = commands
         .spawn((
-            Text::new(renzora::lang::t("splash.recent")),
+            Text::new(renzora_lang_api::t("splash.recent")),
             ui_font(&fonts.ui, 11.0),
             TextColor(c(104, 112, 132)),
             PASS_THROUGH,
@@ -224,7 +224,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let empty = commands
         .spawn((
-            Text::new(renzora::lang::t("splash.no_recent")),
+            Text::new(renzora_lang_api::t("splash.no_recent")),
             ui_font(&fonts.ui, 12.0),
             TextColor(text_muted()),
             Node { margin: UiRect::top(Val::Px(6.0)), ..default() },
@@ -262,7 +262,7 @@ fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", ICON_MUTED, 14.0);
     commands.entity(mag).insert(PASS_THROUGH);
-    let search = text_input(commands, &fonts.ui, &renzora::lang::t("splash.search_projects"), "");
+    let search = text_input(commands, &fonts.ui, &renzora_lang_api::t("splash.search_projects"), "");
     commands.entity(search).insert(Node {
         flex_grow: 1.0,
         height: Val::Percent(100.0),
@@ -359,7 +359,7 @@ fn all_rows(world: &Rx) -> Vec<RowData> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| renzora::lang::t("splash.unknown_project"));
+                .unwrap_or_else(|| renzora_lang_api::t("splash.unknown_project"));
             let path_display = p.to_string_lossy().to_string();
             #[cfg(not(target_arch = "wasm32"))]
             let exists = p.join("project.toml").exists();
@@ -411,7 +411,7 @@ fn main_scene_thumb(root: &Path) -> Option<PathBuf> {
         .ok()
         .and_then(|v| v.get("main_scene")?.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "scenes/main.bsn".to_string());
-    Some(renzora::core::scene_thumbnail_path(root, &main_scene))
+    Some(renzora_project_api::scene_thumbnail_path(root, &main_scene))
 }
 
 fn filtered_rows(world: &Rx) -> Vec<RowData> {
@@ -652,7 +652,7 @@ fn build_card_thumb(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
             // The ✕ removes the entry from this list; it does not touch the
             // folder on disk. Say so — the reporter of #82 read it as "delete
             // project", which is a reasonable thing to read into a red ✕.
-            HoverTooltip::new(renzora::lang::t("splash.remove_recent")),
+            HoverTooltip::new(renzora_lang_api::t("splash.remove_recent")),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
@@ -846,8 +846,8 @@ fn do_open_project(world: &mut World) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if let Some(file) = rfd::FileDialog::new()
-            .set_title(renzora::lang::t("splash.open_project"))
-            .add_filter(renzora::lang::t("splash.project_file"), &["toml"])
+            .set_title(renzora_lang_api::t("splash.open_project"))
+            .add_filter(renzora_lang_api::t("splash.project_file"), &["toml"])
             .pick_file()
         {
             match open_project(&file) {
@@ -875,14 +875,14 @@ fn do_new_project(world: &mut World) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         if let Some(folder) = rfd::FileDialog::new()
-            .set_title(renzora::lang::t("splash.new_project_pick_folder"))
+            .set_title(renzora_lang_api::t("splash.new_project_pick_folder"))
             .pick_folder()
         {
             let name = folder
                 .file_name()
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| renzora::lang::t("splash.new_project"));
+                .unwrap_or_else(|| renzora_lang_api::t("splash.new_project"));
             match create_project(&folder, &name) {
                 Ok(p) => super::enter_project(world, p),
                 Err(e) => error!("Failed to create project: {e}"),

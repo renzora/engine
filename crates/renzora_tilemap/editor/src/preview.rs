@@ -13,8 +13,9 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
-use renzora::core::{EditorCamera2d, PlayModeState};
+use renzora_viewport_api::{ViewportSettings, ViewportState, ViewportView};
+use renzora_scene_api::EditorCamera2d;
+use renzora_project_api::PlayModeState;
 use renzora_tilemap::{TilemapLayer, TilesetHandle};
 
 use crate::{cursor_to_world, ActiveTilemap, PaintRectDrag, TilemapBrush, TilemapPaintMode};

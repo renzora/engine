@@ -15,8 +15,8 @@
 use bevy::prelude::*;
 
 use renzora::core::settings_file;
-use renzora::core::viewport_types::{PersistedViewportSettings, ViewportSettings};
-use renzora::core::CurrentProject;
+use renzora_viewport_api::{PersistedViewportSettings, ViewportSettings};
+use renzora_project_api::CurrentProject;
 
 /// The section name in `settings.toml`.
 const SECTION: &str = "viewport";

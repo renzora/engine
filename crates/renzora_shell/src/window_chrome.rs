@@ -157,7 +157,7 @@ pub(crate) fn window_drag(
     let Some(mut queue) = queue else { return };
     // Under the OS frame the system title bar moves the window; ours is only a
     // toolbar.
-    if renzora::EDITOR_OS_FRAME {
+    if renzora_shell_api::EDITOR_OS_FRAME {
         return;
     }
     if !bar.iter().any(|i| *i == UiInteraction::Pressed) {

@@ -29,10 +29,10 @@ impl Plugin for ImportPlugin {
         info!("[editor] ImportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use renzora::core::RenzoraShellExt;
+            use renzora_shell_api::RenzoraShellExt;
             _app.init_resource::<overlay::ImportOverlayState>()
-                .init_resource::<renzora::core::FileDragHovering>()
-                .init_resource::<renzora::core::ImportInPlaceQueue>()
+                .init_resource::<renzora_project_api::FileDragHovering>()
+                .init_resource::<renzora_project_api::ImportInPlaceQueue>()
                 // Every condition below is the set of states in which its system's
                 // body can do anything; outside them each body only returns. The
                 // drop and request paths stay live with the window closed, which
@@ -60,7 +60,7 @@ impl Plugin for ImportPlugin {
                         // from the last one swept, which can only happen on a
                         // frame `CurrentProject` was inserted or changed.
                         sweep_stale_staging
-                            .run_if(resource_exists_and_changed::<renzora::core::CurrentProject>),
+                            .run_if(resource_exists_and_changed::<renzora_project_api::CurrentProject>),
                     ),
                 )
                 .init_resource::<overlay::PendingCommits>()
@@ -71,9 +71,9 @@ impl Plugin for ImportPlugin {
             // A left-side status-bar item showing live import progress. Its
             // `render` runs each frame, so the `[done/total]` + phase updates as
             // the worker advances; it draws nothing while idle.
-            _app.register_shell_status_item(renzora::core::ShellStatusItem {
+            _app.register_shell_status_item(renzora_shell_api::ShellStatusItem {
                 id: "import-progress",
-                align: renzora::core::ShellStatusAlign::Left,
+                align: renzora_shell_api::ShellStatusAlign::Left,
                 order: -10,
                 render: import_status_segments,
             });
@@ -98,7 +98,7 @@ impl Default for InPlaceImports {
     }
 }
 
-/// Service [`renzora::core::ImportInPlaceQueue`]: run the import pipeline over
+/// Service [`renzora_project_api::ImportInPlaceQueue`]: run the import pipeline over
 /// every folder something asked to have imported.
 ///
 /// The conversion and file writes run on a thread of their own, and in the
@@ -116,17 +116,17 @@ impl Default for InPlaceImports {
 #[cfg(not(target_arch = "wasm32"))]
 fn drain_import_in_place_queue(world: &mut World) {
     let roots = {
-        let Some(mut queue) = world.get_resource_mut::<renzora::core::ImportInPlaceQueue>() else {
+        let Some(mut queue) = world.get_resource_mut::<renzora_project_api::ImportInPlaceQueue>() else {
             return;
         };
         std::mem::take(&mut queue.0)
     };
     if !roots.is_empty() {
-        let Some(project) = world.get_resource::<renzora::CurrentProject>().map(|p| p.path.clone()) else {
+        let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>().map(|p| p.path.clone()) else {
             warn!("[import] no project open, so {} folder(s) cannot be imported", roots.len());
             return;
         };
-        let remote = world.get_resource::<renzora::CompanionJobs>().map(|j| j.remote());
+        let remote = world.get_resource::<renzora_platform_api::CompanionJobs>().map(|j| j.remote());
         let tx = world.get_resource_or_insert_with(InPlaceImports::default).tx.clone();
         for root in roots {
             info!("[import] importing {} in place", root.display());
@@ -152,19 +152,19 @@ fn drain_import_in_place_queue(world: &mut World) {
 /// event stream:
 ///
 /// * **Hover feedback** — `HoveredFile` / `HoveredFileCanceled` flip
-///   [`FileDragHovering`](renzora::core::FileDragHovering) so the asset browser
+///   [`FileDragHovering`](renzora_project_api::FileDragHovering) so the asset browser
 ///   can highlight itself as the drop target. The flag is a resource (not
 ///   recomputed per frame) because winit fires `HoveredFile` once on entry, then
 ///   nothing until the drop/cancel.
 /// * **Target folder** — a drop lands in the folder the asset browser is showing
-///   ([`AssetBrowserCwd`](renzora::core::AssetBrowserCwd)), not the importer's
+///   ([`AssetBrowserCwd`](renzora_project_api::AssetBrowserCwd)), not the importer's
 ///   last-used/default target. This is what fixes images silently going to
 ///   `assets/models`.
 /// * **Queueing** — importable dropped files are appended to the pending list;
 ///   `MessageReader` makes each event process exactly once.
 ///
 /// **Nothing happens without a project.** An import writes into
-/// `<project>/assets`, so with no [`CurrentProject`](renzora::core::CurrentProject)
+/// `<project>/assets`, so with no [`CurrentProject`](renzora_project_api::CurrentProject)
 /// there is nowhere for a dropped file to go. That is the dashboard's whole
 /// life: dropping a file on the launcher used to queue it anyway, and the
 /// orchestrator then took the auto-import path straight into `run_import`, which
@@ -175,10 +175,10 @@ fn drain_import_in_place_queue(world: &mut World) {
 fn collect_dropped_files(
     mut events: MessageReader<bevy::window::FileDragAndDrop>,
     mut state: Option<ResMut<overlay::ImportOverlayState>>,
-    mut hovering: Option<ResMut<renzora::core::FileDragHovering>>,
-    mut scroll_req: Option<ResMut<renzora::core::AssetDropScrollRequest>>,
-    cwd: Option<Res<renzora::core::AssetBrowserCwd>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    mut hovering: Option<ResMut<renzora_project_api::FileDragHovering>>,
+    mut scroll_req: Option<ResMut<renzora_project_api::AssetDropScrollRequest>>,
+    cwd: Option<Res<renzora_project_api::AssetBrowserCwd>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
     use bevy::window::FileDragAndDrop;
@@ -285,10 +285,10 @@ fn import_orchestrate_system(world: &mut World) {
         .unwrap_or(true);
 
     // Check for ImportRequested marker from the asset browser
-    let import_requested = world.remove_resource::<renzora::core::ImportRequested>();
-    let requested_target = world.remove_resource::<renzora::core::ImportTargetDir>();
+    let import_requested = world.remove_resource::<renzora_project_api::ImportRequested>();
+    let requested_target = world.remove_resource::<renzora_project_api::ImportTargetDir>();
 
-    if let Some(renzora::core::ImportRequested(pick)) = import_requested {
+    if let Some(renzora_project_api::ImportRequested(pick)) = import_requested {
         if let Some(ref target) = requested_target {
             world.resource_mut::<overlay::ImportOverlayState>().target_directory =
                 target.0.clone();
@@ -306,9 +306,9 @@ fn import_orchestrate_system(world: &mut World) {
         // If the user cancels but files are already queued (e.g. from a prior
         // drop), we still surface the overlay so those aren't stranded.
         let picked = match pick {
-            renzora::core::ImportPick::Files => window::pick_and_queue_files(world),
-            renzora::core::ImportPick::Folder => window::pick_and_queue_folder(world),
-            renzora::core::ImportPick::Given(paths) => window::queue_given_files(world, paths),
+            renzora_project_api::ImportPick::Files => window::pick_and_queue_files(world),
+            renzora_project_api::ImportPick::Folder => window::pick_and_queue_folder(world),
+            renzora_project_api::ImportPick::Given(paths) => window::queue_given_files(world, paths),
         };
         let has_pending = !world
             .resource::<overlay::ImportOverlayState>()
@@ -404,7 +404,7 @@ fn import_orchestrate_system(world: &mut World) {
 /// open", and re-sweeping mid-session would delete a live staged import.
 #[cfg(not(target_arch = "wasm32"))]
 fn sweep_stale_staging(
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut swept: Local<Option<std::path::PathBuf>>,
 ) {
     let Some(project) = project else { return };
@@ -429,7 +429,7 @@ fn has_pending_model(world: &World) -> bool {
 /// Run condition for [`collect_dropped_files`]: is the asset browser still
 /// highlighted for an OS drag?
 #[cfg(not(target_arch = "wasm32"))]
-fn drag_hovering(hovering: Option<Res<renzora::core::FileDragHovering>>) -> bool {
+fn drag_hovering(hovering: Option<Res<renzora_project_api::FileDragHovering>>) -> bool {
     hovering.is_some_and(|h| h.0)
 }
 
@@ -438,8 +438,8 @@ fn drag_hovering(hovering: Option<Res<renzora::core::FileDragHovering>>) -> bool
 /// reset. With none of these the system's body falls straight through.
 #[cfg(not(target_arch = "wasm32"))]
 fn orchestration_has_work(
-    requested: Option<Res<renzora::core::ImportRequested>>,
-    target: Option<Res<renzora::core::ImportTargetDir>>,
+    requested: Option<Res<renzora_project_api::ImportRequested>>,
+    target: Option<Res<renzora_project_api::ImportTargetDir>>,
     state: Option<Res<overlay::ImportOverlayState>>,
 ) -> bool {
     requested.is_some()
@@ -455,7 +455,7 @@ fn orchestration_has_work(
 /// imported, or a channel some earlier in-place import may still answer on.
 #[cfg(not(target_arch = "wasm32"))]
 fn in_place_has_work(
-    queue: Option<Res<renzora::core::ImportInPlaceQueue>>,
+    queue: Option<Res<renzora_project_api::ImportInPlaceQueue>>,
     imports: Option<Res<InPlaceImports>>,
 ) -> bool {
     queue.is_some_and(|q| !q.0.is_empty()) || imports.is_some()
@@ -466,7 +466,7 @@ fn in_place_has_work(
 /// error are conveyed by the corner toast). Runs every frame via the shell's
 /// status registry, so the label tracks the worker live.
 #[cfg(not(target_arch = "wasm32"))]
-fn import_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment> {
+fn import_status_segments(world: &World) -> Vec<renzora_shell_api::ShellStatusSegment> {
     let Some(state) = world.get_resource::<overlay::ImportOverlayState>() else {
         return Vec::new();
     };
@@ -477,10 +477,8 @@ fn import_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegmen
         } else {
             format!("Importing [{}/{}] {}", current, total, label)
         };
-        vec![renzora::core::ShellStatusSegment::new("circle-notch", text, [r, g, b])]
+        vec![renzora_shell_api::ShellStatusSegment::new("circle-notch", text, [r, g, b])]
     } else {
         Vec::new()
     }
 }
-
-renzora::add!(ImportPlugin, Editor);

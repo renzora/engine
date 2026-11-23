@@ -1,4 +1,4 @@
-pub use renzora::{open_project, CurrentProject, ProjectConfig, WindowConfig};
+pub use renzora_project_api::{open_project, CurrentProject, ProjectConfig, WindowConfig};
 
 use std::path::Path;
 
@@ -22,7 +22,7 @@ pub fn create_project(
         version: "0.1.0".to_string(),
         // Stamped at creation and never touched again, so a project made three
         // versions ago still says so after today's editor has saved it.
-        created_with: Some(renzora::version::ENGINE_VERSION.to_string()),
+        created_with: Some(renzora_platform_api::version::ENGINE_VERSION.to_string()),
         main_scene: "scenes/main.bsn".to_string(),
         ..Default::default()
     };
@@ -63,14 +63,14 @@ mod tests {
         let project = create_project(&dir, "Demo").expect("create");
         assert_eq!(
             project.config.created_with.as_deref(),
-            Some(renzora::version::ENGINE_VERSION)
+            Some(renzora_platform_api::version::ENGINE_VERSION)
         );
 
         let written = std::fs::read_to_string(dir.join("project.toml")).expect("read back");
         let parsed: ProjectConfig = toml::from_str(&written).expect("parse");
         assert_eq!(
             parsed.created_with.as_deref(),
-            Some(renzora::version::ENGINE_VERSION)
+            Some(renzora_platform_api::version::ENGINE_VERSION)
         );
 
         let _ = std::fs::remove_dir_all(&dir);

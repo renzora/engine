@@ -137,7 +137,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                 move |w| current_font_name(w.untracked(), entity),
                 move |w, name| set_font(w, entity, &name),
             );
-            let font_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("comp.text_3d.font"), picker);
+            let font_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t("comp.text_3d.font"), picker);
 
             let dv = drag_value(&mut commands, &fonts.ui, "", value_text(), size_init, 0.5);
             commands.entity(dv).insert(DragRange { min: 4.0, max: 200.0 });
@@ -151,7 +151,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                     }
                 },
             );
-            let size_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("common.size"), dv);
+            let size_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t("common.size"), dv);
 
             // Weight (variable fonts; 100–900). TextFont.weight is FontWeight(u16).
             let wd = drag_value(&mut commands, &fonts.ui, "", value_text(), weight_init, 25.0);
@@ -166,7 +166,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                     }
                 },
             );
-            let weight_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("comp.text_font.weight"), wd);
+            let weight_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t("comp.text_font.weight"), wd);
 
             // Width (variable fonts; 0.75 condensed … 1.25 expanded).
             let xd = drag_value(&mut commands, &fonts.ui, "", value_text(), width_init, 0.02);
@@ -181,7 +181,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                     }
                 },
             );
-            let width_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("common.width"), xd);
+            let width_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t("common.width"), xd);
 
             // Letter spacing (px) — a standalone LetterSpacing component, inserted
             // on edit if absent.
@@ -197,7 +197,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                     }
                 },
             );
-            let ls_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("comp.text_font.spacing"), ld);
+            let ls_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t("comp.text_font.spacing"), ld);
 
             // Line height (× font size) — standalone LineHeight component.
             let hd = drag_value(&mut commands, &fonts.ui, "", value_text(), lh_init, 0.05);
@@ -212,7 +212,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                     }
                 },
             );
-            let lh_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("comp.text_font.line"), hd);
+            let lh_row = labeled_row(&mut commands, &fonts, &renzora_lang_api::t("comp.text_font.line"), hd);
 
             commands
                 .entity(root)

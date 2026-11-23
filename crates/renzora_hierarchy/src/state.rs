@@ -351,16 +351,16 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
                 .map(|v| *v != Visibility::Hidden)
                 .unwrap_or(true);
             let is_locked = world.get::<EditorLocked>(entity).is_some();
-            let is_default_camera = world.get::<renzora::core::DefaultCamera>(entity).is_some();
+            let is_default_camera = world.get::<renzora_scene_api::DefaultCamera>(entity).is_some();
 
             // Asset badges.
             let has_script = world
                 .get::<renzora_scripting::ScriptComponent>(entity)
                 .is_some_and(|sc| !sc.scripts.is_empty());
-            let has_material = world.get::<renzora::core::MaterialRef>(entity).is_some();
+            let has_material = world.get::<renzora_material_api::MaterialRef>(entity).is_some();
             // One bit, read through the contract crate's marker — the hierarchy
-            // links no audio crate to ask this. See `renzora::AudioEmitting`.
-            let is_emitting = world.get::<renzora::AudioEmitting>(entity).is_some();
+            // links no audio crate to ask this. See `renzora_scene_api::AudioEmitting`.
+            let is_emitting = world.get::<renzora_scene_api::AudioEmitting>(entity).is_some();
 
             named_entities.insert(entity);
             entries.push(Entry {

@@ -34,7 +34,7 @@ use renzora_ember::reactive::KeyedSnapshot;
 use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::tint;
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 
 // Native audio playback backend for the audio-preview widget. Gated because the
 // Kira stack (and the whole `renzora_audio` native module) doesn't compile on

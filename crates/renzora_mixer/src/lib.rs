@@ -35,5 +35,3 @@ impl Plugin for MixerPlugin {
         app.add_plugins(strips::MixerStrips);
     }
 }
-
-renzora::add!(MixerPlugin, Editor);

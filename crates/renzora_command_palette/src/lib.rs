@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use renzora::core::keybindings::{EditorAction, KeyBindings};
+use renzora_shell_api::keybindings::{EditorAction, KeyBindings};
 use renzora_editor_framework::{
     AppEditorExt, ShortcutEntry, ShortcutRegistry, SplashState, ToolEntry, ToolbarRegistry,
 };
@@ -76,7 +76,7 @@ impl Plugin for CommandPalettePlugin {
                 "command_palette.toggle",
                 "Command Palette",
                 "General",
-                renzora::core::keybindings::KeyBinding::new(KeyCode::KeyP).ctrl(),
+                renzora_shell_api::keybindings::KeyBinding::new(KeyCode::KeyP).ctrl(),
                 toggle_palette,
             ))
             .add_systems(
@@ -85,7 +85,7 @@ impl Plugin for CommandPalettePlugin {
                 // resource is inserted only when something asks for a toggle.
                 consume_toggle_request
                     .run_if(in_state(SplashState::Editor))
-                    .run_if(resource_exists::<renzora::core::ToggleCommandPaletteRequested>),
+                    .run_if(resource_exists::<renzora_project_api::ToggleCommandPaletteRequested>),
             );
         // The palette modal itself.
         modal::register(app);
@@ -97,7 +97,7 @@ impl Plugin for CommandPalettePlugin {
 /// palette without depending on this crate.
 fn consume_toggle_request(world: &mut World) {
     if world
-        .remove_resource::<renzora::core::ToggleCommandPaletteRequested>()
+        .remove_resource::<renzora_project_api::ToggleCommandPaletteRequested>()
         .is_some()
     {
         toggle_palette(world);
@@ -260,38 +260,38 @@ fn collect_items(
     //  and aren't exposed as marker resources, so we omit them here.)
     let menu_items: &[(&str, fn(&mut World))] = &[
         ("File: New Scene", |w| {
-            w.insert_resource(renzora::core::NewSceneRequested);
+            w.insert_resource(renzora_project_api::NewSceneRequested);
         }),
         ("File: Open Scene...", |w| {
-            w.insert_resource(renzora::core::OpenSceneRequested);
+            w.insert_resource(renzora_project_api::OpenSceneRequested);
         }),
         ("File: Save", |w| {
-            w.insert_resource(renzora::core::SaveSceneRequested);
+            w.insert_resource(renzora_project_api::SaveSceneRequested);
         }),
         ("File: Save As...", |w| {
-            w.insert_resource(renzora::core::SaveAsSceneRequested);
+            w.insert_resource(renzora_project_api::SaveAsSceneRequested);
         }),
         // Export sits at the top level of the ☰ menu, not under File, so the
         // palette label doesn't claim otherwise.
         ("Export Project...", |w| {
-            w.insert_resource(renzora::core::ExportRequested);
+            w.insert_resource(renzora_project_api::ExportRequested);
         }),
         // Two entries, not one: the importer needs to know which OS dialog to
         // open, because none of them selects files and folders together.
         ("File: Import Files...", |w| {
-            w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
+            w.insert_resource(renzora_project_api::ImportRequested(renzora_project_api::ImportPick::Files));
         }),
         ("File: Import Folder...", |w| {
-            w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
+            w.insert_resource(renzora_project_api::ImportRequested(renzora_project_api::ImportPick::Folder));
         }),
         // Only reachable from here and the Console's note about it: it is a
         // one-off for projects from before models were stored as `.rvg`, and
         // a permanent menu row would outlive every project that needs it.
         ("Convert Models to RVG...", |w| {
-            w.insert_resource(renzora::core::ConvertModelsRequested);
+            w.insert_resource(renzora_project_api::ConvertModelsRequested);
         }),
         ("Help: Getting Started Tutorial", |w| {
-            w.insert_resource(renzora::core::TutorialRequested);
+            w.insert_resource(renzora_project_api::TutorialRequested);
         }),
     ];
     for (label, handler) in menu_items {
@@ -411,7 +411,6 @@ fn collect_entity_items(world: &mut World, query: &str) -> Vec<PaletteItem> {
     out
 }
 
-renzora::add!(CommandPalettePlugin, Editor);
 
 #[cfg(test)]
 mod tests {

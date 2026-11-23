@@ -22,8 +22,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 
-use renzora::core::viewport_types::SHAPE_THUMBNAIL_LAYER;
-use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, ShapeRegistry};
+use renzora_viewport_api::SHAPE_THUMBNAIL_LAYER;
+use renzora_scene_api::{EditorLocked, HideInHierarchy, IsolatedCamera, ShapeRegistry};
 
 /// Thumbnail resolution. Above the largest tile the size slider allows, so the
 /// image is only ever scaled down.

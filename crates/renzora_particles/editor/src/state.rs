@@ -27,7 +27,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{DocTabKind, EditorContext};
 use renzora_particles::asset::{parse_vfx, write_vfx, NodeId, VfxAsset, VfxGraph};
 use renzora_particles::compile::{compile_graph, CompileError};
@@ -230,7 +230,7 @@ pub fn save_document(world: &mut World) {
     let text = match write_vfx(&doc) {
         Ok(t) => t,
         Err(e) => {
-            renzora::console_log::console_warn("Particles", format!("{path}: could not serialize: {e}"));
+            renzora_log_api::console_warn("Particles", format!("{path}: could not serialize: {e}"));
             return;
         }
     };
@@ -238,11 +238,11 @@ pub fn save_document(world: &mut World) {
         let _ = std::fs::create_dir_all(parent);
     }
     if let Err(e) = std::fs::write(&fs_path, &text) {
-        renzora::console_log::console_warn("Particles", format!("{path}: save failed: {e}"));
+        renzora_log_api::console_warn("Particles", format!("{path}: save failed: {e}"));
         return;
     }
     world
-        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .get_resource_or_insert_with(renzora_project_api::project_files::SelfWrites::default)
         .record(&fs_path, text.as_bytes());
     info!("[vfx_editor] saved {path}");
     world.resource_mut::<VfxEditorState>().dirty = false;
@@ -393,7 +393,7 @@ pub fn adopt_external_changes(
         return;
     }
     if state.dirty {
-        renzora::console_log::console_warn(
+        renzora_log_api::console_warn(
             "Particles",
             format!(
                 "{} changed on disk while it had unsaved edits; keeping the edits (Save overwrites the file)",

@@ -72,7 +72,7 @@ fn drain_collider_stamp_queue(
             .insert((PhysicsBodyData::static_body(), CollisionShapeData::mesh()));
     }
     if queue.remaining.is_empty() {
-        renzora::console_log::console_success(
+        renzora_log_api::console_success(
             "Physics",
             format!("Stamped Mesh Colliders on {} entities", queue.total),
         );
@@ -99,5 +99,3 @@ impl Plugin for PhysicsEditorPlugin {
         inspector::register_physics_inspectors(app);
     }
 }
-
-renzora::add!(PhysicsEditorPlugin, Editor);

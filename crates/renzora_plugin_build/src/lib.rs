@@ -107,19 +107,20 @@ pub struct Manifest {
     /// `--extern <name>=<sdk-relative path>` for the crates a plugin may use.
     pub r#extern: Externs,
     pub link_search: LinkSearch,
+    /// SDK-relative paths of the engine's own shared images (`bevy_dylib`,
+    /// `renzora_dylib`), byte for byte the files beside the executable. A
+    /// release leaves them out of `sdk.tar.zst` and [`unpack::extract`] links
+    /// them back in from the install, so they ship once. Empty for an SDK cut
+    /// before the field existed, whose archive still carries them.
+    #[serde(default)]
+    pub shared_images: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Externs {
     pub bevy: String,
+    /// `renzora_dylib`, which also carries the UI framework as `renzora::ui`.
     pub renzora: String,
-    /// The UI framework, as the shared `renzora_ember_dylib` image.
-    ///
-    /// Optional for the same reason as [`Manifest::build_id`]: an SDK staged
-    /// before panels were reachable from a plugin has no entry, and a plugin
-    /// that does not draw UI still builds against it.
-    #[serde(default)]
-    pub renzora_ember: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -377,7 +378,6 @@ impl Sdk {
         let name = crate_name(dir);
         let bevy = self.root.join(&self.manifest.r#extern.bevy);
         let renzora = self.root.join(&self.manifest.r#extern.renzora);
-        let ember = self.manifest.r#extern.renzora_ember.as_ref().map(|e| self.root.join(e));
         let dependency: Vec<PathBuf> =
             self.manifest.link_search.dependency.iter().map(|d| self.root.join(d)).collect();
         let native: Vec<PathBuf> =
@@ -396,7 +396,6 @@ impl Sdk {
             crate_name: &name,
             extern_bevy: &bevy,
             extern_renzora: &renzora,
-            extern_ember: ember.as_deref(),
             dependency: &dependency,
             native: &native,
             plugin_dir: &manifest,

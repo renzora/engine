@@ -20,7 +20,7 @@
 //! follows edits with no hot-reload code of its own.
 
 use bevy::prelude::*;
-use renzora::core::{MaterialRef, MaterialResolved};
+use renzora_material_api::{MaterialRef, MaterialResolved};
 use renzora_shader::material::landscape::{landscape_layer_infos, LandscapeBlend, LandscapeLayerInfo};
 use renzora_shader::material::surface_ext::LandscapeParams;
 use renzora_shader::material::GraphMaterial;
@@ -187,7 +187,7 @@ pub fn assign_channels(channels: &mut Vec<String>, layers: &[String]) -> ([u32; 
 // ── Reading the material ─────────────────────────────────────────────────────
 
 /// The file path `path` (project-relative) is read from.
-fn fs_path(path: &str, project: Option<&renzora::CurrentProject>) -> String {
+fn fs_path(path: &str, project: Option<&renzora_project_api::CurrentProject>) -> String {
     if std::path::Path::new(path).is_absolute() {
         return path.to_string();
     }
@@ -204,8 +204,8 @@ fn fs_path(path: &str, project: Option<&renzora::CurrentProject>) -> String {
 /// material (one with a `master`) declares its master's.
 pub fn read_material_layers(
     path: &str,
-    project: Option<&renzora::CurrentProject>,
-    reader: &renzora::VirtualFileReader,
+    project: Option<&renzora_project_api::CurrentProject>,
+    reader: &renzora_project_api::VirtualFileReader,
 ) -> Result<Vec<LandscapeLayerInfo>, String> {
     let text = reader
         .read_string(&fs_path(path, project))
@@ -237,10 +237,10 @@ pub(crate) fn follow_terrain_materials(
     states: Query<&TerrainMaterialState, Without<TerrainMaterial>>,
     probes: Query<(Entity, &TerrainMaterialProbe)>,
     roots: Query<(), With<TerrainData>>,
-    project: Option<Res<renzora::CurrentProject>>,
-    reader: Option<Res<renzora::VirtualFileReader>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    reader: Option<Res<renzora_project_api::VirtualFileReader>>,
 ) {
-    let default_reader = renzora::VirtualFileReader::default();
+    let default_reader = renzora_project_api::VirtualFileReader::default();
     let reader = reader.as_deref().unwrap_or(&default_reader);
     for root in removed.read() {
         if let Ok(state) = states.get(root) {
@@ -286,7 +286,7 @@ pub(crate) fn follow_terrain_materials(
             material.set_changed();
         }
         let probe = commands
-            .spawn((MaterialRef(path.clone()), TerrainMaterialProbe(root), renzora::HideInHierarchy))
+            .spawn((MaterialRef(path.clone()), TerrainMaterialProbe(root), renzora_scene_api::HideInHierarchy))
             .id();
         commands.entity(root).try_insert((
             TerrainMaterialState {
@@ -314,15 +314,15 @@ pub(crate) fn retry_failed_materials(
     time: Res<Time>,
     mut wait: Local<f32>,
     terrains: Query<(Entity, &TerrainMaterialState, &TerrainLandscape)>,
-    project: Option<Res<renzora::CurrentProject>>,
-    reader: Option<Res<renzora::VirtualFileReader>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    reader: Option<Res<renzora_project_api::VirtualFileReader>>,
 ) {
     *wait += time.delta_secs();
     if *wait < 1.0 {
         return;
     }
     *wait = 0.0;
-    let default_reader = renzora::VirtualFileReader::default();
+    let default_reader = renzora_project_api::VirtualFileReader::default();
     let reader = reader.as_deref().unwrap_or(&default_reader);
     for (root, state, landscape) in &terrains {
         if !matches!(landscape.status, LandscapeStatus::Failed(_)) {
@@ -394,6 +394,31 @@ pub(crate) fn sync_weight_atlases(
         });
         state.atlas = Some(super::instance::WeightAtlas { image: images.add(image), dims });
         state.rebuild = true;
+    }
+
+    // A chunk that joins its terrain after the atlas was built, carrying
+    // weights from the scene file. A chunk loaded from a scene gets its
+    // `TerrainChunkOf` back only when `rehydrate_terrain_chunks` builds its
+    // mesh, a few per frame and nearest first, so on a streamed terrain almost
+    // every chunk arrives after the one full build above. Left there, its
+    // paint was never decoded or uploaded and its totals stayed zero: a
+    // painted terrain loaded back as all first layer, reading 0% everywhere.
+    // `resolution` is 0 only until the first decode, so this runs once per
+    // chunk, and a string that does not decode is not retried every frame.
+    for (_, of, mut weights) in &mut chunks {
+        if weights.resolution != 0 || weights.encoded.is_empty() {
+            continue;
+        }
+        let Ok((_, terrain, state)) = terrains.get(of.0) else { continue };
+        if state.atlas.is_none() {
+            continue;
+        }
+        let res = weight_resolution(terrain);
+        let w = weights.bypass_change_detection();
+        if w.ensure_decoded(res) {
+            w.sums = channel_sums(res, &w.texels);
+            w.gpu_dirty = Some([0, 0, res - 1, res - 1]);
+        }
     }
 
     for (chunk, of, mut weights) in &mut chunks {
@@ -483,8 +508,8 @@ pub(crate) fn build_instances(
     )>,
     mut graph_materials: Option<ResMut<Assets<GraphMaterial>>>,
     mut events: MessageReader<AssetEvent<GraphMaterial>>,
-    project: Option<Res<renzora::CurrentProject>>,
-    reader: Option<Res<renzora::VirtualFileReader>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    reader: Option<Res<renzora_project_api::VirtualFileReader>>,
 ) {
     let modified: Vec<AssetId<GraphMaterial>> = events
         .read()
@@ -494,7 +519,7 @@ pub(crate) fn build_instances(
         })
         .collect();
     let Some(graph_materials) = graph_materials.as_deref_mut() else { return };
-    let default_reader = renzora::VirtualFileReader::default();
+    let default_reader = renzora_project_api::VirtualFileReader::default();
     let reader = reader.as_deref().unwrap_or(&default_reader);
 
     for (terrain, transform, mut material, mut state, mut landscape) in &mut terrains {
@@ -666,13 +691,13 @@ pub(crate) fn dress_landscape_chunks(
 pub(crate) fn keep_twins_untraced(
     mut commands: Commands,
     chunks: Query<(Option<&crate::lod::ChunkLods>, Option<&crate::streaming::StreamProxy>), With<TerrainChunkData>>,
-    twins: Query<(), (With<MeshMaterial3d<GraphMaterial>>, Without<renzora::TracedGeometry>)>,
+    twins: Query<(), (With<MeshMaterial3d<GraphMaterial>>, Without<renzora_render_api::TracedGeometry>)>,
 ) {
     for (lods, proxy) in &chunks {
         let levels = lods.map(|l| l.levels.iter().map(|(e, _)| *e).collect::<Vec<_>>()).unwrap_or_default();
         for twin in levels.into_iter().chain(proxy.map(|p| p.entity)) {
             if twins.contains(twin) {
-                commands.entity(twin).try_insert(renzora::TracedGeometry(None));
+                commands.entity(twin).try_insert(renzora_render_api::TracedGeometry(None));
             }
         }
     }
@@ -790,6 +815,69 @@ mod tests {
         app.update();
         assert!(app.world().get::<MeshMaterial3d<GraphMaterial>>(chunk).is_none());
         assert!(app.world().get::<MeshMaterial3d<TerrainCheckerboardMaterial>>(chunk).is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A chunk loaded from a scene joins its terrain (gets `TerrainChunkOf`)
+    /// only when its mesh is built, after the weight atlas exists. Its saved
+    /// paint must still reach the atlas and the coverage.
+    #[test]
+    fn saved_paint_on_a_chunk_that_joins_late_is_uploaded() {
+        let dir = std::env::temp_dir().join(format!("renzora_landscape_late_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("alpine.material");
+        let graph = renzora_shader::material::landscape_preset::alpine_landscape_graph();
+        std::fs::write(&file, serde_json::to_string(&graph).unwrap()).unwrap();
+        let path = file.to_string_lossy().replace('\\', "/");
+
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<Assets<GraphMaterial>>()
+            .init_resource::<Assets<Image>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<TerrainCheckerboardMaterial>>()
+            .add_message::<AssetEvent<GraphMaterial>>()
+            .init_resource::<super::super::LandscapeStroke>()
+            .init_resource::<TerrainWeightPatches>()
+            .add_systems(
+                Update,
+                (follow_terrain_materials, ensure_chunk_weights, sync_weight_atlases, build_instances, encode_weights).chain(),
+            );
+        let terrain = TerrainData { chunks_x: 2, chunks_z: 1, chunk_size: 16.0, chunk_resolution: 17, ..default() };
+        let root = app.world_mut().spawn((terrain.clone(), TerrainMaterial::new(path.clone()), GlobalTransform::default())).id();
+        app.world_mut().spawn((TerrainChunkData::new(0, 0, terrain.chunk_resolution, 0.2), TerrainChunkOf(root)));
+        app.update();
+        let shared = app.world_mut().resource_mut::<Assets<GraphMaterial>>().add(GraphMaterial::default());
+        let mut probes = app.world_mut().query::<(Entity, &TerrainMaterialProbe)>();
+        let (probe, _) = probes.single(app.world()).expect("one probe");
+        app.world_mut().entity_mut(probe).insert((MeshMaterial3d(shared), MaterialResolved { source_path: path.clone() }));
+        app.update();
+        app.update();
+        assert!(app.world().get::<TerrainMaterialState>(root).unwrap().atlas.is_some(), "the atlas is built first");
+        app.world_mut().resource_mut::<TerrainWeightPatches>().0.clear();
+
+        // The second chunk arrives with its saved weights: all Rock.
+        let res = weight_resolution(&terrain);
+        let saved = super::super::weights::encode(res, &vec![solid(2); (res * res) as usize]);
+        let late = app
+            .world_mut()
+            .spawn((
+                TerrainChunkData::new(1, 0, terrain.chunk_resolution, 0.2),
+                TerrainChunkOf(root),
+                TerrainChunkWeights { encoded: saved, ..default() },
+            ))
+            .id();
+        app.update();
+
+        let weights = app.world().get::<TerrainChunkWeights>(late).unwrap();
+        assert_eq!(weights.resolution, res, "decoded");
+        assert_eq!(weights.texel(0, 0), solid(2));
+        assert!(weights.gpu_dirty.is_none(), "sent to the atlas");
+        assert_eq!(app.world().resource::<TerrainWeightPatches>().0.len(), 1, "one patch, for the late chunk");
+        // Mapped channels follow the material's layer order; Rock is the third.
+        let landscape = app.world().get::<TerrainLandscape>(root).unwrap();
+        let rock = landscape.layers.iter().find(|l| l.name == "Rock").unwrap();
+        assert!((rock.coverage - 0.5).abs() < 1e-3, "half the terrain is Rock, not {}", rock.coverage);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

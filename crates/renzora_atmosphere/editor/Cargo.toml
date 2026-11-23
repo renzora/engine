@@ -2,12 +2,19 @@
 name = "renzora_atmosphere_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only inspector for renzora_atmosphere. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only inspector for renzora_atmosphere. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_atmosphere = { path = ".." }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AtmosphereEditorPlugin"
+scope = "Editor"

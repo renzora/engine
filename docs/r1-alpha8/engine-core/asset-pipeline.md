@@ -354,6 +354,14 @@ resolves on Linux and vice versa. Anything still unfound is reported as a single
 import warning naming the count and the first missing file, rather than one line
 per texture.
 
+Every texture, embedded or referenced, is baked into an `.rmip`. The bake reads
+PNG, JPEG, WebP, BMP, GIF and TIFF; TIFF matters for city data such as Japan's
+PLATEAU models, which ship their textures that way. A texture that cannot be
+baked stays inside the model, and when the model loads, an embedded image in a
+format the engine cannot read (or with no declared format) shows blank, with a
+Console warning naming the model, rather than stopping the load. Importing the
+model again bakes it properly once the format is supported.
+
 **One primitive per material, each with its own vertices.** A glTF primitive
 wears exactly one material, so the converters bucket triangles by their source
 material and emit a primitive per bucket. Faces the source left unassigned

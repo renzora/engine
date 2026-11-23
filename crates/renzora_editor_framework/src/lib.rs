@@ -21,26 +21,17 @@ pub use renzora_ui::*;
 // here at the SAME `renzora_editor_framework::*` paths so this crate's own framework code
 // and the bundle-side panels keep resolving `renzora_editor_framework::FieldDef` /
 // `AppEditorExt` / the field macros etc. The field macros now expand to
-// `renzora::FieldDef` (one shared contract — no `renzora_editor_framework` dependency).
-pub use renzora::{
-    shortcut_dispatch_system, AppEditorExt, ComponentIconEntry, ComponentIconRegistry,
-    EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, HierarchyExpandRequests,
-    HierarchyOrder, InspectableComponent, InspectorEntry, InspectorRegistry, NativeInspectorDrawer,
-    NativeInspectorRegistry, SceneStarter, SceneStarterRegistry, ShortcutEntry, ShortcutHandler,
-    ShortcutRegistry, SpawnRegistry, ToolActiveStyle, ToolActivator, ToolEntry, ToolPredicate,
-    ToolSection, ToolbarRegistry,
-};
-pub use renzora::{
-    bool_field, color_rgba_field, enum_u32_field, float_field, int_field, string_field,
-    tuple_color_field, vec3_color_field,
-};
+// `renzora_editor_api::FieldDef` (one shared contract — no `renzora_editor_framework` dependency).
+pub use renzora_editor_api::{shortcut_dispatch_system, AppEditorExt, ComponentIconEntry, ComponentIconRegistry, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, HierarchyExpandRequests, InspectableComponent, InspectorEntry, InspectorRegistry, NativeInspectorDrawer, NativeInspectorRegistry, SceneStarter, SceneStarterRegistry, ShortcutEntry, ShortcutHandler, ShortcutRegistry, SpawnRegistry, ToolActiveStyle, ToolActivator, ToolEntry, ToolPredicate, ToolSection, ToolbarRegistry};
+pub use renzora_scene_api::HierarchyOrder;
+pub use renzora_editor_api::{bool_field, color_rgba_field, enum_u32_field, float_field, int_field, string_field, tuple_color_field, vec3_color_field};
 pub use material_thumbnail_registry::{
     material_thumb_path, migrate_legacy_thumbnail_cache, thumbnail_cache_dir,
     MaterialThumbnailRegistry,
 };
 pub use model_thumbnail_registry::{model_thumb_path, ModelThumbnailRegistry};
 pub use scene_thumbnail_registry::{scene_thumb_path, SceneThumbnailRegistry};
-pub use renzora_macros::Inspectable;
+pub use renzora_editor_api::Inspectable;
 
 /// Late-bound hooks for actions that live in downstream crates the editor
 /// framework can't depend on directly (avoids a cycle with `renzora_undo`).
@@ -68,13 +59,13 @@ pub use settings::{
 };
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.
-pub use renzora::SplashState;
-pub use renzora::{EditorCamera, EditorLocked, HideInHierarchy};
+pub use renzora_project_api::SplashState;
+pub use renzora_scene_api::{EditorCamera, EditorLocked, HideInHierarchy};
 
 // Both authored identity components moved into the contract crate so a scene
 // save carries them into the runtime; re-exported here because every editor
 // crate already reaches for them under this path.
-pub use renzora::{EntityIcon, EntityLabelColor};
+pub use renzora_scene_api::{EntityIcon, EntityLabelColor};
 pub use entity_icons::{entity_icon_name, ENTITY_ICON_CHOICES};
 
 // `HierarchyOrder` moved into `renzora` core (re-exported at top of file).
@@ -88,7 +79,7 @@ pub struct AutoSelectFirstHierarchyEntity(pub bool);
 
 // `HierarchyExpandRequests` moved into `renzora` core (re-exported at top).
 
-pub use renzora::EntityGroup;
+pub use renzora_scene_api::EntityGroup;
 
 /// Optional extension filter for the asset browser. When set, only files with
 /// these extensions (and folders) appear in the grid/list/tree. Mirrors the
@@ -118,7 +109,7 @@ pub enum HierarchyFilter {
 /// shipped as a plugin needs `ActiveTool::None` to make the built-in picking and
 /// gizmo systems disengage, and `EditorCommands` to write to the world from a
 /// panel that renders with `&World`. Re-exported so existing paths still resolve.
-pub use renzora::{ActiveTool, EditorCommands, GizmoMode};
+pub use renzora_editor_api::{ActiveTool, EditorCommands, GizmoMode};
 
 /// Reference frame the transform gizmo operates in — shared so the gizmo and
 /// the viewport toolbar toggle agree.
@@ -239,7 +230,7 @@ impl Plugin for RenzoraEditorPlugin {
         app.init_state::<EditorState>()
             .init_resource::<ThemeManager>()
             .init_resource::<PanelRegistry>()
-            .init_resource::<renzora::ShellPanelRegistry>()
+            .init_resource::<renzora_shell_api::ShellPanelRegistry>()
             .init_resource::<FloatingPanels>()
             .init_resource::<DocumentTabState>()
             .init_resource::<renzora_ui::EditorContext>()
@@ -255,7 +246,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<MaterialThumbnailRegistry>()
             .init_resource::<ModelThumbnailRegistry>()
             .init_resource::<SceneThumbnailRegistry>()
-            .init_resource::<renzora::core::IsolationMode>();
+            .init_resource::<renzora_project_api::IsolationMode>();
 
         register_builtin_tools(&mut app.world_mut().resource_mut::<ToolbarRegistry>());
 
@@ -295,21 +286,21 @@ impl Plugin for RenzoraEditorPlugin {
 
         // Before the first read of anything: folds `~/.renzora/editor.toml` into
         // `settings.toml` if that has not happened yet. A no-op afterwards.
-        renzora::core::settings_file::migrate_legacy_prefs();
+        renzora_project_api::settings_file::migrate_legacy_prefs();
         // `from_disk`, not `init_resource`: `Default` is the shipped values, and
         // the saved ones have to be read off disk at boot.
         let settings = EditorSettings::from_disk();
         // Seeded from disk here, not left to the first `sync_splash_effects`:
         // the launcher builds its cinematic on its first frame.
-        let splash_effects = renzora::SplashEffectsSetting(settings.splash_effects);
+        let splash_effects = renzora_project_api::SplashEffectsSetting(settings.splash_effects);
         app.insert_resource(settings)
             .insert_resource(splash_effects)
-            .init_resource::<renzora::core::DevMode>()
+            .init_resource::<renzora_project_api::DevMode>()
             .init_resource::<ActiveTool>()
             .init_resource::<GizmoMode>()
             .init_resource::<CustomFonts>()
             .init_resource::<HierarchyFilter>()
-            .init_resource::<renzora::SpawnCategoryScope>()
+            .init_resource::<renzora_editor_api::SpawnCategoryScope>()
             .init_resource::<AssetBrowserExtensionFilter>()
             .init_resource::<HierarchyExpandRequests>()
             .init_resource::<AutoSelectFirstHierarchyEntity>()
@@ -337,7 +328,7 @@ impl Plugin for RenzoraEditorPlugin {
             )
             .add_systems(
                 Update,
-                (apply_vsync_setting, apply_unfocused_throttle, sync_dev_mode, sync_splash_effects),
+                (apply_vsync_setting, apply_unfocused_throttle, sync_dev_mode, sync_splash_effects, sync_thumbnail_rendering),
             )
             .add_systems(Update, (reset_ui_scale_shortcut, apply_ui_scale_setting).chain())
             .add_systems(
@@ -360,7 +351,7 @@ impl Plugin for RenzoraEditorPlugin {
 type NamedEntity<'a> = (
     Entity,
     bevy::ecs::change_detection::Ref<'a, Name>,
-    Option<&'a renzora::BindName>,
+    Option<&'a renzora_scene_api::BindName>,
     Has<ChildOf>,
 );
 
@@ -391,7 +382,7 @@ fn enforce_entity_ids(
     // and taking part made them take names from the scene. The Animation
     // workspace's copy of a rigged model was spawned first, so it kept
     // `mixamorig_neck` and the scene's own bones became `mixamorig_neck_1`.
-    names: Query<NamedEntity, (Without<bevy::ui::Node>, Without<renzora::core::HideInHierarchy>)>,
+    names: Query<NamedEntity, (Without<bevy::ui::Node>, Without<renzora_scene_api::HideInHierarchy>)>,
     mut commands: Commands,
 ) {
     if !names.iter().any(|(_, n, ..)| n.is_changed()) {
@@ -405,13 +396,13 @@ fn enforce_entity_ids(
 
     let mut taken: bevy::platform::collections::HashSet<String> = Default::default();
     for (e, raw, bind, _) in &current {
-        let clean = renzora::sanitize_id(raw);
-        let unique = renzora::unique_id(&clean, |c| taken.contains(c));
+        let clean = renzora_scene_api::sanitize_id(raw);
+        let unique = renzora_scene_api::unique_id(&clean, |c| taken.contains(c));
         taken.insert(unique.clone());
         // A suffix added only to make the name unique is not the entity's
         // name as far as its animation is concerned: keep the one it would
         // have had, so a second copy of a rigged model still binds its clips.
-        // See `renzora::BindName`.
+        // See `renzora_scene_api::BindName`.
         //
         // The record is made once. An entity renamed a second time (its
         // `face_jaw_1` collides again and becomes `face_jaw_2`) already has
@@ -421,7 +412,7 @@ fn enforce_entity_ids(
         // form of the record (a rename by hand) replaces it.
         let already = bind.as_deref().is_some_and(|b| is_suffixed_form(&clean, b));
         if unique != clean && &unique != raw && !already {
-            commands.entity(*e).try_insert(renzora::BindName(clean.clone()));
+            commands.entity(*e).try_insert(renzora_scene_api::BindName(clean.clone()));
         }
         if &unique != raw {
             // `try_insert`, because deferring is what makes this reachable: the
@@ -452,7 +443,7 @@ fn is_suffixed_form(name: &str, base: &str) -> bool {
 }
 
 /// Keep `EditorSettings.dev_mode` and the contract-level
-/// [`renzora::core::DevMode`] agreeing, in both directions.
+/// [`renzora_project_api::DevMode`] agreeing, in both directions.
 ///
 /// The contract resource exists so crates that must *watch* the toggle can use
 /// change detection instead of re-reading `editor.toml` every frame. It runs
@@ -495,7 +486,7 @@ fn persist_editor_settings(
     }
 }
 
-fn sync_dev_mode(mut settings: ResMut<EditorSettings>, mut dev: ResMut<renzora::core::DevMode>) {
+fn sync_dev_mode(mut settings: ResMut<EditorSettings>, mut dev: ResMut<renzora_project_api::DevMode>) {
     if settings.is_changed() && dev.0 != settings.dev_mode {
         dev.0 = settings.dev_mode;
     } else if dev.is_changed() && settings.dev_mode != dev.0 {
@@ -508,7 +499,7 @@ fn sync_dev_mode(mut settings: ResMut<EditorSettings>, mut dev: ResMut<renzora::
 /// it is shown (File > Open Project returns to it in the same process).
 fn sync_splash_effects(
     settings: Res<EditorSettings>,
-    mut mirrored: ResMut<renzora::SplashEffectsSetting>,
+    mut mirrored: ResMut<renzora_project_api::SplashEffectsSetting>,
 ) {
     if mirrored.0 != settings.splash_effects {
         mirrored.0 = settings.splash_effects;
@@ -521,7 +512,7 @@ fn sync_splash_effects(
 /// With no project open (the splash) it stays on. Runs every frame but only
 /// writes when the mode differs, so it's effectively free.
 fn apply_vsync_setting(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
 ) {
     let Ok(mut window) = windows.single_mut() else {
@@ -546,6 +537,20 @@ fn apply_vsync_setting(
 /// window, but it also caps anything measured with the editor in the
 /// background at about 60 frames a second, which read as a VSync limit in a
 /// profile taken while VSync was off.
+/// Mirror `EditorSettings.render_thumbnails` into the contract's
+/// [`renzora_project_api::ThumbnailRendering`], which the capture code and the companion
+/// link read. Written only on a change, so readers can watch it.
+fn sync_thumbnail_rendering(
+    settings: Res<EditorSettings>,
+    current: Option<Res<renzora_project_api::ThumbnailRendering>>,
+    mut commands: Commands,
+) {
+    let wanted = renzora_project_api::ThumbnailRendering(settings.render_thumbnails);
+    if current.as_deref() != Some(&wanted) {
+        commands.insert_resource(wanted);
+    }
+}
+
 fn apply_unfocused_throttle(
     settings: Res<EditorSettings>,
     winit: Option<ResMut<bevy::winit::WinitSettings>>,
@@ -626,15 +631,15 @@ fn apply_ui_scale_setting(
 /// panel itself hard to operate.
 fn reset_ui_scale_shortcut(
     keyboard: Res<ButtonInput<KeyCode>>,
-    keybindings: Res<renzora::core::keybindings::KeyBindings>,
-    input_focus: Res<renzora::core::InputFocusState>,
+    keybindings: Res<renzora_shell_api::keybindings::KeyBindings>,
+    input_focus: Res<renzora_project_api::InputFocusState>,
     mut settings: ResMut<EditorSettings>,
 ) {
     if keybindings.rebinding.is_some() || input_focus.ui_wants_keyboard {
         return;
     }
     if !keybindings.just_pressed(
-        renzora::core::keybindings::EditorAction::ResetUiScale,
+        renzora_shell_api::keybindings::EditorAction::ResetUiScale,
         &keyboard,
     ) {
         return;
@@ -652,7 +657,7 @@ fn reset_ui_scale_shortcut(
 /// the current selection (or its ancestors/descendants). On deactivate,
 /// restore the entities we hid back to `Visibility::Inherited`.
 fn apply_isolation_mode(
-    iso: Res<renzora::core::IsolationMode>,
+    iso: Res<renzora_project_api::IsolationMode>,
     selection: Res<EditorSelection>,
     children_q: Query<&Children>,
     parent_q: Query<&ChildOf>,
@@ -660,8 +665,8 @@ fn apply_isolation_mode(
         (Entity, &mut Visibility),
         (
             With<Mesh3d>,
-            Without<renzora::core::EditorCamera>,
-            Without<renzora::core::HideInHierarchy>,
+            Without<renzora_scene_api::EditorCamera>,
+            Without<renzora_scene_api::HideInHierarchy>,
         ),
     >,
     mut hidden_entities: Local<Vec<Entity>>,
@@ -717,7 +722,7 @@ fn collect_descendants(
 
 /// Observer: show toast notifications when scripts are hot-reloaded.
 fn show_script_reload_toasts(
-    trigger: On<renzora::ScriptsReloaded>,
+    trigger: On<renzora_shell_api::ScriptsReloaded>,
     mut toasts: ResMut<renzora_ui::Toasts>,
 ) {
     let event = trigger.event();
@@ -736,15 +741,15 @@ fn show_script_reload_toasts(
 /// The loader (in the runtime binary) triggers `HotPluginNotice`; this runs in
 /// the editor bundle, so the `renzora.dll`-defined event crosses the boundary.
 fn show_hot_plugin_toasts(
-    trigger: On<renzora::HotPluginNotice>,
+    trigger: On<renzora_shell_api::HotPluginNotice>,
     mut toasts: ResMut<renzora_ui::Toasts>,
 ) {
     let notice = trigger.event();
     match notice.outcome {
-        renzora::HotLoadOutcome::Loaded => toasts.success(notice.message.clone()),
-        renzora::HotLoadOutcome::NeedsReload => toasts.warning(notice.message.clone()),
-        renzora::HotLoadOutcome::Skipped => toasts.info(notice.message.clone()),
-        renzora::HotLoadOutcome::Failed => toasts.error(notice.message.clone()),
+        renzora_shell_api::HotLoadOutcome::Loaded => toasts.success(notice.message.clone()),
+        renzora_shell_api::HotLoadOutcome::NeedsReload => toasts.warning(notice.message.clone()),
+        renzora_shell_api::HotLoadOutcome::Skipped => toasts.info(notice.message.clone()),
+        renzora_shell_api::HotLoadOutcome::Failed => toasts.error(notice.message.clone()),
     }
 }
 
@@ -792,7 +797,7 @@ pub fn is_terrain_selected(world: &World) -> bool {
 /// mesh Edit/Sculpt modes (element editing disengages the entity gizmo, so
 /// the buttons would be dead weight next to the modeling section).
 fn visible_when_not_2d(w: &World) -> bool {
-    use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportView};
+    use renzora_viewport_api::{ViewportMode, ViewportSettings, ViewportView};
     w.get_resource::<ViewportSettings>()
         .map(|s| {
             s.viewport_view != ViewportView::Two
@@ -804,7 +809,7 @@ fn visible_when_not_2d(w: &World) -> bool {
 /// Hide in the mesh Edit/Sculpt modes only — for Select, which unlike the
 /// gizmo tools stays useful in the 2D view.
 fn visible_outside_mesh_modes(w: &World) -> bool {
-    use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
+    use renzora_viewport_api::{ViewportMode, ViewportSettings};
     w.get_resource::<ViewportSettings>()
         .map(|s| !matches!(s.viewport_mode, ViewportMode::Edit | ViewportMode::Sculpt))
         .unwrap_or(true)
@@ -937,7 +942,7 @@ fn sync_active_tool_to_gizmo_mode(
 /// When the editor state is entered, tell the ThemeManager about the project
 /// directory so it can discover custom `.toml` themes in `<project>/themes/`.
 fn wire_theme_project_path(
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut theme_manager: ResMut<ThemeManager>,
 ) {
     if let Some(project) = project {
@@ -955,7 +960,7 @@ fn wire_theme_project_path(
 /// pathed tab is actually added, closed, retargeted, or reordered.
 fn persist_open_tabs(
     tabs: Res<DocumentTabState>,
-    project: Option<ResMut<renzora::CurrentProject>>,
+    project: Option<ResMut<renzora_project_api::CurrentProject>>,
 ) {
     if !tabs.is_changed() {
         return;
@@ -963,11 +968,11 @@ fn persist_open_tabs(
     let Some(mut project) = project else {
         return;
     };
-    let open: Vec<renzora::core::EditorOpenTab> = tabs
+    let open: Vec<renzora_project_api::EditorOpenTab> = tabs
         .tabs
         .iter()
         .filter_map(|t| {
-            t.scene_path.as_ref().map(|p| renzora::core::EditorOpenTab {
+            t.scene_path.as_ref().map(|p| renzora_project_api::EditorOpenTab {
                 path: p.clone(),
                 kind: t.kind.persist_name().to_string(),
             })
@@ -989,7 +994,7 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
     use renzora_ui::{DocTabKind, DocumentTabState};
 
     let rel = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .and_then(|p| p.make_relative(path))
         .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
 
@@ -1024,7 +1029,7 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
     };
 
     if let Some((old_id, new_id)) = switch_ids {
-        world.insert_resource(renzora::TabSwitchRequest {
+        world.insert_resource(renzora_project_api::TabSwitchRequest {
             old_tab_id: old_id,
             new_tab_id: new_id,
         });
@@ -1039,7 +1044,7 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
 
     match kind {
         DocTabKind::Script | DocTabKind::Shader => {
-            world.insert_resource(renzora::core::OpenCodeEditorFile {
+            world.insert_resource(renzora_project_api::OpenCodeEditorFile {
                 path: path.to_path_buf(),
             });
         }
@@ -1047,7 +1052,7 @@ pub fn open_asset_tab(world: &mut World, path: &std::path::Path, kind: renzora_u
         // editor is tabbed beside the viewport in the UI workspace, so the
         // markup is one click away for anyone who wants it.
         DocTabKind::Ui => {
-            world.insert_resource(renzora::core::OpenUiTemplateFile {
+            world.insert_resource(renzora_project_api::OpenUiTemplateFile {
                 path: path.to_path_buf(),
             });
         }
@@ -1134,7 +1139,7 @@ fn editor_panel_drop(
 /// Handle "New Project" — close current project and return to splash screen.
 /// Public so the bevy_ui shell can drive File > New/Open Project.
 pub fn handle_new_project(world: &mut World) {
-    world.remove_resource::<renzora::CurrentProject>();
+    world.remove_resource::<renzora_project_api::CurrentProject>();
     world
         .resource_mut::<NextState<SplashState>>()
         .set(SplashState::Splash);
@@ -1145,7 +1150,7 @@ pub fn handle_new_project(world: &mut World) {
 /// consumes (it owns the file dialog + AppConfig + state transition).
 /// Keeps `renzora_editor_framework` decoupled from `renzora_splash`.
 pub fn handle_open_project(world: &mut World) {
-    world.insert_resource(renzora::RequestOpenProject);
+    world.insert_resource(renzora_project_api::RequestOpenProject);
 }
 
 #[cfg(test)]
@@ -1179,7 +1184,7 @@ mod tests {
     }
 
     fn bind_of(world: &World, e: Entity) -> Option<String> {
-        world.get::<renzora::BindName>(e).map(|b| b.0.clone())
+        world.get::<renzora_scene_api::BindName>(e).map(|b| b.0.clone())
     }
 
     /// The first collision records the name the entity would have had.
@@ -1230,7 +1235,7 @@ mod tests {
         // the bone is the one pushed on to `_2`.
         let (newcomer, bone) = in_order(&mut world);
         world.spawn(Name::new("face_jaw"));
-        world.entity_mut(bone).insert((Name::new("face_jaw_1"), renzora::BindName("face_jaw".into())));
+        world.entity_mut(bone).insert((Name::new("face_jaw_1"), renzora_scene_api::BindName("face_jaw".into())));
         world.entity_mut(newcomer).insert(Name::new("face_jaw_1"));
         world.run_system(pass).unwrap();
         assert_eq!(name_of(&world, bone), "face_jaw_2");

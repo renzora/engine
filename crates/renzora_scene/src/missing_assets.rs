@@ -26,11 +26,11 @@
 //! completes the save arrives as an arrival, which clears the warning again.
 
 use bevy::prelude::*;
-use renzora::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
-use renzora::core::console_log::console_warn;
-use renzora::core::components::MeshInstanceData;
-use renzora::core::project_files::ProjectFileChanged;
-use renzora::core::MaterialRef;
+use renzora_diagnostics_api::content_problems::{ContentProblem, ContentProblems, ProblemSeverity};
+use renzora_log_api::console_warn;
+use renzora_scene_api::components::MeshInstanceData;
+use renzora_project_api::project_files::ProjectFileChanged;
+use renzora_material_api::MaterialRef;
 
 /// Report entities whose asset just disappeared, and clear the report when it
 /// comes back.

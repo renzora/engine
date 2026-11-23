@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use bevy::asset::AssetPath;
 use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, AsyncComputeTaskPool, Task};
-use renzora::core::project_files::{is_ignored, FileChange, ProjectFileChanged};
-use renzora::core::CurrentProject;
-use renzora::job_args::{RvgBake, RvgBakeOutcome};
+use renzora_project_api::project_files::{is_ignored, FileChange, ProjectFileChanged};
+use renzora_project_api::CurrentProject;
+use renzora_platform_api::job_args::{RvgBake, RvgBakeOutcome};
 use renzora_rvg::bake::{ensure_current, find_models, Ensured};
 use renzora_virtual_geometry::RvgUpdated;
 
@@ -28,7 +28,7 @@ use renzora_virtual_geometry::RvgUpdated;
 enum Pending {
     Local(Task<Result<Ensured, String>>),
     /// The job id, and its answer once it arrives.
-    Remote(renzora::CompanionJobId, Option<Result<String, String>>),
+    Remote(renzora_platform_api::CompanionJobId, Option<Result<String, String>>),
 }
 
 #[derive(Resource, Default)]
@@ -85,12 +85,12 @@ pub(crate) fn build(app: &mut App) {
     // still works in a build that leaves the renderer out.
     app.add_message::<RvgUpdated>()
         .init_resource::<Converter>()
-        .add_message::<renzora::CompanionJobDone>()
+        .add_message::<renzora_platform_api::CompanionJobDone>()
         .add_systems(Update, (follow_project, watch, finish_scan, collect_answer, pump).chain());
 }
 
 /// The companion's answer for the build handed to it.
-fn collect_answer(mut answers: MessageReader<renzora::CompanionJobDone>, mut converter: ResMut<Converter>) {
+fn collect_answer(mut answers: MessageReader<renzora_platform_api::CompanionJobDone>, mut converter: ResMut<Converter>) {
     for answer in answers.read() {
         if let Some((_, Pending::Remote(id, slot))) = converter.running.as_mut() {
             if *id == answer.id {
@@ -159,7 +159,7 @@ fn pump(
     mut converter: ResMut<Converter>,
     migration: Res<crate::migrate::Migration>,
     mut updated: MessageWriter<RvgUpdated>,
-    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
 ) {
     if let Some((model, pending)) = converter.running.as_mut() {
         let result: Option<Result<RvgBakeOutcome, String>> = match pending {

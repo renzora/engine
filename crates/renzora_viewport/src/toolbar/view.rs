@@ -5,7 +5,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportView};
+use renzora_viewport_api::{ViewportMode, ViewportSettings, ViewportView};
 use renzora_editor_framework::GizmoSpace;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
@@ -115,7 +115,7 @@ pub(super) fn mode_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Enti
 /// `EmberDropdownOption::value` stays a stable index into `ALL`.
 pub(super) fn update_mode_options(
     settings: Option<Res<ViewportSettings>>,
-    modes: Option<Res<renzora::core::viewport_types::ViewportModeRegistry>>,
+    modes: Option<Res<renzora_viewport_api::ViewportModeRegistry>>,
     mode_boxes: Query<Entity, With<ModeDropdown>>,
     mut options: Query<(&EmberDropdownOption, &mut Node)>,
 ) {
@@ -202,7 +202,7 @@ pub(super) fn view_angle_menu(commands: &mut Commands, fonts: &EmberFonts, slot:
 
 /// Tags a space-toggle button with the viewport slot it controls (each viewport
 /// has its own World/Local toggle, acting independently — see
-/// `renzora::core::viewport_types::ViewportGizmoSpace`).
+/// `renzora_viewport_api::ViewportGizmoSpace`).
 #[derive(Component, Clone, Copy)]
 pub(super) struct SpaceToggleSlot(usize);
 
@@ -220,8 +220,8 @@ fn space_icon(space: GizmoSpace) -> &'static str {
 
 fn space_label(space: GizmoSpace) -> String {
     match space {
-        GizmoSpace::World => renzora::lang::t("viewport.gizmo.world"),
-        GizmoSpace::Local => renzora::lang::t("viewport.gizmo.local"),
+        GizmoSpace::World => renzora_lang_api::t("viewport.gizmo.world"),
+        GizmoSpace::Local => renzora_lang_api::t("viewport.gizmo.local"),
     }
 }
 
@@ -272,7 +272,7 @@ pub(super) fn space_toggle(commands: &mut Commands, fonts: &EmberFonts, slot: us
 /// Click flips THIS viewport's space (World ↔ Local) in `ViewportGizmoSpace`.
 pub(super) fn space_toggle_click(
     q: Query<(&UiInteraction, &SpaceToggleSlot), Changed<UiInteraction>>,
-    space: Option<ResMut<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    space: Option<ResMut<renzora_viewport_api::ViewportGizmoSpace>>,
 ) {
     let Some(mut space) = space else { return };
     for (i, slot) in &q {
@@ -286,7 +286,7 @@ pub(super) fn space_toggle_click(
 
 /// Keep each viewport's space-toggle glyph + tooltip in sync with its own space.
 pub(super) fn update_space_toggle(
-    space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    space: Option<Res<renzora_viewport_api::ViewportGizmoSpace>>,
     mut buttons: Query<(
         &SpaceToggleSlot,
         &SpaceToggleGlyphRef,
@@ -332,7 +332,7 @@ pub(super) fn update_three_d_only(
 /// mode directly.
 pub(super) fn sanitize_mode_for_view(
     settings: Option<ResMut<ViewportSettings>>,
-    modes: Option<Res<renzora::core::viewport_types::ViewportModeRegistry>>,
+    modes: Option<Res<renzora_viewport_api::ViewportModeRegistry>>,
 ) {
     let Some(mut s) = settings else { return };
     let allowed = match &modes {

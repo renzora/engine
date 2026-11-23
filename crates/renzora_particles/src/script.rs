@@ -26,8 +26,8 @@
 //! and applies to every emitter with a node of that name.
 
 use bevy::prelude::*;
-use renzora::script_extension::{Bind, Binding, ParamKind, ScriptExtension};
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_scripting_api::script_extension::{Bind, Binding, ParamKind, ScriptExtension};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 
 use crate::component::{ParticleParams, ParticlePlayback};
 
@@ -164,7 +164,7 @@ pub fn handle_script_actions(
             match names.iter().find(|(_, n)| n.as_str() == name) {
                 Some((e, _)) => e,
                 None => {
-                    renzora::console_log::console_warn(
+                    renzora_log_api::console_warn(
                         "Particles",
                         format!("{}: no entity is named `{name}`", action.name),
                     );

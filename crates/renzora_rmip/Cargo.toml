@@ -24,7 +24,12 @@ bake = ["dep:image", "dep:intel_tex_2"]
 [dependencies]
 bevy = { workspace = true, optional = true }
 thiserror = "2"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"], optional = true }
+# `tiff` because some sources ship their textures as TIFF (Japan's PLATEAU city
+# models do, throughout). The bake turns every texture into an `.rmip`, so this
+# is the only place in the engine that has to decode one: Bevy itself never
+# sees a TIFF and is built without the codec. Without it every such texture
+# failed to bake and stayed embedded in the model as raw TIFF bytes.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif", "tiff"], optional = true }
 
 # GPU block compression (BC1/3/4/5/6H/7) via Intel's ISPC texture compressor.
 # Ships precompiled ISPC kernels — no ISPC toolchain needed at build time.

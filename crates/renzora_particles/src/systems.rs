@@ -32,7 +32,7 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::math::Affine3A;
 use bevy::prelude::*;
-use renzora::wind::WindState;
+use renzora_world_api::wind::WindState;
 
 use crate::asset::{Dimension, ParticleLight, RenderSettings, VfxAsset};
 use crate::component::{OneShot, ParticlePlayback, ParticleStats, ParticleSystem, PlayState};
@@ -182,21 +182,21 @@ pub fn sync_instances(
         for e in sim.emitters.iter().filter(|e| e.backend.fell_back) {
             let name = &asset.emitters[e.emitter_index].name;
             let why = e.backend.reason.as_deref().unwrap_or("the GPU backend is unavailable");
-            renzora::console_log::console_warn(
+            renzora_log_api::console_warn(
                 "Particles",
                 format!("{label}: emitter `{name}` is set to the GPU but runs on the CPU, because {why}"),
             );
         }
         for failure in &failures {
             for error in &failure.errors {
-                renzora::console_log::console_warn(
+                renzora_log_api::console_warn(
                     "Particles",
                     format!("{label}: emitter `{}` was skipped: {error}", failure.name),
                 );
             }
         }
         for issue in &sim.sub_emitter_issues {
-            renzora::console_log::console_warn("Particles", format!("{label}: {issue}"));
+            renzora_log_api::console_warn("Particles", format!("{label}: {issue}"));
         }
 
         // Rebuilding a running effect (a hot reload): replay to where it was so
@@ -228,7 +228,7 @@ pub fn sync_instances(
             let renderer =
                 spawn_renderer(&mut commands, &mut render_assets, entity, emitter, asset.dimension, layers);
             if renderer.is_none() && warned_dimension.insert(id) {
-                renzora::console_log::console_warn(
+                renzora_log_api::console_warn(
                     "Particles",
                     format!(
                         "{label}: this build has no {} particle renderer, so the effect is simulated but not drawn",
@@ -403,8 +403,8 @@ fn spawn_lights(
                 let id = commands
                     .spawn((
                         Name::new(format!("vfx light {} {}", emitter.name, k + 1)),
-                        renzora::HideInHierarchy,
-                        renzora::NoSelectionBounds,
+                        renzora_scene_api::HideInHierarchy,
+                        renzora_scene_api::NoSelectionBounds,
                         ChildOf(parent),
                         bevy::light::PointLight {
                             intensity: 0.0,

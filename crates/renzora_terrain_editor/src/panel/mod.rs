@@ -19,7 +19,7 @@
 
 use bevy::prelude::*;
 
-use renzora::AppEditorExt;
+use renzora_editor_api::AppEditorExt;
 use renzora_editor_framework::{EditorSelection, SplashState};
 use renzora_ember::reactive::Rx;
 

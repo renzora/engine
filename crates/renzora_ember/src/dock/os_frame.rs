@@ -1,6 +1,6 @@
 //! Floating dock windows under the native OS frame, on Windows.
 //!
-//! The main editor window wears the OS frame (`renzora::EDITOR_OS_FRAME`), and
+//! The main editor window wears the OS frame (`renzora_shell_api::EDITOR_OS_FRAME`), and
 //! that is what gives it Windows Snap: dragging it to a screen edge, the snap
 //! layout grid on the maximize button, Win+arrow. Floating windows used to be
 //! undecorated, with a title bar of our own that moved the window by setting its
@@ -41,7 +41,7 @@ use crate::dock::{Dock, DockArea, DockDirty, DockWindows, FixedDock};
 /// Whether floating dock windows wear the native frame. Windows only: Snap is
 /// a Windows feature, and elsewhere the custom title bar's re-dock drag is
 /// kept as it was.
-pub(crate) const OS_FRAME: bool = cfg!(target_os = "windows") && renzora::EDITOR_OS_FRAME;
+pub(crate) const OS_FRAME: bool = cfg!(target_os = "windows") && renzora_shell_api::EDITOR_OS_FRAME;
 
 /// Frames after a tear-off during which a float's moves are not taken as a
 /// title-bar drag. The tear-off moves the window itself, and its last move can

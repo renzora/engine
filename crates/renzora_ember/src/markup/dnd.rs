@@ -21,7 +21,8 @@ use crate::UiCursor;
 use bevy::window::PrimaryWindow;
 
 use crate::UiInteraction;
-use renzora::{EntityGroup, ScriptUiInbox, UiCallback};
+use renzora_scene_api::EntityGroup;
+use renzora_scripting_api::{ScriptUiInbox, UiCallback};
 use crate::game_ui::UiCanvas;
 
 /// A drag source. `payload` is the data entity that moves (the binding host).

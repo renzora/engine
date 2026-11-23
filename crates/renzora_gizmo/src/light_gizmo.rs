@@ -12,7 +12,7 @@
 use bevy::light::{LightProbe, ParallaxCorrection};
 use bevy::prelude::*;
 
-use renzora::SceneCamera;
+use renzora_scene_api::SceneCamera;
 use renzora_editor_framework::{EditorCamera, EditorSelection};
 use renzora_lighting::Sun;
 
@@ -39,7 +39,7 @@ pub struct SceneIconCache {
 /// updater is gated off).
 pub fn update_editor_camera_2d_cache(
     mut cache: ResMut<SceneIconCache>,
-    editor_camera_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
+    editor_camera_2d: Query<Entity, With<renzora_scene_api::EditorCamera2d>>,
 ) {
     cache.editor_camera_2d = editor_camera_2d.single().ok();
 }
@@ -96,7 +96,7 @@ const PROBE_COLOR: Color = Color::srgb(0.45, 0.95, 0.85);
 pub fn draw_light_gizmos(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     point_lights: Query<(Entity, &GlobalTransform, &PointLight)>,
     spot_lights: Query<(Entity, &GlobalTransform, &SpotLight)>,
     dir_lights: Query<(Entity, &GlobalTransform, &DirectionalLight)>,

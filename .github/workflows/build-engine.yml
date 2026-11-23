@@ -33,7 +33,7 @@ name: Build Engine
 # that job for why.
 #
 # The version string is NOT written here — it is read out of
-# `crates/renzora/src/version.rs`, which is also what the running binary reports
+# `crates/api/renzora_platform_api/src/version.rs`, which is also what the running binary reports
 # and what the export downloader asks GitHub for. One source, three consumers.
 #
 # ── Arch coverage ────────────────────────────────────────────────────────────
@@ -139,9 +139,9 @@ jobs:
           set -euo pipefail
 
           # ── Version: single source of truth ──────────────────────────────
-          version=$(grep -oP 'ENGINE_VERSION: &str = "\K[^"]+' crates/renzora/src/version.rs)
+          version=$(grep -oP 'ENGINE_VERSION: &str = "\K[^"]+' crates/api/renzora_platform_api/src/version.rs)
           if [ -z "$version" ]; then
-            echo "::error::could not read ENGINE_VERSION from crates/renzora/src/version.rs"
+            echo "::error::could not read ENGINE_VERSION from crates/api/renzora_platform_api/src/version.rs"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -852,7 +852,16 @@ jobs:
           printf '%s\n' "$stamp" > "$dest/plugins/engine-stamp.txt"
           echo "engine stamp: $stamp"
 
-          ( cd "$out" && tar -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
+          # The engine's own images (`bevy_dylib`, `renzora_dylib`) already ship
+          # beside the executable, byte for byte, so they stay out of the
+          # archive and the unpacker links them back in from the install
+          # (`renzora_plugin_build::unpack::restore_shared_images`).
+          excludes=()
+          while IFS= read -r p; do
+            excludes+=("--exclude=sdk/$p")
+          done < <(jq -r '.shared_images[]?' "$out/sdk/manifest.json")
+          echo "left out of the archive: ${excludes[*]:-nothing}"
+          ( cd "$out" && tar ${excludes[@]+"${excludes[@]}"} -cf - sdk | zstd -19 --long=27 -T0 -q -o sdk.tar.zst -f )
           rm -rf "$out/sdk"
           if [ "$dest" != "$out" ]; then
             mv "$out/sdk.tar.zst" "$dest/sdk.tar.zst"

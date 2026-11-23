@@ -10,7 +10,7 @@ use std::path::Path;
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{rgb, text_muted};
 use renzora_ember::widgets::{

@@ -8,7 +8,7 @@
 //! whole feature is an [`AssetLoader`](bevy::asset::AssetLoader) that turns
 //! vector data into an `Image` at load time: no consumer has SVG code, and the
 //! only feature-side change was teaching the extension filters (now one list,
-//! `renzora::IMAGE_EXTENSIONS`) that `.svg` is an image.
+//! `renzora_project_api::IMAGE_EXTENSIONS`) that `.svg` is an image.
 //!
 //! # Why it loads directly and is not baked to `.rmip` on import
 //!
@@ -70,6 +70,3 @@ impl Plugin for SvgPlugin {
         app.init_asset_loader::<SvgAssetLoader>();
     }
 }
-
-#[cfg(feature = "bevy")]
-renzora::add!(SvgPlugin, Runtime);

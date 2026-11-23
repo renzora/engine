@@ -10,7 +10,7 @@
 use crate::{Ragdoll, RagdollBone};
 use bevy::mesh::skinning::SkinnedMesh;
 use bevy::prelude::*;
-use renzora::physics::{
+use renzora_physics_api::physics::{
     CollisionShapeData, JointKind, PhysicsBodyData, PhysicsJoint, RuntimeOnlyPhysics,
 };
 use std::collections::{HashMap, HashSet};

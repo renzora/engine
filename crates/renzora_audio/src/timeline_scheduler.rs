@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use renzora::audio_backend::{PlayRequest, StopRequest, StopTarget};
+use renzora_audio_api::audio_backend::{PlayRequest, StopRequest, StopTarget};
 
 use crate::link::{AudioLink, VoiceId};
 use crate::runtime::SoundCache;
@@ -79,7 +79,7 @@ pub fn drive_clip_playback(
     mut link: ResMut<AudioLink>,
     mut cache: ResMut<SoundCache>,
     mut active: ResMut<ActiveClips>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     if !timeline.transport.is_playing() {
         if !active.by_clip.is_empty() {
@@ -218,7 +218,7 @@ pub fn cache_clip_durations(
     mut link: ResMut<AudioLink>,
     mut cache: ResMut<SoundCache>,
     mut active: ResMut<ActiveClips>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     let unseen: Vec<PathBuf> = timeline
         .clips

@@ -96,10 +96,10 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
     // application puts its identity, and a click on it opens About. Under the
     // OS frame the mark is the window icon in the system title bar instead
     // (About stays in Help); the web has no title bar, so it keeps ours.
-    let os_title_bar = renzora::EDITOR_OS_FRAME && !cfg!(target_arch = "wasm32");
+    let os_title_bar = renzora_shell_api::EDITOR_OS_FRAME && !cfg!(target_arch = "wasm32");
     let mut lead = Vec::new();
     #[cfg(all(target_os = "macos", not(target_arch = "wasm32")))]
-    if !renzora::EDITOR_OS_FRAME {
+    if !renzora_shell_api::EDITOR_OS_FRAME {
         lead.push(build_traffic_lights(commands));
     }
     if !os_title_bar {
@@ -258,7 +258,7 @@ pub(crate) fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSour
         ("x", WindowAction::Close, true),
     ]
     .into_iter()
-    .filter(|_| !renzora::EDITOR_OS_FRAME)
+    .filter(|_| !renzora_shell_api::EDITOR_OS_FRAME)
     {
         let btn = commands
             .spawn((
@@ -355,7 +355,7 @@ fn settings_button(commands: &mut Commands) -> Entity {
         },
         UiInteraction::default(),
         SettingsBtn,
-        renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("common.settings")),
+        renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t("common.settings")),
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
     gear
@@ -364,7 +364,7 @@ fn settings_button(commands: &mut Commands) -> Entity {
 /// The row of plugin-contributed top-bar buttons.
 ///
 /// Built once with the chrome, from whatever is in
-/// [`renzora::ShellActionRegistry`] at that moment — which is every plugin's
+/// [`renzora_shell_api::ShellActionRegistry`] at that moment — which is every plugin's
 /// registration, since plugins are added during `App` assembly and the chrome is
 /// built after the splash. A plugin that registers later gets its button on the
 /// next chrome rebuild (a theme or layout change), which is the same deal
@@ -394,7 +394,7 @@ fn build_shell_actions(commands: &mut Commands, tools: bool) -> Entity {
             tooltip: String,
         }
         let items: Vec<Item> = world
-            .get_resource::<renzora::ShellActionRegistry>()
+            .get_resource::<renzora_shell_api::ShellActionRegistry>()
             .map(|reg| {
                 let list = if tools { &reg.tools } else { &reg.items };
                 let mut v: Vec<(i32, Item)> = list
@@ -539,15 +539,15 @@ pub(crate) fn shell_action_chip(
     }
 }
 
-/// Turn a press into a [`renzora::ShellActionInvoked`] for whoever registered
+/// Turn a press into a [`renzora_shell_api::ShellActionInvoked`] for whoever registered
 /// the id.
 pub(crate) fn shell_action_press(
     q: Query<(&UiInteraction, &ShellActionBtn), Changed<UiInteraction>>,
-    mut invoked: MessageWriter<renzora::ShellActionInvoked>,
+    mut invoked: MessageWriter<renzora_shell_api::ShellActionInvoked>,
 ) {
     for (interaction, btn) in &q {
         if *interaction == UiInteraction::Pressed {
-            invoked.write(renzora::ShellActionInvoked(btn.0));
+            invoked.write(renzora_shell_api::ShellActionInvoked(btn.0));
         }
     }
 }
@@ -571,7 +571,7 @@ pub(crate) fn palette_btn_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::core::ToggleCommandPaletteRequested);
+        commands.insert_resource(renzora_project_api::ToggleCommandPaletteRequested);
     }
 }
 

@@ -49,19 +49,19 @@ pub fn native_html_drop(
 }
 
 /// Open a `.html` template requested from somewhere other than a drag — the
-/// asset browser's double-click, via `renzora::core::OpenUiTemplateFile`.
+/// asset browser's double-click, via `renzora_project_api::OpenUiTemplateFile`.
 ///
 /// Re-selects an existing canvas for that template rather than spawning a
 /// second one. Opening the same file twice is the common case (you closed the
 /// tab, you came back), and two canvases for one template both write back to it.
 pub fn open_ui_template_request(
-    request: Option<Res<renzora::core::OpenUiTemplateFile>>,
+    request: Option<Res<renzora_project_api::OpenUiTemplateFile>>,
     cmds: Option<Res<EditorCommands>>,
     mut commands: Commands,
 ) {
     let (Some(request), Some(cmds)) = (request, cmds) else { return };
     let abs_path = request.path.clone();
-    commands.remove_resource::<renzora::core::OpenUiTemplateFile>();
+    commands.remove_resource::<renzora_project_api::OpenUiTemplateFile>();
     cmds.push(move |world: &mut World| {
         if let Some(existing) = find_canvas_for_template(world, &abs_path) {
             if let Some(sel) = world.get_resource::<EditorSelection>() {
@@ -81,7 +81,7 @@ pub fn open_ui_template_request(
 /// selection.
 fn find_canvas_for_template(world: &mut World, abs_path: &std::path::Path) -> Option<Entity> {
     let rel = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .and_then(|p| p.make_relative(abs_path));
     let mut q = world.query::<(Entity, &renzora_ember::game_ui::HtmlTemplatePath)>();
     q.iter(world)

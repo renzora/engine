@@ -1,0 +1,42 @@
+[package]
+name = "renzora_render_api"
+version = "0.1.0"
+edition = "2021"
+description = "Rendering contract: Solari/GI settings and GPU capability flags, the post-process framework and render phases, shader-file post effects, auto-exposure, the ground grid and the blockout grid; plugins see them at `renzora::...`"
+
+# A contract subject layer above `renzora`, which it uses only for
+# `RenderPhase`. The rendering crates (and the plugins built on them) depend on
+# it for one `TypeId` per type and one render-pass list. An edit here rebuilds
+# the rendering crates, not the whole engine.
+[dependencies]
+renzora_scene_api = { path = "../renzora_scene_api" }
+bevy = { workspace = true }
+renzora = { path = "../../shared/renzora", default-features = false }
+serde = { version = "1", features = ["derive"] }
+
+[features]
+# The post-process framework module (`postprocess`): `PostProcessPlugin<T>`,
+# `PostProcessEffect`, the unified render node and the shared registry. Enabled
+# by the crates that register a pass. Off by default so mobile, wasm and server
+# builds keep the render-graph surface out.
+postprocess = []
+# Within `gi`, the two types built on `bevy::pbr::StandardMaterial`
+# (`TracedStandIn`, `SolariShadedTransparent`), which a 2D lean export cannot
+# compile. ON in every desktop and editor build (forwarded by `renzora_runtime`
+# and `renzora_engine`'s `render_3d`).
+render_3d = []
+# Gates ONLY the TAA/FXAA/SMAA ordering anchors in `postprocess.rs`, which
+# import `bevy::anti_alias`. Split out of `render_3d` because
+# `bevy_anti_alias` is not welded into Bevy's `3d` meta: the exporter's
+# Anti-aliasing capability can drop it while the rest of the 3D pipeline stays.
+# Losing the anchors only loosens ordering; ordering against a system that is
+# not in the schedule is a no-op anyway.
+antialiasing = ["render_3d"]
+# The infinite ground grid's components (`grid`). The renderer stays in
+# `renzora_grid`; only the vocabulary is here, so a native plugin can put a
+# ground plane under its own preview. Gated so a lean build that draws no grid
+# compiles none of it.
+grid = []
+
+[lints]
+workspace = true

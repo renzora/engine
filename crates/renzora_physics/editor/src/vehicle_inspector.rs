@@ -1,8 +1,8 @@
 //! The Vehicle inspector: which axles are the wheels, and how the car drives.
 
 use bevy::prelude::*;
-use renzora::vehicle::{Vehicle, VehicleDrive};
-use renzora::{FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_physics_api::vehicle::{Vehicle, VehicleDrive};
+use renzora_editor_api::{FieldDef, FieldType, FieldValue, InspectorEntry};
 
 /// The axles a vehicle's model offers: every part with wheels separated out
 /// of it (children named `<part>_part<n>`), which is what Separate Parts
@@ -89,25 +89,25 @@ pub(crate) fn vehicle_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::bool_field!("Drive With Input", Vehicle, use_input),
-            renzora::FieldDef::group(
+            renzora_editor_api::bool_field!("Drive With Input", Vehicle, use_input),
+            renzora_editor_api::FieldDef::group(
                 "Engine",
                 vec![
-                    renzora::float_field!("Engine Force (N)", Vehicle, engine_force, 100.0, 0.0, 1_000_000.0),
-                    renzora::float_field!("Brake Force (N)", Vehicle, brake_force, 100.0, 0.0, 1_000_000.0),
-                    renzora::float_field!("Top Speed (m/s)", Vehicle, max_speed, 0.5, 0.0, 500.0),
-                    renzora::float_field!("Reverse Speed (m/s)", Vehicle, max_reverse_speed, 0.5, 0.0, 100.0),
-                    renzora::float_field!("Steering (deg)", Vehicle, max_steer_degrees, 0.5, 0.0, 80.0),
+                    renzora_editor_api::float_field!("Engine Force (N)", Vehicle, engine_force, 100.0, 0.0, 1_000_000.0),
+                    renzora_editor_api::float_field!("Brake Force (N)", Vehicle, brake_force, 100.0, 0.0, 1_000_000.0),
+                    renzora_editor_api::float_field!("Top Speed (m/s)", Vehicle, max_speed, 0.5, 0.0, 500.0),
+                    renzora_editor_api::float_field!("Reverse Speed (m/s)", Vehicle, max_reverse_speed, 0.5, 0.0, 100.0),
+                    renzora_editor_api::float_field!("Steering (deg)", Vehicle, max_steer_degrees, 0.5, 0.0, 80.0),
                 ],
             ),
-            renzora::FieldDef::group(
+            renzora_editor_api::FieldDef::group(
                 "Suspension",
                 vec![
-                    renzora::float_field!("Suspension Travel (m)", Vehicle, suspension_travel, 0.01, 0.01, 2.0),
-                    renzora::float_field!("Stiffness (N/m, 0 auto)", Vehicle, suspension_stiffness, 100.0, 0.0, 10_000_000.0),
-                    renzora::float_field!("Damping (0 to 1)", Vehicle, suspension_damping, 0.01, 0.0, 1.0),
-                    renzora::float_field!("Grip", Vehicle, grip, 0.01, 0.0, 5.0),
-                    renzora::float_field!("Wheel Radius (m, 0 auto)", Vehicle, wheel_radius, 0.01, 0.0, 5.0),
+                    renzora_editor_api::float_field!("Suspension Travel (m)", Vehicle, suspension_travel, 0.01, 0.01, 2.0),
+                    renzora_editor_api::float_field!("Stiffness (N/m, 0 auto)", Vehicle, suspension_stiffness, 100.0, 0.0, 10_000_000.0),
+                    renzora_editor_api::float_field!("Damping (0 to 1)", Vehicle, suspension_damping, 0.01, 0.0, 1.0),
+                    renzora_editor_api::float_field!("Grip", Vehicle, grip, 0.01, 0.0, 5.0),
+                    renzora_editor_api::float_field!("Wheel Radius (m, 0 auto)", Vehicle, wheel_radius, 0.01, 0.0, 5.0),
                 ],
             ),
         ],

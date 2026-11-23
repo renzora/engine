@@ -127,7 +127,7 @@ fn finalize_pending_templates(
         // see the note beside the `HideInHierarchy` insert in `loader.rs`. The
         // wrapper needs its own because that marker does not cascade in the
         // hierarchy panel.
-        let child = commands.spawn(renzora::HideInHierarchy).id();
+        let child = commands.spawn(renzora_scene_api::HideInHierarchy).id();
         commands.entity(entity).add_child(child);
 
         info!(
@@ -199,12 +199,12 @@ impl TemplateReloadRequests {
 /// bytes through `SelfWrites`, so its own write is recognised and skipped here
 /// while a genuine outside edit is not.
 fn request_reload_for_external_edits(
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
     mut requests: ResMut<TemplateReloadRequests>,
-    self_writes: Option<Res<renzora::core::project_files::SelfWrites>>,
+    self_writes: Option<Res<renzora_project_api::project_files::SelfWrites>>,
     server: Res<AssetServer>,
 ) {
-    use renzora::core::project_files::AssetKind;
+    use renzora_project_api::project_files::AssetKind;
 
     if changes.is_empty() {
         return;
@@ -282,7 +282,7 @@ pub fn plugin(app: &mut App) {
         // only thing that sends it; `add_message` is idempotent. Without it a
         // shipped game, which has no watcher, logged a validation error from
         // `request_reload_for_external_edits` several times a second.
-        .add_message::<renzora::core::project_files::ProjectFileChanged>()
+        .add_message::<renzora_project_api::project_files::ProjectFileChanged>()
         .add_observer(on_template_path_inserted)
         .add_systems(
             Update,

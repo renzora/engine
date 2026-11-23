@@ -8,7 +8,8 @@
 //! sub-section. No add/remove — it's intrinsic to the environment.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry, WorldEnvironment};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
+use renzora_world_api::WorldEnvironment;
 
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
@@ -120,5 +121,3 @@ impl Plugin for DistanceFogEditorPlugin {
         app.register_native_inspector_ui("world_env_fog", fog_native_ui);
     }
 }
-
-renzora::add!(DistanceFogEditorPlugin, Editor);

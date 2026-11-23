@@ -5,7 +5,7 @@
 //! world, resolving colliders, script actions, the read-back state scripts
 //! see, world settings, collide-and-slide, and the scene queries
 //! particles use. What actually simulates is a backend behind
-//! `renzora::physics::PhysicsBackend`, registered by `renzora_avian_physics`
+//! `renzora_physics_api::physics::PhysicsBackend`, registered by `renzora_avian_physics`
 //! or by a plugin installed beside the engine.
 //!
 //! Without any backend this crate still builds and runs: entities are routed
@@ -45,11 +45,11 @@ pub use selection::switch_backend;
 pub use slide::{PendingKinematicSlides, PendingSlide};
 
 use bevy::prelude::*;
-use renzora::physics::{
+use renzora_physics_api::physics::{
     PhysicsBackends, PhysicsCommand, PhysicsCommands, PhysicsDim, PhysicsSet, PhysicsSettings,
     ResolvedCollider,
 };
-use renzora::PlayModeState;
+use renzora_project_api::PlayModeState;
 
 /// Run condition: true when NOT in editing mode (i.e. playing, scripts-only, or no PlayModeState resource).
 pub fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
@@ -76,8 +76,8 @@ impl Plugin for PhysicsPlugin {
             .register_type::<Physics2d>()
             .register_type::<PhysicsReadState>()
             .register_type::<read_state::CollisionReadState>()
-            .register_type::<renzora::vehicle::Vehicle>()
-            .register_type::<renzora::vehicle::VehicleDrive>();
+            .register_type::<renzora_physics_api::vehicle::Vehicle>()
+            .register_type::<renzora_physics_api::vehicle::VehicleDrive>();
 
         // Vehicles: found and driven only while the game runs, so a car sits
         // still with its wheels where the model put them while it is edited.
@@ -114,7 +114,7 @@ impl Plugin for PhysicsPlugin {
         // not link a physics engine themselves (particles colliding with the
         // level). With no backend registered every cast is a miss, which is the
         // same answer as an empty scene.
-        app.insert_resource(renzora::scene_query::SceneQueries::new(
+        app.insert_resource(renzora_physics_api::scene_query::SceneQueries::new(
             scene_query::BackendSceneQuery,
         ));
 
@@ -139,7 +139,7 @@ impl Plugin for PhysicsPlugin {
                 // it runs on a frame either changed (its own switch included,
                 // which gives it one confirming pass) and not otherwise.
                 .run_if(
-                    resource_exists_and_changed::<renzora::core::CurrentProject>
+                    resource_exists_and_changed::<renzora_project_api::CurrentProject>
                         .or_else(resource_exists_and_changed::<PhysicsBackends>),
                 ),
         );
@@ -211,11 +211,11 @@ fn clear_physics_commands(mut commands: ResMut<PhysicsCommands>) {
 /// Observer: turn physics script actions (apply_force,
 /// apply_impulse, set_velocity, kinematic_slide) into commands for the backend.
 fn handle_physics_script_actions(
-    trigger: On<renzora::ScriptAction>,
+    trigger: On<renzora_scripting_api::ScriptAction>,
     mut physics: ResMut<PhysicsCommands>,
     mut pending_slides: ResMut<PendingKinematicSlides>,
 ) {
-    use renzora::ScriptActionValue;
+    use renzora_scripting_api::ScriptActionValue;
     let action = trigger.event();
     let name = action.name.as_str();
 
@@ -303,7 +303,7 @@ pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
 /// existing 3D scene behaving exactly as before this walk existed.
 fn entity_is_2d(
     entity: Entity,
-    markers_2d: &Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora::Node2d>)>>,
+    markers_2d: &Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora_scene_api::Node2d>)>>,
     parents: &Query<&ChildOf>,
 ) -> bool {
     let mut e = entity;
@@ -336,7 +336,7 @@ fn auto_init_physics(
             Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
         ),
     >,
-    markers_2d: Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora::Node2d>)>>,
+    markers_2d: Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora_scene_api::Node2d>)>>,
     parents: Query<&ChildOf>,
 ) {
     for (entity, body, shape, name, generated) in &new_bodies {
@@ -364,7 +364,7 @@ fn auto_init_physics(
             body.is_some(),
             shape.is_some()
         );
-        renzora::console_log::console_info(
+        renzora_log_api::console_info(
             "Physics",
             format!(
                 "Initialized {} physics on '{}' (body={}, shape={})",
@@ -384,7 +384,7 @@ fn auto_init_physics(
 /// physics data at all loses its wiring too, which a backend reads as "all of
 /// it is gone". A body that loses only its `PhysicsBodyData` is left to the
 /// backend, which drops the body and keeps the collider (see
-/// `renzora::physics::PhysicsSet::Sync`). Without this an undone "make solid"
+/// `renzora_physics_api::physics::PhysicsSet::Sync`). Without this an undone "make solid"
 /// or a component removed in the inspector left the old body simulating.
 fn handle_removed_physics_data(
     mut commands: Commands,
@@ -470,12 +470,12 @@ fn apply_property_commands(
 }
 
 /// Observer: pause physics when the editor sends `PausePhysics`.
-fn on_pause_physics(_trigger: On<renzora::PausePhysics>, mut commands: Commands) {
+fn on_pause_physics(_trigger: On<renzora_shell_api::PausePhysics>, mut commands: Commands) {
     commands.queue(|world: &mut World| pause(world));
 }
 
 /// Observer: unpause physics when the editor sends `UnpausePhysics`.
-fn on_unpause_physics(_trigger: On<renzora::UnpausePhysics>, mut commands: Commands) {
+fn on_unpause_physics(_trigger: On<renzora_shell_api::UnpausePhysics>, mut commands: Commands) {
     commands.queue(|world: &mut World| unpause(world));
 }
 
@@ -483,13 +483,13 @@ fn on_unpause_physics(_trigger: On<renzora::UnpausePhysics>, mut commands: Comma
 /// keeps its own clock, but pause/play is one editor concept).
 pub fn unpause(world: &mut World) {
     info!("[Physics] Unpausing physics simulation");
-    renzora::console_log::console_info("Physics", "Physics simulation unpaused");
+    renzora_log_api::console_info("Physics", "Physics simulation unpaused");
     world.get_resource_or_insert_with(PhysicsSettings::default).paused = false;
 }
 
 /// Pause the physics simulation (both the 2D and 3D worlds).
 pub fn pause(world: &mut World) {
     info!("[Physics] Pausing physics simulation");
-    renzora::console_log::console_info("Physics", "Physics simulation paused");
+    renzora_log_api::console_info("Physics", "Physics simulation paused");
     world.get_resource_or_insert_with(PhysicsSettings::default).paused = true;
 }

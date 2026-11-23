@@ -13,7 +13,7 @@
 
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
-use renzora::viewport_types::ViewportState;
+use renzora_viewport_api::ViewportState;
 use renzora_editor_framework::EditorSelection;
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use renzora_terrain::landscape::weights::{apply_weight_dab, WeightTarget};
@@ -47,7 +47,7 @@ pub fn landscape_command_system(world: &mut World) {
                 let _ = renzora_terrain::landscape::assign_material(world, target, "");
             }
             SurfacePaintCommand::AddLayer | SurfacePaintCommand::RemoveLayer(_) => {
-                renzora::console_log::console_info(
+                renzora_log_api::console_info(
                     "Terrain",
                     "Layers come from the terrain's material: add a layer to its Layer Blend node in the Material Editor",
                 );

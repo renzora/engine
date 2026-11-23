@@ -25,9 +25,9 @@ fail=0
 err() { echo "  ✗ $*" >&2; fail=$((fail + 1)); }
 ok()  { echo "  ✓ $*"; }
 
-version=$(grep -oP 'ENGINE_VERSION: &str = "\K[^"]+' crates/renzora/src/version.rs || true)
+version=$(grep -oP 'ENGINE_VERSION: &str = "\K[^"]+' crates/api/renzora_platform_api/src/version.rs || true)
 if [ -z "$version" ]; then
-    echo "✗ could not read ENGINE_VERSION from crates/renzora/src/version.rs" >&2
+    echo "✗ could not read ENGINE_VERSION from crates/api/renzora_platform_api/src/version.rs" >&2
     exit 1
 fi
 echo "ENGINE_VERSION = $version"

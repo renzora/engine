@@ -29,7 +29,7 @@ use super::{
 /// makes one when it spawns, so whatever another dialog left behind never does.
 pub(super) fn dest_folder_sync(
     pick: Option<Res<renzora_ember::widgets::FolderPick>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut state: Option<ResMut<ImportOverlayState>>,
 ) {
     let (Some(pick), Some(project), Some(state)) = (pick, project, state.as_mut()) else {
@@ -377,7 +377,7 @@ pub fn pick_and_queue_files(world: &mut World) -> bool {
 }
 
 /// Queue files the caller already chose, with no OS dialog, for
-/// [`renzora::core::ImportPick::Given`]. A folder among them is walked the
+/// [`renzora_project_api::ImportPick::Given`]. A folder among them is walked the
 /// same way a dropped one is, and anything the importer cannot read is left
 /// out rather than queued to fail.
 pub fn queue_given_files(world: &mut World, paths: Vec<std::path::PathBuf>) -> bool {

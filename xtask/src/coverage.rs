@@ -325,7 +325,12 @@ fn crate_of(repo: &Path, file: &str) -> Option<String> {
     let mut parts = rel.split('/');
     match parts.next()? {
         "crates" => {
-            let name = parts.next()?;
+            let mut name = parts.next()?;
+            // The contracts and the crates that hand them out are grouped one
+            // level down, at `crates/api/<name>/...` and `crates/shared/<name>/...`.
+            if name == "api" || name == "shared" {
+                name = parts.next()?;
+            }
             // `crates/<name>/editor/src/...` is a separate package.
             if parts.next() == Some("editor") {
                 Some(format!("{name}_editor"))

@@ -1064,7 +1064,7 @@ pub(crate) fn text_input_context_open(
             GlobalZIndex(980),
             Name::new("input_context_menu"),
             // Editor chrome: a named root is otherwise saved as scene content.
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
         ))
         .id();
     let panel = commands

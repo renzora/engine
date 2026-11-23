@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "SVG / SVGZ asset loader: rasterizes vector files to a standard Bevy Image, so every image consumer accepts them unchanged."
 
-# In-workspace plugin: an `rlib` declared with `renzora::add!`, which the build
+# In-workspace plugin: an `rlib` whose plugin is declared in this manifest, which the build
 # generator wires into the committed plugin list and the linker pulls straight
 # into the binary.
 [lib]
@@ -14,13 +14,14 @@ crate-type = ["rlib"]
 default = ["bevy"]
 # The asset loader and the plugin. On by default; the standalone companion
 # turns it off and keeps the rasterizer, which is plain Rust, so drawing an SVG
-# thumbnail there links no engine. `renzora` goes with it: only the loader
-# (its Console lines and panic guard) and the plugin declaration use it.
-bevy = ["dep:bevy", "dep:renzora"]
+# thumbnail there links no engine. The contract layers go with it: only the
+# loader uses them (its Console lines and panic guard).
+bevy = ["dep:bevy", "dep:renzora_crash_api", "dep:renzora_log_api"]
 
 [dependencies]
+renzora_crash_api = { path = "../api/renzora_crash_api", optional = true }
+renzora_log_api = { path = "../api/renzora_log_api", optional = true }
 bevy = { workspace = true, optional = true }
-renzora = { path = "../renzora", default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 # Pure-Rust SVG renderer (usvg parser + tiny-skia rasterizer), so it builds for
@@ -47,3 +48,9 @@ bevy = { workspace = true, features = ["file_watcher"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SvgPlugin"

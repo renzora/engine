@@ -1,8 +1,14 @@
-//! Plugin wiring generator — turns `renzora::add!` declarations into real
-//! dependency edges and install lists.
+//! Plugin wiring generator: turns plugin declarations into real dependency
+//! edges and install lists.
 //!
-//! Drop a crate into `crates/` with `renzora::add!(MyPlugin);` in it and it is
-//! part of the engine. That is the whole contract, and this module is what makes
+//! Drop a crate into `crates/` whose `Cargo.toml` declares its plugin
+//!
+//! ```toml
+//! [[package.metadata.renzora.plugin]]
+//! type = "MyPlugin"
+//! ```
+//!
+//! and it is part of the engine. That is the whole contract, and this module is what makes
 //! it true, because cargo will not do it on its own: `[workspace] members`
 //! accepts the glob `crates/renzora_*`, but `[dependencies]` has no glob and a
 //! `build.rs` cannot add one (cargo resolves the dependency graph before build
@@ -25,10 +31,10 @@
 //!
 //! ## What replaced what
 //!
-//! `add!` used to submit an `inventory` entry that the host discovered at
-//! startup. That indirection was for `dlopen`'d plugins; the crates this macro
-//! declares are compiled straight into the binary, so the linker can already see
-//! them. Its removal also removed three separate
+//! Declaring a plugin used to submit an `inventory` entry that the host
+//! discovered at startup. That indirection was for `dlopen`'d plugins; the
+//! crates declared here are compiled straight into the binary, so the linker can
+//! already see them. Its removal also removed three separate
 //! dead-strip workarounds whose only job was keeping the registry's
 //! constructors alive: a keepalive `build.rs` in each host, and the
 //! `renzora_static_plugins` aggregator for lean exports. A named type in a
@@ -58,7 +64,7 @@ enum Scope {
     Editor,
 }
 
-/// One `renzora::add!` declaration, resolved to everything the generator needs.
+/// One plugin declaration, resolved to everything the generator needs.
 struct Decl {
     /// Package name (`renzora_shader`), which is also the dependency key.
     pkg: String,
@@ -350,7 +356,8 @@ fn item_mentions(item: &str, name: &str) -> bool {
 
 // ── Scanning ────────────────────────────────────────────────────────────────
 
-/// Find every `renzora::add!` declaration under `crates/`.
+/// Find every plugin declared under `crates/`: the
+/// `[[package.metadata.renzora.plugin]]` tables, and any legacy `add!` line.
 ///
 /// Only `crates/` is scanned: `plugins/` holds installed plugins, which are
 /// `dlopen`'d and never linked, and the vendored `bevy_*` trees contain no
@@ -376,6 +383,27 @@ fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
         // crate from every file that declares modules.
         let mod_gates = module_gates(&src)?;
 
+        // The declarations in the manifest: how every crate declares its
+        // plugins now. See `manifest_plugins`.
+        let declared = manifest_plugins(&text)
+            .map_err(|e| format!("{}: {e}", rel_display(repo, &manifest)))?;
+        for (ty, scope, priority) in declared {
+            let module = ty.rsplit_once("::").map(|(m, _)| m).unwrap_or("");
+            out.push(Decl {
+                pkg: pkg.clone(),
+                dep_path: dep_path(&crates, &dir),
+                path: format!("{pkg}::{ty}"),
+                module_features: gates_for(&mod_gates, module),
+                scope,
+                priority,
+                site: format!("{} ([[package.metadata.renzora.plugin]])", rel_display(repo, &manifest)),
+            });
+        }
+
+        // The older form, a `renzora::add!(..)` line in the source, still
+        // counts: the `renzora add` scaffolder writes one, and a crate made
+        // with it works until it is moved to the manifest. Declaring a plugin
+        // both ways is caught below as a duplicate.
         for file in rust_files(&src)? {
             let rel_mod = module_path(&src, &file);
             let text = read(&file)?;
@@ -406,7 +434,7 @@ fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
         }
     }
 
-    // Deterministic output: priority first (the only ordering `add!` can express),
+    // Deterministic output: priority first (the only ordering a declaration can express),
     // then alphabetical so an unrelated edit never reshuffles the file.
     out.sort_by(|a, b| {
         a.priority
@@ -425,6 +453,68 @@ fn scan(repo: &Path) -> Result<Vec<Decl>, String> {
             ));
         }
     }
+    Ok(out)
+}
+
+/// Every `[[package.metadata.renzora.plugin]]` table in a crate's manifest, as
+/// `(type, scope, priority)`:
+///
+/// ```toml
+/// [[package.metadata.renzora.plugin]]
+/// type = "material::MaterialPlugin"   # path from the crate root
+/// scope = "Editor"                    # optional, Runtime by default
+/// priority = -100                     # optional, 0 by default
+/// ```
+///
+/// Configuration rather than code because it is only ever read by this
+/// generator: a crate's plugin is wired in by the generated list, never by
+/// anything the crate compiles, so declaring it needs no dependency at all.
+/// Read by hand like the rest of this module (xtask has no dependencies), and
+/// strict: a key it does not know is an error, not a silently ignored typo.
+fn manifest_plugins(manifest: &str) -> Result<Vec<(String, Scope, i32)>, String> {
+    const HEADER: &str = "[[package.metadata.renzora.plugin]]";
+    let mut out = Vec::new();
+    let mut current: Option<(Option<String>, Scope, i32)> = None;
+    let finish = |c: Option<(Option<String>, Scope, i32)>, out: &mut Vec<(String, Scope, i32)>| {
+        match c {
+            None => Ok(()),
+            Some((Some(ty), scope, priority)) => {
+                out.push((ty, scope, priority));
+                Ok(())
+            }
+            Some((None, _, _)) => Err(format!("a {HEADER} table needs a `type`")),
+        }
+    };
+    for line in manifest.lines() {
+        let t = line.split('#').next().unwrap_or("").trim();
+        if t.starts_with('[') {
+            finish(current.take(), &mut out)?;
+            if t == HEADER {
+                current = Some((None, Scope::Runtime, 0));
+            }
+            continue;
+        }
+        let Some(entry) = current.as_mut() else { continue };
+        let Some((key, value)) = t.split_once('=') else { continue };
+        let (key, value) = (key.trim(), value.trim());
+        match key {
+            "type" => entry.0 = Some(value.trim_matches('"').to_string()),
+            "scope" => {
+                entry.1 = match value.trim_matches('"') {
+                    "Runtime" => Scope::Runtime,
+                    "Editor" => Scope::Editor,
+                    other => return Err(format!("unknown plugin scope `{other}`")),
+                }
+            }
+            "priority" => {
+                entry.2 = value
+                    .parse()
+                    .map_err(|_| format!("plugin priority `{value}` is not an integer"))?
+            }
+            other => return Err(format!("unknown key `{other}` in a {HEADER} table")),
+        }
+    }
+    finish(current, &mut out)?;
     Ok(out)
 }
 
@@ -608,7 +698,7 @@ impl Host {
         let _ = writeln!(generated, "{BEGIN}");
         let _ = writeln!(
             generated,
-            "# Discovered from their `renzora::add!` lines. Plain, non-optional\n\
+            "# Discovered from their plugin declarations. Plain, non-optional\n\
              # entries: a new plugin is always compiled and always installed. To let\n\
              # the lean exporter strip one, move its line out of this block, mark it\n\
              # `optional = true`, and put it in a feature — the generator will leave\n\
@@ -638,8 +728,9 @@ impl Host {
             s,
             "//! GENERATED by `cargo renzora sync` — do not edit.\n\
              //!\n\
-             //! The {scope}-scope plugin list, one entry per `renzora::add!(..,\n\
-             //! {scope})` found under `crates/`. Edit the declaration in the plugin's\n\
+             //! The {scope}-scope plugin list, one entry per {scope}-scope plugin\n\
+             //! declared under `crates/` (a `[[package.metadata.renzora.plugin]]`\n\
+             //! table in the crate's `Cargo.toml`). Edit the declaration in the plugin's\n\
              //! own crate, not this file; `cargo renzora sync --check` fails CI if\n\
              //! this file and those declarations disagree.\n\
              //!\n\
@@ -650,15 +741,14 @@ impl Host {
         // Most plugin types are unit structs, where `::default()` is redundant.
         // Writing `Type` for those and `Type::default()` for the rest would mean
         // parsing each crate's struct definitions to tell them apart, and getting
-        // it wrong is a compile error in a file nobody wrote. `add!` requires
-        // `Default` precisely so one spelling always works; the old macro got the
-        // same exemption for free by being macro-expanded.
+        // it wrong is a compile error in a file nobody wrote. A declared plugin
+        // must implement `Default` precisely so one spelling always works.
         let _ = writeln!(s, "#![allow(clippy::default_constructed_unit_structs)]\n");
         let _ = writeln!(s, "use {};\n", self.app_path);
         let _ = writeln!(
             s,
             "/// Install every {scope}-scope plugin. Entries are ordered by the\n\
-             /// `priority` given to `add!` (lower first, default 0), then by path."
+             /// declared `priority` (lower first, default 0), then by path."
         );
         let _ = writeln!(s, "pub(crate) fn {}(app: &mut App) {{", self.install_fn);
         for d in decls {
@@ -961,4 +1051,53 @@ fn read(p: &Path) -> Result<String, String> {
 
 fn normalize(s: &str) -> String {
     s.replace("\r\n", "\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every table is read, defaults apply, and the tables end where the next
+    /// header begins.
+    #[test]
+    fn manifest_plugins_reads_every_table() {
+        let manifest = r#"
+[package]
+name = "renzora_thing"
+
+[[package.metadata.renzora.plugin]]
+type = "ThingPlugin"
+
+[[package.metadata.renzora.plugin]]
+type = "editor::ThingEditorPlugin"   # beside the runtime one
+scope = "Editor"
+priority = -50
+
+[dependencies]
+type = "not a plugin"
+"#;
+        let found = manifest_plugins(manifest).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].0, "ThingPlugin");
+        assert!(found[0].1 == Scope::Runtime && found[0].2 == 0);
+        assert_eq!(found[1].0, "editor::ThingEditorPlugin");
+        assert!(found[1].1 == Scope::Editor && found[1].2 == -50);
+    }
+
+    /// A typo is an error, not a plugin silently missing from the build.
+    #[test]
+    fn manifest_plugins_rejects_what_it_cannot_read() {
+        let unknown_key = "[[package.metadata.renzora.plugin]]\ntype = \"P\"\nscop = \"Editor\"\n";
+        assert!(manifest_plugins(unknown_key).is_err());
+        let bad_scope = "[[package.metadata.renzora.plugin]]\ntype = \"P\"\nscope = \"Both\"\n";
+        assert!(manifest_plugins(bad_scope).is_err());
+        let no_type = "[[package.metadata.renzora.plugin]]\nscope = \"Editor\"\n";
+        assert!(manifest_plugins(no_type).is_err());
+    }
+
+    /// A crate with no tables declares nothing.
+    #[test]
+    fn manifest_plugins_without_tables_is_empty() {
+        assert!(manifest_plugins("[package]\nname = \"x\"\n").unwrap().is_empty());
+    }
 }

@@ -72,7 +72,7 @@ fn read_note(note: &str) -> Option<(Phase, u64, u64)> {
 /// The editor's side: run the install in the companion, keeping `shared` up
 /// to date for the overlay's bar. `None` when no companion is connected.
 pub(crate) fn run(
-    remote: &renzora::CompanionRemote,
+    remote: &renzora_platform_api::CompanionRemote,
     access_token: Option<String>,
     asset: &AssetSummary,
     dest: &Path,

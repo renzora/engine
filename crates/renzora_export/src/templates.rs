@@ -11,7 +11,7 @@
 //! 1. `dist/<platform>/` — a from-source checkout that ran `renzora build`.
 //!    Always preferred: if you built it, you meant it.
 //! 2. `~/.renzora/templates/<version>/<platform>/` — downloaded from the release
-//!    matching [`renzora::version::ENGINE_VERSION`]. Scoped by version so an
+//!    matching [`renzora_platform_api::version::ENGINE_VERSION`]. Scoped by version so an
 //!    engine upgrade can never silently reuse the previous version's runtime,
 //!    and outside the install dir so it survives a reinstall and works when the
 //!    engine lives somewhere unwritable.
@@ -263,7 +263,7 @@ pub fn user_templates_root() -> Option<PathBuf> {
     Some(
         home.join(".renzora")
             .join("templates")
-            .join(renzora::version::ENGINE_VERSION),
+            .join(renzora_platform_api::version::ENGINE_VERSION),
     )
 }
 
@@ -309,7 +309,7 @@ pub fn user_source_dir() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)?;
-    Some(home.join(".renzora").join("src").join(renzora::version::ENGINE_VERSION))
+    Some(home.join(".renzora").join("src").join(renzora_platform_api::version::ENGINE_VERSION))
 }
 
 /// The release asset holding the engine source, published beside the runtime
@@ -776,7 +776,7 @@ mod tests {
         // A r1-alpha7 editor must never see a r1-alpha6 download — same runtime
         // filename, different ABI.
         if let Some(root) = user_templates_root() {
-            assert!(root.ends_with(renzora::version::ENGINE_VERSION));
+            assert!(root.ends_with(renzora_platform_api::version::ENGINE_VERSION));
         }
     }
 

@@ -28,9 +28,9 @@ use bevy::render::render_resource::{
     TextureViewDimension,
 };
 use bevy::camera::Hdr;
-use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
-use renzora::core::PlayModeState;
-use renzora::viewport_types::EditorCameraMatrix;
+use renzora_viewport_api::{ViewportSettings, ViewportState, ViewportView};
+use renzora_project_api::PlayModeState;
+use renzora_viewport_api::EditorCameraMatrix;
 
 /// Spawns the editor's 3D scene-navigation camera.
 ///
@@ -55,11 +55,11 @@ use renzora::viewport_types::EditorCameraMatrix;
 /// (`renzora_atmosphere::ParkedSky`), which Bevy 0.20 handles; see its file.
 pub fn spawn_editor_camera(
     mut commands: Commands,
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
     mut images: ResMut<Assets<Image>>,
-    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    quality: Option<Res<renzora_project_api::ResolvedGraphicsQuality>>,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
 
     // IBL probe face size for the primary bake camera — kept in lockstep with
     // `renzora_environment_map::sync_environment_map` (which rewrites the probe
@@ -298,7 +298,7 @@ pub fn share_sky_to_secondary_viewports(
         (Entity, Option<&Skybox>),
         (With<ViewportCamera>, Without<PrimaryViewportCamera>),
     >,
-    suppressed: Option<Res<renzora::core::EnvironmentSuppressed>>,
+    suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
     mut commands: Commands,
 ) {
     // A shading mode that shows no environment takes the shared sky off the
@@ -361,7 +361,7 @@ pub fn orbit_transform(focus: Vec3, distance: f32, yaw: f32, pitch: f32) -> Tran
 /// view — the same focused-mirror trick the 3D cameras use.
 pub fn spawn_editor_2d_camera(
     mut commands: Commands,
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
 ) {
     for (i, slot) in viewports.slots.iter_mut().enumerate() {
         let slot_image = slot.image.clone();
@@ -409,7 +409,7 @@ pub fn spawn_editor_2d_camera(
             // everything it saw before and adds the private grid layer.
             RenderLayers::from_layers(&[
                 0,
-                renzora::core::viewport_types::VIEWPORT_2D_GRID_LAYER_BASE + i,
+                renzora_viewport_api::VIEWPORT_2D_GRID_LAYER_BASE + i,
             ]),
             HideInHierarchy,
             EditorLocked,
@@ -588,7 +588,7 @@ pub fn editor_2d_camera_controller(
 pub fn frame_2d_default(
     settings: Option<Res<ViewportSettings>>,
     viewport: Option<Res<ViewportState>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut camera_query: Query<(&mut Transform, &mut Projection), With<EditorCamera2d>>,
     mut framed: Local<bool>,
 ) {
@@ -704,12 +704,12 @@ pub fn on_projection_inserted_for_2d(
 /// already binds at spawn when the images are ready; this is the fallback for
 /// any that weren't.)
 pub fn sync_2d_camera_targets(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
+    viewports: Res<renzora_viewport_api::Viewports>,
     cameras: Query<(Entity, &ViewportCamera2d)>,
     mut bound: Local<bool>,
     mut commands: Commands,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     if *bound {
         return;
     }
@@ -752,7 +752,7 @@ pub fn sync_2d_camera_targets(
 /// two camera-sets are disjoint (`With` vs `Without<EditorCamera2d>`), so no
 /// camera is both read live and overwritten in the same frame.
 pub fn sync_2d_viewport_cameras(
-    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut viewports: ResMut<renzora_viewport_api::Viewports>,
     focused_cam: Query<(&ViewportCamera2d, &Transform, &Projection), With<EditorCamera2d>>,
     mut other_cams: Query<
         (&ViewportCamera2d, &mut Transform, &mut Projection),
@@ -817,12 +817,12 @@ pub struct ViewportTargetsBound(pub bool);
 /// place afterwards, so we bind targets exactly once — when all cameras and all
 /// images exist — then idle. Resizing keeps the handle, so it needs no rebind.
 pub fn sync_viewport_camera_targets(
-    viewports: Res<renzora::core::viewport_types::Viewports>,
+    viewports: Res<renzora_viewport_api::Viewports>,
     cameras: Query<(Entity, &ViewportCamera)>,
     mut bound: ResMut<ViewportTargetsBound>,
     mut commands: Commands,
 ) {
-    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    use renzora_viewport_api::VIEWPORT_COUNT;
     if bound.0 {
         return;
     }

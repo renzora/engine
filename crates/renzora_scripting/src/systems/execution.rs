@@ -107,7 +107,7 @@ pub struct ScriptLogEntry {
 }
 
 // Re-export from renzora
-pub use renzora::TransformWrite;
+pub use renzora_animation_api::TransformWrite;
 
 /// Which schedule a script pass is running in.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -169,7 +169,7 @@ fn run_pass(world: &mut World, pass: Pass) {
     let timers_finished = world.resource::<ScriptTimers>().get_just_finished();
 
     // Snapshot the InputMap's action state so scripts can read it by name.
-    // `renzora::ActionState` is populated each frame by renzora_input's
+    // `renzora_scripting_api::ActionState` is populated each frame by renzora_input's
     // `update_action_state` system. If the resource isn't present (running
     // without the InputPlugin) we just expose empty maps.
     let mut action_pressed: HashMap<String, bool> = HashMap::new();
@@ -177,7 +177,7 @@ fn run_pass(world: &mut World, pass: Pass) {
     let mut action_just_released: HashMap<String, bool> = HashMap::new();
     let mut action_axis_1d: HashMap<String, f32> = HashMap::new();
     let mut action_axis_2d: HashMap<String, Vec2> = HashMap::new();
-    if let Some(state) = world.get_resource::<renzora::ActionState>() {
+    if let Some(state) = world.get_resource::<renzora_scripting_api::ActionState>() {
         for (name, data) in &state.actions {
             action_pressed.insert(name.clone(), data.pressed);
             action_just_pressed.insert(name.clone(), data.just_pressed);
@@ -194,22 +194,22 @@ fn run_pass(world: &mut World, pass: Pass) {
     //
     // This and every inbox below are left alone by the fixed pass: see
     // `run_fixed_scripts` for why a drain must have one consumer.
-    let pending_rpcs: Vec<renzora::IncomingRpc> = if !frame {
+    let pending_rpcs: Vec<renzora_scripting_api::IncomingRpc> = if !frame {
         Vec::new()
     } else {
         world
-            .get_resource_mut::<renzora::ScriptRpcInbox>()
+            .get_resource_mut::<renzora_scripting_api::ScriptRpcInbox>()
             .map(|mut inbox| std::mem::take(&mut inbox.pending))
             .unwrap_or_default()
     };
 
     // Player join/leave events received since last frame (server side). Each
     // fires every script's `on_player_joined(id)` / `on_player_left(id)` hook.
-    let pending_player_events: Vec<renzora::NetPlayerEvent> = if !frame {
+    let pending_player_events: Vec<renzora_scripting_api::NetPlayerEvent> = if !frame {
         Vec::new()
     } else {
         world
-            .get_resource_mut::<renzora::ScriptNetLifecycleInbox>()
+            .get_resource_mut::<renzora_scripting_api::ScriptNetLifecycleInbox>()
             .map(|mut inbox| std::mem::take(&mut inbox.pending))
             .unwrap_or_default()
     };
@@ -218,11 +218,11 @@ fn run_pass(world: &mut World, pass: Pass) {
     // `on_press` with no Rust binding). Each fires every script's
     // `on_ui(name, args, entity)` hook. Resource may be absent if `renzora_hui`
     // isn't loaded — then there's nothing to dispatch.
-    let pending_ui_callbacks: Vec<renzora::UiCallback> = if !frame {
+    let pending_ui_callbacks: Vec<renzora_scripting_api::UiCallback> = if !frame {
         Vec::new()
     } else {
         world
-            .get_resource_mut::<renzora::ScriptUiInbox>()
+            .get_resource_mut::<renzora_scripting_api::ScriptUiInbox>()
             .map(|mut inbox| std::mem::take(&mut inbox.pending))
             .unwrap_or_default()
     };
@@ -230,11 +230,11 @@ fn run_pass(world: &mut World, pass: Pass) {
     // Broadcast game events queued since last frame (from `emit()` or a Rust
     // send). Each fires every script's `on_event(name, args)`. Drained here so
     // dispatch happens between hooks rather than inside one.
-    let pending_events: Vec<renzora::GameEvent> = if !frame {
+    let pending_events: Vec<renzora_scripting_api::GameEvent> = if !frame {
         Vec::new()
     } else {
         world
-            .get_resource_mut::<renzora::GameEventQueue>()
+            .get_resource_mut::<renzora_scripting_api::GameEventQueue>()
             .map(|mut q| std::mem::take(&mut q.pending))
             .unwrap_or_default()
     };
@@ -248,22 +248,22 @@ fn run_pass(world: &mut World, pass: Pass) {
     // *surviving* script's `on_scene_loaded(path)` / `on_scene_load_failed(
     // path, error)` hook — in practice the `Persistent` ones, since a script
     // in the outgoing scene was despawned partway through the load.
-    let pending_scene_events: Vec<renzora::SceneEvent> = if !frame {
+    let pending_scene_events: Vec<renzora_scripting_api::SceneEvent> = if !frame {
         Vec::new()
     } else {
         world
-            .get_resource_mut::<renzora::ScriptSceneInbox>()
+            .get_resource_mut::<renzora_scripting_api::ScriptSceneInbox>()
             .map(|mut inbox| std::mem::take(&mut inbox.pending))
             .unwrap_or_default()
     };
 
     // Animation events fired when playback crosses a clip marker since last
     // frame. Each fires every script's `on_animation_event(name, entity)` hook.
-    let pending_anim_events: Vec<renzora::AnimEvent> = if !frame {
+    let pending_anim_events: Vec<renzora_scripting_api::AnimEvent> = if !frame {
         Vec::new()
     } else {
         world
-            .get_resource_mut::<renzora::ScriptAnimEventInbox>()
+            .get_resource_mut::<renzora_scripting_api::ScriptAnimEventInbox>()
             .map(|mut inbox| std::mem::take(&mut inbox.pending))
             .unwrap_or_default()
     };
@@ -287,18 +287,18 @@ fn run_pass(world: &mut World, pass: Pass) {
         HashMap::new()
     } else {
         world
-            .get_resource::<renzora::ScriptDrawSurfaces>()
+            .get_resource::<renzora_scripting_api::ScriptDrawSurfaces>()
             .map(|s| s.per_entity.clone())
             .unwrap_or_default()
     };
-    let mut draw_results: HashMap<Entity, Vec<renzora::DrawCmd>> = HashMap::new();
+    let mut draw_results: HashMap<Entity, Vec<renzora_scripting_api::DrawCmd>> = HashMap::new();
 
     // Edit-mode preview: if PlayModeState exists but scripts aren't "running", the
     // run condition only let us through because ≥1 script is being previewed (the
     // inspector's per-script play button). Run ONLY previewing scripts, skip the
     // rest, so the rest of the scene stays static.
     let preview_only = world
-        .get_resource::<renzora::PlayModeState>()
+        .get_resource::<renzora_project_api::PlayModeState>()
         .map(|pm| !pm.is_scripts_running())
         .unwrap_or(false);
 
@@ -547,7 +547,7 @@ fn run_pass(world: &mut World, pass: Pass) {
             // says so for every hook; a fixed tick skips a script with no
             // `on_fixed_update`. Measured at 0.9 ms a tick for one Rust script
             // in a furnished scene before this.
-            let hook = if frame { renzora::ANY_HOOK } else { "on_fixed_update" };
+            let hook = if frame { renzora_scripting_api::ANY_HOOK } else { "on_fixed_update" };
             if !world.resource::<ScriptEngine>().defines_hook(&script_path, hook) {
                 continue;
             }
@@ -567,16 +567,16 @@ fn run_pass(world: &mut World, pass: Pass) {
             ctx.mouse_delta = input.mouse_delta;
             ctx.mouse_scroll = input.scroll_delta.y;
             ctx.camera_ev = world
-                .get_resource::<renzora::core::CameraExposureState>()
+                .get_resource::<renzora_scene_api::CameraExposureState>()
                 .map(|s| s.ev100)
                 .unwrap_or(0.0);
             // Project resolution (world units) — keeps the ctx defaults
             // (1920×1080) when no project is loaded.
-            if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+            if let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() {
                 ctx.project_width = project.config.viewport.width.max(1) as f32;
                 ctx.project_height = project.config.viewport.height.max(1) as f32;
             }
-            if let Some(net) = world.get_resource::<renzora::NetworkBridge>() {
+            if let Some(net) = world.get_resource::<renzora_scripting_api::NetworkBridge>() {
                 ctx.net_is_server = net.is_server;
                 ctx.net_is_connected = net.is_connected;
                 ctx.net_player_count = net.player_count;
@@ -987,7 +987,7 @@ fn run_pass(world: &mut World, pass: Pass) {
     // which is why the fixed pass must not: it draws nothing, and publishing its
     // empty map would blank every canvas the frame pass just filled.
     if frame {
-        if let Some(mut buf) = world.get_resource_mut::<renzora::ScriptDrawBuffer>() {
+        if let Some(mut buf) = world.get_resource_mut::<renzora_scripting_api::ScriptDrawBuffer>() {
             buf.per_entity = draw_results;
         }
     }
@@ -1109,8 +1109,8 @@ mod tests {
     fn fixed_pass_leaves_the_event_inboxes_for_the_frame() {
         let (mut world, _, _) = world();
         run_scripts(&mut world);
-        world.insert_resource(renzora::GameEventQueue {
-            pending: vec![renzora::GameEvent {
+        world.insert_resource(renzora_scripting_api::GameEventQueue {
+            pending: vec![renzora_scripting_api::GameEvent {
                 name: "door_opened".into(),
                 args: HashMap::new(),
                 from: None,
@@ -1118,10 +1118,10 @@ mod tests {
         });
 
         run_fixed_scripts(&mut world);
-        assert_eq!(world.resource::<renzora::GameEventQueue>().pending.len(), 1);
+        assert_eq!(world.resource::<renzora_scripting_api::GameEventQueue>().pending.len(), 1);
 
         run_scripts(&mut world);
-        assert!(world.resource::<renzora::GameEventQueue>().pending.is_empty());
+        assert!(world.resource::<renzora_scripting_api::GameEventQueue>().pending.is_empty());
     }
 
     /// The draw buffer is replaced wholesale by a pass. The fixed pass draws
@@ -1130,13 +1130,13 @@ mod tests {
     fn fixed_pass_does_not_clear_the_draw_buffer() {
         let (mut world, entity, _) = world();
         run_scripts(&mut world);
-        let mut buffer = renzora::ScriptDrawBuffer::default();
+        let mut buffer = renzora_scripting_api::ScriptDrawBuffer::default();
         buffer.per_entity.insert(entity, Vec::new());
         world.insert_resource(buffer);
 
         run_fixed_scripts(&mut world);
         assert!(world
-            .resource::<renzora::ScriptDrawBuffer>()
+            .resource::<renzora_scripting_api::ScriptDrawBuffer>()
             .per_entity
             .contains_key(&entity));
     }

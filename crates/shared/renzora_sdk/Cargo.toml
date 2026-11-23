@@ -1,0 +1,83 @@
+[package]
+name = "renzora_sdk"
+version = "0.1.0"
+edition = "2021"
+description = "Everything a plugin or Rust script sees as `renzora`: the contract crate plus the subject crates layered above it"
+
+# The top of the contract hierarchy, the way the `bevy` crate is the top of
+# Bevy's. `renzora` is the bottom layer, and each subject that used to live in
+# it (`renzora_net_api` first) is a crate of its own above it, so an edit to one
+# subject rebuilds only the engine crates that depend on that subject. Plugins
+# cannot pick crates one by one (the SDK hands them a single `renzora`), so this
+# crate puts every layer back under that one name at the paths it always had.
+#
+# Two things link it:
+#   * `renzora_dylib`, which is what a plugin built against the staged SDK gets
+#     as `renzora`, and which makes every static in these crates singular;
+#   * a plugin or Rust script compiled INTO a lean export, whose `renzora`
+#     dependency the exporter repoints here (see `renzora_export::build`).
+#
+# Engine crates must NOT depend on this: depending on the top of the hierarchy
+# brings back the cascade the split exists to remove.
+[dependencies]
+renzora = { path = "../renzora" }
+renzora_net_api = { path = "../../api/renzora_net_api" }
+renzora_audio_api = { path = "../../api/renzora_audio_api" }
+renzora_shell_api = { path = "../../api/renzora_shell_api" }
+renzora_diagnostics_api = { path = "../../api/renzora_diagnostics_api" }
+renzora_platform_api = { path = "../../api/renzora_platform_api" }
+renzora_scripting_api = { path = "../../api/renzora_scripting_api" }
+renzora_save_api = { path = "../../api/renzora_save_api" }
+renzora_animation_api = { path = "../../api/renzora_animation_api" }
+renzora_physics_api = { path = "../../api/renzora_physics_api" }
+renzora_world_api = { path = "../../api/renzora_world_api" }
+renzora_render_api = { path = "../../api/renzora_render_api" }
+renzora_solari_api = { path = "../../api/renzora_solari_api" }
+renzora_material_api = { path = "../../api/renzora_material_api" }
+renzora_shader_api = { path = "../../api/renzora_shader_api" }
+# Optional, unlike the others: it needs `bevy::text`, which a UI-stripped lean
+# export does not build, and this crate is compiled in such an export whenever
+# it links a plugin in. The same switch as before, `text_mesh`, now selects the
+# crate instead of a module.
+renzora_text_mesh = { path = "../../shared/renzora_text_mesh", optional = true }
+# The UI framework, re-exported as `renzora::ui` under the `ui` feature.
+renzora_ember = { path = "../../renzora_ember", default-features = false, optional = true }
+
+# The contract crate's features, under the same names, so a plugin that selects
+# one on its `renzora` dependency gets the same thing either way it is built.
+[features]
+# Every optional layer, so a plugin compiled into a lean export sees the whole
+# contract it was written against. The exporter removes a layer from this list
+# when the export strips the Bevy feature it needs (`SDK_LAYER_NEEDS` in
+# `renzora_export::build`), which keeps the rest of such a build compiling.
+default = ["text_mesh", "diagnostics"]
+text_mesh = ["dep:renzora_text_mesh"]
+grid = ["renzora_render_api/grid"]
+# Kept so a plugin manifest that names it still resolves. `renzora::audio` is
+# always present now: `renzora_audio_api` needs no Bevy feature to compile.
+audio = []
+# The debug-panel tables (`renzora::diagnostics`). On by default, unlike in the
+# engine, where only the crates that populate them switch it on: the sdk cannot
+# see that a dependency's feature is on, so its own feature is what decides
+# whether it re-exports the module, and a plugin must find it.
+diagnostics = ["renzora_diagnostics_api/diagnostics"]
+# What `script!` emits for scripts compiled into one binary. The macro lives in
+# `renzora_scripting_api` now, and so does the feature.
+static_scripts = ["renzora_scripting_api/static_scripts"]
+# What `plugin!` emits for plugins compiled into one binary. The macro lives in
+# `renzora_platform_api` now, and so does the feature.
+static_plugins = ["renzora_platform_api/static_plugins"]
+editor = ["renzora/editor"]
+postprocess = ["renzora_render_api/postprocess"]
+render_3d = ["renzora_render_api/render_3d", "renzora_text_mesh?/render_3d", "renzora_ember?/render_3d"]
+# The UI framework, `renzora_ember`, as `renzora::ui`. Off for a game with no
+# UI, which then links no bevy_ui and no text-shaping stack. `renzora_dylib`
+# turns it on for the editor and for every game that has UI, which is what
+# makes ember one shared copy across the editor and every native plugin.
+ui = ["dep:renzora_ember"]
+game_ui = ["ui", "renzora_ember?/game_ui"]
+editor_tools = ["renzora_ember?/editor_tools"]
+antialiasing = ["renzora_render_api/antialiasing"]
+
+[lints]
+workspace = true

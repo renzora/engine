@@ -22,14 +22,15 @@ use bevy::prelude::*;
 use bevy::sprite_render::{AlphaMode2d, ColorMaterial};
 use bevy_firefly::occluders::Occluder2dShape;
 use bevy_firefly::prelude::*;
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     ViewportSettings, ViewportView, Viewports, VIEWPORT_2D_GRID_LAYER_BASE, VIEWPORT_COUNT,
 };
-use renzora::core::{DefaultCamera, Node2d, PlayModeState, ViewportCamera2d};
-use renzora::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_scene_api::{DefaultCamera, Node2d, ViewportCamera2d};
+use renzora_project_api::PlayModeState;
+use renzora_editor_api::{AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry};
 // Only the selection outlines read the selection, and they compile away with it.
 #[cfg(feature = "gizmos")]
-use renzora::EditorSelection;
+use renzora_editor_api::EditorSelection;
 
 pub(super) fn register(app: &mut App) {
     info!("[editor] Light2d inspectors + presets");
@@ -395,7 +396,7 @@ fn update_light_markers_2d(
             Name::new(format!("2D Light Markers {i}")),
             // Editor chrome: out of the hierarchy panel, scene saves, and
             // scene-clear despawns.
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
         ));
     }
 }
@@ -528,8 +529,8 @@ fn firefly_config_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::float_field!("Ambient Brightness", FireflyConfig, ambient_brightness, 0.01, 0.0, 5.0),
-            renzora::bool_field!("Soft Shadows", FireflyConfig, soft_shadows),
+            renzora_editor_api::float_field!("Ambient Brightness", FireflyConfig, ambient_brightness, 0.01, 0.0, 5.0),
+            renzora_editor_api::bool_field!("Soft Shadows", FireflyConfig, soft_shadows),
             // How sprites' normal maps shade under the lights.
             FieldDef::group("Normals", vec![
             FieldDef {
@@ -561,10 +562,10 @@ fn firefly_config_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::float_field!("Normal Attenuation", FireflyConfig, normal_attenuation, 0.01, 0.0, 1.0),
+            renzora_editor_api::float_field!("Normal Attenuation", FireflyConfig, normal_attenuation, 0.01, 0.0, 1.0),
             ]),
             FieldDef::group("Advanced", vec![
-            renzora::bool_field!("Z Sorting", FireflyConfig, z_sorting),
+            renzora_editor_api::bool_field!("Z Sorting", FireflyConfig, z_sorting),
             // `light_bands: Option<f32>`: 0 disables banding, matching the
             // upstream semantics of `None`.
             FieldDef {
@@ -581,7 +582,7 @@ fn firefly_config_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::bool_field!("Lightmap Filtering", FireflyConfig, lightmap_filtering),
+            renzora_editor_api::bool_field!("Lightmap Filtering", FireflyConfig, lightmap_filtering),
             ]),
         ],
     }
@@ -619,9 +620,9 @@ fn point_light_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::float_field!("Intensity", PointLight2d, intensity, 0.05, 0.0, 100.0),
-            renzora::float_field!("Radius", PointLight2d, radius, 1.0, 0.0, 100_000.0),
-            renzora::bool_field!("Cast Shadows", PointLight2d, cast_shadows),
+            renzora_editor_api::float_field!("Intensity", PointLight2d, intensity, 0.05, 0.0, 100.0),
+            renzora_editor_api::float_field!("Radius", PointLight2d, radius, 1.0, 0.0, 100_000.0),
+            renzora_editor_api::bool_field!("Cast Shadows", PointLight2d, cast_shadows),
             // How the light fades from its bright core to its edge.
             FieldDef::group("Falloff", vec![
             FieldDef {
@@ -898,8 +899,8 @@ fn occluder_entry() -> InspectorEntry {
                     }
                 },
             },
-            renzora::float_field!("Opacity", Occluder2d, opacity, 0.01, 0.0, 1.0),
-            renzora::bool_field!("Z Sorting", Occluder2d, z_sorting),
+            renzora_editor_api::float_field!("Opacity", Occluder2d, opacity, 0.01, 0.0, 1.0),
+            renzora_editor_api::bool_field!("Z Sorting", Occluder2d, z_sorting),
             ]),
             FieldDef {
                 name: "Offset",

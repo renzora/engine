@@ -65,6 +65,9 @@ pub(crate) struct EditorState {
     /// Play is running a game: jobs that render wait so they never compete
     /// with it.
     pub playing: bool,
+    /// The editor's Render thumbnails setting is off: no thumbnail is
+    /// rendered here, and the render worker is not kept.
+    pub thumbnails_off: bool,
 }
 
 /// A job waiting or running, as the window shows it.
@@ -269,7 +272,7 @@ mod tests {
 
     #[test]
     fn play_holds_only_jobs_that_render() {
-        let playing = EditorState { playing: true };
+        let playing = EditorState { playing: true, ..EditorState::default() };
         assert_eq!(held(&entry(), &run("model_thumbnail"), &playing, false), Some("Play to stop"));
         assert_eq!(held(&entry(), &run("texture_thumbnail"), &playing, false), None);
         assert_eq!(held(&entry(), &run("model_thumbnail"), &EditorState::default(), false), None);

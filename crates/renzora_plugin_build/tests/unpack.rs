@@ -99,6 +99,19 @@ fn how_long_a_real_sdk_takes_to_unpack() {
     let compressed = std::fs::metadata(&archive).expect("archive exists").len();
     let root = tmp("renzora_unpack_timing");
     std::fs::copy(&archive, root.join("sdk.tar.zst")).expect("stage archive");
+    // The archive's own directory stands for the install: a release archive
+    // leaves out the engine's shared images and the unpacker links them in from
+    // beside the executable, so bring along whatever images sit beside it.
+    let mut images = Vec::new();
+    for f in std::fs::read_dir(archive.parent().expect("archive has a directory")).unwrap().flatten() {
+        let name = f.file_name().to_string_lossy().into_owned();
+        if [".dll", ".so", ".dylib"].iter().any(|ext| name.ends_with(ext)) {
+            std::fs::hard_link(f.path(), root.join(&name))
+                .or_else(|_| std::fs::copy(f.path(), root.join(&name)).map(|_| ()))
+                .expect("stage image");
+            images.push((name, f.metadata().unwrap().len()));
+        }
+    }
 
     let start = std::time::Instant::now();
     let mut last = 0u64;
@@ -113,6 +126,18 @@ fn how_long_a_real_sdk_takes_to_unpack() {
         extracted as f64 / 1e6 / secs,
     );
     assert!(last > 0, "progress was reported");
+    // Every image the manifest names is in the tree, whether the archive
+    // carried it or the unpacker linked it in.
+    renzora_plugin_build::Sdk::load(dir.clone()).expect("the unpacked SDK loads");
+    let manifest: renzora_plugin_build::Manifest =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("manifest.json")).unwrap()).unwrap();
+    for rel in &manifest.shared_images {
+        let landed = std::fs::metadata(dir.join(rel)).map(|m| m.len()).unwrap_or(0);
+        let name = Path::new(rel).file_name().unwrap().to_string_lossy().into_owned();
+        let beside = images.iter().find(|(n, _)| *n == name).map(|(_, len)| *len);
+        eprintln!("shared image {rel}: {landed} bytes in the tree, {beside:?} beside the archive");
+        assert!(landed > 0, "{rel} is missing from the unpacked SDK");
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -215,6 +240,62 @@ fn extracting_twice_is_a_no_op() {
     let mut ticks = 0;
     extract(&archive, &root, |_| ticks += 1).expect("second");
     assert_eq!(ticks, 0, "an already-extracted SDK must not be unpacked again");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A `<root>/sdk.tar.zst` the way a release now packs it: the manifest names
+/// `deps/libshared.dll` as a shared image, and the archive leaves it out.
+fn build_archive_without_shared_image(root: &Path) {
+    let sdk = root.join(".fixture").join("sdk");
+    let _ = std::fs::remove_dir_all(root.join(".fixture"));
+    std::fs::create_dir_all(sdk.join("deps")).unwrap();
+    std::fs::write(
+        sdk.join("manifest.json"),
+        r#"{"triple":"test","rustc":"1.0.0","lib_ext":"dll",
+            "extern":{"bevy":"deps/libbevy.rlib","renzora":"deps/libshared.dll"},
+            "link_search":{"dependency":["deps"],"native":[]},
+            "shared_images":["deps/libshared.dll"]}"#,
+    )
+    .unwrap();
+    std::fs::write(sdk.join("deps").join("libbevy.rlib"), b"metadata").unwrap();
+    let archive = std::fs::File::create(root.join("sdk.tar.zst")).unwrap();
+    let mut encoder = zstd::stream::Encoder::new(archive, 1).unwrap();
+    {
+        let mut builder = tar::Builder::new(&mut encoder);
+        builder.append_dir_all("sdk", &sdk).unwrap();
+        builder.finish().unwrap();
+    }
+    encoder.finish().unwrap();
+    std::fs::remove_dir_all(root.join(".fixture")).unwrap();
+}
+
+/// The engine's own images ship once, beside the executable, and the unpacker
+/// links them back into the SDK where the compiler looks for them.
+#[test]
+fn a_shared_image_left_out_of_the_archive_is_restored_from_the_install() {
+    let root = tmp("renzora_unpack_shared");
+    build_archive_without_shared_image(&root);
+    std::fs::write(root.join("libshared.dll"), b"the engine's image").unwrap();
+
+    let dir = extract(&root.join("sdk.tar.zst"), &root, |_| {}).expect("extract");
+    assert_eq!(
+        std::fs::read(dir.join("deps").join("libshared.dll")).unwrap(),
+        b"the engine's image",
+        "the image beside the executable is what the SDK now holds"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Without the image there is nothing a plugin could link against, so the
+/// unpack fails naming it, and leaves no tree that would load and then fail.
+#[test]
+fn a_missing_shared_image_fails_the_unpack_and_leaves_no_sdk() {
+    let root = tmp("renzora_unpack_shared_missing");
+    build_archive_without_shared_image(&root);
+
+    let err = extract(&root.join("sdk.tar.zst"), &root, |_| {}).expect_err("must fail");
+    assert!(err.contains("libshared.dll"), "the error names the missing image: {err}");
+    assert!(!root.join("sdk").exists(), "no SDK directory may be left behind");
     let _ = std::fs::remove_dir_all(&root);
 }
 

@@ -5,8 +5,15 @@ edition = "2021"
 description = "The companion process: started by the editor beside itself, for profiling and background work, so the editor only does game-making. Installed only by the editor bundle."
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora = { path = "../shared/renzora", default-features = false, features = ["editor"] }
+# The profiler and the probes the companion displays.
+renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
 # The palette only, for now: the companion's window is drawn in the editor's
 # colours. Its panels move onto ember's widgets with the profiler.
 renzora_ember = { path = "../renzora_ember" }
@@ -60,3 +67,10 @@ bevy = { workspace = true, features = ["file_watcher"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "CompanionHostPlugin"
+scope = "Editor"

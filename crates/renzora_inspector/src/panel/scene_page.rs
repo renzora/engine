@@ -89,14 +89,14 @@ fn active_scene(world: &World) -> Option<(String, Option<String>)> {
 
 pub(crate) fn scene_facts(world: &World, start_camera: Option<String>) -> SceneFacts {
     let boot_path = world
-        .get_resource::<renzora::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.config.main_scene.clone())
         .filter(|s| !s.is_empty());
     let active = active_scene(world);
     let name = match (&active, &boot_path) {
         (Some((name, _)), _) => name.clone(),
         (None, Some(boot)) => file_stem(boot),
-        (None, None) => renzora::lang::t_or("inspector.scene.untitled", "Untitled scene"),
+        (None, None) => renzora_lang_api::t_or("inspector.scene.untitled", "Untitled scene"),
     };
     let active_path = active.as_ref().and_then(|(_, p)| p.clone());
     let is_boot = match (&active_path, &boot_path) {
@@ -124,7 +124,7 @@ pub(crate) fn hash_scene(world: &World, facts_inputs: (Option<Entity>, Option<&s
             t.scene_path.hash(h);
         }
     }
-    if let Some(p) = world.get_resource::<renzora::CurrentProject>() {
+    if let Some(p) = world.get_resource::<renzora_project_api::CurrentProject>() {
         p.config.main_scene.hash(h);
     }
     facts_inputs.0.map(|e| e.to_bits()).hash(h);
@@ -173,7 +173,7 @@ pub(crate) fn build_scene_header(commands: &mut Commands, fonts: &EmberFonts, fa
         ))
         .id();
     renzora_ember::widgets::ellipsize(commands, title, facts.name.clone(), None);
-    let kind = renzora::lang::t_or("inspector.scene.kind", "Scene");
+    let kind = renzora_lang_api::t_or("inspector.scene.kind", "Scene");
     let sub = commands
         .spawn((
             Text::new(kind.clone()),
@@ -210,20 +210,20 @@ pub(crate) fn build_no_world(commands: &mut Commands, fonts: &EmberFonts, theme:
         commands,
         fonts,
         "globe",
-        &renzora::lang::t_or("inspector.scene.world", "World"),
+        &renzora_lang_api::t_or("inspector.scene.world", "World"),
         accent,
         header_bg,
     );
     let note = empty_label(
         commands,
         fonts,
-        &renzora::lang::t_or("inspector.scene.no_world", "No world environment in this scene"),
+        &renzora_lang_api::t_or("inspector.scene.no_world", "No world environment in this scene"),
     );
     let btn = action_button(
         commands,
         fonts,
         "plus",
-        &renzora::lang::t_or("inspector.scene.add_world", "Add World Environment"),
+        &renzora_lang_api::t_or("inspector.scene.add_world", "Add World Environment"),
     );
     commands.entity(btn).insert(AddWorldEnvBtn);
     commands.entity(body).add_children(&[note, btn]);
@@ -244,23 +244,23 @@ pub(crate) fn build_game_card(
         commands,
         fonts,
         "game-controller",
-        &renzora::lang::t_or("inspector.scene.game", "Game"),
+        &renzora_lang_api::t_or("inspector.scene.game", "Game"),
         accent,
         header_bg,
     );
-    let none = renzora::lang::t_or("inspector.scene.none", "None");
+    let none = renzora_lang_api::t_or("inspector.scene.none", "None");
     let boot = value_text(commands, fonts, facts.boot_name.as_deref().unwrap_or(&none));
     let boot_row = renzora_ember::inspector::inspector_row(
         commands,
         &fonts.ui,
-        &renzora::lang::t_or("inspector.scene.boot_scene", "Boot scene"),
+        &renzora_lang_api::t_or("inspector.scene.boot_scene", "Boot scene"),
         boot,
     );
     let cam = value_text(commands, fonts, facts.start_camera.as_deref().unwrap_or(&none));
     let cam_row = renzora_ember::inspector::inspector_row(
         commands,
         &fonts.ui,
-        &renzora::lang::t_or("inspector.scene.start_camera", "Start camera"),
+        &renzora_lang_api::t_or("inspector.scene.start_camera", "Start camera"),
         cam,
     );
     commands.entity(body).add_children(&[boot_row, cam_row]);
@@ -269,7 +269,7 @@ pub(crate) fn build_game_card(
             commands,
             fonts,
             "star",
-            &renzora::lang::t_or("inspector.scene.set_boot", "Set as Boot Scene"),
+            &renzora_lang_api::t_or("inspector.scene.set_boot", "Set as Boot Scene"),
         );
         commands.entity(btn).insert(SetBootSceneBtn);
         commands.entity(body).add_child(btn);
@@ -294,9 +294,9 @@ pub(crate) fn build_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity
         .id();
     let mut tiles = Vec::new();
     for (kind, label) in [
-        (StatKind::Entities, renzora::lang::t_or("inspector.scene.entities", "entities")),
-        (StatKind::Meshes, renzora::lang::t_or("inspector.scene.meshes", "meshes")),
-        (StatKind::Triangles, renzora::lang::t_or("inspector.scene.triangles", "triangles")),
+        (StatKind::Entities, renzora_lang_api::t_or("inspector.scene.entities", "entities")),
+        (StatKind::Meshes, renzora_lang_api::t_or("inspector.scene.meshes", "meshes")),
+        (StatKind::Triangles, renzora_lang_api::t_or("inspector.scene.triangles", "triangles")),
     ] {
         let tile = commands
             .spawn((
@@ -335,7 +335,7 @@ pub(crate) fn build_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity
 pub(crate) fn build_hint(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let hint = commands
         .spawn((
-            Text::new(renzora::lang::t_or("inspector.scene.hint", "Select an entity to edit it")),
+            Text::new(renzora_lang_api::t_or("inspector.scene.hint", "Select an entity to edit it")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
         ))
@@ -425,7 +425,7 @@ pub(crate) fn refresh_scene_stats(
     mut last: Local<f32>,
     fresh: Query<(), Added<SceneStat>>,
     mut texts: Query<(&SceneStat, &mut Text)>,
-    scene: Query<Option<&Mesh3d>, (With<Name>, Without<Node>, Without<renzora::HideInHierarchy>)>,
+    scene: Query<Option<&Mesh3d>, (With<Name>, Without<Node>, Without<renzora_scene_api::HideInHierarchy>)>,
     meshes: Res<Assets<Mesh>>,
 ) {
     if texts.is_empty() {
@@ -455,12 +455,12 @@ pub(crate) fn refresh_scene_stats(
             StatKind::Subtitle { boot } => {
                 let mut s = format!(
                     "{} \u{00B7} {} {}",
-                    renzora::lang::t_or("inspector.scene.kind", "Scene"),
+                    renzora_lang_api::t_or("inspector.scene.kind", "Scene"),
                     short_count(entities),
-                    renzora::lang::t_or("inspector.scene.entities", "entities"),
+                    renzora_lang_api::t_or("inspector.scene.entities", "entities"),
                 );
                 if boot {
-                    s.push_str(&format!(" \u{00B7} {}", renzora::lang::t_or("inspector.scene.boot", "boot scene")));
+                    s.push_str(&format!(" \u{00B7} {}", renzora_lang_api::t_or("inspector.scene.boot", "boot scene")));
                 }
                 s
             }
@@ -487,13 +487,13 @@ pub(crate) fn set_boot_scene_click(
         let Some((_, Some(rel))) = active_scene(w) else {
             return;
         };
-        let Some(mut project) = w.get_resource_mut::<renzora::CurrentProject>() else {
+        let Some(mut project) = w.get_resource_mut::<renzora_project_api::CurrentProject>() else {
             return;
         };
         project.config.main_scene = rel.clone();
         match project.save_config() {
-            Ok(()) => renzora::core::console_log::console_success("Scene", format!("Boot scene set to {rel}")),
-            Err(e) => renzora::core::console_log::console_error("Scene", format!("Failed to save project config: {e}")),
+            Ok(()) => renzora_log_api::console_success("Scene", format!("Boot scene set to {rel}")),
+            Err(e) => renzora_log_api::console_error("Scene", format!("Failed to save project config: {e}")),
         }
     });
 }

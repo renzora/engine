@@ -1,0 +1,29 @@
+[package]
+name = "renzora_diagnostics_api"
+version = "0.1.0"
+edition = "2021"
+description = "What the engine reports about itself: the profiler's recorder, companion probes, the load timeline, runtime warnings, content problems and the debug-panel tables; plugins see each at `renzora::<module>`"
+
+# A contract subject layer above `renzora`, which it uses only for
+# `SceneEntityId`. Several of these modules hold process-global state (the
+# profiler's buffers, the warnings ring), so they must stay reachable from
+# `renzora_sdk`: that is how `renzora_dylib` embeds one copy for the editor, the
+# runtime and every plugin.
+[dependencies]
+renzora_scene_api = { path = "../renzora_scene_api" }
+bevy = { workspace = true }
+renzora = { path = "../../shared/renzora", default-features = false }
+# The companion's vocabulary: the profiler's span events and the probe reports,
+# re-exported from `profiling` and `probes`. Its own crate so the standalone
+# companion can link it without Bevy.
+renzora_companion_proto = { path = "../../renzora_companion_proto" }
+
+[features]
+# What the debug panels read: the material and script perf tables, plus the two
+# count resources their owners publish. Turned on by `renzora_shader` and
+# `renzora_scripting`, the two crates that populate it, so a lean export
+# stripping both carries none of it.
+diagnostics = []
+
+[lints]
+workspace = true

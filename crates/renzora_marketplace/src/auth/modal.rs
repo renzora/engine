@@ -89,7 +89,7 @@ fn native_auth_poll(world: &mut World) {
         world.insert_resource(s);
     }
     if signed {
-        world.insert_resource(renzora::core::AuthJustSignedIn);
+        world.insert_resource(renzora_platform_api::AuthJustSignedIn);
     }
 }
 

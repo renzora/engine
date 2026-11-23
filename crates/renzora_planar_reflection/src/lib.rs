@@ -83,7 +83,7 @@ impl Plugin for PlanarReflectionPlugin {
             .register_type::<NormalAxis>()
             .init_resource::<PlanarReflectionSettings>();
 
-        if app.world().contains_resource::<renzora::DedicatedServer>() {
+        if app.world().contains_resource::<renzora_project_api::DedicatedServer>() {
             return;
         }
 
@@ -120,5 +120,3 @@ impl Plugin for PlanarReflectionPlugin {
         }
     }
 }
-
-renzora::add!(PlanarReflectionPlugin, Runtime);

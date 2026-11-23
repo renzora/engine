@@ -100,7 +100,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Search box: takes whatever width the Import button beside it leaves,
     // with its own marker + state field so it can't fight the hidden toolbar
     // search (see `TreeSearch`).
-    let tree_search_input = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
+    let tree_search_input = text_input(commands, &fonts.ui, &renzora_lang_api::t("common.search"), "");
     commands.entity(tree_search_input).insert((
         TreeSearch,
         Node {
@@ -301,7 +301,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_display(commands, drop_hl, |w| {
-        w.get_resource::<renzora::core::FileDragHovering>().is_some_and(|h| h.0)
+        w.get_resource::<renzora_project_api::FileDragHovering>().is_some_and(|h| h.0)
     });
     let pill = commands
         .spawn((
@@ -327,7 +327,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((Text::new("Drop to import".to_string()), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_primary()))))
         .id();
     bind_text(commands, pill_tx, |w: &Rx| {
-        match w.get_resource::<renzora::core::AssetBrowserCwd>().and_then(|c| c.0.clone()) {
+        match w.get_resource::<renzora_project_api::AssetBrowserCwd>().and_then(|c| c.0.clone()) {
             None => "Drop to import".to_string(),
             Some(rel) if rel.is_empty() => "Drop into the project root".to_string(),
             Some(rel) => format!(
@@ -386,7 +386,7 @@ fn import_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let ic = icon_text(commands, &fonts.phosphor, "download-simple", on, 13.0);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("assets.import")),
+            Text::new(renzora_lang_api::t("assets.import")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(on)),
             bevy::text::TextLayout::no_wrap(),
@@ -427,7 +427,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
 
     let import = import_button(commands, fonts);
-    let new_folder = toolbar_action(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
+    let new_folder = toolbar_action(commands, fonts, "folder-plus", &renzora_lang_api::t("assets.new_folder"));
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
     ghost(commands, new_folder);
 
@@ -458,7 +458,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("assets.back", "Up one folder")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or("assets.back", "Up one folder")),
             AssetBack,
             Name::new("assets-back"),
         ))
@@ -552,7 +552,7 @@ fn ghost(commands: &mut Commands, btn: Entity) {
 /// transparent inside it. `AssetSearch` stays on the input itself, since
 /// `interact.rs` reads the field's `EmberTextInput` through it.
 fn search_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let field = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
+    let field = text_input(commands, &fonts.ui, &renzora_lang_api::t("common.search"), "");
     commands.entity(field).insert((
         AssetSearch,
         Node {
@@ -571,7 +571,7 @@ fn search_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             let name = current_folder(w)
                 .map(|p| crate::state::file_name_of(&p))
                 .unwrap_or_default();
-            renzora::lang::t_or("assets.search_in", "Search in {folder}").replace("{folder}", &name)
+            renzora_lang_api::t_or("assets.search_in", "Search in {folder}").replace("{folder}", &name)
         },
         |w, e, placeholder: &String| {
             if let Some(mut inp) = w.get_mut::<EmberTextInput>(e) {
@@ -626,9 +626,9 @@ fn view_button(commands: &mut Commands, fonts: &EmberFonts, list: bool) -> Entit
             UiInteraction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(if list {
-                renzora::lang::t_or("assets.view.list", "List view")
+                renzora_lang_api::t_or("assets.view.list", "List view")
             } else {
-                renzora::lang::t_or("assets.view.grid", "Grid view")
+                renzora_lang_api::t_or("assets.view.grid", "Grid view")
             }),
             ViewToggleBtn { list },
             Name::new("assets-view"),
@@ -698,12 +698,12 @@ fn build_footer(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let n = list_entries(w).len();
         let selected = w.get_resource::<NativeAssets>().map(|s| s.selection.len()).unwrap_or(0);
         let items = if n == 1 {
-            renzora::lang::t_or("assets.count.one", "1 item")
+            renzora_lang_api::t_or("assets.count.one", "1 item")
         } else {
-            renzora::lang::t_or("assets.count.many", "{n} items").replace("{n}", &n.to_string())
+            renzora_lang_api::t_or("assets.count.many", "{n} items").replace("{n}", &n.to_string())
         };
         if selected > 0 {
-            let sel = renzora::lang::t_or("assets.count.selected", "{n} selected").replace("{n}", &selected.to_string());
+            let sel = renzora_lang_api::t_or("assets.count.selected", "{n} selected").replace("{n}", &selected.to_string());
             format!("{items} \u{00B7} {sel}")
         } else {
             items

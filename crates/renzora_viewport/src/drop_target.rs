@@ -24,8 +24,8 @@ use bevy::window::PrimaryWindow;
 use std::path::PathBuf;
 
 use bevy::window::SystemCursorIcon;
-use renzora::core::viewport_types::{DropCursorRequest, ViewportSettings, ViewportView};
-use renzora::core::MaterialTarget;
+use renzora_viewport_api::{DropCursorRequest, ViewportSettings, ViewportView};
+use renzora_material_api::MaterialTarget;
 use renzora_editor_framework::EditorCommands;
 use renzora_ui::asset_drag::AssetDragPayload;
 
@@ -147,7 +147,7 @@ pub fn arm_viewport_drop(
         return;
     }
     if effect_of.as_ref().map(|(p, _)| p) != Some(&payload.path) {
-        *effect_of = Some((payload.path.clone(), renzora::is_effect_file(&payload.path)));
+        *effect_of = Some((payload.path.clone(), renzora_render_api::is_effect_file(&payload.path)));
     }
     let is_effect = effect_of.as_ref().is_some_and(|(_, e)| *e);
     let Some(kind) = classify(&payload, view, is_effect) else {

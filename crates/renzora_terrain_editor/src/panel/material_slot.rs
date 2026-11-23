@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::material_thumbnail_registry::MaterialThumbnailRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;

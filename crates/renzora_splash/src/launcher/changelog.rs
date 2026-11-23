@@ -66,14 +66,14 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let header = page_header(
         commands,
         fonts,
-        &renzora::lang::t("splash.section.changelog"),
-        &renzora::lang::t("splash.changelog_subtitle"),
+        &renzora_lang_api::t("splash.section.changelog"),
+        &renzora_lang_api::t("splash.changelog_subtitle"),
     );
     let all = link_button(
         commands,
         fonts,
         "arrow-square-out",
-        &renzora::lang::t("splash.all_releases"),
+        &renzora_lang_api::t("splash.all_releases"),
         RELEASES_URL,
     );
     commands.entity(top).add_children(&[header, all]);
@@ -102,16 +102,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn releases_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(feed) = world.get_resource::<ReleaseFeed>() else {
-        return note_snapshot(&renzora::lang::t("splash.changelog_unavailable"));
+        return note_snapshot(&renzora_lang_api::t("splash.changelog_unavailable"));
     };
     if !feed.loaded {
-        return note_snapshot(&renzora::lang::t("splash.fetching_releases"));
+        return note_snapshot(&renzora_lang_api::t("splash.fetching_releases"));
     }
     if let Some(err) = feed.error.clone() {
         return note_snapshot(&err);
     }
     if feed.entries.is_empty() {
-        return note_snapshot(&renzora::lang::t("splash.no_releases"));
+        return note_snapshot(&renzora_lang_api::t("splash.no_releases"));
     }
 
     use std::hash::{Hash, Hasher};
@@ -195,7 +195,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
         head_kids.push(chip(
             commands,
             fonts,
-            &renzora::lang::t("splash.this_build"),
+            &renzora_lang_api::t("splash.this_build"),
             success(),
             ca(74, 200, 130, 34),
         ));
@@ -204,7 +204,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
         head_kids.push(chip(
             commands,
             fonts,
-            &renzora::lang::t("splash.prerelease"),
+            &renzora_lang_api::t("splash.prerelease"),
             c(215, 175, 90),
             ca(215, 175, 90, 30),
         ));
@@ -240,7 +240,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
         kids.push(
             commands
                 .spawn((
-                    Text::new(renzora::lang::t("splash.no_release_notes")),
+                    Text::new(renzora_lang_api::t("splash.no_release_notes")),
                     ui_font(&fonts.ui, 11.5),
                     TextColor(text_muted()),
                     PASS_THROUGH,
@@ -269,7 +269,7 @@ fn release_card(commands: &mut Commands, fonts: &EmberFonts, entry: &ReleaseEntr
         commands,
         fonts,
         "github-logo",
-        &renzora::lang::t("splash.view_on_github"),
+        &renzora_lang_api::t("splash.view_on_github"),
         &entry.url,
     ));
 
@@ -322,9 +322,9 @@ fn excerpt(body: &str) -> (String, bool) {
 /// A dev build has no tag of its own, so it matches on the version it is *for* —
 /// which is what someone reading the changelog from a checkout wants marked.
 fn is_this_build(tag: &str) -> bool {
-    match renzora::version::release_tag() {
+    match renzora_platform_api::version::release_tag() {
         Some(t) => t == tag,
-        None => tag == renzora::version::ENGINE_VERSION,
+        None => tag == renzora_platform_api::version::ENGINE_VERSION,
     }
 }
 

@@ -9,7 +9,7 @@
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::prelude::*;
 use bevy::render::view::ColorGrading;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
 use renzora_tonemapping::{DebandDitherSettings, TonemappingSettings};
 
 fn tonemapping_to_mode(t: &Tonemapping) -> u32 {
@@ -127,7 +127,7 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora::enum_u32_field!(
+            renzora_editor_api::enum_u32_field!(
                 "Mode",
                 TonemappingSettings,
                 mode,
@@ -263,5 +263,3 @@ impl Plugin for TonemappingEditorPlugin {
         app.register_inspector(color_grading_entry());
     }
 }
-
-renzora::add!(TonemappingEditorPlugin, Editor);

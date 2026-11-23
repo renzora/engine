@@ -172,7 +172,7 @@ fn item(cmd: MenuCommand, label: String) -> MenuItem {
 /// cannot be opened says "you have no recent projects", where a missing one
 /// says "this build has no recent projects feature".
 fn build_recents_submenu(recents: &[std::path::PathBuf]) -> Submenu {
-    let label = renzora::lang::t("splash.recent");
+    let label = renzora_lang_api::t("splash.recent");
     if recents.is_empty() {
         return Submenu::new(label, false);
     }
@@ -192,7 +192,7 @@ fn build_recents_submenu(recents: &[std::path::PathBuf]) -> Submenu {
     let refs: Vec<&dyn muda::IsMenuItem> = items.iter().map(|i| i as &dyn muda::IsMenuItem).collect();
     Submenu::with_items(label, true, &refs).unwrap_or_else(|e| {
         warn!("[menu] could not build the recents submenu: {e}");
-        Submenu::new(renzora::lang::t("splash.recent"), false)
+        Submenu::new(renzora_lang_api::t("splash.recent"), false)
     })
 }
 
@@ -230,7 +230,7 @@ fn build_menu(world: &mut World) {
     // Read once, here, because the bar is built once. See `register` for why
     // this list going stale is a known limit rather than an oversight.
     let recents: Vec<std::path::PathBuf> = world
-        .get_resource::<renzora::RecentProjects>()
+        .get_resource::<renzora_project_api::RecentProjects>()
         .map(|r| r.0.clone())
         .unwrap_or_default();
     let recent = build_recents_submenu(&recents);
@@ -244,11 +244,11 @@ fn build_menu(world: &mut World) {
         "Renzora",
         true,
         &[
-            &item(MenuCommand::About, renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine")),
+            &item(MenuCommand::About, renzora_lang_api::t_or("menu.help.about_engine", "About Renzora Engine")),
             &PredefinedMenuItem::separator(),
             // Where macOS keeps preferences, and where a Mac user looks for
             // them. The hamburger has the same row at its top level.
-            &item(MenuCommand::Settings, renzora::lang::t("common.settings")),
+            &item(MenuCommand::Settings, renzora_lang_api::t("common.settings")),
             &PredefinedMenuItem::separator(),
             // No Services submenu. Renzora vends no services and accepts none,
             // so it is always empty — a permanently disabled row teaching the
@@ -267,20 +267,20 @@ fn build_menu(world: &mut World) {
         "File",
         true,
         &[
-            &item(MenuCommand::NewProject, renzora::lang::t("menu.file.new_project")),
-            &item(MenuCommand::OpenProject, renzora::lang::t("menu.file.open_project")),
+            &item(MenuCommand::NewProject, renzora_lang_api::t("menu.file.new_project")),
+            &item(MenuCommand::OpenProject, renzora_lang_api::t("menu.file.open_project")),
             &recent,
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::NewScene, renzora::lang::t("menu.file.new_scene")),
-            &item(MenuCommand::OpenScene, renzora::lang::t("menu.file.open_scene")),
+            &item(MenuCommand::NewScene, renzora_lang_api::t("menu.file.new_scene")),
+            &item(MenuCommand::OpenScene, renzora_lang_api::t("menu.file.open_scene")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::Save, renzora::lang::t("common.save")),
-            &item(MenuCommand::SaveAs, renzora::lang::t_or("menu.file.save_as", "Save As…")),
+            &item(MenuCommand::Save, renzora_lang_api::t("common.save")),
+            &item(MenuCommand::SaveAs, renzora_lang_api::t_or("menu.file.save_as", "Save As…")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::ImportFiles, renzora::lang::t("assets.import_files")),
-            &item(MenuCommand::ImportFolder, renzora::lang::t("assets.import_folder")),
+            &item(MenuCommand::ImportFiles, renzora_lang_api::t("assets.import_files")),
+            &item(MenuCommand::ImportFolder, renzora_lang_api::t("assets.import_folder")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::InstallPlugin, renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…")),
+            &item(MenuCommand::InstallPlugin, renzora_lang_api::t_or("menu.file.install_plugin", "Install Plugin…")),
         ],
     );
 
@@ -291,13 +291,13 @@ fn build_menu(world: &mut World) {
         "Edit",
         true,
         &[
-            &item(MenuCommand::Undo, renzora::lang::t("common.undo")),
-            &item(MenuCommand::Redo, renzora::lang::t("common.redo")),
+            &item(MenuCommand::Undo, renzora_lang_api::t("common.undo")),
+            &item(MenuCommand::Redo, renzora_lang_api::t("common.redo")),
             &PredefinedMenuItem::separator(),
             // The editor's own search — the same command palette the top bar's
             // magnifier toggles, rather than a second search that would have to
             // be kept in step with it.
-            &item(MenuCommand::CommandPalette, renzora::lang::t_or("menu.edit.find", "Search…")),
+            &item(MenuCommand::CommandPalette, renzora_lang_api::t_or("menu.edit.find", "Search…")),
             &PredefinedMenuItem::separator(),
             &PredefinedMenuItem::cut(None),
             &PredefinedMenuItem::copy(None),
@@ -310,18 +310,18 @@ fn build_menu(world: &mut World) {
         "View",
         true,
         &[
-            &item(MenuCommand::ZoomIn, renzora::lang::t_or("menu.view.zoom_in", "Zoom In")),
-            &item(MenuCommand::ZoomOut, renzora::lang::t_or("menu.view.zoom_out", "Zoom Out")),
-            &item(MenuCommand::ResetZoom, renzora::lang::t_or("menu.view.reset_zoom", "Reset Zoom")),
+            &item(MenuCommand::ZoomIn, renzora_lang_api::t_or("menu.view.zoom_in", "Zoom In")),
+            &item(MenuCommand::ZoomOut, renzora_lang_api::t_or("menu.view.zoom_out", "Zoom Out")),
+            &item(MenuCommand::ResetZoom, renzora_lang_api::t_or("menu.view.reset_zoom", "Reset Zoom")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::FitAll, renzora::lang::t_or("menu.view.fit_all", "Fit All")),
-            &item(MenuCommand::IsolationMode, renzora::lang::t_or("menu.view.isolation_mode", "Isolation Mode")),
+            &item(MenuCommand::FitAll, renzora_lang_api::t_or("menu.view.fit_all", "Fit All")),
+            &item(MenuCommand::IsolationMode, renzora_lang_api::t_or("menu.view.isolation_mode", "Isolation Mode")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::ResetLayout, renzora::lang::t("menu.window.reset_layout")),
-            &item(MenuCommand::ResetWorkspace, renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace")),
-            &item(MenuCommand::ResetGlobalDocks, renzora::lang::t_or("menu.view.reset_global_docks", "Reset Global Docks")),
+            &item(MenuCommand::ResetLayout, renzora_lang_api::t("menu.window.reset_layout")),
+            &item(MenuCommand::ResetWorkspace, renzora_lang_api::t_or("menu.view.reset_workspace", "Reset Workspace")),
+            &item(MenuCommand::ResetGlobalDocks, renzora_lang_api::t_or("menu.view.reset_global_docks", "Reset Global Docks")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::ResetDefaults, renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults")),
+            &item(MenuCommand::ResetDefaults, renzora_lang_api::t_or("menu.view.reset_defaults", "Reset to Defaults")),
         ],
     );
 
@@ -343,10 +343,10 @@ fn build_menu(world: &mut World) {
         "Account",
         true,
         &[
-            &item(MenuCommand::SignIn, renzora::lang::t("auth.sign_in")),
-            &item(MenuCommand::SignOut, renzora::lang::t("auth.sign_out")),
+            &item(MenuCommand::SignIn, renzora_lang_api::t("auth.sign_in")),
+            &item(MenuCommand::SignOut, renzora_lang_api::t("auth.sign_out")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::MyLibrary, renzora::lang::t("menu.account.my_library")),
+            &item(MenuCommand::MyLibrary, renzora_lang_api::t("menu.account.my_library")),
         ],
     );
 
@@ -354,14 +354,14 @@ fn build_menu(world: &mut World) {
         "Help",
         true,
         &[
-            &item(MenuCommand::Tutorial, renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial")),
+            &item(MenuCommand::Tutorial, renzora_lang_api::t_or("menu.help.tutorial", "Getting Started Tutorial")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::Documentation, renzora::lang::t("menu.help.documentation")),
-            &item(MenuCommand::YouTube, renzora::lang::t("menu.help.youtube")),
-            &item(MenuCommand::Discord, renzora::lang::t("menu.help.discord")),
-            &item(MenuCommand::GitHub, renzora::lang::t_or("menu.help.github", "GitHub")),
+            &item(MenuCommand::Documentation, renzora_lang_api::t("menu.help.documentation")),
+            &item(MenuCommand::YouTube, renzora_lang_api::t("menu.help.youtube")),
+            &item(MenuCommand::Discord, renzora_lang_api::t("menu.help.discord")),
+            &item(MenuCommand::GitHub, renzora_lang_api::t_or("menu.help.github", "GitHub")),
             &PredefinedMenuItem::separator(),
-            &item(MenuCommand::CheckUpdates, renzora::lang::t("menu.help.check_updates")),
+            &item(MenuCommand::CheckUpdates, renzora_lang_api::t("menu.help.check_updates")),
         ],
     );
 

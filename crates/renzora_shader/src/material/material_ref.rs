@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // Re-export from renzora
-pub use renzora::MaterialRef;
+pub use renzora_material_api::MaterialRef;
 
 /// Per-instance parameter overrides applied on top of the material's defaults.
 ///

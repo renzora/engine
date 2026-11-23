@@ -20,8 +20,8 @@
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use renzora::core::CurrentProject;
-use renzora::{AssetAction, AssetActionScope, RegisterAssetAction};
+use renzora_project_api::CurrentProject;
+use renzora_shell_api::{AssetAction, AssetActionScope, RegisterAssetAction};
 use renzora_editor_framework::{DocTabKind, Toasts};
 
 use crate::convert::{self, Converted, Outcome};
@@ -55,11 +55,11 @@ pub(crate) fn log(source: &str, converted: &Converted) {
     };
     let line = format!("{source} {verb} {target}");
     if converted.warnings.is_empty() {
-        renzora::console_log::console_success(CATEGORY, line);
+        renzora_log_api::console_success(CATEGORY, line);
     } else {
-        renzora::console_log::console_info(CATEGORY, format!("{line}, with {} warning(s):", converted.warnings.len()));
+        renzora_log_api::console_info(CATEGORY, format!("{line}, with {} warning(s):", converted.warnings.len()));
         for w in &converted.warnings {
-            renzora::console_log::console_warn(CATEGORY, format!("{source}: {w}"));
+            renzora_log_api::console_warn(CATEGORY, format!("{source}: {w}"));
         }
     }
 }
@@ -100,7 +100,7 @@ pub fn convert_file_and_open(world: &mut World, particle: &Path) {
             open(world, &converted.path);
         }
         Err(e) => {
-            renzora::console_log::console_error(CATEGORY, format!("{}: {e}", file_name(particle)));
+            renzora_log_api::console_error(CATEGORY, format!("{}: {e}", file_name(particle)));
             toast(world, true, format!("Could not convert {}", file_name(particle)));
         }
     }
@@ -134,7 +134,7 @@ pub fn convert_folder(world: &mut World, dir: &Path) {
             }
             Err(e) => {
                 failed += 1;
-                renzora::console_log::console_error(CATEGORY, format!("{}: {e}", file_name(f)));
+                renzora_log_api::console_error(CATEGORY, format!("{}: {e}", file_name(f)));
             }
         }
     }
@@ -176,7 +176,7 @@ pub fn effect_for_dropped_path(world: &mut World, path: &str) -> Option<String> 
             Some(rel)
         }
         Err(e) => {
-            renzora::console_log::console_error(CATEGORY, format!("{}: {e}", file_name(&abs)));
+            renzora_log_api::console_error(CATEGORY, format!("{}: {e}", file_name(&abs)));
             toast(world, true, format!("Could not convert {}", file_name(&abs)));
             None
         }

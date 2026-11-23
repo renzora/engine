@@ -167,7 +167,7 @@ impl PluginStore {
                 "",
                 &asset.version,
                 "",
-                renzora::version::ENGINE_VERSION,
+                renzora_platform_api::version::ENGINE_VERSION,
             ) {
                 UpdateState::UpToDate | UpdateState::Unavailable => Action::UpToDate,
                 UpdateState::Available { .. } => Action::Update,
@@ -227,7 +227,7 @@ pub(crate) fn register(app: &mut App) {
             // thread whatever the app does next — the files land either way; it
             // is only the notice that is dropped if the user opens a project
             // mid-install, and there is nowhere left to show it by then.
-            .run_if(in_state(renzora::SplashState::Splash)),
+            .run_if(in_state(renzora_project_api::SplashState::Splash)),
     );
 }
 
@@ -980,13 +980,13 @@ fn sign_in_click(
         // The same modal the editor's title bar opens; its systems are ungated,
         // so it renders over the dashboard and the session it establishes is the
         // one the editor will already be holding.
-        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+        commands.insert_resource(renzora_platform_api::AuthToggleWindowRequest);
     }
 }
 
 fn restart_click(q: Query<&UiInteraction, (With<PluginRestartBtn>, Changed<UiInteraction>)>) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        renzora::restart_process();
+        renzora_shell_api::restart_process();
     }
 }
 
@@ -996,7 +996,7 @@ fn install_click(
     q: Query<(&UiInteraction, &PluginInstallBtn), Changed<UiInteraction>>,
     session: Res<AuthSession>,
     mut store: ResMut<PluginStore>,
-    companion: Option<Res<renzora::CompanionJobs>>,
+    companion: Option<Res<renzora_platform_api::CompanionJobs>>,
 ) {
     for (interaction, btn) in &q {
         if *interaction != UiInteraction::Pressed {
@@ -1023,7 +1023,7 @@ fn spawn_install(
     session: Option<AuthSession>,
     asset: AssetSummary,
     tx: crossbeam_channel::Sender<Result<String, String>>,
-    remote: Option<renzora::CompanionRemote>,
+    remote: Option<renzora_platform_api::CompanionRemote>,
 ) {
     std::thread::Builder::new()
         .name("renzora-splash-plugin-install".to_string())
@@ -1046,7 +1046,7 @@ fn spawn_install(
     _session: Option<AuthSession>,
     _asset: AssetSummary,
     tx: crossbeam_channel::Sender<Result<String, String>>,
-    _remote: Option<renzora::CompanionRemote>,
+    _remote: Option<renzora_platform_api::CompanionRemote>,
 ) {
     let _ = tx.send(Err("Installing isn't supported in the browser yet".into()));
 }
@@ -1136,14 +1136,14 @@ fn poll_installs(mut store: ResMut<PluginStore>) {
     for (asset_id, outcome) in finished {
         store.installing.remove(&asset_id);
         if let Ok(msg) = &outcome {
-            renzora::core::console_log::console_info("Marketplace", msg.clone());
+            renzora_log_api::console_info("Marketplace", msg.clone());
             store.needs_restart = true;
             // Rescan rather than patch the list: `install_plugin_source` decides
             // the directory name (and may rename around a clash), so what is on
             // disk is the only thing that knows what actually happened.
             store.installed = scan_installed();
         } else if let Err(e) = &outcome {
-            renzora::core::console_log::console_error("Marketplace", e.clone());
+            renzora_log_api::console_error("Marketplace", e.clone());
         }
         store.notice = Some(outcome);
     }

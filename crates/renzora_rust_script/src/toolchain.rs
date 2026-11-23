@@ -33,8 +33,8 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool, Task};
-use renzora::core::console_log::{console_error, console_info, console_success};
-use renzora::{RustToolchain, RustToolchainAnswer};
+use renzora_log_api::{console_error, console_info, console_success};
+use renzora_platform_api::{RustToolchain, RustToolchainAnswer};
 use renzora_plugin_build::Toolchain;
 
 use crate::watch::ScriptWatcher;
@@ -60,7 +60,7 @@ pub fn drive(
     mut tasks: ResMut<ToolchainTasks>,
     mut answers: MessageReader<RustToolchainAnswer>,
     watcher: Res<ScriptWatcher>,
-    session: Option<Res<renzora::EditorSession>>,
+    session: Option<Res<renzora_project_api::EditorSession>>,
 ) {
     let editor = session.is_some_and(|s| s.is_editor());
     if *state == RustToolchain::Unknown && editor {
@@ -160,7 +160,7 @@ fn install(version: &str, rustup_installed: bool) -> Result<(), String> {
     } else {
         let url = renzora_plugin_build::toolchain::rustup_init_url()
             .ok_or("this platform has no Rust installer; see https://rustup.rs")?;
-        let response = renzora::net::Request::get(&url)
+        let response = renzora_net_api::net::Request::get(&url)
             .header("User-Agent", "renzora-editor")
             .send()
             .map_err(|e| format!("could not download the Rust installer: {e}"))?;

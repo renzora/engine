@@ -94,7 +94,7 @@ fn sync_volumetric_fog(
     added_volumes: Query<(), Added<FogVolume>>,
     mut removed_volumes: RemovedComponents<FogVolume>,
     mut removed_settings: RemovedComponents<VolumetricFogSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     let volumes_changed = !added_volumes.is_empty() | (removed_volumes.read().count() > 0);
     let settings_removed = removed_settings.read().count() > 0;
@@ -140,7 +140,6 @@ impl Plugin for VolumetricFogPlugin {
     }
 }
 
-renzora::add!(VolumetricFogPlugin);
 
 #[cfg(test)]
 mod tests {
@@ -154,7 +153,7 @@ mod tests {
             app.world_mut().entity_mut(source).insert(VolumetricFogSettings::default());
         }
         let camera = app.world_mut().spawn_empty().id();
-        app.insert_resource(renzora::EffectRouting { routes: vec![(camera, vec![source])] });
+        app.insert_resource(renzora_scene_api::EffectRouting { routes: vec![(camera, vec![source])] });
         (app, source, camera)
     }
 

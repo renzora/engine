@@ -1,4 +1,4 @@
-//! The scene query service (`renzora::scene_query`) against real Avian
+//! The scene query service (`renzora_physics_api::scene_query`) against real Avian
 //! colliders: a ray and a sphere sweep stop on a static box with the face's
 //! normal, a sensor is passed straight through, and a 2D ray asks the 2D world.
 //! This is what the particle system's Collide Scene node stands on.
@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use renzora::scene_query::{SceneQueries, SceneQueryBatch, SceneRay};
+use renzora_physics_api::scene_query::{SceneQueries, SceneQueryBatch, SceneRay};
 use renzora_physics::{CollisionShapeData, CollisionShapeType, PhysicsPlugin};
 use renzora_avian_physics::AvianPhysicsPlugin;
 

@@ -139,7 +139,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             (RuntimePhase::Running, true) => "game_panel.hidden",
             (RuntimePhase::Running, false) => "game_panel.own_window",
         };
-        renzora::lang::t(key)
+        renzora_lang_api::t(key)
     });
 
     let bar = crate::load_overlay::striped_bar(commands);

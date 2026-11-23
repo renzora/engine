@@ -461,7 +461,7 @@ pub(super) fn platform_short(p: Platform) -> &'static str {
 /// The name of a packaging mode as this platform's cards label it.
 pub(super) fn mode_label(p: Platform, m: PackagingMode) -> String {
     let web = matches!(p, Platform::WebWasm32);
-    renzora::lang::t(match (web, m) {
+    renzora_lang_api::t(match (web, m) {
         (true, PackagingMode::LeanSingleBinary) => "export.packaging.web_lean",
         (true, _) => "export.packaging.web_template",
         (false, PackagingMode::LeanSingleBinary) => "export.packaging.lean",

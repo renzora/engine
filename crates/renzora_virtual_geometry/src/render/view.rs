@@ -408,7 +408,7 @@ pub(crate) struct VirtualGeometrySettingsRender {
     pub budget_bytes: u64,
 }
 
-/// While a ray tracer traces the full detail ([`renzora::TracedGeometryWanted`]),
+/// While a ray tracer traces the full detail ([`renzora_render_api::TracedGeometryWanted`]),
 /// virtual geometry draws its finest clusters too, whatever the project's LOD
 /// threshold. A simplified level stays within a pixel of the full detail, but
 /// that is not close enough for light: the tracer starts its rays from the
@@ -421,7 +421,7 @@ pub(crate) struct VirtualGeometrySettingsRender {
 pub(crate) fn extract_settings(
     mut commands: Commands,
     settings: bevy::render::Extract<Option<Res<VirtualGeometrySettings>>>,
-    traced: bevy::render::Extract<Option<Res<renzora::TracedGeometryWanted>>>,
+    traced: bevy::render::Extract<Option<Res<renzora_render_api::TracedGeometryWanted>>>,
 ) {
     if let Some(settings) = settings.as_ref() {
         commands.insert_resource(VirtualGeometrySettingsRender {

@@ -26,7 +26,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportSettings;
+use renzora_viewport_api::ViewportSettings;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::interaction::PASS_THROUGH;
 
@@ -81,11 +81,11 @@ fn opt_slug(s: &str) -> String {
 /// displayed string is translated.
 pub(super) fn loc_opt(s: &str) -> String {
     match s {
-        "None" => renzora::lang::t_or("common.none", s),
-        "Disabled" => renzora::lang::t_or("common.disabled", s),
-        "Default" => renzora::lang::t_or("common.default", s),
-        "Always" => renzora::lang::t_or("common.always", s),
-        _ => renzora::lang::t_or(&format!("opt.{}", opt_slug(s)), s),
+        "None" => renzora_lang_api::t_or("common.none", s),
+        "Disabled" => renzora_lang_api::t_or("common.disabled", s),
+        "Default" => renzora_lang_api::t_or("common.default", s),
+        "Always" => renzora_lang_api::t_or("common.always", s),
+        _ => renzora_lang_api::t_or(&format!("opt.{}", opt_slug(s)), s),
     }
 }
 
@@ -439,7 +439,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     // Hidden with the rest of the toolbar while the game runs. It's a child of
     // the bar rather than of a holder, so the loop below doesn't cover it.
     renzora_ember::reactive::tracked::bind_display(commands, right, |w| {
-        !w.get_resource::<renzora::core::PlayModeState>()
+        !w.get_resource::<renzora_project_api::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false)
     });
@@ -458,7 +458,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
             continue;
         }
         renzora_ember::reactive::tracked::bind_display(commands, *holder, |w| {
-            !w.get_resource::<renzora::core::PlayModeState>()
+            !w.get_resource::<renzora_project_api::PlayModeState>()
                 .map(|p| p.is_in_play_mode())
                 .unwrap_or(false)
         });

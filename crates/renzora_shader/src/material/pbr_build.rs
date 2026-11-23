@@ -2,7 +2,7 @@
 //! serialize it to the on-disk `.material` JSON format.
 //!
 //! Importers (renzora_import_ui dialog, viewport drop pipeline) emit
-//! `renzora::PbrMaterialExtracted` events with the per-material PBR data
+//! `renzora_scene_api::PbrMaterialExtracted` events with the per-material PBR data
 //! they pulled out of the source file. The observer below converts each
 //! event into a graph file the rest of the editor can load and edit.
 
@@ -95,7 +95,7 @@ pub struct PbrInputs {
     /// inverted copy into `roughness`.
     pub specular_texture: Option<String>,
     /// Extended PBR channels (clearcoat, transmission, anisotropy, ior, …).
-    pub advanced: renzora::core::PbrAdvanced,
+    pub advanced: renzora_scene_api::PbrAdvanced,
     pub alpha_mode: AlphaMode,
     pub double_sided: bool,
 }

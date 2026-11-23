@@ -138,7 +138,7 @@ pub struct ExtractedPbrMaterial {
     /// Texture URIs here are model-relative, like the fields above; the import
     /// bridge rewrites them to project-relative when firing the event. Shares
     /// the contract type so no per-layer conversion is needed.
-    pub advanced: renzora::core::PbrAdvanced,
+    pub advanced: renzora_scene_api::PbrAdvanced,
     /// glTF `alphaMode`: how transparency is rendered.
     pub alpha_mode: ExtractedAlphaMode,
     /// glTF `alphaCutoff` — discard threshold for `Mask` mode. Ignored otherwise.

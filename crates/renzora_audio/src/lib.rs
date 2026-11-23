@@ -2,7 +2,7 @@
 //!
 //! This crate owns the bus graph, the components scenes serialize, the command
 //! queue, the timeline and the emitter bookkeeping. What makes sound is a
-//! separate crate implementing [`renzora::audio_backend::Backend`]:
+//! separate crate implementing [`renzora_audio_api::audio_backend::Backend`]:
 //! `renzora_audio_backend`, which is linked in beside this one under the same
 //! `audio` feature, so a build either has both or neither.
 //!
@@ -27,7 +27,7 @@ pub mod fx_bridge;
 pub mod decode;
 
 /// The engine side of the audio boundary lives in the contract crate now
-/// (`renzora::audio`), re-exported here so `renzora_audio::AudioLink` keeps
+/// (`renzora_audio_api::audio`), re-exported here so `renzora_audio::AudioLink` keeps
 /// resolving.
 ///
 /// It moved because playing a sound is something any plugin should be able to
@@ -38,14 +38,14 @@ pub mod decode;
 ///
 /// What stayed here is everything that is a *policy* rather than a boundary:
 /// the mixer, emitters, the timeline and its scheduler, autoplay, and decoding.
-pub use renzora::audio::{self as link, AudioLink, CaptureId, SoundId, VoiceId};
+pub use renzora_audio_api::audio::{self as link, AudioLink, CaptureId, SoundId, VoiceId};
 
 /// The request vocabulary, re-exported.
 ///
 /// A caller of this API should not have to name the contract crate to ask for a
 /// sound. Which crate the types happen to be declared in is an implementation
 /// detail of where the boundary sits.
-pub use renzora::audio_backend::{
+pub use renzora_audio_api::audio_backend::{
     BackendInfo, Caps, EmitterState, ListenerState, PlayRequest, StopRequest, StopTarget,
 };
 
@@ -243,5 +243,3 @@ pub fn list_input_devices(devices: &AudioDevices) -> Vec<String> {
 pub fn list_output_devices(devices: &AudioDevices) -> Vec<String> {
     devices.outputs.clone()
 }
-
-renzora::add!(AudioPlugin);

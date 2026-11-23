@@ -4,7 +4,7 @@ Author code shaders in WESL, WGSL, GLSL or ShaderToy syntax and preview them liv
 
 ## The shader material runtime
 
-Code shaders live in the `renzora_shader` crate. Its `ShaderPlugin` (registered with `renzora::add!(ShaderPlugin)`, so it runs in both the editor and exported games) provides:
+Code shaders live in the `renzora_shader` crate. Its `ShaderPlugin` (declared in a `[[package.metadata.renzora.plugin]]` table with the default `Runtime` scope, so it runs in both the editor and exported games) provides:
 
 - **`CodeShaderMaterial`**: a per-entity Bevy `Material` whose fragment shader is authored in code. Each instance carries its own `Handle<Shader>`, and `Material::specialize()` swaps the fragment shader per pipeline key, so different entities can run different code shaders at once.
 - **`ShaderBackendRegistry`**: the set of language backends that turn source into something Bevy compiles.

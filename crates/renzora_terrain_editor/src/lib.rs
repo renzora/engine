@@ -20,7 +20,7 @@ use renzora_editor_framework::{
     ActiveTool, AppEditorExt, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry, ToolEntry,
     ToolSection,
 };
-use renzora::SplinePath;
+use renzora_world_api::SplinePath;
 use renzora_terrain::data::TerrainData;
 use renzora_terrain::landscape::{TerrainLandscape, TerrainMaterial};
 use renzora_terrain::paint::SurfacePaintState;
@@ -47,7 +47,7 @@ impl Plugin for TerrainEditorPlugin {
             // The brush cursor is drawn by the viewport's overlay camera; see
             // `brush_gizmo::BrushGizmos`.
             .insert_gizmo_config(brush_gizmo::BrushGizmos, brush_gizmo::brush_gizmo_config())
-            .init_resource::<renzora::core::viewport_types::ViewportOverlayChanged>();
+            .init_resource::<renzora_viewport_api::ViewportOverlayChanged>();
 
         // **The terrain modes are not on the viewport shelf.** They were buttons
         // there next to the gizmos, until the brushes moved into this component:
@@ -113,7 +113,7 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_brush_scroll_system,
                 )
                     .run_if(active_tool_is(ActiveTool::TerrainSculpt))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             )
             // Paint mode: hover raycast + the landscape weight brush. The
             // brush runs after the stroke opens, which clears the previous
@@ -129,7 +129,7 @@ impl Plugin for TerrainEditorPlugin {
                     landscape_paint::landscape_brush_scroll_system,
                 )
                     .run_if(active_tool_is(ActiveTool::TerrainPaint))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             )
             // Commands from the panel (a material dropped or cleared) apply
             // even while another tool is active, so the panel is never a dead
@@ -139,7 +139,7 @@ impl Plugin for TerrainEditorPlugin {
                 landscape_paint::landscape_command_system
                     // The system's own first test: nothing queued, nothing to do.
                     .run_if(|state: Option<Res<SurfacePaintState>>| state.is_some_and(|s| !s.pending_commands.is_empty()))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             )
             // Undo capture: active when any terrain tool is on. Undo/redo
             // *replay* is handled by the central `renzora_undo` shortcut router
@@ -151,7 +151,7 @@ impl Plugin for TerrainEditorPlugin {
                     systems::terrain_stroke_end_system,
                 )
                     .run_if(|tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| t.is_terrain()))
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             )
             // Keep the layer preview cache in sync so the terrain inspector
             // always shows current layer state.
@@ -163,7 +163,7 @@ impl Plugin for TerrainEditorPlugin {
                     .run_if(|landscapes: Query<(), With<TerrainLandscape>>, state: Res<SurfacePaintState>| {
                         !landscapes.is_empty() || state.layer_count != 0 || !state.layers_preview.is_empty()
                     })
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             )
             // Spline gizmos: always drawn in the editor (not in play mode), for
             // as many splines as there are, which is often none.
@@ -171,7 +171,7 @@ impl Plugin for TerrainEditorPlugin {
                 Update,
                 spline_gizmos::draw_spline_gizmos_system
                     .run_if(any_with_component::<SplinePath>)
-                    .run_if(renzora::core::not_in_play_mode),
+                    .run_if(renzora_project_api::not_in_play_mode),
             );
 
         app.register_entity_preset(EntityPreset {
@@ -330,5 +330,3 @@ fn terrain_data_entry() -> InspectorEntry {
         ],
     }
 }
-
-renzora::add!(TerrainEditorPlugin, Editor);

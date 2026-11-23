@@ -29,10 +29,10 @@ pub(super) fn build_options_menu(commands: &mut Commands, fonts: &EmberFonts) ->
     let snap = snap_rows(commands, fonts);
     let camera = camera_rows(commands, fonts);
     let kids = [
-        submenu(commands, fonts, "eye", &renzora::lang::t_or("viewport.menu.display", "Display"), display),
-        submenu(commands, fonts, "bounding-box", &renzora::lang::t_or("viewport.gizmos", "Gizmos"), gizmos),
-        submenu(commands, fonts, "magnet", &renzora::lang::t_or("viewport.snap", "Snap"), snap),
-        submenu(commands, fonts, "video-camera", &renzora::lang::t_or("viewport.menu.camera", "Camera"), camera),
+        submenu(commands, fonts, "eye", &renzora_lang_api::t_or("viewport.menu.display", "Display"), display),
+        submenu(commands, fonts, "bounding-box", &renzora_lang_api::t_or("viewport.gizmos", "Gizmos"), gizmos),
+        submenu(commands, fonts, "magnet", &renzora_lang_api::t_or("viewport.snap", "Snap"), snap),
+        submenu(commands, fonts, "video-camera", &renzora_lang_api::t_or("viewport.menu.camera", "Camera"), camera),
     ];
 
     let panel = popup_panel(commands, &kids);

@@ -9,7 +9,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};

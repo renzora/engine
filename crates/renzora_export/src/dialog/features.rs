@@ -35,7 +35,7 @@ use super::{
 pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool, tab_max: f32) -> Entity {
     let panel = tab_panel(commands);
     if !host {
-        let note = notice(commands, fonts, "info", &renzora::lang::t("export.features.note_nonhost"), text_muted());
+        let note = notice(commands, fonts, "info", &renzora_lang_api::t("export.features.note_nonhost"), text_muted());
         finish_tab(commands, panel, &[note], tab_max);
         return panel;
     }
@@ -44,8 +44,8 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
 
     // Not lean: nothing here applies. Said, with the fix, rather than leaving a
     // page of live-looking switches that do nothing.
-    let inert = notice(commands, fonts, "warning", &renzora::lang::t("export.features.inert"), AMBER);
-    let switch = primary_button(commands, fonts, &renzora::lang::t("export.check.action.use_lean"), CheckActionBtn(CheckAction::UseLean));
+    let inert = notice(commands, fonts, "warning", &renzora_lang_api::t("export.features.inert"), AMBER);
+    let switch = primary_button(commands, fonts, &renzora_lang_api::t("export.check.action.use_lean"), CheckActionBtn(CheckAction::UseLean));
     commands.entity(inert).add_child(switch);
     bind_display(commands, inert, |w| {
         w.get_resource::<ExportOverlayState>().is_some_and(|s| s.packaging_mode != PackagingMode::LeanSingleBinary)
@@ -54,7 +54,7 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
 
     secs.push(build_toolbar(commands, fonts));
 
-    let hint = txt(commands, fonts, &renzora::lang::t("export.features.note_host"), 11.0, text_muted());
+    let hint = txt(commands, fonts, &renzora_lang_api::t("export.features.note_host"), 11.0, text_muted());
     commands.entity(hint).insert(Node { margin: UiRect::vertical(Val::Px(4.0)), ..default() });
     secs.push(hint);
 
@@ -66,7 +66,7 @@ pub(super) fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, ho
         secs.push(build_group(commands, fonts, sid, heading, members));
     }
 
-    let none = txt(commands, fonts, &renzora::lang::t("export.features.no_match"), 12.0, text_muted());
+    let none = txt(commands, fonts, &renzora_lang_api::t("export.features.no_match"), 12.0, text_muted());
     commands.entity(none).insert(Node { align_self: AlignSelf::Center, margin: UiRect::all(Val::Px(20.0)), ..default() });
     bind_display(commands, none, |w| !CAPABILITIES.iter().any(|c| row_matches(w, c)));
     secs.push(none);
@@ -80,7 +80,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), margin: UiRect::top(Val::Px(4.0)), ..default() })
         .id();
-    let search = text_input(commands, &fonts.ui, &renzora::lang::t("export.features.search"), "");
+    let search = text_input(commands, &fonts.ui, &renzora_lang_api::t("export.features.search"), "");
     style_input(commands, search);
     bind_text_input(
         commands,
@@ -118,7 +118,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             if w.get_resource::<ExportDialogUi>().is_some_and(|u| u.feature_filter == filter) { ca(255, 255, 255, 22) } else { Color::NONE }
         });
         let t = commands
-            .spawn((Text::new(renzora::lang::t(key)), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_muted())), PASS_THROUGH, bevy::text::TextLayout::no_wrap()))
+            .spawn((Text::new(renzora_lang_api::t(key)), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_muted())), PASS_THROUGH, bevy::text::TextLayout::no_wrap()))
             .id();
         bind_text_color(commands, t, move |w| {
             if w.get_resource::<ExportDialogUi>().is_some_and(|u| u.feature_filter == filter) { rgb(text_primary()) } else { rgb(text_muted()) }
@@ -127,7 +127,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands.entity(chips).add_child(chip);
     }
 
-    let reset = pill_button(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t("export.files.reset"));
+    let reset = pill_button(commands, fonts, "arrow-counter-clockwise", &renzora_lang_api::t("export.files.reset"));
     commands.entity(reset).insert(FeaturesResetBtn);
     commands.entity(bar).add_children(&[search, chips, reset]);
     bar
@@ -165,7 +165,7 @@ fn row_matches(w: &Rx, cap: &Capability) -> bool {
     };
     let q = u.feature_query.trim().to_lowercase();
     if !q.is_empty() {
-        let label = renzora::lang::t_or(&format!("export.cap.{}.label", cap.id), cap.label).to_lowercase();
+        let label = renzora_lang_api::t_or(&format!("export.cap.{}.label", cap.id), cap.label).to_lowercase();
         if !label.contains(&q) && !cap.id.contains(&q) {
             return false;
         }
@@ -226,7 +226,7 @@ fn build_group(commands: &mut Commands, fonts: &EmberFonts, sid: &'static str, h
         let ids = ids.clone();
         bind_text(commands, summary, move |w| {
             let on = w.get_resource::<ExportOverlayState>().map(|s| ids.iter().filter(|id| is_on(s, id)).count()).unwrap_or(0);
-            renzora::lang::t("export.features.group_count")
+            renzora_lang_api::t("export.features.group_count")
                 .replace("{n}", &on.to_string())
                 .replace("{total}", &ids.len().to_string())
         });
@@ -289,16 +289,16 @@ fn feature_row(commands: &mut Commands, fonts: &EmberFonts, cap: &'static Capabi
         .id();
     // Localize the capability label + help. Keys are
     // `export.cap.<id>.{label,help}`, falling back to the English const.
-    let cap_label = renzora::lang::t_or(&format!("export.cap.{id}.label"), cap.label);
-    let cap_help = renzora::lang::t_or(&format!("export.cap.{id}.help"), cap.help);
+    let cap_label = renzora_lang_api::t_or(&format!("export.cap.{id}.label"), cap.label);
+    let cap_help = renzora_lang_api::t_or(&format!("export.cap.{id}.help"), cap.help);
     let t = txt(commands, fonts, &cap_label, 12.0, text_primary());
     bind_text_color(commands, t, move |w| {
         if w.get_resource::<ExportOverlayState>().is_some_and(|s| is_on(s, id)) { rgb(text_primary()) } else { rgb(text_muted()) }
     });
-    let changed = tag(commands, fonts, &renzora::lang::t("export.features.changed"), AMBER, ca(AMBER.0, AMBER.1, AMBER.2, 34));
+    let changed = tag(commands, fonts, &renzora_lang_api::t("export.features.changed"), AMBER, ca(AMBER.0, AMBER.1, AMBER.2, 34));
     commands.entity(changed).insert((
         UiInteraction::default(),
-        renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("export.features.changed_tooltip")),
+        renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t("export.features.changed_tooltip")),
     ));
     bind_display(commands, changed, move |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| is_changed(s, id)));
     let spacer = commands.spawn((Node { flex_grow: 1.0, ..default() }, PASS_THROUGH)).id();

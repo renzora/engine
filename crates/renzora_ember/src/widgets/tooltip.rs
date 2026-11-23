@@ -161,7 +161,7 @@ pub(crate) fn hover_tooltip_system(
                 // first tooltip shows, so every later save wrote it into the
                 // scene, and loading the scene (or a game exported from it)
                 // spawned an editor tooltip.
-                renzora::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
             ))
             .id();
         let txt = commands

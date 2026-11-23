@@ -5,9 +5,9 @@ A [native plugin](native-plugins.md) can add a dock panel built from the editor'
 ```rust
 use bevy::prelude::*;
 use renzora::core::RenzoraShellExt;
-use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::theme::{rgb, text_primary};
+use renzora::ui::font::{ui_font, EmberFonts};
+use renzora::ui::panel::RegisterPanelContent;
+use renzora::ui::theme::{rgb, text_primary};
 
 const PANEL_ID: &str = "my_panel";
 
@@ -36,20 +36,19 @@ renzora::plugin!(MyPanelPlugin);
 
 Open it from **Add Panel** in the dock; it appears under whatever category you registered.
 
-## Getting `renzora_ember` into your plugin
+## Getting ember into your plugin
 
-Ember needs no build configuration. The plugin compiler always passes `--extern renzora_ember`, pointed at the shared `renzora_ember_dylib` image, so the crate is importable whether or not your manifest mentions it.
+Ember needs no build configuration. It is `renzora::ui`: the `renzora` a plugin is compiled against is the shared `renzora_dylib` image, which carries the UI framework alongside the contract, so `renzora::ui::...` resolves whether or not your manifest mentions anything beyond `renzora`.
 
-Add it to `Cargo.toml` anyway, so rust-analyzer can resolve the paths while you author:
+Your `Cargo.toml` needs no extra line for it:
 
 ```toml
 [dependencies]
 bevy = "0.20"
 renzora = { path = "../../crates/renzora" }
-renzora_ember = { path = "../../crates/renzora_ember" }
 ```
 
-The build strips `bevy` and every `renzora*` entry before it hands the rest to cargo (see [Crates from crates.io](native-plugins.md#crates-from-cratesio)), so those three lines are documentation for your editor and nothing else. From a downloaded engine with no source checkout the paths will not resolve and the plugin still compiles; point them at the SDK, or drop them and lose only autocomplete.
+The build strips `bevy` and every `renzora*` entry before it hands the rest to cargo (see [Crates from crates.io](native-plugins.md#crates-from-cratesio)), so those lines are documentation for your editor and nothing else. From a downloaded engine with no source checkout the paths will not resolve and the plugin still compiles; point them at the SDK, or drop them and lose only autocomplete.
 
 ## The two registrations
 
@@ -57,7 +56,7 @@ They are separate on purpose, and both are needed.
 
 **`register_shell_panel(id, title, icon, category)`** is the contract-crate half — the panel's metadata for the dock tab and the Add-Panel picker. It comes from `renzora::core::RenzoraShellExt`. `icon` is a Phosphor icon name in kebab-case (`"align-center-horizontal"`, `"broom"`, `"bug"`); an unknown name resolves to no glyph rather than an error, so check your spelling against the picker. `category` groups the entry in Add Panel and is a free-form string — reuse an existing one (`"Tools"`, `"Scene"`, `"Debug"`) or make your own.
 
-**`register_panel_content(id, scroll, build)`** is ember's half — what to build inside the tab. It comes from `renzora_ember::panel::RegisterPanelContent`. `scroll` wraps the content in a scroll view; pass `false` if your panel scrolls itself or manages its own virtualized list.
+**`register_panel_content(id, scroll, build)`** is ember's half — what to build inside the tab. It comes from `renzora::ui::panel::RegisterPanelContent`. `scroll` wraps the content in a scroll view; pass `false` if your panel scrolls itself or manages its own virtualized list.
 
 The ids must match. A shell panel with no content renders the dock's placeholder; content with no shell entry has no tab to appear in.
 
@@ -97,7 +96,7 @@ That default is the point. Panel systems that keep running while their tab is hi
 Bind the parts that change. A binding is a closure that reads the world and produces a value; the reactive driver runs it, compares against last frame's value, and writes only on a change.
 
 ```rust
-use renzora_ember::reactive::tracked::bind_text;
+use renzora::ui::reactive::tracked::bind_text;
 
 let label = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0))).id();
 bind_text(commands, label, |w| {
@@ -124,8 +123,8 @@ The `w` handed to a binding is an `Rx`, not a `&World`. It is a tracking wrapper
 `bind_2way` is what makes a widget an editor of state rather than a display of it. `get` reads the value out of the world for the widget to show; `set` writes the widget's new value back. The widget's own interaction system calls `set`; the binding calls `get` to keep it honest when the value changes from elsewhere (an undo, a script, another panel).
 
 ```rust
-use renzora_ember::reactive::tracked::bind_2way;
-use renzora_ember::widgets::checkbox;
+use renzora::ui::reactive::tracked::bind_2way;
+use renzora::ui::widgets::checkbox;
 
 let cb = checkbox(commands, false);
 bind_2way(
@@ -140,14 +139,14 @@ bind_2way(
 );
 ```
 
-Text inputs have their own two-way helper, `renzora_ember::widgets::bind_text_input(cmds, input, get, set)`, because a text field has an editing state that must not be clobbered mid-keystroke.
+Text inputs have their own two-way helper, `renzora::ui::widgets::bind_text_input(cmds, input, get, set)`, because a text field has an editing state that must not be clobbered mid-keystroke.
 
 ### Lists
 
 `keyed_list` is the `<For>` equivalent — the right tool whenever the number of rows can change.
 
 ```rust
-use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+use renzora::ui::reactive::{keyed_list, KeyedSnapshot};
 
 keyed_list(commands, list_container, |rx| {
     let names: Vec<(Entity, String)> = /* read from rx */ vec![];
@@ -180,7 +179,7 @@ If a binding is not updating, the first thing to check is whether the thing it r
 
 ## Widgets
 
-`renzora_ember::widgets` is the full editor set — everything the built-in panels are made of. Each is a builder function that spawns a subtree and returns its root `Entity`, which you then parent where you want it and, usually, bind.
+`renzora::ui::widgets` is the full editor set — everything the built-in panels are made of. Each is a builder function that spawns a subtree and returns its root `Entity`, which you then parent where you want it and, usually, bind.
 
 ### Form controls
 
@@ -213,8 +212,8 @@ Also: `radio`, `segmented`, `stepper`, `toggle_switch`, `multi_select`, `tags_in
 `section` is the workhorse:
 
 ```rust
-use renzora_ember::widgets::section;
-use renzora_ember::theme::accent;
+use renzora::ui::widgets::section;
+use renzora::ui::theme::accent;
 
 let (root, body) = section(commands, fonts, "sliders", "Options", accent());
 // parent `root` into your panel; spawn your rows as children of `body`
@@ -234,10 +233,10 @@ The `gallery_*` panels in the editor render the entire set live — the fastest 
 
 ## Theme colours
 
-Never write a literal colour. `renzora_ember::theme` exposes the active palette as functions returning `(u8, u8, u8)`, and `rgb()` converts to a Bevy `Color`:
+Never write a literal colour. `renzora::ui::theme` exposes the active palette as functions returning `(u8, u8, u8)`, and `rgb()` converts to a Bevy `Color`:
 
 ```rust
-use renzora_ember::theme::{rgb, card_bg, text_primary, text_muted, accent, border, divider};
+use renzora::ui::theme::{rgb, card_bg, text_primary, text_muted, accent, border, divider};
 
 BackgroundColor(rgb(card_bg()))
 TextColor(rgb(text_muted()))
@@ -249,14 +248,14 @@ The full set: `window_bg`, `panel_bg`, `faint_bg`, `header_bg`, `section_bg`, `c
 
 These are *functions*, not constants, because the palette is swapped when the user changes theme. Read them inside `build` and inside bindings — never cache one in a `static`.
 
-For per-widget styling beyond colour there is the stylesheet layer: `renzora_ember::theme::style(Role)` returns the `WidgetStyle` a theme declares for a widget role. See [Theming](../editor-dev/theming.md).
+For per-widget styling beyond colour there is the stylesheet layer: `renzora::ui::theme::style(Role)` returns the `WidgetStyle` a theme declares for a widget role. See [Theming](../editor-dev/theming.md).
 
 ## Handling interaction
 
 A click is handled the ordinary Bevy way, a marker component and a change filter, on ember's `UiInteraction`:
 
 ```rust
-use renzora_ember::UiInteraction;
+use renzora::ui::UiInteraction;
 
 #[derive(Component)]
 struct ResetButton;
@@ -282,7 +281,7 @@ fn my_panel_system(q: Query<&UiInteraction, (With<ResetButton>, Changed<UiIntera
 
 Two things that will catch you once:
 
-**Give every node that owns a press `BLOCK`.** UI nodes start as `renzora_ember::interaction::PASS_THROUGH` (hit-testable, not blocking), so an unmarked node lets a press fall through to whatever is behind it, including the viewport, which will interpret it as a click in the scene. `renzora_ember::interaction::BLOCK` is a `bevy::picking::Pickable` that stops it, and replaces the old `FocusPolicy::Block`; `Pickable::IGNORE` takes a node out of picking entirely.
+**Give every node that owns a press `BLOCK`.** UI nodes start as `renzora::ui::interaction::PASS_THROUGH` (hit-testable, not blocking), so an unmarked node lets a press fall through to whatever is behind it, including the viewport, which will interpret it as a click in the scene. `renzora::ui::interaction::BLOCK` is a `bevy::picking::Pickable` that stops it, and replaces the old `FocusPolicy::Block`; `Pickable::IGNORE` takes a node out of picking entirely.
 
 **Gate empty-space actions on `ScrollbarBusy`.** If your panel does something on a click in its background, that fires while the user is dragging your scrollbar unless you check.
 
@@ -292,10 +291,10 @@ A dock panel is the largest surface, not the only one.
 
 ### A settings section
 
-`renzora_ember::settings_sections::RegisterSettingsSection` adds a section to the Settings overlay's **Plugins** tab — the right home for a plugin's own preferences, so the user finds them where they look for everything else.
+`renzora::ui::settings_sections::RegisterSettingsSection` adds a section to the Settings overlay's **Plugins** tab — the right home for a plugin's own preferences, so the user finds them where they look for everything else.
 
 ```rust
-use renzora_ember::settings_sections::RegisterSettingsSection;
+use renzora::ui::settings_sections::RegisterSettingsSection;
 
 app.register_settings_section("my_plugin", "My Plugin", "sparkle", |cmds, fonts| {
     let root = cmds.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).id();
@@ -394,7 +393,7 @@ app.register_shell_tool(ShellActionItem {
 
 ### Viewport toolbar and strips
 
-Three registration points in `renzora_ember::toolbar`, all free functions taking a `Fn(&mut Commands, &EmberFonts) -> Entity`:
+Three registration points in `renzora::ui::toolbar`, all free functions taking a `Fn(&mut Commands, &EmberFonts) -> Entity`:
 
 | Function | Where it lands |
 |---|---|
@@ -427,10 +426,10 @@ An ordinary `Gizmos` system draws into the viewport with no registration at all 
 
 ### Switching the workspace
 
-`register_workspace` contributes a layout. `renzora_ember::workspace::WorkspaceSwitch` drives the one that is showing, in both directions: the shell writes `names` and `active` into it every frame, and takes `requested` back.
+`register_workspace` contributes a layout. `renzora::ui::workspace::WorkspaceSwitch` drives the one that is showing, in both directions: the shell writes `names` and `active` into it every frame, and takes `requested` back.
 
 ```rust
-use renzora_ember::workspace::WorkspaceSwitch;
+use renzora::ui::workspace::WorkspaceSwitch;
 
 fn go_to_materials(mut switch: ResMut<WorkspaceSwitch>) {
     if switch.names.iter().any(|name| name == "Materials") {
@@ -441,7 +440,7 @@ fn go_to_materials(mut switch: ResMut<WorkspaceSwitch>) {
 
 The switch happens on the next frame, and the layout you leave is saved into its slot first, so switching back restores the panels as you left them. Ask by **name**, never by index: the list changes as plugins register, and an index that is still in range then addresses a different workspace than you meant. A name that matches nothing is dropped with a warning.
 
-The list lives in `renzora_shell`'s `ShellLayouts`, which is `pub(crate)` and stays that way — a native plugin links `bevy`, `renzora` and `renzora_ember` and nothing else, so this resource is the seam between what a plugin can name and what the shell owns. It is the same arrangement `PendingWorkspaces` uses for registration, pointed the other way.
+The list lives in `renzora_shell`'s `ShellLayouts`, which is `pub(crate)` and stays that way — a native plugin links `bevy` and `renzora` (ember included, as `renzora::ui`) and nothing else, so this resource is the seam between what a plugin can name and what the shell owns. It is the same arrangement `PendingWorkspaces` uses for registration, pointed the other way.
 
 ### Everything else
 
@@ -451,9 +450,9 @@ Panels are UI; the editor's *behaviour* extension points — inspector fields, e
 
 Ember keeps the theme palette, the stylesheet, the UI font scale and the viewport-toolbar lists in process-global statics — one set per *process*, not per crate. A plugin that linked its own private copy of ember would get its own set, and every one of them fails silently: your panel would paint in ember's default colours no matter what theme the user picked, and a `register_viewport_tool_group` call would push into a list nothing reads.
 
-So the plugin build points `--extern renzora_ember` at the shared `renzora_ember_dylib` image rather than at ember's rlib. Nothing about this is visible from a plugin — it is the reason panels work, and the reason a one-panel plugin is 270 KB instead of 32 MB.
+So ember is embedded in the shared `renzora_dylib` image, and a plugin reaches it as `renzora::ui` through that image rather than through ember's rlib. Nothing about this is visible from a plugin — it is the reason panels work, and the reason a one-panel plugin is 270 KB instead of 32 MB.
 
-The same reasoning is why `renzora` is a shared image, and why the loader refuses to load anything at all when `dynamic_linking` is off: there is no runtime check that would catch a duplicated static, so the only safe answer is not to be in that situation.
+The same reasoning is why the contract shares that image, and why the loader refuses to load anything at all when `dynamic_linking` is off: there is no runtime check that would catch a duplicated static, so the only safe answer is not to be in that situation.
 
 ## Pitfalls
 
@@ -480,4 +479,4 @@ No native plugin ships in the repository, so the reference for panel code is **t
 | `crates/renzora_hierarchy` | `keyed_list` over a changing entity set, with selection |
 | `crates/renzora_ember/src/widgets/` | each widget's own source, when you need to know exactly what a builder spawns |
 
-The difference between those crates and your plugin is how they are linked, not what they may call: an in-workspace plugin is an `rlib` wired in by the `add!` generator, a native plugin is a `dylib` loaded at startup, and both get the same `&mut World` and the same ember.
+The difference between those crates and your plugin is how they are linked, not what they may call: an in-workspace plugin is an `rlib` wired in by the generator from its `[[package.metadata.renzora.plugin]]` table, a native plugin is a `dylib` loaded at startup, and both get the same `&mut World` and the same ember.

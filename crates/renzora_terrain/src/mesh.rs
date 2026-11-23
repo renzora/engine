@@ -3,14 +3,14 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use renzora::console_log::console_info;
+use renzora_log_api::console_info;
 use std::collections::HashMap;
 
 use renzora_physics::{CollisionShapeData, PhysicsBodyData};
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use crate::material::TerrainCheckerboardMaterial;
-use renzora::MaterialRef;
+use renzora_material_api::MaterialRef;
 
 /// How far below a chunk's lowest point its outer walls reach, so the bottom
 /// of a wall never meets the ground it hangs from exactly.
@@ -368,7 +368,7 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             // No material: a new terrain shows the blockout grid until one is
             // chosen (a `TerrainMaterial`; Alpine Landscape is the engine's
             // default, see `landscape`).
-            renzora::SelectionStop,
+            renzora_scene_api::SelectionStop,
         ))
         .id();
 
@@ -548,7 +548,7 @@ pub fn rehydrate_terrain_chunks(
             Some((entity, parent, terrain, chunk, neighbours))
         })
         .collect();
-    let built: Vec<(Entity, Entity, Mesh, Option<renzora::physics::HeightfieldData>)> =
+    let built: Vec<(Entity, Entity, Mesh, Option<renzora_physics_api::physics::HeightfieldData>)> =
         bevy::tasks::ComputeTaskPool::get().scope(|scope| {
             for (entity, parent, terrain, chunk, neighbours) in &jobs {
                 scope.spawn(async move {
@@ -592,7 +592,7 @@ pub fn rehydrate_terrain_chunks(
         // against this system, it often came a frame late and the chunk got a
         // 32 thousand triangle trimesh instead, about 20 ms each on load.
         if let Some(field) = field {
-            ec.insert(renzora::physics::HeightfieldSource(std::sync::Arc::new(field)));
+            ec.insert(renzora_physics_api::physics::HeightfieldSource(std::sync::Arc::new(field)));
         }
 
         // Only apply default checkerboard if chunk has no custom material assigned
@@ -785,20 +785,20 @@ pub fn sync_chunk_heightfields(
         if let Some(field) = chunk_heightfield(terrain, chunk) {
             commands
                 .entity(entity)
-                .try_insert(renzora::physics::HeightfieldSource(std::sync::Arc::new(field)));
+                .try_insert(renzora_physics_api::physics::HeightfieldSource(std::sync::Arc::new(field)));
         }
     }
 }
 
 /// A chunk's composed heights as a heightfield in the chunk's local space.
-pub fn chunk_heightfield(terrain: &TerrainData, chunk: &TerrainChunkData) -> Option<renzora::physics::HeightfieldData> {
+pub fn chunk_heightfield(terrain: &TerrainData, chunk: &TerrainChunkData) -> Option<renzora_physics_api::physics::HeightfieldData> {
     let res = terrain.chunk_resolution as usize;
     let source = if chunk.heights.len() == res * res { &chunk.heights } else { &chunk.base_heights };
     if res < 2 || source.len() != res * res {
         return None;
     }
     let range = terrain.height_range();
-    Some(renzora::physics::HeightfieldData {
+    Some(renzora_physics_api::physics::HeightfieldData {
         heights: source.iter().map(|h| terrain.min_height + h * range).collect(),
         columns: res,
         rows: res,

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 
 #[derive(Resource, Default)]
 pub struct ModelThumbnailRegistry {
@@ -97,5 +97,5 @@ pub fn model_thumb_path(model_abs: &Path, project: &CurrentProject) -> PathBuf {
     });
     // The rule is shared with the companion, which deletes a model's thumbnail
     // when the model goes.
-    renzora::core::project_files::cached_thumbnail(&project.path, &rel, "models")
+    renzora_project_api::project_files::cached_thumbnail(&project.path, &rel, "models")
 }

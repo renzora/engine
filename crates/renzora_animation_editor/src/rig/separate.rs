@@ -2,7 +2,7 @@
 //! pieces are merged (both wheels of an axle) split into one node per piece,
 //! each centred on itself, so each can be moved and turned on its own.
 //!
-//! The Hierarchy only sends [`renzora::core::SeparateModelParts`]; the work is
+//! The Hierarchy only sends [`renzora_shell_api::SeparateModelParts`]; the work is
 //! here because it is a rewrite of the model file, like rigging, and reuses
 //! rigging's file lookup and its reload ([`super::respawn`]).
 
@@ -10,7 +10,7 @@ use bevy::gltf::GltfMeshName;
 use bevy::prelude::*;
 
 pub(super) fn register(app: &mut App) {
-    app.add_observer(|ev: On<renzora::core::SeparateModelParts>, mut commands: Commands| {
+    app.add_observer(|ev: On<renzora_shell_api::SeparateModelParts>, mut commands: Commands| {
         let target = ev.event().entity;
         commands.queue(move |world: &mut World| separate(world, target));
     });
@@ -20,7 +20,7 @@ pub(super) fn register(app: &mut App) {
 /// a placed model.
 fn model_root(world: &World, mut entity: Entity) -> Option<Entity> {
     loop {
-        if world.get::<renzora::core::MeshInstanceData>(entity).is_some() {
+        if world.get::<renzora_scene_api::MeshInstanceData>(entity).is_some() {
             return Some(entity);
         }
         entity = world.get::<ChildOf>(entity)?.parent();

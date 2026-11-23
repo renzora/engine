@@ -19,7 +19,7 @@ use bevy::math::Rot2;
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
 
-use renzora::core::ModalTransformHud;
+use renzora_project_api::ModalTransformHud;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 

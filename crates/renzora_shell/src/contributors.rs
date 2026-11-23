@@ -67,8 +67,8 @@ impl Contributors {
     fn kick_off(&mut self) {
         let (tx, rx) = mpsc::channel();
         self.receiver = Some(Mutex::new(rx));
-        // `renzora::net::fetch` blocks its own thread while the frame carries
-        // on, and must never be called from a system — see `renzora::net`.
+        // `renzora_net_api::net::fetch` blocks its own thread while the frame
+        // carries on, and must never be called from a system: see that module.
         std::thread::spawn(move || {
             if let Some(list) = fetch() {
                 let _ = tx.send(list);
@@ -99,7 +99,7 @@ pub(crate) fn poll_contributors(mut contributors: ResMut<Contributors>) {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch() -> Option<Vec<Contributor>> {
-    let response = renzora::net::Request::get(CONTRIBUTORS_API)
+    let response = renzora_net_api::net::Request::get(CONTRIBUTORS_API)
         // GitHub rejects an API request with no User-Agent outright.
         .header("User-Agent", "renzora-editor")
         .header("Accept", "application/vnd.github+json")

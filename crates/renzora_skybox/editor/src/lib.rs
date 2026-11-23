@@ -10,7 +10,7 @@
 //! bundle.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 use renzora_skybox::SkyboxData;
 
 // ============================================================================
@@ -43,7 +43,7 @@ fn inspector_entry() -> InspectorEntry {
 mod native_inspector {
     use bevy::ecs::world::CommandQueue;
     use bevy::prelude::*;
-    use renzora::FieldValue;
+    use renzora_editor_api::FieldValue;
     use renzora_ember::font::EmberFonts;
     use renzora_ember::inspector::{color_field, inspector_row};
     use renzora_ember::reactive::tracked::bind_2way;
@@ -270,7 +270,7 @@ mod native_inspector {
                     .pick_file()
                 {
                     let rel = w
-                        .get_resource::<renzora::CurrentProject>()
+                        .get_resource::<renzora_project_api::CurrentProject>()
                         .map(|p| p.make_asset_relative(&path))
                         .unwrap_or_else(|| path.to_string_lossy().to_string());
                     if let Some(mut d) = w.get_mut::<SkyboxData>(e) {
@@ -306,9 +306,7 @@ impl Plugin for SkyboxEditorPlugin {
                     .run_if(any_with_component::<native_inspector::SkyboxRoot>),
                 native_inspector::sky_browse_click,
             )
-                .run_if(in_state(renzora::SplashState::Editor)),
+                .run_if(in_state(renzora_project_api::SplashState::Editor)),
         );
     }
 }
-
-renzora::add!(SkyboxEditorPlugin, Editor);

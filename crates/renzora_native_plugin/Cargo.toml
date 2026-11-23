@@ -22,10 +22,17 @@ description = "Loads native plugins — Bevy plugins shipped as Rust source, reb
 dynamic_linking = []
 
 [dependencies]
+renzora_shell_api = { path = "../api/renzora_shell_api" }
+renzora_crash_api = { path = "../api/renzora_crash_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 # The contract crate. Reached through the shared `renzora_dylib` at run time
 # like everything else — this is a plain dependency edge, not a second copy.
-renzora = { path = "../renzora", default-features = false }
+renzora = { path = "../shared/renzora", default-features = false }
+# Downloading prebuilt plugins.
+renzora_net_api = { path = "../api/renzora_net_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
 # Reads the SDK manifest and drives rustc. No Bevy in it, so the compile path
 # stays testable without booting an engine.
 renzora_plugin_build = { path = "../renzora_plugin_build" }

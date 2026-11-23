@@ -40,7 +40,7 @@ fn preprocessed_grass_shader() -> String {
 #[test]
 fn grass_shader_parses_and_validates() {
     let source = preprocessed_grass_shader();
-    renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("grass.wesl: {err}"));
+    renzora_shader_api::wgsl::check(&source).unwrap_or_else(|err| panic!("grass.wesl: {err}"));
 }
 
 /// The pipeline names these entry points explicitly, so a rename in either place
@@ -48,7 +48,7 @@ fn grass_shader_parses_and_validates() {
 #[test]
 fn grass_shader_has_the_entry_points_the_pipeline_asks_for() {
     let source = preprocessed_grass_shader();
-    let module = renzora::wgsl::parse(&source).expect("grass.wesl should parse");
+    let module = renzora_shader_api::wgsl::parse(&source).expect("grass.wesl should parse");
     let names: Vec<&str> = module
         .entry_points
         .iter()

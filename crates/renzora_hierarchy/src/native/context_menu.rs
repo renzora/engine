@@ -16,7 +16,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 use renzora_editor_framework::{EditorSelection, EntityLabelColor, InspectorRegistry, SpawnRegistry};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
@@ -46,7 +46,7 @@ pub(crate) struct SpawnRegistries<'w> {
     spawn: Option<Res<'w, SpawnRegistry>>,
     shape: Option<Res<'w, ShapeRegistry>>,
     inspector: Option<Res<'w, InspectorRegistry>>,
-    scope: Option<Res<'w, renzora::SpawnCategoryScope>>,
+    scope: Option<Res<'w, renzora_editor_api::SpawnCategoryScope>>,
 }
 
 impl SpawnRegistries<'_> {
@@ -65,7 +65,7 @@ impl SpawnRegistries<'_> {
 #[derive(SystemParam)]
 pub(crate) struct ModelParts<'w, 's> {
     meshes: Query<'w, 's, (), With<bevy::gltf::GltfMeshName>>,
-    models: Query<'w, 's, (), With<renzora::core::MeshInstanceData>>,
+    models: Query<'w, 's, (), With<renzora_scene_api::MeshInstanceData>>,
     children: Query<'w, 's, &'static Children>,
     parents: Query<'w, 's, &'static ChildOf>,
 }
@@ -86,13 +86,13 @@ impl ModelParts<'_, '_> {
 /// hunting for a new one.
 pub(crate) fn hier_context_menu(
     mouse: Res<ButtonInput<MouseButton>>,
-    create_menu: Option<Res<renzora::CreateMenuRegistry>>,
+    create_menu: Option<Res<renzora_shell_api::CreateMenuRegistry>>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
     selection: Option<Res<EditorSelection>>,
     rows: Query<(&UiInteraction, &HierRowClick)>,
-    props: Query<(Has<Camera3d>, Has<renzora::SceneInstance>, Has<EntityLabelColor>)>,
-    unit_props: Query<(Has<renzora::PickAsUnit>, Has<renzora::SelectionStop>, Has<Children>)>,
+    props: Query<(Has<Camera3d>, Has<renzora_scene_api::SceneInstance>, Has<EntityLabelColor>)>,
+    unit_props: Query<(Has<renzora_scene_api::PickAsUnit>, Has<renzora_scene_api::SelectionStop>, Has<Children>)>,
     ui: Query<
         (),
         Or<(
@@ -141,28 +141,28 @@ pub(crate) fn hier_context_menu(
     let mut kids: Vec<Entity> = Vec::new();
 
     if !is_ui {
-        kids.push(menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("hierarchy.context.add_child"), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "plus", &renzora_lang_api::t("hierarchy.context.add_child"), move |w| {
             add_child(w, target)
         }));
     }
-    kids.push(menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("hierarchy.context.rename"), move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "pencil-simple", &renzora_lang_api::t("hierarchy.context.rename"), move |w| {
         if let Some(mut r) = w.get_resource_mut::<super::rename::HierRename>() {
             r.0 = Some(target);
         }
     }));
-    kids.push(menu_item(&mut commands, &fonts, "copy", &renzora::lang::t("hierarchy.context.duplicate"), move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "copy", &renzora_lang_api::t("hierarchy.context.duplicate"), move |w| {
         duplicate(w, target)
     }));
     if !is_ui {
-        kids.push(menu_item(&mut commands, &fonts, "arrow-square-out", &renzora::lang::t("hierarchy.context.unparent"), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "arrow-square-out", &renzora_lang_api::t("hierarchy.context.unparent"), move |w| {
             w.entity_mut(target).remove::<ChildOf>();
         }));
     }
     if multi {
-        kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
+        kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora_lang_api::t("hierarchy.context.group_as_children"), group_selection));
     }
     // Whether a viewport click on any part of this selects the whole thing
-    // (`renzora::PickAsUnit`, read by `renzora_gizmo::picking`). Offered on
+    // (`renzora_scene_api::PickAsUnit`, read by `renzora_gizmo::picking`). Offered on
     // anything with children, which is anything it can make a difference to;
     // not on an entity whose code already makes it pick as one
     // (`SelectionStop`, a terrain), which the toggle could not undo.
@@ -173,20 +173,20 @@ pub(crate) fn hier_context_menu(
         } else {
             ("cube", "hierarchy.context.select_as_one")
         };
-        kids.push(menu_item(&mut commands, &fonts, icon, &renzora::lang::t(key), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, icon, &renzora_lang_api::t(key), move |w| {
             let Ok(mut e) = w.get_entity_mut(target) else { return };
             if is_unit {
-                e.remove::<renzora::PickAsUnit>();
+                e.remove::<renzora_scene_api::PickAsUnit>();
             } else {
-                e.insert(renzora::PickAsUnit);
+                e.insert(renzora_scene_api::PickAsUnit);
             }
         }));
     }
     // Split merged pieces of a model part (both wheels of an axle) into nodes
     // of their own. A rewrite of the model file, done by the rig tools.
     if !is_ui && model_parts.separable(target) {
-        kids.push(menu_item(&mut commands, &fonts, "scissors", &renzora::lang::t("hierarchy.context.separate_parts"), move |w| {
-            w.trigger(renzora::core::SeparateModelParts { entity: target });
+        kids.push(menu_item(&mut commands, &fonts, "scissors", &renzora_lang_api::t("hierarchy.context.separate_parts"), move |w| {
+            w.trigger(renzora_shell_api::SeparateModelParts { entity: target });
         }));
     }
 
@@ -205,36 +205,39 @@ pub(crate) fn hier_context_menu(
     kids.push(color_header(&mut commands, &fonts));
     kids.push(swatch_grid(&mut commands, target));
     if has_color {
-        kids.push(menu_item(&mut commands, &fonts, "x", &renzora::lang::t("hierarchy.context.clear_color"), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "x", &renzora_lang_api::t("hierarchy.context.clear_color"), move |w| {
             w.entity_mut(target).remove::<EntityLabelColor>();
         }));
     }
 
     if is_cam {
         kids.push(menu_sep(&mut commands));
-        kids.push(menu_item_styled(&mut commands, &fonts, "star", &renzora::lang::t("hierarchy.context.set_default_camera"), (255, 200, 80), renzora_ember::theme::text_primary(), move |w| {
+        kids.push(menu_item_styled(&mut commands, &fonts, "star", &renzora_lang_api::t("hierarchy.context.set_default_camera"), (255, 200, 80), renzora_ember::theme::text_primary(), move |w| {
             set_default_camera(w, target)
         }));
-        kids.push(menu_item(&mut commands, &fonts, "frame-corners", &renzora::lang::t("hierarchy.context.snap_to_viewport"), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "frame-corners", &renzora_lang_api::t("hierarchy.context.snap_to_viewport"), move |w| {
             renzora_editor_framework::camera::snap_entity_to_editor_camera(w, target);
         }));
     }
 
     if !is_ui {
         kids.push(menu_sep(&mut commands));
-        kids.push(menu_item(&mut commands, &fonts, "film-slate", &renzora::lang::t("hierarchy.context.instance_scene"), move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "film-slate", &renzora_lang_api::t("hierarchy.context.instance_scene"), move |w| {
             instance_scene(w, target)
         }));
     }
     if is_inst {
-        kids.push(menu_item(&mut commands, &fonts, "link-break", &renzora::lang::t("hierarchy.context.unpack_scene_instance"), move |w| {
-            w.entity_mut(target).remove::<renzora::SceneInstance>();
-            renzora::core::console_log::console_info("Scene", format!("Unpacked scene instance {target:?}"));
+        kids.push(menu_item(&mut commands, &fonts, "link-break", &renzora_lang_api::t("hierarchy.context.unpack_scene_instance"), move |w| {
+            w.entity_mut(target).remove::<renzora_scene_api::SceneInstance>();
+            renzora_log_api::console_info("Scene", format!("Unpacked scene instance {target:?}"));
         }));
+    }
+    if !is_ui {
+        kids.push(entity_action_slot(&mut commands, &fonts, target));
     }
 
     kids.push(menu_sep(&mut commands));
-    kids.push(menu_item_styled(&mut commands, &fonts, "trash", &renzora::lang::t("hierarchy.context.delete"), renzora_ember::theme::close_red(), renzora_ember::theme::close_red(), move |w| {
+    kids.push(menu_item_styled(&mut commands, &fonts, "trash", &renzora_lang_api::t("hierarchy.context.delete"), renzora_ember::theme::close_red(), renzora_ember::theme::close_red(), move |w| {
         let entities: Vec<Entity> = match w.get_resource::<EditorSelection>() {
             Some(s) if s.is_selected(target) => s.get_all(),
             _ => vec![target],
@@ -243,6 +246,51 @@ pub(crate) fn hier_context_menu(
     }));
 
     commands.entity(menu).add_children(&kids);
+}
+
+/// The rows other crates registered for `target`
+/// ([`renzora_shell_api::EntityActionRegistry`]), such as world partition's
+/// "Partition into cells".
+///
+/// Whether a row applies is a question about the world, which this system
+/// cannot ask, so it reserves an empty slot in the menu's order and fills it
+/// from a command that can. The slot stays collapsed when nothing applies.
+fn entity_action_slot(commands: &mut Commands, fonts: &EmberFonts, target: Entity) -> Entity {
+    let slot = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .id();
+    let fonts = fonts.clone();
+    commands.queue(move |world: &mut World| {
+        let rows: Vec<(String, String, fn(&mut World, Entity))> = {
+            let Some(registry) = world.get_resource::<renzora_shell_api::EntityActionRegistry>() else {
+                return;
+            };
+            registry
+                .for_entity(world, target)
+                .map(|a| (a.icon.clone(), a.label_text(), a.run))
+                .collect()
+        };
+        if rows.is_empty() {
+            return;
+        }
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            let mut kids = vec![menu_sep(&mut commands)];
+            for (icon, label, run) in rows {
+                kids.push(menu_item(&mut commands, &fonts, &icon, &label, move |w| run(w, target)));
+            }
+            if let Ok(mut slot) = commands.get_entity(slot) {
+                slot.add_children(&kids);
+            }
+        }
+        queue.apply(world);
+    });
+    slot
 }
 
 /// The header button's whole spawn list as hover submenus, one row per category,
@@ -306,7 +354,7 @@ fn color_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let ic = icon_text(commands, &fonts.phosphor, "palette", renzora_ember::theme::text_muted(), 11.0);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t("hierarchy.context.label_color")),
+            Text::new(renzora_lang_api::t("hierarchy.context.label_color")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(renzora_ember::theme::text_muted())),
         ))
@@ -411,29 +459,29 @@ fn set_default_camera(world: &mut World, target: Entity) {
     for archetype in world.archetypes().iter() {
         for arch_entity in archetype.entities() {
             let e = arch_entity.id();
-            if e != target && world.get::<renzora::core::DefaultCamera>(e).is_some() {
+            if e != target && world.get::<renzora_scene_api::DefaultCamera>(e).is_some() {
                 to_remove.push(e);
             }
         }
     }
     for e in to_remove {
-        world.entity_mut(e).remove::<renzora::core::DefaultCamera>();
+        world.entity_mut(e).remove::<renzora_scene_api::DefaultCamera>();
     }
-    world.entity_mut(target).insert(renzora::core::DefaultCamera);
+    world.entity_mut(target).insert(renzora_scene_api::DefaultCamera);
 }
 
 /// Pick a `.ron` scene and spawn it as a nested instance under `parent`, with a
 /// reference-cycle guard (mirrors the egui "Instance Scene…").
 fn instance_scene(world: &mut World, parent: Entity) {
     let scenes_dir = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.resolve_path("scenes"));
 
     #[cfg(not(target_arch = "wasm32"))]
     let file = {
         let mut dlg = rfd::FileDialog::new()
-            .set_title(renzora::lang::t("hierarchy.dialog.instance_scene_title"))
-            .add_filter(renzora::lang::t("hierarchy.dialog.scene_file"), &["bsn"]);
+            .set_title(renzora_lang_api::t("hierarchy.dialog.instance_scene_title"))
+            .add_filter(renzora_lang_api::t("hierarchy.dialog.scene_file"), &["bsn"]);
         if let Some(ref dir) = scenes_dir {
             dlg = dlg.set_directory(dir);
         }
@@ -446,7 +494,7 @@ fn instance_scene(world: &mut World, parent: Entity) {
         return;
     };
     let host_abs = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .and_then(|p| {
             world
                 .get_resource::<renzora_ui::DocumentTabState>()
@@ -456,7 +504,7 @@ fn instance_scene(world: &mut World, parent: Entity) {
     if let (Some(host_abs), Some(project_root)) = (
         host_abs,
         world
-            .get_resource::<renzora::core::CurrentProject>()
+            .get_resource::<renzora_project_api::CurrentProject>()
             .map(|p| p.path.clone()),
     ) {
         let mut cache = world
@@ -471,7 +519,7 @@ fn instance_scene(world: &mut World, parent: Entity) {
         world.insert_resource(cache);
         if cycle {
             if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
-                toasts.warning(renzora::lang::t("hierarchy.toast.cannot_add_self"));
+                toasts.warning(renzora_lang_api::t("hierarchy.toast.cannot_add_self"));
             }
             return;
         }

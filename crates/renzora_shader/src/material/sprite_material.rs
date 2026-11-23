@@ -34,7 +34,7 @@ use bevy::shader::ShaderRef;
 use bevy::sprite_render::{Material2dKey, Material2dPipeline, MaterialExtension2d, SpriteMaterial, SpriteMaterialPlugin};
 use uuid::Uuid;
 
-use renzora::core::{MaterialRef, MaterialResolved};
+use renzora_material_api::{MaterialRef, MaterialResolved};
 
 use super::codegen::{self, TextureBinding, TextureKind};
 use super::graph::{MaterialDomain, MaterialGraph};
@@ -151,7 +151,7 @@ impl Plugin for SpriteGraphMaterialPlugin {
 }
 
 fn setup_default_sprite_shader(mut shaders: ResMut<Assets<Shader>>) {
-    let shader = renzora::shader_source::shader(DEFAULT_SPRITE_FRAG_SRC, "graph_material/default_sprite.wesl");
+    let shader = renzora_shader_api::shader_source::shader(DEFAULT_SPRITE_FRAG_SRC, "graph_material/default_sprite.wesl");
     let _ = shaders.insert(&SPRITE_GRAPH_DEFAULT_FRAG, shader);
 }
 
@@ -168,13 +168,13 @@ fn resolve_sprite_material_refs(
     mut cache: ResMut<MaterialCache>,
     mut materials: ResMut<Assets<SpriteGraphExt>>,
     mut shaders: ResMut<Assets<Shader>>,
-    mut problems: ResMut<renzora::content_problems::ContentProblems>,
+    mut problems: ResMut<renzora_diagnostics_api::content_problems::ContentProblems>,
     fallback: Option<Res<FallbackTexture>>,
-    project: Option<Res<renzora::CurrentProject>>,
-    file_reader: Option<Res<renzora::VirtualFileReader>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    file_reader: Option<Res<renzora_project_api::VirtualFileReader>>,
     asset_server: Res<AssetServer>,
 ) {
-    let default_reader = renzora::VirtualFileReader::default();
+    let default_reader = renzora_project_api::VirtualFileReader::default();
     let reader = file_reader.as_deref().unwrap_or(&default_reader);
     let fallback = fallback.map(|f| f.0.clone()).unwrap_or_default();
     for (entity, mat_ref) in &query {
@@ -219,16 +219,16 @@ fn resolve_sprite_material_refs(
 #[allow(clippy::too_many_arguments)]
 fn build_sprite_material(
     path: &str,
-    project: Option<&renzora::CurrentProject>,
-    reader: &renzora::VirtualFileReader,
+    project: Option<&renzora_project_api::CurrentProject>,
+    reader: &renzora_project_api::VirtualFileReader,
     fallback: &Handle<Image>,
     materials: &mut Assets<SpriteGraphExt>,
     shaders: &mut Assets<Shader>,
-    problems: &mut renzora::content_problems::ContentProblems,
+    problems: &mut renzora_diagnostics_api::content_problems::ContentProblems,
     asset_server: &AssetServer,
 ) -> Option<Handle<SpriteGraphExt>> {
     let fail = |message: String| {
-        renzora::console_log::console_error("Material", format!("{path}: {message}"));
+        renzora_log_api::console_error("Material", format!("{path}: {message}"));
         None
     };
     if !path.ends_with(".material") {
@@ -270,8 +270,8 @@ fn build_sprite_material(
                     result
                         .errors
                         .iter()
-                        .map(|message| renzora::content_problems::ContentProblem {
-                            severity: renzora::content_problems::ProblemSeverity::Error,
+                        .map(|message| renzora_diagnostics_api::content_problems::ContentProblem {
+                            severity: renzora_diagnostics_api::content_problems::ProblemSeverity::Error,
                             message: message.clone(),
                             line: None,
                             node_id: None,
@@ -281,7 +281,7 @@ fn build_sprite_material(
                 return fail(result.errors.join("; "));
             }
             for warning in &result.warnings {
-                renzora::console_log::console_warn("Material", format!("{path}: {warning}"));
+                renzora_log_api::console_warn("Material", format!("{path}: {warning}"));
             }
             (result.fragment_shader, result.texture_bindings, result.parameters)
         }
@@ -309,7 +309,7 @@ fn build_sprite_material(
 /// built for the old source in place.
 pub fn insert_sprite_shader(shaders: &mut Assets<Shader>, source: String, label: String) -> Uuid {
     let shader_uuid = Uuid::new_v4();
-    let shader = renzora::shader_source::shader(source, label);
+    let shader = renzora_shader_api::shader_source::shader(source, label);
     let _ = shaders.insert(&Handle::<Shader>::Uuid(shader_uuid, PhantomData), shader);
     shader_uuid
 }

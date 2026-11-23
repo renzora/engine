@@ -29,7 +29,7 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy::winit::{UpdateMode, WinitSettings};
-use renzora::job_args::{MaterialThumbnail, ModelThumbnail};
+use renzora_platform_api::job_args::{MaterialThumbnail, ModelThumbnail};
 use renzora_editor_framework::{MaterialThumbnailRegistry, ModelThumbnailRegistry};
 
 use super::jobs::{JobCtx, JobQueue};
@@ -212,7 +212,7 @@ fn take_jobs(world: &mut World) {
 
 /// Hand a shape thumbnail to the shape library's capture code.
 fn start_shape(world: &mut World, payload: &str, ctx: JobCtx) {
-    let args = match serde_json::from_str::<renzora::job_args::ShapeThumbnail>(payload) {
+    let args = match serde_json::from_str::<renzora_platform_api::job_args::ShapeThumbnail>(payload) {
         Ok(args) => args,
         Err(e) => {
             ctx.finish(Err(format!("could not read the job's arguments: {e}")));
@@ -222,7 +222,7 @@ fn start_shape(world: &mut World, payload: &str, ctx: JobCtx) {
     // Not a shape this companion has (a plugin registered it in the editor):
     // said straight away, so the editor renders it without waiting.
     let known = world
-        .get_resource::<renzora::core::ShapeRegistry>()
+        .get_resource::<renzora_scene_api::ShapeRegistry>()
         .is_some_and(|r| r.get(&args.id).is_some());
     if !known {
         ctx.finish(Err(format!("the companion has no shape called {}", args.id)));
@@ -242,7 +242,7 @@ fn start_shape(world: &mut World, payload: &str, ctx: JobCtx) {
 
 /// Point the asset reader and the capture code at `project`.
 fn open_project(world: &mut World, project: &std::path::Path) -> Result<(), String> {
-    let current = renzora::core::session::open_project(&project.join("project.toml"))
+    let current = renzora_project_api::session::open_project(&project.join("project.toml"))
         .map_err(|e| format!("could not open the project at {}: {e}", project.display()))?;
     if let Some(asset_path) = world.get_resource::<renzora_engine::ProjectAssetPath>() {
         if let Ok(mut path) = asset_path.0.write() {
@@ -259,7 +259,7 @@ fn finish_jobs(
     mut rendering: ResMut<Rendering>,
     mut models: ResMut<ModelThumbnailRegistry>,
     mut materials: ResMut<MaterialThumbnailRegistry>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed_secs();

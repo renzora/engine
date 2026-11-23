@@ -1,6 +1,6 @@
 # Streaming
 
-Streaming is loading and unloading content *while the game runs*, instead of front-loading everything behind a loading screen. Renzora streams at four levels (scene loading, mesh detail (LOD), world content, and texture resolution), and they share one rule: **streaming is active in a running game, including one started with the editor's Play button; the editor itself keeps the whole world resident** so you can see and edit everything. Terrain chunks are the exception (see [Terrain chunk streaming](#terrain-chunk-streaming)). Dedicated servers never stream (there is no camera, and gameplay needs the full world).
+Streaming is loading and unloading content *while the game runs*, instead of front-loading everything behind a loading screen. Renzora streams at four levels (scene loading, mesh detail (LOD), world content, and texture resolution), and they share one rule: **streaming is active in a running game, including one started with the editor's Play button; the editor itself keeps the whole world resident** so you can see and edit everything. Terrain chunks and world partition cells are the exceptions (see [Terrain chunk streaming](#terrain-chunk-streaming) and [World partition](#world-partition)). Dedicated servers never stream (there is no camera, and gameplay needs the full world).
 
 All distance checks measure from the *streaming camera*: the active game camera.
 
@@ -44,7 +44,18 @@ Any nested scene (a `SceneInstance` root) can stream. Select the instance root a
 - Beyond **Unload Radius**, the contents despawn. The root entity (with its transform) always stays.
 - The gap between the radii is hysteresis; the engine enforces a minimum gap so a boundary instance can't thrash.
 
-This is the building block for open worlds: partition your map into sub-scenes (one per district/interior/region), place them as streamed instances, and only the camera's neighborhood is ever resident. In editor edit mode streamed instances stay expanded for authoring; press Play to watch them stream.
+This is the building block for open worlds: partition your map into sub-scenes (one per district/interior/region), place them as streamed instances, and only the camera's neighborhood is ever resident. In editor edit mode streamed instances stay expanded for authoring; press Play to watch them stream. For a world too big to keep resident even in the editor, use a [world partition](#world-partition), which does the splitting for you and streams in the editor too.
+
+### World partition
+
+A world partition (`WorldPartition` on one entity of the scene) splits the scene into a grid of square cells. Each cell is a streamed scene instance carrying a `PartitionCell { x, z }`, whose contents live in their own file beside the scene (`scenes/main.cells/x_z.bsn`). In a game they stream exactly like any streamed instance, through the same background loader; the partition keeps every cell's Load and Unload Radius equal to its own.
+
+Two things differ from a plain streamed instance:
+
+- **Cells stream in the editor too**, around the viewport camera, while `stream_in_editor` is on (the default). A partition exists for worlds too big to keep resident, and the editor is where that bites first. A cell that unloads while the scene has unsaved changes writes its contents back to its file first, so edits are never lost to streaming.
+- **Distance is measured on the ground** (X and Z), like terrain chunks, so a camera high over a city keeps the streets below it loaded.
+
+Content streamed into a cell is marked `StreamedContent` (not saved), which keeps the editor's per-tab asset cache from pinning it: a cell that streams out releases its meshes, materials and textures. In the editor, partitions are created from the Hierarchy's right-click menu and inspected on the World Partition entity's Inspector section; see [World Partition](../editor/world-partition.md).
 
 ### Terrain chunk streaming
 
@@ -83,5 +94,6 @@ Scope: the five heavyweight `StandardMaterial` slots (base color, normal, metall
 | Scene swap | `load_scene()` | whole scene, spawned incrementally | old scene despawned |
 | Mesh detail | camera distance (per mesh) | `VisibilityRange` band | none (all LODs resident; draw cost drops) |
 | Scene instances | camera distance to instance root | instance subtree | entities + their assets |
+| World partition cells | ground distance to cell centre (also in the editor) | one cell's contents | entities + their assets |
 | Terrain chunks | camera distance to chunk center | mesh + collider | chunk mesh asset + trimesh collider |
 | Textures | camera distance to nearest material user | full ↔ `#low` image | full-res GPU texture |

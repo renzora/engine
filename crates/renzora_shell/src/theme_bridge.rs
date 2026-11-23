@@ -37,7 +37,7 @@ pub(crate) struct ThemeFilesRevision(pub u64);
 pub(crate) fn bump_theme_revision(
     tm: Option<Res<renzora_theme::ThemeManager>>,
     mut rev: ResMut<ThemeFilesRevision>,
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
 ) {
     if changes.is_empty() {
         return;
@@ -58,7 +58,7 @@ pub(crate) fn bump_theme_revision(
 pub(crate) fn theme_bridge(
     theme_rev: Res<ThemeFilesRevision>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     asset_server: Res<AssetServer>,
     mut last_name: Local<Option<String>>,
     mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
@@ -190,7 +190,7 @@ pub(crate) fn sync_theme_menu_open(
 /// palette-derived defaults). Built-in themes with no file fall back to the
 /// defaults.
 fn build_ember_theme(
-    project: Option<&renzora::CurrentProject>,
+    project: Option<&renzora_project_api::CurrentProject>,
     name: &str,
 ) -> renzora_ember::style::Theme {
     if let Some(p) = project {

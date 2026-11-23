@@ -11,7 +11,7 @@
 
 use bevy::pbr::{wireframe::WireframeConfig, Material, MeshMaterial3d};
 use bevy::prelude::*;
-use renzora::core::EditorCamera;
+use renzora_scene_api::EditorCamera;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
@@ -99,13 +99,13 @@ pub struct DefaultGridTexture(pub Handle<Image>);
 impl FromWorld for DefaultGridTexture {
     fn from_world(world: &mut World) -> Self {
         // Reuse the engine-wide handle when it's already there (the runtime
-        // inserts renzora::core::GridTexture at startup) so Textures-off
+        // inserts renzora_render_api::GridTexture at startup) so Textures-off
         // and "fresh untextured shape" share one image; otherwise build it
         // from the same contract-crate source of truth.
-        if let Some(shared) = world.get_resource::<renzora::core::GridTexture>() {
+        if let Some(shared) = world.get_resource::<renzora_render_api::GridTexture>() {
             return Self(shared.color.clone());
         }
-        let image = renzora::core::build_grid_image();
+        let image = renzora_render_api::build_grid_image();
         let mut assets = world.resource_mut::<Assets<Image>>();
         Self(assets.add(image))
     }
@@ -252,8 +252,8 @@ pub fn update_render_toggles(
     // the better of the two here, and it is the one that can colour a selection.
     let editing = matches!(
         settings.viewport_mode,
-        renzora::core::viewport_types::ViewportMode::Edit
-            | renzora::core::viewport_types::ViewportMode::Sculpt
+        renzora_viewport_api::ViewportMode::Edit
+            | renzora_viewport_api::ViewportMode::Sculpt
     );
     let global_wireframe = toggles.wireframe && !editing;
     // The visualization mode counts as a change here, not just the toggles.
@@ -644,7 +644,7 @@ pub fn update_shadow_settings(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
     cameras_3d: Query<
         &Camera,
-        (With<Camera3d>, Without<renzora::core::ViewportOverlayCamera>),
+        (With<Camera3d>, Without<renzora_scene_api::ViewportOverlayCamera>),
     >,
     settings: Res<ViewportSettings>,
     mut directional_lights: Query<(Entity, &mut DirectionalLight)>,

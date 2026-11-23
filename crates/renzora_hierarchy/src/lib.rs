@@ -88,7 +88,7 @@ impl Plugin for HierarchyPanelPlugin {
                     .run_if(|dirty: bevy::prelude::Res<cache::HierarchyDirty>| dirty.0),
                 auto_select_first_hierarchy_entity.after(cache::update_hierarchy_cache),
             )
-                .run_if(bevy::prelude::in_state(renzora::SplashState::Editor)),
+                .run_if(bevy::prelude::in_state(renzora_project_api::SplashState::Editor)),
         );
 
         // Spawn presets are now self-registered by their owning crates:
@@ -108,7 +108,7 @@ impl Plugin for HierarchyPanelPlugin {
             icon: "film-slate",
             produces: &[],
             spawn_fn: |world: &mut World| {
-                use renzora::core::SceneCamera;
+                use renzora_scene_api::SceneCamera;
                 world.spawn((
                     Name::new("Camera"),
                     SceneCamera,
@@ -136,8 +136,8 @@ impl Plugin for HierarchyPanelPlugin {
             icon: "image-square",
             produces: &[],
             spawn_fn: |world: &mut World| {
-                use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-                use renzora::core::{DefaultCamera, SceneCamera};
+                use renzora_viewport_api::{ViewportSettings, ViewportView};
+                use renzora_scene_api::{DefaultCamera, SceneCamera};
                 world.spawn((
                     Name::new("Camera 2D"),
                     SceneCamera,
@@ -166,15 +166,15 @@ pub struct RenameRequest(pub Option<Entity>);
 /// and applies their effects.
 fn detect_selection_keybindings(
     keyboard: Res<ButtonInput<KeyCode>>,
-    keybindings: Res<renzora::core::keybindings::KeyBindings>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    input_focus: Res<renzora::core::InputFocusState>,
-    select_all_claimed: Option<Res<renzora::core::SelectAllClaimed>>,
+    keybindings: Res<renzora_shell_api::keybindings::KeyBindings>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
+    input_focus: Res<renzora_project_api::InputFocusState>,
+    select_all_claimed: Option<Res<renzora_project_api::SelectAllClaimed>>,
     selection: Res<EditorSelection>,
     entities_q: Query<(
         Entity,
         Option<&bevy::prelude::Name>,
-        Option<&renzora::core::HideInHierarchy>,
+        Option<&renzora_scene_api::HideInHierarchy>,
         // Mirror the hierarchy tree's chrome filter: an entity with a bevy_ui
         // `Node` is the editor's own dock/panel/widget unless it's authored
         // game UI (`UiCanvas`/`UiWidget`). SelectAll must skip the former, or a
@@ -186,7 +186,7 @@ fn detect_selection_keybindings(
     mut vis_q: Query<&mut bevy::prelude::Visibility>,
     mut rename_req: ResMut<RenameRequest>,
 ) {
-    use renzora::core::keybindings::EditorAction;
+    use renzora_shell_api::keybindings::EditorAction;
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
@@ -252,5 +252,3 @@ fn detect_selection_keybindings(
         }
     }
 }
-
-renzora::add!(HierarchyPanelPlugin, Editor);

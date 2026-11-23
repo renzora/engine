@@ -256,7 +256,7 @@ fn bootstrap_rustup(
 
     progress("Downloading rustup-init…".into());
     let url = format!("https://static.rust-lang.org/rustup/dist/{triple}/{init_name}");
-    let response = renzora_net::Request::get(&url)
+    let response = renzora_net_api::net::Request::get(&url)
         .header("User-Agent", "renzora-editor")
         .send()
         .map_err(|e| format!("Failed to download rustup-init: {e}"))?;

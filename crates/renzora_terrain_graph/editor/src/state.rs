@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{DocTabKind, EditorContext, EditorSelection};
 use renzora_terrain::data::TerrainData;
 use renzora_terrain_graph::{TerrainGenerator, TerrainGraph};
@@ -147,11 +147,11 @@ pub fn save_document(world: &mut World) {
         let _ = std::fs::create_dir_all(parent);
     }
     if let Err(e) = std::fs::write(&fs_path, &text) {
-        renzora::console_log::console_warn("Terrain Graph", format!("{path}: save failed: {e}"));
+        renzora_log_api::console_warn("Terrain Graph", format!("{path}: save failed: {e}"));
         return;
     }
     world
-        .get_resource_or_insert_with(renzora::core::project_files::SelfWrites::default)
+        .get_resource_or_insert_with(renzora_project_api::project_files::SelfWrites::default)
         .record(&fs_path, text.as_bytes());
     info!("[terrain_graph] saved {path}");
     world.resource_mut::<TerrainGraphEditorState>().dirty = false;

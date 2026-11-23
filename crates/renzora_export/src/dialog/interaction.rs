@@ -245,7 +245,7 @@ fn start_export(w: &mut World) {
         state.save_presets();
     }
     let name = w
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.config.name.clone())
         .unwrap_or_default();
     run_export(w, &name);
@@ -274,7 +274,7 @@ pub(super) fn save_prompt_click(
         if want_save {
             // The same request the Save command uses, so this goes through the
             // one save path rather than a second one that could drift from it.
-            w.insert_resource(renzora::core::SaveSceneRequested);
+            w.insert_resource(renzora_project_api::SaveSceneRequested);
         }
         start_export(w);
     });
@@ -291,7 +291,7 @@ pub(super) fn export_click(q: Query<&UiInteraction, (With<ExportBtn>, Changed<Ui
 }
 
 fn pick_output_folder(w: &mut World) {
-    if let Some(dir) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_output")).pick_folder() {
+    if let Some(dir) = rfd::FileDialog::new().set_title(renzora_lang_api::t("export.dialog.select_output")).pick_folder() {
         w.resource_mut::<ExportOverlayState>().output_dir = dir.to_string_lossy().to_string();
     }
 }
@@ -385,7 +385,7 @@ pub(super) fn icon_browse_click(q: Query<&UiInteraction, (With<IconBrowseBtn>, C
             // used to include `svg`, which `image` cannot decode at any feature
             // level — picking one produced a working-looking export with no icon
             // anywhere.
-            if let Some(f) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_icon")).add_filter(renzora::lang::t("export.filter.images"), crate::icon::PICKABLE).pick_file() {
+            if let Some(f) = rfd::FileDialog::new().set_title(renzora_lang_api::t("export.dialog.select_icon")).add_filter(renzora_lang_api::t("export.filter.images"), crate::icon::PICKABLE).pick_file() {
                 w.resource_mut::<ExportOverlayState>().icon_path = Some(f.to_string_lossy().to_string());
             }
         });
@@ -413,7 +413,7 @@ fn start_source_download(w: &mut World) {
         let mut s = w.resource_mut::<ExportOverlayState>();
         s.download_status = Some((
             p,
-            DownloadProgress::Error(renzora::lang::t("export.status.no_release")),
+            DownloadProgress::Error(renzora_lang_api::t("export.status.no_release")),
         ));
         return;
     };
@@ -422,7 +422,7 @@ fn start_source_download(w: &mut World) {
     s.download_task = Some(task);
     s.download_status = Some((
         p,
-        DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting")),
+        DownloadProgress::Fetching(renzora_lang_api::t("export.status.download_starting")),
     ));
 }
 
@@ -433,17 +433,17 @@ fn start_template_download(w: &mut World) {
     // thread that could have resolved differently.
     let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
         let mut s = w.resource_mut::<ExportOverlayState>();
-        s.download_status = Some((p, DownloadProgress::Error(renzora::lang::t("export.status.no_release"))));
+        s.download_status = Some((p, DownloadProgress::Error(renzora_lang_api::t("export.status.no_release"))));
         return;
     };
     let task = download::spawn_download(p, release);
     let mut s = w.resource_mut::<ExportOverlayState>();
     s.download_task = Some(task);
-    s.download_status = Some((p, DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting"))));
+    s.download_status = Some((p, DownloadProgress::Fetching(renzora_lang_api::t("export.status.download_starting"))));
 }
 
 fn install_template_from_file(w: &mut World) {
-    let Some(file) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_runtime")).pick_file() else { return };
+    let Some(file) = rfd::FileDialog::new().set_title(renzora_lang_api::t("export.dialog.select_runtime")).pick_file() else { return };
     let p = w.resource::<ExportOverlayState>().platform;
     // Into the per-user template store, NOT the editor's own directory.
     // `runtime_binary_name()` for a desktop platform is `renzora[.exe]`, so the

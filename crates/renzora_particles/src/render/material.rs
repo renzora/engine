@@ -427,7 +427,7 @@ pub fn cameras_draw_deferred<'a>(cameras: impl IntoIterator<Item = (&'a Camera, 
 /// The 3D cameras that may draw a particle: all but the editor's viewport
 /// overlay cameras (see [`resolve_render_routes`]).
 #[cfg(feature = "render_3d")]
-type SceneCameras3d = (With<Camera3d>, Without<renzora::core::ViewportOverlayCamera>);
+type SceneCameras3d = (With<Camera3d>, Without<renzora_scene_api::ViewportOverlayCamera>);
 
 /// Promote or demote every `Deferred` request of material `M` to what the
 /// cameras allow (see [`RenderRoute`]). Only a material whose route changes
@@ -758,5 +758,7 @@ mod two {
     }
 }
 
-#[cfg(feature = "render_2d")]
+// Only the GPU particle material names it from outside `two`, and that module
+// is desktop-only (`gpu/mod.rs`).
+#[cfg(all(feature = "render_2d", not(target_arch = "wasm32")))]
 pub(crate) use two::apply_blend_2d;

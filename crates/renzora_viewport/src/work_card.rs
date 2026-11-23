@@ -14,8 +14,8 @@
 
 use bevy::prelude::*;
 
-use renzora::core::viewport_types::ViewportWork;
-use renzora::core::PlayModeState;
+use renzora_viewport_api::ViewportWork;
+use renzora_project_api::PlayModeState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with};
 use renzora_ember::reactive::Rx;
@@ -28,7 +28,7 @@ const BAR_HEIGHT: f32 = 6.0;
 const TOP: f32 = 12.0;
 
 /// The first entry, the one the card shows.
-fn first(w: &Rx) -> Option<renzora::core::viewport_types::WorkItem> {
+fn first(w: &Rx) -> Option<renzora_viewport_api::WorkItem> {
     w.get_resource::<ViewportWork>().and_then(|work| work.items.first().cloned())
 }
 

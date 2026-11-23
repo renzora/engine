@@ -65,10 +65,10 @@ impl CreateKind {
 
     fn label(self) -> String {
         match self {
-            CreateKind::RustScript => renzora::lang::t_or("assets.new.rust", "Rust Script"),
-            CreateKind::Material => renzora::lang::t("assets.new.material"),
-            CreateKind::Template => renzora::lang::t("assets.new.template"),
-            CreateKind::Scene => renzora::lang::t("assets.new.bsn"),
+            CreateKind::RustScript => renzora_lang_api::t_or("assets.new.rust", "Rust Script"),
+            CreateKind::Material => renzora_lang_api::t("assets.new.material"),
+            CreateKind::Template => renzora_lang_api::t("assets.new.template"),
+            CreateKind::Scene => renzora_lang_api::t("assets.new.bsn"),
         }
     }
 
@@ -256,7 +256,7 @@ impl CreateKind {
 
 impl CreateSpec {
     /// The same shape, from a plugin-registered entry.
-    fn from_item(item: &renzora::CreateMenuItem, boilerplate: bool) -> Self {
+    fn from_item(item: &renzora_shell_api::CreateMenuItem, boilerplate: bool) -> Self {
         Self {
             dir: item.folder.clone(),
             label: item.label_text(),
@@ -307,13 +307,13 @@ pub(crate) fn create_submenu(
     fonts: &EmberFonts,
     target: Entity,
     is_ui: bool,
-    registry: Option<&renzora::CreateMenuRegistry>,
+    registry: Option<&renzora_shell_api::CreateMenuRegistry>,
 ) -> Entity {
     let (row, content) = menu_submenu_styled(
         commands,
         fonts,
         "paperclip",
-        &renzora::lang::t("hierarchy.context.attach"),
+        &renzora_lang_api::t("hierarchy.context.attach"),
         (150, 190, 255),
     );
     let items: Vec<Entity> = CreateKind::ALL
@@ -375,7 +375,7 @@ fn open(world: &mut World, kind: CreateKind, target: Entity) {
 fn open_registered(world: &mut World, id: &str, target: Entity) {
     let boilerplate = boilerplate(world);
     let Some(spec) = world
-        .get_resource::<renzora::CreateMenuRegistry>()
+        .get_resource::<renzora_shell_api::CreateMenuRegistry>()
         .and_then(|r| r.get(id))
         .map(|item| CreateSpec::from_item(item, boilerplate))
     else {
@@ -395,12 +395,12 @@ fn open_spec(world: &mut World, spec: CreateSpec, target: Entity) {
         return;
     };
     let Some(root) = world
-        .get_resource::<renzora::core::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone())
     else {
         // No project open — nothing to create *into*.
         if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
-            toasts.warning(renzora::lang::t("hierarchy.create.no_project"));
+            toasts.warning(renzora_lang_api::t("hierarchy.create.no_project"));
         }
         return;
     };
@@ -420,7 +420,7 @@ fn open_spec(world: &mut World, spec: CreateSpec, target: Entity) {
     let (overlay, content) = overlay_sized(
         &mut commands,
         &fonts,
-        &format!("{} {}", renzora::lang::t("assets.new.header"), spec.label),
+        &format!("{} {}", renzora_lang_api::t("assets.new.header"), spec.label),
         520.0,
         470.0,
         true,
@@ -441,20 +441,20 @@ fn open_spec(world: &mut World, spec: CreateSpec, target: Entity) {
     let name_row = field_row(
         &mut commands,
         &fonts,
-        &renzora::lang::t("hierarchy.create.name"),
+        &renzora_lang_api::t("hierarchy.create.name"),
         name_input,
     );
     bind_display(&mut commands, name_row, |w| !file_selected(w));
     let dest_label = section_label(
         &mut commands,
         &fonts,
-        &renzora::lang::t("hierarchy.create.destination"),
+        &renzora_lang_api::t("hierarchy.create.destination"),
     );
     bind_text(&mut commands, dest_label, |w| {
         if file_selected(w) {
-            renzora::lang::t_or("hierarchy.create.pick_existing", "Attach an existing file")
+            renzora_lang_api::t_or("hierarchy.create.pick_existing", "Attach an existing file")
         } else {
-            renzora::lang::t("hierarchy.create.destination")
+            renzora_lang_api::t("hierarchy.create.destination")
         }
     });
     let mut kids = vec![name_row, dest_label, picker];
@@ -465,7 +465,7 @@ fn open_spec(world: &mut World, spec: CreateSpec, target: Entity) {
             &mut commands,
             &fonts,
             cb,
-            &renzora::lang::t("hierarchy.create.attach").replace("{entity}", &entity_name),
+            &renzora_lang_api::t("hierarchy.create.attach").replace("{entity}", &entity_name),
         );
         kids.push(row);
         cb
@@ -487,13 +487,13 @@ fn open_spec(world: &mut World, spec: CreateSpec, target: Entity) {
     let cancel = renzora_ember::widgets::button(
         &mut commands,
         &fonts.ui,
-        &renzora::lang::t("common.cancel"),
+        &renzora_lang_api::t("common.cancel"),
     );
     commands.entity(cancel).insert(CreateCancelBtn);
     let (confirm, confirm_label) = renzora_ember::widgets::button_parts(
         &mut commands,
         &fonts.ui,
-        &renzora::lang::t("hierarchy.create.confirm"),
+        &renzora_lang_api::t("hierarchy.create.confirm"),
     );
     commands.entity(confirm).insert(CreateConfirmBtn);
     // The button says which of the two things it is about to do. A "Create"
@@ -501,9 +501,9 @@ fn open_spec(world: &mut World, spec: CreateSpec, target: Entity) {
     // someone a duplicated asset.
     bind_text(&mut commands, confirm_label, |w| {
         if file_selected(w) {
-            renzora::lang::t_or("hierarchy.create.confirm_attach", "Attach")
+            renzora_lang_api::t_or("hierarchy.create.confirm_attach", "Attach")
         } else {
-            renzora::lang::t("hierarchy.create.confirm")
+            renzora_lang_api::t("hierarchy.create.confirm")
         }
     });
     commands.entity(buttons).add_children(&[new_folder, cancel, confirm]);
@@ -574,7 +574,7 @@ fn create_overlay_buttons(
     inputs: Query<&EmberTextInput>,
     checks: Query<&Bound<bool>>,
     pick: Res<FolderPick>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut toasts: Option<ResMut<renzora_ui::Toasts>>,
     mut commands: Commands,
 ) {
@@ -618,7 +618,7 @@ fn create_overlay_buttons(
         }
         if let Some(toasts) = toasts.as_mut() {
             toasts.success(
-                renzora::lang::t("hierarchy.create.toast_attached").replace("{name}", &name),
+                renzora_lang_api::t("hierarchy.create.toast_attached").replace("{name}", &name),
             );
         }
         commands.remove_resource::<PendingCreate>();
@@ -646,11 +646,11 @@ fn create_overlay_buttons(
         if let Some(toasts) = toasts.as_mut() {
             toasts.error(format!("{}: {e}", path.display()));
         }
-        renzora::core::console_log::console_error("Assets", format!("Create failed: {} — {e}", path.display()));
+        renzora_log_api::console_error("Assets", format!("Create failed: {} — {e}", path.display()));
         commands.remove_resource::<PendingCreate>();
         return;
     }
-    renzora::core::console_log::console_info("Assets", format!("Created {}", path.display()));
+    renzora_log_api::console_info("Assets", format!("Created {}", path.display()));
 
     // Attach only when the kind supports it *and* the checkbox is still ticked.
     let attached = spec.attachable
@@ -685,9 +685,9 @@ fn create_overlay_buttons(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         toasts.success(if attached {
-            renzora::lang::t("hierarchy.create.toast_attached").replace("{name}", &name)
+            renzora_lang_api::t("hierarchy.create.toast_attached").replace("{name}", &name)
         } else {
-            renzora::lang::t("hierarchy.create.toast_created").replace("{name}", &name)
+            renzora_lang_api::t("hierarchy.create.toast_created").replace("{name}", &name)
         });
     }
     commands.remove_resource::<PendingCreate>();

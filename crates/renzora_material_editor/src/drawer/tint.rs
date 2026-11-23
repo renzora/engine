@@ -15,7 +15,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::MeshColor;
+use renzora_scene_api::MeshColor;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::inspector::{color_field_rgba, inspector_row};
 use renzora_ember::reactive::Rx;

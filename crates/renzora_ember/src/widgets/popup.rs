@@ -279,7 +279,7 @@ pub(crate) fn tag_popup_panels(q: Query<&Popup, Added<Popup>>, mut commands: Com
         commands.entity(p.panel).try_insert((
             OverlaySurface,
             UiCursor::default(),
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
         ));
     }
 }

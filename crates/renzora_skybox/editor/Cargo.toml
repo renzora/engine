@@ -2,11 +2,12 @@
 name = "renzora_skybox_editor"
 version = "0.1.0"
 edition = "2021"
-description = "Editor-only half of renzora_skybox: the Skybox inspector entry + native (ember) mode-specific drawer (Color/Procedural/Panorama/Tiled, color pickers) + panorama file browser. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+description = "Editor-only half of renzora_skybox: the Skybox inspector entry + native (ember) mode-specific drawer (Color/Procedural/Panorama/Tiled, color pickers) + panorama file browser. Declared as an Editor-scope plugin in this manifest and linked only by the editor bundle."
 
 [dependencies]
+renzora_editor_api = { path = "../../api/renzora_editor_api" }
+renzora_project_api = { path = "../../api/renzora_project_api" }
 bevy = { workspace = true }
-renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_skybox = { path = ".." }
 renzora_ember = { path = "../../renzora_ember" }
 renzora_inspector = { path = "../../renzora_inspector" }
@@ -14,3 +15,10 @@ rfd = { version = "0.15" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "SkyboxEditorPlugin"
+scope = "Editor"

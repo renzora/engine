@@ -1,7 +1,7 @@
 //! The one anti-aliasing component a camera carries, and its method.
 
 use bevy::prelude::*;
-use renzora::DlssMode;
+use renzora_solari_api::DlssMode;
 use serde::{Deserialize, Serialize};
 
 /// How a camera smooths its edges. One method at a time: they all attack the

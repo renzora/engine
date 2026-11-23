@@ -10,7 +10,7 @@
 //! validation rejects it.
 //!
 //! The authored value is the project-relative path
-//! ([`renzora::core::ReflectionProbeSource`]); it persists in the scene and is
+//! ([`renzora_scene_api::ReflectionProbeSource`]); it persists in the scene and is
 //! re-loaded + re-converted on load. The generated cube handle itself is
 //! runtime-only.
 
@@ -22,7 +22,7 @@ use bevy::render::render_resource::{
     Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
 };
 
-use renzora::core::ReflectionProbeSource;
+use renzora_scene_api::ReflectionProbeSource;
 
 /// Per-probe bookkeeping so we only (re)load + convert when the authored path
 /// actually changes — not every frame.

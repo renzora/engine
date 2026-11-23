@@ -113,7 +113,8 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # binary. An INSTALLED plugin is a `dylib` that links the real Bevy and the real
 # contract crate, so it must share them with the host: `dynamic_linking` is in
 # the root manifest's default feature set and pulls `bevy_dylib`,
-# `renzora_dylib` and `renzora_ember_dylib`, which stage beside the executable.
+# `renzora_dylib` (which carries the UI framework), which stage beside the
+# executable.
 # That is what makes one `World` type, one translation table and one theme
 # palette per process.
 #

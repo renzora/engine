@@ -23,7 +23,7 @@ use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_wi
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, text_input, EmberTextInput};
 use renzora_ember::UiInteraction;
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_theme::ThemeManager;
 
 use crate::thumbs::HubThumbs;
@@ -213,7 +213,7 @@ pub(crate) struct HubStoreData {
     pub(crate) publishing: bool,
     /// Catalogue, or the plugins installed here that have something newer.
     pub(crate) view: StoreView,
-    /// Listings for the plugins in [`renzora::PluginUpdates`], fetched when the
+    /// Listings for the plugins in [`renzora_platform_api::PluginUpdates`], fetched when the
     /// Updates view is first opened.
     ///
     /// The check itself answers with ids, names and versions and no artwork,
@@ -916,11 +916,11 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Amber whenever something is waiting, so the row carries the news without
     // the count having to be read. The same amber the card pill and the Settings
-    // grid use. See `renzora::PLUGIN_UPDATE_AMBER`.
+    // grid use. See `renzora_platform_api::PLUGIN_UPDATE_AMBER`.
     let ic = icon_text(commands, &fonts.phosphor, "arrow-circle-up", text_muted(), 13.0);
     renzora_ember::reactive::tracked::bind_text_color(commands, ic, |w| {
         if pending_updates(w) > 0 {
-            rgb(renzora::PLUGIN_UPDATE_AMBER)
+            rgb(renzora_platform_api::PLUGIN_UPDATE_AMBER)
         } else {
             rgb(text_muted())
         }
@@ -948,7 +948,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(rgb(renzora::PLUGIN_UPDATE_AMBER)),
+            BackgroundColor(rgb(renzora_platform_api::PLUGIN_UPDATE_AMBER)),
             PASS_THROUGH,
         ))
         .id();
@@ -976,7 +976,7 @@ fn build_updates_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// editor" is a fact about your install either way, and a badge that quietly
 /// dropped them would make the Updates view contradict the row that opened it.
 fn pending_updates(w: &Rx) -> usize {
-    w.get_resource::<renzora::PluginUpdates>()
+    w.get_resource::<renzora_platform_api::PluginUpdates>()
         .map(|u| u.entries.len())
         .unwrap_or(0)
 }
@@ -1226,7 +1226,7 @@ fn grid_note(world: &Rx) -> Option<String> {
         if !d.update_assets.is_empty() {
             return None;
         }
-        let updates = world.get_resource::<renzora::PluginUpdates>();
+        let updates = world.get_resource::<renzora_platform_api::PluginUpdates>();
         // Never checked is not the same claim as "everything is current", and
         // saying the second one would be a reassurance nobody has earned yet.
         if !updates.is_some_and(|u| u.checked) {
@@ -1268,12 +1268,12 @@ fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
     // runs with only `Commands` and has no world to ask, and asking once is also
     // what subscribes this snapshot to the resource, so installing something
     // repaints the card that installed it.
-    let updates = world.get_resource::<renzora::PluginUpdates>();
-    let states: Vec<renzora::PluginInstallState> = assets
+    let updates = world.get_resource::<renzora_platform_api::PluginUpdates>();
+    let states: Vec<renzora_platform_api::PluginInstallState> = assets
         .iter()
         .map(|a| match updates {
-            Some(u) => renzora::PluginInstallState::of(u, &a.id),
-            None => renzora::PluginInstallState::Absent,
+            Some(u) => renzora_platform_api::PluginInstallState::of(u, &a.id),
+            None => renzora_platform_api::PluginInstallState::Absent,
         })
         .collect();
 
@@ -1314,7 +1314,7 @@ fn asset_card(
     fonts: &EmberFonts,
     a: &AssetSummary,
     show_category: bool,
-    state: renzora::PluginInstallState,
+    state: renzora_platform_api::PluginInstallState,
 ) -> Entity {
     let base = rgb(section_bg());
     let hover = lighten(base, 0.12);
@@ -1581,18 +1581,18 @@ fn asset_card(
 fn corner_badge(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    state: renzora::PluginInstallState,
+    state: renzora_platform_api::PluginInstallState,
 ) -> Option<Entity> {
-    use renzora::PluginInstallState as S;
+    use renzora_platform_api::PluginInstallState as S;
     let (glyph, fill) = match state {
         S::Absent => return None,
-        S::Installed => ("check", renzora::PLUGIN_INSTALLED_GREEN),
+        S::Installed => ("check", renzora_platform_api::PLUGIN_INSTALLED_GREEN),
         // The blocked case gets the same amber as the ordinary one. From the
         // grid's point of view they are the same news, "this is out of date",
         // and the difference between "install it" and "update the editor first"
         // needs a sentence, which the detail overlay and the Updates view have
         // room for and a 16px disc does not.
-        S::UpdateAvailable | S::UpdateBlocked => ("arrow-up", renzora::PLUGIN_UPDATE_AMBER),
+        S::UpdateAvailable | S::UpdateBlocked => ("arrow-up", renzora_platform_api::PLUGIN_UPDATE_AMBER),
     };
     let disc = commands
         .spawn((
@@ -1658,11 +1658,11 @@ fn build_home(commands: &mut Commands) -> Entity {
 /// keyed by slug and rebuilt when the shelf's assets change.
 fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubStoreData>();
-    let updates = world.get_resource::<renzora::PluginUpdates>();
+    let updates = world.get_resource::<renzora_platform_api::PluginUpdates>();
     // Carried per card, like the browse grid's. A shelf shows the same listings
     // the browse grid does, so a plugin you have installed has to say so in both
     // or the storefront contradicts the category page it links to.
-    let sections: Vec<(String, String, Vec<AssetSummary>, Vec<renzora::PluginInstallState>)> = d
+    let sections: Vec<(String, String, Vec<AssetSummary>, Vec<renzora_platform_api::PluginInstallState>)> = d
         .sections
         .iter()
         .map(|s| {
@@ -1670,8 +1670,8 @@ fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
                 .assets
                 .iter()
                 .map(|a| match updates {
-                    Some(u) => renzora::PluginInstallState::of(u, &a.id),
-                    None => renzora::PluginInstallState::Absent,
+                    Some(u) => renzora_platform_api::PluginInstallState::of(u, &a.id),
+                    None => renzora_platform_api::PluginInstallState::Absent,
                 })
                 .collect();
             (s.slug.clone(), s.name.clone(), s.assets.clone(), states)
@@ -1786,7 +1786,7 @@ fn build_section(
     slug: &str,
     name: &str,
     assets: &[AssetSummary],
-    states: &[renzora::PluginInstallState],
+    states: &[renzora_platform_api::PluginInstallState],
 ) -> Entity {
     let col = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
@@ -1890,9 +1890,9 @@ fn get_pill(
     fonts: &EmberFonts,
     a: &AssetSummary,
     card: Entity,
-    state: renzora::PluginInstallState,
+    state: renzora_platform_api::PluginInstallState,
 ) -> Entity {
-    use renzora::PluginInstallState as S;
+    use renzora_platform_api::PluginInstallState as S;
     let free = a.price_credits == 0;
     // Three pills, not one with an alternative label.
     //
@@ -1907,7 +1907,7 @@ fn get_pill(
     let (base, hot, fg) = match state {
         S::Installed => (rgba([128, 132, 140, 225]), rgba([128, 132, 140, 225]), (236, 238, 242)),
         S::UpdateAvailable | S::UpdateBlocked => {
-            let c = renzora::PLUGIN_UPDATE_AMBER;
+            let c = renzora_platform_api::PLUGIN_UPDATE_AMBER;
             (rgba([c.0, c.1, c.2, 240]), rgba([c.0, c.1, c.2, 255]), (40, 30, 8))
         }
         S::Absent if free => (
@@ -2376,7 +2376,7 @@ fn select_category(data: &mut HubStoreData, category: Option<String>) {
 
 /// A blocked update's pill → open the editor's own updater.
 ///
-/// [`renzora::core::UpdateRequested`] is the contract crate's request for it, so
+/// [`renzora_project_api::UpdateRequested`] is the contract crate's request for it, so
 /// this crate needs no dependency on `renzora_update`. It is the same
 /// arrangement in reverse to the one that brings the updater's card back here.
 fn store_engine_update_click(
@@ -2384,7 +2384,7 @@ fn store_engine_update_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::core::UpdateRequested);
+        commands.insert_resource(renzora_project_api::UpdateRequested);
     }
 }
 
@@ -2418,7 +2418,7 @@ pub(crate) fn show_updates(data: &mut HubStoreData) {
 /// covers the slugs, so installing one and retiring its entry refetches instead
 /// of leaving its card in the grid.
 #[cfg(not(target_arch = "wasm32"))]
-fn store_updates_fetch(mut data: ResMut<HubStoreData>, updates: Res<renzora::PluginUpdates>) {
+fn store_updates_fetch(mut data: ResMut<HubStoreData>, updates: Res<renzora_platform_api::PluginUpdates>) {
     if !data.is_updates() || data.update_loading {
         return;
     }
@@ -2467,7 +2467,7 @@ fn store_updates_fetch(mut data: ResMut<HubStoreData>, updates: Res<renzora::Plu
 }
 
 #[cfg(target_arch = "wasm32")]
-fn store_updates_fetch(_data: ResMut<HubStoreData>, _updates: Res<renzora::PluginUpdates>) {}
+fn store_updates_fetch(_data: ResMut<HubStoreData>, _updates: Res<renzora_platform_api::PluginUpdates>) {}
 
 /// Fit the browse grid's column count to the width it actually got.
 ///
@@ -2528,7 +2528,7 @@ fn store_install_click(
         }
         let asset = btn.0.clone();
         if !signed && asset.price_credits > 0 {
-            commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+            commands.insert_resource(renzora_platform_api::AuthToggleWindowRequest);
             continue;
         }
         commands.queue(move |world: &mut World| crate::install_overlay::open(world, asset));
@@ -2562,7 +2562,7 @@ fn store_preview_dismiss_click(
 
 fn store_signin_click(q: Query<&UiInteraction, (With<StoreSignInBtn>, Changed<UiInteraction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::core::AuthToggleWindowRequest);
+        commands.insert_resource(renzora_platform_api::AuthToggleWindowRequest);
     }
 }
 
@@ -2624,7 +2624,7 @@ fn poll_preview(mut preview: ResMut<ThemePreview>, manager: Option<ResMut<ThemeM
         }
         Err(e) => {
             preview.error = Some(e.clone());
-            renzora::core::console_log::console_warn("Marketplace", format!("Theme preview failed: {e}"));
+            renzora_log_api::console_warn("Marketplace", format!("Theme preview failed: {e}"));
         }
     }
 }

@@ -37,7 +37,7 @@ fn pick_a_noise(catalogue: Res<renzora::MaterialNodeCatalog>) {
 
 That exists because the definitions cannot leave `renzora_shader` — a
 `PinTemplate` carries a `PinValue`, which is the compiler's own vocabulary — while
-a native plugin links only `bevy`, `renzora` and `renzora_ember`. Prefer it over
+a native plugin links only `bevy` and `renzora` (UI included, as `renzora::ui`). Prefer it over
 transcribing this page: a copied list drifts, and the drift shows up as a graph
 that will not compile rather than as a mismatch anyone can see.
 

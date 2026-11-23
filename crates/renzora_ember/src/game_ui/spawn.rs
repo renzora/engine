@@ -125,7 +125,7 @@ pub(crate) fn spawn_root_canvas(world: &mut World) -> Entity {
 /// world space with no restructuring. No `AutoCanvasTemplate` — we already have a
 /// template, so no blank `.html` is written.
 pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::Path) -> Entity {
-    let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+    let load_path = if let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() {
         project.make_asset_relative(asset_path)
     } else {
         asset_path.to_string_lossy().replace('\\', "/")
@@ -150,7 +150,7 @@ pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::
     // one-id-per-entity rule — dropping the same `.html` twice is a reasonable
     // thing to do, and two rows called `main_menu` are two rows you cannot tell
     // apart.
-    let id = renzora::unique_entity_name(world, &base, entity);
+    let id = renzora_scene_api::unique_entity_name(world, &base, entity);
     world.entity_mut(entity).insert(Name::new(id));
     entity
 }
@@ -341,7 +341,7 @@ pub fn spawn_html_template_at(
         }
     };
 
-    let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+    let load_path = if let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() {
         project.make_asset_relative(asset_path)
     } else {
         asset_path.to_string_lossy().replace('\\', "/")
@@ -437,7 +437,7 @@ pub fn is_flex_child(world: &World, entity: Entity) -> bool {
 
 // NOTE: `pick_spawn_parent` (editor-only "Add Widget" parent resolution) and
 // `spawn_image_at` (editor drag-drop image placement) moved to
-// `renzora_game_ui_editor` — they read `renzora::EditorSelection` / the `image`
+// `renzora_game_ui_editor` — they read `renzora_editor_api::EditorSelection` / the `image`
 // crate, which this lean runtime crate doesn't carry.
 
 fn spawn_container(world: &mut World, r: &Ref) -> Entity {

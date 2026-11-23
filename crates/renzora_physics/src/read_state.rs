@@ -10,7 +10,7 @@
 //! every backend.
 
 use bevy::prelude::*;
-use renzora::physics::{BodyVelocity, CollisionEnded, CollisionStarted, PhysicsContacts};
+use renzora_physics_api::physics::{BodyVelocity, CollisionEnded, CollisionStarted, PhysicsContacts};
 use serde::{Deserialize, Serialize};
 
 use crate::data::PhysicsBodyData;

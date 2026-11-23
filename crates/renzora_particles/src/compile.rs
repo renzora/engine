@@ -983,7 +983,7 @@ impl<'g, 't> Builder<'g, 't> {
                     let base = self.attr(Attribute::Wind);
                     let scaled = self.binary(BinaryOp::Mul, base, scale);
                     let speed = self.unary(UnaryOp::Length, scaled);
-                    let per_ref = self.float(1.0 / renzora::wind::REFERENCE_WIND_SPEED);
+                    let per_ref = self.float(1.0 / renzora_world_api::wind::REFERENCE_WIND_SPEED);
                     self.binary(BinaryOp::Mul, speed, per_ref)
                 } else {
                     self.wind_velocity(scale, hz)

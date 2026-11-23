@@ -21,7 +21,7 @@
 
 use bevy::prelude::*;
 
-use renzora::inspector_pages::InspectorPage;
+use renzora_shell_api::inspector_pages::InspectorPage;
 use renzora_editor_framework::InspectorRegistry;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
@@ -192,7 +192,7 @@ pub(crate) fn build_rail(
     // "All" leads the strip: every card on one page, for when you would
     // rather scroll than hunt through categories.
     let total: usize = pages.iter().map(|e| e.count).sum();
-    let all_tip = format!("{} ({})", renzora::lang::t_or("inspector.page.all", "All"), components_label(total));
+    let all_tip = format!("{} ({})", renzora_lang_api::t_or("inspector.page.all", "All"), components_label(total));
     kids.push(rail_button(commands, fonts, RailSelection::All, "squares-four", text_muted(), &all_tip, shown == RailSelection::All, false));
     for entry in pages {
         let sel = RailSelection::Page(entry.page);
@@ -216,7 +216,7 @@ pub(crate) fn build_rail(
         (RailSelection::Info, "info", "inspector.page.info", "Info"),
         (RailSelection::Relations, "link", "inspector.page.relations", "Relations"),
     ] {
-        let tip = renzora::lang::t_or(key, fallback);
+        let tip = renzora_lang_api::t_or(key, fallback);
         let active = shown == sel;
         kids.push(rail_button(commands, fonts, sel, icon, text_muted(), &tip, active, false));
     }
@@ -225,9 +225,9 @@ pub(crate) fn build_rail(
 
 fn components_label(n: usize) -> String {
     if n == 1 {
-        renzora::lang::t_or("inspector.page.one_component", "1 component")
+        renzora_lang_api::t_or("inspector.page.one_component", "1 component")
     } else {
-        renzora::lang::t_or("inspector.page.n_components", "{n} components").replace("{n}", &n.to_string())
+        renzora_lang_api::t_or("inspector.page.n_components", "{n} components").replace("{n}", &n.to_string())
     }
 }
 
@@ -343,13 +343,13 @@ pub(crate) fn entity_facts(world: &World, entity: Entity) -> EntityFacts {
 /// the ones no card is drawn for.
 pub(crate) fn build_info_page(commands: &mut Commands, fonts: &EmberFonts, facts: &EntityFacts) -> Vec<Entity> {
     let mut rows = vec![
-        fact_row(commands, fonts, &renzora::lang::t_or("inspector.info.entity", "Entity"), &facts.id),
+        fact_row(commands, fonts, &renzora_lang_api::t_or("inspector.info.entity", "Entity"), &facts.id),
         heading(
             commands,
             fonts,
             &format!(
                 "{} ({})",
-                renzora::lang::t_or("inspector.info.components", "Components"),
+                renzora_lang_api::t_or("inspector.info.components", "Components"),
                 facts.components.len()
             ),
         ),
@@ -369,15 +369,15 @@ pub(crate) fn build_relations_page(
     let parent = facts
         .parent
         .clone()
-        .unwrap_or_else(|| renzora::lang::t_or("inspector.relations.no_parent", "None (scene root)"));
+        .unwrap_or_else(|| renzora_lang_api::t_or("inspector.relations.no_parent", "None (scene root)"));
     let mut rows = vec![
-        fact_row(commands, fonts, &renzora::lang::t_or("inspector.relations.parent", "Parent"), &parent),
+        fact_row(commands, fonts, &renzora_lang_api::t_or("inspector.relations.parent", "Parent"), &parent),
         heading(
             commands,
             fonts,
             &format!(
                 "{} ({})",
-                renzora::lang::t_or("inspector.relations.children", "Children"),
+                renzora_lang_api::t_or("inspector.relations.children", "Children"),
                 facts.children.len()
             ),
         ),

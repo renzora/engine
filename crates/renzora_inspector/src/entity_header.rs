@@ -124,7 +124,7 @@ fn id_get(world: &World, entity: Entity) -> Option<FieldValue> {
 
 fn id_set(world: &mut World, entity: Entity, val: FieldValue) {
     if let FieldValue::String(v) = val {
-        let id = renzora::unique_entity_name(world, &v, entity);
+        let id = renzora_scene_api::unique_entity_name(world, &v, entity);
         if let Some(mut n) = world.get_mut::<Name>(entity) {
             *n = Name::new(id);
         }
@@ -280,21 +280,21 @@ fn tile_hue(rx: &Rx, entity: Entity) -> (u8, u8, u8) {
 /// model, which is the question a long list of near-identical part names
 /// leaves you asking.
 pub(crate) fn entity_subtitle(world: &World, entity: Entity) -> String {
-    let kind = if world.get::<renzora::MeshInstanceData>(entity).is_some() {
-        renzora::lang::t_or("inspector.kind.model", "Model")
+    let kind = if world.get::<renzora_scene_api::MeshInstanceData>(entity).is_some() {
+        renzora_lang_api::t_or("inspector.kind.model", "Model")
     } else {
         world
             .get_resource::<ComponentIconRegistry>()
             .and_then(|reg| reg.entity_type_name(world, entity))
             .map(|k| k.to_string())
-            .unwrap_or_else(|| renzora::lang::t_or("inspector.kind.empty", "Empty"))
+            .unwrap_or_else(|| renzora_lang_api::t_or("inspector.kind.empty", "Empty"))
     };
     let mut source = None;
     let mut cur = Some(entity);
     // Bounded: a hierarchy deeper than this is not a model's.
     for _ in 0..64 {
         let Some(e) = cur else { break };
-        if let Some(m) = world.get::<renzora::MeshInstanceData>(e) {
+        if let Some(m) = world.get::<renzora_scene_api::MeshInstanceData>(e) {
             source = m.model_path.clone();
             break;
         }
@@ -375,7 +375,7 @@ fn icon_tile(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Ent
             // cursor and its normalized position inside the tile.
             UiCursor::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or(
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or(
                 "inspector.icon_and_colour",
                 "Icon and colour",
             )),
@@ -458,7 +458,7 @@ fn name_column(
     let input = text_input(
         commands,
         &fonts.ui,
-        &renzora::lang::t_or("inspector.entity_name_placeholder", "Name"),
+        &renzora_lang_api::t_or("inspector.entity_name_placeholder", "Name"),
         "",
     );
     // `PAD_X` horizontally: the caret and click-to-caret position from it, so
@@ -728,7 +728,7 @@ pub(crate) fn entity_icon_menu_open(
             Name::new("entity-icon-popover"),
         ))
         .id();
-    let colour_title = section_title(&mut commands, &fonts, &renzora::lang::t_or("inspector.colour", "Colour"));
+    let colour_title = section_title(&mut commands, &fonts, &renzora_lang_api::t_or("inspector.colour", "Colour"));
     let (swatch_row, picker_panel) = colour_row(&mut commands, &fonts, entity, current);
     let divider = commands
         .spawn((
@@ -740,7 +740,7 @@ pub(crate) fn entity_icon_menu_open(
     let search = text_input(
         &mut commands,
         &fonts.ui,
-        &renzora::lang::t_or("inspector.search_icons", "Search icons"),
+        &renzora_lang_api::t_or("inspector.search_icons", "Search icons"),
         "",
     );
     commands.entity(search).insert((
@@ -823,7 +823,7 @@ fn colour_row(
     let mut kids = Vec::new();
 
     // None: back to the default look, an outline with a slash through it.
-    let none = swatch_base(commands, renzora::lang::t_or("inspector.colour_none", "No colour"), current.is_none());
+    let none = swatch_base(commands, renzora_lang_api::t_or("inspector.colour_none", "No colour"), current.is_none());
     commands.entity(none).insert((
         BackgroundColor(Color::NONE),
         MenuAction(Box::new(move |w: &mut World| {
@@ -846,7 +846,7 @@ fn colour_row(
     kids.push(none);
 
     for (hue, name) in SWATCHES {
-        let s = swatch_base(commands, renzora::lang::t_or(&format!("inspector.colour.{}", name.to_lowercase()), name), current == Some(hue));
+        let s = swatch_base(commands, renzora_lang_api::t_or(&format!("inspector.colour.{}", name.to_lowercase()), name), current == Some(hue));
         let hex = format!("#{:02x}{:02x}{:02x}", hue.0, hue.1, hue.2);
         commands.entity(s).insert((
             BackgroundColor(rgb(hue)),
@@ -891,7 +891,7 @@ fn colour_row(
         ))
         .id();
     commands.entity(panel).add_child(picker);
-    let custom = swatch_base(commands, renzora::lang::t_or("inspector.colour_custom", "Custom colour"), false);
+    let custom = swatch_base(commands, renzora_lang_api::t_or("inspector.colour_custom", "Custom colour"), false);
     commands.entity(custom).insert((
         renzora_ember::widgets::linear_gradient(
             90.0,
@@ -945,7 +945,7 @@ fn icon_heading(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> 
             ..default()
         })
         .id();
-    let title = section_title(commands, fonts, &renzora::lang::t_or("inspector.icon", "Icon"));
+    let title = section_title(commands, fonts, &renzora_lang_api::t_or("inspector.icon", "Icon"));
     let auto = commands
         .spawn((
             Node {
@@ -956,7 +956,7 @@ fn icon_heading(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> 
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("inspector.entity_icon_auto")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t("inspector.entity_icon_auto")),
             MenuAction(Box::new(move |w: &mut World| {
                 record_field_change(w, entity, "Icon", get(icon_get), set(icon_set), FieldValue::String(String::new()));
             })),
@@ -969,7 +969,7 @@ fn icon_heading(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> 
     });
     let auto_text = commands
         .spawn((
-            Text::new(renzora::lang::t_or("inspector.icon_auto_short", "Auto")),
+            Text::new(renzora_lang_api::t_or("inspector.icon_auto_short", "Auto")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
             PASS_THROUGH,

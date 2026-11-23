@@ -8,8 +8,17 @@ members = [
     # No "." for the root crate: a workspace root that is a package is always a
     # member, and cargo reads "." as covering every path under the root, which
     # made each crate in `exclude` an explicit member and so never excluded.
-    # Engine crate + every plugin (`renzora` + `renzora_*`).
-    "crates/renzora",
+    # The contracts: one `renzora_*_api` crate per job, which engine crates build
+    # on instead of on each other.
+    "crates/api/*",
+    # A contract's own proc-macro crate, nested in it (e.g.
+    # `crates/api/renzora_editor_api/macros` = `renzora_editor_api_macros`).
+    "crates/api/*/macros",
+    # What hands the contracts out: `renzora`, the one name plugins and Rust
+    # scripts import, and the shared images that keep every contract and the UI
+    # framework singular across the editor, the game and every plugin.
+    "crates/shared/*",
+    # Every engine crate and plugin.
     "crates/renzora_*",
     # Nested editor halves of split dual-mode crates (e.g.
     # `crates/renzora_engine/editor` = `renzora_engine_editor`). The lean
@@ -235,8 +244,9 @@ bevy = { path = "bevy", default-features = false, features = [
     # `shader_format_spirv` and `shader_format_wesl` were all dead weight —
     # each pulls its own translation stack (naga backends) into every build.
     # Image formats — ONLY the ones `renzora_import` actually sniffs/handles.
-    # Dropped `ff`, `ico`, `pnm`, `qoi`, `tiff`: no importer path recognises those
-    # extensions, so the codec could never be reached. Everything below IS reached
+    # Dropped `ff`, `ico`, `pnm`, `qoi`, `tiff`: Bevy never has to decode them.
+    # The importer does accept `.tif`/`.tiff`, but bakes every texture into an
+    # `.rmip`, so the TIFF codec lives in `renzora_rmip`'s `bake` feature instead. Everything below IS reached
     # (see `renzora_import/{gltf_pass,fbx_ufbx,obj}.rs` + the asset browser), so do
     # not trim this list further without re-checking those sniffers — a
     # stripped codec means the importer accepts a file the engine then can't decode.
@@ -322,9 +332,6 @@ bevy = { path = "bevy", default-features = false, features = [
 ] }
 # Individual Bevy sub-crates that some crates depend on directly (not via the
 # `bevy` umbrella), from the same `bevy/` tree.
-bevy_math = { path = "bevy/crates/bevy_math", default-features = false }
-bevy_reflect = { path = "bevy/crates/bevy_reflect", default-features = false }
-bevy_light = { path = "bevy/crates/bevy_light", default-features = false }
 bevy_picking = { path = "bevy/crates/bevy_picking", default-features = false }
 # Avian, vendored at its 0.8.0 release (`vendor/avian`, a git subtree) and
 # pointed at `bevy/`. Linked by `renzora_avian_physics`; the vendored
@@ -332,7 +339,6 @@ bevy_picking = { path = "bevy/crates/bevy_picking", default-features = false }
 # SDK ships so a plugin depending on avian resolves the same graph.
 avian3d = { path = "vendor/avian/crates/avian3d", default-features = false }
 avian2d = { path = "vendor/avian/crates/avian2d", default-features = false }
-log = "0.4"
 
 [package]
 name = "renzora_app"
@@ -483,7 +489,9 @@ renzora_runtime = { path = "crates/renzora_runtime", optional = true }
 uuid = "1"
 
 # Misc
-renzora = { path = "crates/renzora", default-features = false }
+renzora = { path = "crates/shared/renzora", default-features = false }
+# `dlss_runtime`, which `main` consults before the GPU starts.
+renzora_platform_api = { path = "crates/api/renzora_platform_api" }
 # The generated list of plugins linked into the binary. Optional because it is
 # empty (and so pure overhead) in every build but a lean export that asked for
 # static plugins — see the `static_plugins` feature above.
@@ -573,12 +581,14 @@ bevy = { workspace = true, features = [
 # getrandom has no default backend for wasm32-unknown-unknown — it `compile_error!`s
 # unless the JS backend feature is on. Nothing here calls getrandom directly; these
 # are feature-unification handles, one per major version present in the graph, so
-# whichever transitive dep pulls a given major gets a backend. All three majors are
-# live at once: 0.2 and 0.3 from older corners of bevy/wgpu's tree, and 0.4 via
-# `rand` 0.10 (bevy_math) and `uuid` 1.23. The 0.4 handle is the one that was
-# missing, and its absence is what broke the CI wasm lane — nothing in the tree
-# changed shape, a dependency simply crossed a major boundary. Expect to add a
-# 0.5 line here the next time one does.
+# whichever transitive dep pulls a given major gets a backend. Two majors are live:
+# 0.3 (bevy_gaussian_splatting among others) and 0.4 via `rand` 0.10 (bevy_math)
+# and `uuid` 1.23. The 0.4 handle is the one that was missing, and its absence is
+# what broke the CI wasm lane: nothing in the tree changed shape, a dependency
+# simply crossed a major boundary. Expect to add a 0.5 line here the next time
+# one does. The 0.2 handle went on 2026-11-21, once nothing else in either web
+# graph pulled 0.2 (`cargo tree --target wasm32-unknown-unknown -i
+# getrandom@0.2.17` showed only the handle) and cargo flagged it as unused.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # The web's render backend, and the mirror image of the block above: that one
 # subtracts for wasm, this one adds for it. It sits here rather than in the
@@ -589,7 +599,6 @@ bevy = { workspace = true, features = [
 # `webgl2` stays in `[workspace.dependencies]`: bevy needs it compiled in as the
 # fallback path, and having both is how wgpu picks at runtime.
 bevy = { workspace = true, features = ["webgpu"] }
-getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = "0.2.108"

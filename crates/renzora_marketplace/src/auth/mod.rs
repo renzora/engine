@@ -25,7 +25,7 @@ pub use session::AuthSession;
 use std::sync::{mpsc, Mutex};
 
 /// Bevy plugin that registers auth resources, renders the auth window, and
-/// syncs state into the [`renzora::core::AuthBridge`] so the editor can display
+/// syncs state into the [`renzora_platform_api::AuthBridge`] so the editor can display
 /// sign-in info without depending on this crate.
 #[derive(Default)]
 pub struct AuthPlugin;
@@ -34,7 +34,7 @@ impl Plugin for AuthPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AuthState>()
             .insert_resource(try_restore_session())
-            .init_resource::<renzora::core::AuthBridge>()
+            .init_resource::<renzora_platform_api::AuthBridge>()
             .init_resource::<SessionRefresh>()
             // The startup refresh is a one-off: once it has been started (or
             // given up on) and its answer applied, neither system has anything
@@ -50,8 +50,8 @@ impl Plugin for AuthPlugin {
             .add_systems(
                 Update,
                 auth_system.run_if(
-                    resource_exists::<renzora::core::AuthToggleWindowRequest>
-                        .or_else(resource_exists::<renzora::core::AuthSignOutRequest>)
+                    resource_exists::<renzora_platform_api::AuthToggleWindowRequest>
+                        .or_else(resource_exists::<renzora_platform_api::AuthSignOutRequest>)
                         .or_else(resource_changed::<AuthState>)
                         .or_else(resource_changed::<AuthSession>),
                 ),
@@ -66,7 +66,7 @@ impl Plugin for AuthPlugin {
 fn auth_system(world: &mut World) {
     // Handle toggle/sign-out requests from the editor (via marker resources).
     if world
-        .remove_resource::<renzora::core::AuthToggleWindowRequest>()
+        .remove_resource::<renzora_platform_api::AuthToggleWindowRequest>()
         .is_some()
     {
         if let Some(mut auth) = world.get_resource_mut::<AuthState>() {
@@ -74,7 +74,7 @@ fn auth_system(world: &mut World) {
         }
     }
     if world
-        .remove_resource::<renzora::core::AuthSignOutRequest>()
+        .remove_resource::<renzora_platform_api::AuthSignOutRequest>()
         .is_some()
     {
         if let Some(mut session) = world.get_resource_mut::<AuthSession>() {
@@ -97,7 +97,7 @@ fn auth_system(world: &mut World) {
     let signed_in_username = world
         .get_resource::<AuthSession>()
         .and_then(|s| s.user.as_ref().map(|u| u.username.clone()));
-    if let Some(mut bridge) = world.get_resource_mut::<renzora::core::AuthBridge>() {
+    if let Some(mut bridge) = world.get_resource_mut::<renzora_platform_api::AuthBridge>() {
         bridge.window_open = window_open;
         bridge.signed_in_username = signed_in_username;
     }
@@ -264,7 +264,7 @@ fn start_session_refresh(
     };
     // Nothing to hand a request to yet. The HTTP plugin loads during the first
     // frames, so this is the ordinary case for a frame or two.
-    if !renzora::net::is_available() {
+    if !renzora_net_api::net::is_available() {
         refresh.waited += 1;
         if refresh.waited > REFRESH_WAIT_FRAMES {
             warn!("[auth] no network backend — keeping the saved session unverified");

@@ -33,7 +33,7 @@ use crate::MaterialEditorState;
 const AXES: [(&str, (u8, u8, u8)); 4] =
     [("X", (230, 90, 90)), ("Y", (90, 200, 90)), ("Z", (90, 130, 230)), ("W", (200, 200, 90))];
 /// The shared image list, so a texture pin takes an SVG like any other slot.
-const IMG_EXTS: &[&str] = renzora::IMAGE_EXTENSIONS;
+const IMG_EXTS: &[&str] = renzora_project_api::IMAGE_EXTENSIONS;
 
 /// Carries the systems the texture pin editor needs (asset drop, clear, browse).
 /// The editors themselves are built on demand by the graph, so there's no panel
@@ -262,7 +262,7 @@ fn texture_field(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin:
 fn tex_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     zones: Query<(&UiCursor, &TexDropZone)>,
     state: Option<ResMut<MaterialEditorState>>,
 ) {
@@ -303,7 +303,7 @@ fn tex_clear(q: Query<(&UiInteraction, &TexClearBtn), Changed<UiInteraction>>, s
 fn tex_browse(
     q: Query<(&UiInteraction, &TexDropZone), Changed<UiInteraction>>,
     payload: Option<Res<AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     state: Option<ResMut<MaterialEditorState>>,
 ) {
     if payload.as_ref().is_some_and(|p| p.is_detached) {

@@ -19,7 +19,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use renzora::ScriptActionValue;
+use renzora_scripting_api::ScriptActionValue;
 
 use crate::messages::GameEvent;
 
@@ -130,7 +130,7 @@ pub fn send_outgoing_rpcs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use renzora::ScriptActionValue;
+    use renzora_scripting_api::ScriptActionValue;
 
     #[test]
     fn args_round_trip_preserves_types() {

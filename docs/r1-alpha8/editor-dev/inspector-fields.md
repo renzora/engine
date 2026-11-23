@@ -12,7 +12,7 @@ These types live in the `renzora` crate (the shared `renzora.dll` contract), gat
 
 ## The fast path: `#[derive(Inspectable)]`
 
-Annotate a component struct, then register it from your plugin. This is the complete `renzora_test_component` example that ships in the engine:
+Annotate a component struct, then register it from your plugin. A complete example:
 
 ```rust
 use bevy::prelude::*;
@@ -38,25 +38,32 @@ impl Plugin for TestComponentPlugin {
         app.register_inspectable::<Health>();
     }
 }
+```
 
-// Editor-scope: replayed into the app by the renzora_editor bundle.
-renzora::add!(TestComponentPlugin, Editor);
+```toml
+# Cargo.toml. Editor-scope: replayed into the app by the renzora_editor bundle.
+[[package.metadata.renzora.plugin]]
+type = "TestComponentPlugin"
+scope = "Editor"
 ```
 
 `register_inspectable::<T>()` (an `AppEditorExt` method on `App`) does two things: it calls `app.register_type::<T>()` (so scripts and reflection can reach the component) and inserts `T::inspector_entry()` into the `InspectorRegistry`. Select an entity carrying `Health` and the component appears with a heart icon, two clamped drag values, and a "Shield" checkbox.
 
 ### Cargo dependencies
 
-`Inspectable`, `AppEditorExt`, `FieldDef`, and friends are behind `renzora`'s `editor` feature, which is **off by default**. A crate that derives `Inspectable` must turn it on:
+`Inspectable`, `AppEditorExt`, `FieldDef`, and friends are the editor contract, `renzora_editor_api`. An engine crate depends on it directly:
 
 ```toml
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_macros = { path = "../renzora_macros" }
+renzora_editor_api = { path = "../api/renzora_editor_api" }
 ```
 
-> There is **no `renzora::prelude`**. Import what you need directly — `use renzora::{AppEditorExt, Inspectable};` — or glob with `use renzora::*;`.
+A crate that also ships in games makes it optional and turns it on from its own `editor` feature (`editor = ["dep:renzora_editor_api"]`), then applies the derive with `#[cfg_attr(feature = "editor", derive(renzora_editor_api::Inspectable))]`.
+
+A native plugin sees the same items at `renzora::Inspectable`, `renzora::AppEditorExt` and so on, under `renzora`'s `editor` feature. The derive generates paths to whichever of the two the crate can see.
+
+> There is **no prelude**. Import what you need directly, as in `use renzora_editor_api::{AppEditorExt, Inspectable};`.
 
 ### `#[inspectable(...)]` — struct attributes
 
@@ -110,7 +117,7 @@ Fields named `enabled` or starting with `_p` are skipped automatically (a conven
 
 ## Editor-only registration in dual-mode plugins
 
-The `TestComponentPlugin` above is **editor-scope** (`add!(_, Editor)`), so its whole crate is always built with the `editor` feature and the `register_inspectable` call needs no guard.
+The `TestComponentPlugin` above is **editor-scope** (`scope = "Editor"` in its plugin table), so its whole crate is always built with the `editor` feature and the `register_inspectable` call needs no guard.
 
 A plugin that must run in **both** the editor and the shipped game (any runtime component that also wants an inspector) is different: its `register_inspectable` call must be compiled out when the `editor` feature is off. The crate declares its own `editor` feature that forwards to `renzora/editor`, and gates the call. This is what a dual-mode plugin like `renzora_vignette` does:
 
@@ -135,8 +142,11 @@ impl Plugin for MyPlugin {
         app.register_inspectable::<MySettings>();
     }
 }
+```
 
-renzora::add!(MyPlugin);
+```toml
+[[package.metadata.renzora.plugin]]
+type = "MyPlugin"
 ```
 
 When the game is built without the editor feature, the derive's `InspectableComponent` impl and the registration both vanish, leaving only the plain runtime component.

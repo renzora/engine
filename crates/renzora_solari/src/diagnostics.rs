@@ -17,9 +17,9 @@ use bevy::solari::realtime::{
     SolariDebug, SolariDebugOutput, SolariDebugView, SolariLighting, HISTOGRAM_MIN_LOG2,
     HISTOGRAM_STOPS_PER_BIN,
 };
-use renzora::{
-    EditorCamera, SolariCoverage, SolariDebugMode, SolariDiagnostics, SolariDiagnosticsRequest,
-    SolariFrameStats, ViewportRedrawDemand,
+use renzora_scene_api::{EditorCamera, ViewportRedrawDemand};
+use renzora_solari_api::{
+    SolariCoverage, SolariDebugMode, SolariDiagnostics, SolariDiagnosticsRequest, SolariFrameStats,
 };
 
 /// Frames the viewport keeps rendering after a change while the built-in

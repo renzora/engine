@@ -2,9 +2,7 @@
 
 use bevy::prelude::*;
 use renzora_audio::{AudioListener, AudioPlayer, MixerState, RolloffType};
-use renzora::{
-    FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
-};
+use renzora_editor_api::{FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry};
 
 pub fn register_audio_inspectors(registry: &mut InspectorRegistry) {
     registry.register(audio_player_entry());
@@ -96,7 +94,7 @@ fn audio_listener_entry() -> InspectorEntry {
 
 use bevy::ecs::world::CommandQueue;
 use renzora_audio::AudioPlayer as ApComp;
-use renzora::AppEditorExt;
+use renzora_editor_api::AppEditorExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_row;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
@@ -119,7 +117,7 @@ pub fn register_audio_native(app: &mut App) {
             audio_remove_clip_click,
             audio_reset_click,
         )
-            .run_if(in_state(renzora::SplashState::Editor)),
+            .run_if(in_state(renzora_project_api::SplashState::Editor)),
     );
 }
 

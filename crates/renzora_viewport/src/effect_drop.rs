@@ -11,8 +11,10 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use renzora::core::{CurrentProject, DefaultCamera, HideInHierarchy, SceneCamera};
-use renzora::{PostEffects, WorldEnvironment};
+use renzora_scene_api::{DefaultCamera, HideInHierarchy, SceneCamera};
+use renzora_project_api::CurrentProject;
+use renzora_render_api::PostEffects;
+use renzora_world_api::WorldEnvironment;
 use renzora_editor_framework::EditorSelection;
 
 /// Add the effect at `path` to the end of the scene's Post Process list.
@@ -23,7 +25,7 @@ use renzora_editor_framework::EditorSelection;
 /// camera to see it, and the drop says so in the Console.
 pub(crate) fn commit_effect_drop(world: &mut World, path: PathBuf) {
     let Some(target) = effect_target(world) else {
-        renzora::console_log::console_warn(
+        renzora_log_api::console_warn(
             "Post Process",
             "Nothing to add the effect to: the scene has no camera or World Environment.",
         );
@@ -49,7 +51,7 @@ pub(crate) fn commit_effect_drop(world: &mut World, path: PathBuf) {
         .get::<Name>(target)
         .map(|n| n.as_str().to_string())
         .unwrap_or_else(|| format!("{target:?}"));
-    renzora::console_log::console_info("Post Process", format!("Added {rel} to {on}"));
+    renzora_log_api::console_info("Post Process", format!("Added {rel} to {on}"));
 }
 
 fn effect_target(world: &mut World) -> Option<Entity> {

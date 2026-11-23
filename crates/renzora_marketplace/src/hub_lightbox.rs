@@ -7,7 +7,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::UiCursor;
 
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::UiInteraction;
 

@@ -1,0 +1,19 @@
+[package]
+name = "renzora_net_api"
+version = "0.1.0"
+edition = "2021"
+description = "The engine's HTTP vocabulary and request queue: what plugins see as `renzora::net` and `renzora::net_backend`"
+
+# One layer above `renzora`, never below it: this crate names nothing from the
+# contract and the contract names nothing from it, so an edit here rebuilds
+# only the crates that make requests, not the whole engine. Plugins still reach
+# it as `renzora::net` through `renzora_sdk`, and its process-global queue stays
+# singular because `renzora_dylib` embeds it.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+# `Request::json` / `Response::json`.
+serde_json = "1"
+
+[lints]
+workspace = true

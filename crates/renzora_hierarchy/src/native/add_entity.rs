@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use renzora::core::ShapeRegistry;
+use renzora_scene_api::ShapeRegistry;
 use renzora_editor_framework::{EditorCommands, InspectorRegistry, SpawnRegistry};
 use renzora_ember::font::EmberFonts;
 use renzora_ember::widgets::{search_overlay, SearchEntry};
@@ -33,7 +33,7 @@ pub(crate) fn hier_add_entity_open(
     spawn_reg: Option<Res<SpawnRegistry>>,
     shape_reg: Option<Res<ShapeRegistry>>,
     inspector_reg: Option<Res<InspectorRegistry>>,
-    scope: Option<Res<renzora::SpawnCategoryScope>>,
+    scope: Option<Res<renzora_editor_api::SpawnCategoryScope>>,
     cmds: Option<Res<EditorCommands>>,
     mut commands: Commands,
 ) {
@@ -58,7 +58,7 @@ pub(crate) fn hier_add_entity_open(
         }
         return;
     }
-    search_overlay(&mut commands, &fonts, &renzora::lang::t("hierarchy.add.title"), entries);
+    search_overlay(&mut commands, &fonts, &renzora_lang_api::t("hierarchy.add.title"), entries);
 }
 
 /// Every spawnable preset / shape / component, as search entries whose actions
@@ -67,7 +67,7 @@ pub(crate) fn spawn_entries(
     spawn_reg: Option<&SpawnRegistry>,
     shape_reg: Option<&ShapeRegistry>,
     inspector_reg: Option<&InspectorRegistry>,
-    scope: Option<&renzora::SpawnCategoryScope>,
+    scope: Option<&renzora_editor_api::SpawnCategoryScope>,
 ) -> Vec<SearchEntry> {
     let mut entries: Vec<SearchEntry> = Vec::new();
     // Matched on the **English** category, before localisation — the scope is
@@ -84,8 +84,8 @@ pub(crate) fn spawn_entries(
             // still keys off `p.id`, and the category is consistent per English
             // string so grouping/sidebar matching stays intact.
             let label =
-                renzora::lang::t_or(&format!("entity.preset.{}", slug(p.display_name)), p.display_name);
-            let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(p.category)), p.category);
+                renzora_lang_api::t_or(&format!("entity.preset.{}", slug(p.display_name)), p.display_name);
+            let category = renzora_lang_api::t_or(&format!("entity.cat.{}", slug(p.category)), p.category);
             entries.push(SearchEntry::new(
                 p.icon,
                 label,
@@ -110,7 +110,7 @@ pub(crate) fn spawn_entries(
                 continue;
             }
             let (shape_id, name, color) = (s.id.to_string(), s.name.to_string(), s.default_color);
-            let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(s.category)), s.category);
+            let category = renzora_lang_api::t_or(&format!("entity.cat.{}", slug(s.category)), s.category);
             entries.push(SearchEntry::new(
                 s.icon,
                 s.name,
@@ -137,14 +137,14 @@ pub(crate) fn spawn_entries(
         // sky, a fog volume, an emitter, a sound). Matched by page rather than
         // by category string, so a registration still using an older name for
         // its page is offered too.
-        use renzora::inspector_pages::InspectorPage as P;
+        use renzora_shell_api::inspector_pages::InspectorPage as P;
         const PAGES: [P; 5] = [P::Rendering, P::Environment, P::PostProcess, P::Particles, P::Audio];
         for e in reg.iter() {
             let page = P::for_entry(e.category, e.type_id);
             if e.add_fn.is_some() && PAGES.contains(&page) && allows(e.category) {
                 let (type_id, display_name) = (e.type_id.to_string(), e.display_name.to_string());
                 let category =
-                    renzora::lang::t_or(&format!("entity.cat.{}", page.id()), &page.display_name());
+                    renzora_lang_api::t_or(&format!("entity.cat.{}", page.id()), &page.display_name());
                 entries.push(SearchEntry::new(
                     e.icon,
                     e.display_name,

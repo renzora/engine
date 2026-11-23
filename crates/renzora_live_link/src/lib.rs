@@ -11,12 +11,12 @@
 //!   second set of panels to build. When the game stops, the editor puts back
 //!   everything the game changed and keeps everything the user did.
 //! - **Tools to game.** Keys, gamepad input and screenshots, so an agent can
-//!   play the game it is helping to build. See [`renzora::GameLink`].
+//!   play the game it is helping to build. See [`renzora_project_api::GameLink`].
 //!
 //! # How the two worlds agree
 //!
 //! An `Entity` means nothing outside its world, so entities are matched by
-//! [`renzora::SceneEntityId`], which a save gives every scene entity and which
+//! [`renzora_scene_api::SceneEntityId`], which a save gives every scene entity and which
 //! the side that creates a new one assigns on the spot. Components travel by
 //! reflection: the game is the same executable as the editor, so both share one
 //! type registry, and any component a scene can save can cross, a user's own
@@ -31,7 +31,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use renzora::GameInput;
+pub use renzora_project_api::GameInput;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod apply;
@@ -85,5 +85,3 @@ impl bevy::app::Plugin for LiveLinkPlugin {
         client::install(_app);
     }
 }
-
-renzora::add!(LiveLinkPlugin, Runtime);

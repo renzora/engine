@@ -122,7 +122,7 @@ impl Plugin for TimelinePanel {
                     .before(bevy::transform::TransformSystems::Propagate),
             )
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode)
+                .run_if(renzora_project_api::not_in_play_mode)
                 .run_if(pose::pose_layer_live),
         );
         app.init_resource::<morph::MorphLayer>();
@@ -134,7 +134,7 @@ impl Plugin for TimelinePanel {
                 .after(bevy::app::AnimationSystems)
                 .before(bevy::transform::TransformSystems::Propagate)
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode)
+                .run_if(renzora_project_api::not_in_play_mode)
                 .run_if(morph::morph_pose_held),
         );
         // Each one only acts on its own trigger: the shortcut on a K press, the
@@ -149,15 +149,15 @@ impl Plugin for TimelinePanel {
                 pose::auto_key_pose.after(props::apply_timeline_ops).run_if(pose::autokey_pending),
             )
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode),
+                .run_if(renzora_project_api::not_in_play_mode),
         );
         // The effect editor's crate inits this too; idempotent either way.
         app.init_resource::<renzora_particles_editor::timeline::TimelineLink>();
         // Bridge to the inspector's per-property keyframe buttons. `init_resource`
         // is idempotent: the inspector inits these too, so they exist whichever
         // crate loads first.
-        app.init_resource::<renzora::ActiveTimeline>();
-        app.init_resource::<renzora::KeyframeRequests>();
+        app.init_resource::<renzora_editor_api::ActiveTimeline>();
+        app.init_resource::<renzora_editor_api::KeyframeRequests>();
         // NOT migrated to `PanelScope::systems` (visibility gating), deliberately.
         // The other four animation panels were; this one must not be, for three
         // reasons that are easy to miss:
@@ -280,7 +280,7 @@ impl Plugin for TimelinePanel {
                 .chain()
                 .after(props::apply_timeline_ops)
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode)
+                .run_if(renzora_project_api::not_in_play_mode)
                 .run_if(|c: Res<clip::TimelineClip>| c.key.is_some()),
         );
 
@@ -292,7 +292,7 @@ impl Plugin for TimelinePanel {
             fx::drive_fx_clock
                 .after(crate::advance_preview_time)
                 .run_if(in_state(SplashState::Editor))
-                .run_if(renzora::not_in_play_mode)
+                .run_if(renzora_project_api::not_in_play_mode)
                 .run_if(fx::fx_clock_live),
         );
 
@@ -336,7 +336,7 @@ fn timeline_ui_live(
     ui: Query<(), TimelineUi>,
     buttons: Res<ButtonInput<MouseButton>>,
     popover: Res<popover::PopoverState>,
-    focus: Option<Res<renzora::InputFocusState>>,
+    focus: Option<Res<renzora_project_api::InputFocusState>>,
 ) -> bool {
     !ui.is_empty()
         || buttons.get_pressed().next().is_some()

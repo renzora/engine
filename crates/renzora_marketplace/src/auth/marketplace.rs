@@ -131,7 +131,7 @@ pub fn plugin_updates(ids: &[String]) -> Result<Vec<PluginUpdate>, String> {
         &format!("{}/api/marketplace/plugin-updates", super::client::api_base()),
         &serde_json::json!({
             "ids": ids,
-            "engine_version": renzora::version::ENGINE_VERSION,
+            "engine_version": renzora_platform_api::version::ENGINE_VERSION,
         }),
         None,
     )
@@ -173,7 +173,7 @@ pub fn list_assets(
     // not know the parameter ignores it and answers as it always did.
     url.push_str(&format!(
         "&engine={}",
-        urlencoded(renzora::version::ENGINE_VERSION)
+        urlencoded(renzora_platform_api::version::ENGINE_VERSION)
     ));
 
     let response = super::client::get_json_raw(&url, None)?;
@@ -282,7 +282,7 @@ pub fn record_view(session: Option<&AuthSession>, asset_id: &str) {
     // user, and a signed-out browse still counts.
     let token = session.and_then(|s| s.access_token.clone());
     std::thread::spawn(move || {
-        let mut req = renzora::net::Request::post(&url).body("application/json", "{}");
+        let mut req = renzora_net_api::net::Request::post(&url).body("application/json", "{}");
         if let Some(t) = token {
             req = req.header("Authorization", &format!("Bearer {t}"));
         }
@@ -297,7 +297,7 @@ const MAX_DOWNLOAD: u32 = 256 * 1024 * 1024;
 /// Download the actual file bytes from a URL.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn download_file(url: &str) -> Result<Vec<u8>, String> {
-    let response = renzora::net::Request::get(url)
+    let response = renzora_net_api::net::Request::get(url)
         .max_bytes(MAX_DOWNLOAD)
         .send()
         .map_err(|e| format!("Download failed: {e}"))?;
@@ -353,7 +353,7 @@ fn download_file_progress_inner(
     token: Option<&str>,
     on_bytes: &mut dyn FnMut(u64),
 ) -> Result<Vec<u8>, String> {
-    let mut stream = renzora::net::Request::get(url)
+    let mut stream = renzora_net_api::net::Request::get(url)
         .maybe_bearer(token)
         .max_bytes(MAX_DOWNLOAD)
         .send_stream()
@@ -551,7 +551,7 @@ pub fn post_comment(
 pub fn get_rating(asset_id: &str, _session: Option<&AuthSession>) -> Result<AssetRating, String> {
     let empty = AssetRating { average: 0.0, count: 0, user_rating: None };
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/reviews");
-    let Ok(response) = renzora::net::Request::get(&url).send() else { return Ok(empty) };
+    let Ok(response) = renzora_net_api::net::Request::get(&url).send() else { return Ok(empty) };
     let Ok(v) = response.json::<serde_json::Value>() else { return Ok(empty) };
     let average = v.get("rating_avg").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
     let count = v.get("rating_count").and_then(|x| x.as_i64()).unwrap_or(0);

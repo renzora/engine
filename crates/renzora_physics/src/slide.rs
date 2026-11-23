@@ -6,7 +6,7 @@
 //! [`run_kinematic_slides`] drives it through the selected backend.
 
 use bevy::prelude::*;
-use renzora::physics::{Cast, CastBatch, CastShape, PhysicsBackends, PhysicsDim, ResolvedCollider};
+use renzora_physics_api::physics::{Cast, CastBatch, CastShape, PhysicsBackends, PhysicsDim, ResolvedCollider};
 
 use crate::data::RuntimePhysics2d;
 use crate::read_state::PhysicsReadState;

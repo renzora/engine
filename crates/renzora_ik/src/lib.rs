@@ -16,7 +16,7 @@
 //! - [`SpringBones`] + [`SpringCollider`]: jiggle chains (hair, tails, ears),
 //!   at a fixed simulation step so they behave the same at any frame rate.
 //!
-//! Everything only runs while the game runs (`renzora::core::game_running`),
+//! Everything only runs while the game runs (`renzora_project_api::game_running`),
 //! like animation, cloth and physics: while editing, a model holds exactly the
 //! pose the scene file says. Leaving Play hands every unanimated bone its
 //! pre-constraint pose back (see [`pose`]).
@@ -38,9 +38,9 @@ pub use components::{
 };
 
 use bevy::prelude::*;
-use renzora::core::game_running;
+use renzora_project_api::game_running;
 #[cfg(feature = "editor")]
-use renzora::AppEditorExt;
+use renzora_editor_api::AppEditorExt;
 
 /// Where the constraints run in `PostUpdate`: after the animation player and
 /// before propagation. Public so a crate that writes bone poses of its own can
@@ -123,5 +123,3 @@ impl Plugin for IkPlugin {
         }
     }
 }
-
-renzora::add!(IkPlugin);

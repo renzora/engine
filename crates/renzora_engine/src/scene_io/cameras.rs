@@ -15,9 +15,8 @@ use bevy::light::AtmosphereEnvironmentMapLight;
 #[cfg(feature = "render_3d")]
 use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
-use renzora::{
-    DefaultCamera, EditorCamera, PlayModeCamera, PlayModeState, SceneCamera, ViewportRenderTarget,
-};
+use renzora_scene_api::{DefaultCamera, EditorCamera, SceneCamera};
+use renzora_project_api::{PlayModeCamera, PlayModeState, ViewportRenderTarget};
 use std::collections::BTreeSet;
 
 /// Ensure parent entities have `Visibility` so transform/visibility propagation works.
@@ -51,8 +50,8 @@ pub fn rehydrate_cameras(
     >,
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,
-    editor_session: Option<Res<renzora::EditorSession>>,
-    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    editor_session: Option<Res<renzora_project_api::EditorSession>>,
+    quality: Option<Res<renzora_project_api::ResolvedGraphicsQuality>>,
 ) {
     if query.is_empty() {
         return;
@@ -161,7 +160,7 @@ pub fn rehydrate_cameras(
         // During play mode, configure the default camera as the play mode camera
         // with the viewport render target (mirrors what enter_play_mode does).
         if in_play_mode && is_active {
-            use renzora::console_log::*;
+            use renzora_log_api::*;
             let name = commands.entity(entity).id();
             console_info(
                 "Rehydration",
@@ -193,7 +192,7 @@ pub fn sync_play_mode_camera(
     };
     for entity in &query {
         if play_mode.active_game_camera != Some(entity) {
-            renzora::console_log::console_info(
+            renzora_log_api::console_info(
                 "PlayMode",
                 format!(
                     "Play mode camera updated: {:?} -> {:?}",
@@ -425,7 +424,7 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
                 .map(|n| n.to_string())
                 .unwrap_or_else(|| "unnamed".into());
             let has_default = world.get::<DefaultCamera>(src).is_some();
-            renzora::console_log::console_info(
+            renzora_log_api::console_info(
                 "PostProcess",
                 format!(
                     "Sync source camera: {:?} \"{}\" default={}",

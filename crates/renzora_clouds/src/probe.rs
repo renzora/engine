@@ -42,8 +42,8 @@ use bevy::render::{
     view::ViewTarget,
     Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
 };
-use renzora::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
-use renzora::RenderPhase;
+use renzora_render_api::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
+use renzora_scene_api::RenderPhase;
 
 use crate::material::{CloudMaterial, CloudsUniform};
 
@@ -93,7 +93,7 @@ pub(crate) fn finish(app: &mut App) {
     let shader = app
         .world_mut()
         .resource_mut::<Assets<Shader>>()
-        .add(renzora::shader_source::shader(probe_source(), "renzora_clouds/probe.wgsl"));
+        .add(renzora_shader_api::shader_source::shader(probe_source(), "renzora_clouds/probe.wgsl"));
     let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
         return;
     };
@@ -155,7 +155,7 @@ fn sync_cloud_sky_probe(
             Option<&mut CloudSkyProbe>,
             Option<&mut EnvironmentMapLight>,
             Option<&mut GeneratedEnvironmentMapLight>,
-            Has<renzora::SolariLit>,
+            Has<renzora_render_api::SolariLit>,
         ),
         With<AtmosphereEnvironmentMapLight>,
     >,
@@ -498,7 +498,7 @@ mod tests {
     /// editor builds the pipeline, where a failure only logs.
     #[test]
     fn the_probe_shader_compiles() {
-        renzora::wgsl::check(&super::probe_source())
+        renzora_shader_api::wgsl::check(&super::probe_source())
             .unwrap_or_else(|err| panic!("cloud probe: {err}"));
     }
 }

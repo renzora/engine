@@ -37,16 +37,16 @@ impl Plugin for SettingsPlugin {
         // persisted value even if the `renzora_autosave` plugin (its real owner)
         // isn't present. `insert_resource` from that plugin wins over this when
         // it is.
-        app.insert_resource(renzora::load_autosave());
+        app.insert_resource(renzora_project_api::load_autosave());
         // Seed the shared log-buffer cap from the persisted pref up front, so
         // logs emitted during startup (before `sync_console_log_limit` first
         // runs) are already bounded by the user's chosen limit.
-        renzora::core::console_log::set_max_log_entries(renzora::load_console_log_limit());
+        renzora_log_api::set_max_log_entries(renzora_project_api::load_console_log_limit());
         app.add_systems(
             Update,
             (
                 toggle_on_request
-                    .run_if(resource_exists::<renzora::core::ToggleSettingsRequested>)
+                    .run_if(resource_exists::<renzora_project_api::ToggleSettingsRequested>)
                     .before(overlay::manage_overlay),
                 // Exclusive, so a sync point for the whole schedule even when it
                 // returns at once. It has work only while the page is wanted or
@@ -120,15 +120,13 @@ impl Plugin for SettingsPlugin {
 }
 
 /// The Settings shortcut (Ctrl+,) and anything else that asks for the page by
-/// inserting [`renzora::core::ToggleSettingsRequested`]. Nothing read that
+/// inserting [`renzora_project_api::ToggleSettingsRequested`]. Nothing read that
 /// request once the old overlay was removed, so the shortcut did nothing; the
 /// gear button worked only because it flips `show_settings` itself.
 fn toggle_on_request(
     mut commands: Commands,
     mut settings: ResMut<renzora_editor_framework::EditorSettings>,
 ) {
-    commands.remove_resource::<renzora::core::ToggleSettingsRequested>();
+    commands.remove_resource::<renzora_project_api::ToggleSettingsRequested>();
     settings.show_settings = !settings.show_settings;
 }
-
-renzora::add!(SettingsPlugin, Editor);

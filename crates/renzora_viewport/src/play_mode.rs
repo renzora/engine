@@ -8,7 +8,7 @@
 //! flags on `PlayModeState` remain the way the Play button and shortcuts ask.
 
 use bevy::prelude::*;
-use renzora::core::PlayModeState;
+use renzora_project_api::PlayModeState;
 
 use crate::external_runtime::{
     self, find_runtime_binary, replace_child, spawn_runtime, ExternalRuntime,
@@ -28,7 +28,7 @@ pub fn play_request_pending(play: Option<Res<PlayModeState>>) -> bool {
 /// press of Play, or a shortcut that only knows "play", from starting a
 /// second instance beside the first.
 pub fn handle_play_mode_transitions(world: &mut World) {
-    use renzora::core::console_log::*;
+    use renzora_log_api::*;
 
     let Some(mut play_mode) = world.get_resource_mut::<PlayModeState>() else {
         return;
@@ -61,7 +61,7 @@ pub fn handle_play_mode_transitions(world: &mut World) {
         return;
     };
     let Some(project_path) = world
-        .get_resource::<renzora::CurrentProject>()
+        .get_resource::<renzora_project_api::CurrentProject>()
         .map(|p| p.path.clone())
     else {
         console_error("PlayMode", "Play failed: no project is open");
@@ -70,7 +70,7 @@ pub fn handle_play_mode_transitions(world: &mut World) {
 
     // The game reads the scene from disk, so unsaved edits would otherwise be
     // invisible to it.
-    world.trigger(renzora::core::SaveCurrentScene);
+    world.trigger(renzora_shell_api::SaveCurrentScene);
 
     console_info(
         "PlayMode",
@@ -81,10 +81,10 @@ pub fn handle_play_mode_transitions(world: &mut World) {
         ),
     );
     let embed_parent = crate::game_panel::embed_parent(world);
-    let live_link = world.get_resource::<renzora::LiveLinkEndpoint>().cloned();
+    let live_link = world.get_resource::<renzora_project_api::LiveLinkEndpoint>().cloned();
     // The editor's own profiling key, so the companion can profile the game.
     let profiling_key = world
-        .get_resource::<renzora::profiling::ProfilingAccess>()
+        .get_resource::<renzora_diagnostics_api::profiling::ProfilingAccess>()
         .map(|a| a.key.clone());
     match spawn_runtime(
         &binary,

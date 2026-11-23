@@ -80,8 +80,8 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<rename::HierRename>();
     app.init_resource::<scene_drop::ArmedHierSceneDrop>();
     app.init_resource::<asset_drop::ArmedHierAssetDrop>();
-    app.init_resource::<renzora::core::viewport_types::DropCursorRequest>();
-    app.init_resource::<renzora::core::ArrowKeysClaimed>();
+    app.init_resource::<renzora_viewport_api::DropCursorRequest>();
+    app.init_resource::<renzora_project_api::ArrowKeysClaimed>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {
         let root = commands
@@ -105,7 +105,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             commands,
             fonts,
             "plus",
-            &renzora::lang::t("hierarchy.add_entity"),
+            &renzora_lang_api::t("hierarchy.add_entity"),
             |w| w.get_resource::<HierCompact>().is_some_and(|c| c.0),
         );
         commands
@@ -116,9 +116,9 @@ pub fn register_native_hierarchy(app: &mut App) {
         // overpromises. Say what it does.
         renzora_ember::reactive::tracked::bind_text(commands, add_label, |w| {
             if crate::state::ui_scoped(w.untracked()) {
-                renzora::lang::t_or("hierarchy.new_canvas", "New Canvas")
+                renzora_lang_api::t_or("hierarchy.new_canvas", "New Canvas")
             } else {
-                renzora::lang::t("hierarchy.add_entity")
+                renzora_lang_api::t("hierarchy.add_entity")
             }
         });
         let search = filter::build_search_box(commands, fonts);

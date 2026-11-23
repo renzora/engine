@@ -32,7 +32,7 @@ const BUNDLES: &[(&str, &str, &str)] = &[
     ("renzora_editor_app", "renzora-editor", "renzora-editor"),
 ];
 
-/// `cargo renzora wasm [--no-opt]`.
+/// `cargo renzora wasm [--no-opt] [--no-serve]`.
 ///
 /// `--no-opt` skips the `wasm-opt -Oz` pass. That pass is the slowest step in
 /// the whole web build by a wide margin — minutes on a 150–200 MB module, longer
@@ -43,24 +43,41 @@ const BUNDLES: &[(&str, &str, &str)] = &[
 ///
 /// Skipping it also means binaryen is never fetched, which is the difference
 /// between this command working offline and not.
+///
+/// Once staged, the bundles are served on localhost and the editor opens in
+/// the default browser, the way plain `cargo renzora` launches the desktop
+/// editor: a module script will not load from `file://`, and "now start a
+/// Python web server" was a step nobody would guess. `--no-serve` stops after
+/// staging, for building the web export template without opening anything.
 pub fn build_and_stage(repo: &Path, args: &[String]) -> ExitCode {
     let skip_opt = args.iter().any(|a| a == "--no-opt" || a == "--skip-opt");
+    let serve = !args.iter().any(|a| a == "--no-serve");
     if let Some(bad) = args
         .iter()
-        .find(|a| !matches!(a.as_str(), "--no-opt" | "--skip-opt"))
+        .find(|a| !matches!(a.as_str(), "--no-opt" | "--skip-opt" | "--no-serve"))
     {
         // Fail rather than ignore: a mistyped `--no-optimize` that silently ran
         // the slow pass anyway would be maddening to diagnose.
-        eprintln!("[xtask] unknown argument '{bad}' (expected: --no-opt)");
+        eprintln!("[xtask] unknown argument '{bad}' (expected: --no-opt, --no-serve)");
         return ExitCode::from(2);
     }
 
+    // Installed rather than instructed, like the wasm-bindgen CLI below: the
+    // command should work on a fresh checkout with nothing read first.
     if !target_installed() {
-        eprintln!(
-            "[xtask] the wasm32-unknown-unknown target is not installed\n\
-             [xtask]   rustup target add wasm32-unknown-unknown"
-        );
-        return ExitCode::from(1);
+        println!("[xtask] installing the wasm32-unknown-unknown target");
+        let added = Command::new("rustup")
+            .args(["target", "add", "wasm32-unknown-unknown"])
+            .current_dir(repo)
+            .status()
+            .is_ok_and(|s| s.success());
+        if !added {
+            eprintln!(
+                "[xtask] could not install the wasm32-unknown-unknown target\n\
+                 [xtask]   rustup target add wasm32-unknown-unknown"
+            );
+            return ExitCode::from(1);
+        }
     }
     // Checked up front rather than after two long builds: without it there is
     // no bundle at the end, only a raw .wasm no browser can load.
@@ -106,12 +123,10 @@ pub fn build_and_stage(repo: &Path, args: &[String]) -> ExitCode {
     if !skip_opt {
         println!("[xtask] (iterating? `cargo renzora wasm --no-opt` skips the slow wasm-opt pass)");
     }
-    println!(
-        "[xtask] serve it over HTTP — a module script will not load from file://\n\
-         [xtask]   python -m http.server -d {}",
-        out.display()
-    );
-    ExitCode::SUCCESS
+    if !serve {
+        return ExitCode::SUCCESS;
+    }
+    crate::web_serve::serve(&out, "renzora-editor.html")
 }
 
 fn build_one(repo: &Path, package: &str, target_dir: &str) -> bool {

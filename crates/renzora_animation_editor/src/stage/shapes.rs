@@ -219,7 +219,7 @@ pub(super) fn register(app: &mut App) {
             .after(super::view::StageInputSet)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor))
             .run_if(super::stage_mounted)
-            .run_if(renzora::not_in_play_mode),
+            .run_if(renzora_project_api::not_in_play_mode),
     );
 }
 
@@ -662,7 +662,7 @@ fn sculpt_input(world: &mut World) {
             k.just_pressed(KeyCode::BracketRight),
         )
     };
-    let typing = world.get_resource::<renzora::InputFocusState>().is_some_and(|f| f.ui_wants_keyboard);
+    let typing = world.get_resource::<renzora_project_api::InputFocusState>().is_some_and(|f| f.ui_wants_keyboard);
     let navigating = world.resource::<StageNav>().dragging.is_some();
     if over && !typing && (smaller || bigger) {
         let mut edit = world.resource_mut::<ShapeEdit>();

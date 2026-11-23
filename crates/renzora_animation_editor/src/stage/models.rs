@@ -67,7 +67,7 @@ const SKIP: [&str; 4] = ["dist", "build", "exports", "terrain_clusters"];
 /// 79 ms in a project with a model library, the worst frame a profile of the
 /// editor showed. The index is kept current by the watcher, so reading it is
 /// a filter over a map and nobody walks a folder.
-fn read_models(mut models: ResMut<ProjectModels>, index: Option<Res<renzora::core::ProjectIndex>>) {
+fn read_models(mut models: ResMut<ProjectModels>, index: Option<Res<renzora_platform_api::ProjectIndex>>) {
     let Some(index) = index else { return };
     if models.revision == Some(index.revision()) {
         return;
@@ -94,7 +94,7 @@ fn read_models(mut models: ResMut<ProjectModels>, index: Option<Res<renzora::cor
 /// Every model in the scene, then every model file with no copy in it.
 pub(crate) fn choices(world: &World) -> Vec<Choice> {
     let mut instances: Vec<(Entity, String, String)> = Vec::new();
-    if let Some(mut q) = world.try_query_filtered::<(Entity, &renzora::core::MeshInstanceData, Option<&Name>), Without<renzora::core::HideInHierarchy>>() {
+    if let Some(mut q) = world.try_query_filtered::<(Entity, &renzora_scene_api::MeshInstanceData, Option<&Name>), Without<renzora_scene_api::HideInHierarchy>>() {
         for (e, data, name) in q.iter(world) {
             let Some(path) = data.model_path.clone() else { continue };
             instances.push((e, name.map(|n| n.as_str().to_string()).unwrap_or_else(|| format!("{e}")), path.replace('\\', "/")));
@@ -145,9 +145,9 @@ impl renzora_undo::UndoCommand for AddModel {
     fn execute(&mut self, world: &mut World) {
         let stem = std::path::Path::new(&self.rel).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "model".into());
         let e = world
-            .spawn((Transform::default(), Visibility::default(), renzora::core::MeshInstanceData { model_path: Some(self.rel.clone()) }))
+            .spawn((Transform::default(), Visibility::default(), renzora_scene_api::MeshInstanceData { model_path: Some(self.rel.clone()) }))
             .id();
-        let name = renzora::unique_entity_name(world, &stem, e);
+        let name = renzora_scene_api::unique_entity_name(world, &stem, e);
         world.entity_mut(e).insert(Name::new(name));
         self.entity = e;
     }

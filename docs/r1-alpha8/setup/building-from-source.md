@@ -15,7 +15,7 @@ Renzora is a single Bevy 0.20 Cargo workspace with exactly **one binary**: `renz
 - Bundle present beside the exe → the binary launches as the **editor**.
 - Delete that one file (or pass `--no-editor`) → the same binary is the **shipped game**.
 
-> Two things share the name `renzora`. The crate in *this* workspace (`crates/renzora`) is the SDK **library** (`crate-type = ["dylib", "rlib"]`) — installing it produces nothing runnable. The **`renzora` CLI** (`cargo install renzora`, a separate published crate) scaffolds projects and drives the Docker image below; most people start with it (`renzora new` → `renzora run`). This page covers building a checkout you already have with that same CLI.
+> Two things share the name `renzora`. The crate in *this* workspace (`crates/shared/renzora`) is the SDK **library** (`crate-type = ["dylib", "rlib"]`) — installing it produces nothing runnable. The **`renzora` CLI** (`cargo install renzora`, a separate published crate) scaffolds projects and drives the Docker image below; most people start with it (`renzora new` → `renzora run`). This page covers building a checkout you already have with that same CLI.
 
 ## Prerequisites
 
@@ -56,10 +56,27 @@ The first build takes several minutes (Bevy is large); subsequent builds are inc
 | `cargo renzora` | Build the workspace, stage `dist/<platform>/`, and **launch** the editor |
 | `cargo renzora dist` | Same build + stage, but **don't** launch — just produce the folder |
 | `cargo renzora -- --no-editor` | Build + stage + launch in shipped-game mode (args after the binary are forwarded) |
+| `cargo renzora wasm` | Build the **web** editor and runtime into `dist/web-wasm32/`, serve them on localhost and open the editor in your browser |
+| `cargo renzora wasm --no-opt` | The same, skipping the slow size pass: the quick loop for testing a web change |
+| `cargo renzora wasm --no-serve` | Build and stage the web bundles only, for example to make the web export template |
 
-**Why not just `cargo run`?** A bare `cargo run` compiles everything but leaves the shared images (`bevy_dylib`, `renzora_dylib`, `renzora_ember_dylib`) and the editor image flat in `target/dist/`, while the binary looks for them beside itself. `cargo renzora` adds the one missing step — staging the artifacts into the runnable `dist/` layout, exactly like the container's `build-all.sh` — and cuts the plugin SDK at the same time. The staging lives in the `xtask/` crate and runs on plain `cargo` (the `renzora` cargo alias points at it).
+### Testing the web version
 
-**What native does *not* do:** cross-compile. `cargo renzora` only ever produces artifacts for the machine it runs on. For Windows/macOS/Linux/wasm/mobile builds from one host, use Docker (`renzora build`, below).
+`cargo renzora wasm` sets everything up on its own: it installs the
+`wasm32-unknown-unknown` target and the matching `wasm-bindgen` CLI if they are
+missing, builds both bundles, then serves `dist/web-wasm32/` at
+`http://localhost:8000` (or the next free port) and opens
+`renzora-editor.html` in your default browser. Use a browser with WebGPU, such
+as Chrome or Edge. Press **Ctrl+C** to stop the server.
+
+The server tells the browser not to cache anything, so after a rebuild a plain
+reload runs the new build. The web build uses its own target folders
+(`target/wasm` and `target/wasm-editor`), each a full build for the web, so the
+first run takes a while and needs plenty of free disk.
+
+**Why not just `cargo run`?** A bare `cargo run` compiles everything but leaves the shared images (`bevy_dylib`, `renzora_dylib`) and the editor image flat in `target/dist/`, while the binary looks for them beside itself. `cargo renzora` adds the one missing step — staging the artifacts into the runnable `dist/` layout, exactly like the container's `build-all.sh` — and cuts the plugin SDK at the same time. The staging lives in the `xtask/` crate and runs on plain `cargo` (the `renzora` cargo alias points at it).
+
+**What native does *not* do:** cross-compile, with one exception. `cargo renzora` produces artifacts for the machine it runs on, plus the web build (`cargo renzora wasm`), which runs in your own browser. For Windows/macOS/Linux/mobile builds from one host, use Docker (`renzora build`, below).
 
 ### The `renzora` CLI — the build interface
 
@@ -96,7 +113,7 @@ A `--server`/`--host` launch is never an editor session even if the bundle dll i
 The host binary, the dlopened editor image, and every installed plugin must share **one compiled copy** of Bevy and of the `renzora` contract crate so their `TypeId`s match across the dlopen boundary. The root manifest's default `dynamic_linking` feature arranges this:
 
 - `bevy` ships as a single `bevy_dylib-<hash>` shared library.
-- `renzora` and `renzora_ember` ship through `renzora_dylib` and `renzora_ember_dylib`, so their process-global state (the translation table, the Console buffers, the theme palette) is singular.
+- `renzora` and `renzora_ember` ship together through `renzora_dylib`, so their process-global state (the translation table, the Console buffers, the theme palette) is singular.
 - In-workspace plugins are plain **rlibs** statically linked into the binary; installed plugins are `dylib`s compiled from source against the staged SDK and loaded from `plugins/`.
 
 Because the binary links these by name, the `.dll`/`.so`/`.dylib` files must travel **beside** the binary (Linux/macOS use an rpath of `$ORIGIN` / `@loader_path`; on Windows they sit in the same folder).
@@ -160,7 +177,7 @@ renzora add cool_fx --editor     # editor-only plugin (Editor scope, optional de
 renzora remove cool_fx           # delete the crate and unregister it
 ```
 
-Both scaffold an **in-workspace** plugin: an rlib baked into the host binary, wired in by the generator that reads its `add!` line. To build an *installable* plugin instead, see [Native Plugins](/docs/r1-alpha8/extending/native-plugins) — those need no engine checkout and live outside this repository.
+Both scaffold an **in-workspace** plugin: an rlib baked into the host binary, wired in by the generator that reads its `[[package.metadata.renzora.plugin]]` table. To build an *installable* plugin instead, see [Native Plugins](/docs/r1-alpha8/extending/native-plugins) — those need no engine checkout and live outside this repository.
 
 ### Compressing binaries with UPX
 
@@ -191,5 +208,5 @@ A few things that live outside this workspace, or that older docs got wrong:
 
 - [Project Structure](/docs/r1-alpha8/setup/project-structure) — how the workspace and its ~187 crates are laid out
 - [Architecture](/docs/r1-alpha8/setup/architecture) — the one-binary, editor-as-removable-cdylib model in depth
-- [Building Plugins](/docs/r1-alpha8/extending/plugins) — extend the engine with `renzora::add!`
+- [Building Plugins](/docs/r1-alpha8/extending/plugins) — extend the engine with a `[[package.metadata.renzora.plugin]]` table
 - [Building Export Templates](/docs/r1-alpha8/packaging/export-templates) — produce shippable game builds

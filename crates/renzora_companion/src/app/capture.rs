@@ -36,7 +36,7 @@ pub(crate) struct Capture {
     pub probes: Vec<renzora_profiler::wire::ProbeInfo>,
     /// Each watched probe's latest report, with a hash of its text so the
     /// Debug screen redraws a card only when it changed.
-    pub reports: HashMap<String, (renzora::probes::ProbeReport, u64)>,
+    pub reports: HashMap<String, (renzora_diagnostics_api::probes::ProbeReport, u64)>,
 }
 
 pub(crate) fn build(app: &mut App) {
@@ -79,7 +79,7 @@ impl Capture {
                 if self.reports.get(&id).is_some_and(|(_, h)| *h == hash) {
                     return;
                 }
-                match serde_json::from_str::<renzora::probes::ProbeReport>(&json) {
+                match serde_json::from_str::<renzora_diagnostics_api::probes::ProbeReport>(&json) {
                     Ok(report) => {
                         self.reports.insert(id, (report, hash));
                     }
@@ -117,7 +117,7 @@ impl Capture {
                 version: renzora_profiler::wire::VERSION,
                 name: self.source.clone(),
                 platform: String::new(),
-                build: renzora::version::ENGINE_VERSION.to_string(),
+                build: renzora_platform_api::version::ENGINE_VERSION.to_string(),
             }
             .encode(),
         )?;

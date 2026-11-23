@@ -32,7 +32,8 @@ use bevy::prelude::*;
 use bevy::ui::UiTransform;
 use renzora_ember::UiCursor;
 
-use renzora::{EditorSelection, SplashState};
+use renzora_editor_api::EditorSelection;
+use renzora_project_api::SplashState;
 use renzora_ember::UiInteraction;
 
 use crate::game_ui::geometry::{is_descendant_of, topmost_at};
@@ -59,7 +60,7 @@ pub(crate) fn register(app: &mut App) {
             // Play mode runs *inside* the editor (SplashState stays `Editor`), so
             // without this guard drag-to-move/resize/rotate would keep editing the
             // live UI layout while the user is playtesting. Mirrors the 3D gizmo.
-            .run_if(renzora::not_in_play_mode),
+            .run_if(renzora_project_api::not_in_play_mode),
     );
 }
 

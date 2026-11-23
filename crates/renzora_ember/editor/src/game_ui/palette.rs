@@ -24,7 +24,8 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::{EditorCommands, EditorSelection, SplashState};
+use renzora_editor_api::{EditorCommands, EditorSelection};
+use renzora_project_api::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::markup::provenance::MarkupSource;
@@ -245,7 +246,7 @@ struct PaletteGrid;
 struct PaletteTile(&'static str);
 
 pub(crate) fn register(app: &mut App) {
-    use renzora::core::RenzoraShellExt;
+    use renzora_shell_api::RenzoraShellExt;
     app.init_resource::<PaletteState>();
     app.init_resource::<PalettePress>();
     app.init_resource::<PaletteDrag>();

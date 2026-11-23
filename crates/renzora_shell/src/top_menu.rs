@@ -48,7 +48,7 @@ pub(crate) fn register(app: &mut App) {
 struct BrandMarkBtn;
 
 /// The top bar's "Update available" chip. Shown only while
-/// [`renzora::core::UpdateAvailable`] is present; opens the Software Update
+/// [`renzora_project_api::UpdateAvailable`] is present; opens the Software Update
 /// overlay.
 #[derive(Component)]
 struct UpdateChipBtn;
@@ -114,7 +114,7 @@ pub(crate) fn hamburger_menu_item(commands: &mut Commands, font: &bevy::text::Fo
     commands.entity(icon).insert(PASS_THROUGH);
     let label = commands
         .spawn((
-            Text::new(renzora::lang::t_or("menu.label", "Menu")),
+            Text::new(renzora_lang_api::t_or("menu.label", "Menu")),
             ui_font(font, 11.0),
             TextColor(rgb(text_muted())),
             PASS_THROUGH,
@@ -267,7 +267,7 @@ pub(crate) fn build_update_chip(commands: &mut Commands, font: &bevy::text::Font
         ))
         .id();
     renzora_ember::reactive::tracked::bind_display(commands, chip, |w| {
-        w.get_resource::<renzora::core::UpdateAvailable>().is_some()
+        w.get_resource::<renzora_project_api::UpdateAvailable>().is_some()
     });
     renzora_ember::reactive::tracked::bind_bg(commands, chip, move |w| {
         match w.get::<UiInteraction>(chip) {
@@ -292,8 +292,8 @@ pub(crate) fn build_update_chip(commands: &mut Commands, font: &bevy::text::Font
     // the version you're *running*, not one you could move to. The overlay the
     // chip opens spells out which release it is.
     renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
-        match w.get_resource::<renzora::core::UpdateAvailable>() {
-            Some(_) => renzora::lang::t("menu.help.update_new"),
+        match w.get_resource::<renzora_project_api::UpdateAvailable>() {
+            Some(_) => renzora_lang_api::t("menu.help.update_new"),
             None => String::new(),
         }
     });
@@ -307,7 +307,7 @@ fn update_chip_click(
     mut commands: Commands,
 ) {
     if q.iter().any(|i| *i == UiInteraction::Pressed) {
-        commands.insert_resource(renzora::core::UpdateRequested);
+        commands.insert_resource(renzora_project_api::UpdateRequested);
     }
 }
 
@@ -363,13 +363,13 @@ fn spawn_top_menu(
 
 /// The signed-in username, if any — read per menu-open so the hamburger's
 /// account row shows the current name without a reactive binding.
-fn account_name(bridge: &Option<Res<renzora::core::AuthBridge>>) -> Option<String> {
+fn account_name(bridge: &Option<Res<renzora_platform_api::AuthBridge>>) -> Option<String> {
     bridge.as_ref().and_then(|b| b.signed_in_username.clone())
 }
 
 /// The account's profile picture, read the same way and at the same moment as
-/// the name. The shell never fetches it — see [`renzora::core::AuthBridge`].
-fn account_avatar(bridge: &Option<Res<renzora::core::AuthBridge>>) -> Option<Handle<Image>> {
+/// the name. The shell never fetches it — see [`renzora_platform_api::AuthBridge`].
+fn account_avatar(bridge: &Option<Res<renzora_platform_api::AuthBridge>>) -> Option<Handle<Image>> {
     bridge.as_ref().and_then(|b| b.avatar.clone())
 }
 
@@ -387,9 +387,9 @@ fn top_menu_open(
     >,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
-    bridge: Option<Res<renzora::core::AuthBridge>>,
-    update: Option<Res<renzora::core::UpdateAvailable>>,
-    recents: Option<Res<renzora::RecentProjects>>,
+    bridge: Option<Res<renzora_platform_api::AuthBridge>>,
+    update: Option<Res<renzora_project_api::UpdateAvailable>>,
+    recents: Option<Res<renzora_project_api::RecentProjects>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -436,9 +436,9 @@ fn top_menu_hover(
     )>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
-    bridge: Option<Res<renzora::core::AuthBridge>>,
-    update: Option<Res<renzora::core::UpdateAvailable>>,
-    recents: Option<Res<renzora::RecentProjects>>,
+    bridge: Option<Res<renzora_platform_api::AuthBridge>>,
+    update: Option<Res<renzora_project_api::UpdateAvailable>>,
+    recents: Option<Res<renzora_project_api::RecentProjects>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -618,8 +618,8 @@ fn menu_account_header(
     let (title, subtitle) = match account {
         Some(name) => (name.to_string(), "renzora.com account".to_string()),
         None => (
-            renzora::lang::t_or("auth.signed_out", "Not signed in"),
-            renzora::lang::t_or("auth.signed_out_hint", "Sign in to buy and publish").to_string(),
+            renzora_lang_api::t_or("auth.signed_out", "Not signed in"),
+            renzora_lang_api::t_or("auth.signed_out_hint", "Sign in to buy and publish").to_string(),
         ),
     };
     let t = commands
@@ -684,7 +684,7 @@ fn panel_submenu_tinted(
     spacious(commands, row)
 }
 
-/// File > Recent Projects: one row per entry in [`renzora::RecentProjects`],
+/// File > Recent Projects: one row per entry in [`renzora_project_api::RecentProjects`],
 /// each opening that project without going near a file dialog.
 ///
 /// The dashboard has had this list since there was a dashboard, but it is only
@@ -709,7 +709,7 @@ fn recent_projects_submenu(
             commands,
             fonts,
             "folder-dashed",
-            &renzora::lang::t("splash.no_recent"),
+            &renzora_lang_api::t("splash.no_recent"),
             text_muted(),
             text_muted(),
             |_| {},
@@ -737,7 +737,7 @@ fn recent_projects_submenu(
         commands,
         fonts,
         "clock-counter-clockwise",
-        &renzora::lang::t("splash.recent"),
+        &renzora_lang_api::t("splash.recent"),
         hue::OPEN,
         kids,
     )
@@ -802,10 +802,10 @@ fn build_menu_items(
             rows.push(menu_sep(commands));
 
             for (icon, label, sub) in [
-                ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
-                ("pencil-simple", renzora::lang::t("menu.edit"), TopMenuKind::Edit),
-                ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
-                ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
+                ("file", renzora_lang_api::t("menu.file"), TopMenuKind::File),
+                ("pencil-simple", renzora_lang_api::t("menu.edit"), TopMenuKind::Edit),
+                ("eye", renzora_lang_api::t("menu.view"), TopMenuKind::View),
+                ("question", renzora_lang_api::t("menu.help"), TopMenuKind::Help),
             ] {
                 let kids = build_menu_items(commands, fonts, sub, ctx);
                 rows.push(panel_submenu(commands, fonts, icon, &label, kids));
@@ -819,20 +819,20 @@ fn build_menu_items(
             // Import is a submenu because no OS dialog picks files and folders
             // in one pass — the same reason the Assets panel's Import button
             // opens a two-row menu instead of a picker. See
-            // `renzora::core::ImportPick`.
+            // `renzora_project_api::ImportPick`.
             let import_kids = vec![
-                tinted(commands, fonts, "file", &renzora::lang::t("assets.import_files"), hue::OPEN, |w| {
-                    w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Files));
+                tinted(commands, fonts, "file", &renzora_lang_api::t("assets.import_files"), hue::OPEN, |w| {
+                    w.insert_resource(renzora_project_api::ImportRequested(renzora_project_api::ImportPick::Files));
                 }),
-                tinted(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), hue::FOLDER, |w| {
-                    w.insert_resource(renzora::core::ImportRequested(renzora::core::ImportPick::Folder));
+                tinted(commands, fonts, "folder-open", &renzora_lang_api::t("assets.import_folder"), hue::FOLDER, |w| {
+                    w.insert_resource(renzora_project_api::ImportRequested(renzora_project_api::ImportPick::Folder));
                 }),
             ];
             rows.push(panel_submenu_tinted(
                 commands,
                 fonts,
                 "download-simple",
-                &renzora::lang::t("assets.import"),
+                &renzora_lang_api::t("assets.import"),
                 hue::OPEN,
                 import_kids,
             ));
@@ -840,10 +840,10 @@ fn build_menu_items(
                 commands,
                 fonts,
                 "package",
-                &renzora::lang::t("menu.file.export_project"),
+                &renzora_lang_api::t("menu.file.export_project"),
                 hue::EXPORT,
                 |w| {
-                    w.insert_resource(renzora::core::ExportRequested);
+                    w.insert_resource(renzora_project_api::ExportRequested);
                 },
             );
             rows.push(spacious(commands, export));
@@ -851,7 +851,7 @@ fn build_menu_items(
                 commands,
                 fonts,
                 "gear",
-                &renzora::lang::t("common.settings"),
+                &renzora_lang_api::t("common.settings"),
                 |w| {
                     if let Some(mut s) =
                         w.get_resource_mut::<renzora_editor_framework::EditorSettings>()
@@ -867,12 +867,12 @@ fn build_menu_items(
             // a session rather than start a task.
             rows.push(menu_sep(commands));
             if ctx.account.is_some() {
-                let library = tinted(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), hue::MARKET, |w| MenuCommand::MyLibrary.run(w));
+                let library = tinted(commands, fonts, "books", &renzora_lang_api::t("menu.account.my_library"), hue::MARKET, |w| MenuCommand::MyLibrary.run(w));
                 rows.push(spacious(commands, library));
-                let out = menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| MenuCommand::SignOut.run(w));
+                let out = menu_item(commands, fonts, "sign-out", &renzora_lang_api::t("auth.sign_out"), |w| MenuCommand::SignOut.run(w));
                 rows.push(spacious(commands, out));
             } else {
-                let sign_in = menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| MenuCommand::SignIn.run(w));
+                let sign_in = menu_item(commands, fonts, "sign-in", &renzora_lang_api::t("auth.sign_in"), |w| MenuCommand::SignIn.run(w));
                 rows.push(spacious(commands, sign_in));
             }
             rows
@@ -883,51 +883,51 @@ fn build_menu_items(
             // doing it: it closes every open document, and doing that on one
             // click with unsaved edits in them is the loss the window's × has
             // always prompted about.
-            tinted(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), hue::CREATE, |w| MenuCommand::NewProject.run(w)),
-            tinted(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), hue::OPEN, |w| MenuCommand::OpenProject.run(w)),
+            tinted(commands, fonts, "folder-plus", &renzora_lang_api::t("menu.file.new_project"), hue::CREATE, |w| MenuCommand::NewProject.run(w)),
+            tinted(commands, fonts, "folder-open", &renzora_lang_api::t("menu.file.open_project"), hue::OPEN, |w| MenuCommand::OpenProject.run(w)),
             recent_projects_submenu(commands, fonts, ctx.recents),
             menu_sep(commands),
-            tinted(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), hue::CREATE, |w| MenuCommand::NewScene.run(w)),
-            tinted(commands, fonts, "file", &renzora::lang::t("menu.file.open_scene"), hue::OPEN, |w| MenuCommand::OpenScene.run(w)),
+            tinted(commands, fonts, "file-plus", &renzora_lang_api::t("menu.file.new_scene"), hue::CREATE, |w| MenuCommand::NewScene.run(w)),
+            tinted(commands, fonts, "file", &renzora_lang_api::t("menu.file.open_scene"), hue::OPEN, |w| MenuCommand::OpenScene.run(w)),
             menu_sep(commands),
-            tinted(commands, fonts, "floppy-disk", &renzora::lang::t("common.save"), hue::SAVE, |w| MenuCommand::Save.run(w)),
-            tinted(commands, fonts, "floppy-disk-back", &renzora::lang::t_or("menu.file.save_as", "Save As…"), hue::SAVE, |w| MenuCommand::SaveAs.run(w)),
+            tinted(commands, fonts, "floppy-disk", &renzora_lang_api::t("common.save"), hue::SAVE, |w| MenuCommand::Save.run(w)),
+            tinted(commands, fonts, "floppy-disk-back", &renzora_lang_api::t_or("menu.file.save_as", "Save As…"), hue::SAVE, |w| MenuCommand::SaveAs.run(w)),
             menu_sep(commands),
             // Same request the asset panel's Import button fires; renzora_import_ui
             // picks it up and opens the matching picker, then the import overlay.
             // No ImportTargetDir here, so assets land in the importer's default
             // folder. Two rows because no OS dialog picks files and folders at
-            // once — see `renzora::core::ImportPick`.
-            tinted(commands, fonts, "file", &renzora::lang::t("assets.import_files"), hue::OPEN, |w| MenuCommand::ImportFiles.run(w)),
-            tinted(commands, fonts, "folder-open", &renzora::lang::t("assets.import_folder"), hue::FOLDER, |w| MenuCommand::ImportFolder.run(w)),
+            // once — see `renzora_project_api::ImportPick`.
+            tinted(commands, fonts, "file", &renzora_lang_api::t("assets.import_files"), hue::OPEN, |w| MenuCommand::ImportFiles.run(w)),
+            tinted(commands, fonts, "folder-open", &renzora_lang_api::t("assets.import_folder"), hue::FOLDER, |w| MenuCommand::ImportFolder.run(w)),
             menu_sep(commands),
-            tinted(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), hue::MARKET, |w| MenuCommand::InstallPlugin.run(w)),
+            tinted(commands, fonts, "plug", &renzora_lang_api::t_or("menu.file.install_plugin", "Install Plugin…"), hue::MARKET, |w| MenuCommand::InstallPlugin.run(w)),
         ],
         TopMenuKind::Edit => vec![
-            menu_item(commands, fonts, "arrow-u-up-left", &renzora::lang::t("common.undo"), |w| MenuCommand::Undo.run(w)),
-            menu_item(commands, fonts, "arrow-u-up-right", &renzora::lang::t("common.redo"), |w| MenuCommand::Redo.run(w)),
+            menu_item(commands, fonts, "arrow-u-up-left", &renzora_lang_api::t("common.undo"), |w| MenuCommand::Undo.run(w)),
+            menu_item(commands, fonts, "arrow-u-up-right", &renzora_lang_api::t("common.redo"), |w| MenuCommand::Redo.run(w)),
         ],
         TopMenuKind::View => vec![
-            menu_item(commands, fonts, "magnifying-glass-plus", &renzora::lang::t_or("menu.view.zoom_in", "Zoom In"), |w| MenuCommand::ZoomIn.run(w)),
-            menu_item(commands, fonts, "magnifying-glass-minus", &renzora::lang::t_or("menu.view.zoom_out", "Zoom Out"), |w| MenuCommand::ZoomOut.run(w)),
-            menu_item(commands, fonts, "magnifying-glass", &renzora::lang::t_or("menu.view.reset_zoom", "Reset Zoom"), |w| MenuCommand::ResetZoom.run(w)),
+            menu_item(commands, fonts, "magnifying-glass-plus", &renzora_lang_api::t_or("menu.view.zoom_in", "Zoom In"), |w| MenuCommand::ZoomIn.run(w)),
+            menu_item(commands, fonts, "magnifying-glass-minus", &renzora_lang_api::t_or("menu.view.zoom_out", "Zoom Out"), |w| MenuCommand::ZoomOut.run(w)),
+            menu_item(commands, fonts, "magnifying-glass", &renzora_lang_api::t_or("menu.view.reset_zoom", "Reset Zoom"), |w| MenuCommand::ResetZoom.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "corners-out", &renzora::lang::t_or("menu.view.fit_all", "Fit All"), |w| MenuCommand::FitAll.run(w)),
-            menu_item(commands, fonts, "eye", &renzora::lang::t_or("menu.view.isolation_mode", "Isolation Mode"), |w| MenuCommand::IsolationMode.run(w)),
+            menu_item(commands, fonts, "corners-out", &renzora_lang_api::t_or("menu.view.fit_all", "Fit All"), |w| MenuCommand::FitAll.run(w)),
+            menu_item(commands, fonts, "eye", &renzora_lang_api::t_or("menu.view.isolation_mode", "Isolation Mode"), |w| MenuCommand::IsolationMode.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "layout", &renzora::lang::t("menu.window.reset_layout"), |w| MenuCommand::ResetLayout.run(w)),
-            menu_item(commands, fonts, "browsers", &renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace"), |w| MenuCommand::ResetWorkspace.run(w)),
-            menu_item(commands, fonts, "rows", &renzora::lang::t_or("menu.view.reset_global_docks", "Reset Global Docks"), |w| MenuCommand::ResetGlobalDocks.run(w)),
+            menu_item(commands, fonts, "layout", &renzora_lang_api::t("menu.window.reset_layout"), |w| MenuCommand::ResetLayout.run(w)),
+            menu_item(commands, fonts, "browsers", &renzora_lang_api::t_or("menu.view.reset_workspace", "Reset Workspace"), |w| MenuCommand::ResetWorkspace.run(w)),
+            menu_item(commands, fonts, "rows", &renzora_lang_api::t_or("menu.view.reset_global_docks", "Reset Global Docks"), |w| MenuCommand::ResetGlobalDocks.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "arrow-counter-clockwise", &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"), |w| MenuCommand::ResetDefaults.run(w)),
+            menu_item(commands, fonts, "arrow-counter-clockwise", &renzora_lang_api::t_or("menu.view.reset_defaults", "Reset to Defaults"), |w| MenuCommand::ResetDefaults.run(w)),
         ],
         TopMenuKind::Help => vec![
-            menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| MenuCommand::Tutorial.run(w)),
+            menu_item(commands, fonts, "graduation-cap", &renzora_lang_api::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| MenuCommand::Tutorial.run(w)),
             menu_sep(commands),
-            menu_item(commands, fonts, "book-open", &renzora::lang::t("menu.help.documentation"), |w| MenuCommand::Documentation.run(w)),
-            menu_item(commands, fonts, "youtube-logo", &renzora::lang::t("menu.help.youtube"), |w| MenuCommand::YouTube.run(w)),
-            menu_item(commands, fonts, "discord-logo", &renzora::lang::t("menu.help.discord"), |w| MenuCommand::Discord.run(w)),
-            menu_item(commands, fonts, "github-logo", &renzora::lang::t_or("menu.help.github", "GitHub"), |w| MenuCommand::GitHub.run(w)),
+            menu_item(commands, fonts, "book-open", &renzora_lang_api::t("menu.help.documentation"), |w| MenuCommand::Documentation.run(w)),
+            menu_item(commands, fonts, "youtube-logo", &renzora_lang_api::t("menu.help.youtube"), |w| MenuCommand::YouTube.run(w)),
+            menu_item(commands, fonts, "discord-logo", &renzora_lang_api::t("menu.help.discord"), |w| MenuCommand::Discord.run(w)),
+            menu_item(commands, fonts, "github-logo", &renzora_lang_api::t_or("menu.help.github", "GitHub"), |w| MenuCommand::GitHub.run(w)),
             menu_sep(commands),
             // Names the pending version when there is one, so "am I out of
             // date?" is answered by the menu rather than by opening a dialog to
@@ -938,13 +938,13 @@ fn build_menu_items(
                 fonts,
                 "download-simple",
                 &match ctx.update_tag {
-                    Some(tag) => format!("{} {tag}", renzora::lang::t("menu.help.update_to")),
-                    None => renzora::lang::t("menu.help.check_updates"),
+                    Some(tag) => format!("{} {tag}", renzora_lang_api::t("menu.help.update_to")),
+                    None => renzora_lang_api::t("menu.help.check_updates"),
                 },
                 if ctx.update_tag.is_some() { hue::CREATE } else { text_muted() },
                 |w| MenuCommand::CheckUpdates.run(w),
             ),
-            menu_item(commands, fonts, "info", &renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine"), |w| MenuCommand::About.run(w)),
+            menu_item(commands, fonts, "info", &renzora_lang_api::t_or("menu.help.about_engine", "About Renzora Engine"), |w| MenuCommand::About.run(w)),
         ],
     }
 }
@@ -1120,7 +1120,7 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
     let (root, content) = renzora_ember::widgets::overlay_val(
         &mut commands,
         &fonts,
-        &renzora::lang::t_or("menu.view.reset_defaults", "Reset to Defaults"),
+        &renzora_lang_api::t_or("menu.view.reset_defaults", "Reset to Defaults"),
         Val::Px(480.0),
         Val::Auto,
         true,
@@ -1167,7 +1167,7 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
     commands.entity(badge).add_child(badge_icon);
     let warn_text = commands
         .spawn((
-            Text::new(renzora::lang::t_or(
+            Text::new(renzora_lang_api::t_or(
                 "menu.view.reset_defaults_warning",
                 "Choose what to reset. This cannot be undone.",
             )),
@@ -1190,8 +1190,8 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
             &mut commands,
             &fonts,
             "browsers",
-            &renzora::lang::t_or("menu.view.reset_opt_workspaces", "Workspaces and panels"),
-            &renzora::lang::t_or(
+            &renzora_lang_api::t_or("menu.view.reset_opt_workspaces", "Workspaces and panels"),
+            &renzora_lang_api::t_or(
                 "menu.view.reset_opt_workspaces_sub",
                 "Every workspace layout, the floating windows and the bottom panel",
             ),
@@ -1206,8 +1206,8 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
             &mut commands,
             &fonts,
             "sliders",
-            &renzora::lang::t_or("menu.view.reset_opt_settings", "Editor settings"),
-            &renzora::lang::t_or(
+            &renzora_lang_api::t_or("menu.view.reset_opt_settings", "Editor settings"),
+            &renzora_lang_api::t_or(
                 "menu.view.reset_opt_settings_sub",
                 "Everything in Settings, the theme back to Dark, including saved ones",
             ),
@@ -1222,8 +1222,8 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
             &mut commands,
             &fonts,
             "video-camera",
-            &renzora::lang::t_or("menu.view.reset_opt_viewport", "Viewport and camera"),
-            &renzora::lang::t_or(
+            &renzora_lang_api::t_or("menu.view.reset_opt_viewport", "Viewport and camera"),
+            &renzora_lang_api::t_or(
                 "menu.view.reset_opt_viewport_sub",
                 "Look, orbit, pan and zoom sensitivity, the grid, gizmos and snapping",
             ),
@@ -1238,8 +1238,8 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
             &mut commands,
             &fonts,
             "keyboard",
-            &renzora::lang::t_or("menu.view.reset_opt_keys", "Keyboard shortcuts"),
-            &renzora::lang::t_or(
+            &renzora_lang_api::t_or("menu.view.reset_opt_keys", "Keyboard shortcuts"),
+            &renzora_lang_api::t_or(
                 "menu.view.reset_opt_keys_sub",
                 "Every shortcut back to its shipped key",
             ),
@@ -1254,8 +1254,8 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
             &mut commands,
             &fonts,
             "graduation-cap",
-            &renzora::lang::t_or("menu.view.reset_opt_tutorial", "Tutorial progress"),
-            &renzora::lang::t_or(
+            &renzora_lang_api::t_or("menu.view.reset_opt_tutorial", "Tutorial progress"),
+            &renzora_lang_api::t_or(
                 "menu.view.reset_opt_tutorial_sub",
                 "Forget which chapters are done, so the tutorial offers itself again",
             ),
@@ -1289,7 +1289,7 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
     let keep_icon = icon_text(&mut commands, &fonts.phosphor, "check-circle", KEEP, 14.0);
     let keep_text = commands
         .spawn((
-            Text::new(renzora::lang::t_or(
+            Text::new(renzora_lang_api::t_or(
                 "menu.view.reset_defaults_kept",
                 "Your language, which plugins are installed, and your projects are untouched.",
             )),
@@ -1312,7 +1312,7 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
     let cancel = renzora_ember::widgets::button(
         &mut commands,
         &fonts.ui,
-        &renzora::lang::t("common.cancel"),
+        &renzora_lang_api::t("common.cancel"),
     );
     commands
         .entity(cancel)
@@ -1320,7 +1320,7 @@ pub(crate) fn reset_defaults_action(w: &mut World) {
     let confirm = destructive_button(
         &mut commands,
         &fonts,
-        &renzora::lang::t_or("menu.view.reset_defaults_confirm", "Reset Selected"),
+        &renzora_lang_api::t_or("menu.view.reset_defaults_confirm", "Reset Selected"),
     );
     commands
         .entity(confirm)
@@ -1483,9 +1483,9 @@ pub(crate) fn reset_defaults_buttons(
                 // the old interval, with the Settings panel still showing it,
                 // until the next launch — every other scope here takes effect
                 // the moment it is confirmed.
-                w.insert_resource(renzora::AutoSaveSettings::default());
+                w.insert_resource(renzora_project_api::AutoSaveSettings::default());
                 #[cfg(not(target_arch = "wasm32"))]
-                if let Err(e) = renzora::core::project_config::reset_editor_settings_prefs() {
+                if let Err(e) = renzora_project_api::project_config::reset_editor_settings_prefs() {
                     warn!("[editor] could not reset saved editor preferences: {e}");
                 }
                 // The theme is a Settings tab, so it resets with the rest of
@@ -1500,22 +1500,22 @@ pub(crate) fn reset_defaults_buttons(
                 done.push("settings");
             }
             if choice.viewport {
-                w.insert_resource(renzora::core::viewport_types::ViewportSettings::default());
+                w.insert_resource(renzora_viewport_api::ViewportSettings::default());
                 done.push("viewport");
             }
             if choice.keybindings {
-                w.insert_resource(renzora::core::keybindings::KeyBindings::default());
+                w.insert_resource(renzora_shell_api::keybindings::KeyBindings::default());
                 done.push("shortcuts");
             }
             if choice.tutorial {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let _ = renzora::save_tutorial_completed(false);
-                    let _ = renzora::save_tutorial_chapters(&[]);
+                    let _ = renzora_project_api::save_tutorial_completed(false);
+                    let _ = renzora_project_api::save_tutorial_chapters(&[]);
                 }
                 done.push("tutorial");
             }
-            renzora::core::console_log::console_info(
+            renzora_log_api::console_info(
                 "Editor",
                 format!("Reset to defaults: {}", done.join(", ")),
             );

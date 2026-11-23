@@ -18,7 +18,9 @@ use std::path::PathBuf;
 use bevy::ecs::world::CommandQueue;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, EditorCommands, InspectorEntry, PostEffect, PostEffects, SplashState};
+use renzora_editor_api::{AppEditorExt, EditorCommands, InspectorEntry};
+use renzora_project_api::SplashState;
+use renzora_render_api::{PostEffect, PostEffects};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{fill_control, inspector_row};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
@@ -176,7 +178,7 @@ fn rebuild(world: &mut World) {
 fn drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
     let text = commands
         .spawn((
-            Text::new(renzora::lang::t("comp.post_effects.drop")),
+            Text::new(renzora_lang_api::t("comp.post_effects.drop")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             PASS_THROUGH,
@@ -259,7 +261,7 @@ fn effect_section(
         commands.entity(b).insert((
             UiInteraction::default(),
             BLOCK,
-            HoverTooltip::new(renzora::lang::t(tip)),
+            HoverTooltip::new(renzora_lang_api::t(tip)),
         ));
         if live {
             commands.entity(b).insert(EffectButton { entity, index, action });
@@ -339,7 +341,7 @@ fn effect_section(
                 })
                 .collect();
             if rows.is_empty() {
-                vec![message_row(commands, fonts, &renzora::lang::t("comp.post_effects.no_settings"), false)]
+                vec![message_row(commands, fonts, &renzora_lang_api::t("comp.post_effects.no_settings"), false)]
             } else {
                 rows
             }
@@ -348,7 +350,7 @@ fn effect_section(
         _ => vec![message_row(
             commands,
             fonts,
-            &renzora::lang::t("comp.post_effects.loading"),
+            &renzora_lang_api::t("comp.post_effects.loading"),
             false,
         )],
     };
@@ -432,7 +434,7 @@ fn accepts(payload: &renzora_ui::AssetDragPayload, cache: &mut EffectFileCache) 
 fn drop_effect(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     zones: Query<(&renzora_ember::UiCursor, &DropZone)>,
     cmds: Option<Res<EditorCommands>>,
     mut cache: Local<EffectFileCache>,
@@ -515,5 +517,3 @@ impl Plugin for PostProcessEditorPlugin {
         );
     }
 }
-
-renzora::add!(PostProcessEditorPlugin, Editor);

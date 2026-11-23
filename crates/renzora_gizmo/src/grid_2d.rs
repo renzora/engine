@@ -24,10 +24,11 @@ use bevy::mesh::{Mesh, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::sprite_render::{AlphaMode2d, ColorMaterial};
 
-use renzora::core::viewport_types::{
+use renzora_viewport_api::{
     ViewportSettings, ViewportView, Viewports, VIEWPORT_2D_GRID_LAYER_BASE, VIEWPORT_COUNT,
 };
-use renzora::core::{PlayModeState, ViewportCamera2d};
+use renzora_scene_api::ViewportCamera2d;
+use renzora_project_api::PlayModeState;
 
 /// Grid depth: far behind the z=0 plane sprites spawn on, but inside the 2D
 /// camera's default clip range (orthographic near is -1000).
@@ -83,7 +84,7 @@ pub(crate) fn update_grid_2d(
     mut gizmos: Gizmos,
     settings: Option<Res<ViewportSettings>>,
     play_mode: Option<Res<PlayModeState>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     viewports: Option<Res<Viewports>>,
     cameras_2d: Query<(&ViewportCamera2d, &Camera, &GlobalTransform)>,
     mut grid: Query<(&Grid2dMesh, &Mesh2d, &mut Visibility)>,
@@ -196,7 +197,7 @@ pub(crate) fn update_grid_2d(
             Name::new(format!("2D Editor Grid {i}")),
             // Editor chrome: out of the hierarchy panel, scene saves, and
             // scene-clear despawns.
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
         ));
     }
 }

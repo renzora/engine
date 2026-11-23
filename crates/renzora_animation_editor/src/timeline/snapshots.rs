@@ -15,7 +15,7 @@ use std::hash::{Hash, Hasher};
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
 
-use renzora::{Interp, KeyMode, PropertyTrack};
+use renzora_animation_api::{Interp, KeyMode, PropertyTrack};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::{KeyedSnapshot, Rx};
@@ -301,7 +301,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, kind: RowKind, select
             // Same slot as the bones' carets, so the labels still line up.
             kids.push(caret_slot(commands, Some("stack"), None));
             let lbl = commands
-                .spawn((Text::new(renzora::lang::t_or("timeline.all_tracks", "All tracks")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, ..default() }, PASS_THROUGH))
+                .spawn((Text::new(renzora_lang_api::t_or("timeline.all_tracks", "All tracks")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, ..default() }, PASS_THROUGH))
                 .id();
             let n = commands.spawn((Text::new(count.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))), PASS_THROUGH)).id();
             kids.extend([lbl, n]);
@@ -344,7 +344,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, kind: RowKind, select
                 .id();
             let (txt, col) = match label {
                 Some(l) => (l.clone(), text_primary()),
-                None => (renzora::lang::t("timeline.select_property"), text_muted()),
+                None => (renzora_lang_api::t("timeline.select_property"), text_muted()),
             };
             let combo_lbl = commands
                 .spawn((Text::new(txt.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(col).with_alpha(if *muted { MUTED_ALPHA } else { 1.0 })), PASS_THROUGH))
@@ -355,7 +355,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, kind: RowKind, select
             commands.entity(caret).insert(PASS_THROUGH);
             commands.entity(combo).add_children(&[combo_lbl, caret]);
             let addk = small_btn(commands, fonts, "diamond", PROPERTY, AddKeyTrackBtn(*track));
-            commands.entity(addk).insert(renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("timeline.key_track_tip", "Key this track at the playhead")));
+            commands.entity(addk).insert(renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or("timeline.key_track_tip", "Key this track at the playhead")));
             let del = small_btn(commands, fonts, "x", text_muted(), DeletePropTrack(*track));
             kids.extend([ic, combo]);
             if *muted {
@@ -422,7 +422,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, kind: RowKind, select
             kids.extend([ic, lbl]);
             if *editable {
                 let addk = small_btn(commands, fonts, "diamond", PARTICLE, super::fx::FxAddKeyBtn(*track));
-                commands.entity(addk).insert(renzora_ember::widgets::HoverTooltip::new(renzora::lang::t_or("timeline.key_track_tip", "Key this track at the playhead")));
+                commands.entity(addk).insert(renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t_or("timeline.key_track_tip", "Key this track at the playhead")));
                 let del = small_btn(commands, fonts, "x", text_muted(), super::fx::FxDeleteTrackBtn(*track));
                 kids.extend([addk, del]);
             }

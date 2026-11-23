@@ -52,7 +52,7 @@ impl Plugin for TerrainPlugin {
                     shadows::fit_sun_cascades_to_terrain,
                     // Before physics reads the request, so a chunk's collider
                     // is built as a heightfield and never as a trimesh.
-                    mesh::sync_chunk_heightfields.before(renzora::physics::PhysicsSet::Prepare),
+                    mesh::sync_chunk_heightfields.before(renzora_physics_api::physics::PhysicsSet::Prepare),
                 )
                     // Every one of these reads terrain chunks or roots. The
                     // sun fit also runs in the grace frames after the last
@@ -119,5 +119,3 @@ impl Plugin for TerrainPlugin {
             .add_systems(Update, starter::report_terrain_load_work.after(starter::report_terrain_progress));
     }
 }
-
-renzora::add!(TerrainPlugin);

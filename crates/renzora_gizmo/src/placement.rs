@@ -17,7 +17,7 @@ use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::ViewportState;
+use renzora_viewport_api::ViewportState;
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::types::GizmoMesh;

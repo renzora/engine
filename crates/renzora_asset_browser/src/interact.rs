@@ -171,7 +171,7 @@ pub(crate) fn tile_click(
     mut state: ResMut<NativeAssets>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     // While an inline rename is active, let clicks fall through to its text field
@@ -311,18 +311,18 @@ fn is_editable_text(path: &Path) -> bool {
 pub(crate) fn open_action(path: &Path) -> Option<(&'static str, String)> {
     use renzora_editor_framework::DocTabKind;
     if path.is_dir() {
-        return Some(("folder-open", renzora::lang::t("common.open")));
+        return Some(("folder-open", renzora_lang_api::t("common.open")));
     }
     match renzora_editor_framework::doc_kind_for_path(path) {
-        Some(DocTabKind::Material) => Some(("palette", renzora::lang::t("assets.open_in.material_editor"))),
-        Some(DocTabKind::Particle) => Some(("sparkle", renzora::lang::t("assets.open_in.particle_editor"))),
-        Some(DocTabKind::TerrainGraph) => Some(("mountains", renzora::lang::t_or("assets.open_in.terrain_graph", "Open in Terrain Graph"))),
-        Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
-        Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
+        Some(DocTabKind::Material) => Some(("palette", renzora_lang_api::t("assets.open_in.material_editor"))),
+        Some(DocTabKind::Particle) => Some(("sparkle", renzora_lang_api::t("assets.open_in.particle_editor"))),
+        Some(DocTabKind::TerrainGraph) => Some(("mountains", renzora_lang_api::t_or("assets.open_in.terrain_graph", "Open in Terrain Graph"))),
+        Some(DocTabKind::Scene) => Some(("film-slate", renzora_lang_api::t("assets.open_in.scene"))),
+        Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora_lang_api::t("assets.open_in.code_editor"))),
         // Without this arm a `.html` fell through to `None` and lost its
         // right-click **Open** entirely the moment it stopped being a `Script`.
-        Some(DocTabKind::Ui) => Some(("browser", renzora::lang::t_or("assets.open_in.ui_editor", "Open in UI Editor"))),
-        _ if is_editable_text(path) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
+        Some(DocTabKind::Ui) => Some(("browser", renzora_lang_api::t_or("assets.open_in.ui_editor", "Open in UI Editor"))),
+        _ if is_editable_text(path) => Some(("code", renzora_lang_api::t("assets.open_in.code_editor"))),
         _ => None,
     }
 }
@@ -387,7 +387,7 @@ fn os_open(path: &Path) {
 pub(crate) fn back_click(
     q: Query<&UiInteraction, (With<AssetBack>, Changed<UiInteraction>)>,
     mut state: ResMut<NativeAssets>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     if !q.iter().any(|i| *i == UiInteraction::Pressed) {
         return;
@@ -418,8 +418,8 @@ pub(crate) fn request_thumbnails(
     mut scene: Option<ResMut<SceneThumbnailRegistry>>,
     folders: Res<crate::thumbnails::FolderPreviews>,
     asset_server: Res<AssetServer>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    mut jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
 ) {
     let project = project.as_deref();
     for tile in &tiles {

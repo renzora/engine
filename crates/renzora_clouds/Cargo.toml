@@ -9,10 +9,21 @@ description = "Volumetric clouds raymarched through a spherical deck that follow
 # by the editor bundle.
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 # `postprocess` for the sky probe's render pass (`probe.rs`).
-renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["postprocess"] }
+renzora_shader_api = { path = "../api/renzora_shader_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
 serde = { version = "1", features = ["derive"] }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "CloudsPlugin"

@@ -597,7 +597,7 @@ fn hovered_scroll_area<'a>(
 /// like a browser). Skipped while anything is consuming arrow keys as caret
 /// motion — a focused text input, a focused code editor, or a numeric field in
 /// its typing state — or while a focused list panel is walking its own selection
-/// with them ([`renzora::core::ArrowKeysClaimed`]; the hierarchy tree does
+/// with them ([`renzora_project_api::ArrowKeysClaimed`]; the hierarchy tree does
 /// this), or while an open menu or dropdown is walking its rows with them.
 /// Hover decides which view scrolls, but focus outranks hover for a key.
 #[allow(clippy::too_many_arguments)]
@@ -606,7 +606,7 @@ pub(crate) fn scroll_arrow_keys(
     time: Res<Time>,
     config: Res<ScrollConfig>,
     editing: Res<super::drag_value::AnyDragValueEditing>,
-    claimed: Option<Res<renzora::core::ArrowKeysClaimed>>,
+    claimed: Option<Res<renzora_project_api::ArrowKeysClaimed>>,
     menu: Res<super::menu_nav::MenuHasKeys>,
     inputs: Query<&super::text_input::EmberTextInput>,
     editors: Query<&super::code_editor::CodeEditor>,

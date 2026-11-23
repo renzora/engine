@@ -41,7 +41,7 @@ pub fn foliage_paint_hover_system(
     mut paint_state: ResMut<FoliagePaintState>,
     camera_query: Query<(&Camera, &GlobalTransform), With<renzora_editor_framework::EditorCamera>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
+    viewport: Option<Res<renzora_viewport_api::ViewportState>>,
     chunk_query: Query<(Entity, &TerrainChunkData, &TerrainChunkOf)>,
     terrain_query: Query<(Entity, &TerrainData, &GlobalTransform)>,
 ) {
@@ -262,7 +262,7 @@ fn paint_chunk(
 pub fn foliage_paint_scroll_system(
     mut scroll_events: MessageReader<bevy::input::mouse::MouseWheel>,
     mut settings: ResMut<FoliagePaintSettings>,
-    viewport: Option<Res<renzora::core::viewport_types::ViewportState>>,
+    viewport: Option<Res<renzora_viewport_api::ViewportState>>,
 ) {
     let vp_hovered = viewport.as_ref().is_some_and(|v| v.hovered);
     if !vp_hovered {
@@ -306,7 +306,7 @@ pub fn foliage_brush_gizmo_system(
     terrain_query: Query<&TerrainData>,
     mut gizmos: Gizmos<FoliageBrushGizmos>,
     mut last_cursor: Local<Option<Option<Vec3>>>,
-    mut overlay: ResMut<renzora::core::viewport_types::ViewportOverlayChanged>,
+    mut overlay: ResMut<renzora_viewport_api::ViewportOverlayChanged>,
 ) {
     if settings.is_changed() || *last_cursor != Some(paint_state.hover_position) {
         *last_cursor = Some(paint_state.hover_position);

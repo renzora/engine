@@ -1590,11 +1590,11 @@ fn sheer_curtain(renderer: Renderer, tag: &str) -> (f32, f32) {
             // a mesh out of the raster passes.
             if alpha_mode == AlphaMode::Opaque {
                 let marked: Vec<Entity> = world
-                    .query_filtered::<Entity, With<renzora::SolariShadedTransparent>>()
+                    .query_filtered::<Entity, With<renzora_render_api::SolariShadedTransparent>>()
                     .iter(world)
                     .collect();
                 for entity in marked {
-                    world.entity_mut(entity).remove::<renzora::SolariShadedTransparent>();
+                    world.entity_mut(entity).remove::<renzora_render_api::SolariShadedTransparent>();
                 }
             }
         };
@@ -1669,7 +1669,7 @@ fn backlit_sheer(renderer: Renderer, tag: &str) -> f32 {
             ));
             if with_sheet {
                 let pane = traced_box(world, Vec3::new(0.02, 2.9, 4.0), Vec3::new(0.0, 1.55, 0.0), &sheet);
-                world.entity_mut(pane).insert(renzora::SolariShadedTransparent::default());
+                world.entity_mut(pane).insert(renzora_render_api::SolariShadedTransparent::default());
             }
         };
         let (_, image, _) = render_in(&mut scene, pose, renderer, Motion::Still, 60, None);
@@ -2169,7 +2169,7 @@ fn layered_glass_scene(world: &mut World, colour: Color, panes: usize, facing_ca
             RaytracingMesh3d(mesh),
             MeshMaterial3d(glass.clone()),
             Transform::from_xyz(0.5 + 0.6 * i as f32, 1.2, 0.0),
-            renzora::SolariShadedTransparent::default(),
+            renzora_render_api::SolariShadedTransparent::default(),
         ));
     }
     world.spawn((
@@ -2237,7 +2237,7 @@ fn add_pane(world: &mut World, glass: &Handle<StandardMaterial>) {
     let pane = traced_box(world, Vec3::new(0.02, 4.0, 6.0), Vec3::new(0.0, 2.0, 0.0), glass);
     // What `renzora_solari` puts on a mesh it lights as see-through, so the
     // forward pass does not draw the pane a second time over Solari's.
-    world.entity_mut(pane).insert(renzora::SolariShadedTransparent::default());
+    world.entity_mut(pane).insert(renzora_render_api::SolariShadedTransparent::default());
 }
 
 /// The mean colour of the middle 15 x 15 pixels.

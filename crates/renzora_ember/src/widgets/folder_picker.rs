@@ -282,7 +282,7 @@ pub fn folder_new_button(commands: &mut Commands, fonts: &EmberFonts, picker: En
         commands,
         fonts,
         "folder-plus",
-        &renzora::lang::t_or("folder_picker.new", "New Folder"),
+        &renzora_lang_api::t_or("folder_picker.new", "New Folder"),
     );
     commands.entity(button).insert(FolderNewBtn(picker));
     commands.entity(button).entry::<Node>().and_modify(|mut n| {
@@ -754,12 +754,12 @@ pub(crate) fn folder_new_click(
             .unwrap_or_else(|| tree.root.clone());
         let path = unique_folder(
             &parent,
-            &renzora::lang::t_or("folder_picker.new_folder", "New Folder"),
+            &renzora_lang_api::t_or("folder_picker.new_folder", "New Folder"),
         );
         // `create_dir_all`, not `create_dir`: the only chain it can recreate is
         // a parent that was deleted out from under a stale pick.
         if let Err(e) = std::fs::create_dir_all(&path) {
-            renzora::core::console_log::console_error(
+            renzora_log_api::console_error(
                 "Assets",
                 format!("Could not create {} — {e}", path.display()),
             );
@@ -844,7 +844,7 @@ pub(crate) fn folder_rename_keys(
                     }
                 }
                 Err(e) => {
-                    renzora::core::console_log::console_error(
+                    renzora_log_api::console_error(
                         "Assets",
                         format!("Could not rename to {typed:?} — {e}"),
                     );
@@ -855,7 +855,7 @@ pub(crate) fn folder_rename_keys(
             // one. Holding the field open instead can't be made safe: a blur is
             // one of the triggers, so a re-opened field would blur again the
             // next frame and loop.
-            renzora::core::console_log::console_error(
+            renzora_log_api::console_error(
                 "Assets",
                 format!("Not a usable folder name: {typed:?} — kept {current:?}"),
             );

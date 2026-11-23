@@ -11,10 +11,14 @@ edition = "2021"
 decode = ["dep:symphonia"]
 
 [dependencies]
+renzora_crash_api = { path = "../api/renzora_crash_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
-# `audio` for `AudioLink` and the handle types — this crate drives the boundary
-# but no longer defines it, so a plugin can play a sound without linking here.
-renzora = { path = "../renzora", default-features = false, features = ["audio"] }
+# `AudioLink` and the handle types: this crate drives the boundary but does not
+# define it, so a plugin can play a sound without linking here.
+renzora_audio_api = { path = "../api/renzora_audio_api" }
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 serde = { version = "1", features = ["derive"] }
 # The audio boundary. `host` for the resource the plugin loader fills in when a
 # backend registers; `audio` for the request/reply vocabulary both sides compile.
@@ -23,3 +27,9 @@ symphonia = { version = "0.5", default-features = false, features = ["ogg", "vor
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AudioPlugin"

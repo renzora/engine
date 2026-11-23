@@ -59,5 +59,5 @@ pub(crate) fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: En
         |w| w.resource::<EditorSettings>().code_word_wrap,
         |w, &v| w.resource_mut::<EditorSettings>().code_word_wrap = v,
     );
-    settings_row(commands, fonts, body, 4, &renzora::lang::t_or("settings.row.word_wrap", "Word Wrap"), t);
+    settings_row(commands, fonts, body, 4, &renzora_lang_api::t_or("settings.row.word_wrap", "Word Wrap"), t);
 }

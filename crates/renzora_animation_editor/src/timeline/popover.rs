@@ -11,7 +11,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::ui::UiTransform;
 
-use renzora::{Interp, KeyCurve, KeyMode, PropertyKey, TrackValue};
+use renzora_animation_api::{Interp, KeyCurve, KeyMode, PropertyKey, TrackValue};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg};
@@ -258,7 +258,7 @@ pub(super) fn open_requested_popover(world: &mut World) {
             Lane::Fx { track } => cache.fx.as_ref().and_then(|f| f.doc.tracks.get(track).map(|t| renzora_particles::params::track_label(&f.doc, t))).unwrap_or_default(),
             _ => String::new(),
         };
-        (format!("{label} {}", renzora::lang::t_or("timeline.key_suffix", "key")), fx_key_fields(cache, k))
+        (format!("{label} {}", renzora_lang_api::t_or("timeline.key_suffix", "key")), fx_key_fields(cache, k))
     } else {
         (key_title(clip, k), key_fields(clip, k))
     };
@@ -295,7 +295,7 @@ pub(super) fn open_requested_popover(world: &mut World) {
             .spawn((Node { width: Val::Px(9.0), height: Val::Px(9.0), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(rgb(SELECTED)), UiTransform::from_rotation(Rot2::degrees(45.0))))
             .id();
         let t = commands.spawn((Text::new(title), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, ..default() })).id();
-        let esc = commands.spawn((Text::new(renzora::lang::t_or("timeline.esc_to_close", "Esc to close")), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
+        let esc = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.esc_to_close", "Esc to close")), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
         commands.entity(head).add_children(&[gem, t, esc]);
 
         // Time + value fields.
@@ -316,7 +316,7 @@ pub(super) fn open_requested_popover(world: &mut World) {
             },
             |w: &mut World, v: &f32| set_target_time(w, *v),
         );
-        let time_lbl = commands.spawn((Text::new(renzora::lang::t_or("timeline.time_s", "Time (s)")), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
+        let time_lbl = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.time_s", "Time (s)")), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
         let time_col = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }).id();
         commands.entity(time_col).add_children(&[time_lbl, time_dv]);
         commands.entity(fields_row).add_child(time_col);
@@ -354,7 +354,7 @@ pub(super) fn open_requested_popover(world: &mut World) {
                 },
             );
             let col = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), flex_grow: 1.0, flex_basis: Val::Px(0.0), min_width: Val::Px(0.0), ..default() }).id();
-            let lbl = commands.spawn((Text::new(if label.is_empty() { renzora::lang::t_or("timeline.value", "Value") } else { String::new() }), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
+            let lbl = commands.spawn((Text::new(if label.is_empty() { renzora_lang_api::t_or("timeline.value", "Value") } else { String::new() }), ui_font(&fonts.ui, 11.0), TextColor(rgb((138, 138, 150))))).id();
             commands.entity(col).add_children(&[lbl, dv]);
             commands.entity(fields_row).add_child(col);
         }
@@ -362,17 +362,17 @@ pub(super) fn open_requested_popover(world: &mut World) {
 
         // Easing (property keys only: bone channels interpolate linearly).
         if is_prop && !is_bool {
-            let ease_lbl = commands.spawn((Text::new(renzora::lang::t_or("timeline.ease_into_next", "Ease into the next key")), ui_font(&fonts.ui, 11.0), TextColor(rgb((154, 154, 166))))).id();
+            let ease_lbl = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.ease_into_next", "Ease into the next key")), ui_font(&fonts.ui, 11.0), TextColor(rgb((154, 154, 166))))).id();
             let row = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(2.0), ..default() }).id();
             // An effect parameter samples only linear, smooth and step.
             for (key, fallback, interp) in ease_choices().into_iter().filter(|c| !is_fx || super::fx::interp_from_clip(c.2).is_some()) {
-                let b = ease_button(&mut commands, &fonts, &renzora::lang::t_or(key, fallback), interp);
+                let b = ease_button(&mut commands, &fonts, &renzora_lang_api::t_or(key, fallback), interp);
                 commands.entity(row).add_child(b);
             }
             kids.extend([ease_lbl, row]);
         } else if !is_prop && !is_fx {
             // A bone key's mode: how it moves on to the next key.
-            let mode_lbl = commands.spawn((Text::new(renzora::lang::t_or("timeline.key_into_next", "Into the next key")), ui_font(&fonts.ui, 11.0), TextColor(rgb((154, 154, 166))))).id();
+            let mode_lbl = commands.spawn((Text::new(renzora_lang_api::t_or("timeline.key_into_next", "Into the next key")), ui_font(&fonts.ui, 11.0), TextColor(rgb((154, 154, 166))))).id();
             let row = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(2.0), ..default() }).id();
             for (mode, _, tip) in super::keymode::mode_choices() {
                 let b = mode_button(&mut commands, &fonts, mode, tip);
@@ -383,8 +383,8 @@ pub(super) fn open_requested_popover(world: &mut World) {
 
         // Copy / Delete.
         let actions = commands.spawn(Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(6.0), justify_content: JustifyContent::FlexEnd, width: Val::Percent(100.0), ..default() }).id();
-        let copy = card_button(&mut commands, &fonts, &renzora::lang::t_or("timeline.copy", "Copy"), rgb(hover_bg()), text_primary(), copy_selected_keys);
-        let delete = card_button(&mut commands, &fonts, &renzora::lang::t_or("timeline.delete", "Delete"), Color::srgba(0.97, 0.44, 0.44, 0.14), (248, 161, 161), delete_selected_keys);
+        let copy = card_button(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.copy", "Copy"), rgb(hover_bg()), text_primary(), copy_selected_keys);
+        let delete = card_button(&mut commands, &fonts, &renzora_lang_api::t_or("timeline.delete", "Delete"), Color::srgba(0.97, 0.44, 0.44, 0.14), (248, 161, 161), delete_selected_keys);
         commands.entity(actions).add_children(&[copy, delete]);
         kids.push(actions);
         commands.entity(content).add_children(&kids);
@@ -393,14 +393,14 @@ pub(super) fn open_requested_popover(world: &mut World) {
 }
 
 fn key_title(clip: &renzora_animation::AnimClip, k: SelKey) -> String {
-    let key = renzora::lang::t_or("timeline.key_suffix", "key");
+    let key = renzora_lang_api::t_or("timeline.key_suffix", "key");
     match k.lane {
         Lane::Bone { track, channel } => {
             let bone = clip.tracks.get(track).map(|t| t.bone_name.as_str()).unwrap_or("");
             let ch = match channel {
-                0 => renzora::lang::t_or("timeline.position", "Position"),
-                1 => renzora::lang::t_or("timeline.rotation", "Rotation"),
-                _ => renzora::lang::t_or("timeline.scale", "Scale"),
+                0 => renzora_lang_api::t_or("timeline.position", "Position"),
+                1 => renzora_lang_api::t_or("timeline.rotation", "Rotation"),
+                _ => renzora_lang_api::t_or("timeline.scale", "Scale"),
             };
             format!("{bone} · {ch} {key}")
         }
@@ -410,7 +410,7 @@ fn key_title(clip: &renzora_animation::AnimClip, k: SelKey) -> String {
         }
         Lane::Morph { track } => {
             let shape = clip.morph_tracks.get(track).map(|m| m.label()).unwrap_or_default();
-            format!("{shape} · {} {key}", renzora::lang::t_or("timeline.blend_shape", "Blend shape"))
+            format!("{shape} · {} {key}", renzora_lang_api::t_or("timeline.blend_shape", "Blend shape"))
         }
         Lane::Fx { .. } => key,
     }
@@ -514,7 +514,7 @@ fn mode_icon(commands: &mut Commands, mode: KeyMode, color: (u8, u8, u8)) -> Ent
         m => [KeyCurve::new(m); 3],
     };
     let keys = [(0.0, Vec4::ZERO), (0.5, Vec4::X * 0.55), (1.0, Vec4::X)];
-    let spline = renzora::ChannelSpline::new(&keys, &curves, false);
+    let spline = renzora_animation_api::ChannelSpline::new(&keys, &curves, false);
     // Fine enough that a hold's riser draws as a near-vertical step.
     let n = 24;
     let pt = |i: usize| {
@@ -723,8 +723,8 @@ pub(super) fn paste_keys(world: &mut World) {
                 any = true;
             }
             (LaneId::Morph(node, index), Payload::W(w, curve)) => {
-                let node = renzora::sanitize_id(&node);
-                let Some(m) = clip.morph_tracks.iter_mut().find(|m| m.index == index && renzora::sanitize_id(&m.target) == node) else { continue };
+                let node = renzora_scene_api::sanitize_id(&node);
+                let Some(m) = clip.morph_tracks.iter_mut().find(|m| m.index == index && renzora_scene_api::sanitize_id(&m.target) == node) else { continue };
                 let i = m.upsert_key(t, w, curve, 1e-4);
                 m.set_key_curve(i, curve);
                 any = true;

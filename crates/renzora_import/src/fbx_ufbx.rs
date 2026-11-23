@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use renzora::{write_anim_file, AnimClip, BoneTrack, MorphTrack};
+use renzora_animation_api::{write_anim_file, AnimClip, BoneTrack, MorphTrack};
 
 use crate::anim_extract::AnimExtractResult;
 use crate::convert::{ConvertedGlb, ImportError};
@@ -970,7 +970,7 @@ impl<'a> MovingParts<'a> {
                 // a matching scene camera when the model is dropped in.
                 let extras = self.nodes[k].camera.as_ref().map(|camera| {
                     serde_json::json!({
-                        renzora::IMPORTED_CAMERA_EXTRAS_KEY: {
+                        renzora_scene_api::IMPORTED_CAMERA_EXTRAS_KEY: {
                             "name": self.names[k],
                             "yfov": (camera.field_of_view_deg.y as f32).to_radians(),
                         }
@@ -1068,7 +1068,7 @@ fn moving_parts<'a>(scene: &'a ufbx::Scene, settings: &ImportSettings) -> Option
 
     let mut used: HashSet<String> = HashSet::new();
     let mut unique = |raw: &str| -> String {
-        let mut base = renzora::sanitize_id(raw);
+        let mut base = renzora_scene_api::sanitize_id(raw);
         if base.is_empty() {
             base = "node".to_string();
         }
@@ -1687,7 +1687,7 @@ fn collect_materials(
             }
             tex_of(m).and_then(|i| bundle.textures.get(i).map(|t| t.uri.clone()))
         };
-        let advanced = renzora::core::PbrAdvanced {
+        let advanced = renzora_scene_api::PbrAdvanced {
             clearcoat: val(&pbr.coat_factor, 0.0),
             clearcoat_roughness: val(&pbr.coat_roughness, 0.0),
             clearcoat_texture: adv_uri(&pbr.coat_factor),

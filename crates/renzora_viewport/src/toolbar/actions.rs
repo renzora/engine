@@ -243,7 +243,7 @@ pub(super) fn header_action_click(
             HeaderAction::Undo => cmds.push(|w: &mut World| renzora_undo::undo_once(w)),
             HeaderAction::Redo => cmds.push(|w: &mut World| renzora_undo::redo_once(w)),
             HeaderAction::Save => cmds.push(|w: &mut World| {
-                w.insert_resource(renzora::core::SaveSceneRequested);
+                w.insert_resource(renzora_project_api::SaveSceneRequested);
             }),
             HeaderAction::Maximize => {
                 let slot = max_slot.map(|m| m.0).unwrap_or(0);

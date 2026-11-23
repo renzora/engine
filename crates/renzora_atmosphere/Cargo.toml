@@ -7,10 +7,22 @@ edition = "2021"
 # renzora_atmosphere_editor crate (crates/renzora_atmosphere/editor).
 
 [dependencies]
+renzora_scene_api = { path = "../api/renzora_scene_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 # `postprocess` for the sun glare's render pass (`glare.rs`).
-renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["postprocess"] }
+renzora_world_api = { path = "../api/renzora_world_api" }
+
+[dev-dependencies]
+# The glare and moon shaders' compile-checks.
+renzora_shader_api = { path = "../api/renzora_shader_api" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "AtmospherePlugin"

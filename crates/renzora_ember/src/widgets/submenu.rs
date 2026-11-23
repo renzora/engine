@@ -243,7 +243,7 @@ pub fn menu_submenu_parts_sized(
             UiCursor::default(),
             // Editor chrome, not scene content — a menu open when autosave fires
             // must not be serialized into the scene.
-            renzora::HideInHierarchy,
+            renzora_scene_api::HideInHierarchy,
             SubPanel { owner: row },
             Name::new("screen-submenu"),
         ))

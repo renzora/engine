@@ -1,0 +1,18 @@
+[package]
+name = "renzora_project_api"
+version = "0.1.0"
+edition = "2021"
+description = "The open project and the process around it: project.toml and editor preferences, project file changes, process kind and editor requests, play mode, graphics quality. Plugins see it at `renzora::ProjectConfig`, `renzora::PlayModeState`, ..."
+
+# A contract layer, moved out of `renzora::core`. Depends on the Console layer
+# for log limits and warnings, and on the companion protocol for the project
+# walk it shares with the standalone companion.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+renzora_log_api = { path = "../renzora_log_api" }
+renzora_companion_proto = { path = "../../renzora_companion_proto" }
+
+[lints]
+workspace = true

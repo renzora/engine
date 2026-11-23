@@ -15,8 +15,8 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiTransform};
 use renzora_ember::UiCursor;
 
-use renzora::core::keybindings::KeyBinding;
-use renzora::core::CurrentProject;
+use renzora_shell_api::keybindings::KeyBinding;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::{AppEditorExt, AssetDragPayload, DocTabKind, EditorContext, EditorSelection, ShortcutEntry, SplashState};
 use renzora_ember::dock::{Dock, DockWindows, FixedDock};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -540,7 +540,7 @@ fn wants_editor(graph: &MaterialGraph, node: &renzora_shader::material::graph::M
 fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let assets = world.get_resource::<AssetServer>();
-    let problems = world.get_resource::<renzora::content_problems::ContentProblems>();
+    let problems = world.get_resource::<renzora_diagnostics_api::content_problems::ContentProblems>();
     let active_path = s
         .active_tab
         .and_then(|i| s.tabs.get(i))
@@ -1028,7 +1028,7 @@ fn mat_graph_sync(world: &mut World) {
                         st.graph.get_node(id).and_then(|n| domain.refuses_node(&n.node_type))
                     });
                     if let Some(reason) = refused {
-                        renzora::console_log::console_warn("Material", format!("Connection refused: {reason}"));
+                        renzora_log_api::console_warn("Material", format!("Connection refused: {reason}"));
                         continue;
                     }
                     // Resolved (latch-aware) types, so the refusal message
@@ -1049,7 +1049,7 @@ fn mat_graph_sync(world: &mut World) {
                             // preview until the next recompile. The Console
                             // panel is where the editor's other material
                             // feedback already goes.
-                            renzora::console_log::console_warn(
+                            renzora_log_api::console_warn(
                                 "Material",
                                 format!(
                                     "Connection refused: {from_ty:?} → {to_ty:?} pins are incompatible ({from_pin} → {to_pin})"
@@ -1353,7 +1353,7 @@ fn mat_graph_image_drop(
         .iter()
         // The shared image list (the inspector's texture fields use it too),
         // so an SVG dropped here spawns a texture-sample node like a PNG.
-        .filter(|p| renzora::is_image_path(p))
+        .filter(|p| renzora_project_api::is_image_path(p))
         .collect();
     if imgs.is_empty() {
         return;

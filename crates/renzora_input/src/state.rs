@@ -5,7 +5,7 @@ use crate::action::{ActionKind, InputBinding};
 use crate::map::InputMap;
 
 // Re-export from renzora
-pub use renzora::{ActionData, ActionState};
+pub use renzora_scripting_api::{ActionData, ActionState};
 
 /// System that computes `ActionState` from `InputMap` + raw Bevy input each frame.
 pub fn update_action_state(

@@ -7,7 +7,7 @@
 //! and linked only by the editor bundle.
 
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 use renzora_environment_map::EnvironmentMapComponentSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -42,7 +42,7 @@ fn inspector_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![renzora::float_field!(
+        fields: vec![renzora_editor_api::float_field!(
             "Intensity",
             EnvironmentMapComponentSettings,
             intensity,
@@ -63,5 +63,3 @@ impl Plugin for EnvironmentMapEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(EnvironmentMapEditorPlugin, Editor);

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use renzora::audio_backend::{AudioBackend, BusState, ListenerState, UpdateRequest};
+use renzora_audio_api::audio_backend::{AudioBackend, BusState, ListenerState, UpdateRequest};
 
 use crate::link::{AudioLink, SoundId, VoiceId};
 use crate::mixer::MixerState;
@@ -43,7 +43,7 @@ impl SoundCache {
     pub fn get_or_load(
         &mut self,
         link: &mut AudioLink,
-        project: Option<&renzora::core::CurrentProject>,
+        project: Option<&renzora_project_api::CurrentProject>,
         path: &str,
     ) -> Option<SoundId> {
         if let Some(loaded) = self.by_path.get(path) {
@@ -119,8 +119,8 @@ impl SoundCache {
 /// then a plain filesystem read for the editor and loose files. This is the
 /// reason the backend never opens a path itself — only the engine knows which
 /// of these two a given build is using.
-fn read_asset(project: Option<&renzora::core::CurrentProject>, path: &str) -> Option<Vec<u8>> {
-    if let Some(bytes) = renzora::core::load_asset_bytes(path) {
+fn read_asset(project: Option<&renzora_project_api::CurrentProject>, path: &str) -> Option<Vec<u8>> {
+    if let Some(bytes) = renzora_scene_api::load_asset_bytes(path) {
         return Some(bytes);
     }
     let resolved = match project {
@@ -217,23 +217,23 @@ impl ActiveVoices {
 ///
 /// A component rather than a resource other crates read, because the hierarchy
 /// asks the question per row and a marker is what an ECS query is for — and
-/// because it keeps `renzora::AudioEmitting` the only thing they need to know
+/// because it keeps `renzora_scene_api::AudioEmitting` the only thing they need to know
 /// about audio at all.
 pub fn mark_emitting_entities(
     voices: Res<ActiveVoices>,
-    marked: Query<Entity, With<renzora::AudioEmitting>>,
+    marked: Query<Entity, With<renzora_scene_api::AudioEmitting>>,
     mut commands: Commands,
 ) {
     for entity in voices.entities() {
         if marked.get(entity).is_err() {
             // `try_insert`: a voice can outlive its entity by a frame, and
             // inserting onto a despawned entity is an error rather than a no-op.
-            commands.entity(entity).try_insert(renzora::AudioEmitting);
+            commands.entity(entity).try_insert(renzora_scene_api::AudioEmitting);
         }
     }
     for entity in &marked {
         if voices.of(entity).is_empty() {
-            commands.entity(entity).try_remove::<renzora::AudioEmitting>();
+            commands.entity(entity).try_remove::<renzora_scene_api::AudioEmitting>();
         }
     }
 }
@@ -323,7 +323,7 @@ pub fn adopt_backend(
     let Some(mut backend) = registered.0.take() else { return };
     let (tx, rx) = std::sync::mpsc::channel();
     let spawned = std::thread::Builder::new().name("audio-open-device".into()).spawn(move || {
-        let result = match renzora::core::recoverable::catch(|| {
+        let result = match renzora_crash_api::catch(|| {
             backend.get_mut().unwrap_or_else(|p| p.into_inner()).init()
         }) {
             Ok(Ok(info)) => Ok(info),
@@ -355,7 +355,7 @@ enum Opening {
 
 /// What [`adopt_backend`]'s thread hands back: the backend, and how opening
 /// its device went.
-type Opened = (std::sync::Mutex<Box<dyn renzora::audio_backend::Backend>>, Result<renzora::audio_backend::BackendInfo, Opening>);
+type Opened = (std::sync::Mutex<Box<dyn renzora_audio_api::audio_backend::Backend>>, Result<renzora_audio_api::audio_backend::BackendInfo, Opening>);
 
 /// [`adopt_backend`]'s memory of failed attempts to open the device, and the
 /// attempt out on its thread.
@@ -457,12 +457,12 @@ pub fn audio_update(
     mut mixer: ResMut<MixerState>,
     mut voices: ResMut<ActiveVoices>,
     listener: Query<(&GlobalTransform, &crate::systems::AudioListener)>,
-    editor_camera: Query<&GlobalTransform, With<renzora::core::EditorCamera>>,
+    editor_camera: Query<&GlobalTransform, With<renzora_scene_api::EditorCamera>>,
     game_camera: Query<
-        (&GlobalTransform, Option<&renzora::core::DefaultCamera>),
-        With<renzora::core::SceneCamera>,
+        (&GlobalTransform, Option<&renzora_scene_api::DefaultCamera>),
+        With<renzora_scene_api::SceneCamera>,
     >,
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
 ) {
     if !link.is_active() {
         return;
@@ -662,18 +662,18 @@ mod tests {
         fails: u32,
     }
 
-    impl renzora::audio_backend::Backend for FlakyDevice {
+    impl renzora_audio_api::audio_backend::Backend for FlakyDevice {
         fn name(&self) -> &str {
             "flaky"
         }
-        fn init(&mut self) -> Result<renzora::audio_backend::BackendInfo, String> {
+        fn init(&mut self) -> Result<renzora_audio_api::audio_backend::BackendInfo, String> {
             if self.fails > 0 {
                 self.fails -= 1;
                 return Err("could not open the output stream: device unplugged".into());
             }
-            Ok(renzora::audio_backend::BackendInfo {
+            Ok(renzora_audio_api::audio_backend::BackendInfo {
                 sample_rate: 48_000,
-                caps: renzora::audio_backend::Caps::SPATIAL,
+                caps: renzora_audio_api::audio_backend::Caps::SPATIAL,
                 device: "flaky".into(),
             })
         }
@@ -682,16 +682,16 @@ mod tests {
             _: u64,
             _: &str,
             _: &[u8],
-        ) -> Result<renzora::audio_backend::ClipInfo, String> {
+        ) -> Result<renzora_audio_api::audio_backend::ClipInfo, String> {
             Err("unused".into())
         }
-        fn play(&mut self, _: &renzora::audio_backend::PlayRequest) -> Result<(), String> {
+        fn play(&mut self, _: &renzora_audio_api::audio_backend::PlayRequest) -> Result<(), String> {
             Ok(())
         }
         fn update(
             &mut self,
-            _: &renzora::audio_backend::UpdateRequest,
-        ) -> renzora::audio_backend::UpdateReply {
+            _: &renzora_audio_api::audio_backend::UpdateRequest,
+        ) -> renzora_audio_api::audio_backend::UpdateReply {
             Default::default()
         }
     }

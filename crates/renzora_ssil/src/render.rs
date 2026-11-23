@@ -38,9 +38,9 @@ use bevy::render::{
     view::{ExtractedView, ViewTarget},
     Extract, ExtractSchedule, Render, RenderApp, RenderStartup, RenderSystems,
 };
-use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
-use renzora::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
-use renzora::{EditorCamera, RenderPhase};
+use renzora_viewport_api::{ViewportSettings, VisualizationMode};
+use renzora_render_api::postprocess::{PostProcessCorePlugin, RenderCompositionAppExt, RenderPass};
+use renzora_scene_api::{EditorCamera, RenderPhase};
 
 use crate::Ssil;
 
@@ -671,6 +671,6 @@ mod tests {
             )
             .collect::<Vec<_>>()
             .join("\n");
-        renzora::wgsl::check(&source).unwrap_or_else(|err| panic!("ssil.wesl: {err}"));
+        renzora_shader_api::wgsl::check(&source).unwrap_or_else(|err| panic!("ssil.wesl: {err}"));
     }
 }

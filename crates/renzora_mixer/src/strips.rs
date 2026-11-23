@@ -35,7 +35,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 use renzora_audio::{rename_custom_bus, ChannelStrip, MixerState, BUS_COLORS};
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_ember::reactive::Rx;
 use renzora_ember::UiCursor;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -672,9 +672,9 @@ fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // ── Page tabs ──
     let labels = [
-        renzora::lang::t_or("mixer.tab.mixer", "Mixer"),
-        renzora::lang::t_or("mixer.tab.routing", "Routing"),
-        renzora::lang::t_or("mixer.tab.metering", "Metering"),
+        renzora_lang_api::t_or("mixer.tab.mixer", "Mixer"),
+        renzora_lang_api::t_or("mixer.tab.routing", "Routing"),
+        renzora_lang_api::t_or("mixer.tab.metering", "Metering"),
     ];
     let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
     let tabs = segmented(commands, &fonts.ui, &refs, 0);
@@ -723,8 +723,8 @@ fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, shape, |rx| tab_of(rx) == MixerTab::Mixer);
 
     let sizes = [
-        renzora::lang::t_or("mixer.compact", "Compact"),
-        renzora::lang::t_or("mixer.large", "Large"),
+        renzora_lang_api::t_or("mixer.compact", "Compact"),
+        renzora_lang_api::t_or("mixer.large", "Large"),
     ];
     let size_refs: Vec<&str> = sizes.iter().map(String::as_str).collect();
     let size = segmented(commands, &fonts.ui, &size_refs, 0);
@@ -758,7 +758,7 @@ fn top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(border())),
         ))
         .id();
-    let add = bar_button(commands, fonts, "plus", &renzora::lang::t_or("mixer.add_bus", "Add bus"));
+    let add = bar_button(commands, fonts, "plus", &renzora_lang_api::t_or("mixer.add_bus", "Add bus"));
     commands.entity(add).insert(BusAdd);
     bind_bg(commands, add, move |rx| match rx.get::<UiInteraction>(add) {
         Some(UiInteraction::Hovered) | Some(UiInteraction::Pressed) => rgb(hover_bg()),
@@ -801,10 +801,10 @@ fn bar_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &s
 
 /// The Horizontal toggle: lit in the accent while channels run as rows.
 fn horizontal_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let btn = bar_button(commands, fonts, "rows", &renzora::lang::t_or("mixer.horizontal", "Horizontal"));
+    let btn = bar_button(commands, fonts, "rows", &renzora_lang_api::t_or("mixer.horizontal", "Horizontal"));
     commands.entity(btn).insert((
         OrientationBtn,
-        HoverTooltip::new(renzora::lang::t_or("mixer.horizontal_tip", "Run channels as rows instead of columns")),
+        HoverTooltip::new(renzora_lang_api::t_or("mixer.horizontal_tip", "Run channels as rows instead of columns")),
     ));
     bind_bg(commands, btn, move |rx| {
         if layout_of(rx).horizontal() {
@@ -1139,7 +1139,7 @@ fn strip(
             TextColor(rgb(accent())),
             bevy::text::TextLayout::no_wrap(),
             Node { flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
-            HoverTooltip::new(renzora::lang::t_or("mixer.routed_tip", "This bus feeds another bus. Change it on the Routing page.")),
+            HoverTooltip::new(renzora_lang_api::t_or("mixer.routed_tip", "This bus feeds another bus. Change it on the Routing page.")),
         ))
         .id();
     bind_text(commands, route, move |rx| {

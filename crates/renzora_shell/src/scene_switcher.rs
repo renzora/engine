@@ -68,7 +68,7 @@ pub(crate) fn build_scene_switcher(
             UiCursor::default(),
             SceneSwitcherBtn,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("scene_switcher.tooltip")),
+            renzora_ember::widgets::HoverTooltip::new(renzora_lang_api::t("scene_switcher.tooltip")),
             Name::new("scene-switcher"),
         ))
         .id();
@@ -155,7 +155,7 @@ pub(crate) fn build_saved_badge(commands: &mut Commands, font: &bevy::text::Font
         ))
         .id();
     bind_text(commands, state, |w: &Rx| {
-        renzora::lang::t(if doc_modified(w) {
+        renzora_lang_api::t(if doc_modified(w) {
             "scene_switcher.unsaved"
         } else {
             "scene_switcher.saved"
@@ -215,7 +215,7 @@ fn doc_label(t: &renzora_ui::DocumentTab) -> String {
 }
 
 /// The project's scene files, `<project>/scenes/*.bsn`, sorted by name.
-fn project_scenes(project: &renzora::CurrentProject) -> Vec<PathBuf> {
+fn project_scenes(project: &renzora_project_api::CurrentProject) -> Vec<PathBuf> {
     let Ok(read) = std::fs::read_dir(project.resolve_path("scenes")) else {
         return Vec::new();
     };
@@ -255,7 +255,7 @@ pub(crate) fn scene_switcher_open(
     q: Query<(&UiInteraction, &UiCursor, &ComputedNode), (With<SceneSwitcherBtn>, Changed<UiInteraction>)>,
     windows: Query<&Window>,
     fonts: Option<Res<EmberFonts>>,
-    project: Option<Res<renzora::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut commands: Commands,
 ) {
     let Some(fonts) = fonts else { return };
@@ -382,7 +382,7 @@ fn kind_title(kind: renzora_ui::DocTabKind) -> String {
         renzora_ui::DocTabKind::Ui => ("scene_switcher.group.ui", "UI"),
         renzora_ui::DocTabKind::Other => ("scene_switcher.group.other", "Other"),
     };
-    renzora::lang::t_or(key, fallback)
+    renzora_lang_api::t_or(key, fallback)
 }
 
 fn view<'w>(w: &Rx<'w>) -> Option<&'w SwitcherView> {
@@ -415,7 +415,7 @@ fn build_switcher_body(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let search = renzora_ember::widgets::search_input(
         commands,
         fonts,
-        &renzora::lang::t_or("scene_switcher.search", "Find a scene or document..."),
+        &renzora_lang_api::t_or("scene_switcher.search", "Find a scene or document..."),
         "",
     );
     commands.entity(search).insert(SwitcherSearch);
@@ -451,14 +451,14 @@ fn build_switcher_body(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BorderColor::all(rgb(renzora_ember::theme::border())),
         ))
         .id();
-    let left_head = column_header(commands, fonts, &renzora::lang::t("scene_switcher.project"), |w| {
+    let left_head = column_header(commands, fonts, &renzora_lang_api::t("scene_switcher.project"), |w| {
         view(w).map(|v| v.scenes.iter().filter(|p| matches(&v.query, &file_stem(p))).count()).unwrap_or(0)
     });
     let scene_list = commands.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).id();
     keyed_list(commands, scene_list, scenes_snapshot);
     let spring = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
-    let new_scene = menu_item(commands, fonts, "plus", &renzora::lang::t("menu.file.new_scene"), |w| {
-        w.insert_resource(renzora::core::NewSceneRequested)
+    let new_scene = menu_item(commands, fonts, "plus", &renzora_lang_api::t("menu.file.new_scene"), |w| {
+        w.insert_resource(renzora_project_api::NewSceneRequested)
     });
     commands.entity(left).add_children(&[left_head, scene_list, spring, new_scene]);
 
@@ -474,7 +474,7 @@ fn build_switcher_body(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let right_head = column_header(commands, fonts, &renzora::lang::t("scene_switcher.open"), |w| {
+    let right_head = column_header(commands, fonts, &renzora_lang_api::t("scene_switcher.open"), |w| {
         let q = view(w).map(|v| v.query.clone()).unwrap_or_default();
         w.get_resource::<renzora_ui::DocumentTabState>()
             .map(|s| s.tabs.iter().filter(|t| matches(&q, &doc_label(t))).count())
@@ -506,8 +506,8 @@ fn build_switcher_body(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BorderColor::all(rgb(renzora_ember::theme::border())),
         ))
         .id();
-    let open_file = menu_item(commands, fonts, "folder-open", &renzora::lang::t("scene_switcher.open_file"), |w| {
-        w.insert_resource(renzora::core::OpenSceneRequested)
+    let open_file = menu_item(commands, fonts, "folder-open", &renzora_lang_api::t("scene_switcher.open_file"), |w| {
+        w.insert_resource(renzora_project_api::OpenSceneRequested)
     });
     // Setting the boot scene lives on the scene rows now (their star), so the
     // footer is just the one action that needs a file dialog.
@@ -558,7 +558,7 @@ fn scenes_snapshot(w: &Rx) -> KeyedSnapshot {
     if rows.is_empty() {
         return KeyedSnapshot {
             items: vec![(0, 0)],
-            build: Box::new(|c, f, _| muted_note(c, f, &renzora::lang::t_or("scene_switcher.no_scenes", "No matching scenes"))),
+            build: Box::new(|c, f, _| muted_note(c, f, &renzora_lang_api::t_or("scene_switcher.no_scenes", "No matching scenes"))),
         };
     }
     let items = rows
@@ -576,7 +576,7 @@ fn scenes_snapshot(w: &Rx) -> KeyedSnapshot {
             let path_for_boot = path.clone();
             let kind = renzora_ui::DocTabKind::Scene;
             let row = menu_item_styled(c, f, kind.icon(), &name, kind.color(), text_primary(), move |w| {
-                w.insert_resource(renzora::core::OpenScenePathRequested(path.clone()));
+                w.insert_resource(renzora_project_api::OpenScenePathRequested(path.clone()));
             });
             // The star at the row's right edge: amber on the boot scene, and
             // on any other scene a button (shown while the row is hovered)
@@ -600,9 +600,9 @@ fn scenes_snapshot(w: &Rx) -> KeyedSnapshot {
                     SceneBootBtn(path_for_boot.clone()),
                     renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                     renzora_ember::widgets::HoverTooltip::new(if boot {
-                        renzora::lang::t_or("scene_switcher.boot_tip", "Boot scene")
+                        renzora_lang_api::t_or("scene_switcher.boot_tip", "Boot scene")
                     } else {
-                        renzora::lang::t_or("scene_switcher.make_boot_tip", "Make this the boot scene")
+                        renzora_lang_api::t_or("scene_switcher.make_boot_tip", "Make this the boot scene")
                     }),
                 ))
                 .id();
@@ -661,7 +661,7 @@ fn open_snapshot(w: &Rx) -> KeyedSnapshot {
     if items.is_empty() {
         return KeyedSnapshot {
             items: vec![(0, 0)],
-            build: Box::new(|c, f, _| muted_note(c, f, &renzora::lang::t_or("scene_switcher.no_docs", "No matching documents"))),
+            build: Box::new(|c, f, _| muted_note(c, f, &renzora_lang_api::t_or("scene_switcher.no_docs", "No matching documents"))),
         };
     }
     let keys = items
@@ -754,7 +754,7 @@ pub(crate) fn switcher_interact(
     groups: Query<(&UiInteraction, &SwitcherGroup), Changed<UiInteraction>>,
     boots: Query<(&UiInteraction, &SceneBootBtn), Changed<UiInteraction>>,
     closes: Query<(&UiInteraction, &SwitcherCloseDoc), Changed<UiInteraction>>,
-    project: Option<ResMut<renzora::CurrentProject>>,
+    project: Option<ResMut<renzora_project_api::CurrentProject>>,
     view: Option<ResMut<SwitcherView>>,
     mut commands: Commands,
 ) {
@@ -770,10 +770,10 @@ pub(crate) fn switcher_interact(
         project.config.main_scene = rel.clone();
         match project.save_config() {
             Ok(()) => {
-                renzora::core::console_log::console_success("Scene", format!("Boot scene set to {rel}"));
+                renzora_log_api::console_success("Scene", format!("Boot scene set to {rel}"));
                 view.boot = Some(btn.0.clone());
             }
-            Err(e) => renzora::core::console_log::console_error("Scene", format!("Failed to save project config: {e}")),
+            Err(e) => renzora_log_api::console_error("Scene", format!("Failed to save project config: {e}")),
         }
     }
     if let Some(input) = inputs.iter().next() {
@@ -853,7 +853,7 @@ fn open_doc_row(commands: &mut Commands, fonts: &EmberFonts, doc: &OpenDoc) -> E
     // a tick read as "saved". Amber while there is something to save.
     if doc.active {
         let save_color = if doc.modified { warn_amber() } else { text_muted() };
-        let save = small_row_button(commands, "scene-switcher-save", renzora::lang::t("common.save"));
+        let save = small_row_button(commands, "scene-switcher-save", renzora_lang_api::t("common.save"));
         commands
             .entity(save)
             .insert(MenuAction(Box::new(|w: &mut World| crate::menu_command::MenuCommand::Save.run(w))));
@@ -863,7 +863,7 @@ fn open_doc_row(commands: &mut Commands, fonts: &EmberFonts, doc: &OpenDoc) -> E
         kids.push(save);
     }
     if doc.closable {
-        let close = small_row_button(commands, "scene-switcher-close", renzora::lang::t("scene_switcher.close"));
+        let close = small_row_button(commands, "scene-switcher-close", renzora_lang_api::t("scene_switcher.close"));
         commands.entity(close).insert(SwitcherCloseDoc(id));
         // `icon_text`, not the deferred `glyph`: a deferred icon writes its
         // own colour a frame after spawning, over the hidden colour this

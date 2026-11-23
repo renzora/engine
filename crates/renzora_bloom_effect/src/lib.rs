@@ -33,7 +33,7 @@ impl Default for BloomSettings {
 fn sync_bloom(
     mut commands: Commands,
     sources: Query<(Entity, Ref<BloomSettings>)>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
     for (target, source_list) in routing.iter() {
@@ -74,7 +74,7 @@ fn sync_bloom(
 fn cleanup_bloom(
     mut commands: Commands,
     mut removed: RemovedComponents<BloomSettings>,
-    routing: Res<renzora::EffectRouting>,
+    routing: Res<renzora_scene_api::EffectRouting>,
 ) {
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
@@ -103,10 +103,8 @@ impl Plugin for BloomEffectPlugin {
         if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
             render_app.configure_sets(
                 bevy::core_pipeline::Core3d,
-                renzora::RenderPhase::HdrPost.before(bevy::post_process::bloom::bloom),
+                renzora_scene_api::RenderPhase::HdrPost.before(bevy::post_process::bloom::bloom),
             );
         }
     }
 }
-
-renzora::add!(BloomEffectPlugin);

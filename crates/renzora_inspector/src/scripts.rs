@@ -332,11 +332,11 @@ impl ScriptIndex {
 /// closed.
 fn track_script_files(
     mut index: ResMut<ScriptIndex>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
     engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
-    use renzora::core::project_files::FileChange;
+    use renzora_project_api::project_files::FileChange;
 
     if changes.is_empty() {
         return;
@@ -397,7 +397,7 @@ fn track_script_files(
 
 fn refresh_script_index(
     mut index: ResMut<ScriptIndex>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     engine: Option<Res<renzora_scripting::ScriptEngine>>,
 ) {
     // Bind the poll result in its own statement before touching `index.task`
@@ -537,7 +537,7 @@ fn build_script_section(
             UiInteraction::default(),
             BLOCK,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            HoverTooltip::new(renzora::lang::t("comp.script.open")),
+            HoverTooltip::new(renzora_lang_api::t("comp.script.open")),
             ScriptOpenBtn { path: path.clone() },
         ));
     }
@@ -842,12 +842,12 @@ fn script_open_click(
             let abs = if path.is_absolute() {
                 path.clone()
             } else {
-                match w.get_resource::<renzora::core::CurrentProject>() {
+                match w.get_resource::<renzora_project_api::CurrentProject>() {
                     Some(p) => p.path.join(&path),
                     None => path.clone(),
                 }
             };
-            w.insert_resource(renzora::core::OpenCodeEditorFile { path: abs });
+            w.insert_resource(renzora_project_api::OpenCodeEditorFile { path: abs });
             if let Some(mut dock) = w.get_resource_mut::<renzora_ember::dock::Dock>() {
                 dock.tree.focus_or_add_panel("code_editor");
             }
@@ -882,7 +882,7 @@ struct ScriptSearch;
 fn build_drop_zone(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
     let drop_txt = commands
         .spawn((
-            Text::new(renzora::lang::t("comp.script.drop")),
+            Text::new(renzora_lang_api::t("comp.script.drop")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             PASS_THROUGH,
@@ -930,7 +930,7 @@ fn add_script_open(
         return;
     };
     let entity = btn.entity;
-    let title = renzora::lang::t("comp.script.add");
+    let title = renzora_lang_api::t("comp.script.add");
     let parts = overlay_val_parts(&mut commands, &fonts, &title, Val::Px(380.0), Val::Auto, true);
     commands.entity(parts.root).insert(ScreenMenu);
     commands
@@ -947,7 +947,7 @@ fn add_script_open(
     let search = text_input(
         &mut commands,
         &fonts.ui,
-        &renzora::lang::t_or("comp.script.search", "Search scripts..."),
+        &renzora_lang_api::t_or("comp.script.search", "Search scripts..."),
         "",
     );
     commands.entity(search).insert(ScriptSearch);
@@ -965,7 +965,7 @@ fn add_script_open(
         .id();
     let scripts = index.scripts.clone();
     if scripts.is_empty() {
-        let none = muted_line(&mut commands, &fonts, &renzora::lang::t("comp.script.none_in_project"));
+        let none = muted_line(&mut commands, &fonts, &renzora_lang_api::t("comp.script.none_in_project"));
         commands.entity(list).add_child(none);
     } else {
         // Lower-cased "folder/name" per script, matched against the query. One
@@ -979,7 +979,7 @@ fn add_script_open(
             bind_display(&mut commands, row, move |w| query_matches(w, search, &keys[i]));
             commands.entity(list).add_child(row);
         }
-        let none = muted_line(&mut commands, &fonts, &renzora::lang::t_or("comp.script.no_match", "No scripts match."));
+        let none = muted_line(&mut commands, &fonts, &renzora_lang_api::t_or("comp.script.no_match", "No scripts match."));
         bind_display(&mut commands, none, move |w| !keys.iter().any(|k| query_matches(w, search, k)));
         commands.entity(list).add_child(none);
     }
@@ -1027,7 +1027,7 @@ fn picker_row(
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             MenuAction(Box::new(move |w: &mut World| {
                 let rel = w
-                    .get_resource::<renzora::core::CurrentProject>()
+                    .get_resource::<renzora_project_api::CurrentProject>()
                     .map(|p| make_rel(&abs, p))
                     .unwrap_or_else(|| abs.clone());
                 attach_file_script(w, entity, rel);
@@ -1171,7 +1171,7 @@ fn scan_scripts_inner(
 
 /// Strip the project prefix and force forward slashes so the stored path is
 /// OS-independent (matches the egui `make_relative`).
-fn make_rel(abs: &std::path::Path, project: &renzora::core::CurrentProject) -> PathBuf {
+fn make_rel(abs: &std::path::Path, project: &renzora_project_api::CurrentProject) -> PathBuf {
     let rel = abs.strip_prefix(&project.path).unwrap_or(abs);
     PathBuf::from(rel.to_string_lossy().replace('\\', "/"))
 }
@@ -1221,7 +1221,7 @@ fn detach_script(world: &mut World, entity: Entity, script_id: u32) {
 fn add_script_drop(
     mouse: Res<ButtonInput<MouseButton>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     zones: Query<(&renzora_ember::UiCursor, &AddScriptDropZone)>,
     cmds: Option<Res<EditorCommands>>,
     engine: Option<Res<renzora_scripting::ScriptEngine>>,

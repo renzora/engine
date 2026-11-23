@@ -19,8 +19,10 @@ bevy = ["dep:bevy"]
 bake = ["dep:meshopt", "dep:gltf", "dep:serde_json"]
 # Loading an `.rvg` as a model (`model.rs`): its scene through Bevy's glTF
 # loader. Whatever loads models turns this on; the virtual geometry renderer
-# alone does not need it.
-model = ["bevy", "bevy/bevy_gltf"]
+# alone does not need it. `serde_json` to repair a stored scene's images before
+# that loader reads them; Bevy's glTF loader already links it, so it adds
+# nothing to a build.
+model = ["bevy", "bevy/bevy_gltf", "dep:serde_json"]
 
 [dependencies]
 bevy = { workspace = true, optional = true }

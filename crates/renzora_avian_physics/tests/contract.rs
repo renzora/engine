@@ -11,11 +11,11 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 #[allow(unused_imports)]
-use renzora::physics::{
+use renzora_physics_api::physics::{
     BodyVelocity, CollisionStarted, JointKind, Overlap, OverlapBatch, PhysicsBackends,
     PhysicsCommand, PhysicsCommands, PhysicsContacts, PhysicsDim, PhysicsJoint, ResolvedShape,
 };
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 use renzora_physics::auto_fit::SkipAutoFit;
 use renzora_physics::read_state::CollisionReadState;
 use renzora_physics::{
@@ -323,7 +323,7 @@ fn a_heightfield_holds_a_body_up() {
         PhysicsBodyData::static_body(),
         renzora_physics::auto_fit::SkipAutoFit,
         CollisionShapeData::mesh(),
-        renzora::physics::HeightfieldSource(std::sync::Arc::new(renzora::physics::HeightfieldData {
+        renzora_physics_api::physics::HeightfieldSource(std::sync::Arc::new(renzora_physics_api::physics::HeightfieldData {
             heights: vec![2.0; n * n],
             columns: n,
             rows: n,
@@ -345,7 +345,7 @@ fn a_heightfield_holds_a_body_up() {
     // Rays and contacts name the ground's own entity.
     let hit = PhysicsBackends::cast_one(
         app.world(),
-        renzora::physics::Cast::ray(PhysicsDim::D3, Vec3::new(6.0, 10.0, 6.0), Vec3::NEG_Y, 20.0),
+        renzora_physics_api::physics::Cast::ray(PhysicsDim::D3, Vec3::new(6.0, 10.0, 6.0), Vec3::NEG_Y, 20.0),
     )
     .expect("the ray finds the ground");
     assert_eq!(hit.entity, ground);
@@ -722,7 +722,7 @@ fn car(app: &mut App, at: Vec3) -> Entity {
             PhysicsBodyData { mass: 1000.0, ..Default::default() },
             CollisionShapeData::cuboid(Vec3::new(1.0, 0.4, 2.0)),
             Transform::from_translation(at),
-            renzora::vehicle::Vehicle {
+            renzora_physics_api::vehicle::Vehicle {
                 front_axle: "front".into(),
                 rear_axle: "rear".into(),
                 wheel_radius: 0.4,
@@ -745,7 +745,7 @@ fn car(app: &mut App, at: Vec3) -> Entity {
 }
 
 fn drive(app: &mut App, car: Entity, throttle: f32) {
-    app.world_mut().get_mut::<renzora::vehicle::VehicleControls>(car).unwrap().throttle = throttle;
+    app.world_mut().get_mut::<renzora_physics_api::vehicle::VehicleControls>(car).unwrap().throttle = throttle;
 }
 
 #[test]
@@ -754,7 +754,7 @@ fn a_vehicle_settles_on_its_suspension() {
     slab(&mut app, (-20.0, 20.0), (-20.0, 20.0));
     let car = car(&mut app, Vec3::new(0.0, 1.5, 0.0));
     step(&mut app, 240);
-    let state = *app.world().get::<renzora::vehicle::VehicleState>(car).unwrap();
+    let state = *app.world().get::<renzora_physics_api::vehicle::VehicleState>(car).unwrap();
     assert_eq!(state.wheels, 4);
     assert_eq!(state.wheels_on_ground, 4);
     let t = app.world().get::<Transform>(car).unwrap();
@@ -771,7 +771,7 @@ fn a_vehicle_drives_on_throttle_and_stays_upright() {
     drive(&mut app, car, 1.0);
     step(&mut app, 180);
     let t = *app.world().get::<Transform>(car).unwrap();
-    let speed = app.world().get::<renzora::vehicle::VehicleState>(car).unwrap().speed;
+    let speed = app.world().get::<renzora_physics_api::vehicle::VehicleState>(car).unwrap().speed;
     assert!(t.translation.z > 10.0, "drove forward, at z = {}", t.translation.z);
     assert!(speed > 5.0, "at speed, {speed} m/s");
     assert!((t.rotation * Vec3::Y).y > 0.95, "upright");

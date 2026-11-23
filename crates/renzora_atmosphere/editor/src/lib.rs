@@ -8,7 +8,7 @@
 use bevy::light::Atmosphere; // 0.19: moved to bevy::light
 use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
+use renzora_editor_api::{AppEditorExt, InspectorEntry};
 use renzora_atmosphere::AtmosphereComponentSettings;
 
 fn inspector_entry() -> InspectorEntry {
@@ -45,30 +45,30 @@ fn inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
-            renzora::FieldDef {
+            renzora_editor_api::FieldDef {
                 name: "Rendering",
-                field_type: renzora::FieldType::Enum {
+                field_type: renzora_editor_api::FieldType::Enum {
                     options: &["Lookup Texture", "Raymarched"],
                 },
                 get_fn: |w, e| {
                     w.get::<AtmosphereComponentSettings>(e).map(|s| {
-                        renzora::FieldValue::Enum(
+                        renzora_editor_api::FieldValue::Enum(
                             if s.mode == 1 { "Raymarched" } else { "Lookup Texture" }.to_string(),
                         )
                     })
                 },
                 set_fn: |w, e, v| {
-                    if let (renzora::FieldValue::Enum(label), Some(mut s)) =
+                    if let (renzora_editor_api::FieldValue::Enum(label), Some(mut s)) =
                         (v, w.get_mut::<AtmosphereComponentSettings>(e))
                     {
                         s.mode = if label == "Raymarched" { 1 } else { 0 };
                     }
                 },
             },
-            renzora::float_field!("Bottom Radius", AtmosphereComponentSettings, bottom_radius, 1000.0, 0.0, 100_000_000.0),
-            renzora::float_field!("Top Radius", AtmosphereComponentSettings, top_radius, 1000.0, 0.0, 100_000_000.0),
-            renzora::float_field!("Ground Albedo", AtmosphereComponentSettings, ground_albedo, 0.01, 0.0, 1.0),
-            renzora::float_field!("Units to m", AtmosphereComponentSettings, scene_units_to_m, 0.1, 0.0001, 10000.0),
+            renzora_editor_api::float_field!("Bottom Radius", AtmosphereComponentSettings, bottom_radius, 1000.0, 0.0, 100_000_000.0),
+            renzora_editor_api::float_field!("Top Radius", AtmosphereComponentSettings, top_radius, 1000.0, 0.0, 100_000_000.0),
+            renzora_editor_api::float_field!("Ground Albedo", AtmosphereComponentSettings, ground_albedo, 0.01, 0.0, 1.0),
+            renzora_editor_api::float_field!("Units to m", AtmosphereComponentSettings, scene_units_to_m, 0.1, 0.0001, 10000.0),
         ],
     }
 }
@@ -83,5 +83,3 @@ impl Plugin for AtmosphereEditorPlugin {
         app.register_inspector(inspector_entry());
     }
 }
-
-renzora::add!(AtmosphereEditorPlugin, Editor);

@@ -19,8 +19,8 @@
 //! the camera, which is how a pivot left underground reads as one.
 
 use bevy::prelude::*;
-use renzora::core::viewport_types::{PivotMarkerState, ViewportSettings, ViewportState, ViewportView};
-use renzora::core::EditorCamera;
+use renzora_viewport_api::{PivotMarkerState, ViewportSettings, ViewportState, ViewportView};
+use renzora_scene_api::EditorCamera;
 
 use super::{CameraDragState, CameraVelocityState, OrbitCameraState, PivotLock, SurfaceAhead};
 
@@ -99,7 +99,7 @@ pub(super) fn draw_pivot(
     activity: Res<PivotActivity>,
     settings: Option<Res<ViewportSettings>>,
     viewport: Option<Res<ViewportState>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     camera: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
     mut marker: ResMut<PivotMarkerState>,
     mut surface: SurfaceAhead,

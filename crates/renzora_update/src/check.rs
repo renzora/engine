@@ -50,10 +50,10 @@ impl UpdateChannel {
             // source has no release of its own and tracks `main`, so it gets
             // nightlies — which is also the only channel that could be newer
             // than an unreleased in-development version.
-            _ => match renzora::version::channel() {
-                renzora::version::BuildChannel::Release => Self::Stable,
-                renzora::version::BuildChannel::Nightly
-                | renzora::version::BuildChannel::Dev => Self::Nightly,
+            _ => match renzora_platform_api::version::channel() {
+                renzora_platform_api::version::BuildChannel::Release => Self::Stable,
+                renzora_platform_api::version::BuildChannel::Nightly
+                | renzora_platform_api::version::BuildChannel::Dev => Self::Nightly,
             },
         }
     }
@@ -144,9 +144,9 @@ struct GitHubAsset {
 
 /// The tag this binary reports as its own, for display.
 pub fn current_tag() -> String {
-    renzora::version::release_tag()
+    renzora_platform_api::version::release_tag()
         .map(|t| t.to_string())
-        .unwrap_or_else(|| renzora::version::ENGINE_VERSION.to_string())
+        .unwrap_or_else(|| renzora_platform_api::version::ENGINE_VERSION.to_string())
 }
 
 /// What the running binary compares AS.
@@ -160,9 +160,9 @@ pub fn current_tag() -> String {
 /// [`ParsedVersion::dev`] puts it at `Stage::Dev` instead: the least finished
 /// build of that version, below even last night's.
 fn current_version() -> Option<ParsedVersion> {
-    match renzora::version::release_tag() {
+    match renzora_platform_api::version::release_tag() {
         Some(tag) => ParsedVersion::parse(tag),
-        None => ParsedVersion::dev(renzora::version::ENGINE_VERSION),
+        None => ParsedVersion::dev(renzora_platform_api::version::ENGINE_VERSION),
     }
 }
 
@@ -205,13 +205,13 @@ fn engine_asset_name(platform: &str) -> String {
 fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
     let current = current_tag();
 
-    let platform = renzora::version::host_platform_key().ok_or_else(|| {
+    let platform = renzora_platform_api::version::host_platform_key().ok_or_else(|| {
         "No engine builds are published for this platform, so there is nothing to update to."
             .to_string()
     })?;
     let asset_name = engine_asset_name(platform);
 
-    let response = renzora_net::Request::get(RELEASES_API)
+    let response = renzora_net_api::net::Request::get(RELEASES_API)
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
         .send()
@@ -337,10 +337,10 @@ mod tests {
         let running = current_version().expect("dev build parses");
         let nightly = ParsedVersion::parse(&format!(
             "{}-nightly-16aug26",
-            renzora::version::ENGINE_VERSION
+            renzora_platform_api::version::ENGINE_VERSION
         ))
         .expect("a nightly of the current version parses");
-        if renzora::version::release_tag().is_none() {
+        if renzora_platform_api::version::release_tag().is_none() {
             assert!(
                 nightly.is_newer_than(&running),
                 "a source checkout must be offered its own version's nightlies"
@@ -350,8 +350,8 @@ mod tests {
 
     #[test]
     fn a_dev_build_reports_its_version_as_its_tag() {
-        if renzora::version::release_tag().is_none() {
-            assert_eq!(current_tag(), renzora::version::ENGINE_VERSION);
+        if renzora_platform_api::version::release_tag().is_none() {
+            assert_eq!(current_tag(), renzora_platform_api::version::ENGINE_VERSION);
         }
     }
 

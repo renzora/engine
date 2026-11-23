@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use renzora::{ScriptAction, ScriptActionValue};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::components::AudioPlayer;

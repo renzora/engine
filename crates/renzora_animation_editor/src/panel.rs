@@ -109,19 +109,19 @@ fn ready(w: &Rx) -> bool {
 
 fn empty_headline(w: &Rx) -> String {
     let Some(e) = selected_entity(&Rx::new(w.untracked())) else {
-        return renzora::lang::t("animation.no_entity_selected");
+        return renzora_lang_api::t("animation.no_entity_selected");
     };
     let has_model = w
-        .get::<renzora::core::MeshInstanceData>(e)
+        .get::<renzora_scene_api::MeshInstanceData>(e)
         .is_some_and(|m| m.model_path.is_some());
     let clip_count = w
         .get::<AnimatorComponent>(e)
         .map(|a| a.clips.len())
         .unwrap_or(0);
     if clip_count == 0 && !has_model {
-        renzora::lang::t("animation.entity_no_model")
+        renzora_lang_api::t("animation.entity_no_model")
     } else if clip_count == 0 {
-        renzora::lang::t("animation.no_clips_yet")
+        renzora_lang_api::t("animation.no_clips_yet")
     } else {
         String::new()
     }
@@ -130,15 +130,15 @@ fn empty_headline(w: &Rx) -> String {
 fn empty_hint(w: &Rx) -> String {
     match selected_entity(&Rx::new(w.untracked())) {
         None if crate::setup::scene_has_candidates(w.untracked()) => {
-            renzora::lang::t("animation.hint_pick_entity")
+            renzora_lang_api::t("animation.hint_pick_entity")
         }
         None => {
-            renzora::lang::t("animation.hint_import_model")
+            renzora_lang_api::t("animation.hint_import_model")
         }
         Some(_) if crate::setup::can_scan_clips(w) => {
-            renzora::lang::t("animation.hint_scan_folder")
+            renzora_lang_api::t("animation.hint_scan_folder")
         }
-        Some(_) => renzora::lang::t("animation.hint_play_on_models"),
+        Some(_) => renzora_lang_api::t("animation.hint_play_on_models"),
     }
 }
 
@@ -198,7 +198,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "magnifying-glass",
-        &renzora::lang::t("animation.scan_for_clips"),
+        &renzora_lang_api::t("animation.scan_for_clips"),
         crate::setup::ScanClipsBtn,
     );
     bind_display(commands, scan_btn, crate::setup::can_scan_clips);
@@ -207,7 +207,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "plus-circle",
-        &renzora::lang::t("animation.create_animation"),
+        &renzora_lang_api::t("animation.create_animation"),
         crate::setup::CreateAnimBtn,
     );
     bind_display(commands, create_anim_btn, crate::setup::can_create_anim);
@@ -318,7 +318,7 @@ fn info_row(
 // ── Clip Properties ──────────────────────────────────────────────────────────
 
 fn build_clip_props(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("film-strip"), &renzora::lang::t("animation.clip_properties"), true);
+    let (root, body) = collapsible(commands, fonts, Some("film-strip"), &renzora_lang_api::t("animation.clip_properties"), true);
     // Hidden when no clip slot is selected (matches egui's `if let Some(slot)`).
     bind_display(commands, root, |w| {
         let Some(name) = selected_clip(&Rx::new(w.untracked())) else {
@@ -328,25 +328,25 @@ fn build_clip_props(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
 
     let rows = [
-        info_row(commands, fonts, 0, &renzora::lang::t("common.name"), text_primary(), |w| {
+        info_row(commands, fonts, 0, &renzora_lang_api::t("common.name"), text_primary(), |w| {
             slot_field(&Rx::new(w.untracked()), |s| s.name.clone())
         }),
-        info_row(commands, fonts, 1, &renzora::lang::t("animation.path"), text_muted(), |w| {
+        info_row(commands, fonts, 1, &renzora_lang_api::t("animation.path"), text_muted(), |w| {
             slot_field(&Rx::new(w.untracked()), |s| s.path.clone())
         }),
-        info_row(commands, fonts, 2, &renzora::lang::t("animation.speed"), text_primary(), |w| {
+        info_row(commands, fonts, 2, &renzora_lang_api::t("animation.speed"), text_primary(), |w| {
             slot_field(&Rx::new(w.untracked()), |s| format!("{:.2}x", s.speed))
         }),
-        info_row(commands, fonts, 3, &renzora::lang::t("animation.looping"), text_primary(), |w| {
-            slot_field(&Rx::new(w.untracked()), |s| if s.looping { renzora::lang::t("common.yes") } else { renzora::lang::t("common.no") })
+        info_row(commands, fonts, 3, &renzora_lang_api::t("animation.looping"), text_primary(), |w| {
+            slot_field(&Rx::new(w.untracked()), |s| if s.looping { renzora_lang_api::t("common.yes") } else { renzora_lang_api::t("common.no") })
         }),
-        info_row(commands, fonts, 4, &renzora::lang::t("animation.duration"), text_primary(), |w| {
+        info_row(commands, fonts, 4, &renzora_lang_api::t("animation.duration"), text_primary(), |w| {
             cur_clip(&Rx::new(w.untracked())).map(|c| format!("{:.2}s", c.duration)).unwrap_or_default()
         }),
-        info_row(commands, fonts, 5, &renzora::lang::t("animation.tracks"), text_primary(), |w| {
+        info_row(commands, fonts, 5, &renzora_lang_api::t("animation.tracks"), text_primary(), |w| {
             cur_clip(&Rx::new(w.untracked())).map(|c| format!("{} bones", c.tracks.len())).unwrap_or_default()
         }),
-        info_row(commands, fonts, 6, &renzora::lang::t("animation.keyframes"), text_primary(), |w| {
+        info_row(commands, fonts, 6, &renzora_lang_api::t("animation.keyframes"), text_primary(), |w| {
             cur_clip(&Rx::new(w.untracked()))
                 .map(|c| {
                     let kf: usize = c
@@ -381,7 +381,7 @@ fn slot_field(w: &Rx, f: impl Fn(&renzora_animation::AnimClipSlot) -> String) ->
 // ── Clip Library ─────────────────────────────────────────────────────────────
 
 fn build_clip_library(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("list-bullets"), &renzora::lang::t("animation.clip_library"), true);
+    let (root, body) = collapsible(commands, fonts, Some("list-bullets"), &renzora_lang_api::t("animation.clip_library"), true);
     let list = commands
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -524,7 +524,7 @@ fn clip_row(
     if is_default {
         let def = commands
             .spawn((
-                Text::new(renzora::lang::t("animation.default_suffix")),
+                Text::new(renzora_lang_api::t("animation.default_suffix")),
                 ui_font(&fonts.ui, 9.0),
                 TextColor(rgb(text_muted())),
             ))
@@ -561,7 +561,7 @@ fn clip_row(
 
 fn build_bone_tracks(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Collapsed by default, mirroring the egui panel.
-    let (root, body) = collapsible(commands, fonts, Some("bone"), &renzora::lang::t("animation.bone_tracks"), false);
+    let (root, body) = collapsible(commands, fonts, Some("bone"), &renzora_lang_api::t("animation.bone_tracks"), false);
     bind_display(commands, root, |w| cur_clip(&Rx::new(w.untracked())).is_some());
 
     let list = commands
@@ -684,17 +684,17 @@ fn channel(
 // ── State Machine ────────────────────────────────────────────────────────────
 
 fn build_state_machine(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("graph"), &renzora::lang::t("animation.state_machine"), true);
+    let (root, body) = collapsible(commands, fonts, Some("graph"), &renzora_lang_api::t("animation.state_machine"), true);
     bind_display(commands, root, |w| {
         animator(&Rx::new(w.untracked())).is_some_and(|a| a.state_machine.is_some())
     });
 
-    let file = info_row(commands, fonts, 0, &renzora::lang::t("animation.file"), text_muted(), |w| {
+    let file = info_row(commands, fonts, 0, &renzora_lang_api::t("animation.file"), text_muted(), |w| {
         animator(&Rx::new(w.untracked()))
             .and_then(|a| a.state_machine.clone())
             .unwrap_or_default()
     });
-    let st = info_row(commands, fonts, 1, &renzora::lang::t("animation.state"), accent(), |w| {
+    let st = info_row(commands, fonts, 1, &renzora_lang_api::t("animation.state"), accent(), |w| {
         anim_state(&Rx::new(w.untracked()))
             .and_then(|s| s.current_state.clone())
             .unwrap_or_default()
@@ -702,7 +702,7 @@ fn build_state_machine(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, st, |w| {
         anim_state(&Rx::new(w.untracked())).is_some_and(|s| s.current_state.is_some())
     });
-    let time = info_row(commands, fonts, 2, &renzora::lang::t("animation.time"), text_primary(), |w| {
+    let time = info_row(commands, fonts, 2, &renzora_lang_api::t("animation.time"), text_primary(), |w| {
         anim_state(&Rx::new(w.untracked())).map(|s| format!("{:.2}s", s.state_time)).unwrap_or_default()
     });
     bind_display(commands, time, |w| anim_state(&Rx::new(w.untracked())).is_some());
@@ -714,7 +714,7 @@ fn build_state_machine(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 // ── Parameters (read-only display) ───────────────────────────────────────────
 
 fn build_parameters(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("faders"), &renzora::lang::t("animation.parameters"), true);
+    let (root, body) = collapsible(commands, fonts, Some("faders"), &renzora_lang_api::t("animation.parameters"), true);
     bind_display(commands, root, |w| {
         anim_state(&Rx::new(w.untracked())).is_some_and(|s| {
             !s.params.floats.is_empty()
@@ -892,7 +892,7 @@ fn param_trigger_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, na
         .id();
     let lbl = commands
         .spawn((
-            Text::new(renzora::lang::t("animation.fire")),
+            Text::new(renzora_lang_api::t("animation.fire")),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(accent())),
         ))
@@ -905,7 +905,7 @@ fn param_trigger_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, na
 // ── Layers ───────────────────────────────────────────────────────────────────
 
 fn build_layers(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let (root, body) = collapsible(commands, fonts, Some("stack"), &renzora::lang::t("animation.layers"), true);
+    let (root, body) = collapsible(commands, fonts, Some("stack"), &renzora_lang_api::t("animation.layers"), true);
     bind_display(commands, root, |w| {
         animator(&Rx::new(w.untracked())).is_some_and(|a| !a.layers.is_empty())
     });
@@ -980,23 +980,23 @@ fn layer_block(
 
     let mut idx = 0;
     let mut rows = vec![
-        static_row(commands, fonts, idx, &renzora::lang::t("animation.layer"), name, text_primary()),
+        static_row(commands, fonts, idx, &renzora_lang_api::t("animation.layer"), name, text_primary()),
         {
             idx += 1;
-            static_row(commands, fonts, idx, &renzora::lang::t("animation.weight"), &format!("{:.0}%", weight * 100.0), text_primary())
+            static_row(commands, fonts, idx, &renzora_lang_api::t("animation.weight"), &format!("{:.0}%", weight * 100.0), text_primary())
         },
         {
             idx += 1;
-            static_row(commands, fonts, idx, &renzora::lang::t("animation.blend"), blend, text_muted())
+            static_row(commands, fonts, idx, &renzora_lang_api::t("animation.blend"), blend, text_muted())
         },
     ];
     if let Some(clip) = clip {
         idx += 1;
-        rows.push(static_row(commands, fonts, idx, &renzora::lang::t("animation.clip"), clip, accent()));
+        rows.push(static_row(commands, fonts, idx, &renzora_lang_api::t("animation.clip"), clip, accent()));
     }
     if let Some(mask) = mask {
         idx += 1;
-        rows.push(static_row(commands, fonts, idx, &renzora::lang::t("animation.mask"), &format!("{} bones", mask), text_muted()));
+        rows.push(static_row(commands, fonts, idx, &renzora_lang_api::t("animation.mask"), &format!("{} bones", mask), text_muted()));
     }
     commands.entity(block).add_children(&rows);
     block
@@ -1061,27 +1061,27 @@ fn static_row(
 
 fn build_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Collapsed by default, mirroring the egui panel.
-    let (root, body) = collapsible(commands, fonts, Some("gear"), &renzora::lang::t("animation.animator_settings"), false);
+    let (root, body) = collapsible(commands, fonts, Some("gear"), &renzora_lang_api::t("animation.animator_settings"), false);
 
-    let default_clip = info_row(commands, fonts, 0, &renzora::lang::t("animation.default_clip"), text_primary(), |w| {
+    let default_clip = info_row(commands, fonts, 0, &renzora_lang_api::t("animation.default_clip"), text_primary(), |w| {
         animator(&Rx::new(w.untracked()))
             .and_then(|a| a.default_clip.clone())
-            .unwrap_or_else(|| renzora::lang::t("common.none"))
+            .unwrap_or_else(|| renzora_lang_api::t("common.none"))
     });
-    let blend = info_row(commands, fonts, 1, &renzora::lang::t("animation.blend_time"), text_primary(), |w| {
+    let blend = info_row(commands, fonts, 1, &renzora_lang_api::t("animation.blend_time"), text_primary(), |w| {
         animator(&Rx::new(w.untracked())).map(|a| format!("{:.2}s", a.blend_duration)).unwrap_or_default()
     });
-    let clips = info_row(commands, fonts, 2, &renzora::lang::t("animation.clips"), text_primary(), |w| {
+    let clips = info_row(commands, fonts, 2, &renzora_lang_api::t("animation.clips"), text_primary(), |w| {
         animator(&Rx::new(w.untracked())).map(|a| format!("{}", a.clips.len())).unwrap_or_default()
     });
-    let sm = info_row(commands, fonts, 3, &renzora::lang::t("animation.state_machine"), text_primary(), |w| {
+    let sm = info_row(commands, fonts, 3, &renzora_lang_api::t("animation.state_machine"), text_primary(), |w| {
         animator(&Rx::new(w.untracked()))
-            .map(|a| if a.state_machine.is_some() { renzora::lang::t("common.yes") } else { renzora::lang::t("common.no") })
+            .map(|a| if a.state_machine.is_some() { renzora_lang_api::t("common.yes") } else { renzora_lang_api::t("common.no") })
             .unwrap_or_default()
     });
-    let init = info_row(commands, fonts, 4, &renzora::lang::t("animation.initialized"), text_primary(), |w| {
+    let init = info_row(commands, fonts, 4, &renzora_lang_api::t("animation.initialized"), text_primary(), |w| {
         anim_state(&Rx::new(w.untracked()))
-            .map(|s| if s.initialized { renzora::lang::t("common.yes") } else { renzora::lang::t("common.no") })
+            .map(|s| if s.initialized { renzora_lang_api::t("common.yes") } else { renzora_lang_api::t("common.no") })
             .unwrap_or_default()
     });
     bind_display(commands, init, |w| anim_state(&Rx::new(w.untracked())).is_some());
@@ -1112,7 +1112,7 @@ fn cache_panel_clip(
     mut cache: ResMut<NativeAnimPanelClip>,
     state: Res<AnimationEditorState>,
     animators: Query<&AnimatorComponent>,
-    project: Option<Res<renzora::core::CurrentProject>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
 ) {
     let key = match (state.selected_entity, state.selected_clip.as_deref()) {
         (Some(e), Some(c)) => Some((e, c.to_string())),

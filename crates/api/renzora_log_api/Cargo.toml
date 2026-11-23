@@ -1,0 +1,16 @@
+[package]
+name = "renzora_log_api"
+version = "0.1.0"
+edition = "2021"
+description = "The engine's console: `console_info`/`console_warn`/... from any crate, the shared buffer the Console panel drains, and the history it keeps. Plugins see it at `renzora::console_log`."
+
+# A contract layer with no dependencies at all, not even Bevy. Thirty-odd crates
+# log to the console and nothing else from the contract; depending on this
+# instead of `renzora` means an edit anywhere else in the contract does not
+# rebuild them. Its two buffers are process-global statics, so it must stay
+# reachable from `renzora` (and so be embedded once in `renzora_dylib`): a
+# privately linked copy logs into a buffer nobody drains.
+[dependencies]
+
+[lints]
+workspace = true

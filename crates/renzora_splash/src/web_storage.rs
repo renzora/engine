@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use renzora::{CurrentProject, ProjectConfig, WindowConfig};
+use renzora_project_api::{CurrentProject, ProjectConfig, WindowConfig};
 use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
@@ -77,7 +77,7 @@ pub fn create_web_project(name: &str) -> Result<CurrentProject, String> {
     let config = ProjectConfig {
         name: name.to_string(),
         version: "0.1.0".to_string(),
-        created_with: Some(renzora::version::ENGINE_VERSION.to_string()),
+        created_with: Some(renzora_platform_api::version::ENGINE_VERSION.to_string()),
         main_scene: "scenes/main.bsn".to_string(),
         ..Default::default()
     };

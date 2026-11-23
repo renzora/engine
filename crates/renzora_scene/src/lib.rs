@@ -4,11 +4,8 @@
 
 use bevy::prelude::*;
 
-use renzora::core::{
-    CurrentProject, EditorCamera, HideInHierarchy, MeshInstanceData, NewSceneRequested,
-    OpenSceneRequested, OpenScenePathRequested, SaveAsSceneRequested, SaveSceneRequested,
-    SceneCamera, SceneTabBuffers, TabSceneSnapshot, TabSwitchRequest, ToggleSettingsRequested,
-};
+use renzora_scene_api::{EditorCamera, HideInHierarchy, MeshInstanceData, SceneCamera};
+use renzora_project_api::{CurrentProject, NewSceneRequested, OpenSceneRequested, OpenScenePathRequested, SaveAsSceneRequested, SaveSceneRequested, SceneTabBuffers, TabSceneSnapshot, TabSwitchRequest, ToggleSettingsRequested};
 use renzora_camera::OrbitCameraState;
 use renzora_editor_framework::SplashState;
 use renzora_engine::scene_io;
@@ -35,14 +32,15 @@ mod diagnostics;
 mod conflict_prompt;
 mod hot_reload;
 mod missing_assets;
+mod world_partition;
 use diagnostics::SceneDiagnostics;
 
 // Runtime warning capture now lives in the shared `renzora` dylib so the
 // capture layer (installed by the runtime binary) and this panel (in the
 // editor bundle) share one buffer across the dylib boundary. Re-exported
 // here so existing `crate::runtime_warnings::*` paths keep resolving.
-pub use renzora::runtime_warnings;
-pub use renzora::runtime_warnings::runtime_warnings_layer;
+pub use renzora_diagnostics_api::runtime_warnings;
+pub use renzora_diagnostics_api::runtime_warnings::runtime_warnings_layer;
 
 // ============================================================================
 // Tab Switch System
@@ -105,12 +103,12 @@ pub struct SimulateSnapshot(pub Option<String>);
 /// Serialize the live scene into [`SimulateSnapshot`] before Simulate runs
 /// (fired by `enter_simulate_mode`).
 fn on_snapshot_scene_for_simulate(
-    _trigger: On<renzora::core::SnapshotSceneForSimulate>,
+    _trigger: On<renzora_shell_api::SnapshotSceneForSimulate>,
     mut commands: Commands,
 ) {
     commands.queue(|world: &mut World| match scene_io::serialize_scene_to_string(world) {
         Ok(ron) => world.resource_mut::<SimulateSnapshot>().0 = Some(ron),
-        Err(e) => renzora::core::console_log::console_error(
+        Err(e) => renzora_log_api::console_error(
             "Simulate",
             format!("Failed to snapshot scene; Stop won't restore it: {e}"),
         ),
@@ -122,7 +120,7 @@ fn on_snapshot_scene_for_simulate(
 /// despawn→load sequence the tab switcher uses. Skipping the despawn is what
 /// duplicated every entity in the hierarchy.
 fn on_restore_simulate_snapshot(
-    _trigger: On<renzora::core::RestoreSimulateSnapshot>,
+    _trigger: On<renzora_shell_api::RestoreSimulateSnapshot>,
     mut commands: Commands,
 ) {
     commands.queue(|world: &mut World| {
@@ -270,6 +268,8 @@ fn save_live_scene(world: &mut World, save_id: u64) {
     // RON but its `MaterialResolver` / `asset_server.load` calls have to
     // re-decode textures from disk (and worse, anything outside the
     // resolver path renders blank). See `tab_asset_cache` module doc.
+    // Loaded world partition cells first: their edits live only in the world.
+    world_partition::before_scene_despawn(world);
     tab_asset_cache::pin_live_tab_handles(world, save_id);
 }
 
@@ -387,7 +387,7 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
     *live_scene = Some(new_id);
     remember_last_scene(world, new_id);
 
-    renzora::core::console_log::console_info(
+    renzora_log_api::console_info(
         "Scene",
         format!("Switched scene tab {} -> {}", save_id, new_id),
     );
@@ -454,8 +454,8 @@ fn detect_file_keybindings(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
-    input_focus: Option<Res<renzora::core::InputFocusState>>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    input_focus: Option<Res<renzora_project_api::InputFocusState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
 ) {
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
@@ -492,11 +492,11 @@ fn save_scene_system(world: &mut World) {
 
     // The scene is mirroring a running game right now; saving would write the
     // game's state into the level. Run once the game stops and the editor has
-    // put its changes back. See `renzora::LivePlaySession`.
-    if let Some(mut live) = world.get_resource_mut::<renzora::LivePlaySession>() {
+    // put its changes back. See `renzora_project_api::LivePlaySession`.
+    if let Some(mut live) = world.get_resource_mut::<renzora_project_api::LivePlaySession>() {
         if !live.pending_save {
             live.pending_save = true;
-            renzora::core::console_log::console_info(
+            renzora_log_api::console_info(
                 "Scene",
                 "The game is running: the scene will save when you press Stop",
             );
@@ -577,7 +577,7 @@ fn save_scene_system(world: &mut World) {
     // render target — see `thumbnail::capture_scene_thumbnail`.
     world.insert_resource(PendingSceneThumbnail(save_path.clone()));
 
-    renzora::core::console_log::console_success(
+    renzora_log_api::console_success(
         "Scene",
         format!("Saved scene to {}", save_path.display()),
     );
@@ -652,7 +652,7 @@ fn save_as_scene_system(world: &mut World) {
         // tile until the next Ctrl+S.
         world.insert_resource(PendingSceneThumbnail(file_path.clone()));
 
-        renzora::core::console_log::console_success(
+        renzora_log_api::console_success(
             "Scene",
             format!("Saved scene as {}", file_path.display()),
         );
@@ -688,7 +688,7 @@ fn new_scene_system(world: &mut World) {
         });
     }
 
-    renzora::core::console_log::console_info("Scene", "New scene created in a new tab");
+    renzora_log_api::console_info("Scene", "New scene created in a new tab");
 }
 
 // ============================================================================
@@ -724,7 +724,7 @@ fn open_scene_system(world: &mut World) {
         // editor navigation.
         panel::open_scene(world, &file_path);
 
-        renzora::core::console_log::console_success(
+        renzora_log_api::console_success(
             "Scene",
             format!("Opened scene {}", file_path.display()),
         );
@@ -924,7 +924,7 @@ const PIPELINES_IDLE_FRAMES: u32 = 10;
 #[derive(Resource, Clone, Default)]
 struct PendingPipelines(std::sync::Arc<std::sync::atomic::AtomicUsize>);
 
-/// Report what meshes and images hold to [`renzora::load_timeline::AssetMemory`],
+/// Report what meshes and images hold to [`renzora_diagnostics_api::load_timeline::AssetMemory`],
 /// twice a second.
 ///
 /// A mesh or image Bevy only needs on the GPU has its CPU copy dropped after
@@ -939,10 +939,10 @@ fn measure_asset_memory(
     text_nodes: Query<(Entity, &ComputedNode, &bevy::ui::ComputedUiRenderTargetInfo), With<bevy::ui::widget::Text>>,
     ancestors: Query<(Option<&ChildOf>, Option<&Name>, Has<Node>)>,
     layouts: Query<(Entity, &bevy::text::TextLayoutInfo, Option<&bevy::ui::ComputedUiRenderTargetInfo>)>,
-    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    memory: Option<ResMut<renzora_diagnostics_api::load_timeline::AssetMemory>>,
     mut frames: Local<u32>,
 ) {
-    use renzora::load_timeline::AssetMemoryRow;
+    use renzora_diagnostics_api::load_timeline::AssetMemoryRow;
     *frames = frames.wrapping_add(1);
     let Some(mut memory) = memory.filter(|_| *frames % 30 == 1) else {
         return;
@@ -1131,12 +1131,12 @@ fn measure_material_memory(
     std_mats: Res<Assets<StandardMaterial>>,
     graph_mats: Option<Res<Assets<GraphMaterial>>>,
     asset_server: Res<AssetServer>,
-    cache_counts: Option<Res<renzora::diagnostics::MaterialCacheCounts>>,
+    cache_counts: Option<Res<renzora_diagnostics_api::diagnostics::MaterialCacheCounts>>,
     std_users: Query<&MeshMaterial3d<StandardMaterial>>,
     graph_users: Query<&MeshMaterial3d<GraphMaterial>>,
     images: Res<Assets<Image>>,
     gltf_mats: Option<Res<Assets<bevy::gltf::GltfMaterial>>>,
-    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    memory: Option<ResMut<renzora_diagnostics_api::load_timeline::AssetMemory>>,
     mut frames: Local<u32>,
 ) {
     *frames = frames.wrapping_add(1);
@@ -1192,7 +1192,7 @@ fn measure_material_memory(
         || "no material cache".to_string(),
         |c| format!("the material cache holds {} standard, {} graph", c.standard, c.graph),
     );
-    memory.set(renzora::load_timeline::AssetMemoryRow {
+    memory.set(renzora_diagnostics_api::load_timeline::AssetMemoryRow {
         kind: "materials",
         count: std_mats.len() + graph_total,
         bytes: 0,
@@ -1224,7 +1224,7 @@ fn unreferenced_file_images(
     std_mats: &Assets<StandardMaterial>,
     graph_mats: Option<&Assets<GraphMaterial>>,
     gltf_mats: Option<&Assets<bevy::gltf::GltfMaterial>>,
-) -> renzora::load_timeline::AssetMemoryRow {
+) -> renzora_diagnostics_api::load_timeline::AssetMemoryRow {
     let mut slots: Vec<Handle<Image>> = Vec::new();
     for (_, mat) in std_mats.iter() {
         tab_asset_cache::collect_standard_material_images(mat, &mut slots);
@@ -1282,7 +1282,7 @@ fn unreferenced_file_images(
         .take(8)
         .map(|(folder, (n, bytes, holders))| format!("{} {folder}/ x{n} ({holders} handles)", megabytes(*bytes)))
         .collect();
-    renzora::load_timeline::AssetMemoryRow {
+    renzora_diagnostics_api::load_timeline::AssetMemoryRow {
         kind: "file images no material uses",
         count,
         bytes,
@@ -1303,10 +1303,10 @@ fn unreferenced_file_images(
 /// every backend can report; then the row says so.
 fn measure_gpu_allocations(
     device: Option<Res<bevy::render::renderer::RenderDevice>>,
-    memory: Option<ResMut<renzora::load_timeline::AssetMemory>>,
+    memory: Option<ResMut<renzora_diagnostics_api::load_timeline::AssetMemory>>,
     mut frames: Local<u32>,
 ) {
-    use renzora::load_timeline::AssetMemoryRow;
+    use renzora_diagnostics_api::load_timeline::AssetMemoryRow;
     *frames = frames.wrapping_add(1);
     let (Some(device), Some(mut memory)) = (device, memory.filter(|_| *frames % 120 == 2)) else {
         return;
@@ -1355,7 +1355,7 @@ fn measure_gpu_allocations(
 /// into what the GPU took and what the editor's own heap did.
 fn install_gpu_probe(
     device: Option<Res<bevy::render::renderer::RenderDevice>>,
-    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
 ) {
     let (Some(device), Some(mut timeline)) = (device, timeline) else { return };
     if timeline.has_gpu_probe() {
@@ -1364,7 +1364,7 @@ fn install_gpu_probe(
     let device = device.wgpu_device().clone();
     timeline.set_gpu_probe(Box::new(move || {
         let report = device.generate_allocator_report()?;
-        Some(renzora::load_timeline::GpuMemory {
+        Some(renzora_diagnostics_api::load_timeline::GpuMemory {
             allocated: report.total_allocated_bytes,
             reserved: report.total_reserved_bytes,
         })
@@ -1409,7 +1409,7 @@ fn image_gpu_bytes(image: &Image) -> u64 {
 /// names has loaded too. These say where the time between "models loaded" and
 /// "model instantiated by Bevy" goes, which the editor's own stages cannot see.
 fn track_model_asset_events(
-    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
     asset_server: Res<AssetServer>,
     mut models: MessageReader<AssetEvent<bevy::gltf::Gltf>>,
     mut scenes: MessageReader<AssetEvent<bevy::world_serialization::WorldAsset>>,
@@ -1452,10 +1452,10 @@ fn count_pending_pipelines(
 
 /// Follow a project load past the splash and into the editor, where textures
 /// keep arriving after the loading screen has gone, and close the timeline
-/// once everything has settled. See [`renzora::load_timeline`].
+/// once everything has settled. See [`renzora_diagnostics_api::load_timeline`].
 #[allow(clippy::too_many_arguments)]
 fn track_load_timeline(
-    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
     state: Res<State<SplashState>>,
     time: Res<Time<Real>>,
     asset_server: Res<AssetServer>,
@@ -1463,12 +1463,12 @@ fn track_load_timeline(
     graph_mats: Option<Res<Assets<GraphMaterial>>>,
     std_q: Query<&MeshMaterial3d<StandardMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
     graph_q: Query<&MeshMaterial3d<GraphMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
-    viewport_cameras: Query<(&Camera, Has<bevy::camera::RenderTarget>), With<renzora::core::ViewportCamera>>,
+    viewport_cameras: Query<(&Camera, Has<bevy::camera::RenderTarget>), With<renzora_scene_api::ViewportCamera>>,
     images: Res<Assets<Image>>,
-    unresolved: Query<(), (With<renzora::core::MaterialRef>, Without<renzora::core::MaterialResolved>)>,
-    resolved: Query<(), With<renzora::core::MaterialResolved>>,
+    unresolved: Query<(), (With<renzora_material_api::MaterialRef>, Without<renzora_material_api::MaterialResolved>)>,
+    resolved: Query<(), With<renzora_material_api::MaterialResolved>>,
     pending_pipelines: Option<Res<PendingPipelines>>,
-    asset_memory: Option<Res<renzora::load_timeline::AssetMemory>>,
+    asset_memory: Option<Res<renzora_diagnostics_api::load_timeline::AssetMemory>>,
     mut tracker: Local<TimelineTracker>,
 ) {
     let Some(mut timeline) = timeline else { return };
@@ -1602,7 +1602,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
         .map(|p| p.config.name.clone())
         .unwrap_or_else(|| "project".to_string());
     world
-        .get_resource_or_insert_with(renzora::load_timeline::LoadTimeline::default)
+        .get_resource_or_insert_with(renzora_diagnostics_api::load_timeline::LoadTimeline::default)
         .begin(project_name);
 
     // Ensure the asset reader knows the project path before loading the scene.
@@ -1721,7 +1721,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
         lb.loaded = 0;
         lb.total = total_bytes;
     }
-    if let Some(mut timeline) = world.get_resource_mut::<renzora::load_timeline::LoadTimeline>() {
+    if let Some(mut timeline) = world.get_resource_mut::<renzora_diagnostics_api::load_timeline::LoadTimeline>() {
         timeline.mark(
             "scene parsed",
             format!(
@@ -1788,7 +1788,7 @@ fn tick_scene_load_progress(
     loading_bytes: Option<ResMut<LoadingBytes>>,
     children_q: Query<&Children>,
     scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
-    timeline: Option<ResMut<renzora::load_timeline::LoadTimeline>>,
+    timeline: Option<ResMut<renzora_diagnostics_api::load_timeline::LoadTimeline>>,
 ) {
     let Some(mut progress) = progress else { return };
     let mut timeline = timeline;
@@ -2155,15 +2155,26 @@ fn tick_editor_load_progress(
     // a "has SceneRoot child with non-empty children" check
     // misclassify finished entities as still-unspawned forever. Filtering
     // on `ImportedRoot` is both simpler and survives flatten.
+    //
+    // Streamed content (world partition cells) is left out of both counts.
+    // It arrives while the user works, a few cells at a time, and has its own
+    // progress card in the viewport; a modal that dims the editor every time
+    // the camera crosses into a new district would make streaming unusable.
     instances: Query<
         (
             &MeshInstanceData,
             Option<&Children>,
             Has<scene_io::MeshInstanceLoadFailed>,
         ),
-        Without<ImportedRoot>,
+        (Without<ImportedRoot>, Without<renzora_scene_api::StreamedContent>),
     >,
-    pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
+    pending: Query<
+        &MeshInstanceData,
+        (
+            With<scene_io::PendingMeshInstanceRehydrate>,
+            Without<renzora_scene_api::StreamedContent>,
+        ),
+    >,
     children_q: Query<&Children>,
     scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
 ) {
@@ -2330,7 +2341,7 @@ fn short_name(path: &str) -> String {
 #[cfg(test)]
 mod missing_file_tests {
     use super::*;
-    use renzora::core::EditorOpenTab;
+    use renzora_project_api::EditorOpenTab;
 
     fn project(name: &str) -> CurrentProject {
         let root = std::env::temp_dir().join(format!("renzora_missing_{name}_{}", std::process::id()));
@@ -2455,7 +2466,7 @@ fn toast_skipped_scene_types(
 // Plugin
 // ============================================================================
 
-/// Inspector section for [`renzora::SceneInstance`] roots: shows the source
+/// Inspector section for [`renzora_scene_api::SceneInstance`] roots: shows the source
 /// scene (read-only — reference edits go through drag-drop / context menu, not
 /// free text) and the world-streaming controls. Streaming radii only matter
 /// when `Streamed` is on, but they stay visible either way — hiding fields on
@@ -2467,7 +2478,7 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
         display_name: "Scene Instance",
         icon: "film-slate",
         category: "object",
-        has_fn: |world, entity| world.get::<renzora::SceneInstance>(entity).is_some(),
+        has_fn: |world, entity| world.get::<renzora_scene_api::SceneInstance>(entity).is_some(),
         add_fn: None,
         remove_fn: None,
         is_enabled_fn: None,
@@ -2477,7 +2488,7 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
                 name: "Source",
                 field_type: FieldType::ReadOnly,
                 get_fn: |w, e| {
-                    w.get::<renzora::SceneInstance>(e)
+                    w.get::<renzora_scene_api::SceneInstance>(e)
                         .map(|i| FieldValue::ReadOnly(i.source.clone()))
                 },
                 set_fn: |_, _, _| {},
@@ -2486,12 +2497,12 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
                 name: "Streamed",
                 field_type: FieldType::Bool,
                 get_fn: |w, e| {
-                    w.get::<renzora::SceneInstance>(e)
+                    w.get::<renzora_scene_api::SceneInstance>(e)
                         .map(|i| FieldValue::Bool(i.streamed))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Bool(b) = v {
-                        if let Some(mut i) = w.get_mut::<renzora::SceneInstance>(e) {
+                        if let Some(mut i) = w.get_mut::<renzora_scene_api::SceneInstance>(e) {
                             if i.streamed != b {
                                 i.streamed = b;
                             }
@@ -2503,12 +2514,12 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
                 name: "Load Radius",
                 field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 10000.0 },
                 get_fn: |w, e| {
-                    w.get::<renzora::SceneInstance>(e)
+                    w.get::<renzora_scene_api::SceneInstance>(e)
                         .map(|i| FieldValue::Float(i.load_radius))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(r) = v {
-                        if let Some(mut i) = w.get_mut::<renzora::SceneInstance>(e) {
+                        if let Some(mut i) = w.get_mut::<renzora_scene_api::SceneInstance>(e) {
                             if i.load_radius != r {
                                 i.load_radius = r;
                             }
@@ -2520,12 +2531,12 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
                 name: "Unload Radius",
                 field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 10000.0 },
                 get_fn: |w, e| {
-                    w.get::<renzora::SceneInstance>(e)
+                    w.get::<renzora_scene_api::SceneInstance>(e)
                         .map(|i| FieldValue::Float(i.unload_radius))
                 },
                 set_fn: |w, e, v| {
                     if let FieldValue::Float(r) = v {
-                        if let Some(mut i) = w.get_mut::<renzora::SceneInstance>(e) {
+                        if let Some(mut i) = w.get_mut::<renzora_scene_api::SceneInstance>(e) {
                             if i.unload_radius != r {
                                 i.unload_radius = r;
                             }
@@ -2548,14 +2559,34 @@ impl Plugin for ScenePlugin {
         // Hierarchy icon for nested-scene instance roots (distinguishes them
         // from plain folder-like grouping entities).
         app.register_component_icon(ComponentIconEntry {
-            type_id: std::any::TypeId::of::<renzora::SceneInstance>(),
+            type_id: std::any::TypeId::of::<renzora_scene_api::SceneInstance>(),
             name: "Scene Instance",
             icon: "film-slate",
             color: [170, 200, 255],
             priority: 75,
             dynamic_icon_fn: None,
         });
+        // Partition cells and the partition itself outrank the instance icon:
+        // a cell is an instance, but in a list of hundreds the grid square
+        // says what it is at a glance.
+        app.register_component_icon(ComponentIconEntry {
+            type_id: std::any::TypeId::of::<renzora_scene_api::PartitionCell>(),
+            name: "Partition Cell",
+            icon: "grid-nine",
+            color: [170, 200, 255],
+            priority: 80,
+            dynamic_icon_fn: None,
+        });
+        app.register_component_icon(ComponentIconEntry {
+            type_id: std::any::TypeId::of::<renzora_scene_api::WorldPartition>(),
+            name: "World Partition",
+            icon: "grid-four",
+            color: [170, 200, 255],
+            priority: 80,
+            dynamic_icon_fn: None,
+        });
         app.register_inspector(scene_instance_entry());
+        world_partition::register(app);
         let pending_pipelines = PendingPipelines::default();
         if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
             render_app
@@ -2564,8 +2595,8 @@ impl Plugin for ScenePlugin {
         }
         app.init_resource::<SceneTabBuffers>()
             .insert_resource(pending_pipelines)
-            .init_resource::<renzora::load_timeline::LoadTimeline>()
-            .init_resource::<renzora::load_timeline::AssetMemory>()
+            .init_resource::<renzora_diagnostics_api::load_timeline::LoadTimeline>()
+            .init_resource::<renzora_diagnostics_api::load_timeline::AssetMemory>()
             .add_systems(
                 Update,
                 (
@@ -2596,7 +2627,7 @@ impl Plugin for ScenePlugin {
                 Update,
                 tab_asset_cache::update_scene_diag_snapshot
                     .run_if(in_state(SplashState::Editor))
-                    .run_if(renzora::probes::probe_watched(diagnostics::PROBE_ID))
+                    .run_if(renzora_diagnostics_api::probes::probe_watched(diagnostics::PROBE_ID))
                     .run_if(bevy::time::common_conditions::on_timer(
                         std::time::Duration::from_millis(250),
                     )),
@@ -2715,5 +2746,3 @@ impl Plugin for ScenePlugin {
             );
     }
 }
-
-renzora::add!(ScenePlugin, Editor);

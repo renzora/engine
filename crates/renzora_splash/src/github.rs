@@ -60,7 +60,7 @@ impl GithubStats {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_stars() -> Option<u64> {
-    let response = renzora_net::Request::get(REPO_API)
+    let response = renzora_net_api::net::Request::get(REPO_API)
         .header("User-Agent", "renzora-splash")
         .header("Accept", "application/vnd.github+json")
         .send()

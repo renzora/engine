@@ -22,7 +22,7 @@ pub struct AudioAutoplayed;
 
 /// Returns whether the game is "running" (scripts/gameplay active). In a
 /// standalone runtime there is no `PlayModeState`, so it's always running.
-fn is_running(play_mode: &Option<Res<renzora::PlayModeState>>) -> bool {
+fn is_running(play_mode: &Option<Res<renzora_project_api::PlayModeState>>) -> bool {
     play_mode
         .as_ref()
         .is_none_or(|pm| pm.is_scripts_running())
@@ -31,7 +31,7 @@ fn is_running(play_mode: &Option<Res<renzora::PlayModeState>>) -> bool {
 /// Start autoplay clips on play, and stop them when play mode ends.
 pub fn audio_player_autoplay(
     mut commands: Commands,
-    play_mode: Option<Res<renzora::PlayModeState>>,
+    play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     link: Res<AudioLink>,
     pending: Query<(Entity, &AudioPlayer, Option<&GlobalTransform>), Without<AudioAutoplayed>>,
     started: Query<Entity, With<AudioAutoplayed>>,

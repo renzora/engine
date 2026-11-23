@@ -62,6 +62,8 @@ The editor is your game with editor chrome on top, so a setting the game has is 
 
 **Throttle When Unfocused** (on by default) holds the editor to about 60 frames a second while another window has focus, to save power and heat. Turn it off to keep the editor at full speed in the background, for example while profiling it from another window: with it on, every measurement taken that way stops at about 16 ms a frame whatever the editor's real cost.
 
+**Render Thumbnails** (under Import, on by default) renders previews for models and materials that have none on disk yet, in the [companion](/docs/r1-alpha8/editor/companion)'s render worker or in the editor. Turn it off to show only thumbnails already rendered: the companion drops its backlog and stops the render worker straight away, giving back the memory and GPU it held. Useful in a project with thousands of imported materials, such as a city. Thumbnails that were skipped while it was off render after it is turned back on and the project is reopened.
+
 ## Viewport, Camera and Gizmos
 
 <!-- screenshot: settings_viewport.png - the Viewport settings page showing the Grid section -->

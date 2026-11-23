@@ -23,7 +23,7 @@
 /// type, and a type is not something a table can hold.
 ///
 /// The exporter rewrites this file with one `add_plugins` call per plugin, and
-/// turns on `renzora/static_plugins` so their `plugin!` declarations stop
+/// turns on `renzora_platform_api/static_plugins` so their `plugin!` declarations stop
 /// emitting the `#[no_mangle]` loader symbols that would otherwise collide.
 pub fn native_plugins(app: &mut bevy::app::App) {
     let _ = app;

@@ -52,7 +52,7 @@ pub fn stream_texture_tiers(world: &mut World, mut was_active: Local<bool>) {
     let enabled = world
         .get_resource::<TextureStreamingSettings>()
         .is_none_or(|s| s.enabled);
-    let active = enabled && renzora::world_streaming_active(world);
+    let active = enabled && renzora_platform_api::world_streaming_active(world);
     if !active {
         // Leaving play (or streaming toggled off): put every demoted material
         // back on full resolution so edit mode never shows the low tier, and
@@ -68,7 +68,7 @@ pub fn stream_texture_tiers(world: &mut World, mut was_active: Local<bool>) {
     }
     *was_active = true;
 
-    let Some(camera_pos) = renzora::streaming_camera_pos(world) else {
+    let Some(camera_pos) = renzora_platform_api::streaming_camera_pos(world) else {
         return;
     };
     let (full_distance, low_distance) = {

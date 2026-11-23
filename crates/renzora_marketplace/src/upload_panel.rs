@@ -38,7 +38,7 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, dropdown, text_input, textarea, tint};
 use renzora_ember::UiInteraction;
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 
 
 
@@ -86,7 +86,7 @@ const PAST_ENGINE_VERSIONS: &[&str] = &["r1-alpha7", "r1-alpha6", "r1-alpha5"];
 fn engine_versions() -> &'static [&'static str] {
     static VERSIONS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
     VERSIONS.get_or_init(|| {
-        let mut v = vec!["Any version", renzora::version::ENGINE_VERSION];
+        let mut v = vec!["Any version", renzora_platform_api::version::ENGINE_VERSION];
         // Skipped rather than asserted against: during a release window the
         // current version is briefly also the newest past one, and a duplicate
         // entry would be a second identical row in the dropdown.
@@ -94,7 +94,7 @@ fn engine_versions() -> &'static [&'static str] {
             PAST_ENGINE_VERSIONS
                 .iter()
                 .copied()
-                .filter(|p| *p != renzora::version::ENGINE_VERSION),
+                .filter(|p| *p != renzora_platform_api::version::ENGINE_VERSION),
         );
         v
     })
@@ -213,7 +213,7 @@ struct Uploader {
     submitting: bool,
     submit_rx: Option<Receiver<Result<UploadedItem, String>>>,
     /// A publish handed to the companion: its job id, and where its answer goes.
-    submit_job: Option<(renzora::CompanionJobId, Sender<Result<UploadedItem, String>>)>,
+    submit_job: Option<(renzora_platform_api::CompanionJobId, Sender<Result<UploadedItem, String>>)>,
     error: Option<String>,
     success: Option<String>,
     success_url: Option<String>,
@@ -310,7 +310,7 @@ pub(crate) struct UploaderPanel;
 impl Plugin for UploaderPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<Uploader>();
-        renzora::init_companion_jobs(app);
+        renzora_platform_api::init_companion_jobs(app);
         // Not a dock panel any more — publishing is a view inside the
         // marketplace overlay (see `store::build`), which is where you already
         // are when you decide to sell something. The systems are registered
@@ -1201,7 +1201,7 @@ fn nav_click(
     publish_q: Query<&UiInteraction, (With<PublishBtn>, Changed<UiInteraction>)>,
     session: Option<Res<AuthSession>>,
     mut state: ResMut<Uploader>,
-    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
+    mut jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
 ) {
     if publish_q.iter().any(|i| *i == UiInteraction::Pressed) {
         start_publish(&mut state, session.as_deref(), jobs.as_deref_mut());
@@ -1359,7 +1359,7 @@ fn success_link_click(q: Query<&UiInteraction, (With<SuccessLinkBtn>, Changed<Ui
 
 /// Kick off the publish: read files + upload + attach media, all on one worker
 /// thread. Enforces the "credited asset → free" rule the website does.
-fn start_publish(state: &mut Uploader, session: Option<&AuthSession>, jobs: Option<&mut renzora::CompanionJobs>) {
+fn start_publish(state: &mut Uploader, session: Option<&AuthSession>, jobs: Option<&mut renzora_platform_api::CompanionJobs>) {
     if state.submitting {
         return;
     }
@@ -1462,7 +1462,7 @@ fn start_publish(state: &mut Uploader, session: Option<&AuthSession>, jobs: Opti
 }
 
 /// Hand the companion's answer for a publish to the panel's usual channel.
-fn forward_upload_answer(mut answers: MessageReader<renzora::CompanionJobDone>, mut state: ResMut<Uploader>) {
+fn forward_upload_answer(mut answers: MessageReader<renzora_platform_api::CompanionJobDone>, mut state: ResMut<Uploader>) {
     for answer in answers.read() {
         let Some((id, _)) = &state.submit_job else { continue };
         if *id != answer.id {

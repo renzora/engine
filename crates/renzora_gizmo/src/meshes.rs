@@ -120,7 +120,7 @@ pub(crate) fn setup_gizmo_meshes(
     // One full handle set per viewport slot, each on that slot's private overlay
     // layer so only that slot's camera draws it. `update_gizmo_transforms` then
     // sizes each set from its own camera.
-    use renzora::core::viewport_types::{VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
+    use renzora_viewport_api::{VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
     for slot in 0..VIEWPORT_COUNT {
         let layer = RenderLayers::layer(VIEWPORT_3D_GIZMO_LAYER_BASE + slot);
         let root = commands

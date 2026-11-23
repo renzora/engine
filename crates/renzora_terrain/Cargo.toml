@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
+renzora_scene_api = { path = "../api/renzora_scene_api" }
+renzora_project_api = { path = "../api/renzora_project_api" }
+renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -14,7 +18,12 @@ base64 = "0.22"
 flate2 = "1"
 # `render_3d`: the ray tracer's stand-in material contract (`TracedStandIn`),
 # which is how terrain reaches Solari (see `surface`).
-renzora = { path = "../renzora", default-features = false, features = ["render_3d"] }
+renzora_render_api = { path = "../api/renzora_render_api", features = ["render_3d"] }
+renzora_material_api = { path = "../api/renzora_material_api" }
+renzora_shader_api = { path = "../api/renzora_shader_api" }
+renzora_platform_api = { path = "../api/renzora_platform_api" }
+renzora_physics_api = { path = "../api/renzora_physics_api" }
+renzora_world_api = { path = "../api/renzora_world_api" }
 # `default-features = false`: terrain only tags chunks with the avian-free
 # collider DATA types (`PhysicsBodyData`/`CollisionShapeData`) — it never needs
 # a physics engine. Whichever physics plugin is installed simulates it; a
@@ -34,3 +43,11 @@ renzora_shader = { path = "../renzora_shader" }
 
 [lints]
 workspace = true
+
+# The plugins this crate declares. Read by `cargo renzora sync`, which
+# links the crate into the engine and installs each one from the generated
+# plugin lists; nothing in the crate's own code is involved.
+[[package.metadata.renzora.plugin]]
+type = "TerrainPlugin"
+[[package.metadata.renzora.plugin]]
+type = "foliage::FoliagePlugin"

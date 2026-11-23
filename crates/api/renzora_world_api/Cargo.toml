@@ -1,0 +1,20 @@
+[package]
+name = "renzora_world_api"
+version = "0.1.0"
+edition = "2021"
+description = "The world's shared state: WorldEnvironment, the one global wind, the Sun and night stars, and spline paths; plugins see them at `renzora::...`"
+
+# A contract subject layer that needs nothing from `renzora`, so it sits beside
+# it. These are contract types because many crates (and the plugins built on
+# them) must agree on one `TypeId` for each: four read `WindState`, six read
+# `Sun`. An edit here rebuilds those crates, not the whole engine.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# A spline test round-trips a path through JSON.
+serde_json = "1"
+
+[lints]
+workspace = true

@@ -6,8 +6,6 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-dirs = "5"
 
 [lints]
 workspace = true

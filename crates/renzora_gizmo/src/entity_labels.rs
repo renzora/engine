@@ -9,7 +9,7 @@
 //! gizmos already use.
 
 use bevy::prelude::*;
-use renzora::core::viewport_types::{LabelScope, ViewportSettings};
+use renzora_viewport_api::{LabelScope, ViewportSettings};
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::LabelGizmoGroup;

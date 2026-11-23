@@ -1,6 +1,6 @@
 //! Inspector registration for AnimatorComponent.
 
-use renzora::InspectorEntry;
+use renzora_editor_api::InspectorEntry;
 
 use renzora_animation::AnimatorComponent;
 
@@ -19,7 +19,7 @@ pub fn animator_inspector_entry() -> InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![renzora::float_field!(
+        fields: vec![renzora_editor_api::float_field!(
             "Blend Duration",
             AnimatorComponent,
             blend_duration,
@@ -38,17 +38,17 @@ pub fn follow_node_inspector_entry() -> InspectorEntry {
         display_name: "Follow Node",
         icon: "link",
         category: "animation",
-        has_fn: |world, entity| world.get::<renzora::FollowNode>(entity).is_some(),
+        has_fn: |world, entity| world.get::<renzora_scene_api::FollowNode>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world
                 .entity_mut(entity)
-                .insert(renzora::FollowNode::default());
+                .insert(renzora_scene_api::FollowNode::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<renzora::FollowNode>();
+            world.entity_mut(entity).remove::<renzora_scene_api::FollowNode>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![renzora::string_field!("Target", renzora::FollowNode, target)],
+        fields: vec![renzora_editor_api::string_field!("Target", renzora_scene_api::FollowNode, target)],
     }
 }

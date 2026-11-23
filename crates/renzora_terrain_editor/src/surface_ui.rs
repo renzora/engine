@@ -22,7 +22,7 @@ use bevy::prelude::*;
 use bevy::tasks::{block_on, futures_lite::future, AsyncComputeTaskPool, Task};
 use std::path::PathBuf;
 
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_rmip::bake::{bake_image, BakeParams, TextureRole};
 use renzora_shader::material::landscape_preset::{
     default_texture_path, superseded_default_textures, ALPINE_LANDSCAPE_PATH,
@@ -78,7 +78,7 @@ pub(crate) fn bakes_in_flight(bakes: Res<DefaultTextureBakes>) -> bool {
 /// connected (job kind `"texture_bake"`), here otherwise. Sixteen 2K textures
 /// mipmapped and block-compressed is seconds of every core, which a new
 /// terrain used to take out of the editor's frame.
-fn bake_default(bytes: &'static [u8], role: TextureRole, target: PathBuf, remote: Option<renzora::CompanionRemote>) -> Result<(), String> {
+fn bake_default(bytes: &'static [u8], role: TextureRole, target: PathBuf, remote: Option<renzora_platform_api::CompanionRemote>) -> Result<(), String> {
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(remote) = remote.filter(|r| r.available()) {
         // The source travels as a file: it is compiled into the editor, and
@@ -86,7 +86,7 @@ fn bake_default(bytes: &'static [u8], role: TextureRole, target: PathBuf, remote
         let source = std::env::temp_dir().join(format!(
             "renzora-default-texture-{}-{:016x}.jpg",
             std::process::id(),
-            renzora::SceneEntityId::new_random().0
+            renzora_scene_api::SceneEntityId::new_random().0
         ));
         std::fs::write(&source, bytes).map_err(|e| e.to_string())?;
         let role = match role {
@@ -94,7 +94,7 @@ fn bake_default(bytes: &'static [u8], role: TextureRole, target: PathBuf, remote
             TextureRole::NormalMap => "normal",
             TextureRole::LinearData => "linear",
         };
-        let args = renzora::job_args::TextureBake { source: source.clone(), target: target.clone(), role: role.into() };
+        let args = renzora_platform_api::job_args::TextureBake { source: source.clone(), target: target.clone(), role: role.into() };
         let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let answer = remote.run("texture_bake", name, &args, &mut |_, _| {});
         let _ = std::fs::remove_file(&source);
@@ -125,7 +125,7 @@ pub(crate) fn provide_default_textures(
     project: Option<Res<CurrentProject>>,
     asset_server: Res<AssetServer>,
     mut bakes: ResMut<DefaultTextureBakes>,
-    companion: Option<Res<renzora::CompanionJobs>>,
+    companion: Option<Res<renzora_platform_api::CompanionJobs>>,
 ) {
     let Some(project) = project else { return };
     if materials.is_empty() {

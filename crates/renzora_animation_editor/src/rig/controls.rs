@@ -185,7 +185,7 @@ fn named_nodes(world: &World, root: Entity) -> HashMap<String, Entity> {
 /// A blend shape target as the model has it now: the entity carrying the
 /// weights and the index, preferring the target's name when it has one.
 fn resolve_shape(world: &World, nodes: &HashMap<String, Entity>, mesh: &str, index: usize, name: &str) -> Option<(Entity, usize)> {
-    let e = *nodes.get(&renzora::sanitize_id(mesh))?;
+    let e = *nodes.get(&renzora_scene_api::sanitize_id(mesh))?;
     let count = world.get::<MorphWeights>(e)?.weights().len();
     if !name.is_empty() {
         if let Some(i) = (0..count).find(|&i| crate::timeline::morph::target_name(world, e, i) == name) {
@@ -200,7 +200,7 @@ fn resolve_shape(world: &World, nodes: &HashMap<String, Entity>, mesh: &str, ind
 /// controls do exactly what their file says.
 fn face_tuning(world: &World) -> (Vec<(String, renzora_rig::expressions::LidTuning)>, f32) {
     match super::face_panel::face_rig(world) {
-        Some(rig) => (rig.blink.iter().map(|(n, t)| (renzora::sanitize_id(n), *t)).collect(), rig.scale),
+        Some(rig) => (rig.blink.iter().map(|(n, t)| (renzora_scene_api::sanitize_id(n), *t)).collect(), rig.scale),
         None => (Vec::new(), 1.0),
     }
 }
@@ -222,7 +222,7 @@ pub(crate) fn apply(world: &mut World) {
     };
     let (lids, face_scale) = face_tuning(world);
     let lid = |b: &str| {
-        let b = renzora::sanitize_id(b);
+        let b = renzora_scene_api::sanitize_id(b);
         lids.iter().find(|(n, _)| *n == b).map(|(_, t)| *t)
     };
     let tuner = Tuner { lid: &lid, face_scale };
@@ -233,7 +233,7 @@ pub(crate) fn apply(world: &mut World) {
     let nodes = named_nodes(world, root);
     let mut poses = Vec::new();
     for b in &mixed.bones {
-        let Some(&e) = nodes.get(&renzora::sanitize_id(&b.bone)) else { continue };
+        let Some(&e) = nodes.get(&renzora_scene_api::sanitize_id(&b.bone)) else { continue };
         let base = match rest.get(&e) {
             Some(r) => *r,
             None => {
@@ -486,7 +486,7 @@ pub(crate) fn key_controls(world: &mut World) {
         return;
     }
     let nodes = named_nodes(world, root);
-    let bones: Vec<Entity> = bone_names.iter().filter_map(|b| nodes.get(&renzora::sanitize_id(b)).copied()).collect();
+    let bones: Vec<Entity> = bone_names.iter().filter_map(|b| nodes.get(&renzora_scene_api::sanitize_id(b)).copied()).collect();
     let time = world.get_resource::<crate::AnimationEditorState>().map(|s| s.scrub_time).unwrap_or(0.0);
     let mut shapes: Vec<(Entity, usize, f32, f32)> = Vec::new();
     for (mesh, index, name) in &shape_refs {

@@ -47,7 +47,8 @@ use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use bevy::window::PrimaryWindow;
 
-use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
+use renzora_scene_api::{EditorCamera, MeshInstanceData};
+use renzora_project_api::CurrentProject;
 use renzora_animation::AnimatorComponent;
 use renzora_editor_framework::EditorSelection;
 use renzora_ui::asset_drag::AssetDragPayload;
@@ -466,7 +467,7 @@ pub fn native_model_drop(
                 MeshMaterial3d(material),
                 Transform::from_translation(placement + Vec3::Y * PLACEHOLDER_SIZE * 0.5),
                 ModelLoadPlaceholder,
-                renzora::core::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
             ))
             .id();
         commands.queue(move |world: &mut World| {
@@ -1127,7 +1128,7 @@ pub fn update_model_drag_ghost(
                 ModelDragPlaceholder,
                 // Editor-internal: out of the hierarchy, and out of a saved
                 // scene if the user saves mid-drag.
-                renzora::core::HideInHierarchy,
+                renzora_scene_api::HideInHierarchy,
             ));
         }
         return;

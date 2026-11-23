@@ -12,7 +12,7 @@ use bevy::ui::{UiTransform, Val2};
 use renzora_ember::UiCursor;
 use bevy::window::PrimaryWindow;
 
-use renzora::SplashState;
+use renzora_project_api::SplashState;
 use renzora_ember::UiInteraction;
 
 use crate::game_ui::overlay::CanvasHitLayer;

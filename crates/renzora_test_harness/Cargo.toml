@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 description = "Shared headless App builders for the engine's test suites. A dev-dependency only — nothing in a shipped binary links it."
 
-# NOT a plugin. It carries no `renzora::add!` declaration, so the build
+# NOT a plugin. It declares no plugin, so the build
 # generator never puts it in a plugin list, and it reaches a binary only via
 # another crate's `[dev-dependencies]` — which cargo does not propagate into a
 # normal build. It is a workspace member purely so `cargo test --workspace` and

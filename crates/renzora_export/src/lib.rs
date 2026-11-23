@@ -78,15 +78,13 @@ impl Plugin for ExportPlugin {
 #[cfg(not(target_arch = "wasm32"))]
 fn export_open_on_request(
     mut requested: Option<ResMut<ExportOverlayState>>,
-    marker: Option<Res<renzora::core::ExportRequested>>,
+    marker: Option<Res<renzora_project_api::ExportRequested>>,
     mut commands: Commands,
 ) {
     if marker.is_some() {
         if let Some(state) = requested.as_mut() {
             state.visible = true;
         }
-        commands.remove_resource::<renzora::core::ExportRequested>();
+        commands.remove_resource::<renzora_project_api::ExportRequested>();
     }
 }
-
-renzora::add!(ExportPlugin, Editor);

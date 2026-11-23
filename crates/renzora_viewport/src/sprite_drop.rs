@@ -12,13 +12,14 @@ use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
 
-use renzora::core::{CurrentProject, EditorCamera2d, SpriteImagePath};
+use renzora_scene_api::{EditorCamera2d, SpriteImagePath};
+use renzora_project_api::CurrentProject;
 
 use crate::ViewportState;
 
 /// Anything that loads as an `Image` makes a sprite, SVG included: the shared
 /// list, so this drop target cannot drift from the texture slots again.
-pub(crate) const IMAGE_EXTENSIONS: &[&str] = renzora::IMAGE_EXTENSIONS;
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = renzora_project_api::IMAGE_EXTENSIONS;
 
 /// Commit an image-to-sprite drop at the given viewport-space pointer. Shared by
 /// the egui drop check and the native bevy_ui drop

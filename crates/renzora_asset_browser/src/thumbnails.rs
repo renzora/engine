@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use bevy::asset::LoadState;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use renzora::core::CurrentProject;
+use renzora_project_api::CurrentProject;
 use renzora_editor_framework::thumbnail_cache_dir;
 
 /// Width/height the cached thumbnail PNG is resized to. Asset browser
@@ -333,7 +333,7 @@ pub struct ThumbnailCache {
     /// loads nothing of these: the tile shows its icon until the small PNG is
     /// written, and a source the companion could not read is loaded here
     /// after all (see `update_thumbnail_cache`).
-    companion: HashMap<renzora::CompanionJobId, PathBuf>,
+    companion: HashMap<renzora_platform_api::CompanionJobId, PathBuf>,
     /// The same sources, for de-duplicating requests.
     asked: HashSet<PathBuf>,
     /// `.rmip` textures whose small mip levels are being read off the main
@@ -381,7 +381,7 @@ impl ThumbnailCache {
         path: PathBuf,
         asset_server: &AssetServer,
         project: Option<&CurrentProject>,
-        jobs: Option<&mut renzora::CompanionJobs>,
+        jobs: Option<&mut renzora_platform_api::CompanionJobs>,
     ) -> bool {
         if self.handles.contains_key(&path)
             || self.loading.contains(&path)
@@ -423,7 +423,7 @@ impl ThumbnailCache {
                     }
                 }
                 if companion_decodes(&path) {
-                    let args = renzora::job_args::TextureThumbnail {
+                    let args = renzora_platform_api::job_args::TextureThumbnail {
                         source: path.clone(),
                         cache: cache_path,
                         size: CACHE_THUMB_SIZE,
@@ -510,7 +510,7 @@ const FOLDER_SCANS_PER_FRAME: usize = 4;
 /// written into `models/props/crate/` has to expire `models/`.
 pub(crate) fn invalidate_folder_previews(
     mut previews: ResMut<FolderPreviews>,
-    mut changes: MessageReader<renzora::core::project_files::ProjectFileChanged>,
+    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
 ) {
     if changes.is_empty() {
         return;
@@ -718,7 +718,7 @@ fn collect_folder_preview(root: &Path) -> Vec<PathBuf> {
 /// lands as RGBA8, so the cache encodes it like any other source. So is
 /// `.rmip`, which takes its own path: its small mip levels are read straight
 /// from the file and shown as they are (see `ThumbnailCache::request`). Not the
-/// shared `renzora::IMAGE_EXTENSIONS`, because this list is deliberately
+/// shared `renzora_project_api::IMAGE_EXTENSIONS`, because this list is deliberately
 /// narrower (no EXR, KTX2 or DDS, for the reasons above).
 pub fn supports_thumbnail(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
@@ -761,8 +761,8 @@ pub fn update_thumbnail_cache(
     mut cache: ResMut<ThumbnailCache>,
     mut images: ResMut<Assets<Image>>,
     project: Option<Res<CurrentProject>>,
-    mut jobs: Option<ResMut<renzora::CompanionJobs>>,
-    mut done: MessageReader<renzora::CompanionJobDone>,
+    mut jobs: Option<ResMut<renzora_platform_api::CompanionJobs>>,
+    mut done: MessageReader<renzora_platform_api::CompanionJobDone>,
     mut frames: Local<u32>,
 ) {
     // `.rmip` previews read off the main thread: publish each as it lands. One
@@ -825,7 +825,7 @@ pub fn update_thumbnail_cache(
         let plain = matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp");
         if plain {
             if let Some(jobs) = jobs.as_deref_mut() {
-                let args = renzora::job_args::TextureThumbnail {
+                let args = renzora_platform_api::job_args::TextureThumbnail {
                     source: source.to_path_buf(),
                     cache: cache_path.to_path_buf(),
                     size: CACHE_THUMB_SIZE,
