@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 20:52
+- feat(export): a lean export without Allow profiling leaves out system timing spans and system names
+
 ## 2026-11-24 19:43
 - fix(export): cancelling an export says "Export cancelled" instead of showing it as a failure
 

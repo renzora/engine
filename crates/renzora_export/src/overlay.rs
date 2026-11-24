@@ -1013,14 +1013,19 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let link_plugins_in = packaging_mode == PackagingMode::LeanSingleBinary;
     // Bevy + runtime-subsystem features to strip from the lean build (capabilities
     // the game has off).
-    let disabled_bevy_features =
+    let mut disabled_bevy_features =
         crate::capabilities::disabled_bevy_features(&export_state.capabilities);
     let mut disabled_runtime_features =
         crate::capabilities::disabled_runtime_features(&export_state.capabilities);
     // The companion's profiler is only reachable through the key Allow profiling
-    // bakes in, so without the key it is code nothing can call.
+    // bakes in, so without the key it is code nothing can call. The same goes for
+    // what it records: `trace` wraps every system in a span and `system_names`
+    // (Bevy's `debug`) keeps the name each span is labelled with. Together they
+    // measured 3.56 MB of a 43.1 MB UI-only lean binary.
     if !export_state.allow_profiling {
         disabled_runtime_features.push("remote_profiler".to_string());
+        disabled_runtime_features.push("system_names".to_string());
+        disabled_bevy_features.push("trace".to_string());
     }
     let lean_profile = crate::capabilities::lean_profile(&export_state.capabilities);
     let solari_on = export_state.capabilities.get("solari").copied().unwrap_or(false);

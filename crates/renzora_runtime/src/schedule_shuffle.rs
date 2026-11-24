@@ -12,7 +12,10 @@
 //! only the freedom left over is shuffled. A bug that appears under one seed
 //! and not another is an ordering bug, and the same seed reproduces it.
 //!
-//! Off unless the variable is set, so a normal launch is unchanged.
+//! Off unless the variable is set, so a normal launch is unchanged. The seed
+//! is a setting Bevy only has with its `debug` feature (this crate's
+//! `system_names`), so a lean export built without it warns that the variable
+//! does nothing rather than failing to compile.
 
 use bevy::prelude::*;
 
@@ -26,6 +29,10 @@ pub fn install(app: &mut App) {
     let Ok(raw) = std::env::var(SEED_VAR) else {
         return;
     };
+    if cfg!(not(feature = "system_names")) {
+        warn!("[shuffle] {SEED_VAR} is ignored: this build has no `system_names`");
+        return;
+    }
     match raw.trim().parse::<u64>() {
         Ok(seed) => {
             app.add_plugins(ScheduleShufflePlugin { seed });
@@ -63,15 +70,20 @@ fn seed_schedules(world: &mut World, seed: u64) -> usize {
     };
     let mut count = 0;
     for (_, schedule) in schedules.iter_mut() {
-        let mut settings = schedule.get_build_settings();
-        settings.shuffle_seed = Some(seed);
-        schedule.set_build_settings(settings);
+        #[cfg(feature = "system_names")]
+        {
+            let mut settings = schedule.get_build_settings();
+            settings.shuffle_seed = Some(seed);
+            schedule.set_build_settings(settings);
+        }
+        #[cfg(not(feature = "system_names"))]
+        let _ = (schedule, seed);
         count += 1;
     }
     count
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "system_names"))]
 mod tests {
     use super::*;
 

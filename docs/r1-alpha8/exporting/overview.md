@@ -502,7 +502,11 @@ Three small pieces follow other signals:
 - **Script HTTP** also carries the engine's request pump, so a game that never
   calls `http_get` / `http_post` ships without it.
 - The **companion profiler** ships only when **Allow profiling** is on, since
-  without the key it bakes in nothing can reach it.
+  without the key it bakes in nothing can reach it. So do the per-system timing
+  spans it records and the real names of systems and components. Without them
+  an error from a system names it `<Enable the debug feature to see the name>`,
+  and `RENZORA_SHUFFLE_SEED` is ignored. On a UI-only game this is about 8% of
+  the binary.
 
 **Heavy UI widgets** each have a switch of their own under **Interface**. Most
 widgets cost tens of KB and always ship, but a few draw with a shader of their

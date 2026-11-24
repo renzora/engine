@@ -122,10 +122,23 @@ fn editor_error_handler(err: bevy::ecs::error::BevyError, ctx: bevy::ecs::error:
     }
 
     let name = ctx.name().to_string();
+    // A lean export built without Bevy's `debug` gives every system the same
+    // placeholder name, so counting by name alone would fold every failing
+    // system into one: after the first, the others would only be reported on
+    // their tenth, hundredth... failure. There the panic location, or failing
+    // that the error itself, tells them apart instead.
+    let key = if name.contains("Enable the debug feature") {
+        match &claimed {
+            Some((_, report)) => format!("{name} {}", report.location),
+            None => format!("{name} {err}"),
+        }
+    } else {
+        name.clone()
+    };
     let count = FAILURES
         .lock()
         .map(|mut f| {
-            let n = f.get_or_insert_with(Default::default).entry(name.clone()).or_insert(0);
+            let n = f.get_or_insert_with(Default::default).entry(key).or_insert(0);
             *n += 1;
             *n
         })

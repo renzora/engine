@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "auto_exposure", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "planar_reflection", "gizmos", "networking", "editor_tools", "svg", "remote_profiler", "ui_node_graph", "ui_color_picker", "ui_curve_editor", "ui_gradient_editor", "ui_gauge", "ui_chart", "ui_waveform", "ui_code_editor", "ui_timeline", "ui_canvas", "ui_shape_circle", "ui_shape_arc", "ui_shape_radial_progress", "ui_shape_line", "ui_shape_triangle", "ui_shape_polygon", "ui_shape_rectangle", "ui_shape_wedge", "ui_shape_tri3"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "auto_exposure", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "planar_reflection", "gizmos", "networking", "editor_tools", "svg", "remote_profiler", "system_names", "ui_node_graph", "ui_color_picker", "ui_curve_editor", "ui_gradient_editor", "ui_gauge", "ui_chart", "ui_waveform", "ui_code_editor", "ui_timeline", "ui_canvas", "ui_shape_circle", "ui_shape_arc", "ui_shape_radial_progress", "ui_shape_line", "ui_shape_triangle", "ui_shape_polygon", "ui_shape_rectangle", "ui_shape_wedge", "ui_shape_tri3"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -160,6 +160,12 @@ svg = ["dep:renzora_svg"]
 # bakes a profiling key in, so the exporter keeps it exactly when Allow profiling
 # is on. Not the same as `profiling` above, which is the Tracy build.
 remote_profiler = ["dep:renzora_profiler"]
+# Bevy's `debug`: the real name of every system and component type, in errors
+# and in profiler spans, plus `RENZORA_SHUFFLE_SEED` (`schedule_shuffle.rs`),
+# which needs the schedule setting `debug` adds. Without it each name is a
+# placeholder. A lean export keeps it only with Allow profiling, because the
+# names are a few MB of strings nobody reads in a shipped game.
+system_names = ["bevy/debug"]
 # The scripting layer itself — the single switch for the whole engine. Every
 # crate that declares script functions keeps its `ScriptExtension` out of
 # `default` and is forwarded from here (the `?` means "only if that subsystem is
@@ -351,11 +357,9 @@ renzora_svg = { path = "../renzora_svg", optional = true }
 # export. Being optional under `render_3d` is also what makes the generator emit
 # the matching `#[cfg(feature = "render_3d")]` in `plugins.rs`.
 
-# `debug` carries `ScheduleBuildSettings::shuffle_seed` (`schedule_shuffle.rs`).
-# A whole-workspace build already has it, through `renzora_editor_app`, so this
-# changes nothing there; it is what keeps a lean export, which builds this crate
-# without that one, compiling.
-bevy = { workspace = true, features = ["debug"] }
+# Bevy's `debug` comes in through the `system_names` feature above, so a lean
+# export can leave it out.
+bevy = { workspace = true }
 # Used by the runtime startup system to set the primary window's icon from
 # the rpak. Bevy 0.18 doesn't expose a public window-icon API, so we drop
 # down to winit's `set_window_icon` via the `WinitWindows` resource.
