@@ -90,6 +90,9 @@ pub struct ExportJob {
     pub disabled_runtime_features: Vec<String>,
     pub lean_profile: LeanProfile,
     pub upx_compress: bool,
+    /// `default` so a job from an editor that predates the option still reads.
+    #[serde(default)]
+    pub build_console: bool,
     pub included_files: Option<Vec<String>>,
     pub dlss: bool,
 }
@@ -129,6 +132,7 @@ impl ExportJob {
             self.disabled_runtime_features,
             self.lean_profile,
             self.upx_compress,
+            self.build_console,
             self.included_files,
             self.dlss,
             cancel,
@@ -243,6 +247,7 @@ mod tests {
             disabled_runtime_features: vec![],
             lean_profile: LeanProfile { panic_abort: false, opt_level_z: true, codegen_units_one: false },
             upx_compress: false,
+            build_console: true,
             included_files: Some(vec!["scenes/main.bsn".into()]),
             dlss: false,
         };
@@ -251,6 +256,7 @@ mod tests {
         assert_eq!(back.packaging_mode, job.packaging_mode);
         assert_eq!(back.window_mode, job.window_mode);
         assert_eq!(back.lean_profile, job.lean_profile);
+        assert_eq!(back.build_console, job.build_console);
         assert_eq!(back.included_files, job.included_files);
         assert_eq!(back.selected_plugins[0].id, "spline");
         assert_eq!(back.project_config.main_scene, job.project_config.main_scene);

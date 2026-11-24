@@ -71,7 +71,9 @@ pub fn build_runtime_app() -> App {
 /// no `plugins/` to scan and a web export compiles no plugins in.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code, unused_variables))]
 fn load_global_plugins(app: &mut App, is_editor: bool) {
-    let _ = is_editor;
+    // A static build with no shipped plugins has nothing to do here: both
+    // users of `app` below are compiled out.
+    let _ = (&app, is_editor);
     // Plugins a lean export linked INTO this binary rather than leaving on disk.
     // Installed by `add_plugins` like any other Bevy plugin, and it must land
     // AFTER the engine crates, exactly as a loaded one does. Compiled to nothing

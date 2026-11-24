@@ -185,6 +185,16 @@ What it strips/changes versus the copy modes:
   compiled into it instead. The live link, which only serves a game Play starts,
   is left out too.
 
+### Watching the build in a console (Windows)
+
+A lean build compiles for several minutes, and the dialog shows cargo's output
+line by line. To see it as cargo itself shows it, with colours and the live
+progress bar, turn on **Show the build in a console** under the packaging mode.
+The compile then runs in a console window of its own. The window closes by
+itself when the build succeeds and stays open after a failure, so the errors are
+still there to read; **Cancel** in the dialog stops the build either way. The
+option is saved with the preset.
+
 ### It needs a Rust toolchain — installed automatically
 
 Because it compiles, lean mode needs `cargo`. If Rust is already on your `PATH`

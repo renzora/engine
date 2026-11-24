@@ -57,6 +57,8 @@ pub struct ExportPreset {
     #[serde(default)]
     pub upx_compress: bool,
     #[serde(default)]
+    pub build_console: bool,
+    #[serde(default)]
     pub icon_path: Option<String>,
     #[serde(default)]
     pub include_server: bool,
@@ -128,6 +130,7 @@ impl ExportPreset {
             allow_profiling: false,
             compression_level: default_compression(),
             upx_compress: false,
+            build_console: false,
             icon_path: None,
             include_server: false,
             enable_modding: false,
@@ -158,6 +161,7 @@ impl ExportPreset {
             allow_profiling: state.allow_profiling,
             compression_level: state.compression_level,
             upx_compress: state.upx_compress,
+            build_console: state.build_console,
             icon_path: state.icon_path.clone(),
             include_server: state.include_server,
             enable_modding: state.enable_modding,
@@ -214,6 +218,7 @@ impl ExportPreset {
         state.allow_profiling = self.allow_profiling;
         state.compression_level = self.compression_level;
         state.upx_compress = self.upx_compress;
+        state.build_console = self.build_console;
         state.icon_path = self.icon_path.clone();
         state.include_server = self.include_server;
         state.enable_modding = self.enable_modding;

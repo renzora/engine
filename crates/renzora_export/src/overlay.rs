@@ -130,6 +130,10 @@ pub struct ExportOverlayState {
     /// a standing risk of a heuristic antivirus flagging the packer stub. See
     /// [`crate::upx`].
     pub upx_compress: bool,
+    /// Run a lean build's cargo in a console window of its own, so its output
+    /// is cargo's own: colours and the live progress bar, which the dialog's
+    /// line log cannot show. Windows only; see [`crate::build::build_lean`].
+    pub build_console: bool,
     pub icon_path: Option<String>,
     pub include_server: bool,
     /// Ship the plugin SDK so players can add native plugins and Rust scripts to
@@ -248,6 +252,7 @@ impl Default for ExportOverlayState {
             allow_profiling: false,
             compression_level: 3,
             upx_compress: false,
+            build_console: false,
             icon_path: None,
             include_server: false,
             enable_modding: false,
@@ -961,6 +966,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // UPX is post-build, so unlike the profile knobs it applies to the copy-based
     // packaging modes too — but only where the packer supports the format.
     let upx_compress = export_state.upx_compress && crate::upx::supports(platform);
+    let build_console = export_state.build_console;
     let project_name = project_name.to_string();
 
     // The game binary is the already-built renzora(.exe) for this platform.
@@ -1065,6 +1071,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         disabled_runtime_features,
         lean_profile,
         upx_compress,
+        build_console,
         included_files,
         dlss,
     };
@@ -1131,6 +1138,7 @@ pub(crate) fn export_worker(
     disabled_runtime_features: Vec<String>,
     lean_profile: crate::build::LeanProfile,
     upx_compress: bool,
+    build_console: bool,
     // The Files tab's answer, when it has one. `None` = let the crawl decide.
     included_files: Option<Vec<String>>,
     // Ship DLSS: compiled into a lean binary, libraries beside the executable.
@@ -1500,6 +1508,7 @@ pub(crate) fn export_worker(
                 product_name: Some(project_name.clone()),
             },
             dlss,
+            build_console,
             &cancel,
         )?;
         Ok(LeanBuild {

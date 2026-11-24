@@ -91,6 +91,26 @@ fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host
     });
     rows.push(foot);
 
+    // Watch the lean build in a real console: cargo's own colours and progress
+    // bar, which the dialog's line log cannot show. Windows only (there is no
+    // portable "open a terminal"), and only for a native build of this machine's
+    // platform, which is the one cargo runs here.
+    if cfg!(target_os = "windows") && host && !web {
+        let console = switch_row(
+            commands,
+            fonts,
+            &renzora_lang_api::t("export.packaging.build_console"),
+            Some(&renzora_lang_api::t("export.packaging.build_console_hint")),
+            |s| s.build_console,
+            |s, v| s.build_console = v,
+        );
+        bind_display(commands, console, |w| {
+            w.get_resource::<ExportOverlayState>()
+                .is_some_and(|s| s.packaging_mode == PackagingMode::LeanSingleBinary)
+        });
+        rows.push(console);
+    }
+
     // No source, no lean build. That is a missing download rather than a
     // permanent limitation, so offer it instead of only leaving the card out.
     if !lean_source_available() {

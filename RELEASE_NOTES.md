@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 09:19
+- feat(export): a lean build can run in its own console window, showing cargo's colours and progress bar
+- fix(export): a lean build no longer warns about the generated plugin crate's lints or an unused variable
+
 ## 2026-11-24 09:04
 - fix(export): a lean export no longer compiles terrain, IK, mirrors, the plugin loader, the script compiler or the live link it does not use
 - feat(export): planar reflections are their own feature, kept only when a scene has a mirror
