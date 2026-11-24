@@ -360,30 +360,120 @@ local size = get_setting_number("ui.scale")
 
 A Rust script sets the resource directly: `ctx.world().resource_mut::<renzora::GameUiScale>().set(1.25)`. Writing Bevy's `UiScale` yourself does not work: the canvas scaler owns it and rewrites it whenever the fit changes. See [Game settings](../api/scripting.md#game-settings-set_setting-get_setting) for every other setting a script can change.
 
-## Settings controls in markup
+## Ember widgets in markup
 
-Four tags put a real control into a template: the same widgets the editor's own
-panels use. Because they are part of the template, they show in the editor's
-viewport and UI editor exactly as in the game.
+The whole ember widget library is available as markup tags: the same widgets
+the editor's own panels are built from. Because they are part of the template,
+they show in the editor's viewport and UI editor exactly as in the game.
 
 ```html
 <dropdown setting="window.mode" options="Windowed,Fullscreen,Borderless" />
 <dropdown setting="window.max_fps" options="Unlimited,30 FPS,60 FPS" values="0,30,60" />
 <switch setting="window.vsync" />
 <slider setting="audio.buses.Music.volume" min="0" max="1" step="0.01" width="100%" />
-<slider setting="ui.scale" min="0.75" max="1.5" step="0.05" />
 <dropdown setting="language" />
 <checkbox bind="show_hints" />
+<badge text="New" tone="success" />
+<tabs labels="General,Audio">
+    <node>...first tab...</node>
+    <node>...second tab...</node>
+</tabs>
 ```
 
-| Tag | Control | Attributes |
-|---|---|---|
-| `<dropdown>` | a dropdown | `options` (comma-separated labels), `values` (what each label stands for; the labels themselves if left out) |
-| `<switch>` | an on/off switch | |
-| `<checkbox>` | a checkbox | |
-| `<slider>` | a slider | `min`, `max`, `step` (changes snap to it) |
+Lists in attributes are comma-separated. `tone` is `info`, `success`, `warn`,
+`error` or left out for neutral.
 
-Each is tied to one value:
+### Controls tied to a value
+
+These take `setting=` or `bind=` (below) and keep it in step both ways.
+
+| Tag | Widget | Attributes |
+|---|---|---|
+| `<dropdown>` | dropdown | `options` (labels), `values` (what each label stands for; the labels if left out), `selected` |
+| `<segmented>` | segmented buttons | as `<dropdown>` |
+| `<radio>` | radio group | as `<dropdown>` |
+| `<switch>` | on/off switch | `on` |
+| `<checkbox>` | checkbox | `on` |
+| `<slider>` | slider | `min`, `max`, `step` (changes snap to it), `value` |
+| `<fader>` | mixer fader | `min`, `max`, `step`, `value`, `direction="horizontal"` |
+| `<knob>` | rotary knob | `min`, `max`, `step`, `value` |
+| `<spin_slider>` | labelled slider with a number | `label`, `min`, `max`, `step`, `value` |
+| `<drag_value>` | number you drag to change | `label`, `step`, `value` |
+| `<field>` | text input | `placeholder`, `value` |
+| `<password>` | password input | `placeholder`, `value` |
+| `<search>` | search input | `placeholder`, `value` |
+
+### Interactive widgets with their own state
+
+| Tag | Widget | Attributes |
+|---|---|---|
+| `<toggle>` | toggle button | `on` |
+| `<stepper>` | number with - / + buttons | `value`, `step` |
+| `<range>` | two-handle range | `low`, `high` (0 to 1) |
+| `<xy_pad>` | 2D pad | `x`, `y` (0 to 1) |
+| `<vector>` | 2, 3 or 4 number fields, one per value | `value="1,2,3"` |
+| `<color_picker>` | color picker | `color="r,g,b"` (0 to 255) |
+| `<hsv_picker>` | HSV picker | `hue`, `saturation`, `value` (0 to 1) |
+| `<curve>` | bezier curve editor | `points="x1,y1,x2,y2"` |
+| `<multiline>` | multi-line text | `placeholder`, `value` |
+| `<tags_input>` | tag list | `tags` |
+| `<multi_select>` | checklist | `items`, `selected` |
+| `<list_group>` | selectable list | `items`, `active` (index) |
+| `<pagination>` | page buttons | `pages`, `active` |
+| `<hamburger>` | menu button | `items` |
+| `<icon_button>` | icon button | `icon` |
+| `<icon_label_button>` | icon and label button | `icon`, `label` |
+
+### Display
+
+| Tag | Widget | Attributes |
+|---|---|---|
+| `<badge>` | badge | `text`, `tone` |
+| `<chip>` | chip | `text` |
+| `<alert>` | alert box | `title`, `text`, `tone` |
+| `<toast>` | toast | `text`, `tone` |
+| `<validation>` | field with a message | `value`, `text`, `tone` |
+| `<card>` | card | `title`, `text` |
+| `<divider>` | divider line | |
+| `<spinner>` | loading spinner | |
+| `<skeleton>` | loading placeholder | `length`, `thickness` (pixels) |
+| `<progress>` | progress bar | `value` (0 to 1), or `indeterminate` with `length`, `thickness` |
+| `<gauge>` | round gauge | `value` (0 to 1) |
+| `<floating_label>` | input with a floating label | `label`, `value` |
+| `<input_group>` | input with an addon | `addon`, `placeholder` |
+| `<breadcrumb>` | breadcrumb trail | `items` |
+| `<navbar>` | navigation bar | `brand`, `links` |
+| `<table>` | table | `headers`, `rows="a,b;c,d"` (rows split by `;`) |
+| `<grid>` | tile grid | `count`, `columns` |
+| `<markdown>` | rendered markdown | `text` |
+| `<code_block>` | code block | `text` |
+| `<code_editor>` | code editor | `text` |
+| `<line_chart>` | line chart | `values` |
+| `<bar_chart>` | bar chart | `values` |
+| `<sparkline>` | sparkline | `values` |
+| `<waveform>` | waveform | `values` |
+| `<vu_meter>` | level meter | |
+| `<mixer_strip>` | mixer channel | `label`, `value` |
+
+### Containers
+
+Their markup children become their content.
+
+| Tag | Widget | Attributes |
+|---|---|---|
+| `<tabs>` | tabs, one per child | `labels` |
+| `<accordion>` | collapsible section | `title`, `open` |
+| `<scroll>` | scrolling area | |
+| `<popover>` | button that opens its content | `label` |
+| `<tree>` | tree node; nest `<tree>`s for branches | `label`, `open` |
+
+Tag names are letters and underscores, and a tag starting with `node`, `image`,
+`button`, `text`, `slot` or `template` reads as that built-in, which is why the
+text input is `<field>` and the multi-line one `<multiline>`.
+
+### Tying a control to a value
+
+Each control above is tied to one value:
 
 - `setting="<path>"` is a game setting, by the same path `set_setting` takes
   (see [Game settings](../api/scripting.md#game-settings-set_setting-get_setting)).

@@ -10,8 +10,8 @@
 use bevy::prelude::*;
 
 pub mod binding;
-/// `<dropdown>`, `<switch>`, `<checkbox>`, `<slider>`: ember widgets in markup.
-pub mod controls;
+/// The ember widget library as markup elements: `<dropdown>`, `<card>`, `<tabs>`.
+pub mod elements;
 pub mod cursor;
 pub mod decor;
 pub mod dnd;
@@ -107,7 +107,7 @@ impl Plugin for MarkupPlugin {
         gamepad_nav::plugin(app);
         input_field::plugin(app);
         widgets::plugin(app);
-        controls::plugin(app);
+        elements::plugin(app);
         transitions::plugin(app);
         vector::plugin(app);
         // `cursor_icon` + `icons` are now installed by `EmberPlugin` (they're

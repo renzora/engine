@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 06:59
+- feat(ui): the whole ember widget library is available as game UI markup tags, from `<badge>` and `<table>` to `<tabs>` and `<tree>`
+
 ## 2026-11-24 06:49
 - feat(ui): game UI templates can declare `<dropdown>`, `<switch>`, `<checkbox>` and `<slider>` controls tied to a game setting or a script variable, and they show in the editor too
 - feat(scripting): Rust scripts can read and write any game setting by path through `renzora::settings_path`

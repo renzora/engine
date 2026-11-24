@@ -137,9 +137,12 @@ fn spawn_subtree(
     apply_xnode_to(commands, ctx, child, node, template, &node_path);
 
     // `<for>` spawns children per entity at runtime; `<input>` and `<icon>`
-    // own their own text content, and a control (`<dropdown>`, `<slider>`, ...)
+    // own their own text content, and a widget element (`<dropdown>`, `<card>`)
     // is filled by its ember widget. None recurse their markup children here.
-    if is_for_node(node) || is_input_node(node) || is_icon_node(node) || control_kind(node).is_some() {
+    // A container element (`<tabs>`, `<accordion>`) does: its children are
+    // spawned as usual and then moved into the widget as its content.
+    let leaf_element = element_kind(node).is_some_and(|k| !k.takes_children());
+    if is_for_node(node) || is_input_node(node) || is_icon_node(node) || leaf_element {
         return;
     }
     for (i, grand) in node.children.iter().enumerate() {
@@ -149,11 +152,11 @@ fn spawn_subtree(
     }
 }
 
-/// The ember control a `<dropdown>`, `<switch>`, `<checkbox>` or `<slider>`
-/// element stands for; see `markup::controls`.
-fn control_kind(node: &XNode) -> Option<crate::markup::controls::ControlKind> {
+/// The ember widget element (`<dropdown>`, `<card>`, `<tabs>`, ...) a tag
+/// stands for; see `markup::elements`.
+fn element_kind(node: &XNode) -> Option<crate::markup::elements::ElementKind> {
     match &node.node_type {
-        NodeType::Custom(n) => crate::markup::controls::ControlKind::from_tag(n),
+        NodeType::Custom(n) => crate::markup::elements::ElementKind::from_tag(n),
         _ => None,
     }
 }
@@ -406,10 +409,10 @@ fn apply_xnode_to(
         commands
             .entity(entity)
             .insert(crate::game_ui::script_canvas::ScriptCanvas::new(ctx.host));
-    } else if control_kind(node).is_some() {
-        // `<dropdown>`, `<switch>`, `<checkbox>`, `<slider>` — styled like a
-        // node here, and the control stamped once its attributes are compiled
-        // (below), so a `{prop}` in `setting=` or `options=` resolves first.
+    } else if element_kind(node).is_some() {
+        // A widget element: styled like a node here, and stamped once its
+        // attributes are compiled (below), so a `{prop}` in `setting=` or
+        // `options=` resolves first.
     } else if let NodeType::Custom(name) = &node.node_type {
         // Bare `<custom_tag>` with no `template=` attribute. The file-stem
         // registry that used to resolve these is gone — components must be
@@ -492,8 +495,8 @@ fn apply_xnode_to(
 
     let mut ec = commands.entity(entity);
     ec.insert(layout);
-    if let Some(kind) = control_kind(node) {
-        ec.insert(crate::markup::controls::MarkupControl::new(kind, &defs, ctx.host));
+    if let Some(kind) = element_kind(node) {
+        ec.insert(crate::markup::elements::MarkupElement::new(kind, &defs, ctx.host));
     }
 
     // `show="{{ cond }}"` — conditional visibility. Stamp a `ShowBinding` the
