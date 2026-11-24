@@ -168,12 +168,6 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         let ruler = crate::height_ruler::build(commands, fonts);
         commands.entity(content).add_child(ruler);
 
-        // Tool shelf, left edge — the two-column brush palette. Primary slot
-        // only, for the same reason as the ruler: it drives the one shared
-        // ActiveTool, and four copies of a palette would all fight over it.
-        let shelf = crate::tool_shelf::build(commands, fonts);
-        commands.entity(content).add_child(shelf);
-
         // Statistics readout, bottom-left. Primary slot only: the counts
         // describe the scene rather than the view, so four of them would say
         // the same thing four times.
@@ -190,7 +184,7 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         commands.entity(content).add_child(work);
 
         // Blank cover with a centred message while the viewport is paused for
-        // a running game. Last, so it sits over the shelf and the cards.
+        // a running game. Last, so it sits over the cards.
         let paused = crate::play_pause::build(commands, fonts);
         commands.entity(content).add_child(paused);
     }

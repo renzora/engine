@@ -1,17 +1,13 @@
-//! Registry-driven tool buttons, shared by the viewport's two tool surfaces.
+//! Registry-driven tool buttons for the viewport toolbar.
 //!
-//! A [`ToolEntry`](renzora_editor_framework::ToolEntry) is the same thing
-//! wherever it renders: an icon, a tooltip, and three closures deciding whether
-//! it shows, whether it's the active one, and what clicking it does. Only the
-//! *layout* differs — the horizontal strip across the viewport's top edge
-//! ([`crate::toolbar::build_side_toolbar`]) versus the two-column shelf
-//! down its left edge ([`crate::native_tool_shelf`]).
+//! A [`ToolEntry`](renzora_editor_framework::ToolEntry) is an icon, a tooltip,
+//! and three closures deciding whether it shows, whether it's the active one,
+//! and what clicking it does. Every section, shelf groups included, renders as
+//! these buttons in the toolbar's tool group
+//! ([`crate::toolbar::build_side_toolbar`]).
 //!
-//! So the button widget, the separator, and the two driver systems live here and
-//! both surfaces spawn from them. That's not just deduplication: the predicates
-//! take `&World` and therefore have to be evaluated from an exclusive system, and
-//! a second copy of that system would double the per-frame archetype scan for no
-//! benefit. [`update_tool_buttons`] handles every button on screen in one pass.
+//! The predicates take `&World`, so they have to be evaluated from an exclusive
+//! system; [`update_tool_buttons`] handles every button on screen in one pass.
 
 use bevy::color::Hsla;
 use bevy::prelude::*;
@@ -21,7 +17,7 @@ use std::sync::Arc;
 use renzora_editor_framework::{EditorCommands, ToolActiveStyle, ToolEntry};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, EmberFonts};
-use renzora_ember::theme::{border, rgb, text_primary};
+use renzora_ember::theme::{rgb, text_primary};
 use renzora_ember::UiInteraction;
 use renzora_theme::ThemeManager;
 
@@ -128,24 +124,6 @@ pub(crate) fn tool_separator(commands: &mut Commands) -> Entity {
     sep
 }
 
-/// A horizontal rule between groups of the vertical shelf. Full-width so it
-/// reads as a division of the column rather than a stray tick beside it, and so
-/// the group after it starts on a fresh row.
-pub(crate) fn shelf_separator(commands: &mut Commands, width: f32) -> Entity {
-    commands
-        .spawn((
-            Node {
-                width: Val::Px(width),
-                height: Val::Px(1.0),
-                margin: UiRect::vertical(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(border())),
-            Name::new("vp-shelf-sep"),
-        ))
-        .id()
-}
-
 /// Per-frame: evaluate each tool's `visible` (show/hide) and `is_active`
 /// (accent highlight). Exclusive because the predicates take `&World`.
 pub(crate) fn update_tool_buttons(world: &mut World) {
@@ -246,34 +224,6 @@ pub(crate) fn update_tool_buttons(world: &mut World) {
             }
         }
     }
-
-    // The shelf is an overlay floating over the scene: with no visible tool in
-    // it, it would sit there as an empty tinted rectangle. Collapse it whole.
-    let mut rq = world.query::<(Entity, &ShelfRoot)>();
-    let roots: Vec<(Entity, bool)> = rq
-        .iter(world)
-        .map(|(e, r)| (e, r.keep_open || any_visible(&r.buttons)))
-        .collect();
-    for (e, show) in roots {
-        if let Some(mut node) = world.get_mut::<Node>(e) {
-            let want = if show { Display::Flex } else { Display::None };
-            if node.display != want {
-                node.display = want;
-            }
-        }
-    }
-}
-
-/// The shelf's outer node, carrying every button in it so the whole overlay can
-/// collapse when none of them apply. Lives here rather than in the shelf module
-/// so [`update_tool_buttons`] can resolve it in the same pass that computed the
-/// per-button visibility.
-#[derive(Component)]
-pub(crate) struct ShelfRoot {
-    pub buttons: Vec<Entity>,
-    /// The shelf holds buttons that always apply (undo / redo), so it stays
-    /// open even when none of `buttons` is visible.
-    pub keep_open: bool,
 }
 
 pub(crate) fn tool_button_click(

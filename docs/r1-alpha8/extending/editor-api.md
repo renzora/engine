@@ -286,16 +286,16 @@ app.register_tool(
 );
 ```
 
-Sections decide where it lands, and the choice is about space:
+Every tool renders in the tool group that leads the viewport toolbar on the left. Sections decide its order there:
 
 | `ToolSection` | Where |
 |---|---|
-| `Transform` | with select / move / rotate / scale |
+| `Transform` | first, with select / move / rotate / scale |
 | `Terrain` | the context-sensitive terrain group |
-| `Custom(key)` | a new group on the horizontal strip |
-| `Shelf(group)` | the vertical two-column shelf on the viewport's left edge |
+| `Custom(key)` | a new group after the built-in ones |
+| `Shelf(group)` | after those, one group per `group`, before Undo / Redo; primary viewport only |
 
-The horizontal strip runs out of room after a few buttons and wraps into a second row, pushing Play and the view controls down with it. So the strip is for the few buttons that *choose a mode*, and the shelf is for what a mode reveals — its brushes, its select modes, its ops — because the shelf grows downwards into empty space.
+A long run of always-visible buttons makes the toolbar wrap onto a second line. So the early sections are for the few buttons that *choose a mode*, and `Shelf` groups are for what a mode reveals (its brushes, its select modes, its ops), hidden with `visible_if` while the mode is off.
 
 Shelf groups render **alphabetically by group string**, globally across all crates. A toolset whose groups must hold a fixed order encodes it in the id, the way terrain does: `terrain.a-sculpt` → `terrain.b-paint` → `terrain.c-foliage-brush`.
 

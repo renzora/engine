@@ -167,20 +167,18 @@ pub struct Health {
 
 ### Viewport tools
 
-`App::register_tool(ToolEntry)` adds a button to the viewport. A `ToolEntry` is an icon, a tooltip, and three closures: `visible_if` (show it at all), `active_if` (draw it highlighted) and `on_activate` (what clicking does). The **section** decides which surface it renders on:
+`App::register_tool(ToolEntry)` adds a button to the viewport. A `ToolEntry` is an icon, a tooltip, and three closures: `visible_if` (show it at all), `active_if` (draw it highlighted) and `on_activate` (what clicking does). Every tool renders in the tool group that leads the viewport toolbar on the left; the **section** decides where in it:
 
 | Section | Where it renders |
 |---|---|
-| `ToolSection::Transform` | the horizontal strip across the viewport's top edge, with Select / Move / Rotate / Scale |
-| `ToolSection::Terrain` | the same strip, after a divider |
-| `ToolSection::Custom(id)` | the same strip, after the built-in sections; `id` groups and sorts |
-| `ToolSection::Shelf(group)` | the **two-column vertical shelf** down the viewport's left edge |
+| `ToolSection::Transform` | first, with Select / Move / Rotate / Scale |
+| `ToolSection::Terrain` | after a divider |
+| `ToolSection::Custom(id)` | after the built-in sections; `id` groups and sorts |
+| `ToolSection::Shelf(group)` | after those, one group per `group`, ending with Undo / Redo. Primary viewport only |
 
-Everything else about an entry is identical either way, so moving a tool between surfaces is a one-word change.
+Everything else about an entry is identical either way, so moving a tool between sections is a one-word change.
 
-> **The two surfaces split by depth, not by feature.** A tool that *opens* other tools stays on the strip — the gizmo modes, the terrain modes (Sculpt / Paint / Foliage), mesh Edit Mode — so there is always one visible row saying what the viewport is set to do. What each of those reveals goes on the shelf: the terrain sculpt brushes, the paint brushes, the foliage types, and in Edit mode the draw tools, select modes and ops. A tool that opens nothing and has no palette under it is better on the shelf with its neighbours than alone on the strip.
->
-> **Keep shelf groups even.** The shelf is two buttons wide and every group starts on a fresh row, so an odd group ends on a row with a hole in it that reads as a missing button — and a group of one reads as a mistake. Where a group will not come out even, move a member to the neighbouring group where it also makes sense, or pair it with the control it belongs next to.
+> **Sections split by depth, not by feature.** A tool that *opens* other tools goes in an early section: the gizmo modes, the terrain modes (Sculpt / Paint / Foliage), mesh Edit Mode. What each of those reveals goes in a `Shelf` group after it: the terrain sculpt brushes, the paint brushes, the foliage types, and in Edit mode the draw tools, select modes and ops. Hide a group with `visible_if` while its mode is off, so the bar only carries what applies.
 
 ```rust
 app.register_tool(
@@ -192,9 +190,9 @@ app.register_tool(
 );
 ```
 
-Use the **strip** for the mode that turns your tool on, and the **shelf** for what that mode opens. The strip runs out of room past a few buttons and wraps into a second row, taking Play and the view controls down with it; the shelf grows downward where nothing competes for the space.
+Use an early section for the mode that turns your tool on, and a `Shelf` group for what that mode opens. A long run of buttons makes the toolbar wrap onto a second line, so a palette that is always visible costs every other control its place.
 
-Shelf groups render top to bottom in **alphabetical order of the group string**, separated by a rule, and the whole shelf collapses when none of its entries are visible. That sort is *global*, across every crate that registers a group — so if your feature has several groups that must stay in a fixed order, encode it in the id. The terrain toolset does exactly this: `terrain.a-region` → `terrain.b-sculpt` → `terrain.c-paint` → `terrain.d-foliage-brush` → `terrain.e-foliage-types`, the last two registered by a different crate but part of the same palette and therefore carrying the same `terrain.` prefix.
+Shelf groups render left to right in **alphabetical order of the group string**, separated by a rule, and a rule hides when the group on either side of it has nothing visible. That sort is *global*, across every crate that registers a group — so if your feature has several groups that must stay in a fixed order, encode it in the id. The terrain toolset does exactly this: `terrain.a-region` → `terrain.b-sculpt` → `terrain.c-paint` → `terrain.d-foliage-brush` → `terrain.e-foliage-types`, the last two registered by a different crate but part of the same palette and therefore carrying the same `terrain.` prefix.
 
 ### Viewport toolbar groups
 

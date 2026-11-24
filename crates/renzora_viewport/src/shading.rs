@@ -1,18 +1,15 @@
 //! The viewport shading switch — wireframe / solid / material / rendered.
 //!
-//! Four buttons on the toolbar, immediately left of Maximize. They are the four
-//! ways you look at a scene while building it, under the names every 3D tool
-//! gives them.
+//! One dropdown on the toolbar, immediately left of Maximize. Its trigger shows
+//! the current mode's icon; the menu lists the four ways you look at a scene
+//! while building it, under the names every 3D tool gives them.
 //!
-//! They floated over the scene before this: centred on the viewport's top edge,
-//! translucent, as their own overlay. That put a permanent row of chrome across
-//! the middle of the picture the viewport exists to show, and it needed
-//! `OverlaySurface` to stop camera orbit and box-select arming underneath it.
-//! On the bar they cost the scene nothing, they sit with the other view controls
-//! rather than on top of the view, and the pointer handling goes away with the
-//! overlay. They are still *view* state rather than a session action, which is
-//! why they sit beside Maximize on the right of the bar rather than among the
-//! draggable tool groups on the left.
+//! They floated over the scene once, then sat on the bar as four buttons. Four
+//! buttons were a lot of the bar for a switch you set and leave, and they were
+//! what pushed the bar onto a second line first, so they fold into one trigger
+//! now. They are still *view* state rather than a session action, which is why
+//! the dropdown sits beside Maximize on the right of the bar rather than among
+//! the draggable tool groups on the left.
 //!
 //! # Presets, not a fifth piece of state
 //!
@@ -53,13 +50,20 @@
 //! afterwards, which could not tell those two apart.
 
 use bevy::prelude::*;
+use bevy::window::SystemCursorIcon;
 
 use renzora_viewport_api::{RenderToggles, ViewportSettings, VisualizationMode};
-use renzora_ember::font::{icon_text, EmberFonts};
-use renzora_ember::interaction::PASS_THROUGH;
+use renzora_ember::cursor_icon::HoverCursor;
+use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
+use renzora_ember::theme::{rgb, tab_active, text_muted, text_primary};
+use renzora_ember::widgets::{popup_anchor, popup_panel, HoverTooltip, Popup};
 use renzora_ember::UiInteraction;
 
-use crate::tool_buttons::{SIDE_BTN, SIDE_ICON};
+use crate::tool_buttons::SIDE_ICON;
+use crate::toolbar::display::DisplayTrigger;
+
+/// Row and trigger height, matching the toolbar's other dropdowns.
+const BTN_H: f32 = 22.0;
 
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Shading {
@@ -99,6 +103,17 @@ impl Shading {
     /// part of a mode's identity rather than something read off the toggles.
     fn shows_environment(self) -> bool {
         matches!(self, Self::Rendered)
+    }
+
+    /// The row's label in the menu.
+    fn label(self) -> String {
+        let (key, fallback) = match self {
+            Self::Wireframe => ("viewport.shading.wireframe", "Wireframe"),
+            Self::Solid => ("viewport.shading.solid", "Solid"),
+            Self::Material => ("viewport.shading.material", "Material"),
+            Self::Rendered => ("viewport.shading.rendered", "Rendered"),
+        };
+        renzora_lang_api::t_or(key, fallback)
     }
 
     /// The switch positions this mode stands for.
@@ -144,14 +159,24 @@ impl Shading {
     }
 }
 
-/// The button's icon, so [`shading_visuals`] can recolour it.
-///
-/// The glyph used to be a fixed near-white, which was fine while these buttons
-/// were translucent dark chips floating over the scene. On the toolbar they rest
-/// transparent on the bar's own fill, so the icon has to follow the theme the
-/// way every other toolbar button's does, or it disappears on a light one.
+/// A menu row's icon and label, so [`shading_visuals`] can recolour them: both
+/// follow the theme, and both flip to the active foreground on the accent fill.
 #[derive(Component, Clone, Copy)]
-pub(crate) struct ShadingGlyph(Entity);
+pub(crate) struct ShadingRow {
+    glyph: Entity,
+    label: Entity,
+}
+
+/// The dropdown's trigger, pointing at its glyph so [`shading_visuals`] can
+/// swap it to the current mode's icon.
+#[derive(Component, Clone, Copy)]
+pub(crate) struct ShadingMenu {
+    glyph: Entity,
+}
+
+/// What the trigger shows when the switches match none of the four modes: the
+/// Display dropdown's sliders, since a hand-tuned mix is what that menu makes.
+const CUSTOM_ICON: &str = "faders";
 
 pub(crate) fn register(app: &mut App) {
     app.add_systems(
@@ -169,80 +194,123 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
-/// Build the four-button strip for the viewport toolbar.
+/// Build the shading dropdown for the viewport toolbar.
 ///
-/// A plain row, mounted by [`crate::toolbar`] into the right-hand cluster next
-/// to Maximize. No absolute wrapper and no `OverlaySurface`: both existed only
-/// because this floated over the rendered image, and the bar is chrome beside
-/// that image rather than on top of it.
-pub(crate) fn build_strip(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let strip = commands
+/// Mounted by [`crate::toolbar`] into the right-hand cluster next to Maximize.
+/// The trigger is the toolbar's icon-and-caret dropdown shape, tagged
+/// `DisplayTrigger` so it themes with the options menu beside it and needs no
+/// background system of its own. The panel is right-aligned because the
+/// trigger is near the right edge of the window.
+pub(crate) fn build_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let rows: Vec<Entity> = Shading::ALL
+        .into_iter()
+        .map(|mode| shading_row(commands, fonts, mode))
+        .collect();
+    let panel = popup_panel(commands, &rows);
+    // The standard popup is sized for the switch panels; four short rows do not
+    // need 220px. Patched onto the panel's own `Node` so its styling stays.
+    commands.queue(move |world: &mut World| {
+        if let Some(mut node) = world.get_mut::<Node>(panel) {
+            node.min_width = Val::Px(150.0);
+        }
+    });
+
+    let glyph = icon_text(
+        commands,
+        &fonts.phosphor,
+        Shading::Rendered.icon(),
+        text_muted(),
+        15.0,
+    );
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
+    let trigger = commands
         .spawn((
             Node {
+                width: Val::Px(40.0),
+                height: Val::Px(BTN_H),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(1.0),
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
-            PASS_THROUGH,
-            Name::new("shading-strip"),
+            BackgroundColor(rgb(tab_active())),
+            UiInteraction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            HoverTooltip::new(renzora_lang_api::t_or("viewport.shading.title", "Shading")),
+            Popup::new(panel),
+            DisplayTrigger,
+            ShadingMenu { glyph },
+            Name::new("shading-menu"),
         ))
         .id();
-
-    let buttons: Vec<Entity> = Shading::ALL
-        .into_iter()
-        .map(|mode| shading_btn(commands, fonts, mode))
-        .collect();
-    commands.entity(strip).add_children(&buttons);
+    commands.entity(trigger).add_children(&[glyph, caret]);
+    let anchor = popup_anchor(commands, trigger, panel);
 
     // Gone in play mode: the point of play mode is to see the game, and a
     // shading switch is an authoring control.
-    renzora_ember::reactive::tracked::bind_display(commands, strip, |w| {
+    renzora_ember::reactive::tracked::bind_display(commands, anchor, |w| {
         !w.get_resource::<renzora_project_api::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false)
     });
-    strip
+    anchor
 }
 
-fn shading_btn(commands: &mut Commands, fonts: &EmberFonts, mode: Shading) -> Entity {
-    let b = commands
+/// One mode in the menu: its icon, then its name.
+fn shading_row(commands: &mut Commands, fonts: &EmberFonts, mode: Shading) -> Entity {
+    let glyph = icon_text(commands, &fonts.phosphor, mode.icon(), text_muted(), SIDE_ICON);
+    let label = commands
+        .spawn((
+            Text::new(mode.label()),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    // Clicks must reach the row, not stop at the glyph or the text on it.
+    for e in [glyph, label] {
+        commands.entity(e).insert(bevy::picking::Pickable::IGNORE);
+    }
+    let row = commands
         .spawn((
             Node {
-                width: Val::Px(SIDE_BTN),
-                height: Val::Px(SIDE_BTN),
+                width: Val::Percent(100.0),
+                height: Val::Px(BTN_H),
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
             mode,
-            Name::new("shading-btn"),
+            ShadingRow { glyph, label },
+            Name::new("shading-row"),
         ))
         .id();
-    let g = icon_text(commands, &fonts.phosphor, mode.icon(), (235, 235, 240), SIDE_ICON);
-    // Clicks must reach the button, not stop at the glyph in its dead centre —
-    // the same trap the nav buttons hit.
-    commands.entity(g).insert(bevy::picking::Pickable::IGNORE);
-    commands.entity(b).add_child(g);
-    commands.entity(b).insert(ShadingGlyph(g));
-    b
+    commands.entity(row).add_children(&[glyph, label]);
+    row
 }
 
-/// Accent the active mode, wash on hover.
+/// Accent the active mode's row, wash on hover, and show the active mode's icon
+/// on the trigger.
 ///
-/// Fill *and* glyph, both from the theme, matching `tool_buttons`'s scheme
-/// exactly so a shading button and a tool button next to each other on the same
-/// bar are the same button.
+/// Fill, glyph and label all come from the theme, matching `tool_buttons`'s
+/// scheme so the lit row reads the way a lit tool button does. A hand-tweaked
+/// combination lights no row and puts [`CUSTOM_ICON`] on the trigger, rather
+/// than claiming the nearest mode.
 pub(crate) fn shading_visuals(
     settings: Option<Res<ViewportSettings>>,
     suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
     theme: Option<Res<renzora_theme::ThemeManager>>,
-    mut buttons: Query<(&Shading, &UiInteraction, &ShadingGlyph, &mut BackgroundColor)>,
-    mut glyphs: Query<&mut TextColor>,
+    mut rows: Query<(&Shading, &UiInteraction, &ShadingRow, &mut BackgroundColor)>,
+    menus: Query<&ShadingMenu>,
+    mut texts: Query<(&mut Text, &mut TextColor)>,
 ) {
     let Some(theme) = theme else { return };
     let col = |c: renzora_theme::ThemeColor| {
@@ -251,14 +319,15 @@ pub(crate) fn shading_visuals(
     };
     let accent = col(theme.active_theme.semantic.accent);
     let hovered = col(theme.active_theme.widgets.hovered_bg);
-    let icon_active = col(theme.active_theme.widgets.active_fg);
+    let fg_active = col(theme.active_theme.widgets.active_fg);
     let icon_inactive = col(theme.active_theme.text.secondary);
+    let label_inactive = col(theme.active_theme.text.primary);
 
     let environment = !suppressed.as_deref().is_some_and(|s| s.active);
     let active = settings
         .as_deref()
         .and_then(|s| Shading::current(s, environment));
-    for (mode, interaction, glyph, mut bg) in &mut buttons {
+    for (mode, interaction, row, mut bg) in &mut rows {
         let is_active = active == Some(*mode);
         let want = if is_active {
             accent
@@ -270,10 +339,25 @@ pub(crate) fn shading_visuals(
         if bg.0 != want {
             bg.0 = want;
         }
-        let want_icon = if is_active { icon_active } else { icon_inactive };
-        if let Ok(mut tc) = glyphs.get_mut(glyph.0) {
-            if tc.0 != want_icon {
-                tc.0 = want_icon;
+        for (e, inactive) in [(row.glyph, icon_inactive), (row.label, label_inactive)] {
+            let want = if is_active { fg_active } else { inactive };
+            if let Ok((_, mut tc)) = texts.get_mut(e) {
+                if tc.0 != want {
+                    tc.0 = want;
+                }
+            }
+        }
+    }
+
+    let icon = active.map_or(CUSTOM_ICON, Shading::icon);
+    let Some(ch) = icon_glyph(icon) else { return };
+    for menu in &menus {
+        if let Ok((mut text, mut tc)) = texts.get_mut(menu.glyph) {
+            if text.0.chars().ne(std::iter::once(ch)) {
+                text.0 = ch.to_string();
+            }
+            if tc.0 != icon_inactive {
+                tc.0 = icon_inactive;
             }
         }
     }
@@ -345,8 +429,14 @@ pub(crate) fn restore_environment_in_play_mode(
 /// Writes the environment alongside the render toggles, because it is one of the
 /// switches a mode stands for — see [`Shading::shows_environment`]. Nothing else
 /// in the editor writes that flag, so there is no one to fight over it with.
+///
+/// The menu closes on a pick. Ember's outside-click dismiss deliberately leaves
+/// a popup open when the click lands inside it, which suits the switch panels;
+/// this is a one-of-four choice, so it closes like the view-angle menu does.
 pub(crate) fn shading_clicks(
     buttons: Query<(&Shading, &UiInteraction), Changed<UiInteraction>>,
+    mut menus: Query<&mut Popup, With<ShadingMenu>>,
+    mut nodes: Query<&mut Node>,
     settings: Option<ResMut<ViewportSettings>>,
     suppressed: Option<ResMut<renzora_render_api::EnvironmentSuppressed>>,
 ) {
@@ -355,6 +445,12 @@ pub(crate) fn shading_clicks(
     for (mode, interaction) in &buttons {
         if *interaction != UiInteraction::Pressed {
             continue;
+        }
+        for mut popup in &mut menus {
+            popup.open = false;
+            if let Ok(mut n) = nodes.get_mut(popup.panel) {
+                n.display = Display::None;
+            }
         }
         let (toggles, viz) = mode.preset();
         settings.render_toggles = toggles;

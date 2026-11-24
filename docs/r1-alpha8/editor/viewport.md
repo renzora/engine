@@ -49,19 +49,17 @@ The same views are under **Camera** in the toolbar's options menu.
 
 ## The toolbar
 
-Along the top edge of the viewport, left to right: the snap steps, the shape menu, the options menu, and this viewport's own view-angle and World / Local controls.
+Along the top edge of the viewport, left to right: the tools, the snap steps, the shape menu, the options menu, and this viewport's own view-angle and World / Local controls. The shading menu and **Maximize** sit against the right edge.
 
-The options menu (the sliders icon) holds four submenus: **Display**, **Gizmos**, **Snap** and **Camera**. Hover one to open it beside the menu. It is a 3D menu; in the 2D view an **Overlays** menu takes its place. **Maximize** floats against the right edge. **Save** and **Play** are in the editor's top bar, and **Undo** and **Redo** are at the foot of the tool shelf.
+The options menu (the sliders icon) holds four submenus: **Display**, **Gizmos**, **Snap** and **Camera**. Hover one to open it beside the menu. It is a 3D menu; in the 2D view an **Overlays** menu takes its place. **Save** and **Play** are in the editor's top bar.
 
 <!-- screenshot: viewport_toolbar.png - the viewport toolbar with the Select, Move, Rotate and Scale tools and the snap controls -->
 
-The tool buttons are **Select**, **Move**, **Rotate** and **Scale**, plus the terrain modes when a terrain is selected and anything plugins add.
-
 The snap steps sit inline: click the icon to toggle that snap, then drag or type the number to set its step. Fractions are fine, so a quarter-unit grid is `0.25`. Object snap, floor snap, edge snap and scale-from-bottom are under **Snap** in the options menu.
 
-## The tool shelf
+## The tools
 
-Down the left edge of the viewport is the tool shelf, a single column. The tools lead it (**Select**, **Move**, **Rotate**, **Scale**, then the terrain modes when the scene has a terrain), each group appears only when it applies, and **Undo** and **Redo** close it under a rule. Ctrl+Z and Ctrl+Y, and the Edit menu, undo and redo from any workspace.
+The tools lead the toolbar on the left: **Select**, **Move**, **Rotate** and **Scale**, then the terrain modes when the scene has a terrain, then whatever the current mode opens. Each group appears only when it applies, divided from the next by a rule, and **Undo** and **Redo** close the group. Ctrl+Z and Ctrl+Y, and the Edit menu, undo and redo from any workspace.
 
 | Group | Shows when | Holds |
 |---|---|---|
@@ -70,7 +68,7 @@ Down the left edge of the viewport is the tool shelf, a single column. The tools
 | Terrain, paint | Paint Terrain Layers is active | Paint, Erase, Smooth, Fill |
 | Foliage | Paint Foliage is active | Paint and Erase, then one button per foliage type |
 
-Plugins can add their own groups. In the 2D view the shelf moves inside the rulers and holds just **Undo** and **Redo**.
+Plugins can add their own groups. In the 2D view only **Undo** and **Redo** show, plus any 2D tools a plugin adds.
 
 While a terrain brush is in hand, a **brush settings bar** appears under the toolbar with that brush's size, strength and falloff, plus whatever the brush adds of its own.
 
@@ -101,11 +99,11 @@ Press a key, move the mouse, click to confirm.
 | `Enter` or left-click | Confirm |
 | `Esc` or right-click | Cancel |
 
-## The shading switch
+## The shading menu
 
-Four buttons sit centred on the viewport's top edge. They are a ladder, each adding one thing to the one below.
+The shading menu sits on the right of the toolbar, beside **Maximize**. Its icon shows the current mode; click it to pick another. The four modes are a ladder, each adding one thing to the one below.
 
-<!-- screenshot: viewport_shading.png - the four shading buttons with Material active -->
+<!-- screenshot: viewport_shading.png - the shading menu open with Material active -->
 
 | Mode | Adds | What you see |
 |---|---|---|
@@ -114,7 +112,7 @@ Four buttons sit centred on the viewport's top edge. They are a ladder, each add
 | Material | Materials and lighting | Real materials and textures, lit, with shadows, against a flat background |
 | Rendered | The world | Sky, atmosphere and clouds around them. The final look. |
 
-These are presets over the same switches the Display menu holds, so change one by hand and no button is lit. Click one to get back.
+These are presets over the same switches the Display menu holds, so change one by hand and no mode is lit, and the menu's icon turns to sliders. Pick one to get back.
 
 **Only Rendered shows the world environment.** That is the point of having both it and Material: Material is where you judge materials and lighting without a sky colouring everything you are trying to read. Nothing in the scene is edited either way.
 

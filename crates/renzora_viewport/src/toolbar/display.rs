@@ -31,7 +31,7 @@ use super::{col, loc_opt};
 
 /// Marks the Display dropdown's icon trigger (for hover / open background).
 #[derive(Component)]
-pub(super) struct DisplayTrigger;
+pub(crate) struct DisplayTrigger;
 
 /// A click-to-select option inside the Display popup.
 #[derive(Component, Clone, Copy)]

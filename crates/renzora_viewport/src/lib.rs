@@ -35,7 +35,6 @@ mod panel;
 mod pivot_label;
 mod stats_overlay;
 pub mod toolbar;
-mod tool_shelf;
 mod work_card;
 pub mod particle_drop;
 pub mod persistence;

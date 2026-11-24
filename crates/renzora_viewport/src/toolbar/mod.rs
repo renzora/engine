@@ -251,7 +251,7 @@ pub fn build_maximize(commands: &mut Commands, fonts: &EmberFonts, slot: usize) 
 /// Built here but mounted by the **editor shell**, in the top bar beside the
 /// hamburger. Saving is session-wide, not viewport-wide, so it stays on the one
 /// bar that's on screen in every workspace. Undo and redo used to sit beside it
-/// and moved to the viewport's tool shelf (see [`build_history_actions`]),
+/// and moved to the viewport's tool group (see [`build_history_actions`]),
 /// where the hand already is while editing the scene; Ctrl+Z / Ctrl+Y and the
 /// Edit menu still reach them from any workspace. The driver systems in
 /// [`register`] find every widget by component and aren't gated on the
@@ -278,7 +278,7 @@ pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     row
 }
 
-/// Undo and redo, sized for the viewport's tool shelf. Same `HeaderAction`
+/// Undo and redo, sized for the toolbar's tool group. Same `HeaderAction`
 /// buttons the top bar used to carry, so the existing click and enabled-state
 /// systems drive them unchanged.
 pub(crate) fn build_history_actions(commands: &mut Commands, fonts: &EmberFonts) -> [Entity; 2] {
@@ -319,7 +319,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
                 column_gap: Val::Px(1.0),
                 ..default()
             },
-            tools::ToolContainer,
+            tools::ToolContainer { primary: slot == 0 },
             Name::new("vp-tools"),
         ))
         .id();
@@ -392,7 +392,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     groups.push((view_group, "viewport"));
     let holders = renzora_ember::widgets::arrange_row_items(commands, fonts, bar, &groups);
 
-    // The right-hand cluster: the shading switch, then Maximize hard against the
+    // The right-hand cluster: the shading dropdown, then Maximize hard against the
     // edge. It floats to the right, outside the arrangement.
     //
     // `margin-left: auto` eats the free space on its line, so the cluster sits
@@ -404,9 +404,9 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     // children with the keyed holders in saved order and everything else
     // appended after them.
     //
-    // Shading is primary-slot only, for the reason the shelf and the ruler are:
-    // it writes the shared `ViewportSettings`, so a copy per slot would be four
-    // switches driving one piece of state. Maximize is genuinely per-slot and
+    // Shading is primary-slot only, for the reason the shelf tools and the
+    // ruler are: it writes the shared `ViewportSettings`, so a copy per slot
+    // would be four switches driving one piece of state. Maximize is genuinely per-slot and
     // stays on every bar.
     let right = commands
         .spawn((
@@ -423,7 +423,7 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
         ))
         .id();
     if slot == 0 {
-        let shading = crate::shading::build_strip(commands, fonts);
+        let shading = crate::shading::build_dropdown(commands, fonts);
         commands.entity(right).add_child(shading);
     }
     let maximize = build_maximize(commands, fonts, slot);
@@ -541,7 +541,6 @@ pub(crate) fn register(app: &mut App) {
                 view::update_space_toggle,
                 view::sanitize_mode_for_view,
                 view::update_two_d_only,
-                crate::tool_shelf::place_shelf,
             ),
         )
             .run_if(in_state(SplashState::Editor)),
@@ -555,7 +554,6 @@ pub(crate) fn register(app: &mut App) {
             // The button pass re-evaluates every tool's predicates each frame,
             // so it stays as it is.
             tools::populate_tools.run_if(tools::tools_unpopulated),
-            crate::tool_shelf::populate_shelf.run_if(crate::tool_shelf::shelf_unpopulated),
             crate::tool_buttons::update_tool_buttons,
             shapes::populate_shapes.run_if(shapes::shapes_unpopulated),
         )

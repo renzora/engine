@@ -4,8 +4,8 @@
 //!
 //! **Why the bottom-left.** Every other piece of viewport chrome is already
 //! spoken for: the axis gizmo sits top-right with the nav cluster hanging under
-//! it, the height ruler slides in on the right, and the tool shelf runs down
-//! from the top-left. The bottom-left is the one corner nothing else wants, and
+//! it, and the height ruler slides in on the right. The bottom-left is the
+//! corner nothing else wants, and
 //! a readout you glance at rather than aim at belongs where it can't be in the
 //! way of the thing you're aiming at.
 //!

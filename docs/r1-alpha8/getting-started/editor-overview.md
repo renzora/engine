@@ -10,7 +10,7 @@ The editor is the engine. What you see while editing is how your game runs.
 
 | Area | What it is |
 |---|---|
-| Top bar | The menu button, Settings, save, the scene switcher, the workspace ribbon, and Play and the Marketplace on the right. Anything that acts on the whole session. Undo and redo are at the foot of the viewport's tool shelf. |
+| Top bar | The menu button, Settings, save, the scene switcher, the workspace ribbon, and Play and the Marketplace on the right. Anything that acts on the whole session. Undo and redo are at the end of the viewport toolbar's tools. |
 | Viewport | Your live 3D view, in the middle. Its own tools sit in a strip along its top edge. |
 | Hierarchy | The tree of everything in the current scene. |
 | Inspector | The settings of whatever you have selected. |
