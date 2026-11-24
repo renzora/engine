@@ -91,8 +91,11 @@ fn strip_colliders_on_descendants(world: &mut World, root: Entity) {
 }
 
 pub fn register_physics_inspectors(app: &mut App) {
-    // Auto-insert default collider on new MeshPrimitive entities
-    app.add_observer(auto_insert_collider_for_shape);
+    // Auto-insert default collider on new MeshPrimitive entities: noted by the
+    // observer, decided by the system once the frame's loads have finished.
+    app.init_resource::<PendingShapeColliders>()
+        .add_observer(auto_insert_collider_for_shape)
+        .add_systems(PostUpdate, apply_default_shape_colliders);
     use renzora_editor_api::{AppEditorExt, EntityPreset};
 
     app.register_inspector(physics_body_entry())
@@ -853,18 +856,99 @@ fn stamp_strip_click(stamp: Query<(&UiInteraction, &StampBtn), Changed<UiInterac
     }
 }
 
-/// Auto-insert a default static body + collider on newly spawned MeshPrimitive entities.
+/// Shapes whose `MeshPrimitive` was just inserted, waiting for
+/// [`apply_default_shape_colliders`] to decide whether they get physics.
+#[derive(Resource, Default)]
+pub(crate) struct PendingShapeColliders(Vec<Entity>);
+
+/// Note a shape that may need a default static body + collider.
+///
+/// Only noted here, never decided. This observer also fires when a scene
+/// loads, and a scene load writes an entity's components one at a time, so at
+/// the moment `MeshPrimitive` lands the entity's saved `CollisionShapeData`
+/// and `SceneEntityId` may not have yet. Deciding here put a Static body back
+/// on every shape on every load: a collider the author had parented under a
+/// moving body was pinned in place again, and one deleted on purpose came
+/// back. Deferring to a queued command was not late enough either, because the
+/// loader flushes commands between the components it writes.
 fn auto_insert_collider_for_shape(
     trigger: On<Insert<renzora_scene_api::MeshPrimitive>>,
-    mut commands: Commands,
-    query: Query<&renzora_scene_api::MeshPrimitive, Without<CollisionShapeData>>,
+    mut pending: ResMut<PendingShapeColliders>,
 ) {
-    let entity = trigger.entity;
-    if let Ok(prim) = query.get(entity) {
-        if let Some(collider) = default_collider_for_shape(&prim.0) {
-            commands
-                .entity(entity)
-                .insert((PhysicsBodyData::static_body(), collider));
+    pending.0.push(trigger.entity);
+}
+
+/// Give each noted shape a default static body + collider, if it is a fresh
+/// spawn.
+///
+/// Runs as a system, after the load that inserted the shape has finished
+/// writing every entity. An entity carrying a `SceneEntityId` (assigned only by
+/// a save, so present only on something read from a file or restored from one)
+/// keeps exactly the physics it was saved with, which may be none.
+fn apply_default_shape_colliders(world: &mut World) {
+    let pending = std::mem::take(&mut world.resource_mut::<PendingShapeColliders>().0);
+    for entity in pending {
+        let Ok(e) = world.get_entity(entity) else {
+            continue;
+        };
+        if e.contains::<renzora_scene_api::SceneEntityId>()
+            || e.contains::<CollisionShapeData>()
+            || e.contains::<PhysicsBodyData>()
+        {
+            continue;
         }
+        let Some(collider) = e
+            .get::<renzora_scene_api::MeshPrimitive>()
+            .and_then(|prim| default_collider_for_shape(&prim.0))
+        else {
+            continue;
+        };
+        world.entity_mut(entity).insert((PhysicsBodyData::static_body(), collider));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_scene_api::{MeshPrimitive, SceneEntityId};
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.init_resource::<PendingShapeColliders>()
+            .add_observer(auto_insert_collider_for_shape)
+            .add_systems(PostUpdate, apply_default_shape_colliders);
+        app
+    }
+
+    #[test]
+    fn a_fresh_shape_gets_a_static_body_and_collider() {
+        let mut app = app();
+        let e = app.world_mut().spawn(MeshPrimitive("cube".into())).id();
+        app.update();
+        assert!(app.world().get::<PhysicsBodyData>(e).is_some());
+        assert!(app.world().get::<CollisionShapeData>(e).is_some());
+    }
+
+    /// The way a scene load writes an entity: `MeshPrimitive` first, the rest
+    /// of the saved components after it, with command flushes in between.
+    #[test]
+    fn a_loaded_shape_keeps_the_physics_it_was_saved_with() {
+        let mut app = app();
+        let world = app.world_mut();
+        // Saved with no physics at all (the author removed it).
+        let bare = world.spawn(MeshPrimitive("cube".into())).id();
+        world.flush();
+        world.entity_mut(bare).insert(SceneEntityId(7));
+        // Saved with a collider but no body (it belongs to a parent's body).
+        let child = world.spawn(MeshPrimitive("cube".into())).id();
+        world.flush();
+        world
+            .entity_mut(child)
+            .insert((CollisionShapeData::cuboid(Vec3::splat(0.5)), SceneEntityId(8)));
+        app.update();
+
+        assert!(app.world().get::<PhysicsBodyData>(bare).is_none(), "removed physics came back");
+        assert!(app.world().get::<CollisionShapeData>(bare).is_none());
+        assert!(app.world().get::<PhysicsBodyData>(child).is_none(), "a body was added under the parent's");
     }
 }

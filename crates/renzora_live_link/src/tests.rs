@@ -123,6 +123,33 @@ fn a_despawn_on_one_side_despawns_on_the_other() {
     assert!(by_id(&mut b, 1).is_none());
 }
 
+/// The game has a global scene's entity (a loading screen) that the editor
+/// never has. It must not travel: once reported, the editor's copy came back
+/// to the game as a despawn and the loading screen vanished.
+#[test]
+fn a_global_scene_entity_is_not_sent() {
+    let (mut game, _) = scene();
+    game.spawn((
+        Name::new("loading_screen"),
+        SceneEntityId(2),
+        Transform::default(),
+        renzora_scene_api::Persistent,
+    ));
+    let mut tracker = Tracker::baseline(&mut game);
+
+    for _ in 0..12 {
+        next_frame(&mut game);
+        let sent = tracker.scan(&mut game);
+        assert!(
+            !sent.iter().any(|m| matches!(
+                m,
+                LinkMessage::Spawn { id: 2, .. } | LinkMessage::Set { id: 2, .. } | LinkMessage::Despawn { id: 2 }
+            )),
+            "the global scene's entity was sent: {sent:?}"
+        );
+    }
+}
+
 #[test]
 fn a_removed_component_is_removed_on_the_other_side() {
     let (mut a, crate_a) = scene();

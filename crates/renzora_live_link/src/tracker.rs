@@ -22,7 +22,7 @@ use bevy::ecs::change_detection::Tick;
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectSerializer;
 use bevy::reflect::{PartialReflect, ReflectRef};
-use renzora_scene_api::SceneEntityId;
+use renzora_scene_api::{Persistent, SceneEntityId};
 use renzora_engine::scene_io::{assign_scene_entity_ids, extract_authored, saveable_entities};
 
 use crate::LinkMessage;
@@ -179,9 +179,17 @@ impl Tracker {
     }
 }
 
-/// Every entity with a scene id.
+/// Every entity with a scene id, except a global scene's.
+///
+/// A global (autoload) scene is not part of the scene being edited: the game
+/// loads it beside the boot scene, the editor never has it, and a save leaves
+/// it out. Tracked anyway, it was reported to the editor as new on the game's
+/// first scan (the baseline, built from the save's own extraction, had left it
+/// out), mirrored there as a stray entity, and the round trip came back to the
+/// game as a despawn. That took a loading screen out within the first frames
+/// of every Play, before its script had run once.
 fn ids(world: &mut World) -> Vec<(Entity, u64)> {
-    let mut q = world.query::<(Entity, &SceneEntityId)>();
+    let mut q = world.query_filtered::<(Entity, &SceneEntityId), Without<Persistent>>();
     q.iter(world)
         .filter(|(_, id)| id.0 != 0)
         .map(|(e, id)| (e, id.0))

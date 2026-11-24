@@ -3,7 +3,8 @@
 //! When the editor starts the game with `--embed-parent <hwnd>`, the game's
 //! window becomes a child window of the editor's, and the editor then places
 //! it over its Game panel every frame. Keyboard and mouse go straight to the
-//! game's own window, so there is no input forwarding and no copying of frames
+//! game's own window (the keyboard once the game has taken the focus, see
+//! `focus_on_click`), so there is no input forwarding and no copying of frames
 //! between the processes: the game still renders with its own GPU device, in
 //! its own process, and only its window lives inside the editor's.
 //!
@@ -44,7 +45,7 @@ pub fn embed_parent() -> Option<isize> {
 pub(crate) fn register(app: &mut App) {
     #[cfg(target_os = "windows")]
     if embed_parent().is_some() {
-        app.add_systems(Update, adopt_embed_parent);
+        app.add_systems(Update, (adopt_embed_parent, focus_on_click).chain());
     }
     #[cfg(not(target_os = "windows"))]
     let _ = app;
@@ -118,9 +119,49 @@ fn adopt_embed_parent(
         }
     }
     *adoptions += 1;
+    if *adoptions == 1 {
+        // Pressing Play means "I want to play now", so the game starts with the
+        // keyboard rather than making the first click a focus click.
+        // SAFETY: `hwnd` is this process's own live window, on its own thread.
+        unsafe { win32::SetFocus(hwnd) };
+    }
     if *adoptions == 2 {
         info!("[embed] the game's window lost its place in the editor and was put back");
     }
+}
+
+/// Take the keyboard when the player clicks into the game.
+///
+/// A child window is never given keyboard focus by Windows on a click: that is
+/// left to the window itself, the way an edit control focuses on its own button
+/// press, and winit does not do it. So the embedded game received mouse input
+/// (the window under the cursor gets that regardless) while every key went to
+/// the editor, which owns the focus, and a game played from the Game panel
+/// could not be moved with the keyboard at all. Gamepads were unaffected,
+/// since they are read from the device rather than from window messages.
+///
+/// Main thread only, for the reason `adopt_embed_parent` gives.
+#[cfg(target_os = "windows")]
+fn focus_on_click(
+    _main_thread: bevy::ecs::system::NonSendMarker,
+    mut presses: MessageReader<bevy::input::mouse::MouseButtonInput>,
+    windows: Query<&bevy::window::RawHandleWrapper, With<bevy::window::PrimaryWindow>>,
+) {
+    use winit::raw_window_handle::RawWindowHandle;
+
+    if !presses.read().any(|press| press.state.is_pressed()) {
+        return;
+    }
+    let Ok(handle) = windows.single() else {
+        return;
+    };
+    let RawWindowHandle::Win32(win) = handle.get_window_handle() else {
+        return;
+    };
+    // SAFETY: this process's own live window, on its own thread. A parent and a
+    // child window share one input state across processes, which is what lets
+    // the child take the focus from the editor here.
+    unsafe { win32::SetFocus(win.hwnd.get()) };
 }
 
 #[cfg(target_os = "windows")]
@@ -140,5 +181,6 @@ mod win32 {
         pub fn SetParent(child: isize, parent: isize) -> isize;
         pub fn GetParent(hwnd: isize) -> isize;
         pub fn IsWindow(hwnd: isize) -> i32;
+        pub fn SetFocus(hwnd: isize) -> isize;
     }
 }

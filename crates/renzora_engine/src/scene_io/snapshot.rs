@@ -5,7 +5,7 @@
 //! under its original parent rather than at the scene root.
 
 use bevy::prelude::*;
-use renzora_scene_api::MeshInstanceData;
+use renzora_scene_api::{HideInHierarchy, MeshInstanceData};
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::DynamicSceneBuilder;
 use std::collections::BTreeSet;
@@ -33,6 +33,15 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
             continue;
         }
         if world.get_entity(e).is_err() {
+            continue;
+        }
+        // Hidden entities below a root are runtime plumbing its owner rebuilds
+        // (a particle system's renderer, a light it spawned), never scene
+        // content, which is why a scene save leaves them out too. Snapshotting
+        // one brought it back as an ordinary, visible, saveable entity beside
+        // the fresh one its owner made, so every Stop after the game collected
+        // a particle-carrying entity leaked another emitter into the scene.
+        if !roots.contains(&e) && world.get::<HideInHierarchy>(e).is_some() {
             continue;
         }
         all.push(e);
@@ -210,6 +219,33 @@ mod tests {
                 .is_some_and(|c| c.contains(&restored)),
             "parent must list the restored entity as a child"
         );
+    }
+
+    /// A hidden runtime child (a particle renderer) is its owner's to rebuild,
+    /// so it must not come back as a second, ordinary entity on restore.
+    #[test]
+    fn snapshot_skips_hidden_runtime_children() {
+        let atr = bevy::ecs::reflect::AppTypeRegistry::default();
+        {
+            let mut reg = atr.write();
+            reg.register::<Name>();
+            reg.register::<ChildOf>();
+        }
+
+        let mut world = World::new();
+        world.insert_resource(atr.clone());
+        let root = world.spawn(Name::new("Orb")).id();
+        world.spawn((Name::new("Sparks"), ChildOf(root)));
+        world.spawn((Name::new("vfx emitter"), HideInHierarchy, ChildOf(root)));
+
+        let snapshot = snapshot_entity_subtrees(&mut world, &[root]).expect("snapshot");
+        world.entity_mut(root).despawn();
+        let map = spawn_entities_from_snapshot(&mut world, &snapshot);
+
+        assert_eq!(map.len(), 2, "the orb and its sparks, not the hidden emitter");
+        let names: Vec<String> =
+            world.query::<&Name>().iter(&world).map(|n| n.as_str().to_string()).collect();
+        assert!(!names.iter().any(|n| n.contains("emitter")), "got {names:?}");
     }
 
     /// The identity seeding that fixes the external-parent link must not leak
