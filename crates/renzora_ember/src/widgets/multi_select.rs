@@ -79,7 +79,9 @@ pub fn multi_select(commands: &mut Commands, font: &bevy::text::FontSource, item
                     display: if on { Display::Flex } else { Display::None },
                     ..default()
                 },
-                BackgroundColor(rgb(accent())),
+                // A selected row is filled with the accent, so an accent mark
+                // vanished into it: the tick only ever shows on a selected row.
+                BackgroundColor(rgb(on_accent())),
                 Name::new("multi-mark"),
             ))
             .id();
