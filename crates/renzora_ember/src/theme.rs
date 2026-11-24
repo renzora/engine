@@ -3,9 +3,11 @@
 //!
 //! Colors are read through a process-wide [`Palette`] so spawn functions (which
 //! only have `&mut Commands`, not the world) can resolve the *current* theme
-//! without threading a resource through every signature. A bridge maps the
-//! editor's `ThemeManager` into this palette (see `set_palette`) and rebuilds
-//! the UI on change, so swapping themes re-spawns widgets with the new colors.
+//! without threading a resource through every signature. A theme file maps into
+//! it through [`palette_from_theme`]: the editor's bridge does that for the
+//! editor's `ThemeManager`, and `game_theme` for a game's `ui_theme`. Each
+//! rebuilds its UI on a change, so swapping themes re-spawns widgets with the
+//! new colors.
 //!
 //! Widgets call the lowercase accessors (`window_bg()`, `accent()`, …). The
 //! SCREAMING_CASE constants are the built-in defaults (the dark theme) and the
@@ -121,6 +123,70 @@ pub fn set_palette(p: Palette) {
 /// The current live palette.
 pub fn palette() -> Palette {
     CURRENT.read().map(|g| *g).unwrap_or_default()
+}
+
+fn theme_rgb(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
+    let [r, g, b, _] = c.0;
+    (r, g, b)
+}
+
+/// The palette a theme file maps to. One mapping for the editor's chrome and
+/// for a game's UI (`game_theme`), so a theme looks the same in both.
+pub fn palette_from_theme(t: &renzora_theme::Theme) -> Palette {
+    let tc = theme_rgb;
+    Palette {
+        window_bg: tc(&t.surfaces.window),
+        panel_bg: tc(&t.surfaces.panel),
+        faint_bg: tc(&t.surfaces.faint),
+        header_bg: tc(&t.surfaces.extreme),
+        tab_active: tc(&t.panels.tab_active),
+        tab_hover: tc(&t.panels.tab_hover),
+        close_red: tc(&t.semantic.error),
+        divider: tc(&t.widgets.border),
+        text_primary: tc(&t.text.primary),
+        text_muted: tc(&t.text.muted),
+        placeholder: tc(&t.text.disabled),
+        play_green: tc(&t.semantic.success),
+        warn_amber: tc(&t.semantic.warning),
+        accent: tc(&t.semantic.accent),
+        on_accent: tc(&t.widgets.active_fg),
+        border: tc(&t.widgets.border_light),
+        popup_bg: tc(&t.surfaces.popup),
+        row_even: tc(&t.panels.inspector_row_even),
+        row_odd: tc(&t.panels.inspector_row_odd),
+        value_text: tc(&t.text.secondary),
+        selection: tc(&t.semantic.selection),
+        section_bg: tc(&t.panels.category_frame_bg),
+        hover_bg: tc(&t.panels.item_hover),
+        card_bg: tc(&t.panels.item_bg),
+        tree_line: tc(&t.panels.tree_line),
+    }
+}
+
+/// The code editor's colours from a theme file. See [`palette_from_theme`].
+pub fn syntax_from_theme(t: &renzora_theme::Theme) -> SyntaxPalette {
+    let tc = theme_rgb;
+    let s = &t.syntax;
+    SyntaxPalette {
+        normal: tc(&s.normal),
+        keyword: tc(&s.keyword),
+        type_: tc(&s.r#type),
+        function: tc(&s.function),
+        number: tc(&s.number),
+        string: tc(&s.string),
+        comment: tc(&s.comment),
+        operator: tc(&s.operator),
+        constant: tc(&s.constant),
+        punctuation: tc(&s.punctuation),
+        line_number: tc(&s.line_number),
+        line_number_active: tc(&s.line_number_active),
+        current_line: s.current_line.0,
+        selection: s.selection.0,
+        cursor: tc(&s.cursor),
+        indent_guide: s.indent_guide.0,
+        bracket_match: s.bracket_match.0,
+        find_match: s.find_match.0,
+    }
 }
 
 /// `t` of the way from `a` to `b`, in sRGB.

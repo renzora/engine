@@ -91,8 +91,8 @@ use save_prompts::{
 };
 use status_bar::{apply_chrome_style, build_status_bar, ThemeMenuOpen};
 use theme_bridge::{
-    apply_theme_effects, bump_theme_revision, palette_from_theme, sync_theme_menu_open,
-    theme_bridge, ThemeFilesRevision,
+    apply_theme_effects, bump_theme_revision, sync_theme_menu_open, theme_bridge,
+    ThemeFilesRevision,
 };
 use top_bar::{build_top_bar, palette_btn_click, settings_btn_click, shell_action_chip, shell_action_press};
 use window_chrome::{
@@ -521,7 +521,7 @@ fn manage_shell_root(
         // never builds with a stale palette (the theme_bridge's per-frame
         // set_palette can otherwise race the rebuild's spawn across a frame).
         let (themes, active) = if let Some(tm) = tm.as_ref() {
-            renzora_ember::theme::set_palette(palette_from_theme(&tm.active_theme));
+            renzora_ember::theme::set_palette(renzora_ember::theme::palette_from_theme(&tm.active_theme));
             apply_theme_effects(
                 &tm.active_theme,
                 &tm.active_theme_name,

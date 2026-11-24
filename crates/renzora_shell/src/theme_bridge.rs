@@ -70,7 +70,7 @@ pub(crate) fn theme_bridge(
     mut commands: Commands,
 ) {
     let Some(tm) = tm else { return };
-    let pal = palette_from_theme(&tm.active_theme);
+    let pal = renzora_ember::theme::palette_from_theme(&tm.active_theme);
     if last_pal.as_ref() != Some(&pal) {
         renzora_ember::theme::set_palette(pal);
         *last_pal = Some(pal);
@@ -119,7 +119,7 @@ pub(crate) fn theme_bridge(
 
     // Map the theme's syntax colors into the code editor's palette. Tracked
     // separately so a syntax-only edit pushes through without churning `pal`.
-    let syn = syntax_palette_from_theme(&tm.active_theme);
+    let syn = renzora_ember::theme::syntax_from_theme(&tm.active_theme);
     if last_syntax.as_ref() != Some(&syn) {
         renzora_ember::theme::set_syntax_palette(syn);
         *last_syntax = Some(syn);
@@ -204,39 +204,6 @@ fn build_ember_theme(
     renzora_ember::style::Theme::default()
 }
 
-pub(crate) fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette {
-    fn tc(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
-        let [r, g, b, _] = c.0;
-        (r, g, b)
-    }
-    renzora_ember::theme::Palette {
-        window_bg: tc(&t.surfaces.window),
-        panel_bg: tc(&t.surfaces.panel),
-        faint_bg: tc(&t.surfaces.faint),
-        header_bg: tc(&t.surfaces.extreme),
-        tab_active: tc(&t.panels.tab_active),
-        tab_hover: tc(&t.panels.tab_hover),
-        close_red: tc(&t.semantic.error),
-        divider: tc(&t.widgets.border),
-        text_primary: tc(&t.text.primary),
-        text_muted: tc(&t.text.muted),
-        placeholder: tc(&t.text.disabled),
-        play_green: tc(&t.semantic.success),
-        warn_amber: tc(&t.semantic.warning),
-        accent: tc(&t.semantic.accent),
-        on_accent: tc(&t.widgets.active_fg),
-        border: tc(&t.widgets.border_light),
-        popup_bg: tc(&t.surfaces.popup),
-        row_even: tc(&t.panels.inspector_row_even),
-        row_odd: tc(&t.panels.inspector_row_odd),
-        value_text: tc(&t.text.secondary),
-        selection: tc(&t.semantic.selection),
-        section_bg: tc(&t.panels.category_frame_bg),
-        hover_bg: tc(&t.panels.item_hover),
-        card_bg: tc(&t.panels.item_bg),
-        tree_line: tc(&t.panels.tree_line),
-    }
-}
 
 /// The theme-relative shader file a surface paints with (empty = none).
 fn surface_shader_rel(eff: &renzora_theme::ThemeEffects, s: renzora_ember::widgets::ThemeSurface) -> &str {
@@ -334,35 +301,4 @@ fn apply_theme_fonts(
         _ => None, // no font shipped (or unknown folder) → user's font setting
     };
     renzora_ember::font::set_theme_ui_font(src);
-}
-
-/// Map a theme's `syntax` section into the code editor's
-/// [`renzora_ember::theme::SyntaxPalette`]. Token colors drop alpha (they're
-/// opaque); chrome colors that overlay text keep their full RGBA.
-fn syntax_palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::SyntaxPalette {
-    fn tc(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
-        let [r, g, b, _] = c.0;
-        (r, g, b)
-    }
-    let s = &t.syntax;
-    renzora_ember::theme::SyntaxPalette {
-        normal: tc(&s.normal),
-        keyword: tc(&s.keyword),
-        type_: tc(&s.r#type),
-        function: tc(&s.function),
-        number: tc(&s.number),
-        string: tc(&s.string),
-        comment: tc(&s.comment),
-        operator: tc(&s.operator),
-        constant: tc(&s.constant),
-        punctuation: tc(&s.punctuation),
-        line_number: tc(&s.line_number),
-        line_number_active: tc(&s.line_number_active),
-        current_line: s.current_line.0,
-        selection: s.selection.0,
-        cursor: tc(&s.cursor),
-        indent_guide: s.indent_guide.0,
-        bracket_match: s.bracket_match.0,
-        find_match: s.find_match.0,
-    }
 }

@@ -426,6 +426,11 @@ where
     for key in project_language_keys(project_dir) {
         try_pack(&key, &mut packer, &mut visited, &mut queue, &mut on_packed);
     }
+    // The project's themes, for the same reason: `ui_theme` names one by name,
+    // never by path, and a player can switch to any of them while the game runs.
+    for key in project_theme_keys(project_dir) {
+        try_pack(&key, &mut packer, &mut visited, &mut queue, &mut on_packed);
+    }
 
     // Rust scripts are entry points too, and they are the one kind that never
     // enters the archive itself.
@@ -1382,6 +1387,32 @@ fn project_language_keys(project_dir: &Path) -> Vec<String> {
     keys
 }
 
+/// Archive keys of the project's themes, sorted: every `themes/<Name>.toml` and
+/// `themes/<Name>/theme.toml`.
+///
+/// Only the TOML: it is all a game reads (the palette and per-widget styles). A
+/// folder theme's shaders and images paint the editor's chrome, which a game
+/// does not have.
+fn project_theme_keys(project_dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(project_dir.join("themes")) else {
+        return Vec::new();
+    };
+    let mut keys: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            let name = e.file_name().to_str()?.to_string();
+            if path.is_dir() {
+                path.join("theme.toml").is_file().then(|| format!("themes/{name}/theme.toml"))
+            } else {
+                name.to_ascii_lowercase().ends_with(".toml").then(|| format!("themes/{name}"))
+            }
+        })
+        .collect();
+    keys.sort();
+    keys
+}
+
 fn is_svg_key(key: &str) -> bool {
     let lower = key.to_ascii_lowercase();
     lower.ends_with(".svg") || lower.ends_with(".svgz")
@@ -1544,6 +1575,25 @@ mod tests {
         let keys = referenced_keys(&dir).unwrap();
         assert!(keys.contains(&"languages/fr.toml".to_string()), "{keys:?}");
         assert!(!keys.iter().any(|k| k.ends_with("notes.txt")), "{keys:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every theme ships, flat or folder, and a folder theme's chrome shaders
+    /// stay behind.
+    #[test]
+    fn project_themes_are_packed() {
+        let dir = std::env::temp_dir().join("renzora_rpak_test_themes");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("themes/Neon")).unwrap();
+        std::fs::write(dir.join("project.toml"), "name = \"t\"\n").unwrap();
+        std::fs::write(dir.join("themes/Paper.toml"), "[meta]\n").unwrap();
+        std::fs::write(dir.join("themes/Neon/theme.toml"), "[meta]\n").unwrap();
+        std::fs::write(dir.join("themes/Neon/rain.wgsl"), "// chrome").unwrap();
+
+        let keys = referenced_keys(&dir).unwrap();
+        assert!(keys.contains(&"themes/Paper.toml".to_string()), "{keys:?}");
+        assert!(keys.contains(&"themes/Neon/theme.toml".to_string()), "{keys:?}");
+        assert!(!keys.iter().any(|k| k.ends_with("rain.wgsl")), "{keys:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

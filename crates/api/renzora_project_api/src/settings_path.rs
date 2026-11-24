@@ -440,6 +440,16 @@ mod tests {
         assert_eq!(c.rendering.render_scale, 0.5);
     }
 
+    /// An unset optional setting can be set by path: the game UI theme starts
+    /// unset, and a `<dropdown setting="ui_theme" />` is how a player changes it.
+    #[test]
+    fn an_unset_optional_setting_can_be_set() {
+        let mut c = config();
+        assert_eq!(c.ui_theme, None);
+        assert_eq!(set_setting(&mut c, "ui_theme", Value::String("Light".into())), Ok(true));
+        assert_eq!(c.ui_theme.as_deref(), Some("Light"));
+    }
+
     #[test]
     fn an_unchanged_value_reports_no_change() {
         let mut c = config();

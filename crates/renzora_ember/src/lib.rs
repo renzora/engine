@@ -48,6 +48,8 @@ pub use ui_cursor::UiCursor;
 // `game_ui` feature; `GameUiPlugin` self-registers via `renzora::add!`.
 #[cfg(feature = "game_ui")]
 pub mod game_ui;
+/// A game's UI theme, from the project's `ui_theme`.
+pub mod game_theme;
 #[cfg(feature = "game_ui")]
 pub mod markup;
 pub mod panel;
@@ -113,6 +115,8 @@ impl Plugin for EmberRuntimePlugin {
         hidden_text::plugin(app);
         // Bevy never frees a font atlas; free the ones no text uses any more.
         font_atlas_cleanup::plugin(app);
+        // The game's UI theme (`ui_theme`), applied in a game only.
+        game_theme::plugin(app);
         // Correct pointer state (clip + occlusion): see `correct_pointer_state`.
         // Runs right after `UiSystems::Focus` (where `UiInteraction` and
         // `UiCursor` are derived from picking) so every consumer reads the

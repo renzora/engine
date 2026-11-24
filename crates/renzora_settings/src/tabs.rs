@@ -53,7 +53,7 @@ pub(crate) fn build_tab_content(
 
     match tab {
         SettingsTab::Project => {
-            project::tab_project(commands, fonts, col, scenes, custom, has_project, active_sub)
+            project::tab_project(commands, fonts, col, scenes, custom, themes, has_project, active_sub)
         }
         SettingsTab::Interface => {
             interface::tab_interface(commands, fonts, col, settings, custom)

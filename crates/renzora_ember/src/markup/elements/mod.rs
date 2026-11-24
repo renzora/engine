@@ -276,6 +276,10 @@ fn build_elements(world: &mut World) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
+    let themes = world
+        .get_resource::<crate::game_theme::GameThemes>()
+        .map(|t| t.names.clone())
+        .unwrap_or_default();
     // A tree's depth is how many trees it sits inside.
     let depths: Vec<usize> = pending.iter().map(|(e, el, _)| tree_depth(world, *e, el.kind)).collect();
 
@@ -285,7 +289,7 @@ fn build_elements(world: &mut World) {
         let mut commands = Commands::new(&mut queue, world);
         for ((element, el, children), depth) in pending.into_iter().zip(depths) {
             let content = if el.kind.takes_children() { children } else { Vec::new() };
-            let built = build::build(&mut commands, &fonts, &el, content, depth);
+            let built = build::build(&mut commands, &fonts, &themes, &el, content, depth);
             sizing.push((element, built.widget, built.fill_width, built.fill_height));
             commands.entity(element).add_child(built.widget).insert(ElementBuilt);
         }

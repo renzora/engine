@@ -486,13 +486,43 @@ Each control above is tied to one value:
   (see [Game settings](../api/scripting.md#game-settings-set_setting-get_setting)).
   Two more work here: `ui.scale` (the player's UI size) and `language` (the active
   language; a language dropdown with no `options` lists the languages the game
-  has). Changing the control changes the setting while the game runs.
+  has). Likewise a `ui_theme` dropdown with no `options` lists the game's themes
+  (see [Themes](#themes)). Changing the control changes the setting while the
+  game runs.
 - `bind="<var>"` is a variable on the canvas's script, for anything that is not a
   single setting: the script reads the variable and does what it means.
 
 A control can be styled like any `<node>` (`width`, `margin` and so on). In the
 editor, controls show their values but don't change them, so laying out a menu
 never changes your project's settings by accident.
+
+## Themes
+
+A game's widgets are drawn in a theme, the same kind the editor uses. Pick it
+in **Settings > Project > Game UI Theme**: `Dark`, `Light`, or any theme in your
+project's `themes/` folder. A theme you make or edit in the editor's **Theme**
+settings tab is saved there, so it is available to your game too. Left at
+**Default**, the game uses the dark theme.
+
+The choice is the `ui_theme` project setting, so the player can change it while
+the game runs:
+
+```html
+<dropdown setting="ui_theme" />
+```
+
+With no `options`, the dropdown lists every theme the game has. Switching
+rebuilds the game's markup UI in the new colours. Widgets a script built itself
+keep their colours until the script builds them again.
+
+An export includes every theme in `themes/`, so each one the dropdown offers is
+there in the shipped game. Only the theme file travels: a theme's shader and
+image effects decorate the editor's own panels and have nothing to draw on in a
+game.
+
+In the editor, templates show the editor's own theme, not the game's: there is
+one set of colours per program, and the editor's panels are drawn with it. Press
+Play to see the game's theme.
 
 ## Ember widgets in a Rust script
 

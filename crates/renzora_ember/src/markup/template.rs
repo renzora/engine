@@ -272,6 +272,30 @@ fn hot_reload_templates(
     }
 }
 
+/// Rebuild every screen template from its file, as a save does.
+///
+/// For a change that alters how a template *builds* rather than what it says:
+/// a game's theme switch, since every widget takes its colours when it is
+/// spawned. A world canvas is skipped for the reason given in
+/// [`hot_reload_templates`]; its generated holder rebuilds on its own.
+pub fn rebuild_all(world: &mut World) {
+    let holders: Vec<(Entity, String)> = {
+        let mut q = world.query::<(Entity, &HtmlTemplatePath)>();
+        q.iter(world)
+            .filter(|(_, p)| !p.0.is_empty())
+            .map(|(e, p)| (e, p.0.clone()))
+            .collect()
+    };
+    let server = world.resource::<AssetServer>().clone();
+    for (entity, path) in holders {
+        if world.get::<crate::game_ui::UiCanvas>(entity).is_some_and(|c| c.is_world()) {
+            continue;
+        }
+        let handle: Handle<HtmlTemplate> = server.load(path);
+        world.entity_mut(entity).insert(PendingTemplate(handle));
+    }
+}
+
 /// Runtime plugin: the path→tree binding. Adds **only** what's needed for
 /// async load + finalize; bevy_hui's `BuildPlugin`/`TransitionPlugin`/etc. are
 /// no longer registered in this crate's plugin.

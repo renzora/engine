@@ -513,6 +513,15 @@ impl Plugin for RuntimePlugin {
                         .filter_map(|key| vfs.read_string(key).map(|src| (key.to_string(), src)))
                         .collect();
                     app.insert_resource(renzora_lang_api::ProjectLanguagePacks { sources });
+                    // The project's themes, for the same reason: a game lists
+                    // them by looking in `themes/`, and an archive has no
+                    // folder to look in. See `renzora_ember::game_theme`.
+                    let files: Vec<(String, String)> = archive
+                        .paths()
+                        .filter(|p| p.starts_with("themes/") && p.to_ascii_lowercase().ends_with(".toml"))
+                        .filter_map(|key| vfs.read_string(key).map(|src| (key.to_string(), src)))
+                        .collect();
+                    app.insert_resource(renzora_project_api::ProjectThemeSources { files });
                 }
                 // Provide a VirtualFileReader backed by Vfs so material/shader
                 // resolution reads from the rpak archive instead of disk.

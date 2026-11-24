@@ -231,12 +231,38 @@ shadow      = true
 
 `renzora_shell`'s `theme_bridge` system glues the layers together each frame:
 
-- It maps `ThemeManager.active_theme` (a `renzora_theme::Theme`) into an ember `Palette` via `palette_from_theme` and pushes it with `set_palette` — e.g. `surfaces.window → window_bg`, `surfaces.panel → panel_bg`, `surfaces.extreme → header_bg`, `semantic.accent → accent`, `panels.tab_active → tab_active`.
-- It likewise maps the theme's `[syntax]` section into the ember `SyntaxPalette` via `syntax_palette_from_theme` + `set_syntax_palette`, so the code editor recolors on theme switch *and* on live syntax-color edits (tracked separately so a syntax-only edit doesn't churn the main palette).
+- It maps `ThemeManager.active_theme` (a `renzora_theme::Theme`) into an ember `Palette` via `renzora_ember::theme::palette_from_theme` and pushes it with `set_palette` (for example `surfaces.window → window_bg`, `surfaces.panel → panel_bg`, `surfaces.extreme → header_bg`, `semantic.accent → accent`, `panels.tab_active → tab_active`).
+- It likewise maps the theme's `[syntax]` section into the ember `SyntaxPalette` via `renzora_ember::theme::syntax_from_theme` + `set_syntax_palette`, so the code editor recolors on theme switch *and* on live syntax-color edits (tracked separately so a syntax-only edit doesn't churn the main palette).
+
+Both mappings live in ember, not the shell, because a game uses them too: see the next section.
 - On a theme **switch**, it rebuilds the ember `style::Theme` with `build_ember_theme` (which calls `Theme::from_toml` on the same `themes/<name>.toml`) and `insert_resource`s it, then despawns and re-spawns the chrome so palette-derived widgets pick up the new colors. `apply_theme` then repaints every `Styled` widget live.
 - Individual color edits update the palette but do **not** rebuild (that would close the color picker every frame).
 
 ---
+
+## A game's theme (`ui_theme`)
+
+A game is drawn in the theme its project's `ui_theme` names: `Dark`, `Light`, or a
+theme in the project's `themes/` folder, the same files the editor lists.
+`renzora_ember::game_theme` applies it, in a game only:
+
+- it maps the file through `palette_from_theme` and `syntax_from_theme`, inserts
+  the ember `style::Theme` parsed from the same file, and sets the game widget
+  kit's `UiTheme` (below) from it, so every kit a game draws with agrees;
+- then it rebuilds every screen template (`markup::template::rebuild_all`),
+  since widgets take their colours when spawned.
+
+It skips the editor: the palette is one value per process and the editor's
+chrome is drawn from it, so templates in the editor show the editor's theme.
+`GameThemes` (the list of names) is kept in both, so a
+`<dropdown setting="ui_theme" />` offers the same themes in the editor as in
+the game.
+
+A packed game has no folder to list, so the runtime copies every
+`themes/**.toml` from the archive into `ProjectThemeSources` at startup, as it
+does the language packs, and the exporter packs them all (`project_theme_keys`
+in `renzora_rpak`). Only the TOML ships; a folder theme's shaders and images
+paint editor chrome.
 
 ## Game UI theming (`renzora_game_ui`)
 
@@ -275,4 +301,4 @@ Key tokens (see the struct for the full set): surfaces (`surface`, `surface_rais
 
 When the `UiTheme` resource changes, `ui_theme_system` re-derives each `UiThemed` widget's style from `theme.widget_style(widget_type)` and `theme.interaction_style()`, updating its style components (`UiFill`, `UiStroke`, `UiBorderRadius`, `UiTextStyle`, `UiInteractionStyle`, …) and the per-widget data colors (slider track/fill/thumb, checkbox, toggle, tooltip, modal backdrop, window title bar).
 
-> Unlike the editor layer, `UiTheme` is set in code (or carried in a scene) — there is no `ThemeManager`/`themes/*.toml` picker for the game HUD. Insert or replace the resource and marked widgets follow it.
+> `UiTheme` follows the project's `ui_theme` (see above) whenever one is set. It can still be set in code: insert or replace the resource and marked widgets follow it, until `ui_theme` next changes.

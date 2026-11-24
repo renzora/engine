@@ -78,12 +78,14 @@ fn physics_rows(world: &mut World, body: Entity) {
     world.flush();
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn tab_project(
     commands: &mut Commands,
     fonts: &EmberFonts,
     col: Entity,
     scenes: &[String],
     custom: &[String],
+    themes: &[String],
     has_project: bool,
     focus: Option<&str>,
 ) {
@@ -219,6 +221,36 @@ pub(crate) fn tab_project(
         },
     );
     settings_row(commands, fonts, body, 3, &tr("settings.row.game_language"), dd);
+
+    // The theme the GAME's UI is drawn in, `ui_theme`: the same list as the
+    // editor's own theme menu, since a theme made in the Theme tab is a project
+    // file a game can use. "Default" leaves it unset (ember's dark theme).
+    // Separate from the editor's theme, which stays the user's own.
+    let mut theme_opts: Vec<String> = vec![tr("common.default")];
+    theme_opts.extend(themes.iter().cloned());
+    let theme_refs: Vec<&str> = theme_opts.iter().map(|s| s.as_str()).collect();
+    let (to1, to2) = (theme_opts.clone(), theme_opts.clone());
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &theme_refs,
+        0,
+        move |w| {
+            w.get_resource::<CurrentProject>()
+                .and_then(|c| c.config.ui_theme.clone())
+                .and_then(|name| to1.iter().skip(1).position(|n| *n == name).map(|i| i + 1))
+                .unwrap_or(0)
+        },
+        move |w, &i| {
+            // Index 0 = "Default" → None.
+            let val = if i == 0 { None } else { to2.get(i).cloned() };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.ui_theme = val;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 4, &tr("settings.row.game_ui_theme"), dd);
 
     // Global scenes — the `autoload` list. Each scene toggled on here loads
     // before the boot scene and every entity it spawns is tagged `Persistent`,

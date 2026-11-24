@@ -47,6 +47,9 @@ renzora_scene_api = { path = "../api/renzora_scene_api" }
 renzora_project_api = { path = "../api/renzora_project_api" }
 renzora_lang_api = { path = "../api/renzora_lang_api" }
 renzora_log_api = { path = "../api/renzora_log_api" }
+# The theme file format, so a game can apply a theme the same way the editor
+# does: ember owns the palette a theme maps into (see `theme::palette_from_theme`).
+renzora_theme = { path = "../renzora_theme" }
 bevy = { workspace = true }
 # Theme serialization: the per-widget Theme loads from project themes/*.toml
 # (runtime-safe — the exported game uses the same Theme).

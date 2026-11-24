@@ -53,6 +53,18 @@ impl VirtualFileReader {
     }
 }
 
+/// The project's theme files, for a game reading from an archive.
+///
+/// `(archive key, contents)` for every `themes/<Name>.toml` and
+/// `themes/<Name>/theme.toml`. A game lists its themes by looking in the
+/// folder, and an archive has no folder to look in, so the runtime collects
+/// them while it has the archive open, as it does the language packs. Empty in
+/// a game run from the project folder, which reads `themes/` directly.
+#[derive(Resource, Clone, Default)]
+pub struct ProjectThemeSources {
+    pub files: Vec<(String, String)>,
+}
+
 /// Window display mode for exported games.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum WindowMode {
@@ -1508,6 +1520,12 @@ pub struct ProjectConfig {
     /// keeps the embedded default. Shipped (not the editor-stripped section).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_font: Option<String>,
+    /// The theme the game's UI is drawn in: `Dark`, `Light`, or the name of a
+    /// theme in the project's `themes/` folder (the same files the editor's
+    /// own theme menu lists). `None` keeps ember's default, the dark theme. A
+    /// player can switch it while the game runs (`<dropdown setting="ui_theme" />`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_theme: Option<String>,
     /// The language the shipped game starts in, as a language code (`"en"`,
     /// `"de"`, `"pt-BR"`). `None` follows the player's system, falling back to
     /// English. It used to have no setting at all, so a game started in the
@@ -1546,6 +1564,7 @@ impl Default for ProjectConfig {
             console_logging: false,
             profiling_key: None,
             ui_font: None,
+            ui_theme: None,
             default_language: None,
             network: None,
             audio: AudioConfig::default(),
@@ -1749,6 +1768,7 @@ mod tests {
             ],
             icon: Some("assets/icon.png".into()),
             ui_font: None,
+            ui_theme: None,
             default_language: None,
             autoload: vec!["scenes/loader.ron".into()],
             window: WindowConfig {

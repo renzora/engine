@@ -52,14 +52,20 @@ fn column(commands: &mut Commands, children: &[Entity]) -> Entity {
 }
 
 /// A choice's labels and the value each stands for. `values` defaults to the
-/// labels; a `language` element with no `options` lists the loaded packs.
-pub(super) fn choice_options(el: &MarkupElement) -> (Vec<String>, Vec<String>) {
-    if el.source == Source::Setting("language".into()) && !el.attrs.has("options") {
-        let packs = renzora_lang_api::available();
-        return (
-            packs.iter().map(|p| p.name.clone()).collect(),
-            packs.iter().map(|p| p.code.clone()).collect(),
-        );
+/// labels. With no `options`, a `language` element lists the loaded packs and a
+/// `ui_theme` element the game's themes.
+pub(super) fn choice_options(el: &MarkupElement, themes: &[String]) -> (Vec<String>, Vec<String>) {
+    if !el.attrs.has("options") {
+        if el.source == Source::Setting("language".into()) {
+            let packs = renzora_lang_api::available();
+            return (
+                packs.iter().map(|p| p.name.clone()).collect(),
+                packs.iter().map(|p| p.code.clone()).collect(),
+            );
+        }
+        if el.source == Source::Setting("ui_theme".into()) {
+            return (themes.to_vec(), themes.to_vec());
+        }
     }
     let labels = el.attrs.list("options");
     let values = if el.attrs.has("values") { el.attrs.list("values") } else { labels.clone() };
@@ -73,6 +79,7 @@ fn refs(items: &[String]) -> Vec<&str> {
 pub(super) fn build(
     commands: &mut Commands,
     fonts: &EmberFonts,
+    themes: &[String],
     el: &MarkupElement,
     children: Vec<Entity>,
     depth: usize,
@@ -83,7 +90,7 @@ pub(super) fn build(
     match el.kind {
         // ── Values ──────────────────────────────────────────────────────────
         ElementKind::Dropdown | ElementKind::Segmented | ElementKind::Radio => {
-            let (labels, values) = choice_options(el);
+            let (labels, values) = choice_options(el, themes);
             let selected = a.count("selected", 0);
             let w = match el.kind {
                 ElementKind::Dropdown => dropdown(commands, fonts, &refs(&labels), selected),

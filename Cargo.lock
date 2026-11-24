@@ -8087,6 +8087,7 @@ dependencies = [
  "renzora_shader_api",
  "renzora_shell_api",
  "renzora_text_mesh",
+ "renzora_theme",
  "renzora_viewport_api",
  "serde",
  "tempfile",
