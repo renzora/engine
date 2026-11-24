@@ -381,7 +381,14 @@ they show in the editor's viewport and UI editor exactly as in the game.
 ```
 
 Lists in attributes are comma-separated. `tone` is `info`, `success`, `warn`,
-`error` or left out for neutral.
+`error` or left out for neutral. In text that spans lines (`<markdown>`,
+`<code_block>`, `<code_editor>`, `<multiline>`), write a line break as `\n`.
+
+Style a tag like any `<node>`. Widgets that stretch (sliders, text inputs, grids,
+tables of content) take the full width of their parent unless you give the tag a
+`width`. `<code_editor>`, `<multiline>`, `<tabs>` and `<scroll>` fill the tag's
+`height` when you set one; a `<scroll>` needs one, or it grows to fit everything
+and has nothing to scroll.
 
 ### Controls tied to a value
 

@@ -217,6 +217,11 @@ impl Attrs {
     fn text(&self, key: &str) -> &str {
         self.0.get(key).map(String::as_str).unwrap_or("")
     }
+    /// Text that may span lines. An attribute value cannot hold a line break,
+    /// so `\n` (and `\t`) are written as escapes.
+    fn prose(&self, key: &str) -> String {
+        self.text(key).replace("\\n", "\n").replace("\\t", "\t")
+    }
     fn number(&self, key: &str, default: f32) -> f32 {
         self.0.get(key).and_then(|v| v.trim().parse().ok()).unwrap_or(default)
     }
@@ -275,26 +280,44 @@ fn build_elements(world: &mut World) {
     let depths: Vec<usize> = pending.iter().map(|(e, el, _)| tree_depth(world, *e, el.kind)).collect();
 
     let mut queue = CommandQueue::default();
-    let mut fill_width = Vec::new();
+    let mut sizing = Vec::new();
     {
         let mut commands = Commands::new(&mut queue, world);
         for ((element, el, children), depth) in pending.into_iter().zip(depths) {
             let content = if el.kind.takes_children() { children } else { Vec::new() };
             let built = build::build(&mut commands, &fonts, &el, content, depth);
-            if built.fill_width {
-                fill_width.push(built.widget);
-            }
+            sizing.push((element, built.widget, built.fill_width, built.fill_height));
             commands.entity(element).add_child(built.widget).insert(ElementBuilt);
         }
     }
     queue.apply(world);
 
-    // Widgets sized for the editor's inspector rows (a fixed-width slider)
-    // fill the element in markup, whose own `width` sets the size.
-    for widget in fill_width {
-        if let Some(mut node) = world.get_mut::<Node>(widget) {
+    for (element, widget, fill_width, fill_height) in sizing {
+        fit(world, element, widget, fill_width, fill_height);
+    }
+}
+
+/// Size a widget to its element.
+///
+/// A filling widget (a slider sized for an inspector row, a grid of flex
+/// tracks) is a percentage of the element, so an element the template gave no
+/// `width` would shrink to nothing inside a row: it takes its parent's width
+/// instead. A tall widget (a code editor, a scroll area) fills the element's
+/// `height` when the template sets one, in place of its own fixed height.
+fn fit(world: &mut World, element: Entity, widget: Entity, fill_width: bool, fill_height: bool) {
+    let element_height = {
+        let Some(mut node) = world.get_mut::<Node>(element) else { return };
+        if fill_width && node.width == Val::Auto {
             node.width = Val::Percent(100.0);
         }
+        node.height
+    };
+    let Some(mut node) = world.get_mut::<Node>(widget) else { return };
+    if fill_width {
+        node.width = Val::Percent(100.0);
+    }
+    if fill_height && element_height != Val::Auto {
+        node.height = Val::Percent(100.0);
     }
 }
 
@@ -346,5 +369,7 @@ mod tests {
         assert_eq!(attrs.list("v"), ["a", "b", "c"]);
         let nums = Attrs([("n".to_string(), "1, 2.5, x".to_string())].into_iter().collect());
         assert_eq!(nums.numbers("n"), [1.0, 2.5]);
+        let prose = Attrs([("t".to_string(), "# A\\nb\\tc".to_string())].into_iter().collect());
+        assert_eq!(prose.prose("t"), "# A\nb\tc");
     }
 }

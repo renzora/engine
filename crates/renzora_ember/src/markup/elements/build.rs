@@ -15,14 +15,20 @@ pub(super) struct Built {
     /// Stretch the widget to the element's width (it was sized for an
     /// inspector row).
     pub fill_width: bool,
+    /// Also fill the element's height, when the template sets one.
+    pub fill_height: bool,
 }
 
 impl Built {
     fn fixed(widget: Entity) -> Self {
-        Self { widget, fill_width: false }
+        Self { widget, fill_width: false, fill_height: false }
     }
     fn filling(widget: Entity) -> Self {
-        Self { widget, fill_width: true }
+        Self { widget, fill_width: true, fill_height: false }
+    }
+    /// Fills the element both ways: a code editor, a scroll area.
+    fn tall(widget: Entity) -> Self {
+        Self { widget, fill_width: true, fill_height: true }
     }
 }
 
@@ -176,7 +182,7 @@ pub(super) fn build(
             let at = |i: usize, d: f32| p.get(i).copied().unwrap_or(d);
             Built::fixed(curve_editor(commands, Vec2::new(at(0, 0.25), at(1, 0.1)), Vec2::new(at(2, 0.75), at(3, 0.9))))
         }
-        ElementKind::Multiline => Built::filling(textarea(commands, ui, a.text("placeholder"), a.text("value"))),
+        ElementKind::Multiline => Built::tall(textarea(commands, ui, a.text("placeholder"), &a.prose("value"))),
         ElementKind::TagsInput => {
             let tags = a.list("tags");
             Built::filling(tags_input(commands, fonts, &refs(&tags)))
@@ -253,10 +259,11 @@ pub(super) fn build(
             let row_slices: Vec<&[&str]> = row_refs.iter().map(Vec::as_slice).collect();
             Built::fixed(table(commands, ui, &refs(&headers), &row_slices))
         }
-        ElementKind::Grid => Built::fixed(grid(commands, ui, a.count("count", 6), a.count("columns", 3))),
-        ElementKind::Markdown => Built::filling(markdown_view(commands, fonts, a.text("text"))),
-        ElementKind::CodeBlock => Built::filling(code_block(commands, fonts, a.text("text"))),
-        ElementKind::CodeEditor => Built::filling(code_editor(commands, a.text("text"))),
+        // Flex tracks share out the element's width, so it fills.
+        ElementKind::Grid => Built::filling(grid(commands, ui, a.count("count", 6), a.count("columns", 3))),
+        ElementKind::Markdown => Built::filling(markdown_view(commands, fonts, &a.prose("text"))),
+        ElementKind::CodeBlock => Built::filling(code_block(commands, fonts, &a.prose("text"))),
+        ElementKind::CodeEditor => Built::tall(code_editor(commands, &a.prose("text"))),
         ElementKind::LineChart => Built::fixed(line_chart(commands, fonts, &a.numbers("values"))),
         ElementKind::BarChart => Built::fixed(bar_chart(commands, &a.numbers("values"))),
         ElementKind::Sparkline => Built::fixed(sparkline(commands, &a.numbers("values"))),
@@ -273,12 +280,12 @@ pub(super) fn build(
         }
         ElementKind::Scroll => {
             let content = column(commands, &children);
-            Built::filling(scroll_view(commands, content))
+            Built::tall(scroll_view(commands, content))
         }
         ElementKind::Tabs => {
             // One tab per markup child, labelled from `labels` in order.
             let labels = a.list("labels");
-            Built::filling(tabs(commands, ui, &refs(&labels), children))
+            Built::tall(tabs(commands, ui, &refs(&labels), children))
         }
         ElementKind::Popover => {
             let content = column(commands, &children);
