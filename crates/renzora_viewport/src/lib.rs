@@ -25,6 +25,7 @@ mod game_view;
 mod height_ruler;
 mod lit_accent;
 mod load_overlay;
+mod play_pause;
 mod modal_hud;
 mod nav;
 pub mod overlay;
@@ -962,9 +963,12 @@ fn sync_viewport_camera_activation(
 
     // Render-on-change (see `redraw`): with Realtime off, a camera that would
     // render sits out the frames where nothing in the scene changed.
-    let realtime = settings.as_ref().is_some_and(|s| s.realtime);
-    let render_ok = realtime || redraw.as_ref().is_none_or(|r| r.should_render());
-    let overlay_ok = realtime || redraw.as_ref().is_none_or(|r| r.should_render_overlay());
+    // A game running in its own window pauses the viewport, Realtime or not
+    // (see `redraw::game_running`).
+    let game_running = play_mode.as_ref().is_some_and(|p| p.game_launched);
+    let realtime = settings.as_ref().is_some_and(|s| s.realtime) && !game_running;
+    let render_ok = !game_running && (realtime || redraw.as_ref().is_none_or(|r| r.should_render()));
+    let overlay_ok = !game_running && (realtime || redraw.as_ref().is_none_or(|r| r.should_render_overlay()));
     // Which slots' 3D scene cameras would render, before the redraw gate: their
     // overlays are on show exactly then.
     let mut scene_wants = [false; renzora_viewport_api::VIEWPORT_COUNT];

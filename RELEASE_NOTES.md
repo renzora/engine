@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 08:15
+- feat(play): the editor viewport pauses while the game runs in its own window, and says so
+
 ## 2026-11-24 08:04
 - fix(ui): each panel of a `<tabs>` element keeps its own layout instead of laying its contents out in one row
 - fix(ui): a `{{ binding }}` inside a markup container shows its value from the start, not the raw token

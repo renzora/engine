@@ -184,6 +184,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         let loading = crate::load_overlay::build(commands, fonts);
         commands.entity(content).add_child(loading);
 
+        // Label, top centre, while the viewport is paused for a running game.
+        let paused = crate::play_pause::build(commands, fonts);
+        commands.entity(content).add_child(paused);
+
         // Progress card, top centre, while the scene fills in (a new
         // terrain being shaped and built).
         let work = crate::work_card::build(commands, fonts);

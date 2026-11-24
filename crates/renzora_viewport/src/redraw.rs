@@ -32,7 +32,10 @@
 //!   colour, gizmo config, and a viewport panel resizing or docking.
 //! - **A press, the wheel or a key over a viewport.** Plain mouse movement does
 //!   not count: nothing in the scene follows the cursor.
-//! - **Play and Simulate**, which render every frame.
+//! - **Simulate**, which renders every frame.
+//!
+//! Play is the opposite: the game runs in its own window, and the viewport
+//! pauses until it stops (see [`game_running`]).
 //!
 //! # The overlay has a gate of its own
 //!
@@ -151,6 +154,8 @@ pub(crate) struct DetectState {
     standard: MessageCursor<AssetEvent<StandardMaterial>>,
     graph: MessageCursor<AssetEvent<GraphMaterial>>,
     images: MessageCursor<AssetEvent<Image>>,
+    /// The viewport was paused for a running game last frame.
+    paused_for_game: bool,
 }
 
 /// Scene entities: anything placed in the world that is not UI and not a
@@ -227,9 +232,25 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
     let demand = world.get_resource::<renzora_scene_api::ViewportRedrawDemand>().copied().unwrap_or_default();
     let settle_frames = demand.settle_frames.max(SETTLE_FRAMES);
 
+    // Paused while the game runs in its own window: see `game_running`.
+    if game_running(world) {
+        let mut redraw = world.resource_mut::<ViewportRedraw>();
+        redraw.frames_left = 0;
+        redraw.overlay_frames_left = 0;
+        redraw.awake_for = 0;
+        redraw.reported = None;
+        state.paused_for_game = true;
+        return;
+    }
+    // Back from a game: render once, whether or not the scan below finds
+    // anything, so the picture is never one from before Play.
+    let resumed = std::mem::take(&mut state.paused_for_game);
+
     let mut overlay_changed = false;
     let reason = if realtime {
         None
+    } else if resumed {
+        Some("the game stopped".to_string())
     } else if playing {
         Some("play mode".to_string())
     } else if let Some(why) = demand.continuous {
@@ -295,6 +316,20 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
             );
         }
     }
+}
+
+/// Whether a game started with Play is running, which pauses the viewport.
+///
+/// The game has its own window, so the editor drawing the same scene again was
+/// a second full render of it on the same GPU, and never idled: the live link
+/// mirrors the game's movement into the editor's world, and every mirrored
+/// move counted as a change. Paused, the viewport keeps its last image until
+/// the game stops. Realtime does not override it (see
+/// `sync_viewport_camera_activation`).
+pub(crate) fn game_running(world: &World) -> bool {
+    world
+        .get_resource::<renzora_project_api::PlayModeState>()
+        .is_some_and(|p| p.game_launched)
 }
 
 /// The first thing found that changed this frame, described for the log.
@@ -493,4 +528,42 @@ fn find_change(
 /// Cheap 64-bit mix for the signatures. Only compared with itself, never stored.
 fn mix(h: u64, v: u64) -> u64 {
     (h ^ v.wrapping_mul(0x9E37_79B9_7F4A_7C15)).rotate_left(27).wrapping_mul(0x94D0_49BB_1331_11EB)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_project_api::PlayModeState;
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.init_resource::<ViewportRedraw>()
+            .init_resource::<PlayModeState>()
+            .add_systems(Update, detect_viewport_changes);
+        app
+    }
+
+    fn set_game(app: &mut App, running: bool) {
+        app.world_mut().resource_mut::<PlayModeState>().game_launched = running;
+    }
+
+    /// A running game pauses the viewport however much the scene changes (the
+    /// live link mirrors the game's movement into it), and stopping it renders
+    /// again straight away.
+    #[test]
+    fn a_running_game_pauses_the_viewport_until_it_stops() {
+        let mut app = app();
+        set_game(&mut app, true);
+        let mover = app.world_mut().spawn((Transform::default(), GlobalTransform::default())).id();
+        for i in 0..5 {
+            app.world_mut().get_mut::<Transform>(mover).unwrap().translation.x = i as f32;
+            app.update();
+            let redraw = app.world().resource::<ViewportRedraw>();
+            assert!(!redraw.should_render() && !redraw.should_render_overlay(), "rendered while a game ran");
+        }
+
+        set_game(&mut app, false);
+        app.update();
+        assert!(app.world().resource::<ViewportRedraw>().should_render(), "did not wake when the game stopped");
+    }
 }
