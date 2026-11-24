@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 08:04
+- fix(ui): each panel of a `<tabs>` element keeps its own layout instead of laying its contents out in one row
+- fix(ui): a `{{ binding }}` inside a markup container shows its value from the start, not the raw token
+
 ## 2026-11-24 07:53
 - fix(play): a script variable the game changes during Play is no longer sometimes put back by the editor
 

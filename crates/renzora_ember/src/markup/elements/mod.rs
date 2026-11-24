@@ -285,10 +285,12 @@ fn build_elements(world: &mut World) {
 
     let mut queue = CommandQueue::default();
     let mut sizing = Vec::new();
+    let mut moved = Vec::new();
     {
         let mut commands = Commands::new(&mut queue, world);
         for ((element, el, children), depth) in pending.into_iter().zip(depths) {
             let content = if el.kind.takes_children() { children } else { Vec::new() };
+            moved.extend(content.iter().copied());
             let built = build::build(&mut commands, &fonts, &themes, &el, content, depth);
             sizing.push((element, built.widget, built.fill_width, built.fill_height));
             commands.entity(element).add_child(built.widget).insert(ElementBuilt);
@@ -298,6 +300,27 @@ fn build_elements(world: &mut World) {
 
     for (element, widget, fill_width, fill_height) in sizing {
         fit(world, element, widget, fill_width, fill_height);
+    }
+    relayout_text(world, &moved);
+}
+
+/// Mark every text under `roots` as changed, so it is laid out again.
+///
+/// A container's markup children are built a few frames before the container
+/// itself (which waits for the UI fonts) and then moved into its widget. A
+/// `{{ binding }}` text among them has usually written its first value by
+/// then, and Bevy lost that write across the move: the `Text` held the value
+/// while the screen kept the layout of the raw `{{ ... }}` token until the
+/// value next changed. Touching each text once after the move costs one layout.
+fn relayout_text(world: &mut World, roots: &[Entity]) {
+    let mut stack = roots.to_vec();
+    while let Some(entity) = stack.pop() {
+        if let Some(kids) = world.get::<Children>(entity) {
+            stack.extend(kids.iter());
+        }
+        if let Some(mut text) = world.get_mut::<Text>(entity) {
+            text.set_changed();
+        }
     }
 }
 

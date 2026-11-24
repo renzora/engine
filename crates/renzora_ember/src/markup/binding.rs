@@ -724,6 +724,29 @@ pub fn plugin(app: &mut App) {
 mod tests {
     use super::*;
 
+    /// `{{ entity.Component.field }}` reads a named entity's component, and a
+    /// text binding renders it.
+    #[test]
+    fn a_named_entitys_component_field_renders() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.register_type::<Transform>();
+        plugin(&mut app);
+        app.world_mut()
+            .spawn((Name::new("world_environment"), Transform::from_xyz(1.5, 2.0, 3.0)));
+        let host = app.world_mut().spawn_empty().id();
+        let text = app
+            .world_mut()
+            .spawn((
+                Text::new("x"),
+                TextBinding::new("{{ world_environment.Transform.translation.x }}".into(), host),
+            ))
+            .id();
+        app.update();
+        assert_eq!(read_path(app.world(), host, "world_environment.Transform.translation.x").as_deref(), Some("1.5"));
+        assert_eq!(app.world().get::<Text>(text).map(|t| t.0.as_str()), Some("1.5"));
+    }
+
     #[test]
     fn translation_tokens_are_recognised() {
         assert_eq!(translation_key(r#"t("menu.play")"#), Some("menu.play"));

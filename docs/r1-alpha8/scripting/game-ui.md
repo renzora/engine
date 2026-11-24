@@ -491,6 +491,20 @@ Each control above is tied to one value:
   game runs.
 - `bind="<var>"` is a variable on the canvas's script, for anything that is not a
   single setting: the script reads the variable and does what it means.
+  `bind="<entity>.<var>"` is a variable on another entity's script.
+- `bind="<entity>.<Component>.<field>"` is a field of a component on a named
+  entity, nested fields included, so a control can drive the scene directly with
+  no script at all:
+
+  ```html
+  <spin_slider label="Sun height" bind="world_environment.Sun.elevation" min="-10" max="90" />
+  <switch bind="world_environment.SsrSettings.enabled" />
+  <slider bind="world_environment.WorldEnvironment.fog.density" min="0" max="0.05" />
+  ```
+
+  The component is named by its type's short name. Number and on/off fields
+  work; a field that picks one of several named options (a quality level) cannot
+  be set this way yet.
 
 A control can be styled like any `<node>` (`width`, `margin` and so on). In the
 editor, controls show their values but don't change them, so laying out a menu

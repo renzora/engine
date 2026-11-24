@@ -90,22 +90,24 @@ pub fn tabs(
     let content = commands
         .spawn((
             Node {
+                // A column, so the shown panel stretches to the tabs' width.
+                flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(10.0)),
                 ..default()
             },
             Name::new("tab-content"),
         ))
         .id();
-    // Show only the first panel.
+    // Show only the first panel. Only `display` changes: a panel arrives with
+    // its own layout (a markup `<tabs>` child is a styled node), and replacing
+    // its whole `Node` laid every panel out as an unstyled row.
     for (i, &panel) in panels.iter().enumerate() {
-        commands.entity(panel).insert(Node {
-            display: if i == 0 {
-                Display::Flex
-            } else {
-                Display::None
-            },
-            ..default()
-        });
+        let display = if i == 0 { Display::Flex } else { Display::None };
+        commands
+            .entity(panel)
+            .entry::<Node>()
+            .and_modify(move |mut n| n.display = display)
+            .or_insert(Node { display, ..default() });
     }
     commands.entity(content).add_children(&panels);
     commands.entity(root).add_children(&[bar, content]);
