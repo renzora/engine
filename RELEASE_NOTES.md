@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 09:35
+- fix(export): closing the export dialog during a build no longer leaves the Export button disabled
+
 ## 2026-11-24 09:28
 - fix(export): a lean export of a UI-only game no longer keeps 3D rendering, 2D sprites, post-processing or the tonemapping tables
 - feat(export): a lean export drops SVG support, the HTTP request pump and the companion profiler when the game does not use them

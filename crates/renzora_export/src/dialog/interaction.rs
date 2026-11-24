@@ -90,6 +90,10 @@ pub(super) fn close_click(q: Query<&UiInteraction, (With<CloseBtn>, Changed<UiIn
         // detached. Reset to the settings view for next time.
         if let Some(task) = state.active_task.as_ref() {
             task.cancel.store(true, Ordering::Relaxed);
+            // Dropping the task also drops its channel, so the worker's
+            // "cancelled" never arrives to end the `Working` state, and Export
+            // stays disabled until the editor restarts. End it here instead.
+            state.progress = ExportProgress::Idle;
         }
         state.visible = false;
         state.active_task = None;
