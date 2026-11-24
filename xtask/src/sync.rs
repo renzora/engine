@@ -905,6 +905,13 @@ fn feature_table(text: &str) -> Features {
             continue;
         }
         if let Some((name, body)) = current.as_mut() {
+            // Each line's comment goes before the line joins the body. Joined
+            // with it, a comment line ran straight into the next item
+            // (`...nobody reads."dep:renzora_live_link",`), and `split_items`,
+            // cutting each piece at its `#`, dropped that item: so a crate made
+            // optional in a commented multi-line feature got no `#[cfg]` in
+            // `plugins.rs`, and a lean export failed to build it.
+            let t = t.split('#').next().unwrap_or("").trim();
             body.push_str(t);
             if body.matches('[').count() <= body.matches(']').count() {
                 let (name, body) = (name.clone(), body.clone());
@@ -918,7 +925,9 @@ fn feature_table(text: &str) -> Features {
         }
         if let Some((name, rest)) = t.split_once('=') {
             let name = name.trim().to_string();
-            let body = rest.trim().to_string();
+            // Without its trailing comment, or `["a"] # note` keeps its `]` on
+            // the last item and that item is never matched.
+            let body = rest.split('#').next().unwrap_or("").trim().to_string();
             if body.matches('[').count() > body.matches(']').count() {
                 current = Some((name, body));
             } else {
@@ -1056,6 +1065,28 @@ fn normalize(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An item right after a comment line in a multi-line feature array is
+    /// still read, and the comment's own text never becomes an item.
+    #[test]
+    fn multi_line_features_read_past_their_comments() {
+        let manifest = r#"
+[features]
+dynamic_linking = [
+    "dep:renzora_dylib",
+    # A comment, with commas, and "quotes", in it.
+    "renzora_dylib/ui",
+    # Another, right before the item it explains.
+    "dep:renzora_live_link",
+]
+terrain = ["dep:renzora_terrain", "dep:renzora_terrain_graph"] # inline
+"#;
+        let features = feature_table(manifest);
+        assert_eq!(features.enabling_dep("renzora_live_link").as_deref(), Some("dynamic_linking"));
+        assert_eq!(features.enabling_dep("renzora_terrain_graph").as_deref(), Some("terrain"));
+        let items = &features.0.iter().find(|(n, _)| n == "dynamic_linking").unwrap().1;
+        assert_eq!(items, &["dep:renzora_dylib", "renzora_dylib/ui", "dep:renzora_live_link"]);
+    }
 
     /// Every table is read, defaults apply, and the tables end where the next
     /// header begins.
