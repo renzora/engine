@@ -32,6 +32,12 @@ pub mod core {
 pub use renzora_scripting_api::*;
 pub use renzora_scripting_api::{script, __script_entry, __script_hook_entry};
 
+// `renzora::GameUiScale`: the player's multiplier on the game UI's fit, at the
+// root because a settings-menu script is the thing that writes it. (`InputMap`
+// and the rest of the action map arrive at the root through the
+// `renzora_scripting_api` glob above.)
+pub use renzora::viewport_types::GameUiScale;
+
 // `renzora::save`.
 pub use renzora_save_api as save;
 

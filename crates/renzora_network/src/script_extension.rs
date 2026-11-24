@@ -17,6 +17,7 @@ use crate::status::NetworkStatus;
 pub fn handle_network_script_actions(
     trigger: On<ScriptAction>,
     status: Res<NetworkStatus>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut cmds: Commands,
     mut outbox: ResMut<crate::rpc::PendingOutgoingRpc>,
 ) {
@@ -46,8 +47,15 @@ pub fn handle_network_script_actions(
 
     match action.name.as_str() {
         "net_connect" => {
-            let address = get_str("address");
-            let port = get_i64("port") as u16;
+            // Whatever the call leaves out comes from the project's `[network]`
+            // section, so a game connects to the server it was configured for
+            // with a bare `net_connect`, and a script names an address only to
+            // go somewhere else.
+            let (address, port) = connect_target(
+                get_str("address"),
+                get_i64("port"),
+                project.as_ref().and_then(|p| p.config.network.as_ref()),
+            );
             if address.is_empty() || port == 0 {
                 log::warn!("[network] net_connect: invalid address/port");
                 return;
@@ -131,5 +139,47 @@ pub fn handle_network_script_actions(
             });
         }
         _ => {} // Not a network action
+    }
+}
+
+/// Where a `net_connect` goes: the address and port the script gave, with
+/// either one it left out (empty, or a port outside 1..=65535) taken from the
+/// project's `[network]` section, and that section's defaults when the project
+/// has none.
+fn connect_target(
+    address: String,
+    port: i64,
+    project: Option<&renzora_project_api::NetworkProjectConfig>,
+) -> (String, u16) {
+    let fallback = project.cloned().unwrap_or_default();
+    let address = if address.trim().is_empty() { fallback.server_addr } else { address };
+    let port = u16::try_from(port).ok().filter(|p| *p != 0).unwrap_or(fallback.port);
+    (address, port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::connect_target;
+    use renzora_project_api::NetworkProjectConfig;
+
+    fn project() -> NetworkProjectConfig {
+        NetworkProjectConfig { server_addr: "play.example.net".into(), port: 9000, ..Default::default() }
+    }
+
+    #[test]
+    fn a_bare_connect_goes_to_the_projects_server() {
+        assert_eq!(connect_target(String::new(), 0, Some(&project())), ("play.example.net".into(), 9000));
+    }
+
+    #[test]
+    fn what_the_script_names_wins() {
+        assert_eq!(connect_target("10.0.0.5".into(), 7000, Some(&project())), ("10.0.0.5".into(), 7000));
+        assert_eq!(connect_target(String::new(), 7000, Some(&project())), ("play.example.net".into(), 7000));
+    }
+
+    #[test]
+    fn no_network_section_uses_its_defaults() {
+        let d = NetworkProjectConfig::default();
+        assert_eq!(connect_target(String::new(), -1, None), (d.server_addr, d.port));
     }
 }

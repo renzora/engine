@@ -186,6 +186,40 @@ pub(crate) fn tab_project(
     );
     settings_row(commands, fonts, body, 2, &tr("settings.row.game_ui_font"), dd);
 
+    // The language the GAME starts in, `default_language`. Separate from the
+    // editor's own UI language (Settings > Interface): a game used to start in
+    // whichever language the editor user had picked. "Player's system" leaves
+    // it unset, so a game follows the player's OS language when a pack for it
+    // is loaded, and English otherwise.
+    let langs = renzora_lang_api::available();
+    let lang_codes: Vec<String> = langs.iter().map(|l| l.code.clone()).collect();
+    let mut lang_opts: Vec<String> = vec![tr("settings.opt.system_language")];
+    lang_opts.extend(langs.iter().map(|l| format!("{} ({})", l.name, l.code)));
+    let lang_refs: Vec<&str> = lang_opts.iter().map(|s| s.as_str()).collect();
+    let codes_get = lang_codes.clone();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &lang_refs,
+        0,
+        move |w| {
+            let code = w
+                .get_resource::<CurrentProject>()
+                .and_then(|c| c.config.default_language.clone());
+            code.and_then(|c| codes_get.iter().position(|x| *x == c).map(|i| i + 1))
+                .unwrap_or(0)
+        },
+        move |w, &i| {
+            // Index 0 is "Player's system": no fixed language.
+            let code = if i == 0 { None } else { lang_codes.get(i - 1).cloned() };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.default_language = code;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 3, &tr("settings.row.game_language"), dd);
+
     // Global scenes — the `autoload` list. Each scene toggled on here loads
     // before the boot scene and every entity it spawns is tagged `Persistent`,
     // so subsequent scene loads skip it. That's how a project keeps one UI
@@ -347,6 +381,44 @@ pub(crate) fn tab_project(
     );
     settings_row(commands, fonts, body, 2, &tr("settings.row.render_scale"), dv);
 
+    // The GAME's graphics backend, `[rendering] backend`. Separate from the
+    // editor's own (Settings > Editor > Renderer): the game ships with this
+    // one, where it used to inherit the editor user's preference. Every
+    // backend is offered, not only the ones this machine has, because the game
+    // may ship to other platforms; one a player's machine cannot create falls
+    // back to Automatic there.
+    const GAME_BACKENDS: [renzora_project_api::RendererBackend; 5] = [
+        renzora_project_api::RendererBackend::Auto,
+        renzora_project_api::RendererBackend::Dx12,
+        renzora_project_api::RendererBackend::Vulkan,
+        renzora_project_api::RendererBackend::Metal,
+        renzora_project_api::RendererBackend::Gl,
+    ];
+    let backend_strs: Vec<String> = GAME_BACKENDS.iter().map(|b| crate::lang::loc_opt(b.label())).collect();
+    let backend_refs: Vec<&str> = backend_strs.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &backend_refs,
+        0,
+        |w| {
+            let backend = w
+                .get_resource::<CurrentProject>()
+                .map(|c| c.config.rendering.backend)
+                .unwrap_or_default();
+            GAME_BACKENDS.iter().position(|&b| b == backend).unwrap_or(0)
+        },
+        |w, &i| {
+            let Some(&backend) = GAME_BACKENDS.get(i) else { return };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.rendering.backend = backend;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 3, &tr("settings.row.game_backend"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.game_backend"));
+
     note_row(commands, fonts, body, &tr("settings.hint.restart_rendering"));
 
     // Physics: which backend simulates each world.
@@ -442,6 +514,39 @@ pub(crate) fn tab_project(
         },
     );
     settings_row(commands, fonts, body, 4, &tr("settings.row.vsync"), t);
+    // Frame-rate limit, beside VSync because the two are confused and combine:
+    // VSync follows the monitor (240 on a 240 Hz screen), this holds the game
+    // to a chosen rate on any screen. A value set by hand in project.toml that
+    // is not one of the presets shows as Custom, and stays as it is until a
+    // preset is picked.
+    const FPS_PRESETS: [u32; 6] = [0, 30, 60, 120, 144, 240];
+    let fps_opts: Vec<String> = FPS_PRESETS
+        .iter()
+        .map(|&n| if n == 0 { tr("settings.opt.unlimited") } else { format!("{n} FPS") })
+        .chain(std::iter::once(tr("common.custom")))
+        .collect();
+    let fps_refs: Vec<&str> = fps_opts.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &fps_refs,
+        0,
+        |w| {
+            let max_fps = w
+                .get_resource::<CurrentProject>()
+                .map(|c| c.config.window.max_fps)
+                .unwrap_or(0);
+            FPS_PRESETS.iter().position(|&n| n == max_fps).unwrap_or(FPS_PRESETS.len())
+        },
+        |w, &i| {
+            let Some(&max_fps) = FPS_PRESETS.get(i) else { return };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.window.max_fps = max_fps;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 5, &tr("settings.row.max_fps"), dd);
 
     // Render Resolution. Shares the "window" key so it sits directly under the
     // Window section: both carry a width/height pair, and the only thing that

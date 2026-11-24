@@ -91,33 +91,92 @@ mod enabled {
             i += 1;
         }
 
-        // `project.toml` fills in whatever the command line did not say, so a
-        // flag always wins over the file rather than the other way round.
-        let project_toml = std::path::PathBuf::from("project.toml");
-        if project_toml.exists() {
-            if let Ok(content) = std::fs::read_to_string(&project_toml) {
-                if let Ok(project_config) = toml::from_str::<renzora_project_api::ProjectConfig>(&content) {
-                    if let Some(net) = &project_config.network {
-                        if !args.iter().any(|a| a == "--port") {
-                            config.port = net.port;
-                        }
-                        if !args.iter().any(|a| a == "--addr" || a == "--address") {
-                            config.server_addr = net.server_addr.clone();
-                        }
-                        if !args.iter().any(|a| a == "--tick-rate") {
-                            config.tick_rate = net.tick_rate;
-                        }
-                        if !args.iter().any(|a| a == "--max-clients") {
-                            config.max_clients = net.max_clients;
-                        }
-                        config.transport =
-                            renzora_network::TransportKind::from_str_loose(&net.transport);
-                    }
-                }
-            }
+        // The project's `[network]` fills in whatever the command line did not
+        // say, so a flag always wins over the file rather than the other way
+        // round.
+        //
+        // Read from the game's own project, wherever it lives: the rpak (the
+        // `--rpak server.rpak` a dedicated-server launcher passes, or the one
+        // embedded in the binary), then `--project`, then `./project.toml`. It
+        // used to be only the last of those, so a packed server, which has no
+        // `project.toml` on disk, ignored its own config and ran on the
+        // defaults. This runs before the `App` is built (the headless runner
+        // needs the tick rate), which is why it cannot wait for
+        // `CurrentProject`; `early_project` reads the same sources in the same
+        // order as the `RuntimePlugin` that inserts it.
+        if let Some(net) = crate::early_project::early_project_config()
+            .and_then(|project| project.network.as_ref())
+        {
+            apply_project_network(&mut config, net, &args);
         }
 
         Some(ServerConfig(config))
+    }
+
+    /// Fill `config` from the project's `[network]`, except for the fields the
+    /// command line set. The transport has no flag, so the project always sets
+    /// it.
+    fn apply_project_network(
+        config: &mut NetworkConfig,
+        net: &renzora_project_api::NetworkProjectConfig,
+        args: &[String],
+    ) {
+        let given = |flags: &[&str]| args.iter().any(|a| flags.contains(&a.as_str()));
+        if !given(&["--port"]) {
+            config.port = net.port;
+        }
+        if !given(&["--addr", "--address"]) {
+            config.server_addr = net.server_addr.clone();
+        }
+        if !given(&["--tick-rate"]) {
+            config.tick_rate = net.tick_rate;
+        }
+        if !given(&["--max-clients"]) {
+            config.max_clients = net.max_clients;
+        }
+        config.transport = renzora_network::TransportKind::from_str_loose(&net.transport);
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn args(list: &[&str]) -> Vec<String> {
+            list.iter().map(|s| s.to_string()).collect()
+        }
+
+        fn project_network() -> renzora_project_api::NetworkProjectConfig {
+            renzora_project_api::NetworkProjectConfig {
+                server_addr: "0.0.0.0".into(),
+                port: 9000,
+                tick_rate: 30,
+                max_clients: 8,
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn the_project_fills_what_no_flag_set() {
+            let mut config = NetworkConfig::default();
+            apply_project_network(&mut config, &project_network(), &args(&["renzora", "--server"]));
+            assert_eq!(config.server_addr, "0.0.0.0");
+            assert_eq!((config.port, config.tick_rate, config.max_clients), (9000, 30, 8));
+        }
+
+        #[test]
+        fn a_flag_wins_over_the_project() {
+            let mut config = NetworkConfig::default();
+            config.port = 7000;
+            config.server_addr = "10.0.0.1".into();
+            apply_project_network(
+                &mut config,
+                &project_network(),
+                &args(&["renzora", "--server", "--port", "7000", "--address", "10.0.0.1"]),
+            );
+            assert_eq!(config.port, 7000);
+            assert_eq!(config.server_addr, "10.0.0.1");
+            assert_eq!(config.tick_rate, 30);
+        }
     }
 
     /// Add the server half. The host case adds this *alongside* the ordinary

@@ -80,6 +80,21 @@ pub struct WindowConfig {
     /// maps this to the window's `PresentMode`.
     #[serde(default = "default_vsync")]
     pub vsync: bool,
+    /// The highest frame rate the shipped game runs at, in frames per second;
+    /// `0` is no limit. A different thing from `vsync`, and the two combine:
+    /// vsync waits for the monitor, so on a 240 Hz display it allows 240, while
+    /// this holds the game to a chosen rate whatever the display, which is
+    /// what a game targeting a steady 30 or 60 wants. Applied by the runtime
+    /// (`renzora_runtime::frame_limit`) in the game and the Play child, never
+    /// to the editor's own window. The limiter reads this field every frame,
+    /// so it is the one place the limit lives: a script or an in-game settings
+    /// menu changes it here, as the editor does.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub max_fps: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 fn default_resizable() -> bool {
@@ -102,6 +117,7 @@ impl Default for WindowConfig {
             resizable: true,
             mode: WindowMode::Windowed,
             vsync: true,
+            max_fps: 0,
         }
     }
 }
@@ -1155,10 +1171,12 @@ pub struct RenderingConfig {
     pub mode: RenderingMode,
     /// Graphics-quality tier for the **shipped game**. Lives in `[rendering]`
     /// (not the editor-only `[editor]` block, which export strips) so it
-    /// survives packing. The runtime resolves it into [`ResolvedGraphicsQuality`]
-    /// and enforces it on the play camera — the same tier the editor's
-    /// `renzora_level_presets::graphics_quality` applies to its viewport cameras,
-    /// so a game no longer runs the full fullscreen-pass stack unconditionally.
+    /// survives packing. One runtime implementation
+    /// (`renzora_engine::graphics_quality`) resolves it into
+    /// [`ResolvedGraphicsQuality`] and enforces it, live, on a game's cameras and
+    /// on the editor's viewport cameras alike, so the editor shows the cost the
+    /// game will have and a script or settings menu can change it while the
+    /// game runs.
     /// Defaults to `Medium` (the weak-machine-friendly tier).
     #[serde(default)]
     pub graphics_quality: crate::GraphicsQuality,
@@ -1189,6 +1207,19 @@ pub struct RenderingConfig {
     /// not; the coarsest level of every model always stays.
     #[serde(default = "default_virtual_geometry_budget_mb")]
     pub virtual_geometry_budget_mb: u32,
+    /// The graphics backend the **game** asks wgpu for: `auto` (the engine's
+    /// standard per OS), `dx12`, `vulkan`, `metal` or `gl`. The game's own
+    /// setting, shipped with it. It used to have none, so an exported game read
+    /// the editor user's `~/.renzora` preference: on the developer's machine it
+    /// inherited the editor's backend, on a player's it fell back to Auto. The
+    /// editor's own window keeps its separate preference. Takes effect at the
+    /// next launch, because wgpu picks the backend once.
+    #[serde(default, skip_serializing_if = "is_auto_backend")]
+    pub backend: RendererBackend,
+}
+
+fn is_auto_backend(backend: &RendererBackend) -> bool {
+    *backend == RendererBackend::Auto
 }
 
 fn default_render_scale() -> f32 {
@@ -1207,6 +1238,7 @@ impl Default for RenderingConfig {
             render_scale: default_render_scale(),
             virtual_geometry: true,
             virtual_geometry_budget_mb: default_virtual_geometry_budget_mb(),
+            backend: RendererBackend::Auto,
         }
     }
 }
@@ -1263,14 +1295,13 @@ impl ResolvedRenderingMode {
 /// The graphics-quality tier in force **this session**, as a resource every
 /// renderer crate can read (clouds, atmosphere, IBL, the enforcement systems).
 ///
-/// Both callers seed it from the same [`RenderingConfig::graphics_quality`]:
-/// - **Runtime:** `renzora_engine`, at boot.
-/// - **Editor:** `renzora_level_presets::graphics_quality`, every time the
-///   user changes tier in Settings > Project > Rendering. The editor has no
-///   tier of its own, so the viewport shows the cost the game will have.
+/// Seeded from [`RenderingConfig::graphics_quality`] by the one runtime
+/// implementation, `renzora_engine::graphics_quality`, at startup and again
+/// whenever the config changes, in a game and in the editor alike. Write the
+/// config, not this: it is re-resolved from the config every frame.
 ///
-/// Defaults to `GraphicsQuality::Medium` so a crate that reads it before either
-/// seeder has run gets the safe, lighter tier rather than the full stack.
+/// Defaults to `GraphicsQuality::Medium` so a crate that reads it before the
+/// first resolve gets the safe, lighter tier rather than the full stack.
 #[derive(bevy::prelude::Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ResolvedGraphicsQuality(pub crate::GraphicsQuality);
 
@@ -1477,6 +1508,13 @@ pub struct ProjectConfig {
     /// keeps the embedded default. Shipped (not the editor-stripped section).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_font: Option<String>,
+    /// The language the shipped game starts in, as a language code (`"en"`,
+    /// `"de"`, `"pt-BR"`). `None` follows the player's system, falling back to
+    /// English. It used to have no setting at all, so a game started in the
+    /// editor user's own language from `~/.renzora`. A script can still change
+    /// it while the game runs (`renzora::lang::set_active`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_language: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<NetworkProjectConfig>,
     /// The mixer bus graph. Shipped (not the editor-stripped section) — a game
@@ -1508,6 +1546,7 @@ impl Default for ProjectConfig {
             console_logging: false,
             profiling_key: None,
             ui_font: None,
+            default_language: None,
             network: None,
             audio: AudioConfig::default(),
         }
@@ -1710,6 +1749,7 @@ mod tests {
             ],
             icon: Some("assets/icon.png".into()),
             ui_font: None,
+            default_language: None,
             autoload: vec!["scenes/loader.ron".into()],
             window: WindowConfig {
                 width: 1920,
@@ -1717,6 +1757,7 @@ mod tests {
                 resizable: false,
                 mode: WindowMode::Fullscreen,
                 vsync: true,
+                max_fps: 60,
             },
             viewport: ViewportConfig::default(),
             rendering_2d: Rendering2dConfig::default(),

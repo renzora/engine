@@ -7,10 +7,12 @@
 use bevy::prelude::*;
 
 use renzora_audio_api::audio_backend::{EmitterState, PlayRequest, StopRequest, StopTarget, UpdateRequest};
+use renzora_audio_api::settings;
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::components::{AudioPlayer, RolloffType};
 use crate::link::{AudioLink, VoiceId};
+use crate::mixer::MixerState;
 use crate::preview::AudioPreviewState;
 use crate::runtime::{ActiveVoices, SoundCache};
 
@@ -68,21 +70,6 @@ pub enum AudioSet {
 #[derive(Resource, Default)]
 pub struct MusicVoice(pub Option<VoiceId>);
 
-/// A runtime volume multiplier applied on top of the mixer's master strip.
-///
-/// Separate from the strip because they mean different things: the strip is the
-/// project's mix, authored in the panel and saved to `project.toml`, while this
-/// is what a game's own volume slider drives. Folding them together would let a
-/// player's setting rewrite the developer's mix.
-#[derive(Resource)]
-pub struct MasterVolume(pub f32);
-
-impl Default for MasterVolume {
-    fn default() -> Self {
-        Self(1.0)
-    }
-}
-
 /// A play request with everything at its neutral value.
 ///
 /// An empty bus key becomes `Sfx` — that is what an `AudioPlayer` left untouched
@@ -128,27 +115,28 @@ pub fn process_audio_commands(
     mut cache: ResMut<SoundCache>,
     mut voices: ResMut<ActiveVoices>,
     mut music: ResMut<MusicVoice>,
-    mut master: ResMut<MasterVolume>,
-    project: Option<Res<renzora_project_api::CurrentProject>>,
+    mut project: Option<ResMut<renzora_project_api::CurrentProject>>,
+    mut mixer: Option<ResMut<MixerState>>,
 ) {
     if queue.is_empty() {
         return;
     }
-    let project = project.as_deref();
     // Parameter changes are batched and sent once at the end: they all ride the
     // same call, and a command issued this frame should be heard this frame.
     let mut batch = UpdateRequest::default();
-    let master_volume = master.0;
 
     // Load, start, and record. Takes its resources as arguments rather than
     // capturing them, so the borrow checker can see that each arm below uses
     // them one at a time.
+    //
+    // No master multiplier here: master volume is the Master bus's gain, which
+    // the backend applies to everything on the board, so a voice is started at
+    // its own gain and nothing else.
     fn start(
         link: &mut AudioLink,
         cache: &mut SoundCache,
         voices: &mut ActiveVoices,
         project: Option<&renzora_project_api::CurrentProject>,
-        master: f32,
         path: &str,
         entity: Option<Entity>,
         mut r: PlayRequest,
@@ -157,7 +145,7 @@ pub fn process_audio_commands(
         let voice = link.next_voice();
         r.voice = voice.0;
         r.clip = sound.0;
-        r.gain = (r.gain * master).clamp(0.0, 2.0);
+        r.gain = r.gain.clamp(0.0, 2.0);
         if let Err(e) = link.play(&r) {
             warn!("[audio] could not play `{path}`: {e}");
             return None;
@@ -186,8 +174,7 @@ pub fn process_audio_commands(
                     &mut link,
                     &mut cache,
                     &mut voices,
-                    project,
-                    master_volume,
+                    project.as_deref(),
                     &path,
                     entity,
                     r,
@@ -223,8 +210,7 @@ pub fn process_audio_commands(
                     &mut link,
                     &mut cache,
                     &mut voices,
-                    project,
-                    master_volume,
+                    project.as_deref(),
                     &player.clip,
                     Some(entity),
                     r,
@@ -250,8 +236,7 @@ pub fn process_audio_commands(
                     &mut link,
                     &mut cache,
                     &mut voices,
-                    project,
-                    master_volume,
+                    project.as_deref(),
                     &path,
                     entity,
                     r,
@@ -280,8 +265,7 @@ pub fn process_audio_commands(
                     &mut link,
                     &mut cache,
                     &mut voices,
-                    project,
-                    master_volume,
+                    project.as_deref(),
                     &path,
                     None,
                     r,
@@ -319,8 +303,7 @@ pub fn process_audio_commands(
                     &mut link,
                     &mut cache,
                     &mut voices,
-                    project,
-                    master_volume,
+                    project.as_deref(),
                     &path,
                     None,
                     r,
@@ -337,7 +320,15 @@ pub fn process_audio_commands(
             }
 
             AudioCommand::SetMasterVolume { volume } => {
-                master.0 = volume.clamp(0.0, 1.0);
+                set_bus_volume(project.as_mut(), mixer.as_mut(), "Master", volume as f64);
+            }
+
+            AudioCommand::SetBusVolume { bus, volume } => {
+                set_bus_volume(project.as_mut(), mixer.as_mut(), &bus, volume as f64);
+            }
+
+            AudioCommand::SetBusMuted { bus, muted } => {
+                set_bus_muted(project.as_mut(), mixer.as_mut(), &bus, muted);
             }
 
             AudioCommand::PauseSound { entity } => {
@@ -359,7 +350,7 @@ pub fn process_audio_commands(
                 // animates. Taking the argument and not acting on the tween beats
                 // removing it and breaking every caller.
                 for voice in voices.of(entity) {
-                    batch.gains.push((voice.0, volume * master_volume));
+                    batch.gains.push((voice.0, volume));
                 }
             }
 
@@ -375,6 +366,71 @@ pub fn process_audio_commands(
         if let Err(e) = link.update(&batch) {
             warn!("[audio] {e}");
         }
+    }
+}
+
+/// Set a bus's volume in the settings store, which `sync_mixer_with_settings`
+/// then applies to the board on this same frame.
+///
+/// Going through the store rather than straight at `MixerState` is the point:
+/// the store is what the editor's fader, a settings menu and a Rust script all
+/// read, so a volume set here is the one they show. Compared first, because
+/// taking `DerefMut` on `CurrentProject` marks the whole project changed, and a
+/// script that sets the volume every frame should not churn it.
+///
+/// With no project at all (a bare test app, or a tool built without one) the
+/// board is the only state there is, so the strip is set directly.
+fn set_bus_volume(
+    project: Option<&mut ResMut<renzora_project_api::CurrentProject>>,
+    mixer: Option<&mut ResMut<MixerState>>,
+    bus: &str,
+    volume: f64,
+) {
+    let volume = settings::clamp_volume(volume);
+    let known = match project {
+        Some(project) => {
+            match settings::bus_volume(&project.config.audio, bus) {
+                Some(current) if current == volume => true,
+                Some(_) => settings::set_bus_volume(&mut project.config.audio, bus, volume),
+                None => false,
+            }
+        }
+        None => match mixer.and_then(|m| m.strip_by_key_mut(bus)) {
+            Some(strip) => {
+                strip.volume = volume;
+                true
+            }
+            None => false,
+        },
+    };
+    if !known {
+        warn!("[audio] set_bus_volume: no bus with key `{bus}`");
+    }
+}
+
+/// [`set_bus_volume`], for mute.
+fn set_bus_muted(
+    project: Option<&mut ResMut<renzora_project_api::CurrentProject>>,
+    mixer: Option<&mut ResMut<MixerState>>,
+    bus: &str,
+    muted: bool,
+) {
+    let known = match project {
+        Some(project) => match settings::bus_muted(&project.config.audio, bus) {
+            Some(current) if current == muted => true,
+            Some(_) => settings::set_bus_muted(&mut project.config.audio, bus, muted),
+            None => false,
+        },
+        None => match mixer.and_then(|m| m.strip_by_key_mut(bus)) {
+            Some(strip) => {
+                strip.muted = muted;
+                true
+            }
+            None => false,
+        },
+    };
+    if !known {
+        warn!("[audio] set_bus_muted: no bus with key `{bus}`");
     }
 }
 
@@ -476,7 +532,6 @@ pub fn apply_audio_player_edits(
     mut link: ResMut<AudioLink>,
     mut voices: ResMut<ActiveVoices>,
     mut queue: ResMut<AudioCommandQueue>,
-    master: Res<MasterVolume>,
     changed: Query<(Entity, &AudioPlayer, Option<&GlobalTransform>), Changed<AudioPlayer>>,
     mut last: Local<std::collections::HashMap<Entity, (String, bool)>>,
 ) {
@@ -505,7 +560,7 @@ pub fn apply_audio_player_edits(
             continue;
         }
         for voice in live {
-            batch.gains.push((voice.0, player.volume * master.0));
+            batch.gains.push((voice.0, player.volume));
             batch.pitches.push((voice.0, player.pitch.max(0.01) as f64));
             batch.buses.push((voice.0, player.bus.clone()));
             // A spatial voice takes its pan from listener geometry, so pushing

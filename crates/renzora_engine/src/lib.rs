@@ -293,7 +293,7 @@ impl Plugin for RuntimePlugin {
         // The active graphics-quality tier, readable by every renderer crate
         // (clouds, environment-map IBL, the enforcement below). Exists in both
         // editor and game so downstream reads never miss it; the runtime seeds
-        // it from project config, the editor from live viewport settings.
+        // it from project config in every session (`graphics_quality`).
         app.init_resource::<renzora_project_api::ResolvedGraphicsQuality>();
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
@@ -502,6 +502,17 @@ impl Plugin for RuntimePlugin {
                     }
                 } else {
                     error!("rpak archive has no project.toml");
+                }
+                // The project's translations. The language runtime cannot
+                // open the archive, so they are handed over here, before it
+                // builds and chooses the language the game starts in.
+                if let Some(archive) = vfs.archive() {
+                    let sources: Vec<(String, String)> = archive
+                        .paths()
+                        .filter(|p| p.starts_with("languages/") && p.to_ascii_lowercase().ends_with(".toml"))
+                        .filter_map(|key| vfs.read_string(key).map(|src| (key.to_string(), src)))
+                        .collect();
+                    app.insert_resource(renzora_lang_api::ProjectLanguagePacks { sources });
                 }
                 // Provide a VirtualFileReader backed by Vfs so material/shader
                 // resolution reads from the rpak archive instead of disk.
@@ -834,23 +845,16 @@ impl Plugin for RuntimePlugin {
         // editor camera registration lives in `renzora_engine_editor`).
         if !is_editor {
             app.add_systems(Update, update_runtime_effect_routing);
-            // Resolve the shipped-game quality tier from project config and
-            // enforce it on the play camera — the editor's tier enforcement is
-            // Editor-scoped and never reaches a game, so without this the
-            // exported build runs the full fullscreen-pass stack at every tier.
-            //
-            // Also in `Startup`, so the tier is the project's before the first
-            // `Update`: `rehydrate_cameras` sizes the game camera's sky probe
-            // from it in that frame, unordered against the `Update` copy. Built
-            // at the default tier and resized a frame later, the probe's
-            // filtered reflection map kept the old mip count while its sky
-            // cube took the new one, and the filter crashed the game asking
-            // for a mip the map did not have.
-            #[cfg(feature = "render_3d")]
-            app.add_systems(Startup, graphics_quality::sync_runtime_graphics_quality)
-                .add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
-                .add_systems(PostUpdate, graphics_quality::enforce_runtime_graphics_quality);
         }
+
+        // The graphics-quality tier, in every session. It is a game setting,
+        // so the runtime applies it live from `CurrentProject`: to the game's
+        // cameras in a game, and to the viewport cameras in the editor, which
+        // only edits the value. The module doc covers which cameras, and why
+        // the tier is resolved in `Startup` and `PostUpdate` rather than
+        // `Update` (a sky-probe resize there crashed the filter).
+        #[cfg(feature = "render_3d")]
+        graphics_quality::register(app);
 
         // Editor camera lifecycle, the save-scene observer and the 2D
         // auto-view-switch moved to the `renzora_engine_editor` crate

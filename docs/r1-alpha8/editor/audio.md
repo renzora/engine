@@ -89,9 +89,46 @@ fn update(ctx: &mut ScriptCtx) {
 | `CrossfadeMusic` | Fade from the current track to another |
 | `PauseSound` / `ResumeSound` | Pause and resume a playing sound |
 | `SetSoundVolume` / `SetSoundPitch` | Change a playing sound |
-| `SetMasterVolume` | Change the master level |
+| `SetMasterVolume` | Set the Master bus volume |
+| `SetBusVolume` / `SetBusMuted` | Set or mute any bus by its key |
 
 `PlayEntity` is usually what you want for a sound that belongs to an object, because it honours everything you set up in the Inspector.
+
+## Volume from a script or a settings menu
+
+The mixer is a game setting, and the running game owns it. A script, or the volume sliders in your own in-game settings menu, can change any bus while the game runs, and the change is heard straight away.
+
+From any script language:
+
+| Function | Arguments | What it does |
+|---|---|---|
+| `set_master_volume` | `volume` | Set the Master bus. `1` is normal, `0` is silent, up to `1.5`. |
+| `set_bus_volume` | `bus` (string), `volume` | Set a bus by its key: `"Sfx"`, `"Music"`, `"Ambient"`, or a custom bus's key. |
+| `set_bus_muted` | `bus` (string), `muted` (bool) | Mute or unmute a bus. |
+
+Bus keys match without regard to case, so `"music"` works. An unknown key changes nothing and logs a warning.
+
+Master volume is the Master fader. There is no second master level hiding behind it, so a script setting it moves the fader in the Mixer, and a settings menu reading it sees what the fader shows.
+
+In a Rust script, the settings live in `CurrentProject.config.audio`. Change them there, with the helpers in `renzora::audio::settings`:
+
+```rust
+use renzora::audio::settings;
+use renzora::{CurrentProject, ScriptCtx};
+
+fn update(ctx: &mut ScriptCtx) {
+    if let Some(mut project) = ctx.get_resource_mut::<CurrentProject>() {
+        // Only write when the value moves: a write marks the project changed.
+        if settings::bus_volume(&project.config.audio, "Music") != Some(0.5) {
+            settings::set_bus_volume(&mut project.config.audio, "Music", 0.5);
+        }
+    }
+}
+```
+
+`settings::bus_volume`, `bus_muted` and `master_volume` read a value back, which is what a slider needs to start in the right place. Use the helpers rather than searching `buses` yourself: a project that never opened the Mixer has an empty list, and the helpers fill in the default board first.
+
+In an exported game these changes last until the game quits. They never write `project.toml`. To remember a player's volume between runs, store it in your own save data and set it again on start.
 
 ## The mixer
 
@@ -190,6 +227,8 @@ Bus volumes, panning, mute and solo, colours, routing, sends and every custom ch
 An exported game builds the same board before the first scene loads, so an AudioPlayer routed to a bus called `Footsteps` plays on `Footsteps` rather than falling back.
 
 Saving happens as you work. There is nothing to press.
+
+Only the editor saves. When you press Play, the game runs as its own process, so a script that turns the music down during play does not change the mix saved in your project.
 
 ## Tips
 

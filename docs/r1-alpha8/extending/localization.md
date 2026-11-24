@@ -40,7 +40,13 @@ renzora::lang::t_args("status.saved", &[("file", &name)]);
    `code`, key for key. The folder is re-scanned every couple of seconds, so
    editing a pack updates the running editor live. This is the install path a
    marketplace language pack will use.
-3. **Plugin contributions** — see below.
+3. **Project packs**: a project's own `languages/*.toml` hold the game's
+   strings, in the same format. They merge over the built-ins (a project's
+   `fr.toml` only needs the game's keys), and a project may add a language the
+   engine does not ship. The editor loads them when the project opens and
+   re-reads one when it is saved; an export packs every one of them into the
+   game, which loads them before it picks the language it starts in.
+4. **Plugin contributions**: see below.
 
 ## Pack format
 
@@ -100,8 +106,35 @@ renzora::lang::available();             // Vec<LocaleMeta> for a picker
 ```
 
 Setting an as-yet-unknown code is allowed: install the pack later and it lights
-up without another call. On launch the active language defaults to English (or
-the `RENZORA_LANG` environment override).
+up without another call.
+
+### The language a session starts in
+
+The editor and a game choose differently, because the editor's language is the
+person editing's preference and a game's is the game's:
+
+- **The editor** starts in your interface language, **Settings > Appearance >
+  Language**, saved in `~/.renzora/settings.toml` under `[app] language`.
+- **A game** starts in the project's `default_language` (a language code in
+  `project.toml`, such as `"de"` or `"pt-BR"`). Without one it follows the
+  player's system language when a pack for it is available (`de-DE` finds
+  `de`, `zh-Hant-TW` finds `zh-TW`), and otherwise starts in English. It never
+  reads the editor's `settings.toml`, so a game exported from a German editor
+  does not start in German on a player's machine unless the project says so.
+
+```toml
+# project.toml, a top-level key (above the first [section])
+default_language = "fr"
+```
+
+The `RENZORA_LANG` environment variable overrides both, which is handy for
+testing a translation or taking screenshots. Either way the language can still
+be changed while the game runs with `set_active`. Game UI markup written with
+`{{ t("key") }}` follows the change on the next frame, with nothing to rebuild:
+
+```html
+<text font_size="18">{{ t("menu.play") }}</text>
+```
 
 ### Reacting to changes
 

@@ -19,6 +19,10 @@ scripting = ["dep:renzora_scripting"]
 renzora_project_api = { path = "../api/renzora_project_api" }
 renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
+# The player's system language, which a game starts in when its project names
+# no `default_language`. Not built on Bevy, and small: one OS call per platform.
+# `js` reads `navigator.language` on the web, where there is no OS to ask.
+sys-locale = { version = "0.3", features = ["js"] }
 # Only for the `ScriptExtension` trait, which is now pure declaration.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 

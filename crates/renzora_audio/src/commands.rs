@@ -42,8 +42,24 @@ pub enum AudioCommand {
         fade_out: f32,
     },
     StopAllSounds,
+    /// Set the Master bus's volume (linear, 0..1.5). Written into the settings
+    /// store, `CurrentProject.config.audio`, so it is the same value the mixer
+    /// panel's Master fader and a game's settings menu show. There is no
+    /// separate master multiplier any more: two of them meant a script's
+    /// volume and the fader could each be "the" master and disagree.
     SetMasterVolume {
         volume: f32,
+    },
+    /// Set a bus's volume by its routing key (`"Music"`, or a custom bus's key),
+    /// through the settings store like [`Self::SetMasterVolume`].
+    SetBusVolume {
+        bus: String,
+        volume: f32,
+    },
+    /// Mute or unmute a bus by its routing key, through the settings store.
+    SetBusMuted {
+        bus: String,
+        muted: bool,
     },
     PauseSound {
         entity: Option<Entity>,

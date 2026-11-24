@@ -1,8 +1,7 @@
 use bevy::input::gamepad::{Gamepad, GamepadAxis};
 use bevy::prelude::*;
 
-use crate::action::{ActionKind, InputBinding};
-use crate::map::InputMap;
+use crate::{ActionKind, InputBinding, InputMap};
 
 // Re-export from renzora
 pub use renzora_scripting_api::{ActionData, ActionState};

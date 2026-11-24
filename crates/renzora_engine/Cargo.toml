@@ -81,6 +81,7 @@ renzora_viewport_api = { path = "../api/renzora_viewport_api" }
 renzora_scene_api = { path = "../api/renzora_scene_api" }
 renzora_project_api = { path = "../api/renzora_project_api" }
 renzora_log_api = { path = "../api/renzora_log_api" }
+renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
 renzora = { path = "../shared/renzora", default-features = false }
 renzora_platform_api = { path = "../api/renzora_platform_api" }

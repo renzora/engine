@@ -36,6 +36,36 @@ use renzora_plugin_build::Sdk;
 
 use crate::{exe_dir, is_native_source, layout, name_of};
 
+/// The editor image's file name, as `renzora_runtime::editor_image` loads it.
+fn editor_image_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "renzora_editor.dll"
+    } else if cfg!(target_os = "macos") {
+        "librenzora_editor.dylib"
+    } else {
+        "librenzora_editor.so"
+    }
+}
+
+/// The plugins the user switched off, when this install is an editor; none
+/// when it is a shipped game.
+///
+/// The same rule the loader applies through
+/// [`session_disabled_plugins`](crate::session_disabled_plugins): the list is
+/// an editor preference, so a game builds and loads every plugin it shipped
+/// with. Skipping one here while the loader still wants it would leave it
+/// unbuilt and reported as such, which is the old bug by another route.
+///
+/// This runs before the `App` exists, so there is no `EditorSession` to ask.
+/// The image beside the executable is the same evidence `main` uses to decide
+/// the session (`renzora_runtime::editor_image::present`), asked the same way:
+/// one `is_file`. The name is repeated here rather than imported because that
+/// crate depends on this one.
+fn disabled_plugins(root: &Path) -> Vec<String> {
+    let in_editor = root.join(editor_image_name()).is_file();
+    crate::session_disabled_plugins(in_editor, renzora_project_api::load_disabled_plugins)
+}
+
 /// Where setup has got to, for a progress bar to draw.
 ///
 /// Structured rather than preformatted text because the caller draws it: the
@@ -184,7 +214,7 @@ pub fn needed() -> bool {
     if !stale_marketplace_plugins(&root).is_empty() {
         return true;
     }
-    let disabled = renzora_project_api::load_disabled_plugins();
+    let disabled = disabled_plugins(&root);
     let sdk = Sdk::load(crate::sdk_dir(&root)).ok();
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     for p in crate::plugin_entries(&root) {
@@ -285,7 +315,7 @@ fn stale_marketplace_plugins(root: &Path) -> Vec<(PathBuf, String)> {
     };
     let sdk = Sdk::load(crate::sdk_dir(root)).ok();
     let writable = renzora_native_build::install::plugins_write_dir(root);
-    let disabled = renzora_project_api::load_disabled_plugins();
+    let disabled = disabled_plugins(root);
     crate::plugin_entries(root)
         .into_iter()
         .filter(|p| p.parent() == Some(writable.as_path()))
@@ -394,7 +424,7 @@ fn build_stale(root: &Path, report: &mut impl FnMut(Progress)) -> usize {
     let native_stamp = sdk.as_ref().map(|s| s.stamp());
     // The same list the loader will walk, minus the plugins the user switched
     // off — compiling one of those would be work for something that will not run.
-    let disabled = renzora_project_api::load_disabled_plugins();
+    let disabled = disabled_plugins(root);
     let mut pending: Vec<PathBuf> = Vec::new();
     for p in crate::plugin_entries(root) {
         if disabled.iter().any(|d| d == &name_of(&p)) {
@@ -630,7 +660,7 @@ pub fn build_installed(
 ) -> Result<InstalledBuild, String> {
     let Some(root) = exe_dir() else { return Ok(InstalledBuild::Deferred) };
     let Ok(sdk) = Sdk::load(crate::sdk_dir(&root)) else { return Ok(InstalledBuild::Deferred) };
-    if !is_native_source(plugin) || renzora_project_api::load_disabled_plugins().iter().any(|d| *d == name_of(plugin)) {
+    if !is_native_source(plugin) || disabled_plugins(&root).iter().any(|d| *d == name_of(plugin)) {
         return Ok(InstalledBuild::Deferred);
     }
     let stamp = sdk.stamp();
@@ -738,5 +768,22 @@ mod mirror_tests {
         let out = mirror_for_build(&bundled, &writable).unwrap();
         assert!(out.join("new.rs").is_file());
         assert!(!out.join("stale.rs").exists(), "leftovers from the old copy must go");
+    }
+
+    /// The pre-boot pass decides editor-or-game by the editor image beside the
+    /// executable, as `main` does. A folder without one is a shipped game and
+    /// skips nothing, whatever the machine's `settings.toml` lists.
+    #[test]
+    fn an_install_without_the_editor_image_disables_nothing() {
+        let root = std::env::temp_dir().join(format!(
+            "renzora_prebuild_game_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(!root.join(editor_image_name()).exists());
+        assert!(disabled_plugins(&root).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

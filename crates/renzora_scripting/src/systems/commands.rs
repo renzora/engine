@@ -616,6 +616,13 @@ fn script_command_to_action(
             "stop_music"
         }
         ScriptCommand::StopAllSounds => "stop_all_sounds",
+        // Routed like the rest of audio, to `renzora_audio`'s observer, which
+        // writes the Master bus in the settings store. This used to fall to the
+        // `_` arm below and be dropped, so a script's volume call did nothing.
+        ScriptCommand::SetMasterVolume { volume } => {
+            args.insert("volume".into(), V::Float(volume));
+            "set_master_volume"
+        }
 
         // Rendering
         ScriptCommand::SetMaterialColor { entity_id, color } => {

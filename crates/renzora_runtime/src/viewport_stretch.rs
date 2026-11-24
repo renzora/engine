@@ -16,6 +16,10 @@
 //!
 //! Disabled mode is the no-op default — render goes straight to the
 //! window, identical behaviour to before this module existed.
+//!
+//! All of `[viewport]` is live: turning stretching on or off, or changing
+//! the resolution, rebuilds the pass while the game runs (see
+//! [`sync_stretch`]), so an in-game settings menu can offer it.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{ClearColorConfig, RenderTarget};
@@ -50,45 +54,176 @@ struct BlitSprite;
 #[derive(Component)]
 struct BlitCamera;
 
+/// The MSAA a camera had before it was redirected into the offscreen image,
+/// which forces it off; `None` when it had no `Msaa` component. Put back when
+/// stretching is turned off, so a game that leaves stretch mode keeps its
+/// anti-aliasing instead of silently losing it.
+#[derive(Component, Clone, Copy)]
+struct StretchedMsaa(Option<Msaa>);
+
 pub struct ViewportStretchPlugin;
 
 impl Plugin for ViewportStretchPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_stretch.before(spawn_blit_pass))
-            .add_systems(Startup, spawn_blit_pass)
+        // `sync_stretch` runs at Startup so a stretched game's first frame is
+        // already stretched (the scene's cameras are redirected by the observer
+        // as they load), and again whenever `CurrentProject` changes, so
+        // `[viewport] width`, `height` and `stretch_mode` apply while the game
+        // runs, from an in-game settings menu as much as from the editor. They
+        // used to be read once at Startup and never again.
+        app.add_systems(Startup, sync_stretch)
             .add_systems(
                 Update,
-                (redirect_game_cameras_to_offscreen, update_blit_layout),
+                (
+                    sync_stretch.run_if(
+                        resource_exists_and_changed::<renzora_project_api::CurrentProject>,
+                    ),
+                    redirect_game_cameras_to_offscreen,
+                    update_blit_layout,
+                )
+                    .chain(),
             )
             .add_observer(on_camera_2d_added_redirect);
     }
 }
 
-/// Startup: if the project asks for viewport stretching, create the
-/// offscreen image and stash it in `ViewportStretchImage`. Disabled
-/// mode is a no-op — the resource never gets inserted, so every
-/// downstream system can early-out by checking for its absence.
-fn setup_stretch(
+/// What a `[viewport]` change asks of the stretch pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StretchAction {
+    /// Already as configured.
+    Keep,
+    /// Stretching was off: create the offscreen image and the blit pass.
+    Create(UVec2),
+    /// Stretching stays on at a new resolution: resize the offscreen image.
+    Resize(UVec2),
+    /// Stretching was on and is now off: render to the window again.
+    Remove,
+}
+
+/// The offscreen resolution `[viewport]` asks for, or `None` for no stretching.
+/// A zero width or height is treated as off rather than as a zero-pixel target,
+/// which wgpu would refuse.
+fn wanted_stretch(cfg: &renzora_project_api::ViewportConfig) -> Option<UVec2> {
+    (cfg.stretch_mode != StretchMode::Disabled && cfg.width > 0 && cfg.height > 0)
+        .then(|| UVec2::new(cfg.width, cfg.height))
+}
+
+/// Compare the stretch pass that exists (`current`, its offscreen size) with
+/// the one wanted.
+fn stretch_action(current: Option<UVec2>, wanted: Option<UVec2>) -> StretchAction {
+    match (current, wanted) {
+        (None, None) => StretchAction::Keep,
+        (None, Some(size)) => StretchAction::Create(size),
+        (Some(_), None) => StretchAction::Remove,
+        (Some(have), Some(want)) if have == want => StretchAction::Keep,
+        (Some(_), Some(want)) => StretchAction::Resize(want),
+    }
+}
+
+/// The blit sprite and blit camera, which go together.
+type BlitPassFilter = Or<(With<BlitSprite>, With<BlitCamera>)>;
+/// A camera's layers, its MSAA, and whether that MSAA was already recorded.
+type CameraMsaa = (Option<&'static RenderLayers>, Option<&'static Msaa>, Has<StretchedMsaa>);
+/// [`CameraMsaa`] plus the entity and where it draws.
+type RedirectCamera = (
+    Entity,
+    Option<&'static RenderLayers>,
+    &'static RenderTarget,
+    Option<&'static Msaa>,
+    Has<StretchedMsaa>,
+);
+/// Every camera but the blit camera, with where it draws and the MSAA it had
+/// before stretching.
+type GameCameraTargets<'w, 's> = Query<
+    'w,
+    's,
+    (Entity, &'static RenderTarget, Option<&'static StretchedMsaa>),
+    (With<Camera>, Without<BlitCamera>),
+>;
+
+/// Bring the stretch pass in line with `[viewport]`. Disabled mode leaves no
+/// `ViewportStretchImage`, so every downstream system can early-out on its
+/// absence.
+///
+/// A resize replaces the image's contents under the same handle rather than
+/// making a new one: every redirected camera targets that handle, so they all
+/// follow without being touched, and the blit sprite is re-laid out by
+/// `update_blit_layout` because the resource changed.
+fn sync_stretch(
     project: Option<Res<renzora_project_api::CurrentProject>>,
+    stretch: Option<ResMut<ViewportStretchImage>>,
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
+    blit_pass: Query<Entity, BlitPassFilter>,
+    cameras: GameCameraTargets,
 ) {
     let Some(project) = project else {
-        warn!("[viewport_stretch] No project — stretch disabled");
+        warn!("[viewport_stretch] No project, stretch disabled");
         return;
     };
     let cfg = &project.config.viewport;
-    if cfg.stretch_mode == StretchMode::Disabled {
-        return;
+    if cfg.stretch_mode != StretchMode::Disabled && (cfg.width == 0 || cfg.height == 0) {
+        warn!("[viewport_stretch] viewport.width/height is 0, falling back to disabled");
     }
-    if cfg.width == 0 || cfg.height == 0 {
-        warn!("[viewport_stretch] viewport.width/height is 0 — falling back to disabled");
-        return;
+    let current = stretch.as_ref().map(|s| s.size);
+    match stretch_action(current, wanted_stretch(cfg)) {
+        StretchAction::Keep => {}
+        StretchAction::Create(size) => {
+            let handle = images.add(stretch_image(size));
+            spawn_blit_pass(&mut commands, &handle, size);
+            commands.insert_resource(ViewportStretchImage { image: handle, size });
+            info!(
+                "[viewport_stretch] stretch={:?} aspect={:?} viewport={}x{} (offscreen image created)",
+                cfg.stretch_mode, cfg.aspect_mode, size.x, size.y
+            );
+        }
+        StretchAction::Resize(size) => {
+            let Some(mut stretch) = stretch else { return };
+            if let Err(e) = images.insert(stretch.image.id(), stretch_image(size)) {
+                warn!("[viewport_stretch] could not resize the offscreen image: {e}");
+                return;
+            }
+            stretch.size = size;
+            info!("[viewport_stretch] viewport resized to {}x{}", size.x, size.y);
+        }
+        StretchAction::Remove => {
+            let Some(stretch) = stretch else { return };
+            for entity in &blit_pass {
+                commands.entity(entity).try_despawn();
+            }
+            // Point every camera that was drawing into the offscreen image back
+            // at the window, with the MSAA it had before stretching forced it
+            // off for the nearest-neighbour upscale.
+            let window = RenderTarget::Window(bevy::window::WindowRef::Primary);
+            for (entity, target, saved) in &cameras {
+                if !matches!(target, RenderTarget::Image(t) if t.handle == stretch.image) {
+                    continue;
+                }
+                crate::camera_target::retarget(&mut commands, entity, window.clone());
+                let mut e = commands.entity(entity);
+                match saved {
+                    Some(StretchedMsaa(Some(msaa))) => {
+                        e.insert(*msaa);
+                    }
+                    Some(StretchedMsaa(None)) => {
+                        e.remove::<Msaa>();
+                    }
+                    // Redirected before this was recorded: Off is always valid.
+                    None => {}
+                }
+                e.remove::<StretchedMsaa>();
+            }
+            commands.remove_resource::<ViewportStretchImage>();
+            info!("[viewport_stretch] stretch disabled, rendering to the window");
+        }
     }
+}
 
+/// The offscreen image the game cameras render into, at `size`.
+fn stretch_image(size: UVec2) -> Image {
     let size = Extent3d {
-        width: cfg.width,
-        height: cfg.height,
+        width: size.x,
+        height: size.y,
         depth_or_array_layers: 1,
     };
 
@@ -110,36 +245,21 @@ fn setup_stretch(
     // Nearest-neighbour sampler: the whole point of viewport stretch
     // for pixel art. Linear here would smear every pixel block.
     image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::nearest());
-
-    let handle = images.add(image);
-    commands.insert_resource(ViewportStretchImage {
-        image: handle,
-        size: UVec2::new(cfg.width, cfg.height),
-    });
-
-    info!(
-        "[viewport_stretch] stretch={:?} aspect={:?} viewport={}x{} (offscreen image created)",
-        cfg.stretch_mode, cfg.aspect_mode, cfg.width, cfg.height
-    );
+    image
 }
 
-/// Startup: spawn the second render pass that draws the offscreen
-/// image to the OS window. A dedicated `Camera2d` on a high render
-/// layer views a sprite that displays the offscreen image. Only runs
-/// when `ViewportStretchImage` exists (i.e. stretch mode is Viewport).
-fn spawn_blit_pass(stretch: Option<Res<ViewportStretchImage>>, mut commands: Commands) {
-    let Some(stretch) = stretch else {
-        return;
-    };
-
+/// Spawn the second render pass that draws the offscreen image to the OS
+/// window. A dedicated `Camera2d` on a high render layer views a sprite that
+/// displays the offscreen image.
+fn spawn_blit_pass(commands: &mut Commands, image: &Handle<Image>, size: UVec2) {
     // Sprite displaying the offscreen image. `custom_size` gets
     // updated each frame by `update_blit_layout` to letterbox/
     // pillarbox the window. Centred at world (0, 0) so the blit
     // camera can sit at origin too.
     commands.spawn((
         Sprite {
-            image: stretch.image.clone(),
-            custom_size: Some(stretch.size.as_vec2()),
+            image: image.clone(),
+            custom_size: Some(size.as_vec2()),
             ..default()
         },
         Transform::default(),
@@ -177,16 +297,13 @@ fn spawn_blit_pass(stretch: Option<Res<ViewportStretchImage>>, mut commands: Com
 fn redirect_game_cameras_to_offscreen(
     stretch: Option<Res<ViewportStretchImage>>,
     mut commands: Commands,
-    cameras: Query<
-        (Entity, Option<&RenderLayers>, &RenderTarget),
-        (With<Camera2d>, Without<BlitCamera>),
-    >,
+    cameras: Query<RedirectCamera, (With<Camera2d>, Without<BlitCamera>)>,
 ) {
     let Some(stretch) = stretch else {
         return;
     };
 
-    for (entity, layers, current_target) in cameras.iter() {
+    for (entity, layers, current_target, msaa, saved) in cameras.iter() {
         // Only redirect cameras that render the default game layer (0).
         // RenderLayers::default() is layer 0; treat missing component
         // the same way.
@@ -201,10 +318,16 @@ fn redirect_game_cameras_to_offscreen(
         // upscaling the AA-blended edge pixels in the offscreen image
         // get blown up into full-size dark borders around every sprite
         // — exactly what kills the look for pixel-art games. Force Off
-        // on every camera that renders into the offscreen image.
-        commands
-            .entity(entity)
-            .insert((RenderTarget::Image(stretch.image.clone().into()), Msaa::Off));
+        // on every camera that renders into the offscreen image, keeping
+        // what it had for when stretching is turned off.
+        crate::camera_target::retarget(
+            &mut commands,
+            entity,
+            (RenderTarget::Image(stretch.image.clone().into()), Msaa::Off),
+        );
+        if !saved {
+            commands.entity(entity).insert(StretchedMsaa(msaa.copied()));
+        }
     }
 }
 
@@ -217,7 +340,7 @@ fn redirect_game_cameras_to_offscreen(
 fn on_camera_2d_added_redirect(
     trigger: On<Insert<Camera2d>>,
     stretch: Option<Res<ViewportStretchImage>>,
-    cameras: Query<Option<&RenderLayers>, With<Camera2d>>,
+    cameras: Query<CameraMsaa, With<Camera2d>>,
     blit_cameras: Query<(), With<BlitCamera>>,
     mut commands: Commands,
 ) {
@@ -228,16 +351,21 @@ fn on_camera_2d_added_redirect(
     if blit_cameras.get(entity).is_ok() {
         return;
     }
-    let Ok(layers) = cameras.get(entity) else {
+    let Ok((layers, msaa, saved)) = cameras.get(entity) else {
         return;
     };
     let on_game_layer = layers.is_none_or(|l| l.intersects(&RenderLayers::default()));
     if !on_game_layer {
         return;
     }
-    commands
-        .entity(entity)
-        .insert((RenderTarget::Image(stretch.image.clone().into()), Msaa::Off));
+    crate::camera_target::retarget(
+        &mut commands,
+        entity,
+        (RenderTarget::Image(stretch.image.clone().into()), Msaa::Off),
+    );
+    if !saved {
+        commands.entity(entity).insert(StretchedMsaa(msaa.copied()));
+    }
 }
 
 /// Resize the blit sprite each frame to fit the current window with
@@ -260,12 +388,13 @@ fn update_blit_layout(
     mut force_first: Local<bool>,
 ) {
     // Only do work when something has actually changed: window
-    // resize, project change (e.g. live-reload), or the very first
-    // tick after spawn.
+    // resize, project change (e.g. live-reload), the stretch pass being
+    // created or resized, or the very first tick after spawn.
     let resized = !resize_events.is_empty();
     resize_events.clear();
     let project_changed = project.as_ref().is_some_and(|p| p.is_changed());
-    if !resized && !project_changed && *force_first {
+    let stretch_changed = stretch.as_ref().is_some_and(|s| s.is_changed());
+    if !resized && !project_changed && !stretch_changed && *force_first {
         return;
     }
     *force_first = true;
@@ -321,4 +450,70 @@ fn update_blit_layout(
     // sprite extends symmetrically around this point.
     transform.translation.x = win_w * 0.5;
     transform.translation.y = -win_h * 0.5;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_project_api::ViewportConfig;
+
+    fn viewport(stretch_mode: StretchMode, width: u32, height: u32) -> ViewportConfig {
+        ViewportConfig { width, height, stretch_mode, ..ViewportConfig::default() }
+    }
+
+    #[test]
+    fn disabled_or_zero_sized_wants_no_stretch() {
+        assert_eq!(wanted_stretch(&viewport(StretchMode::Disabled, 320, 180)), None);
+        assert_eq!(wanted_stretch(&viewport(StretchMode::Viewport, 0, 180)), None);
+        assert_eq!(wanted_stretch(&viewport(StretchMode::Viewport, 320, 0)), None);
+        assert_eq!(
+            wanted_stretch(&viewport(StretchMode::Viewport, 320, 180)),
+            Some(UVec2::new(320, 180))
+        );
+    }
+
+    #[test]
+    fn stretch_actions() {
+        let small = UVec2::new(320, 180);
+        let large = UVec2::new(640, 360);
+        assert_eq!(stretch_action(None, None), StretchAction::Keep);
+        assert_eq!(stretch_action(None, Some(small)), StretchAction::Create(small));
+        assert_eq!(stretch_action(Some(small), Some(small)), StretchAction::Keep);
+        assert_eq!(stretch_action(Some(small), Some(large)), StretchAction::Resize(large));
+        assert_eq!(stretch_action(Some(small), None), StretchAction::Remove);
+    }
+
+    /// Stretching forces a camera's MSAA off; turning it off again gives the
+    /// camera back what it had.
+    #[test]
+    fn leaving_stretch_mode_restores_the_cameras_msaa() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::asset::AssetPlugin::default()))
+            .init_asset::<Image>()
+            // Bevy's window plugin registers this in a real game.
+            .add_message::<WindowResized>()
+            .insert_resource(renzora_project_api::CurrentProject {
+                path: "game".into(),
+                config: Default::default(),
+            })
+            .add_plugins(ViewportStretchPlugin);
+        let camera = app.world_mut().spawn((Camera2d, Msaa::Sample4)).id();
+        app.update();
+
+        let set_stretch = |app: &mut App, mode: StretchMode| {
+            let mut p = app.world_mut().resource_mut::<renzora_project_api::CurrentProject>();
+            p.config.viewport = viewport(mode, 320, 180);
+        };
+        set_stretch(&mut app, StretchMode::Viewport);
+        app.update();
+        app.update();
+        assert_eq!(app.world().get::<Msaa>(camera), Some(&Msaa::Off));
+        assert!(matches!(app.world().get::<RenderTarget>(camera), Some(RenderTarget::Image(_))));
+
+        set_stretch(&mut app, StretchMode::Disabled);
+        app.update();
+        assert_eq!(app.world().get::<Msaa>(camera), Some(&Msaa::Sample4));
+        assert!(matches!(app.world().get::<RenderTarget>(camera), Some(RenderTarget::Window(_))));
+        assert!(app.world().get::<StretchedMsaa>(camera).is_none());
+    }
 }

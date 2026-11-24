@@ -332,6 +332,20 @@ pub struct LanguageChanged {
     pub code: String,
 }
 
+/// The project's own `languages/*.toml` packs, as source text, for a game
+/// whose files are packed in an rpak.
+///
+/// The language runtime reads a project's packs from disk itself, but it
+/// cannot open the archive: that belongs to the engine crate that loads the
+/// project. So that crate reads them out while it loads `project.toml` and
+/// leaves them here, before the language plugin builds and picks the language
+/// the game starts in (which may be one only the project provides).
+#[derive(Resource, Debug, Clone, Default)]
+pub struct ProjectLanguagePacks {
+    /// `(archive key, toml source)`, for the log line a bad pack gets.
+    pub sources: Vec<(String, String)>,
+}
+
 #[cfg(test)]
 mod tests {
     /// Every shipped pack must parse. A pack that fails is skipped at load with

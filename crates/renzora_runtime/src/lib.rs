@@ -59,16 +59,41 @@ pub use renzora_native_plugin;
 /// Loading the editor image beside the executable — see the module docs for why
 /// one binary can be both the editor and the game.
 pub mod editor_image;
+/// The game's `project.toml`, read before the `App` exists, for the renderer
+/// backend and the server's `[network]` section.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod early_project;
 pub mod embed;
+/// `[window] max_fps`: the game's frame-rate limit. Desktop only: on the web
+/// the browser paces frames, and a page cannot block its thread to wait.
+#[cfg(not(target_arch = "wasm32"))]
+mod frame_limit;
 /// Dedicated-server / host-server startup, behind the `networking` feature.
 pub mod server;
 mod plugins;
 mod render_scale;
+/// Retarget a camera so Bevy recomputes its size; see the module doc.
+mod camera_target;
+/// `set_setting` / `get_setting` for scripts: the generic route into the
+/// runtime's game settings.
+#[cfg(feature = "scripting")]
+mod settings_actions;
+/// Which graphics backend this process asks wgpu for: the editor's preference
+/// in the editor, the project's `[rendering] backend` in a game.
+#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+pub mod renderer_backend;
+#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+use renderer_backend::requested_backends;
 #[cfg(all(feature = "virtual_geometry", feature = "terrain"))]
 mod terrain_vg;
 /// `RENZORA_SHUFFLE_SEED`: shuffle system order to expose ordering bugs.
 pub mod schedule_shuffle;
+/// `[rendering_2d] image_filter`, applied live to sprite textures.
+#[cfg(feature = "render_2d")]
+mod sprite_filter;
 mod viewport_stretch;
+/// `[window]`: the game window's size, mode and vsync, applied live.
+mod window_config;
 
 // ── App setup (single source of truth for engine plugin registration) ────
 
@@ -111,38 +136,8 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
     #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
     {
         use bevy::render::settings::{Backends, WgpuFeatures, WgpuSettings};
-        use renzora_project_api::RendererBackend;
 
-        // Per-OS default, used when the preference is `Auto`. Vulkan is the
-        // standard backend on Windows, Linux and the BSDs — it's the one path
-        // shared across most platforms and gives the best experience here (fast
-        // load, clean splash, no DX12 frame-flicker). The play-mode crash that
-        // once pushed us toward DX12 was never Vulkan's fault: it came from
-        // Bevy's default `Backends::all()` loading the DX12/DXGI backend
-        // alongside Vulkan, and DXGI's occlusion handling clobbering the Vulkan
-        // surface when the runtime window took the foreground. Pinning to a
-        // single backend here — which `Auto` now always does — removes that, so
-        // Vulkan is both the fastest and the safe default. DX12 remains a
-        // user-selectable fallback for Windows machines with weak/missing Vulkan
-        // drivers (see `RendererBackend`). Metal is the first-class (and only)
-        // backend on Apple platforms.
-        #[cfg(target_os = "windows")]
-        let default_backend = Backends::VULKAN;
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        let default_backend = Backends::METAL;
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
-        let default_backend = Backends::VULKAN;
-
-        // User override persisted under `~/.renzora/renderer.toml`. Read here
-        // because wgpu selects the backend at render-plugin build time and
-        // can't change it afterwards; `Auto` keeps the per-OS default above.
-        let backends = match renzora_project_api::load_renderer_backend() {
-            RendererBackend::Auto => default_backend,
-            RendererBackend::Dx12 => Backends::DX12,
-            RendererBackend::Vulkan => Backends::VULKAN,
-            RendererBackend::Metal => Backends::METAL,
-            RendererBackend::Gl => Backends::GL,
-        };
+        let backends = requested_backends();
 
         // Wireframe (`PolygonMode::Line`) for the editor viewport — supported on
         // DX12, Vulkan and Metal but NOT OpenGL, so requesting it as a *required*
@@ -201,25 +196,11 @@ pub fn raytracing_supported() -> bool {
     use std::sync::OnceLock;
     static SUPPORTED: OnceLock<bool> = OnceLock::new();
     *SUPPORTED.get_or_init(|| {
-        use renzora_project_api::RendererBackend;
         use wgpu::Backends;
 
-        // Mirror `platform_wgpu_settings`' backend selection so the probe sees
-        // the same adapter the renderer will.
-        #[cfg(target_os = "windows")]
-        let default_backend = Backends::VULKAN;
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        let default_backend = Backends::METAL;
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
-        let default_backend = Backends::VULKAN;
-
-        let backends = match renzora_project_api::load_renderer_backend() {
-            RendererBackend::Auto => default_backend,
-            RendererBackend::Dx12 => Backends::DX12,
-            RendererBackend::Vulkan => Backends::VULKAN,
-            RendererBackend::Metal => Backends::METAL,
-            RendererBackend::Gl => Backends::GL,
-        };
+        // The same backend `platform_wgpu_settings` asks for, so the probe sees
+        // the adapter the renderer will.
+        let backends = requested_backends();
         // OpenGL has no ray-tracing path — skip the probe entirely.
         if backends == Backends::GL {
             return false;
@@ -271,23 +252,7 @@ pub fn gpu_is_integrated() -> bool {
     use std::sync::OnceLock;
     static INTEGRATED: OnceLock<bool> = OnceLock::new();
     *INTEGRATED.get_or_init(|| {
-        use renzora_project_api::RendererBackend;
-        use wgpu::Backends;
-
-        #[cfg(target_os = "windows")]
-        let default_backend = Backends::VULKAN;
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
-        let default_backend = Backends::METAL;
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
-        let default_backend = Backends::VULKAN;
-
-        let backends = match renzora_project_api::load_renderer_backend() {
-            RendererBackend::Auto => default_backend,
-            RendererBackend::Dx12 => Backends::DX12,
-            RendererBackend::Vulkan => Backends::VULKAN,
-            RendererBackend::Metal => Backends::METAL,
-            RendererBackend::Gl => Backends::GL,
-        };
+        let backends = requested_backends();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends,
@@ -538,6 +503,10 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // race — see the function doc for why the IO workers need a larger stack.
     init_io_task_pool_with_large_stack();
     insert_dlss_project_id(app);
+    // Before `platform_wgpu_settings` below, which reads it: the editor asks for
+    // its user's backend, a game for its project's. See `renderer_backend`.
+    #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+    let backend_choice = renderer_backend::select(is_editor);
     let plugins = DefaultPlugins
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(Box::new(platform_wgpu_settings())),
@@ -788,6 +757,8 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     if !xr_boot_note.is_empty() {
         info!("[runtime] {xr_boot_note}");
     }
+    #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+    renderer_backend::log(backend_choice);
 
     // The direct measurement, not the inference. Disabling this plugin is the
     // ONLY thing the XR boot does that costs a flat editor frames: it serializes
@@ -873,16 +844,21 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Update, apply_editor_window_icon);
     } else {
-        // `apply_window_config` only touches the `Window` component, so it can
-        // run on Startup. `apply_window_icon` needs `WinitWindows`, which is
-        // only created after winit's `resumed` event fires — well after
-        // `Startup` — so it has to live on `Update` and self-disable once
-        // it's applied. Editor sessions skip both: the editor owns its chrome,
-        // and otherwise the open project's window config would be applied to
-        // the editor's own window.
-        app.add_systems(Startup, apply_window_config);
+        // `[window]` applies at Startup and again whenever `CurrentProject`
+        // changes, so a game's own settings menu can change it; see
+        // `window_config`. `apply_window_icon` needs `WinitWindows`, which is
+        // only created after winit's `resumed` event fires (well after
+        // `Startup`), so it lives on `Update` and self-disables once it's
+        // applied. Editor sessions skip both: the editor owns its chrome, and
+        // otherwise the open project's window config would be applied to the
+        // editor's own window.
+        window_config::register(app);
         app.add_systems(Update, apply_window_icon);
         embed::register(app);
+        // The game's frame-rate limit, here so it covers the shipped game and
+        // the Play child and never the editor's own window.
+        #[cfg(not(target_arch = "wasm32"))]
+        frame_limit::register(app);
     }
 }
 
@@ -1213,6 +1189,9 @@ pub fn add_companion_rendering(app: &mut App) {
 
     init_io_task_pool_with_large_stack();
     insert_dlss_project_id(app);
+    // The companion works for the editor, so it renders on the editor's backend.
+    #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+    renderer_backend::select(true);
     app.add_plugins(
         DefaultPlugins
             .set(RenderPlugin {
@@ -1242,95 +1221,6 @@ pub fn add_companion_rendering(app: &mut App) {
         focused_mode: UpdateMode::reactive(Duration::from_millis(100)),
         unfocused_mode: UpdateMode::reactive_low_power(Duration::from_millis(250)),
     });
-}
-
-/// Apply `CurrentProject.config.window` to the primary window at runtime startup.
-///
-/// The runtime template ships pre-built — every project would otherwise see
-/// the same hardcoded "Renzora", `decorations: false`, maximized layout. This
-/// system reads the project config (loaded from the rpak by `RuntimePlugin`
-/// before `Startup` runs) and applies the user's choices.
-fn apply_window_config(
-    project: Option<Res<renzora_project_api::CurrentProject>>,
-    mut windows: Query<&mut bevy::window::Window, With<bevy::window::PrimaryWindow>>,
-) {
-    use bevy::window::WindowMode as BevyWindowMode;
-
-    let Ok(mut window) = windows.single_mut() else {
-        return;
-    };
-    let Some(project) = project else {
-        warn!("[runtime] No project loaded — window config not applied");
-        return;
-    };
-
-    if project.config.console_logging {
-        attach_console();
-    }
-
-    let cfg = &project.config.window;
-    // The title is the one setting that means something everywhere: on the web
-    // it becomes the document title rather than a title bar.
-    window.title = project.config.name.clone();
-
-    // ── The web has no window for a game to configure ────────────────────────
-    //
-    // Everything below this point describes an OS window, and on wasm the
-    // "window" IS the canvas — sized by the page, with no decorations, no
-    // resizability of its own, and a present mode the browser owns (rAF).
-    //
-    // `resolution.set` is the one that actually broke something, and visibly:
-    // the window is created with `fit_canvas_to_parent`, which negotiates the
-    // canvas size against `#stage` — and then this ran at `Startup` and stomped
-    // it with the project's configured size. Because the parent never changes
-    // afterwards, the ResizeObserver has no reason to fire and nothing ever puts
-    // it back, so an exported game rendered into a 1280x720 box in the corner of
-    // a black page. That is the identical symptom the `fit_canvas_to_parent`
-    // comment above warns about, reintroduced one system later.
-    //
-    // Fullscreen is not merely inapplicable but impossible from here:
-    // `requestFullscreen` is gated on a user gesture, so a game that wants it on
-    // the web has to ask for it from an input handler.
-    // Inside the editor's Game panel the editor owns the window's size and
-    // shape, and any change here would make winit restyle it back into a
-    // top-level window; see `embed`.
-    #[cfg(not(target_arch = "wasm32"))]
-    if embed::embed_parent().is_some() {
-        return;
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        window.resizable = cfg.resizable;
-        window.resolution.set(cfg.width as f32, cfg.height as f32);
-        // Vertical sync. The window is created with Bevy's default `PresentMode`
-        // (vsync); apply the project's choice here so a game can uncap its frame
-        // rate (and so the true per-frame cost is measurable on a fast GPU).
-        // `AutoNoVsync` rather than `Immediate` so wgpu falls back to a supported
-        // present mode on adapters that lack tear-free mailbox/immediate.
-        window.present_mode = if cfg.vsync {
-            bevy::window::PresentMode::AutoVsync
-        } else {
-            bevy::window::PresentMode::AutoNoVsync
-        };
-
-        match cfg.mode {
-            renzora_project_api::WindowMode::Windowed => {
-                window.decorations = true;
-                window.mode = BevyWindowMode::Windowed;
-            }
-            renzora_project_api::WindowMode::Fullscreen => {
-                window.decorations = false;
-                window.mode =
-                    BevyWindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current);
-            }
-            renzora_project_api::WindowMode::Borderless => {
-                window.decorations = false;
-                window.mode = BevyWindowMode::Windowed;
-            }
-        }
-    }
-    #[cfg(target_arch = "wasm32")]
-    let _ = (cfg, BevyWindowMode::Windowed);
 }
 
 /// Attach a console window so subsequent stdout/stderr (Bevy log output) is
@@ -1611,6 +1501,11 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     {
         info!("[runtime] foundation: ScriptingPlugin");
         app.add_plugins(renzora_scripting::ScriptingPlugin::default());
+        // `set_setting` / `get_setting`: scripts read and change game settings
+        // through the runtime's store. Registered in every session, not only a
+        // game, because the editor needs its guard that strips the per-entity
+        // settings mirror the live link can bring across from a Play child.
+        settings_actions::register(app);
     }
     #[cfg(feature = "physics")]
     {
@@ -1630,6 +1525,12 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
         // Shipped game adopts the project's default UI font.
         app.add_systems(Update, apply_game_ui_font);
     }
+
+    // `[rendering_2d] image_filter` on sprites already loaded. Here rather than
+    // beside the sprite rehydration in `renzora_engine`, and in both sessions:
+    // the editor viewport shows the game, so it should follow the setting too.
+    #[cfg(feature = "render_2d")]
+    sprite_filter::register(app);
 
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image

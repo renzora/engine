@@ -196,7 +196,7 @@ light2d = ["dep:renzora_light2d"]
 # is only there to keep replication bookkeeping out of saved scenes. A
 # single-player game strips the lot, and `--server` on such a build boots as an
 # ordinary client with a warning rather than silently pretending.
-networking = ["dep:renzora_network", "renzora_engine/networking", "dep:toml"]
+networking = ["dep:renzora_network", "renzora_engine/networking"]
 # Code that draws with a `Gizmos` param. Paired with the exporter's Debug-gizmos
 # capability, which strips bevy's `bevy_gizmos` — every crate that draws one has
 # to disappear at the same moment or the build fails on a missing type. `?/` so
@@ -446,10 +446,11 @@ renzora_terrain_graph = { path = "../renzora_terrain_graph" }
 # libloading in would be a dependency that cannot work on that target.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading = "0.8"
-# `server.rs` reads `project.toml`'s `[network]` section. Optional under
-# `networking`, which is also the only thing that compiles that module — a
-# single-player export drops the parser with the stack it was parsing for.
-toml = { version = "0.8", optional = true }
+# `early_project.rs` parses the game's `project.toml` before the `App` exists,
+# for the renderer backend and the server's `[network]` section. Not optional:
+# every desktop game picks a backend, and `renzora_engine` already compiles the
+# parser, so it adds nothing to the build.
+toml = "0.8"
 
 [lints]
 workspace = true

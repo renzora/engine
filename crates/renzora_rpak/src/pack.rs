@@ -420,6 +420,13 @@ where
         }
     }
 
+    // The project's own language packs. Nothing names them by path: the
+    // runtime loads every `languages/*.toml` it finds, so the walk would never
+    // reach one and a translated game would ship in English only.
+    for key in project_language_keys(project_dir) {
+        try_pack(&key, &mut packer, &mut visited, &mut queue, &mut on_packed);
+    }
+
     // Rust scripts are entry points too, and they are the one kind that never
     // enters the archive itself.
     //
@@ -1359,6 +1366,22 @@ fn extract_delimited_asset_paths(text: &str, quote: u8) -> Vec<String> {
 }
 
 /// Whether an archive key is an SVG (`.svg` or gzipped `.svgz`).
+/// Archive keys of the project's `languages/*.toml` packs, sorted.
+fn project_language_keys(project_dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(project_dir.join("languages")) else {
+        return Vec::new();
+    };
+    let mut keys: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .filter(|name| name.to_ascii_lowercase().ends_with(".toml"))
+        .map(|name| format!("languages/{name}"))
+        .collect();
+    keys.sort();
+    keys
+}
+
 fn is_svg_key(key: &str) -> bool {
     let lower = key.to_ascii_lowercase();
     lower.ends_with(".svg") || lower.ends_with(".svgz")
@@ -1506,6 +1529,23 @@ fn strip_editor_section(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::read::RpakArchive;
+
+    /// A translated game ships its translations: nothing references a language
+    /// pack by path, so the walk has to seed them itself.
+    #[test]
+    fn project_language_packs_are_packed() {
+        let dir = std::env::temp_dir().join("renzora_rpak_test_languages");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("languages")).unwrap();
+        std::fs::write(dir.join("project.toml"), "name = \"t\"\n").unwrap();
+        std::fs::write(dir.join("languages/fr.toml"), "[meta]\ncode = \"fr\"\n").unwrap();
+        std::fs::write(dir.join("languages/notes.txt"), "not a pack").unwrap();
+
+        let keys = referenced_keys(&dir).unwrap();
+        assert!(keys.contains(&"languages/fr.toml".to_string()), "{keys:?}");
+        assert!(!keys.iter().any(|k| k.ends_with("notes.txt")), "{keys:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn new_packer_is_empty() {

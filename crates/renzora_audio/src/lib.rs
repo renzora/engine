@@ -69,7 +69,7 @@ cfg_if::cfg_if! {
         };
         pub use preview::AudioPreviewState;
         pub use runtime::{ActiveVoices, SoundCache};
-        pub use systems::{AudioListener, AudioSet, MasterVolume, MusicVoice};
+        pub use systems::{AudioListener, AudioSet, MusicVoice};
         pub use timeline::{
             ClipId, TimelineClip, TimelineState, TimelineTrack, TrackId, Transport, TransportState,
         };
@@ -130,7 +130,6 @@ impl Plugin for AudioPlugin {
                 .init_resource::<runtime::ActiveVoices>()
                 .init_resource::<timeline_scheduler::ActiveClips>()
                 .init_resource::<systems::MusicVoice>()
-                .init_resource::<systems::MasterVolume>()
                 .insert_resource(AudioPreviewState::default())
                 .insert_resource(mixer::MixerState::default())
                 .insert_resource(AudioCommandQueue::default())
@@ -166,15 +165,16 @@ impl Plugin for AudioPlugin {
                     Update,
                     systems::apply_audio_player_edits.in_set(AudioSet::Sync),
                 )
-                // Load the board before syncing it, so a freshly-opened project
-                // reaches the backend on the same frame; save after, so a change
-                // made this frame is what gets written.
+                // Reconcile the board with the settings store before pushing it
+                // at the backend, so a volume a script or settings menu set this
+                // frame (the command pass above runs first) is heard this frame;
+                // persist after, so the editor writes what was just agreed.
                 .add_systems(
                     Update,
                     (
-                        mixer::load_mixer_config,
+                        mixer::sync_mixer_with_settings,
                         runtime::sync_mixer_to_backend,
-                        mixer::save_mixer_config,
+                        mixer::persist_audio_settings,
                     )
                         .chain()
                         .in_set(AudioSet::Sync),
@@ -205,6 +205,15 @@ impl Plugin for AudioPlugin {
             // Consume audio ScriptActions (play_sound/play_music/etc.) emitted by
             // scripts, forwarding them to the command queue.
             _app.add_observer(crate::script_actions::handle_audio_script_actions);
+
+            // Declare the mixer functions to every language backend. Declared
+            // here, by the crate that owns the mixer, rather than written into
+            // an interpreter, so a second language gets them for nothing.
+            _app.world_mut()
+                .get_resource_or_insert_with(
+                    renzora_scripting_api::script_extension::ScriptExtensions::default,
+                )
+                .register(script_actions::AudioScriptExtension);
         }
     }
 }

@@ -85,6 +85,10 @@ max_clients = 32
 
 > The `[network]` section is optional. If it is absent the engine uses the built-in defaults (loopback, port 7636, 64 Hz, 32 clients, UDP).
 
+The server reads the game's own project, wherever it lives, in the same order the rest of the game does: the rpak (the `--rpak server.rpak` a server launcher passes, or the one packed into the binary), then `--project <path>`, then a `project.toml` in the working directory. A packed server therefore uses the `[network]` it was exported with; it used to look only for a `project.toml` on disk, which a packed game does not have, and silently ran on the defaults. The section is read once, at startup, because the tick rate sets the headless run loop before the engine starts: a change applies the next time the server starts.
+
+A client does not read `[network]` yet: a script passes the address and port to `net_connect` itself.
+
 ## Connecting clients
 
 A plain `renzora` launch is a windowed **client**. It does not connect to anything automatically — connection is requested dynamically from a script via the `action()` event bus, which sets a `PendingNetworkConnect` resource that the network plugin acts on:

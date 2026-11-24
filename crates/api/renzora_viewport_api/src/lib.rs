@@ -534,6 +534,10 @@ pub use renzora_scene_api::RenderResolution;
 // keeps resolving.
 pub use renzora_project_api::{GraphicsQuality, QualityGate};
 
+// The player's multiplier on the game UI's canvas fit.
+mod ui_scale;
+pub use ui_scale::GameUiScale;
+
 /// The render resolution the editor viewport is currently rendering at, derived
 /// each frame from the relevant scene camera's [`renzora_scene_api::CameraRenderResolution`]
 /// (selected camera → default camera → first scene camera). Read by the viewport

@@ -17,6 +17,7 @@ pub mod project_config;
 pub mod project_files; // what changed on disk under the open project
 pub mod session; // process kind + the editor's one-shot requests
 pub mod settings_file; // project.toml model + editor preferences
+pub mod settings_path; // one setting by dotted path, for script get/set_setting
 mod quality; // the graphics-quality tier, a project setting
 mod app_state; // launcher/loading/editor phase and the open-project requests
 
@@ -27,3 +28,6 @@ pub use project_config::*;
 pub use project_files::*;
 pub use quality::*;
 pub use session::*;
+// Only the mirror component at the root: `get_setting` / `set_setting` are too
+// generic for it, and callers name the module.
+pub use settings_path::{SettingError, SettingsReadState};

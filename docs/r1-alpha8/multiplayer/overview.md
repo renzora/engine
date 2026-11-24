@@ -171,6 +171,7 @@ A plain client launches disconnected. Connection is driven through the generic `
 
 ```lua
 function on_ready()
+    -- With no arguments it connects to [network] server_addr:port.
     action("net_connect", { address = "127.0.0.1", port = 7636 })
 end
 

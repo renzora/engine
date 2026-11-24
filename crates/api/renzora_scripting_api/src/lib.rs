@@ -56,6 +56,10 @@ pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};
 
 pub mod script_bridge; // the inboxes scripting drains each frame
 pub mod input_actions; // named actions + the character controller queue
+pub mod input_map; // the rebindable action map a controls menu changes live
 pub mod reflection; // reading and writing a component field by its path
 pub use input_actions::*;
+// `default_actions` stays behind its module: too generic a name for the root
+// every plugin and script globs.
+pub use input_map::{ActionKind, InputAction, InputBinding, InputMap, RebindError};
 pub use script_bridge::*;

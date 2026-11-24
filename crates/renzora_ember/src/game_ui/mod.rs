@@ -166,6 +166,10 @@ impl Plugin for GameUiPlugin {
             .get_resource::<renzora_project_api::EditorSession>()
             .map(|s| s.0)
             .unwrap_or(false);
+        // The player's multiplier on that fit. Initialised in every session so
+        // a script can always write it; only the game's scaler reads it.
+        app.register_type::<renzora_viewport_api::GameUiScale>()
+            .init_resource::<renzora_viewport_api::GameUiScale>();
         if !is_editor {
             app.add_systems(Update, update_ui_scale);
         }
@@ -608,11 +612,17 @@ fn heal_canvas_root_transform(
 /// order. World canvases are excluded outright: their reference resolution is
 /// an offscreen target size, and letting one set the screen's scale meant a
 /// 512×512 wall panel could shrink the entire HUD.
+///
+/// The fit is then multiplied by [`GameUiScale`](renzora_viewport_api::GameUiScale),
+/// the player's own UI size. This system owns `UiScale` outright (it rewrites
+/// it whenever the fit moves), so a multiplier has to be applied here: a script
+/// writing `UiScale` itself would be undone on the next resize.
 fn update_ui_scale(
     canvases: Query<(Entity, &UiCanvas)>,
     render_target: Option<Res<renzora_project_api::ViewportRenderTarget>>,
     images: Res<Assets<Image>>,
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    player_scale: Option<Res<renzora_viewport_api::GameUiScale>>,
     mut ui_scale: ResMut<bevy::ui::UiScale>,
 ) {
     let primary = canvases
@@ -655,7 +665,8 @@ fn update_ui_scale(
         return;
     }
 
-    let scale = canvas.scale_mode().scale_for(ref_w, ref_h, actual_w, actual_h);
+    let fit = canvas.scale_mode().scale_for(ref_w, ref_h, actual_w, actual_h);
+    let scale = player_scale.map_or(fit, |p| p.apply(fit));
     // Guard the write: `UiScale` is change-detected and a dirty one re-lays out
     // the whole tree, which on a still window is every frame for nothing.
     if (ui_scale.0 - scale).abs() > f32::EPSILON {
@@ -965,5 +976,53 @@ mod invariant_tests {
             Some(root_canvas),
             "the widget must keep its own canvas parent"
         );
+    }
+}
+
+#[cfg(test)]
+mod scale_tests {
+    use super::*;
+    use crate::game_ui::components::UiCanvas;
+    use renzora_viewport_api::GameUiScale;
+
+    /// A 1280x720 Fit canvas in a 1920x1080 window: the fit alone is 1.5.
+    fn world_with_canvas_in_1080p() -> World {
+        let mut world = World::new();
+        world.init_resource::<Assets<Image>>();
+        world.init_resource::<bevy::ui::UiScale>();
+        world.spawn((
+            Window {
+                resolution: (1920u32, 1080u32).into(),
+                ..default()
+            },
+            bevy::window::PrimaryWindow,
+        ));
+        world.spawn(UiCanvas::default());
+        world
+    }
+
+    fn run_scaler(world: &mut World) -> f32 {
+        let mut schedule = Schedule::default();
+        schedule.add_systems(update_ui_scale);
+        schedule.run(world);
+        world.resource::<bevy::ui::UiScale>().0
+    }
+
+    #[test]
+    fn without_a_player_scale_the_fit_is_applied_as_is() {
+        let mut world = world_with_canvas_in_1080p();
+        assert!((run_scaler(&mut world) - 1.5).abs() < 1e-5);
+    }
+
+    /// The player's factor multiplies the fit, and a change to it is picked up
+    /// on the next pass rather than waiting for the window to move.
+    #[test]
+    fn the_player_scale_multiplies_the_fit_live() {
+        let mut world = world_with_canvas_in_1080p();
+        world.insert_resource(GameUiScale::default());
+        assert!((run_scaler(&mut world) - 1.5).abs() < 1e-5);
+
+        world.resource_mut::<GameUiScale>().set(1.2);
+        assert!((run_scaler(&mut world) - 1.8).abs() < 1e-5);
     }
 }

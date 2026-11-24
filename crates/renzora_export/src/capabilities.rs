@@ -1065,6 +1065,11 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "play_sound",
             "play_music",
             "play_audio",
+            // A settings menu may be the only audio code a script has.
+            "set_master_volume",
+            "set_bus_volume",
+            "set_bus_muted",
+            "renzora::audio",
         ],
         // Physics is deliberately absent here: the two backends share one set of
         // serialized components and one script API, so which dimension a project
@@ -1082,6 +1087,7 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "Networked",
             "NetworkOwner",
             "net_rpc",
+            "net_connect",
             // The call form, not the bare word: `rpc` alone is three letters
             // that turn up inside unrelated identifiers and hex blobs.
             "rpc(",
@@ -1123,18 +1129,17 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "BlenderFilmic",
             "TonemappingSettings",
         ],
-        // Translation, from the call rather than from the setting.
+        // Translation: does anything in this project ask for a translated
+        // string. The needles are the qualified call, never a bare `t(`: that
+        // matches `print(`, `expect(` and every other identifier ending in t,
+        // which is exactly the kind of needle that keeps a capability on for
+        // everyone. Markup's `{{ t("key") }}` is matched with its braces for the
+        // same reason.
         //
-        // There is no project-level language field to read — the active language
-        // is a per-user preference in `~/.renzora/editor.toml` — so the question
-        // becomes "does anything in this project ask for a translated string".
-        // The needles are the qualified call, never a bare `t(`: that matches
-        // `print(`, `expect(` and every other identifier ending in t, which is
-        // exactly the kind of needle that keeps a capability on for everyone.
-        //
-        // `scan_project` adds one more signal that is not a text match: a
-        // `languages/` directory of the project's own packs.
-        "localization" => &["lang::t(", "lang::t_or(", "renzora::lang"],
+        // `defaults_from_scan` adds two signals that are not text matches: a
+        // `languages/` directory of the project's own packs, and a
+        // `default_language` other than English.
+        "localization" => &["lang::t(", "lang::t_or(", "renzora::lang", "{{ t(", "{{t("],
         // `Gamepad` covers the components and the Rust script API; `gamepad_`
         // covers Lua's, where every entry point is `gamepad_button`,
         // `gamepad_left_stick` and so on.
@@ -1222,6 +1227,9 @@ pub struct ProjectScan {
     /// The scenes cannot answer this, since every backend reads the same
     /// components, and it is what decides whether avian ships.
     physics_backends: [Option<String>; 2],
+    /// `project.toml`'s `default_language`: the language the game starts in,
+    /// `None` when the project leaves it to the player's system.
+    default_language: Option<String>,
 }
 
 impl ProjectScan {
@@ -1266,6 +1274,7 @@ pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
         files: Vec::new(),
         dirs: Default::default(),
         physics_backends: physics_backends(root),
+        default_language: default_language(root),
     };
 
     let mut stack = vec![root.to_path_buf()];
@@ -1340,6 +1349,18 @@ fn physics_backends(root: &Path) -> [Option<String>; 2] {
             .map(str::to_string)
     };
     [name("backend_3d"), name("backend_2d")]
+}
+
+/// `project.toml`'s `default_language`, read the same tolerant way as
+/// [`physics_backends`].
+fn default_language(root: &Path) -> Option<String> {
+    std::fs::read_to_string(root.join("project.toml"))
+        .ok()?
+        .parse::<toml::Table>()
+        .ok()?
+        .get("default_language")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// Default on/off per capability for a fresh export, from an existing scan.
@@ -1435,9 +1456,12 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
                 }
                 "script_http" => scan.saw("http_get") || scan.saw("http_post"),
                 // A project shipping its own packs wants the runtime that loads
-                // them, whether or not its own code calls `t()`.
+                // them, whether or not its own code calls `t()`; so does one
+                // whose Game Language is anything but the English fallback.
                 "localization" => {
-                    detected("localization").unwrap_or(true) || scan.saw_dir("languages")
+                    detected("localization").unwrap_or(true)
+                        || scan.saw_dir("languages")
+                        || scan.default_language.as_deref().is_some_and(|l| l != "en")
                 }
                 _ => detected(c.id).unwrap_or(c.default_on),
             };
@@ -1817,6 +1841,36 @@ mod tests {
         let s = p.state();
         assert!(s["audio"], "`play_sound` is the only trace audio leaves");
         assert!(!s["navmesh"], "and it must not turn on everything else");
+    }
+
+    /// A settings menu that only sets volumes is still a game with sound, and
+    /// markup that asks for a translation still wants the language runtime.
+    #[test]
+    fn a_settings_menu_keeps_audio_and_localization() {
+        let p = TempProject::new(
+            "settings_menu",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+                ("scripts/menu.lua", "set_bus_volume(\"Music\", 0.5)\n"),
+                ("ui/menu.html", "<text>{{ t(\"menu.play\") }}</text>\n"),
+            ],
+        );
+        let s = p.state();
+        assert!(s["audio"]);
+        assert!(s["localization"]);
+    }
+
+    /// A game that starts in another language needs the packs for it.
+    #[test]
+    fn a_non_english_game_language_keeps_localization() {
+        let p = TempProject::new(
+            "game_language",
+            &[
+                ("project.toml", "name = \"g\"\ndefault_language = \"fr\"\n"),
+                ("scenes/level.bsn", "entity 1 {\n bevy_ecs::name::Name: \"a\",\n}\n"),
+            ],
+        );
+        assert!(p.state()["localization"]);
     }
 
     /// Physics has one set of components and one script API for two backends, so

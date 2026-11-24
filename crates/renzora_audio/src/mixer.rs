@@ -7,6 +7,8 @@
 //! WebAudio one, or nothing at all.
 
 use bevy::prelude::*;
+use renzora_audio_api::settings::{self, AudioConfig};
+use renzora_project_api::{CurrentProject, EditorSession};
 
 /// Per-channel strip state
 #[derive(Clone, Debug)]
@@ -41,29 +43,11 @@ pub struct ChannelStrip {
     pub delay_send: f32,
 }
 
-/// Names the built-in buses own. `play_on_bus` (and its spatial twin) match
-/// these strings *literally* to pick a track, so they are routing keys, not
-/// labels — a custom bus may never take one, and the four built-ins can't be
-/// renamed without breaking every `AudioPlayer` already pointing at them.
-pub const BUILTIN_BUSES: [&str; 4] = ["Master", "Sfx", "Music", "Ambient"];
-
-/// The colour palette the mixer offers in its swatch grid, and which new custom
-/// buses cycle through so a fresh bus is distinguishable from its neighbours
-/// without the user having to pick a colour first.
-pub const BUS_COLORS: [[u8; 3]; 12] = [
-    [220, 70, 70],   // red
-    [228, 132, 52],  // amber
-    [205, 192, 52],  // ochre
-    [120, 200, 80],  // green
-    [48, 196, 140],  // teal
-    [75, 162, 220],  // sky
-    [90, 110, 225],  // blue
-    [135, 90, 228],  // violet
-    [200, 80, 190],  // magenta
-    [220, 80, 130],  // rose
-    [160, 110, 75],  // brown
-    [130, 130, 140], // gray
-];
+/// The built-in routing keys and the strip palette. Defined in the contract
+/// beside the settings helpers, because the default board they describe is also
+/// what a script setting a volume on an empty `[audio]` section writes out, and
+/// two copies of it could disagree about Master's colour.
+pub use renzora_audio_api::settings::{BUILTIN_BUSES, BUS_COLORS};
 
 impl Default for ChannelStrip {
     fn default() -> Self {
@@ -138,7 +122,7 @@ impl Default for MixerState {
             ..Default::default()
         };
         Self {
-            master: tinted([200, 200, 205]),
+            master: tinted(settings::MASTER_COLOR),
             sfx: tinted(BUS_COLORS[1]),     // amber
             music: tinted(BUS_COLORS[5]),   // sky
             ambient: tinted(BUS_COLORS[4]), // teal
@@ -310,11 +294,67 @@ impl MixerState {
     /// else becomes a custom bus in the order written. An empty config leaves
     /// the default board untouched, so a project.toml with no `[audio]` section
     /// behaves exactly as it did before the section existed.
+    ///
+    /// The session-only parts of a strip (its capture device, output device and
+    /// live meter) are carried over by key. They are not in the config, so a
+    /// rebuild would otherwise drop them, and now that the board is rebuilt
+    /// whenever a script or settings menu changes a volume, that would close a
+    /// live microphone every time someone touched a slider.
     pub fn apply_config(&mut self, config: &renzora_project_api::AudioConfig) {
         if config.buses.is_empty() {
             return;
         }
+        let session: Vec<(String, Option<String>, Option<String>, f32)> = self
+            .keyed_strips()
+            .map(|(key, s)| {
+                (
+                    key.to_string(),
+                    s.input_device.clone(),
+                    s.output_device.clone(),
+                    s.peak_level,
+                )
+            })
+            .collect();
         *self = Self::default();
+        self.seed(config);
+        for (key, input, output, peak) in session {
+            if let Some(strip) = self.strip_by_key_mut(&key) {
+                strip.input_device = input;
+                strip.output_device = output;
+                strip.peak_level = peak;
+            }
+        }
+    }
+
+    /// Every strip with its routing key, Master first.
+    fn keyed_strips(&self) -> impl Iterator<Item = (&str, &ChannelStrip)> {
+        [
+            ("Master", &self.master),
+            ("Sfx", &self.sfx),
+            ("Music", &self.music),
+            ("Ambient", &self.ambient),
+        ]
+        .into_iter()
+        .chain(self.custom_buses.iter().map(|b| (b.key.as_str(), &b.strip)))
+    }
+
+    /// [`Self::strip_by_key`], for writing.
+    pub fn strip_by_key_mut(&mut self, key: &str) -> Option<&mut ChannelStrip> {
+        match key {
+            "Master" => Some(&mut self.master),
+            "Sfx" => Some(&mut self.sfx),
+            "Music" => Some(&mut self.music),
+            "Ambient" => Some(&mut self.ambient),
+            _ => self
+                .custom_buses
+                .iter_mut()
+                .find(|b| b.key == key)
+                .map(|b| &mut b.strip),
+        }
+    }
+
+    /// The body of [`Self::apply_config`]: the buses written onto a default board.
+    fn seed(&mut self, config: &renzora_project_api::AudioConfig) {
         for bus in &config.buses {
             let strip = ChannelStrip {
                 volume: bus.volume,
@@ -393,59 +433,120 @@ pub fn rename_custom_bus(world: &mut World, index: usize, new_name: &str) -> boo
         .is_some_and(|mut m| m.rename_bus(index, new_name))
 }
 
-/// Seed the board from the project's `[audio]` section when a project opens.
+/// Keep the board and the runtime settings store (`CurrentProject.config.audio`)
+/// in agreement, every frame, in the editor and in a shipped game alike.
 ///
-/// Keyed on the project *path*, not on `CurrentProject::is_changed()`: the
-/// write-back below edits the config and so marks the resource changed, and
-/// re-applying on that would overwrite whatever the user just did with the value
-/// that had only this moment been saved.
-pub fn load_mixer_config(
-    project: Option<Res<renzora_project_api::CurrentProject>>,
+/// The store is the truth; the board is how the backend and the mixer panel see
+/// it. Both sides can be written, though, so the question each frame is which
+/// one moved. `agreed` holds the value the two last matched on:
+///
+/// - **The store differs from `agreed`.** Something outside the mixer wrote it:
+///   a project opened, a script called `set_bus_volume`, a game's settings menu
+///   or a Rust script assigned the config. It wins, and the board is rebuilt
+///   from it.
+/// - **The store still equals `agreed` but the board does not.** The mixer panel
+///   moved a fader. The board is mirrored into the store, so the next reader of
+///   `CurrentProject` (a settings menu drawing its slider) sees the fader's
+///   value.
+///
+/// Comparing against `agreed` rather than simply against each other is what
+/// stops the two writers fighting. This used to apply the config once per
+/// project *path*, because the panel's write-back marks the project changed and
+/// re-applying on that would undo the drag in progress; the price was that a
+/// change made to the config while the game ran was never heard.
+///
+/// Both comparisons go through [`settings::effective`], so an untouched project
+/// (no `[audio]` section, default board) shows no difference and gets no section
+/// written into it.
+pub fn sync_mixer_with_settings(
+    project: Option<ResMut<CurrentProject>>,
     mixer: Option<ResMut<MixerState>>,
-    mut loaded: Local<Option<std::path::PathBuf>>,
+    mut agreed: Local<Option<AudioConfig>>,
 ) {
-    let (Some(project), Some(mut mixer)) = (project, mixer) else {
+    let (Some(mut project), Some(mut mixer)) = (project, mixer) else {
         return;
     };
-    if loaded.as_deref() == Some(project.path.as_path()) {
+    // `MixerState` is changed nearly every frame (the meters write peak levels),
+    // so this rarely skips; it saves the compare on frames with no backend.
+    if agreed.is_some() && !project.is_changed() && !mixer.is_changed() {
         return;
     }
-    *loaded = Some(project.path.clone());
-    mixer.apply_config(&project.config.audio);
+    let live = settings::effective(&project.config.audio);
+    if agreed.as_ref() != Some(&live) {
+        if mixer.to_config() != live {
+            mixer.apply_config(&live);
+        }
+        *agreed = Some(live);
+        return;
+    }
+    let board = mixer.to_config();
+    if board != live {
+        // Only now take `DerefMut`: it marks the whole project changed, which
+        // every system watching `CurrentProject` reacts to.
+        project.config.audio = board.clone();
+        *agreed = Some(board);
+    }
 }
 
-/// Write the board back to project.toml when it changes.
+/// Whether this process may write project.toml for an audio change: only an
+/// editor session may.
 ///
-/// Throttled and compare-first, following `renzora_viewport::persistence`: a
-/// fader drag marks `MixerState` changed on every frame of the drag, and
-/// rewriting project.toml at 60 Hz would be both wasteful and a good way to
-/// catch the file mid-write. The read-only compare matters for a second reason —
-/// taking `DerefMut` on `CurrentProject` marks it changed, which cascades into
-/// every system watching the project.
-pub fn save_mixer_config(
-    mut project: Option<ResMut<renzora_project_api::CurrentProject>>,
-    mixer: Option<Res<MixerState>>,
+/// A shipped game's `CurrentProject.path` is the sentinel `"."` (its assets are
+/// in an rpak), so a write would drop a `project.toml` into whatever the
+/// working directory happens to be. And a player's volume slider is the
+/// player's, not the developer's mix: in a game it lives in memory, in the
+/// settings store, for as long as the game runs (saving it across runs is the
+/// game's own save data). The editor's Play runs the game as a child process
+/// that is not an editor session, so a script there cannot rewrite the mix
+/// either.
+pub fn may_write_project_file(session: Option<&EditorSession>) -> bool {
+    session.is_some_and(EditorSession::is_editor)
+}
+
+/// Write the store's `[audio]` section to project.toml when it changes, in an
+/// editor session only (see [`may_write_project_file`]).
+///
+/// Throttled and compare-first: a fader drag changes the store on every frame
+/// of the drag, and rewriting project.toml at 60 Hz would be both wasteful and
+/// a good way to catch the file mid-write. `on_disk` is what was last loaded or
+/// written for this path, so opening a project writes nothing, and only a real
+/// change does.
+pub fn persist_audio_settings(
+    project: Option<Res<CurrentProject>>,
+    session: Option<Res<EditorSession>>,
     time: Res<Time>,
+    mut on_disk: Local<Option<(std::path::PathBuf, AudioConfig)>>,
     mut last_save: Local<f64>,
 ) {
-    let (Some(project), Some(mixer)) = (project.as_mut(), mixer) else {
+    if !may_write_project_file(session.as_deref()) {
+        return;
+    }
+    let Some(project) = project else {
         return;
     };
-    if !mixer.is_changed() {
-        return;
+    let audio = &project.config.audio;
+    match on_disk.as_ref() {
+        Some((path, saved)) if *path == project.path => {
+            if saved == audio {
+                return;
+            }
+        }
+        // A project opened (or this is the first frame): what is in memory is
+        // what was just read from disk.
+        _ => {
+            *on_disk = Some((project.path.clone(), audio.clone()));
+            return;
+        }
     }
     let now = time.elapsed_secs_f64();
     if *last_save != 0.0 && now - *last_save < 0.75 {
         return;
     }
-    let snapshot = mixer.to_config();
-    if project.as_ref().config.audio == snapshot {
-        return;
-    }
     *last_save = now;
-    project.config.audio = snapshot;
-    if let Err(e) = project.save_config() {
-        warn!("[Mixer] couldn't save the bus graph to project.toml: {e}");
+    match project.save_config() {
+        Ok(()) => *on_disk = Some((project.path.clone(), audio.clone())),
+        // Left unrecorded, so it is retried after the throttle.
+        Err(e) => warn!("[Mixer] couldn't save the bus graph to project.toml: {e}"),
     }
 }
 
@@ -557,5 +658,205 @@ mod tests {
         mixer.add_bus();
         mixer.apply_config(&renzora_project_api::AudioConfig::default());
         assert_eq!(mixer.custom_buses.len(), 1);
+    }
+
+    /// The default board and the contract's default config are one board, or an
+    /// untouched project would get an `[audio]` section written on first sync.
+    #[test]
+    fn the_default_board_is_the_default_config() {
+        assert_eq!(
+            MixerState::default().to_config(),
+            settings::default_config()
+        );
+    }
+
+    /// A capture device is session state, not in the config; rebuilding the
+    /// board for a script's volume change must not close the microphone.
+    #[test]
+    fn a_rebuild_keeps_each_strips_session_devices() {
+        let mut mixer = MixerState::default();
+        mixer.music.input_device = Some("Mic".into());
+        let mut config = mixer.to_config();
+        settings::set_bus_volume(&mut config, "Music", 0.2);
+        mixer.apply_config(&config);
+        assert_eq!(mixer.music.volume, 0.2);
+        assert_eq!(mixer.music.input_device.as_deref(), Some("Mic"));
+    }
+
+    // ── The settings store, live ────────────────────────────────────────────
+
+    /// A unique, empty directory to stand in for a project folder, so the
+    /// "never writes project.toml" check looks somewhere nothing else writes.
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("renzora_audio_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    /// The two settings systems over a project at `path`, as a game or the
+    /// editor runs them. `session` is `None` for a build that never inserted one.
+    fn settings_app(path: std::path::PathBuf, session: Option<bool>) -> App {
+        let mut app = App::new();
+        app.init_resource::<Time>()
+            .insert_resource(MixerState::default())
+            .insert_resource(CurrentProject {
+                path,
+                config: Default::default(),
+            })
+            .add_systems(
+                Update,
+                (sync_mixer_with_settings, persist_audio_settings).chain(),
+            );
+        if let Some(is_editor) = session {
+            app.insert_resource(EditorSession(is_editor));
+        }
+        app
+    }
+
+    fn project_audio(app: &mut App) -> Mut<'_, CurrentProject> {
+        app.world_mut().resource_mut::<CurrentProject>()
+    }
+
+    /// The point of the store: a change made to it while the game runs, by a
+    /// settings menu or a Rust script, reaches the board.
+    #[test]
+    fn a_live_change_to_the_settings_store_reaches_the_board() {
+        let mut app = settings_app(std::path::PathBuf::from("."), Some(false));
+        app.update();
+
+        settings::set_bus_volume(&mut project_audio(&mut app).config.audio, "Music", 0.3);
+        settings::set_bus_muted(&mut project_audio(&mut app).config.audio, "Sfx", true);
+        app.update();
+
+        let mixer = app.world().resource::<MixerState>();
+        assert_eq!(mixer.music.volume, 0.3);
+        assert!(mixer.sfx.muted);
+    }
+
+    /// A store nobody touched is not applied again: the mixer panel's drag is
+    /// mirrored into the store rather than reverted by it.
+    #[test]
+    fn an_unchanged_store_does_not_overwrite_a_fader_drag() {
+        let mut app = settings_app(std::path::PathBuf::from("."), Some(false));
+        app.update();
+
+        app.world_mut().resource_mut::<MixerState>().music.volume = 0.6;
+        app.update();
+        app.update();
+
+        assert_eq!(app.world().resource::<MixerState>().music.volume, 0.6);
+        let audio = &app.world().resource::<CurrentProject>().config.audio;
+        assert_eq!(settings::bus_volume(audio, "Music"), Some(0.6));
+    }
+
+    /// An untouched project gets no `[audio]` section from merely running.
+    #[test]
+    fn an_untouched_project_keeps_an_empty_audio_section() {
+        let mut app = settings_app(std::path::PathBuf::from("."), Some(false));
+        app.update();
+        app.update();
+        let audio = &app.world().resource::<CurrentProject>().config.audio;
+        assert!(audio.buses.is_empty());
+    }
+
+    /// A shipped game's project path is `"."`; writing would put a project.toml
+    /// in the working directory. Neither a game session nor a build with no
+    /// session resource may write, however the volume changes.
+    #[test]
+    fn a_shipped_game_never_writes_project_toml() {
+        for (name, session) in [("game", Some(false)), ("nosession", None)] {
+            let dir = scratch_dir(name);
+            let mut app = settings_app(dir.clone(), session);
+            app.update();
+            app.world_mut().resource_mut::<MixerState>().master.volume = 0.5;
+            app.update();
+            settings::set_master_volume(&mut project_audio(&mut app).config.audio, 0.2);
+            app.update();
+            app.update();
+
+            assert!(
+                !dir.join("project.toml").exists(),
+                "{name}: a game wrote project.toml"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    #[test]
+    fn only_an_editor_session_may_write_project_toml() {
+        assert!(may_write_project_file(Some(&EditorSession(true))));
+        assert!(!may_write_project_file(Some(&EditorSession(false))));
+        assert!(!may_write_project_file(None));
+    }
+
+    /// `SetMasterVolume` (what a script's `set_master_volume` becomes) lands in
+    /// the store and on the Master strip, the same frame. It used to be dropped
+    /// before reaching this crate, and before that set a multiplier the fader
+    /// never showed.
+    #[test]
+    fn set_master_volume_moves_the_master_fader() {
+        use crate::commands::{AudioCommand, AudioCommandQueue};
+        use crate::systems::{process_audio_commands, MusicVoice};
+
+        let mut app = settings_app(std::path::PathBuf::from("."), Some(false));
+        app.init_resource::<crate::link::AudioLink>()
+            .init_resource::<crate::runtime::SoundCache>()
+            .init_resource::<crate::runtime::ActiveVoices>()
+            .init_resource::<MusicVoice>()
+            .init_resource::<AudioCommandQueue>()
+            .add_systems(
+                Update,
+                process_audio_commands.before(sync_mixer_with_settings),
+            );
+        app.update();
+
+        let mut queue = app.world_mut().resource_mut::<AudioCommandQueue>();
+        queue.push(AudioCommand::SetMasterVolume { volume: 0.4 });
+        queue.push(AudioCommand::SetBusVolume {
+            bus: "music".into(),
+            volume: 0.7,
+        });
+        queue.push(AudioCommand::SetBusMuted {
+            bus: "Ambient".into(),
+            muted: true,
+        });
+        app.update();
+
+        let audio = &app.world().resource::<CurrentProject>().config.audio;
+        assert_eq!(settings::master_volume(audio), f64::from(0.4f32));
+        let mixer = app.world().resource::<MixerState>();
+        assert_eq!(mixer.master.volume, f64::from(0.4f32));
+        assert_eq!(mixer.music.volume, f64::from(0.7f32));
+        assert!(mixer.ambient.muted);
+    }
+
+    /// The script route end to end: a `set_bus_volume` action fired by a script
+    /// reaches the queue through the observer.
+    #[test]
+    fn a_script_action_queues_a_bus_volume() {
+        use crate::commands::{AudioCommand, AudioCommandQueue};
+        use renzora_scripting_api::{ScriptAction, ScriptActionValue};
+
+        let mut app = App::new();
+        app.init_resource::<AudioCommandQueue>()
+            .init_resource::<crate::script_actions::AudioPlayerRuntime>()
+            .add_observer(crate::script_actions::handle_audio_script_actions);
+        let entity = app.world_mut().spawn_empty().id();
+        let mut args = std::collections::HashMap::new();
+        args.insert("bus".to_string(), ScriptActionValue::String("Music".into()));
+        args.insert("volume".to_string(), ScriptActionValue::Int(0));
+        app.world_mut().trigger(ScriptAction {
+            name: "set_bus_volume".into(),
+            entity,
+            target_entity: None,
+            args,
+        });
+
+        let queued = app.world_mut().resource_mut::<AudioCommandQueue>().drain();
+        assert!(matches!(
+            queued.as_slice(),
+            [AudioCommand::SetBusVolume { bus, volume }] if bus == "Music" && *volume == 0.0
+        ));
     }
 }

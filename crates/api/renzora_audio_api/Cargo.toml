@@ -11,6 +11,10 @@ description = "The engine side of the audio boundary (`AudioLink`) and the mixer
 renzora_crash_api = { path = "../renzora_crash_api" }
 bevy = { workspace = true }
 renzora = { path = "../../shared/renzora", default-features = false }
+# `AudioConfig` / `BusConfig`, which `settings` edits. Already in the graph
+# through `renzora`; named directly because the settings helpers are about the
+# project's config, not about anything `renzora` itself adds.
+renzora_project_api = { path = "../renzora_project_api" }
 
 [lints]
 workspace = true

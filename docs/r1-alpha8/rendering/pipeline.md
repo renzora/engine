@@ -31,6 +31,28 @@ Bevy renders a 3D view as systems in the render app's `Core3d` schedule, not as 
 
 `WgpuSettings` requests `POLYGON_MODE_LINE` (skipped on the GL backend, never requested on web) — which is what enables wireframe debug views — and, **when the GPU supports it**, Bevy Solari's hardware ray-tracing features. The host probes the adapter once at startup (`raytracing_supported()`); on an RT-capable GPU it requests the ray-tracing features and records `renzora::GpuRaytracing { enabled: true }` so the optional `renzora_solari` plugin can activate. On a non-RT GPU nothing extra is requested and the engine boots unchanged. See [Solari ray-traced GI](./solari.md).
 
+### Graphics backend
+
+wgpu is asked for exactly one backend. `auto` is the engine's standard for the OS: Vulkan on Windows, Linux and the BSDs, Metal on Apple platforms. Android always uses Vulkan and the web build lets the browser choose.
+
+Whose choice it is depends on who is running:
+
+| Process | Setting |
+|---|---|
+| The editor, and its companion process | The editor user's own preference, **Settings > Renderer > Graphics Backend** (`[editor] renderer_backend` in `~/.renzora/settings.toml`) |
+| A game: the exported build, Play, `--host` | The project's `[rendering] backend` |
+
+A `--vr` session takes no backend setting: the OpenXR runtime creates the device.
+
+```toml
+[rendering]
+backend = "dx12"   # auto (default), dx12, vulkan, metal or gl
+```
+
+A game used to read the editor preference too, so it inherited the developer's editor backend on their machine and fell back to `auto` on a player's. Its own setting ships with it. wgpu picks the backend when the renderer is created and cannot switch afterwards, so a change applies the **next time the game starts**. A backend the platform cannot create (DX12 on Linux) falls back to `auto` with a warning, rather than finding no adapter and panicking. The startup log names the backend and whose setting it came from.
+
+A game reads `[rendering] backend` before the engine plugins build, from the same places the rest of its project comes from, in the same order: the rpak (embedded, beside the binary, or `--rpak`), then `--project`, then a `project.toml` in the working directory (`renzora_runtime::early_project`). The ray-tracing and integrated-GPU probes use the same choice, so they examine the adapter the renderer will use.
+
 ## Three families of camera effects
 
 Not everything called a "camera effect" is the same kind of thing. There are three structural families:
@@ -282,13 +304,21 @@ the `[rendering] graphics_quality` key (`"Low"` / `"Medium"` / `"High"`), set in
 **Settings > Project > Rendering > Graphics Quality**. It lives outside the
 `[editor]` block, so export keeps it, and without a key a project defaults to
 `Medium`. The editor is the game with chrome on top, so the viewport shows the
-passes the game will actually run. Both sides fill one shared
-`ResolvedGraphicsQuality` resource from it:
+passes the game will actually run.
 
-- **Editor**: enforced on the viewport cameras by
-  `renzora_level_presets::graphics_quality` (Editor scope).
-- **Shipped game**: enforced on the play camera by
-  `renzora_engine::graphics_quality` (registered only when `!is_editor`).
+The tier is applied by the runtime, `renzora_engine::graphics_quality`, in
+every session. It copies the key from the live `CurrentProject` config into the
+shared `ResolvedGraphicsQuality` resource every frame and forces it onto the
+cameras: every 3D camera in a game, and only the viewport cameras in the editor
+(the editor merely edits the value). Because it follows the live config, a
+change takes effect on the next frame, whether it came from the Settings panel
+or from a script changing the project config in a running game.
+
+A tier change that resizes the sky-lighting probe (`ibl_face_size`) rebuilds it
+over two frames: the probe is taken off the camera on the frame the tier
+changes and put back at the new size on the next, so the scene has no sky light
+for one frame and then re-bakes. Resizing it in place could race Bevy's
+filtered-map allocation and crash on a missing mip level.
 
 The editor used to have a tier of its own under Settings > Viewport > Performance.
 A project that still has `graphics_quality` under `[editor.viewport]` loads
@@ -374,8 +404,59 @@ vsync = false   # uncap the frame rate — useful for profiling
 
 `apply_window_config` (the game) and `apply_vsync_setting` (the editor) map this
 to the window's `PresentMode` (`AutoVsync` when true, `AutoNoVsync` when false).
-Defaults to `true`. The editor's old VSync switch under Settings > Viewport >
+Defaults to `true`. The game applies it, and the rest of `[window]` (size,
+resizable, mode), whenever `CurrentProject.config.window` changes, so an in-game
+settings menu can change them while the game runs. Only the fields that changed
+are written, so a player's resized window keeps its size when VSync is switched;
+a size or mode change does set the configured size. Inside the editor's Game
+panel the editor owns the window and only the title follows.
+
+```rust
+ctx.world().resource_mut::<renzora::CurrentProject>().config.window.vsync = false;
+``` The editor's old VSync switch under Settings > Viewport >
 Performance is gone; a leftover `vsync` under `[editor.viewport]` is ignored.
+
+Vsync follows the **monitor**, not a number: on a 240 Hz display it allows 240
+frames a second, on a 60 Hz one 60. A game that should run at a steady rate on
+any display uses the frame-rate limit instead.
+
+### Frame-rate limit
+
+**Settings > Project > Window > Frame Rate Limit**, the `[window] max_fps` key,
+holds the game to a chosen rate: Unlimited (the default, `0`), 30, 60, 120, 144
+or 240 frames a second, or any number set by hand in `project.toml`, which the
+Settings panel shows as Custom.
+
+```toml
+[window]
+vsync = true
+max_fps = 60    # a steady 60 on any monitor
+```
+
+The two combine. With VSync on and a 60 limit, a 240 Hz monitor shows a smooth
+60; with VSync off, the limit alone sets the pace.
+
+It applies to the shipped game and to Play, never to the editor's own window,
+so editing stays responsive whatever the game targets. It is desktop only: on
+the web the browser paces frames.
+
+The runtime (`renzora_runtime::frame_limit`) waits out the rest of each frame at
+the end of it, so the next frame's input is read after the wait, not before. It
+sleeps until just before the deadline and spins the last millisecond, so frame
+times land evenly, and paces from the deadline rather than from when it woke,
+so the rate does not drift. A frame that runs more than a whole frame late
+restarts the pace rather than being caught up with short frames.
+
+A script can change the limit while the game runs, which is how an in-game
+settings menu offers it:
+
+```rust
+ctx.world().resource_mut::<renzora::CurrentProject>().config.window.max_fps = 30;
+```
+
+The limiter reads that field every frame, so it is the one place the limit
+lives: the editor, a script and `set_setting("window.max_fps", 30)` all change
+it there.
 
 ## Debugging the pipeline
 

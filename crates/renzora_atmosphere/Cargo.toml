@@ -8,6 +8,8 @@ edition = "2021"
 
 [dependencies]
 renzora_scene_api = { path = "../api/renzora_scene_api" }
+# `ResolvedGraphicsQuality`, so a parked sky probe comes back at the tier's size.
+renzora_project_api = { path = "../api/renzora_project_api" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 # `postprocess` for the sun glare's render pass (`glare.rs`).

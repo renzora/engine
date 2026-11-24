@@ -170,7 +170,7 @@ fn apply_render_scale(
     if !stretch_disabled {
         if let Some(prev) = state.cam {
             if cams.get(prev).is_ok() {
-                commands.entity(prev).insert(RenderTarget::default());
+                crate::camera_target::to_window(&mut commands, prev);
             }
         }
         teardown_blit(&mut commands, &mut state);
@@ -208,7 +208,7 @@ fn apply_render_scale(
     // back to the window before doing anything else.
     if let Some(prev) = state.cam {
         if Some(prev) != chosen_e && cams.get(prev).is_ok() {
-            commands.entity(prev).insert(RenderTarget::default());
+            crate::camera_target::to_window(&mut commands, prev);
         }
     }
 
@@ -236,7 +236,7 @@ fn apply_render_scale(
     // and the native saturation when the slider is raised to/past the DPI factor.
     if desired.x >= phys.x && desired.y >= phys.y {
         if state.cam == Some(cam) {
-            commands.entity(cam).insert(RenderTarget::default());
+            crate::camera_target::to_window(&mut commands, cam);
         }
         teardown_blit(&mut commands, &mut state);
         return;
@@ -261,9 +261,7 @@ fn apply_render_scale(
 
     // Redirect the camera into the offscreen image if we haven't already.
     if state.cam != Some(cam) {
-        commands
-            .entity(cam)
-            .insert(RenderTarget::Image(image.clone().into()));
+        crate::camera_target::retarget(&mut commands, cam, RenderTarget::Image(image.clone().into()));
         state.cam = Some(cam);
     }
 

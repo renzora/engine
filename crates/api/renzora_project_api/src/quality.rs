@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Each tier maps to a set of crash-safe `enabled` toggles on the routed effect
 /// sources (SSAO, auto-exposure, bloom, TAA); see
-/// `renzora_level_presets::graphics_quality`. It deliberately does **not** touch
+/// `renzora_engine::graphics_quality`. It deliberately does **not** touch
 /// passes whose attachment layout is fixed at camera spawn (atmosphere / the
 /// prepass bundle) — toggling those at runtime trips a wgpu validation crash, so
 /// they stay resident regardless of tier.

@@ -143,9 +143,15 @@ There is no bare `net_connect` global. Connection is driven through the generic 
 
 ```lua
 action("net_connect", { address = "127.0.0.1", port = 7636 })
+-- or connect to the server in the project's [network] section:
+action("net_connect")
 -- ...later:
 action("net_disconnect")
 ```
+
+An address or port the call leaves out comes from `[network] server_addr` and
+`port` in `project.toml` (`127.0.0.1:7636` when there is no `[network]`
+section), so an exported game connects where it was configured to.
 
 > The handshake is **insecure** (a zero private key, protocol id 0) — it is for LAN/dev only.
 

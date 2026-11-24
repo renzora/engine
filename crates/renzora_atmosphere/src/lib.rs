@@ -79,6 +79,7 @@ type SkyCamera = (
     Option<&'static mut AtmosphereSettings>,
     Option<&'static AtmosphereEnvironmentMapLight>,
     Option<&'static ParkedSky>,
+    Has<renzora_scene_api::IsolatedCamera>,
 );
 type SkyCameraFilter = (
     With<Camera>,
@@ -118,6 +119,7 @@ fn sync_atmosphere(
     mut cameras: Query<SkyCamera, SkyCameraFilter>,
     routing: Res<renzora_scene_api::EffectRouting>,
     suppressed: Option<Res<renzora_render_api::EnvironmentSuppressed>>,
+    tier: Option<Res<renzora_project_api::ResolvedGraphicsQuality>>,
 ) {
     let routing_changed = routing.is_changed();
 
@@ -183,7 +185,7 @@ fn sync_atmosphere(
                     commands.entity(planet_e).remove::<Atmosphere>();
                 }
             }
-            for (entity, settings, probe, parked) in &cameras {
+            for (entity, settings, probe, parked, _) in &cameras {
                 if parked.is_some() {
                     continue;
                 }
@@ -205,7 +207,16 @@ fn sync_atmosphere(
     };
 
     // On: give parked cameras back what they had, in the current render mode.
-    for (entity, _, _, parked) in &cameras {
+    //
+    // The probe comes back at the graphics tier's face size, not the size it
+    // was parked at. The tier may have changed while the sky was off, and a
+    // probe that arrives at the old size is then resized in place by the
+    // tier's enforcement, which is the resize that crashes Bevy's filtered-map
+    // generator (see `renzora_engine::graphics_quality`). Inserted fresh at
+    // the right size, there is nothing to resize. Isolated cameras keep their
+    // own size, as the tier leaves them alone.
+    let tier_size = tier.map(|q| UVec2::splat(q.0.ibl_face_size()));
+    for (entity, _, _, parked, isolated) in &cameras {
         let Some(parked) = parked else { continue };
         let mut e = commands.entity(entity);
         e.remove::<ParkedSky>();
@@ -213,7 +224,10 @@ fn sync_atmosphere(
             settings.rendering_method = rendering_method;
             e.insert(settings);
         }
-        if let Some(probe) = parked.probe.clone() {
+        if let Some(mut probe) = parked.probe.clone() {
+            if let (Some(size), false) = (tier_size, isolated) {
+                probe.size = size;
+            }
             e.insert(probe);
         }
     }
@@ -255,7 +269,7 @@ fn sync_atmosphere(
     // comes back on.
     if routing_changed || rebuilt {
         for &target in &targets {
-            if let Ok((_, Some(mut s), _, _)) = cameras.get_mut(target) {
+            if let Ok((_, Some(mut s), _, _, _)) = cameras.get_mut(target) {
                 // `AtmosphereMode` isn't `PartialEq`; just assign.
                 s.rendering_method = rendering_method;
             }

@@ -36,13 +36,13 @@ Everything under **Project** is stored in the project's `project.toml` and trave
 
 **Physics** picks the physics engine for the 3D world and the 2D world separately. **Default** is the engine's own avian; a physics engine installed as a plugin appears beside it in whichever world it simulates. The editor moves the open scene onto the new engine straight away, and the game uses it from its next start. The Console says which engine runs each world once a project loads. See [Physics Backends](/docs/r1-alpha8/extending/physics-backends).
 
-**Window** is the window your shipped game opens: its size, whether it is resizable, windowed, fullscreen or borderless, and **VSync**.
+**Window** is the window your shipped game opens: its size, whether it is resizable, windowed, fullscreen or borderless, **VSync**, and the **Frame Rate Limit**. VSync follows the monitor (240 frames a second on a 240 Hz screen); the Frame Rate Limit holds the game to a chosen rate on any screen, such as a steady 30 or 60, and the two combine. The limit applies to the game and to Play, not to the editor's own window. See [Frame-rate limit](../rendering/pipeline.md#frame-rate-limit). A running game applies a change at once, so a settings menu in the game can offer these too; it changes only what was changed, so a player's resized window keeps its size when, say, VSync is switched. Inside the editor's Game panel the editor owns the window, so there only the title follows.
 
 The editor is your game with editor chrome on top, so a setting the game has is not repeated for the editor. **VSync** here and **Graphics Quality** under Rendering apply to the editor as well as the game: turn VSync off and the editor uncaps too, and the viewport renders at the same quality tier the game will ship with.
 
-**Render Resolution** is what the camera renders at before being scaled onto that window. It only takes effect once **Stretch Mode** is set to Viewport. Leave Stretch Mode off and the two are the same thing. Turn it on and set the resolution to 320x180 and you get chunky pixel art upscaled to a 1080p window.
+**Render Resolution** is what the camera renders at before being scaled onto that window. It only takes effect once **Stretch Mode** is set to Viewport. Leave Stretch Mode off and the two are the same thing. Turn it on and set the resolution to 320x180 and you get chunky pixel art upscaled to a 1080p window. Both apply while the game runs.
 
-**Rendering** picks the renderer and the graphics backend, sets **Graphics Quality** and the game's **Render Scale**, and holds the 2D settings.
+**Rendering** picks the renderer and the graphics backend, sets **Graphics Quality** and the game's **Render Scale**, and holds the 2D settings. The game's graphics backend is `[rendering] backend` in `project.toml` (`auto`, `dx12`, `vulkan`, `metal` or `gl`): the exported game and Play use it, and it takes effect the next time the game starts, because the GPU backend is chosen once at launch. A backend the player's platform cannot run (DirectX 12 on Linux, say) falls back to Automatic, with a warning in the log. The editor's own window keeps the backend under [Renderer](#renderer). See [Graphics backend](../rendering/pipeline.md#graphics-backend). The 2D **Image Filter** applies to sprites already on screen as well as new ones.
 
 ## Interface
 
@@ -58,7 +58,7 @@ The editor is your game with editor chrome on top, so a setting the game has is 
 
 ## Renderer
 
-**Renderer** holds the **Graphics Backend** the editor starts with, which takes effect after a restart, and **Launcher Effects**: the launcher's 3D cinematic and the animated haze behind the loading screen. Both fill the window, so their cost grows with the display. **Auto** turns them off on ultrawide and larger-than-4K displays and leaves them on elsewhere; **Full** and **Reduced** force one or the other.
+**Renderer** holds the **Graphics Backend** the editor starts with, which takes effect after a restart and is yours rather than the game's (a game uses its project's backend, under Project > Rendering), and **Launcher Effects**: the launcher's 3D cinematic and the animated haze behind the loading screen. Both fill the window, so their cost grows with the display. **Auto** turns them off on ultrawide and larger-than-4K displays and leaves them on elsewhere; **Full** and **Reduced** force one or the other.
 
 **Throttle When Unfocused** (on by default) holds the editor to about 60 frames a second while another window has focus, to save power and heat. Turn it off to keep the editor at full speed in the background, for example while profiling it from another window: with it on, every measurement taken that way stops at about 16 ms a frame whatever the editor's real cost.
 

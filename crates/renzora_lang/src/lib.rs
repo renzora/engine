@@ -14,7 +14,11 @@
 //!    code key-for-key. This is the install path a future marketplace language
 //!    pack drops into; for now you place the file by hand. The folder is
 //!    re-scanned periodically, so editing a pack updates the UI live.
-//! 3. **Plugin contributions.** Any `renzora_*` plugin can register its own
+//! 3. **Project packs.** A project's own `languages/*.toml` hold the game's
+//!    strings (and may add a language). Read from the project folder, or from
+//!    the rpak in a packed game, before the starting language is chosen, and
+//!    re-read in the editor when one changes. They merge over the built-ins.
+//! 4. **Plugin contributions.** Any `renzora_*` plugin can register its own
 //!    strings from its `build()` — see [`renzora::lang`] for the API.
 //!    Those merge into the same table, so an installed plugin localizes its
 //!    own panels without this crate knowing about it.
@@ -88,12 +92,56 @@ impl Plugin for LangPlugin {
         let mut external = ExternalPacks::default();
         scan_external_packs(&mut external);
 
-        // 3. Initial active language. `RENZORA_LANG` is an explicit override
-        //    (handy for testing / CI screenshots); otherwise the per-user
-        //    preference saved in `~/.renzora/editor.toml` (default "en"). The
-        //    Settings picker calls `set_active` + `save_language` to update it.
-        let initial =
-            std::env::var("RENZORA_LANG").unwrap_or_else(|_| renzora_project_api::load_language());
+        // 2b. The project's own packs: the game's strings, and possibly a
+        //     language only the game provides. Read before the starting language
+        //     is chosen, since the project's default may be one of them. A
+        //     packed game's come from the archive via `ProjectLanguagePacks`; an
+        //     on-disk project's are read from its folder, and in the editor
+        //     `load_project_packs` reads them when a project opens.
+        if let Some(packs) = app.world().get_resource::<renzora_lang_api::ProjectLanguagePacks>() {
+            for (key, src) in &packs.sources {
+                match renzora_lang_api::register_pack_str(src) {
+                    Ok(()) => info!("[lang] loaded project pack {key}"),
+                    Err(e) => error!("[lang] {key} parse error: {e}"),
+                }
+            }
+        }
+        if let Some(dir) = app
+            .world()
+            .get_resource::<renzora_project_api::CurrentProject>()
+            .and_then(project_languages_dir)
+        {
+            scan_dirs(&mut external, &[dir]);
+        }
+
+        // 3. Initial active language: the editor user's preference in an editor
+        //    session, the game's own in a game. See `initial_language`.
+        //
+        //    Both resources this reads are already in the world: `EditorSession`
+        //    is inserted by `add_engine_plugins` before any engine plugin builds,
+        //    and a game's `CurrentProject` is inserted by `RuntimePlugin` (the
+        //    first foundation plugin) from the rpak or `project.toml`, while this
+        //    plugin builds later, from the generated list.
+        let is_editor = app
+            .world()
+            .get_resource::<renzora_project_api::EditorSession>()
+            .is_some_and(|s| s.is_editor());
+        let project_default = app
+            .world()
+            .get_resource::<renzora_project_api::CurrentProject>()
+            .and_then(|p| p.config.default_language.clone());
+        let available: Vec<String> = renzora_lang_api::available()
+            .into_iter()
+            .map(|meta| meta.code)
+            .collect();
+        let initial = initial_language(
+            std::env::var("RENZORA_LANG").ok().as_deref(),
+            is_editor,
+            renzora_project_api::load_language,
+            project_default.as_deref(),
+            sys_locale::get_locale,
+            &available,
+        );
         renzora_lang_api::set_active(&initial);
         info!(
             "[lang] {} language(s) loaded, active = '{}'",
@@ -125,7 +173,16 @@ impl Plugin for LangPlugin {
             // in every build and the watcher is editor-only, so the message has
             // to exist whether or not anything writes to it.
             .add_message::<renzora_project_api::project_files::ProjectFileChanged>()
-            .add_systems(Update, (rescan_external_packs, emit_language_changed));
+            .add_systems(
+                Update,
+                (
+                    load_project_packs
+                        .run_if(resource_exists_and_changed::<renzora_project_api::CurrentProject>),
+                    rescan_external_packs,
+                    emit_language_changed,
+                )
+                    .chain(),
+            );
 
         // Expose `tr("key")` to Lua/Rhai scripts via the scripting extension
         // registry. Unconditional now that a binding is a declaration rather
@@ -141,6 +198,101 @@ impl Plugin for LangPlugin {
             extensions.register(script_extension::LangScriptExtension);
         }
     }
+}
+
+/// The language a session starts in.
+///
+/// `RENZORA_LANG` wins everywhere: it is an explicit override for testing a
+/// translation or taking screenshots. Otherwise:
+///
+/// - **Editor:** the editing user's interface language from
+///   `~/.renzora/settings.toml` (`[app] language`). The Settings picker writes
+///   it with `save_language`.
+/// - **Game:** the project's `default_language`, else the player's system
+///   language if a pack for it is loaded, else English.
+///
+/// A game used to take the editor branch too, so an exported game started in
+/// whatever language the machine's editor user had picked, or in English on a
+/// player's machine with no `settings.toml`, whatever the player spoke. The
+/// language a game starts in is the game's setting, so it comes from the
+/// project and the player, never from an editor preference file.
+///
+/// The editor preference and the system locale are passed as functions so
+/// each is only read on the branch that uses it: the editor never asks the OS,
+/// and a game never opens `settings.toml`.
+fn initial_language(
+    env_override: Option<&str>,
+    is_editor: bool,
+    editor_preference: impl FnOnce() -> String,
+    project_default: Option<&str>,
+    system_locale: impl FnOnce() -> Option<String>,
+    available: &[String],
+) -> String {
+    if let Some(code) = env_override.map(str::trim).filter(|c| !c.is_empty()) {
+        return code.to_string();
+    }
+    if is_editor {
+        return editor_preference();
+    }
+    // The project's choice is taken as written, even without a loaded pack for
+    // it: `set_active` accepts an unknown code and `t()` falls back to English
+    // key by key, which is the same answer a typo would get from any check here,
+    // and a pack installed beside the game later then lights up on its own.
+    if let Some(code) = project_default.map(str::trim).filter(|c| !c.is_empty()) {
+        return code.to_string();
+    }
+    system_locale()
+        .and_then(|tag| match_locale(&tag, available))
+        .unwrap_or_else(|| renzora_lang_api::FALLBACK_CODE.to_string())
+}
+
+/// Find the loaded pack that best fits an OS locale tag, or `None`.
+///
+/// The OS speaks full tags (`de-DE`, `pt_BR.UTF-8`, `zh-Hant-TW`) and the packs
+/// are keyed by a bare language or a language and region (`de`, `pt-BR`,
+/// `zh-TW`), so an exact lookup would miss almost every player. Candidates are
+/// tried most specific first: the tag as given, then language and region, then
+/// a Chinese script mapped to the pack that writes it, then the bare language.
+/// Compared case-insensitively, because `pt-br` and `pt-BR` are the same tag.
+fn match_locale(tag: &str, available: &[String]) -> Option<String> {
+    // POSIX locales carry an encoding and a modifier (`de_DE.UTF-8@euro`) and
+    // use `_`; neither is part of the language.
+    let tag = tag.split(['.', '@']).next().unwrap_or("").replace('_', "-");
+    let mut parts = tag.split('-').filter(|p| !p.is_empty());
+    let language = parts.next()?.to_ascii_lowercase();
+    let mut script = None;
+    let mut region = None;
+    for part in parts {
+        if part.len() == 4 && part.chars().all(|c| c.is_ascii_alphabetic()) {
+            script.get_or_insert(part.to_ascii_lowercase());
+        } else if (part.len() == 2 && part.chars().all(|c| c.is_ascii_alphabetic()))
+            || (part.len() == 3 && part.chars().all(|c| c.is_ascii_digit()))
+        {
+            region.get_or_insert(part.to_ascii_uppercase());
+        }
+    }
+
+    let mut candidates = vec![tag.clone()];
+    if let Some(region) = &region {
+        candidates.push(format!("{language}-{region}"));
+    }
+    // Traditional Chinese is its own pack (`zh-TW`) and Simplified is `zh`; a
+    // locale such as `zh-Hant-HK` names the script and a region no pack has.
+    if language == "zh" {
+        match script.as_deref() {
+            Some("hant") => candidates.push("zh-TW".to_string()),
+            Some("hans") => candidates.push("zh".to_string()),
+            _ => {}
+        }
+    }
+    candidates.push(language);
+
+    candidates.iter().find_map(|candidate| {
+        available
+            .iter()
+            .find(|code| code.eq_ignore_ascii_case(candidate))
+            .cloned()
+    })
 }
 
 /// Candidate `languages/` directories: beside the executable and in the working
@@ -226,21 +378,52 @@ fn scan_dirs(state: &mut ExternalPacks, dirs: &[PathBuf]) {
 /// [`ExtraWatchRoots`]: renzora_project_api::project_files::ExtraWatchRoots
 fn rescan_external_packs(
     mut state: ResMut<ExternalPacks>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
     mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
 ) {
     if changes.is_empty() {
         return;
     }
     let dirs = external_dirs();
-    // `root` rather than the path prefix: these events come from a watcher that
-    // was pointed at one of these directories, so the root IS the answer, and
-    // matching on it needs no path arithmetic.
-    let touched = changes.read().any(|change| {
-        change.has_extension("toml") && dirs.contains(&change.root)
-    });
-    if touched {
+    let project_dir = project.as_deref().and_then(project_languages_dir);
+    let mut external_touched = false;
+    let mut project_touched = false;
+    for change in changes.read().filter(|c| c.has_extension("toml")) {
+        // `root` rather than the path prefix for the external folders: these
+        // events come from a watcher that was pointed at one of them, so the
+        // root IS the answer. Project files arrive under the project root, so
+        // the pack folder is matched by prefix.
+        external_touched |= dirs.contains(&change.root);
+        project_touched |= project_dir.as_ref().is_some_and(|d| change.path.starts_with(d));
+    }
+    if external_touched {
         scan_dirs(&mut state, &dirs);
     }
+    if project_touched {
+        if let Some(dir) = project_dir {
+            scan_dirs(&mut state, &[dir]);
+        }
+    }
+}
+
+/// Load the open project's packs when the project changes: the editor opens a
+/// project after this plugin built, so the build-time read never saw it.
+/// [`scan_dirs`] skips files it has already read, so a game, whose packs were
+/// read at build, re-parses nothing here.
+fn load_project_packs(
+    mut state: ResMut<ExternalPacks>,
+    project: Res<renzora_project_api::CurrentProject>,
+) {
+    if let Some(dir) = project_languages_dir(&project) {
+        scan_dirs(&mut state, &[dir]);
+    }
+}
+
+/// Where a project keeps its language packs on disk. `None` for a packed game,
+/// whose project path is the `"."` sentinel and whose packs come from the
+/// archive through [`renzora_lang_api::ProjectLanguagePacks`] instead.
+fn project_languages_dir(project: &renzora_project_api::CurrentProject) -> Option<PathBuf> {
+    (project.path != std::path::Path::new(".")).then(|| project.path.join("languages"))
 }
 
 /// Bridge the lock-free global revision counter to a Bevy event: when anything
@@ -491,6 +674,127 @@ mod tests {
         app.update();
 
         assert_eq!(app.world().resource::<Seen>().0, after_first + 1);
+        renzora_lang_api::set_active("en");
+    }
+
+    fn codes(list: &[&str]) -> Vec<String> {
+        list.iter().map(|c| c.to_string()).collect()
+    }
+
+    /// The pure decision, with an editor preference and system locale that fail
+    /// the test if the branch under test should not have read them.
+    fn game_start(project: Option<&str>, system: Option<&str>, available: &[&str]) -> String {
+        initial_language(
+            None,
+            false,
+            || panic!("a game read the editor's language preference"),
+            project,
+            || system.map(str::to_string),
+            &codes(available),
+        )
+    }
+
+    #[test]
+    fn a_game_starts_in_the_projects_default_language() {
+        assert_eq!(game_start(Some("de"), Some("fr-FR"), &["en", "de", "fr"]), "de");
+    }
+
+    #[test]
+    fn a_game_without_a_default_follows_the_system_language() {
+        assert_eq!(game_start(None, Some("fr-FR"), &["en", "de", "fr"]), "fr");
+    }
+
+    #[test]
+    fn a_game_falls_back_to_english_when_the_system_language_has_no_pack() {
+        assert_eq!(game_start(None, Some("sv-SE"), &["en", "de"]), "en");
+        assert_eq!(game_start(None, None, &["en", "de"]), "en");
+    }
+
+    #[test]
+    fn the_editor_keeps_its_own_preference() {
+        let picked = initial_language(
+            None,
+            true,
+            || "ja".to_string(),
+            Some("de"),
+            || panic!("the editor asked the OS for a language"),
+            &codes(&["en", "de", "ja"]),
+        );
+        assert_eq!(picked, "ja", "the editor took the project's game language");
+    }
+
+    #[test]
+    fn the_environment_override_wins_in_both_sessions() {
+        for editor in [false, true] {
+            let picked = initial_language(
+                Some("ko"),
+                editor,
+                || "ja".to_string(),
+                Some("de"),
+                || Some("fr".to_string()),
+                &codes(&["en"]),
+            );
+            assert_eq!(picked, "ko");
+        }
+    }
+
+    #[test]
+    fn system_locales_map_onto_the_packs_that_exist() {
+        let packs = codes(&["en", "de", "pt-BR", "zh", "zh-TW"]);
+        for (tag, expected) in [
+            ("de-DE", Some("de")),
+            ("de_AT.UTF-8@euro", Some("de")),
+            ("pt-BR", Some("pt-BR")),
+            ("pt_br", Some("pt-BR")),
+            ("zh-Hant-TW", Some("zh-TW")),
+            ("zh-Hant-HK", Some("zh-TW")),
+            ("zh-Hans-CN", Some("zh")),
+            ("zh-CN", Some("zh")),
+            ("sv-SE", None),
+            ("", None),
+        ] {
+            assert_eq!(match_locale(tag, &packs).as_deref(), expected, "{tag}");
+        }
+    }
+
+    /// The plugin end to end: a game session reads `CurrentProject`, which
+    /// `RuntimePlugin` inserts before this plugin builds.
+    #[test]
+    fn the_plugin_starts_a_game_in_the_projects_language() {
+        let _guard = lang_lock();
+        let mut config = renzora_project_api::ProjectConfig::default();
+        config.default_language = Some("de".to_string());
+        let mut app = App::new();
+        app.insert_resource(renzora_project_api::EditorSession(false));
+        app.insert_resource(renzora_project_api::CurrentProject {
+            path: Default::default(),
+            config,
+        });
+        // An environment override is a developer's explicit choice and wins by
+        // design; with one set, this test has nothing to observe.
+        if std::env::var_os("RENZORA_LANG").is_some() {
+            return;
+        }
+        app.add_plugins(LangPlugin);
+        assert_eq!(renzora_lang_api::active_code(), "de");
+        renzora_lang_api::set_active("en");
+    }
+
+    /// The other half: the project's language is the game's, and an editor
+    /// session opened on that project keeps the editing user's own.
+    #[test]
+    fn the_plugin_ignores_the_projects_language_in_the_editor() {
+        let _guard = lang_lock();
+        let mut config = renzora_project_api::ProjectConfig::default();
+        config.default_language = Some("zz-game-only".to_string());
+        let mut app = App::new();
+        app.insert_resource(renzora_project_api::EditorSession(true));
+        app.insert_resource(renzora_project_api::CurrentProject {
+            path: Default::default(),
+            config,
+        });
+        app.add_plugins(LangPlugin);
+        assert_ne!(renzora_lang_api::active_code(), "zz-game-only");
         renzora_lang_api::set_active("en");
     }
 

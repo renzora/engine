@@ -452,19 +452,20 @@ impl Plugin for NativePluginLoader {
         let sdk = Sdk::load(sdk_dir(&root)).ok();
         let expected = expected_stamp_with(sdk.as_ref(), &root);
 
-        // Read once, off disk, because this runs during `App` assembly — there
-        // is no settings resource yet, and there will not be one until long
-        // after every plugin has been installed.
-        let disabled = renzora_project_api::load_disabled_plugins();
-
-        // Which scopes this process admits. `EditorSession` is inserted by the
-        // editor binary during assembly; a shipped game has none, which is the
-        // engine's standard way to tell the two apart (a cargo feature cannot —
-        // both binaries come out of one `--workspace` build).
+        // Which scopes this process admits. `EditorSession` is inserted by
+        // `add_engine_plugins` during assembly, and is `false` (or absent) in a
+        // shipped game, which is the engine's standard way to tell the two
+        // apart: a cargo feature cannot, since one build produces both.
         let in_editor = app
             .world()
             .get_resource::<renzora_project_api::EditorSession>()
             .is_some_and(|s| s.0);
+
+        // Read once, off disk, because this runs during `App` assembly: there
+        // is no settings resource yet, and there will not be one until long
+        // after every plugin has been installed. See `session_disabled_plugins`
+        // for why a game reads nothing.
+        let disabled = session_disabled_plugins(in_editor, renzora_project_api::load_disabled_plugins);
 
         let mut libraries = Vec::new();
 
@@ -560,6 +561,29 @@ impl Plugin for NativePluginLoader {
             }
         }
         app.insert_resource(LoadedNativePlugins { _libraries: libraries });
+    }
+}
+
+/// The plugins this session should skip because the user switched them off.
+///
+/// The list is the editor user's preference (`[app] disabled_plugins` in
+/// `~/.renzora/settings.toml`, written by Settings > Plugins), so it applies in
+/// an editor session and nowhere else. A shipped game loads the plugins it was
+/// shipped with. It used to read the same file, so a game exported with a
+/// plugin beside it, run on a machine whose editor had that plugin switched
+/// off, silently ran without it, and a player's machine (no `settings.toml`)
+/// ran with it: the same build behaving differently by who had installed the
+/// editor.
+///
+/// `load` is a function so a game never opens the editor's settings file at all.
+pub(crate) fn session_disabled_plugins(
+    in_editor: bool,
+    load: impl FnOnce() -> Vec<String>,
+) -> Vec<String> {
+    if in_editor {
+        load()
+    } else {
+        Vec::new()
     }
 }
 
@@ -1306,7 +1330,7 @@ mod tests {
         let dir = plugin("native");
         std::fs::write(
             dir.join("Cargo.toml"),
-            "[lib]\ncrate-type = [\"dylib\"]\n\n[dependencies]\nbevy = \"0.19\"\n",
+            "[lib]\ncrate-type = [\"dylib\"]\n\n[dependencies]\nbevy = \"*\"\n",
         )
         .expect("write manifest");
         assert!(is_native_source(&dir));
@@ -1601,5 +1625,19 @@ mod tests {
         std::fs::write(root.join("plugins").join(ENGINE_STAMP_FILE), "stamp-a\n").unwrap();
         assert_eq!(shipped_engine_stamp(&root).as_deref(), Some("stamp-a"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `disabled_plugins` is the editor user's preference. A shipped game loads
+    /// what it shipped with, and must not even open the editor's settings file
+    /// to find out otherwise.
+    #[test]
+    fn the_disabled_list_is_ignored_outside_an_editor_session() {
+        let game = session_disabled_plugins(false, || {
+            panic!("a game read the editor's disabled_plugins")
+        });
+        assert!(game.is_empty());
+
+        let editor = session_disabled_plugins(true, || vec!["noisy".to_string()]);
+        assert_eq!(editor, vec!["noisy".to_string()]);
     }
 }

@@ -240,7 +240,7 @@ A fresh project ships with this action set:
 
 ### input_map.ron
 
-To customise actions, drop an `input_map.ron` in the project root. On startup `InputPlugin` looks for it in the rpak/VFS first, then on disk in the project directory, and falls back to the built-in defaults if neither is found. The editor's input settings write the same file back.
+To customise actions, drop an `input_map.ron` in the project root (a player's rebinding at runtime is covered [below](#rebinding-while-the-game-runs)). On startup `InputPlugin` looks for it in the rpak/VFS first, then on disk in the project directory, and falls back to the built-in defaults if neither is found. The editor's input settings write the same file back.
 
 ```ron
 (
@@ -279,6 +279,44 @@ Each action has a `kind` of `Button`, `Axis1D`, or `Axis2D`, plus a list of bind
 | `Composite2D { up, down, left, right }` | `Composite2D(up: "KeyW", ...)` | Four keys combined into a 2D axis |
 
 > The action map is its own subsystem — it does **not** feed the `input_x`/`input_y` globals (those are hard-wired to WASD/arrows). Use `input_axis_2d("move")` if you want movement to respect a rebound `move` action.
+
+### Rebinding while the game runs
+
+`input_map.ron` is read once, at startup, but the map is applied every frame, so a change made while the game runs takes effect on the next frame. That is all a controls menu needs.
+
+From Lua (or any language), each binding is a setting named `input.<action>.<slot>`, where the slot is its position in the action's list starting at `0`:
+
+```lua
+-- "Press a key for Jump", then:
+set_setting("input.jump.0", "Key:KeyF")       -- replace the first binding
+set_setting("input.jump.2", "Button:North")   -- one past the end adds one
+set_setting("input.jump.1", "")               -- clear a slot
+
+print(get_setting("input.jump.0"))            -- "Key:KeyF", next frame
+```
+
+A binding is written as text:
+
+| Text | Binding |
+|---|---|
+| `Key:Space` | A key, by its `KeyCode` name |
+| `Mouse:Left` | `Left`, `Right` or `Middle` |
+| `Button:South` | A gamepad button, named as in the table above |
+| `Axis:LeftStickX` | A gamepad axis |
+| `Keys:KeyW,KeyS,KeyA,KeyD` | Four keys as a 2D axis: up, down, left, right |
+
+A name that is not a real input is refused (with a Console warning) rather than stored as a binding that never fires.
+
+A Rust script changes the map directly. `InputMap`, `InputAction` and `InputBinding` are contract types, reachable as `renzora::InputMap` and so on:
+
+```rust
+let mut map = ctx.world().resource_mut::<renzora::InputMap>();
+if let Err(e) = map.rebind("jump", 0, renzora::InputBinding::from_spec("Key:KeyF")) {
+    warn!("{e}"); // no such action, or a slot past the end
+}
+```
+
+Neither form writes `input_map.ron`. To keep a player's bindings, save them yourself (`renzora::save`) and apply them again on start.
 
 ## Example: first-person controller (Lua)
 

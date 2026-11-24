@@ -31,6 +31,12 @@
 
 use bevy::prelude::*;
 
+/// The game's audio settings (bus volumes, mute), re-exported here so a Rust
+/// script or a native plugin reaches them as `renzora::audio::settings`: the SDK
+/// re-exports this module and `audio_backend`, and a settings menu should not
+/// have to wait on the SDK growing a third path to change the volume.
+pub use crate::settings;
+
 use crate::audio_backend::{
     Backend, BackendInfo, BusState, Caps, CaptureInfo, ClipInfo, DeviceList, PlayRequest,
     StopRequest, UpdateReply, UpdateRequest,

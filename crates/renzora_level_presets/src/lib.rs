@@ -83,7 +83,8 @@ impl Plugin for LevelPresetsPlugin {
                 .run_if(in_state(SplashState::Editor)),
         );
 
-        // Apply the user's Graphics Quality tier to the heavy fullscreen passes.
+        // The integrated-GPU hint for the Graphics Quality tier. The tier
+        // itself is applied by the runtime (`renzora_engine::graphics_quality`).
         graphics_quality::register(app);
 
         // Native (ember/bevy_ui) panel content.

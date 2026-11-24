@@ -7567,6 +7567,7 @@ name = "renzora_atmosphere"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "renzora_project_api",
  "renzora_render_api",
  "renzora_scene_api",
  "renzora_shader_api",
@@ -7605,6 +7606,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_crash_api",
+ "renzora_project_api",
 ]
 
 [[package]]
@@ -8121,6 +8123,7 @@ dependencies = [
  "renzora_audio",
  "renzora_bsn",
  "renzora_crash_api",
+ "renzora_lang_api",
  "renzora_lighting",
  "renzora_log_api",
  "renzora_material_api",
@@ -8458,6 +8461,7 @@ dependencies = [
  "renzora_lang_api",
  "renzora_project_api",
  "renzora_scripting",
+ "sys-locale",
  "tempfile",
 ]
 
@@ -10915,6 +10919,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "sys-locale"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eab9a99a024a169fe8a903cf9d4a3b3601109bcc13bd9e3c6fff259138626c4"
+dependencies = [
+ "js-sys",
+ "libc",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

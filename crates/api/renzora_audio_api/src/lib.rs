@@ -13,3 +13,9 @@ pub mod audio;
 
 // The mixer contract, beside `audio` because its link holds these types.
 pub mod audio_backend;
+
+// The game's audio settings in the runtime settings store
+// (`CurrentProject.config.audio`): the one place a bus volume, master included,
+// is decided. Here rather than in `renzora_audio` so scripts and plugins can
+// set a volume without linking the mixer; reached as `renzora::audio::settings`.
+pub mod settings;

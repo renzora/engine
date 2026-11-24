@@ -10,14 +10,54 @@
 //! entity's `AudioPlayer` component (picking a random clip from its pool with
 //! per-shot pitch/volume jitter) — the "component owns the data, script fires
 //! the verb" model.
+//!
+//! And the mixer: `set_master_volume`, `set_bus_volume` and `set_bus_muted`
+//! write the runtime settings store (`CurrentProject.config.audio`), so a
+//! game's volume slider, the editor's fader and a Rust script all move the same
+//! value. [`AudioScriptExtension`] declares them to the language backends.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
+use renzora_scripting_api::script_extension::{Bind, Binding, ParamKind, ScriptExtension};
 use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::components::AudioPlayer;
+
+/// The mixer functions scripts can call, declared so every language backend
+/// builds them.
+///
+/// `set_master_volume` is declared too even though `ScriptCommand` has a
+/// variant for it: a backend that never emits that variant would otherwise have
+/// no way to reach the Master fader, and both routes arrive at the same
+/// `set_master_volume` action.
+pub struct AudioScriptExtension;
+
+impl ScriptExtension for AudioScriptExtension {
+    fn name(&self) -> &str {
+        "audio"
+    }
+
+    fn bindings(&self) -> Vec<Binding> {
+        vec![
+            Bind::action("set_master_volume", "set_master_volume")
+                .arg("volume", ParamKind::Float)
+                .doc("Set the Master bus volume, linear 0..1.5 (1 = unity).")
+                .build(),
+            Bind::action("set_bus_volume", "set_bus_volume")
+                .arg("bus", ParamKind::Str)
+                .arg("volume", ParamKind::Float)
+                .doc("Set a mixer bus's volume by its key (\"Music\", \"Sfx\", a custom bus), linear 0..1.5.")
+                .build(),
+            Bind::action("set_bus_muted", "set_bus_muted")
+                .arg("bus", ParamKind::Str)
+                .arg("muted", ParamKind::Bool)
+                .doc("Mute or unmute a mixer bus by its key.")
+                .build(),
+        ]
+    }
+}
 
 /// Per-entity runtime state for `AudioPlayer` one-shots: the last clip index
 /// played (so we can avoid repeats) and a tiny PRNG for selection + jitter.
@@ -87,8 +127,12 @@ pub fn handle_audio_script_actions(
         Some(ScriptActionValue::String(v)) => Some(v.clone()),
         _ => None,
     };
+    // An integer is accepted as a float: `set_bus_volume("Music", 0)` reaches
+    // here as `Int` from a language that keeps the two apart, and dropping the
+    // call over that would leave the music playing.
     let arg_f32 = |k: &str| match action.args.get(k) {
         Some(ScriptActionValue::Float(v)) => Some(*v),
+        Some(ScriptActionValue::Int(v)) => Some(*v as f32),
         _ => None,
     };
     let arg_bool = |k: &str| match action.args.get(k) {
@@ -127,6 +171,27 @@ pub fn handle_audio_script_actions(
         }
         "stop_all_sounds" => {
             queue.push(AudioCommand::StopAllSounds);
+        }
+        // The mixer, through the settings store. Queued rather than written here
+        // so every way of setting a volume (script, command queue, Rust) takes
+        // the one path in `process_audio_commands`.
+        "set_master_volume" => {
+            let Some(volume) = arg_f32("volume") else {
+                return;
+            };
+            queue.push(AudioCommand::SetMasterVolume { volume });
+        }
+        "set_bus_volume" => {
+            let (Some(bus), Some(volume)) = (arg_str("bus"), arg_f32("volume")) else {
+                return;
+            };
+            queue.push(AudioCommand::SetBusVolume { bus, volume });
+        }
+        "set_bus_muted" => {
+            let (Some(bus), Some(muted)) = (arg_str("bus"), arg_bool("muted")) else {
+                return;
+            };
+            queue.push(AudioCommand::SetBusMuted { bus, muted });
         }
         // Fire a one-shot from a target entity's AudioPlayer component.
         "play_audio_player" => {
