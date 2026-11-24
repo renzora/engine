@@ -53,11 +53,15 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     let heading = txt(commands, fonts, "", 18.0, text_primary());
     bind_text(commands, heading, |w| match progress(w) {
         Some(ExportProgress::Done(_)) => renzora_lang_api::t("export.status.complete"),
+        Some(p) if p.is_cancelled() => renzora_lang_api::t("export.status.cancelled"),
         Some(ExportProgress::Error(_)) => renzora_lang_api::t("export.status.failed"),
         _ => renzora_lang_api::t("export.status.exporting_project"),
     });
+    // A cancel is something the user asked for, so it is not coloured as a
+    // failure.
     bind_text_color(commands, heading, |w| match progress(w) {
         Some(ExportProgress::Done(_)) => rgb(GREEN),
+        Some(p) if p.is_cancelled() => rgb(text_primary()),
         Some(ExportProgress::Error(_)) => rgb(RED),
         _ => rgb(text_primary()),
     });
@@ -87,6 +91,8 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     bind_text(commands, detail, |w| {
         let Some(s) = w.get_resource::<ExportOverlayState>() else { return String::new() };
         match &s.progress {
+            // The heading already says it; repeating it below reads as an echo.
+            p if p.is_cancelled() => String::new(),
             ExportProgress::Done(msg) | ExportProgress::Error(msg) => msg.clone(),
             ExportProgress::Working(step) => step.trim().to_string(),
             _ => String::new(),

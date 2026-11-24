@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 19:43
+- fix(export): cancelling an export says "Export cancelled" instead of showing it as a failure
+
 ## 2026-11-24 10:55
 - feat(export): each heavy UI widget and UI shape is its own Features toggle, kept only when the project uses it
 - feat(export): a lean export leaves out the editor chrome's theme shaders and the primitive meshers when nothing can draw a mesh

@@ -65,6 +65,18 @@ pub enum ExportProgress {
     Error(String),
 }
 
+/// The error a build stops with when the user pressed Cancel. It travels as
+/// an ordinary error so every worker (here, in a console, in the companion)
+/// unwinds the same way, and the status card tells it apart by this text so a
+/// cancel the user asked for is not shown as a red failure.
+pub(crate) const CANCELLED: &str = "Export cancelled";
+
+impl ExportProgress {
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, ExportProgress::Error(msg) if msg == CANCELLED)
+    }
+}
+
 /// Messages sent from the background export thread.
 pub(crate) enum ExportMsg {
     Progress(String),
@@ -2065,7 +2077,9 @@ pub(crate) fn export_worker(
             }
         }
         Err(e) => {
-            let _ = tx.send(ExportMsg::Error(format!("Export failed: {}", e)));
+            let e = e.to_string();
+            let msg = if e == CANCELLED { e } else { format!("Export failed: {}", e) };
+            let _ = tx.send(ExportMsg::Error(msg));
         }
     }
 }

@@ -582,7 +582,7 @@ pub fn build_lean(
                         "Lean build failed (cargo exited with {code}). The compiler's output is in the build console."
                     ))
                 }
-                crate::console::Finished::Cancelled => break 'build Err("Export cancelled".into()),
+                crate::console::Finished::Cancelled => break 'build Err(crate::overlay::CANCELLED.into()),
                 crate::console::Finished::NoTerminal(why) => {
                     progress(format!("{why} Building here instead."));
                 }
@@ -683,7 +683,7 @@ fn run_piped(
     done.store(true, Ordering::Relaxed);
 
     if cancel.load(Ordering::Relaxed) {
-        return Err("Export cancelled".into());
+        return Err(crate::overlay::CANCELLED.into());
     }
     if !status.success() {
         return Err(format!(

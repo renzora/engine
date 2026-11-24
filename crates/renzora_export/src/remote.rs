@@ -162,7 +162,7 @@ pub(crate) fn start(
                     return;
                 }
                 Some(Err(why)) => {
-                    let why = if cancel.load(Ordering::Relaxed) { "Export cancelled".to_string() } else { why };
+                    let why = if cancel.load(Ordering::Relaxed) { crate::overlay::CANCELLED.to_string() } else { why };
                     let _ = tx.send(ExportMsg::Error(why));
                     return;
                 }
