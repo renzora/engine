@@ -18,7 +18,7 @@ use crate::templates::TemplateManager;
 use super::frame::can_export;
 use super::widgets::txt;
 use super::{
-    CancelOrBackBtn, CheckAction, CheckActionBtn, Choice, ChoiceCard, CloseBtn, CopyLogBtn,
+    CancelOrBackBtn, CheckAction, CheckActionBtn, Choice, ChoiceCard, CloseBtn, CopyLogBtn, OpenFolderBtn,
     DownloadBtn, ExportBtn, ExportDialogUi, ExportTab, FeatureFilter, FeatureFilterBtn,
     FeaturesResetBtn, IconBrowseBtn, IconClearBtn, InstallBtn, OutputBrowseBtn, PresetBtn,
     PresetDelBtn, PresetDupBtn, SectionToggle, SourceDownloadBtn, TabBtn,
@@ -120,6 +120,20 @@ pub(super) fn cancel_or_back_click(
         state.view = ExportView::Settings;
         state.progress = ExportProgress::Idle;
     }
+}
+
+/// Open the finished export's folder: the output folder plus the project's
+/// name, which is where `export_worker` writes.
+pub(super) fn open_folder_click(
+    q: Query<&UiInteraction, (With<OpenFolderBtn>, Changed<UiInteraction>)>,
+    state: Option<Res<ExportOverlayState>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+) {
+    if !q.iter().any(|i| *i == UiInteraction::Pressed) {
+        return;
+    }
+    let Some(state) = state else { return };
+    crate::overlay::open_export_folder(&state.output_dir, project.as_ref().map(|p| p.config.name.as_str()));
 }
 
 /// Copy the full build log to the system clipboard.

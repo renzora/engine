@@ -396,6 +396,9 @@ pub(crate) fn poll_export_task(world: &mut World) {
         }
     }
 
+    let project_name = world
+        .get_resource::<renzora_project_api::CurrentProject>()
+        .map(|p| p.config.name.clone());
     let mut state = world.resource_mut::<ExportOverlayState>();
     for msg in updates {
         match msg {
@@ -415,6 +418,9 @@ pub(crate) fn poll_export_task(world: &mut World) {
                 state.build_finished = true;
                 push_log(&mut state, msg.clone());
                 state.progress = ExportProgress::Done(msg);
+                // The next thing anyone does with a finished export is look at
+                // it, so show it rather than leaving them to find the folder.
+                open_export_folder(&state.output_dir, project_name.as_deref());
             }
             ExportMsg::Error(msg) => {
                 push_log(&mut state, format!("error: {msg}"));
@@ -425,6 +431,44 @@ pub(crate) fn poll_export_task(world: &mut World) {
 
     if finished {
         state.active_task = None;
+    }
+}
+
+/// Show a finished export's folder in the system file manager: the output
+/// folder plus the project's name, which is where `export_worker` writes, or
+/// the output folder itself if that is not there.
+pub(crate) fn open_export_folder(output_dir: &str, project_name: Option<&str>) {
+    let base = std::path::PathBuf::from(output_dir);
+    let dir = project_name
+        .map(|name| base.join(name))
+        .filter(|d| d.is_dir())
+        .unwrap_or(base);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let opener = if cfg!(target_os = "windows") {
+            "explorer"
+        } else if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
+        if let Err(e) = std::process::Command::new(opener).arg(&dir).spawn() {
+            warn!("[export] could not open {}: {e}", dir.display());
+        }
+    }
+}
+
+/// Hold the editor viewport paused while the export dialog is open: drawing a
+/// scene nobody can see under the dialog takes GPU and CPU from the build.
+pub(crate) fn hold_viewport_while_open(
+    state: Option<Res<ExportOverlayState>>,
+    hold: Option<ResMut<renzora_viewport_api::ViewportHold>>,
+) {
+    let Some(mut hold) = hold else { return };
+    let open = state.is_some_and(|s| s.visible);
+    // Compared first, so a steady state never marks the resource changed.
+    if hold.reasons().contains(&"export") != open {
+        hold.set("export", open);
     }
 }
 

@@ -964,8 +964,10 @@ fn sync_viewport_camera_activation(
     // Render-on-change (see `redraw`): with Realtime off, a camera that would
     // render sits out the frames where nothing in the scene changed.
     // A game running in its own window pauses the viewport, Realtime or not
-    // (see `redraw::game_running`).
-    let game_running = play_mode.as_ref().is_some_and(|p| p.game_launched);
+    // (see `redraw::game_running`), and so does a `ViewportHold`, which only
+    // the redraw gate reads (see `redraw::paused`).
+    let game_running = play_mode.as_ref().is_some_and(|p| p.game_launched)
+        || redraw.as_ref().is_some_and(|r| r.is_paused());
     let realtime = settings.as_ref().is_some_and(|s| s.realtime) && !game_running;
     let render_ok = !game_running && (realtime || redraw.as_ref().is_none_or(|r| r.should_render()));
     let overlay_ok = !game_running && (realtime || redraw.as_ref().is_none_or(|r| r.should_render_overlay()));

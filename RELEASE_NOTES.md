@@ -1,5 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 10:02
+- feat(export): a running export is a small status card with one Cancel, and Open folder, Back and Close when it ends
+- feat(export): a finished export opens its folder
+- feat(editor): the viewport pauses while the export dialog is open
+- fix(export): a lean export with 3D and 2D rendering off builds without warnings
+
 ## 2026-11-24 09:46
 - feat(export): the lean build console is on by default and opens on macOS and Linux too
 - feat(export): the export dialog shows a short status instead of the full build log

@@ -68,7 +68,8 @@ impl Plugin for ExportPlugin {
         {
             _app.init_resource::<ExportOverlayState>()
                 .init_resource::<TemplateManager>()
-                .add_systems(Update, export_open_on_request);
+                .init_resource::<renzora_viewport_api::ViewportHold>()
+                .add_systems(Update, (export_open_on_request, overlay::hold_viewport_while_open));
             dialog::register(_app);
         }
     }

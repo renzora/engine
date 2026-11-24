@@ -24,7 +24,7 @@ A second or two after you press Play, the Console says **Game connected**. From 
 
 **You see the game in the editor.** The Hierarchy and the Inspector show the game as it runs: the player's position as they walk, a crate tumbling, a bullet the game spawned appearing in the Hierarchy and disappearing when it hits. Select the player and the Inspector shows its live values.
 
-**The viewport pauses while the game runs.** It goes blank, with a message in the middle saying the game is running in its own window, and draws nothing until the game stops: the game window already shows the scene, and drawing it twice would only slow both down. This holds even with Realtime on. When the game stops, the viewport carries on from the scene as Stop left it.
+**The viewport pauses while the game runs.** It goes blank, with a message in the middle saying the game is running in its own window, and draws nothing until the game stops: the game window already shows the scene, and drawing it twice would only slow both down. This holds even with Realtime on. When the game stops, the viewport carries on from the scene as Stop left it. The export dialog pauses it the same way while it is open (the dialog covers it, so there is no message). An engine crate that needs the same can hold the viewport through `renzora_viewport_api::ViewportHold` with a reason of its own; it draws again once every reason is released.
 
 Objects the game spawns at the top level appear under a **Spawned during Play** group in the Hierarchy, so what the game made is easy to tell from your scene. The group goes when the game stops. A camera the game spawns appears switched off in the editor, so it never renders into the editor's window; the game's own camera keeps running.
 

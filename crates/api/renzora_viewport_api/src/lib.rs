@@ -538,6 +538,9 @@ pub use renzora_project_api::{GraphicsQuality, QualityGate};
 mod ui_scale;
 pub use ui_scale::GameUiScale;
 
+mod hold;
+pub use hold::ViewportHold;
+
 /// The render resolution the editor viewport is currently rendering at, derived
 /// each frame from the relevant scene camera's [`renzora_scene_api::CameraRenderResolution`]
 /// (selected camera → default camera → first scene camera). Read by the viewport

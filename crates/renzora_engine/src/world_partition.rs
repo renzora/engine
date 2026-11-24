@@ -192,7 +192,11 @@ struct Readiness {
 }
 
 fn subtree_readiness(world: &World, root: Entity) -> Readiness {
+    // Only models and meshes can keep a subtree waiting; a build with neither
+    // never writes to `r`.
+    #[cfg_attr(not(any(feature = "gltf", feature = "render_3d")), allow(unused_mut))]
     let mut r = Readiness::default();
+    #[cfg(feature = "render_3d")]
     let mut seen_images: std::collections::HashSet<bevy::asset::AssetId<Image>> = Default::default();
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
@@ -717,6 +721,7 @@ fn bounds_of_points(points: impl Iterator<Item = Vec3>) -> Option<(Vec3, Vec3)> 
     })
 }
 
+#[cfg(feature = "gltf")]
 fn union(a: (Vec3, Vec3), b: (Vec3, Vec3)) -> (Vec3, Vec3) {
     (a.0.min(b.0), a.1.max(b.1))
 }

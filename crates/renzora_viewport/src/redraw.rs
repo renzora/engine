@@ -109,6 +109,10 @@ pub struct ViewportRedraw {
     last_reason: String,
     /// Frames the overlay cameras keep rendering for an overlay-only change.
     overlay_frames_left: u32,
+    /// Paused this frame (see [`paused`]). Read by the camera activation,
+    /// which renders in Realtime without asking this gate and so has to be
+    /// told separately.
+    paused: bool,
 }
 
 impl Default for ViewportRedraw {
@@ -119,11 +123,18 @@ impl Default for ViewportRedraw {
             reported: None,
             last_reason: String::new(),
             overlay_frames_left: SETTLE_FRAMES,
+            paused: false,
         }
     }
 }
 
 impl ViewportRedraw {
+    /// Whether the viewport is paused (a running game, or a
+    /// [`renzora_viewport_api::ViewportHold`]). Realtime does not override it.
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
     /// Whether the viewport cameras should render this frame.
     pub fn should_render(&self) -> bool {
         self.frames_left > 0
@@ -232,25 +243,28 @@ pub(crate) fn detect_viewport_changes(world: &mut World, mut state: Local<Detect
     let demand = world.get_resource::<renzora_scene_api::ViewportRedrawDemand>().copied().unwrap_or_default();
     let settle_frames = demand.settle_frames.max(SETTLE_FRAMES);
 
-    // Paused while the game runs in its own window: see `game_running`.
-    if game_running(world) {
+    // Paused while the game runs in its own window, or while something holds
+    // the viewport: see `paused`.
+    if paused(world) {
         let mut redraw = world.resource_mut::<ViewportRedraw>();
         redraw.frames_left = 0;
         redraw.overlay_frames_left = 0;
         redraw.awake_for = 0;
         redraw.reported = None;
+        redraw.paused = true;
         state.paused_for_game = true;
         return;
     }
-    // Back from a game: render once, whether or not the scan below finds
-    // anything, so the picture is never one from before Play.
+    world.resource_mut::<ViewportRedraw>().paused = false;
+    // Back from a pause: render once, whether or not the scan below finds
+    // anything, so the picture is never one from before it.
     let resumed = std::mem::take(&mut state.paused_for_game);
 
     let mut overlay_changed = false;
     let reason = if realtime {
         None
     } else if resumed {
-        Some("the game stopped".to_string())
+        Some("the viewport resumed".to_string())
     } else if playing {
         Some("play mode".to_string())
     } else if let Some(why) = demand.continuous {
@@ -330,6 +344,16 @@ pub(crate) fn game_running(world: &World) -> bool {
     world
         .get_resource::<renzora_project_api::PlayModeState>()
         .is_some_and(|p| p.game_launched)
+}
+
+/// Whether the viewport is paused: a game is running, or something holds it
+/// through [`renzora_viewport_api::ViewportHold`] (the export dialog, while it
+/// is open).
+pub(crate) fn paused(world: &World) -> bool {
+    game_running(world)
+        || world
+            .get_resource::<renzora_viewport_api::ViewportHold>()
+            .is_some_and(|h| h.is_held())
 }
 
 /// The first thing found that changed this frame, described for the log.

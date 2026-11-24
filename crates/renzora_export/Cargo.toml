@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 renzora_project_api = { path = "../api/renzora_project_api" }
+# `ViewportHold`: the editor viewport pauses while the export dialog is open.
+renzora_viewport_api = { path = "../api/renzora_viewport_api" }
 renzora_lang_api = { path = "../api/renzora_lang_api" }
 bevy = { workspace = true }
 renzora = { path = "../shared/renzora", default-features = false, features = ["editor"] }

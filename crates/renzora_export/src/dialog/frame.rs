@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text};
-use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::{react, Rx};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::OverlaySurface;
 use renzora_ember::UiInteraction;
@@ -65,6 +65,29 @@ pub(super) fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_proje
         ))
         .id();
     commands.entity(backdrop).add_child(panel);
+
+    // While an export runs, the dialog is a status card: a line of text and
+    // one button do not need a 1240-pixel frame, and the empty frame made the
+    // build look stalled. Sized back to the form when it returns to settings.
+    // Written only on a change, so a steady view costs no layout pass.
+    react(commands, move |w: &mut World| {
+        if w.get_entity(panel).is_err() {
+            return false;
+        }
+        let compact = matches!(w.get_resource::<ExportOverlayState>().map(|s| s.view), Some(ExportView::Log));
+        let (width, height) = if compact {
+            (Val::Px(560.0), Val::Auto)
+        } else {
+            (Val::Px(1240.0), Val::Vh(MODAL_VH * 100.0))
+        };
+        if let Some(mut node) = w.get_mut::<Node>(panel) {
+            if node.width != width || node.height != height {
+                node.width = width;
+                node.height = height;
+            }
+        }
+        true
+    });
 
     let header = build_header(commands, fonts);
     commands.entity(panel).add_child(header);
@@ -205,6 +228,14 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(close).add_child(ct);
 
     let export = build_export_btn(commands, fonts);
+    // Both belong to the settings form. During a build the card has its own
+    // Cancel, and an Export button that stayed visible read as a second build
+    // waiting to be started.
+    for button in [close, export] {
+        bind_display(commands, button, |w| {
+            matches!(w.get_resource::<ExportOverlayState>().map(|s| s.view), Some(ExportView::Settings))
+        });
+    }
     commands.entity(header).add_children(&[badge, titles, close, export]);
     header
 }

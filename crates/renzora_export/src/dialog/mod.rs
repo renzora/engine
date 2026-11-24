@@ -84,6 +84,7 @@ pub(crate) fn register(app: &mut App) {
             interaction::save_prompt_click,
             interaction::cancel_or_back_click,
             interaction::copy_log_click,
+            interaction::open_folder_click,
             interaction::close_click,
             interaction::section_toggle_click,
         ),
@@ -186,6 +187,9 @@ pub(super) struct CancelOrBackBtn;
 /// Copy the full build log to the system clipboard.
 #[derive(Component)]
 pub(super) struct CopyLogBtn;
+/// Show a finished export's folder in the system file manager.
+#[derive(Component)]
+pub(super) struct OpenFolderBtn;
 /// The build log's scroll viewport, so [`lifecycle::follow_log_tail`] can find it.
 #[derive(Component)]
 pub(super) struct LogScroll;

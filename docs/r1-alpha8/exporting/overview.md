@@ -188,9 +188,14 @@ What it strips/changes versus the copy modes:
 ### Watching the build in a console
 
 A lean build compiles in a terminal window of its own, so you see cargo as it
-shows itself, with colours and the live progress bar. While it runs, the export
-dialog shows only **Exporting project…** and the step it is on; **Copy log**
-still copies everything the export printed.
+shows itself, with colours and the live progress bar. While any export runs, the
+export dialog shrinks to a small card showing **Exporting project…** and the step
+it is on, with one **Cancel**. When it ends, the card says where the export went
+(or why it failed), the export's folder opens in your file manager, and the card
+offers **Open folder**, **Back** (to the settings) and **Close**. **Copy log**
+copies everything the export printed. The editor viewport pauses while the
+export dialog is open, as it does while a game runs, so the build is not
+competing with a scene nobody can see under the dialog.
 
 The window closes by itself when the build succeeds and stays open after a
 failure, so the errors are still there to read. **Cancel** in the dialog stops

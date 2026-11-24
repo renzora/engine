@@ -19,7 +19,7 @@ use renzora_ember::UiInteraction;
 use crate::overlay::{ExportOverlayState, ExportProgress};
 
 use super::widgets::{cursor, mode_label, pill_button, txt};
-use super::{CancelOrBackBtn, CopyLogBtn, LogScroll, GREEN, RED};
+use super::{CancelOrBackBtn, CloseBtn, CopyLogBtn, LogScroll, OpenFolderBtn, GREEN, RED};
 
 fn progress(w: &renzora_ember::reactive::Rx) -> Option<ExportProgress> {
     w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone())
@@ -30,12 +30,13 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(10.0), flex_grow: 1.0, min_height: Val::Px(0.0), padding: UiRect::all(Val::Px(20.0)), ..default() })
         .id();
 
-    // The status, in the middle of the dialog.
+    // The status. The card sizes to it, so the padding is what gives it room.
     let body = commands
         .spawn(Node {
             width: Val::Percent(100.0),
             flex_grow: 1.0,
             min_height: Val::Px(0.0),
+            padding: UiRect::axes(Val::Px(0.0), Val::Px(28.0)),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
@@ -104,22 +105,60 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
 
     commands.entity(body).add_children(&[heading_row, sub, detail_box]);
 
-    // Buttons: Copy log (left), Cancel/Back (right).
+    // Footer: Copy log on the left; on the right, Cancel while the build runs,
+    // then Open folder (after a success), Back and Close once it has ended.
+    // The dialog's header buttons are hidden in this view, so these are the
+    // only way out of it, and there is exactly one Cancel.
     let btn_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
     let copy_btn = pill_button(commands, fonts, "clipboard", &renzora_lang_api::t("export.btn.copy_log"));
     commands.entity(copy_btn).insert(CopyLogBtn);
-    let btn = commands.spawn((Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(section_bg())), UiInteraction::default(), CancelOrBackBtn, cursor())).id();
-    let btn_label = commands.spawn((Text::new(renzora_lang_api::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
-    bind_text(commands, btn_label, |w| {
-        if w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false) {
+
+    let actions = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+    let open = footer_button(commands, fonts, &renzora_lang_api::t("export.btn.open_folder"));
+    commands.entity(open).insert(OpenFolderBtn);
+    bind_display(commands, open, |w| matches!(progress(w), Some(ExportProgress::Done(_))));
+
+    let cancel_or_back = footer_button(commands, fonts, "");
+    commands.entity(cancel_or_back).insert(CancelOrBackBtn);
+    let label = commands.spawn((Text::new(renzora_lang_api::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
+    bind_text(commands, label, |w| {
+        if running(w) {
             renzora_lang_api::t("common.cancel")
         } else {
             renzora_lang_api::t("export.btn.back")
         }
     });
-    commands.entity(btn).add_child(btn_label);
-    commands.entity(btn_row).add_children(&[copy_btn, btn]);
+    commands.entity(cancel_or_back).add_child(label);
+
+    let close = footer_button(commands, fonts, &renzora_lang_api::t("common.close"));
+    commands.entity(close).insert(CloseBtn);
+    bind_display(commands, close, |w| !running(w));
+
+    commands.entity(actions).add_children(&[open, cancel_or_back, close]);
+    commands.entity(btn_row).add_children(&[copy_btn, actions]);
 
     commands.entity(view).add_children(&[body, btn_row]);
     view
+}
+
+fn running(w: &renzora_ember::reactive::Rx) -> bool {
+    w.get_resource::<ExportOverlayState>().is_some_and(|s| s.active_task.is_some())
+}
+
+/// One of the footer's buttons. An empty `label` leaves the caller to add its
+/// own (bound) text.
+fn footer_button(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    let btn = commands
+        .spawn((
+            Node { min_width: Val::Px(90.0), height: Val::Px(32.0), padding: UiRect::axes(Val::Px(14.0), Val::Px(0.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
+            BackgroundColor(rgb(section_bg())),
+            UiInteraction::default(),
+            cursor(),
+        ))
+        .id();
+    if !label.is_empty() {
+        let t = commands.spawn((Text::new(label), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), PASS_THROUGH)).id();
+        commands.entity(btn).add_child(t);
+    }
+    btn
 }

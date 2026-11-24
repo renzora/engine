@@ -6,6 +6,8 @@
 //! is stripped by the lean exporter the component types do not exist at all, so
 //! the stripped body is a genuine no-op rather than a behaviour change.
 
+// Only the 3D and terrain denies name prelude types; the rest use full paths.
+#[cfg(any(feature = "render_3d", feature = "terrain"))]
 use bevy::prelude::*;
 use renzora_bsn::DynamicSceneBuilder;
 

@@ -5,6 +5,7 @@
 //! systems turn each description back into renderable geometry after a load.
 
 use bevy::prelude::*;
+#[cfg(all(feature = "render_3d", feature = "gltf"))]
 use renzora_scene_api::MeshInstanceData;
 
 #[cfg(feature = "render_3d")]

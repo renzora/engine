@@ -8217,6 +8217,7 @@ dependencies = [
  "renzora_rust_script",
  "renzora_rvg",
  "renzora_solari_api",
+ "renzora_viewport_api",
  "rfd",
  "serde",
  "serde_json",

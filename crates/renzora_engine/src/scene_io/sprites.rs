@@ -11,8 +11,12 @@
 //! reconcile — hence [`on_sprite_image_path_inserted`] and
 //! [`on_sprite_inserted_apply_image_path`] doing the same job from both sides.
 
+// Every system here is `render_2d`; without it the module is empty.
+#[cfg(feature = "render_2d")]
 use bevy::prelude::*;
+#[cfg(feature = "render_2d")]
 use renzora_scene_api::EditorCamera;
+#[cfg(feature = "render_2d")]
 use renzora_project_api::PlayModeState;
 
 /// Loads `Sprite.image` from `SpriteImagePath` whenever the path
