@@ -6,6 +6,13 @@
 //! slow editor. Now the editor's `PlayModeState` stays `Editing` for good and
 //! the game lives in the child process `external_runtime` manages. The request
 //! flags on `PlayModeState` remain the way the Play button and shortcuts ask.
+//!
+//! The game opens in a window of its own, exactly as an exported game runs. It
+//! used to be placed inside the editor in a Game panel, and that made the game
+//! something other than what ships: window size and mode were withheld there,
+//! the editor's and the game's UI fought over focus and input, and the editor's
+//! copy of the game's widgets fed back into the game. The editor still follows
+//! and steers the running game over the live link (`renzora_live_link`).
 
 use bevy::prelude::*;
 use renzora_project_api::PlayModeState;
@@ -80,26 +87,16 @@ pub fn handle_play_mode_transitions(world: &mut World) {
             project_path.display(),
         ),
     );
-    let embed_parent = crate::game_panel::embed_parent(world);
     let live_link = world.get_resource::<renzora_project_api::LiveLinkEndpoint>().cloned();
     // The editor's own profiling key, so the companion can profile the game.
     let profiling_key = world
         .get_resource::<renzora_diagnostics_api::profiling::ProfilingAccess>()
         .map(|a| a.key.clone());
-    match spawn_runtime(
-        &binary,
-        &project_path,
-        embed_parent,
-        live_link.as_ref(),
-        profiling_key.as_deref(),
-    ) {
+    match spawn_runtime(&binary, &project_path, live_link.as_ref(), profiling_key.as_deref()) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);
                 runtime.begin_preparing();
-            }
-            if embed_parent.is_some() {
-                show_game_panel(world);
             }
         }
         Err(e) => console_error("PlayMode", format!("Failed to start the game: {e}")),
@@ -114,39 +111,5 @@ pub fn sync_game_launched(runtime: Res<ExternalRuntime>, mut play_mode: ResMut<P
     let alive = runtime.is_alive();
     if play_mode.game_launched != alive {
         play_mode.game_launched = alive;
-    }
-}
-
-/// Bring the Game panel to the front, adding it beside the viewport when the
-/// layout doesn't have one, so the game is on screen when it starts.
-///
-/// Adding the tab must also arm [`DockDirty`](renzora_ember::dock::DockDirty).
-/// Without it the tree said the Game tab was the active one while the UI was
-/// never rebuilt: the viewport, no longer its leaf's active tab, dropped to the
-/// small stub target a hidden viewport renders at and showed as a blurry
-/// square, and the Game panel the game's window is placed over never existed.
-fn show_game_panel(world: &mut World) {
-    use crate::game_panel::GAME_PANEL_ID;
-    use renzora_ember::dock::{Dock, DockDirty, FixedDock, FocusPanelRequest};
-
-    let present = world
-        .get_resource::<Dock>()
-        .is_some_and(|d| d.tree.contains_panel(GAME_PANEL_ID))
-        || world
-            .get_resource::<FixedDock>()
-            .is_some_and(|f| f.tree.contains_panel(GAME_PANEL_ID));
-    if present {
-        if let Some(mut focus) = world.get_resource_mut::<FocusPanelRequest>() {
-            focus.0 = Some(GAME_PANEL_ID.to_string());
-        }
-        return;
-    }
-    if let Some(mut dock) = world.get_resource_mut::<Dock>() {
-        if !dock.tree.add_tab("viewport", GAME_PANEL_ID.to_string()) {
-            dock.tree.focus_or_add_panel(GAME_PANEL_ID);
-        }
-    }
-    if let Some(mut dirty) = world.get_resource_mut::<DockDirty>() {
-        dirty.0 = true;
     }
 }

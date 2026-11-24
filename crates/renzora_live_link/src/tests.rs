@@ -126,6 +126,34 @@ fn a_despawn_on_one_side_despawns_on_the_other() {
 /// The game has a global scene's entity (a loading screen) that the editor
 /// never has. It must not travel: once reported, the editor's copy came back
 /// to the game as a despawn and the loading screen vanished.
+/// The game owns its UI: a UI root, a widget in it and a text span under the
+/// widget (which has no `Node` of its own) are never sent, while an ordinary
+/// object spawned beside them is.
+#[test]
+fn ui_is_never_sent() {
+    let (mut game, _) = scene();
+    let mut tracker = Tracker::baseline(&mut game);
+
+    let root = game.spawn((Name::new("hud"), Node::default())).id();
+    let widget = game.spawn((Name::new("button"), Node::default(), ChildOf(root))).id();
+    game.spawn((Name::new("label_span"), Transform::default(), ChildOf(widget)));
+    game.spawn((Name::new("bullet"), Transform::default()));
+
+    let mut sent = Vec::new();
+    for _ in 0..12 {
+        next_frame(&mut game);
+        sent.extend(tracker.scan(&mut game));
+    }
+    let spawned: Vec<&str> = sent
+        .iter()
+        .filter_map(|m| match m {
+            LinkMessage::Spawn { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(spawned, ["bullet"], "sent: {sent:?}");
+}
+
 #[test]
 fn a_global_scene_entity_is_not_sent() {
     let (mut game, _) = scene();

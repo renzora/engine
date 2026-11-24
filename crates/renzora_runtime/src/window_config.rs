@@ -14,10 +14,8 @@
 //! So the last applied config is remembered, and the configured size is written
 //! only when the configured size (or the mode) itself moved.
 //!
-//! **Only VSync inside the editor's Game panel.** There the editor owns the
-//! window's size and shape, and any change to those would make winit restyle it
-//! back into a top-level window; see `embed`. VSync is the game's own surface,
-//! so it still follows the config, and the title still follows the project name.
+//! A game played from the editor opens in its own window like an exported one,
+//! so every one of these applies there too.
 //!
 //! `max_fps` is not here: `frame_limit` reads it from the config every frame.
 
@@ -141,12 +139,6 @@ fn apply_window_config(
     {
         let cfg = &project.config.window;
         let mut changes = window_changes(applied.config.as_ref(), cfg);
-        if crate::embed::embed_parent().is_some() {
-            // Inside the Game panel only VSync still applies. It sets the
-            // present mode of the game's own surface and leaves the window's
-            // size and style alone, which is the part winit would restyle.
-            changes = WindowChanges { vsync: changes.vsync, ..WindowChanges::default() };
-        }
         // The size follows a mode change a frame later; see `resize_pending`.
         let resize_now = std::mem::take(&mut applied.resize_pending);
         if changes.mode {

@@ -63,7 +63,6 @@ pub mod editor_image;
 /// backend and the server's `[network]` section.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod early_project;
-pub mod embed;
 /// `[window] max_fps`: the game's frame-rate limit. Desktop only: on the web
 /// the browser paces frames, and a page cannot block its thread to wait.
 #[cfg(not(target_arch = "wasm32"))]
@@ -560,13 +559,8 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // Runtime: true (OS title bar). Editor: whatever
                     // `EDITOR_OS_FRAME` asks for. Decided at runtime via
                     // `is_editor`.
-                    decorations: (!is_editor || renzora_shell_api::EDITOR_OS_FRAME)
-                        && embed::embed_parent().is_none(),
+                    decorations: !is_editor || renzora_shell_api::EDITOR_OS_FRAME,
                     resizable: true,
-                    // A game going into the editor's Game panel starts hidden,
-                    // so it never flashes up as a window of its own before
-                    // `embed` makes it a child; the editor shows it.
-                    visible: embed::embed_parent().is_none(),
                     // The editor opens on the splash dashboard, which is a
                     // launcher and not a workspace: it wants a window you can
                     // see your desktop around, not the whole screen. So the
@@ -854,7 +848,6 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         // editor's own window.
         window_config::register(app);
         app.add_systems(Update, apply_window_icon);
-        embed::register(app);
         // The game's frame-rate limit, here so it covers the shipped game and
         // the Play child and never the editor's own window.
         #[cfg(not(target_arch = "wasm32"))]

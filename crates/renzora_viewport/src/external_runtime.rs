@@ -59,19 +59,6 @@ impl ExternalRuntime {
         self.phase
     }
 
-    /// The running game's process id, which is how the editor finds the
-    /// game's window to place in the Game panel.
-    pub fn pid(&self) -> Option<u32> {
-        self.child.as_ref().map(Child::id)
-    }
-
-    /// The game's window has been found, so it is up whatever the timer says.
-    pub fn mark_running(&mut self) {
-        if self.child.is_some() {
-            self.phase = RuntimePhase::Running;
-        }
-    }
-
     /// Mark the runtime as just-spawned and start the grace timer. Called
     /// right after a successful spawn.
     pub fn begin_preparing(&mut self) {
@@ -140,8 +127,8 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 ///
 /// `--no-editor` is always passed: it's what makes the self-relaunch fallback
 /// boot as a game, and a harmless no-op for a dedicated runtime binary (which
-/// has no editor bundle to suppress in the first place). `embed_parent` is
-/// the editor's window handle when the game should go in the Game panel.
+/// has no editor bundle to suppress in the first place). The game opens in a
+/// window of its own, exactly as an exported game does.
 ///
 /// Its output is piped into the editor console (category `Runtime`) rather than
 /// inherited. On Windows the runtime is a GUI-subsystem binary launched from
@@ -152,18 +139,12 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 pub fn spawn_runtime(
     binary: &Path,
     project_path: &Path,
-    embed_parent: Option<isize>,
     live_link: Option<&renzora_project_api::LiveLinkEndpoint>,
     profiling_key: Option<&str>,
 ) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
     let mut command = Command::new(binary);
     command.arg("--no-editor").arg("--project").arg(project_path);
-    // The editor window the game makes its own window a child of, so it can
-    // sit in the Game panel; see `renzora_runtime::embed`.
-    if let Some(parent) = embed_parent {
-        command.arg("--embed-parent").arg(parent.to_string());
-    }
     // Where to connect so edits made in the editor reach this game. See
     // `renzora_live_link`.
     if let Some(link) = live_link {

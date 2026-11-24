@@ -245,10 +245,6 @@ pub struct EditorSettings {
     pub dev_mode: bool,
     /// Re-run on_ready when a script is hot-reloaded
     pub script_rerun_on_ready_on_reload: bool,
-    /// Show the running game inside the editor's Game panel rather than in a
-    /// window of its own. Either way the game is a separate process; this only
-    /// decides where its window sits.
-    pub embed_game: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
     /// Numeric drag fields: a press on the bottom slider rail sets the value
@@ -384,7 +380,6 @@ impl Default for EditorSettings {
             mono_font: MonoFont::default(),
             dev_mode: false,
             script_rerun_on_ready_on_reload: true,
-            embed_game: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,
             renderer_backend: renzora_project_api::RendererBackend::default(),

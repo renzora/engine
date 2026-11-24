@@ -21,7 +21,6 @@ pub mod redraw;
 mod axis_gizmo;
 mod camera_preview_panel;
 mod drop_target;
-pub mod game_panel;
 mod game_view;
 mod height_ruler;
 mod lit_accent;
@@ -335,7 +334,6 @@ impl Plugin for ViewportPlugin {
 
         panel::register(app);
         game_view::register(app);
-        game_panel::register(app);
         camera_preview_panel::register(app);
         modal_hud::register(app);
         pivot_label::register(app);

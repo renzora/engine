@@ -222,6 +222,10 @@ const RETIRED_PANELS: &[&str] = &[
     // The blueprint graph and its properties: visual scripting was removed.
     "blueprint_graph",
     "blueprint_properties",
+    // The Game panel. Play opens the game in its own window, exactly as an
+    // export runs: hosted inside the editor, its widgets and the editor's
+    // fought over the same UI and the game was never quite what shipped.
+    "game",
     // The debug panels: probes in the companion's Debug screen now. A panel
     // that changed every frame cost the editor a full UI relayout per frame.
     "performance",
@@ -780,9 +784,6 @@ fn layout_particles() -> DockTree {
 /// were tried before this; in use they left the viewport the narrowest it has
 /// been.
 ///
-/// `game` is tabbed with the viewport because Play shows the running game
-/// there, and finding it in the same place as the scene it runs is the point.
-///
 /// **No bottom strip, and no `assets`.** Both used to live here: assets as the
 /// lower half of the left column, and console/timeline/mixer/shape_library as a
 /// strip under the viewport. All five are [`DEFAULT_BOTTOM_TABS`] now — the one
@@ -800,7 +801,7 @@ fn layout_particles() -> DockTree {
 /// click. Both are still one click away in the panel menu.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::tabs(&["viewport", "code_editor", "game"]),
+        DockTree::tabs(&["viewport", "code_editor"]),
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
             DockTree::leaf("inspector"),

@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 06:22
+- feat(play): Play opens the game in its own window, exactly as an exported game runs; the Game panel and the Embed Game in Editor setting are gone
+- fix(play): a game's UI is no longer mirrored into the editor while it plays, so the editor can no longer disturb it
+
 ## 2026-11-24 06:04
 - fix(play): a game's UI no longer flickers while it plays in the editor
 - fix(play): icons in a game's UI show while it plays in the editor instead of blank boxes

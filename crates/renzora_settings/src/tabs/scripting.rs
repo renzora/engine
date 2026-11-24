@@ -21,12 +21,6 @@ pub(crate) fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: En
         |w, &v| w.resource_mut::<EditorSettings>().script_rerun_on_ready_on_reload = v,
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.hot_reload"), t);
-    let t = ctl_toggle(
-        commands, true,
-        |w| w.resource::<EditorSettings>().embed_game,
-        |w, &v| w.resource_mut::<EditorSettings>().embed_game = v,
-    );
-    settings_row(commands, fonts, body, 1, &tr("settings.row.embed_game"), t);
 
     let (sec, body) = section(commands, fonts, "code", &tr("settings.cat.code_editor"), A_GREEN);
     commands.entity(col).add_child(sec);

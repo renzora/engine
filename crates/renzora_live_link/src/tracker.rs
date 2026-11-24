@@ -102,6 +102,7 @@ impl Tracker {
             let fresh: Vec<Entity> = saveable_entities(world)
                 .into_iter()
                 .filter(|&e| world.get::<SceneEntityId>(e).is_none_or(|id| id.0 == 0))
+                .filter(|&e| !in_ui_tree(world, e))
                 .collect();
             if !fresh.is_empty() {
                 assign_scene_entity_ids(world, &fresh);
@@ -188,12 +189,38 @@ impl Tracker {
 /// out), mirrored there as a stray entity, and the round trip came back to the
 /// game as a despawn. That took a loading screen out within the first frames
 /// of every Play, before its script had run once.
+///
+/// And nothing in a UI tree; see [`in_ui_tree`].
 fn ids(world: &mut World) -> Vec<(Entity, u64)> {
     let mut q = world.query_filtered::<(Entity, &SceneEntityId), Without<Persistent>>();
-    q.iter(world)
+    let found: Vec<(Entity, u64)> = q
+        .iter(world)
         .filter(|(_, id)| id.0 != 0)
         .map(|(e, id)| (e, id.0))
-        .collect()
+        .collect();
+    found.into_iter().filter(|&(e, _)| !in_ui_tree(world, e)).collect()
+}
+
+/// Whether `entity` is a UI node or anywhere inside one (text spans carry no
+/// `Node` of their own).
+///
+/// The link leaves UI alone in both directions: the game owns its UI. Mirrored
+/// into the editor, the game's widgets landed in the world the editor's own UI
+/// runs in, which laid them out, restyled them and resolved their fonts its own
+/// way, and every difference went back to the game as an edit: its widgets
+/// flickered between two layouts and its icons lost their font. Nothing about
+/// a running game's UI is worth steering from the Inspector; it is edited in
+/// its template or script.
+fn in_ui_tree(world: &World, mut entity: Entity) -> bool {
+    loop {
+        if world.get::<Node>(entity).is_some() {
+            return true;
+        }
+        match world.get::<ChildOf>(entity) {
+            Some(parent) => entity = parent.parent(),
+            None => return false,
+        }
+    }
 }
 
 fn depth(world: &World, mut entity: Entity) -> usize {

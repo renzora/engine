@@ -97,8 +97,8 @@ keeps its colour:
 | **Instances** | converted mesh | Which meshes are virtual geometry at all. |
 | **Residency** | streaming | Green where the detail the camera wants is in GPU memory, red where a coarser level stands in for it. Red flashes and turns green as you move; red that stays means the memory budget has no room for that detail (see Streaming). |
 
-The views apply to editor viewports only; the Game panel and exported games
-never show them.
+The views apply to editor viewports only; a game, whether played from the
+editor or exported, never shows them.
 
 ## Streaming
 

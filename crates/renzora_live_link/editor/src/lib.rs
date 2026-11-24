@@ -181,72 +181,33 @@ impl ApplySide for Mirror<'_> {
         self.0.game_touched.insert((id, ty.to_string()));
     }
 
-    /// Keep what the game sends inside the play view.
+    /// Keep what the game sends from drawing over the editor, and group what it
+    /// spawned.
     ///
-    /// The editor's world also holds the editor itself, so a mirrored entity
-    /// that draws to the window draws over the editor. Two kinds can:
+    /// The editor's world also holds the editor itself. UI never arrives (the
+    /// link leaves it alone, see `renzora_live_link::tracker`), but a camera
+    /// renders to its target whatever its parent, so a mirrored one is made
+    /// inactive, as the editor already makes scene cameras. `Camera` is never
+    /// mirrored (the save leaves it out), so this does not travel back and
+    /// switch the game's camera off.
     ///
-    /// - **A camera.** It renders to its target whatever its parent, so it is
-    ///   made inactive here, as the editor already makes scene cameras.
-    ///   `Camera` is never mirrored (the save leaves it out), so this does not
-    ///   travel back and switch the game's camera off.
-    /// - **A UI root.** It draws through the default UI camera, which in the
-    ///   editor is the editor's own. It is pointed at the viewport camera at
-    ///   once; `renzora_ember`'s canvas router then keeps it where the
-    ///   scene's canvases go (`sync_ui_canvas_target_camera`).
-    ///
-    /// And the game's own top-level entities are grouped under "Spawned during
-    /// Play", except UI roots: Bevy only lays out a UI node with no parent, so
-    /// one put in the group would never be drawn at all.
+    /// The game's own top-level entities are grouped under "Spawned during
+    /// Play", so what the game made is easy to tell from the scene.
     fn applied(&mut self, world: &mut World, entity: Entity, id: u64) {
         let Ok(e) = world.get_entity(entity) else { return };
         let is_editor_camera = e.contains::<renzora_scene_api::EditorCamera>();
         let camera_active = e.get::<Camera>().is_some_and(|c| c.is_active);
-        let is_ui = e.contains::<Node>();
-        let parent = e.get::<ChildOf>().map(|c| c.parent());
-        let has_target = e.contains::<bevy::ui::UiTargetCamera>();
+        let top_level = !e.contains::<ChildOf>();
 
         if camera_active && !is_editor_camera {
             if let Some(mut camera) = world.get_mut::<Camera>(entity) {
                 camera.is_active = false;
             }
         }
-
-        if is_ui && parent.is_none() && !has_target {
-            lock_to_viewport(world, entity);
+        if top_level && self.0.spawned.contains(&id) {
+            let root = play_root(world, &mut self.0.play_root);
+            world.entity_mut(entity).insert(ChildOf(root));
         }
-
-        if !self.0.spawned.contains(&id) {
-            return;
-        }
-        let root = self.0.play_root;
-        match (is_ui, parent) {
-            // A top-level game entity: into the group.
-            (false, None) => {
-                let root = play_root(world, &mut self.0.play_root);
-                world.entity_mut(entity).insert(ChildOf(root));
-            }
-            // Turned out to be UI after it was grouped (its `Node` arrives after
-            // the spawn): back out, or it would never be drawn.
-            (true, Some(p)) if Some(p) == root => {
-                world.entity_mut(entity).remove::<ChildOf>();
-                lock_to_viewport(world, entity);
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Point a mirrored UI root at the editor's viewport camera, so it draws into
-/// the viewport and never through the editor's own UI camera.
-#[cfg(not(target_arch = "wasm32"))]
-fn lock_to_viewport(world: &mut World, entity: Entity) {
-    let viewport = {
-        let mut q = world.query_filtered::<Entity, With<renzora_scene_api::EditorCamera>>();
-        q.iter(world).next()
-    };
-    if let Some(viewport) = viewport {
-        world.entity_mut(entity).insert(bevy::ui::UiTargetCamera(viewport));
     }
 }
 
@@ -849,43 +810,26 @@ mod tests {
         assert!(sent.is_empty(), "the editor sent the game's value back: {sent:?}");
     }
 
-    /// Nothing the game sends can draw over the editor: a camera arrives
-    /// switched off, and a UI root is pointed at the viewport camera and left at
-    /// the top level, where Bevy draws it.
+    /// A camera the game spawns arrives switched off: active, it would render
+    /// into the editor's window.
     #[test]
-    fn a_mirrored_camera_and_ui_root_stay_inside_the_play_view() {
+    fn a_mirrored_camera_arrives_switched_off() {
         let (mut world, _, mut game) = editor_with_game();
         {
             let registry = world.resource::<AppTypeRegistry>().clone();
-            let mut r = registry.write();
-            r.register::<Camera2d>();
-            r.register::<Node>();
+            registry.write().register::<Camera2d>();
         }
-        let viewport = world.spawn((renzora_scene_api::EditorCamera, Name::new("viewport"))).id();
-
         let camera = value_of(&Camera2d, &world);
-        let node = value_of(&Node::default(), &world);
         game_sends(
             &mut game,
             &[
-                LinkMessage::Spawn { id: 50, parent: None, name: "game_ui_camera".into() },
+                LinkMessage::Spawn { id: 50, parent: None, name: "game_camera".into() },
                 LinkMessage::Set { id: 50, ty: Camera2d::type_path().into(), value: camera },
-                LinkMessage::Spawn { id: 51, parent: None, name: "game_ui_root".into() },
-                LinkMessage::Set { id: 51, ty: Node::type_path().into(), value: node },
             ],
         );
-        frames_until(&mut world, |w| named(w, "game_ui_root").is_some_and(|e| w.get::<Node>(e).is_some()));
-
-        let cam = named(&mut world, "game_ui_camera").unwrap();
-        assert_eq!(world.get::<Camera>(cam).map(|c| c.is_active), Some(false), "the camera would render to the window");
-
-        let root = named(&mut world, "game_ui_root").unwrap();
-        assert!(world.get::<ChildOf>(root).is_none(), "a UI root under a parent is never drawn");
-        assert_eq!(
-            world.get::<bevy::ui::UiTargetCamera>(root).map(|t| t.entity()),
-            Some(viewport),
-            "the UI root would draw through the editor's own UI camera"
-        );
+        frames_until(&mut world, |w| named(w, "game_camera").is_some_and(|e| w.get::<Camera>(e).is_some()));
+        let cam = named(&mut world, "game_camera").unwrap();
+        assert_eq!(world.get::<Camera>(cam).map(|c| c.is_active), Some(false));
     }
 
     #[test]

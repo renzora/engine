@@ -1,14 +1,14 @@
 # Playing Your Game
 
-The **Play** button sits at the right of the top bar, beside the Marketplace. It runs your game without leaving the editor.
+The **Play** button sits at the right of the top bar, beside the Marketplace. It runs your game in a window of its own while the editor stays open beside it.
 
-<!-- screenshot: play_controls.png - the Play button in the top bar, and the Game panel showing a running game -->
+<!-- screenshot: play_controls.png - the Play button in the top bar, and the running game in its own window beside the editor -->
 
 ## Play
 
-**Play** (or `F5`) saves the scene and starts your game. Press it again, now reading **Stop**, to end the game.
+**Play** (or `F5`) saves the scene and starts your game. Press it again, now reading **Stop**, to end the game. Closing the game's window ends it too.
 
-The game runs as **its own program**, separate from the editor. That has three consequences worth knowing:
+The game runs as **its own program**, in its own window, exactly the way an exported game runs: at the size, mode and frame rate your project's Window settings give it, with its own keyboard and mouse. What you play is what ships. That has three more consequences worth knowing:
 
 - **A slow game doesn't slow the editor.** The game renders at its own frame rate, and the editor stays fully usable while it runs. You can keep working while it plays. The two still share one graphics card, so a game that keeps it fully busy makes the editor's drawing slower too.
 - **A crash in the game doesn't take the editor down.** The game's window closes, the Console shows what went wrong, and you carry on.
@@ -18,29 +18,15 @@ The game never outlives the editor. Closing the editor ends it, and so does the 
 
 Everything the game logs appears in the editor's **Console**, under **Runtime**.
 
-## The Game panel
-
-With **Embed Game in Editor** on (the default), the running game appears in the **Game** panel. Pressing Play brings the panel to the front, adding it next to the viewport if your layout doesn't have one.
-
-It is the game's real window placed inside the editor, so click into it and the keyboard and mouse go to the game. Click anywhere else in the editor to take them back.
-
-Turn the setting off in **Settings > Scripting > Embed Game in Editor** and the game opens in a window of its own instead, at the size your project's Window settings specify. That is the closest thing to what a player gets.
-
-A few limits:
-
-- **Windows only for now.** On other platforms the game always opens in its own window.
-- **Docked panels only.** If you float the Game panel out into a window of its own, the game hides until you dock the panel again.
-- **Menus over the panel.** The game's window is drawn above the editor in that area, so a menu or popup the editor opens over the Game panel appears behind the running game.
-
 ## The editor follows the game
 
 A second or two after you press Play, the Console says **Game connected**. From then until you press Stop, the editor and the game stay in step.
 
 **You see the game in the editor.** The Hierarchy, the Inspector and the viewport show the game as it runs: the player's position as they walk, a crate tumbling, a bullet the game spawned appearing in the Hierarchy and disappearing when it hits. Select the player and the Inspector shows its live values.
 
-Objects the game spawns at the top level appear under a **Spawned during Play** group in the Hierarchy, so what the game made is easy to tell from your scene. The group goes when the game stops. UI a script builds without a canvas is the exception: it stays at the top level, because Bevy only draws a UI root that has no parent.
+Objects the game spawns at the top level appear under a **Spawned during Play** group in the Hierarchy, so what the game made is easy to tell from your scene. The group goes when the game stops. A camera the game spawns appears switched off in the editor, so it never renders into the editor's window; the game's own camera keeps running.
 
-**Nothing from the game can draw over the editor.** What the game shows stays inside the viewport. A camera the game spawns appears switched off in the editor (the game's own copy keeps rendering), and UI the game builds draws into the viewport the same way a scene's canvases do. Both stay in the Hierarchy and the Inspector, and edits to them still reach the game.
+**The game's UI stays with the game.** The editor follows and steers the game's objects, not its interface: UI is never sent in either direction. Change a menu or a HUD in its template or script, and see it in the game's window.
 
 **Your edits reach the game.** Change a component in the Inspector (a light's colour, a material, a collider's size, a value on one of your own components), move something with the gizmo, add or remove a component, add or delete an object, and the running game picks it up a moment later.
 
@@ -54,7 +40,7 @@ A few limits:
 
 - **Most components, not all.** Anything the scene file stores through reflection travels. A few plugin-owned components are stored another way and are not sent yet.
 - **Parenting is set when an object appears.** Moving an object to a different parent while the game runs changes only the editor's copy.
-- **Only scene objects.** Objects the game makes without a name, and the generated insides of models, are not followed, just as they are not saved.
+- **Only scene objects.** Objects the game makes without a name, and the generated insides of models, are not followed, just as they are not saved. Nor is UI, as above.
 
 ## Testing the game with an agent
 
