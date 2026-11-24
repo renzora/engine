@@ -17,11 +17,31 @@ use std::process::Command;
 
 use crate::templates::Platform;
 
-/// Pinned channel — keep in lockstep with `rust-toolchain.toml` and
-/// `docker/base/Dockerfile` so a provisioned native build matches the canonical
-/// container compiler (and the project's own `rust-toolchain.toml`, which cargo
-/// would otherwise try to auto-install).
-const TOOLCHAIN_CHANNEL: &str = "1.95.0";
+/// The engine's `rust-toolchain.toml`, compiled in.
+///
+/// The channel a provisioned toolchain installs is read from here rather than
+/// written out a second time. It has to be that file's: rustup obeys it the
+/// moment cargo runs in the engine source, so a different pin installed one
+/// compiler and then had rustup download the right one on top on the first
+/// build (or, where rustup will not auto-install, built on a rustc too old for
+/// Bevy). A hand-kept copy here sat at 1.95.0 behind a 1.100.0 tree; reading
+/// the file means a Rust bump stays the two edits CLAUDE.md describes.
+const TOOLCHAIN_TOML: &str = include_str!("../../../rust-toolchain.toml");
+
+/// The `channel` from [`TOOLCHAIN_TOML`], e.g. `1.100.0`.
+///
+/// A small line scan rather than a TOML parse: the file is ours, one table and
+/// one key, and `toolchain_channel_is_read_from_the_source` fails the build's
+/// tests if it ever stops yielding a version.
+fn toolchain_channel() -> &'static str {
+    TOOLCHAIN_TOML
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .find_map(|l| l.strip_prefix("channel"))
+        .and_then(|rest| rest.split('"').nth(1))
+        .unwrap_or("stable")
+}
 
 /// A resolved toolchain plus the environment needed to invoke its `cargo`.
 ///
@@ -178,9 +198,27 @@ fn host_rustup_triple() -> Option<&'static str> {
     })
 }
 
-/// The private cache root for a provisioned toolchain, under the editor's
-/// runtime dir so it persists across exports and is reused.
+/// The private cache root for a provisioned toolchain: `~/.renzora/toolchain`.
+///
+/// Per user rather than beside the editor, which is where it used to be. An
+/// editor is usually unzipped fresh for each nightly, and a cache inside its
+/// folder meant every update installed Rust again and downloaded every crate
+/// again, gigabytes each time; an install the user cannot write to (Program
+/// Files, an AppImage) could not provision Rust at all. The `cargo` folder
+/// under it also holds the crates.io cache, so this is what lets a second
+/// nightly's first lean build start warm.
+///
+/// Falls back to the editor's folder only when there is no home directory.
 fn cache_root(runtime_dir: &Path) -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|home| PathBuf::from(home).join(".renzora").join("toolchain"))
+        .unwrap_or_else(|| legacy_cache_root(runtime_dir))
+}
+
+/// Where editors before [`cache_root`] moved put the toolchain. Still reused if
+/// it is there, so an existing install is not downloaded a second time.
+fn legacy_cache_root(runtime_dir: &Path) -> PathBuf {
     runtime_dir.join(".toolchain")
 }
 
@@ -201,22 +239,26 @@ pub fn ensure_rust(
         });
     }
 
-    // 2. Privately provisioned on a previous run — reuse the cache.
-    let cache = cache_root(runtime_dir);
-    let cargo_home = cache.join("cargo");
-    let rustup_home = cache.join("rustup");
-    let cargo_bin = cargo_home.join("bin").join(cargo_exe());
-    if cargo_bin.is_file() {
-        progress("Using cached private Rust toolchain".into());
-        return Ok(Toolchain {
-            cargo: cargo_bin,
-            cargo_home: Some(cargo_home.clone()),
-            rustup_home: Some(rustup_home),
-            path_prepend: vec![cargo_home.join("bin")],
-        });
+    // 2. Privately provisioned on a previous run: reuse the cache, the per-user
+    //    one first and then one an older editor left beside itself.
+    for root in [cache_root(runtime_dir), legacy_cache_root(runtime_dir)] {
+        let cargo_home = root.join("cargo");
+        let cargo_bin = cargo_home.join("bin").join(cargo_exe());
+        if cargo_bin.is_file() {
+            progress("Using cached private Rust toolchain".into());
+            return Ok(Toolchain {
+                cargo: cargo_bin,
+                cargo_home: Some(cargo_home.clone()),
+                rustup_home: Some(root.join("rustup")),
+                path_prepend: vec![cargo_home.join("bin")],
+            });
+        }
     }
 
     // 3. Bootstrap rustup into the private cache (one-time, ~minutes).
+    let cache = cache_root(runtime_dir);
+    let cargo_home = cache.join("cargo");
+    let rustup_home = cache.join("rustup");
     bootstrap_rustup(&cache, &cargo_home, &rustup_home, progress)?;
 
     let cargo_bin = cargo_home.join("bin").join(cargo_exe());
@@ -280,7 +322,8 @@ fn bootstrap_rustup(
         std::fs::set_permissions(&init_path, perm).map_err(|e| e.to_string())?;
     }
 
-    progress(format!("Installing Rust {TOOLCHAIN_CHANNEL} (minimal) — one-time setup…"));
+    let channel = toolchain_channel();
+    progress(format!("Installing Rust {channel} (minimal), a one-time setup…"));
     let status = Command::new(&init_path)
         .env("CARGO_HOME", cargo_home)
         .env("RUSTUP_HOME", rustup_home)
@@ -290,7 +333,7 @@ fn bootstrap_rustup(
             "--profile",
             "minimal",
             "--default-toolchain",
-            TOOLCHAIN_CHANNEL,
+            channel,
         ])
         .status()
         .map_err(|e| format!("Failed to run rustup-init: {e}"))?;
@@ -299,4 +342,31 @@ fn bootstrap_rustup(
     }
     progress("Rust toolchain installed".into());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The channel really comes out of `rust-toolchain.toml`, as a pinned
+    /// version, and never as the `stable` fallback: a fallback here would
+    /// install whatever Rust is newest instead of the engine's.
+    #[test]
+    fn toolchain_channel_is_read_from_the_source() {
+        let channel = toolchain_channel();
+        assert_ne!(channel, "stable", "no channel found in rust-toolchain.toml");
+        assert!(
+            channel.split('.').all(|p| p.parse::<u32>().is_ok()) && channel.split('.').count() == 3,
+            "expected a pinned x.y.z version, got {channel}"
+        );
+    }
+
+    /// The cache is per user, not inside the editor's folder.
+    #[test]
+    fn the_cache_lives_outside_the_editor() {
+        let editor = Path::new("/opt/renzora-nightly");
+        let root = cache_root(editor);
+        assert!(!root.starts_with(editor), "{}", root.display());
+        assert!(root.ends_with(Path::new(".renzora").join("toolchain")), "{}", root.display());
+    }
 }

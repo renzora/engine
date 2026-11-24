@@ -65,7 +65,83 @@ A **lean single-binary** export takes a different route. It links Bevy staticall
 
 `Editor` is the default deliberately. It is what every native plugin written before scopes existed was, so those keep behaving as they did; and it is the safe way to guess, because an editor plugin missing from a game is an absence, while a runtime plugin that should not have shipped is in the player's hands. A plugin built before this existed exports no scope symbol at all, and the loader reads that as `Editor` for the same reason.
 
-A plugin is exclusively one or the other. A feature that needs editor tooling on top of runtime behaviour ships two plugins — the same rule in-workspace plugins follow.
+An `Editor` plugin is never part of a game in any form: a lean export leaves it out of the build entirely, and says so in the export log.
+
+### The editor half of a runtime plugin
+
+A plugin that adds editor surface (an inspector section, an entity preset, a panel, a tool or a shortcut) keeps **all** of it in `src/editor.rs`, or in a folder `src/editor/` with a `mod.rs` and as many modules below it as it needs, with one entry point. The declaration does not change:
+
+```rust
+// src/lib.rs: runtime only. No `mod editor;`, no editor imports.
+#[derive(Default)]
+pub struct VignettePlugin;
+
+impl Plugin for VignettePlugin {
+    fn build(&self, app: &mut App) {
+        app.register_type::<VignetteSettings>();
+        app.add_systems(Update, (sync_vignette, cleanup_vignette));
+    }
+}
+
+renzora::plugin!(VignettePlugin, Runtime);
+```
+
+```rust
+// src/editor.rs: everything that touches the editor contract.
+use renzora::{AppEditorExt, InspectorEntry};
+use crate::VignetteSettings;
+
+pub(crate) fn register(app: &mut App) {
+    app.register_inspector(inspector_entry());
+}
+```
+
+`renzora::plugin!` owns that module, and the plugin build finds it: the folder is the whole declaration. Where the plugin is loaded as a library (the editor, and a copy-based export) the macro declares `mod editor;` and runs `editor::register` right after the plugin's `build`. Where the plugin is compiled **into** a game (a lean export) it declares nothing, so the editor folder is never compiled and none of it reaches the player. A lean build has no editor contract at all, which is why this is the rule and not a nicety: editor code anywhere else in the plugin does not compile there.
+
+| Plugin | Editor | Copy-based export | Lean export |
+|---|---|---|---|
+| `Editor` scope (the default) | loads | not loaded | left out of the build |
+| `Runtime`, no editor folder | loads | loads | compiled in; must contain no editor code |
+| `Runtime`, with `src/editor.rs` or `src/editor/` | loads, with its editor half | loads, with its editor half | compiled in **without** its editor half |
+
+For a line or two that reads better where it is, there is an inline form of the same thing. Whatever is inside `renzora::editor! { ... }`, items or statements, is compiled beside the editor and left out of a lean game build, exactly like the editor folder:
+
+```rust
+renzora::editor! {
+    use renzora::{AppEditorExt, InspectorEntry};
+
+    fn inspector_entry() -> InspectorEntry { /* ... */ }
+}
+
+impl Plugin for VignettePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, (sync_vignette, cleanup_vignette));
+        renzora::editor! { app.register_inspector(inspector_entry()); }
+    }
+}
+```
+
+Imports used only by editor code go inside a block too: a game build has no editor contract, so a `use` outside would name nothing. Anything larger than a few lines belongs in the folder, where it is one place to read rather than many.
+
+The folder is the rule for one kind of plugin only: a `Runtime` plugin that also adds editor content, since that is the one crate that has to compile both with the editor and without it. An `Editor`-scope plugin is editor code from end to end and never reaches a game, so it can keep its panels, inspectors and tools wherever it likes, and an editor folder is optional there. Engine crates in `crates/` are not native plugins and are not affected: they keep their own split, a runtime crate plus an `_editor` subcrate.
+
+Do not write `mod editor;` yourself: the macro declares it, and a second declaration is an error. A cargo feature could not do this job, since a native plugin is compiled with no features of its own and `#[cfg(feature = "editor")]` in it is always false.
+
+The lean export checks this before it compiles anything. A ticked plugin with editor-contract code outside its editor folder and outside any `renzora::editor!` block, or a crate root declaring `mod editor` itself, stops the export with a message naming the file and line, rather than failing minutes later with "no `AppEditorExt` in the root" from inside the build.
+
+### Your IDE, and why `cargo build` refuses
+
+A plugin is never built by cargo: every build compiles it against the engine it is installed in (the SDK), and where the `bevy` and `renzora` entries in its `Cargo.toml` point is not read for that. They are there for your IDE, which needs the engine's source to resolve `bevy::` and `renzora::`. Keep a `bevy` entry all the same: Bevy's derive macros (`#[derive(Component)]`, `Reflect` and the rest) look for one by name to decide how to write Bevy's paths, and fail without it. They never read its version or source. The plugins repository names the engine repository at an engine tag:
+
+```toml
+[dependencies]
+bevy = { git = "https://github.com/renzora/engine", tag = "r1-alpha8" }
+renzora = { git = "https://github.com/renzora/engine", tag = "r1-alpha8", package = "renzora_sdk" }
+```
+
+Cargo finds both crates inside that one repository by package name, so a single clone (about 400 MB, once per machine, kept in `~/.cargo/git`) serves every plugin. A stale tag only makes the IDE show slightly older APIs.
+
+Running `cargo build` (or `cargo run`, `cargo test`) in a plugin's folder would compile those entries into a second Bevy, a different `World` from the engine's. So `renzora::plugin!` refuses: unless the Renzora build compiles it (which passes `--cfg renzora_build`), the plugin stops at a `compile_error!` that says why. rust-analyzer shows that one diagnostic and otherwise works. Cargo builds a crate's dependencies first, so the refusal comes after it has compiled Bevy once; nothing built from it can be loaded.
 
 ## Layout
 
@@ -177,7 +253,9 @@ Each entry records a timestamp, which plugin it was, the source directory, the p
 
 A disabled plugin costs nothing at all: it is skipped before the directory is touched, so there is no rebuild if its stamp is stale, no `dlopen`, and none of its static initializers run. That matters when you are disabling one to find out whether it is the plugin breaking your editor — half-running it would tell you nothing.
 
-The list lives in `~/.renzora/editor.toml` under `disabled_plugins`, keyed by the plugin's directory name. It is hand-editable if you have managed to disable the plugin that draws the settings panel.
+The list lives in `~/.renzora/settings.toml`, in the `[app]` section under `disabled_plugins`, keyed by the plugin's directory name. It is hand-editable if you have managed to disable the plugin that draws the settings panel.
+
+**The list is an editor preference, so only the editor reads it.** A shipped game loads every plugin it was shipped with, whatever the machine's `settings.toml` says: a game exported with a plugin beside it, run on the developer's own machine where that plugin happens to be switched off in the editor, still has it. The first-run plugin build follows the same rule, deciding by whether the editor image is beside the executable.
 
 ## What you can reach
 

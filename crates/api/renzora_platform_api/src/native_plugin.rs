@@ -65,6 +65,34 @@
 /// far is, and because the cost of guessing wrong points the safe way: an
 /// editor-scoped plugin merely does not appear in a game, while a
 /// runtime-scoped one that should not have shipped is in the player's hands.
+///
+/// # The editor half
+///
+/// Editor surface (an inspector section, a preset, a panel, a tool) lives in
+/// **`src/editor.rs`** or **`src/editor/mod.rs`**, with as many modules below it
+/// as it needs, and one entry point, `pub(crate) fn register(app: &mut App)`.
+/// The plugin does not declare that module and says nothing about it here:
+///
+/// ```ignore
+/// renzora::plugin!(VignettePlugin, Runtime);
+/// ```
+///
+/// The macro owns it. Where the plugin is loaded from a library (the editor, a
+/// copy-based export) it declares `mod editor;` and runs `editor::register`
+/// right after the plugin's own `build`. Where the plugin is compiled INTO a
+/// game (a lean export) it declares nothing, so the folder is never read and
+/// the game carries none of it: a lean export has no editor contract, and code
+/// naming `AppEditorExt` or `InspectorEntry` would not even compile there.
+///
+/// Whether the folder exists is decided by the plugin build, which can look at
+/// the disk where a macro cannot: the driver passes `--cfg renzora_no_editor`
+/// when there is neither file. The cfg is the "no" so that tools passing none
+/// of our flags, rust-analyzer above all, see the editor module and analyse
+/// it; a plugin with no editor folder then shows a missing-module diagnostic
+/// there, beside the `renzora_build` one, and builds normally.
+///
+/// A cargo feature could not do this: a native plugin is compiled with no
+/// features of its own, so `#[cfg(feature = "editor")]` in it is always false.
 #[macro_export]
 macro_rules! plugin {
     ($plugin:expr) => {
@@ -73,6 +101,88 @@ macro_rules! plugin {
     ($plugin:expr, $scope:ident) => {
         $crate::__native_plugin_entry!($plugin, $scope);
     };
+}
+
+/// Editor-only code written inline, wherever it sits in a plugin.
+///
+/// The small-scale form of a plugin's editor folder (see [`plugin!`]): what is
+/// inside is compiled where the plugin is loaded beside the editor and left out
+/// of a lean game build, as if it were in `src/editor.rs`. Items or statements:
+///
+/// ```ignore
+/// renzora::editor! {
+///     use renzora::{AppEditorExt, InspectorEntry};
+///
+///     fn inspector_entry() -> InspectorEntry { /* ... */ }
+/// }
+///
+/// impl Plugin for VignettePlugin {
+///     fn build(&self, app: &mut App) {
+///         app.add_systems(Update, sync_vignette);
+///         renzora::editor! { app.register_inspector(inspector_entry()); }
+///     }
+/// }
+/// ```
+///
+/// The folder is the better home for anything larger than a few lines; this is
+/// for the line or two that reads better where it is. Imports used only inside
+/// a block go inside one too, since a game build has no editor contract for a
+/// `use` outside to name.
+///
+/// Switched by the same thing as `plugin!`'s editor half, and for the same
+/// reason a `cfg(feature)` in the plugin could not be: `static_plugins`, on
+/// this crate, is on exactly in a build that compiles plugins into a game.
+#[cfg(not(feature = "static_plugins"))]
+#[macro_export]
+macro_rules! editor {
+    ($($code:tt)*) => { $($code)* };
+}
+
+/// [`editor!`] in a build that compiles plugins into a game: nothing at all.
+#[doc(hidden)]
+#[cfg(feature = "static_plugins")]
+#[macro_export]
+macro_rules! editor {
+    ($($code:tt)*) => {};
+}
+
+/// A native plugin together with its editor half, installed as one plugin.
+///
+/// What [`plugin!`] hands the loader when the plugin has an editor folder: `build` runs the plugin's
+/// own `build`, then the `register` function from its `src/editor.rs`. Every
+/// other hook forwards untouched, and `name` is the inner plugin's, so Bevy's
+/// duplicate check and the logs see the plugin the author wrote, not a wrapper.
+pub struct WithEditor<P> {
+    plugin: P,
+    register: fn(&mut crate::bevy::app::App),
+}
+
+impl<P> WithEditor<P> {
+    pub fn new(plugin: P, register: fn(&mut crate::bevy::app::App)) -> Self {
+        Self { plugin, register }
+    }
+}
+
+impl<P: crate::bevy::app::Plugin> crate::bevy::app::Plugin for WithEditor<P> {
+    fn build(&self, app: &mut crate::bevy::app::App) {
+        self.plugin.build(app);
+        (self.register)(app);
+    }
+    fn ready(&self, app: &crate::bevy::app::App) -> bool {
+        self.plugin.ready(app)
+    }
+    fn finish(&self, app: &mut crate::bevy::app::App) {
+        self.plugin.finish(app);
+    }
+    fn cleanup(&self, app: &mut crate::bevy::app::App) {
+        self.plugin.cleanup(app);
+    }
+    fn name(&self) -> &str {
+        self.plugin.name()
+    }
+    fn is_unique(&self) -> bool {
+        self.plugin.is_unique()
+    }
 }
 
 /// The symbols [`plugin!`] emits, or nothing when the plugin is being compiled
@@ -94,8 +204,38 @@ macro_rules! plugin {
 #[macro_export]
 macro_rules! __native_plugin_entry {
     ($plugin:expr, $scope:ident) => {
+        // A native plugin is compiled by the Renzora driver against the SDK,
+        // which passes `--cfg renzora_build`. Anything else compiling this
+        // variant is a `cargo build` (or `cargo run`, `cargo test`) in the
+        // plugin's own folder: cargo would resolve the manifest's `bevy` and
+        // build a second Bevy, whose `World` is a different type from the
+        // engine's, so it is refused here with the reason instead. The lean
+        // export compiles the other variant (`static_plugins`), which needs no
+        // flag. rust-analyzer shows this one diagnostic and otherwise works.
+        #[cfg(not(renzora_build))]
+        ::core::compile_error!(
+            "this plugin is built by the Renzora editor against its own Bevy; \
+             `cargo build` here would build a second Bevy. Open the project in the \
+             editor, which compiles installed plugins itself (`cargo renzora` does \
+             too, from an engine checkout). The `bevy`/`renzora` entries in \
+             Cargo.toml are for your IDE only."
+        );
+
+        // The editor half, when the plugin has one (see `plugin!`). Loaded from
+        // a library, so the editor contract is in the SDK and it compiles.
+        #[cfg(not(renzora_no_editor))]
+        mod editor;
+
         /// The one symbol the loader looks up. Unmangled so it can be found by
         /// string; see `plugin!` for why hand-writing this is a trap.
+        #[cfg(not(renzora_no_editor))]
+        #[unsafe(no_mangle)]
+        pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
+            ::std::boxed::Box::new($crate::WithEditor::new($plugin, editor::register))
+        }
+
+        /// The same symbol for a plugin with no editor folder.
+        #[cfg(renzora_no_editor)]
         #[unsafe(no_mangle)]
         pub fn renzora_native_plugin_ctor() -> ::std::boxed::Box<dyn $crate::bevy::app::Plugin> {
             ::std::boxed::Box::new($plugin)
@@ -147,6 +287,11 @@ macro_rules! __native_plugin_entry {
 /// Emits nothing. The plugin's type is defined by the author's own code and is
 /// all the generated aggregator needs; the scope was decided at export time, by
 /// reading it from the built library rather than from this declaration.
+///
+/// No `mod editor;` either, and that is the point of it: a game compiled with
+/// this plugin in it never reads its editor folder, and the aggregator installs
+/// the plugin type alone. No `renzora_build` guard: the lean exporter is the
+/// only thing that turns `static_plugins` on.
 #[doc(hidden)]
 #[cfg(feature = "static_plugins")]
 #[macro_export]

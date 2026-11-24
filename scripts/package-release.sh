@@ -647,12 +647,19 @@ if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     # Verify with `unzip -l` after changing this list: a missing compile input
     # fails loudly, but a missing RUNTIME asset only shows up in the exported
     # game, long after anyone would connect it to this line.
+    #
+    # No symlinks either. `git archive` stores one as a link, and Windows will
+    # not create a link without admin rights or Developer Mode, so an editor
+    # extracting with `ZipArchive::extract` (every one before the extractor
+    # learned to skip them) stops at the first link with os error 1314 and
+    # never writes `crates/`. Bevy's web example asset link is the only one.
     if git -C "$REPO_ROOT" archive --format=zip -o "$src_asset" HEAD -- . \
         ':(exclude)templates' \
         ':(exclude)docs' \
         ':(exclude)tools' \
         ':(exclude).github' \
-        ':(exclude)assets/previews'; then
+        ':(exclude)assets/previews' \
+        ':(exclude)bevy/examples/wasm/assets'; then
         record "$src_asset" all source
     else
         echo "WARN: git archive failed — publishing without the engine source"

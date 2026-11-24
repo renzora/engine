@@ -502,8 +502,9 @@ fn ensure_cargo_manifest(dir: &Path) -> Result<PathBuf, Error> {
             format!(
                 "# Generated so Bevy's proc macros can resolve their own crate paths.\n\
                  # Nothing runs cargo here; the plugin is compiled by rustc directly\n\
-                 # against the SDK. Replace this with your own manifest to develop the\n\
-                 # plugin as an ordinary cargo project — it will not be overwritten.\n\
+                 # against the SDK, which decides the Bevy version, so none is named.\n\
+                 # Replace this with your own manifest to develop the plugin as an\n\
+                 # ordinary cargo project; it will not be overwritten.\n\
                  [package]\n\
                  name = \"{name}\"\n\
                  version = \"0.1.0\"\n\
@@ -513,7 +514,7 @@ fn ensure_cargo_manifest(dir: &Path) -> Result<PathBuf, Error> {
                  crate-type = [\"dylib\"]\n\
                  \n\
                  [dependencies]\n\
-                 bevy = \"0.19\"\n\
+                 bevy = \"*\"\n\
                  renzora = \"*\"\n"
             ),
         )?;

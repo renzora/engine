@@ -285,9 +285,72 @@ fn download_and_install_source(
     let _ = tx.send(DownloadProgress::Fetching(format!("Extracting into {}...", dest.display())));
     let cursor = std::io::Cursor::new(&bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Bad zip: {e}"))?;
-    archive.extract(&dest).map_err(|e| format!("Extract failed: {e}"))?;
+    if let Err(e) = extract_source(&mut archive, &dest) {
+        // Never leave a partial tree behind: one missing `crates/` already
+        // reads as "no source" and brings the Download offer back, but a tree
+        // that happens to pass the signature check would be handed to cargo.
+        let _ = std::fs::remove_dir_all(&dest);
+        return Err(e);
+    }
+
+    // Which nightly this tree is. The folder is named for the version, which
+    // every nightly of it shares, so without this the source the first nightly
+    // downloaded is what every later one silently compiles
+    // (`build::resolve_engine_source` checks it). Written last, so an install
+    // that stopped early never looks finished.
+    let stamp = TemplateStamp {
+        tag: release.tag_name.clone(),
+        sha256: hex(&Sha256::digest(&bytes)),
+    };
+    std::fs::write(
+        dest.join(TEMPLATE_STAMP),
+        serde_json::to_string_pretty(&stamp).unwrap_or_default(),
+    )
+    .map_err(|e| format!("Failed to record the source's release: {e}"))?;
 
     Ok(format!("Installed engine source from {}", release.tag_name))
+}
+
+/// Extract the engine source, leaving out symbolic links.
+///
+/// `git archive` keeps a symlink as a symlink, and Bevy's tree carries one
+/// (`bevy/examples/wasm/assets`, pointing its web example at the shared assets).
+/// `ZipArchive::extract` recreates it, and on Windows creating a symlink needs
+/// admin rights or Developer Mode: without them it fails with os error 1314 ("A
+/// required privilege is not held by the client") and stops there, three
+/// thousand entries short, with `crates/`, `src/` and `vendor/` never written.
+/// No link in the archive is something a build reads, so skipping them all is
+/// both the simple fix and the safe one.
+fn extract_source<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    dest: &Path,
+) -> Result<(), String> {
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("Bad zip entry {i}: {e}"))?;
+        if entry.is_symlink() {
+            continue;
+        }
+        // `enclosed_name` refuses absolute paths and `..`, so an entry cannot
+        // write outside `dest` however the archive was made.
+        let Some(relative) = entry.enclosed_name() else {
+            return Err(format!("Unsafe path in archive: entry {i}"));
+        };
+        let out = dest.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out)
+                .map_err(|e| format!("Extract failed: {}: {e}", out.display()))?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Extract failed: {}: {e}", parent.display()))?;
+        }
+        let mut file = std::fs::File::create(&out)
+            .map_err(|e| format!("Extract failed: {}: {e}", out.display()))?;
+        std::io::copy(&mut entry, &mut file)
+            .map_err(|e| format!("Extract failed: {}: {e}", out.display()))?;
+    }
+    Ok(())
 }
 
 /// Download an asset and check it against the digest the release published.
@@ -479,5 +542,38 @@ mod tests {
             serde_json::from_str(r#"{"name":"x.zip","size":1,"browser_download_url":"u"}"#)
                 .unwrap();
         assert!(a.digest.is_none());
+    }
+
+    /// A symlink in the source archive is skipped, and every entry after it
+    /// is still written. Shaped like the real failure: the link sits in the
+    /// middle, with `crates/` and `src/` behind it.
+    #[test]
+    fn source_extraction_skips_symlinks_and_finishes() {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut w = zip::ZipWriter::new(&mut buf);
+            let opts = zip::write::SimpleFileOptions::default();
+            w.start_file("bevy/Cargo.toml", opts).unwrap();
+            w.write_all(b"[package]").unwrap();
+            w.add_symlink("bevy/examples/wasm/assets", "../../assets", opts).unwrap();
+            w.add_directory("crates/", opts).unwrap();
+            w.start_file("crates/a/Cargo.toml", opts).unwrap();
+            w.write_all(b"[package]").unwrap();
+            w.start_file("src/main.rs", opts).unwrap();
+            w.write_all(b"fn main() {}").unwrap();
+            w.finish().unwrap();
+        }
+        let dest = std::env::temp_dir().join(format!("renzora_src_extract_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        buf.set_position(0);
+        let mut archive = zip::ZipArchive::new(buf).unwrap();
+        let result = extract_source(&mut archive, &dest);
+        let link_present = std::fs::symlink_metadata(dest.join("bevy/examples/wasm/assets")).is_ok();
+        let tail_written = dest.join("crates/a/Cargo.toml").is_file() && dest.join("src/main.rs").is_file();
+        let _ = std::fs::remove_dir_all(&dest);
+        result.unwrap();
+        assert!(!link_present, "the symlink was created");
+        assert!(tail_written, "entries after the symlink were not written");
     }
 }

@@ -25,7 +25,7 @@ pub mod version;
 pub use bevy;
 mod native_plugin;
 pub use native_plugin::{
-    native_plugin_abi_record, NativePluginScope, NATIVE_PLUGIN_ABI_MARKER,
+    native_plugin_abi_record, NativePluginScope, WithEditor, NATIVE_PLUGIN_ABI_MARKER,
     NATIVE_PLUGIN_ABI_RECORD_LEN,
 };
 

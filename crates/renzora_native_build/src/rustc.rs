@@ -150,6 +150,22 @@ pub fn args(t: &Target) -> Result<Vec<String>, String> {
 
     push!("--extern", format!("bevy={}", t.extern_bevy.display()));
     push!("--extern", format!("renzora={}", t.extern_renzora.display()));
+    // What `renzora::plugin!` checks to know it is being built here, against
+    // the SDK, and not by a `cargo build` in the plugin's folder, which would
+    // resolve the manifest's own `bevy` and build a second Bevy. Without it the
+    // plugin stops at a `compile_error!` that says so. No `--check-cfg` beside
+    // it: a bare rustc checks no cfgs at all unless asked, and asking would start
+    // flagging every cfg a plugin uses that no manifest declares.
+    push!("--cfg", "renzora_build");
+    // `plugin!` declares and installs the plugin's editor half from
+    // `src/editor.rs` or `src/editor/mod.rs`; a plugin with neither is told so
+    // here, because the macro cannot look at the disk and this can. The cfg is
+    // the "no" so that rust-analyzer, which passes none of these, still sees
+    // and analyses the editor folder.
+    let src = t.plugin_dir.join("src");
+    if !src.join("editor.rs").is_file() && !src.join("editor").join("mod.rs").is_file() {
+        push!("--cfg", "renzora_no_editor");
+    }
 
     // Third-party crates the plugin declared, compiled by cargo from a manifest
     // that mentions no Bevy. Empty — and cargo never runs — unless the plugin

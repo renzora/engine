@@ -1449,11 +1449,34 @@ pub(crate) fn export_worker(
                     platform.display_name(),
                 ));
             }
+            if !plan.editor_only.is_empty() {
+                progress(format!(
+                    "Left out {}: editor-only plugin(s), which never ship in a game",
+                    plan.editor_only.join(", "),
+                ));
+            }
+            // Before anything compiles: a plugin with editor code outside its
+            // `src/editor.rs` cannot be built without the editor, and finding
+            // that out from rustc takes minutes and names the wrong culprit.
+            for p in &plan.linked {
+                let Some(dir) = plugins_roots.iter().map(|r| r.join(&p.dir)).find(|d| d.is_dir()) else {
+                    continue;
+                };
+                if let Some(hit) = crate::build::editor_code_outside_editor_module(&dir, &engine_dir) {
+                    return Err(format!(
+                        "{} can't be compiled into a lean export: {hit}. Its editor code has \
+                         to live in src/editor.rs or src/editor/, which `renzora::plugin!` \
+                         leaves out of a game build. Untick it, or ship with Binary + .rpak.",
+                        p.id
+                    ));
+                }
+            }
             // Keyed on the library stem, which is what the selection below
             // compares against — `id` is the crate name, and on Unix the two
             // differ by `lib`.
             linked = plan.linked.iter().map(|p| p.library_stem.clone()).collect();
             dropped = plan.unsupported.clone();
+            dropped.extend(plan.editor_only.iter().cloned());
             plan.linked
         } else {
             Vec::new()

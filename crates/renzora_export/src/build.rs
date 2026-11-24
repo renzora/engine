@@ -183,8 +183,9 @@ pub fn plugin_source_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-/// The directory holding the editor's DATA: `plugins/`, `resources/`, the SDK,
-/// and the `.toolchain` cache.
+/// The directory holding the editor's DATA: `plugins/`, `resources/` and the
+/// SDK. (The private Rust toolchain used to live here too, as `.toolchain`; it
+/// is per user now, see `toolchain::cache_root`.)
 ///
 /// NOT `current_exe().parent()`, which is what this was. Inside a Linux
 /// AppImage that parent is a read-only temporary mount under `/tmp`, holding
@@ -199,8 +200,6 @@ pub fn plugin_source_roots() -> Vec<PathBuf> {
 ///   * `bundle::icon_bytes` reads `resources/icon.png`, and `xtask`'s wrapper
 ///     moves binaries and shared libraries into the AppDir but leaves
 ///     `resources/` outside it.
-///   * `toolchain::ensure_rust` WRITES a `.toolchain` cache, which a read-only
-///     squashfs cannot accept at all.
 ///
 /// `install::root()` is the shared answer: it prefers `$APPIMAGE`, which the
 /// AppImage runtime sets to the archive's own path, and falls back to
@@ -313,7 +312,28 @@ pub fn resolve_engine_source() -> Option<PathBuf> {
     // Verified by the same signature rather than mere existence: a half-extracted
     // or emptied directory would otherwise be handed to cargo, which fails much
     // later and much less clearly.
-    is_engine_source(&downloaded).then_some(downloaded)
+    (is_engine_source(&downloaded)
+        && source_is_this_release(&downloaded, renzora_platform_api::version::release_tag()))
+    .then_some(downloaded)
+}
+
+/// Whether the downloaded tree at `dir` is the source of the release `tag`
+/// names, i.e. of this editor.
+///
+/// The folder is `~/.renzora/src/<version>`, shared by every nightly of a
+/// version, so a tree that is there is not necessarily this editor's: after an
+/// update it is still the previous nightly's, and a lean build from it would be
+/// a game compiled from older engine code than the editor that saved its scenes.
+/// Refusing it brings the Download offer back, and downloading replaces it.
+///
+/// A tree with no stamp predates stamping (or stopped installing before the
+/// stamp, which is written last), so it is never trusted when there is a tag to
+/// compare. An editor with no tag of its own is a local build from a checkout,
+/// which `resolve_engine_source` has normally already returned; with nothing
+/// to compare against, it takes what is there.
+fn source_is_this_release(dir: &Path, tag: Option<&str>) -> bool {
+    let Some(tag) = tag else { return true };
+    crate::templates::read_stamp(dir).is_some_and(|stamp| stamp.tag == tag)
 }
 
 /// Does this directory look like the engine workspace root?
@@ -467,7 +487,10 @@ pub fn build_lean(
         plugins_roots.push(workspace_dir.join("plugins"));
     }
     stage_static_plugins(&plugins_roots, &ws, static_plugins, progress)?;
-    let has_scripts = stage_static_scripts(project_dir, &ws, progress)?;
+    // Scripts see the UI framework exactly when the export keeps it: the
+    // Interface feature, not anything a script happens to spell.
+    let keeps_ui = !disabled_runtime_features.iter().any(|f| f == "ui");
+    let has_scripts = stage_static_scripts(project_dir, &ws, keeps_ui, progress)?;
     let mut features = String::from(runtime_feature(platform));
     if !static_plugins.is_empty() {
         features.push_str(",static_plugins");
@@ -1224,9 +1247,6 @@ pub struct StaticPluginSrc {
     /// Its directory under `plugins/`. Usually the same as `id`, but the two are
     /// resolved separately because a package name need not match its folder.
     pub dir: String,
-    /// `true` for an Editor-scope plugin. Recorded rather than filtered so the
-    /// host applies the same scope rule to a linked plugin as to a loaded one.
-    pub editor_scope: bool,
 }
 
 /// What a lean build will actually do with the plugins the user ticked.
@@ -1245,6 +1265,188 @@ pub struct StaticPluginPlan {
     /// and on desktop a plugin that declares itself unbuildable would only fail
     /// the compile a few minutes later.
     pub unsupported: Vec<String>,
+    /// Editor-scope plugins. Never compiled into a game, not even as an unused
+    /// dependency: an editor plugin is built on the editor contract, which a
+    /// lean binary does not have, so merely compiling it fails the export (this
+    /// used to link it and skip only its `add_plugins` call). Nor shipped as a
+    /// file, since a game would decline to load it.
+    pub editor_only: Vec<String>,
+}
+
+/// Where a plugin that is about to be compiled into a game uses the editor
+/// contract outside its `src/editor.rs`, as `"<file>:<line> uses <name>"`.
+///
+/// A lean export compiles a plugin with no editor contract, and `plugin!`'s
+/// `editor` form leaves out `src/editor.rs` (and an `src/editor/` directory) for
+/// exactly that reason. Editor code anywhere else in the plugin then fails the
+/// build minutes in, with "no `AppEditorExt` in the root" from a crate the user
+/// never wrote, which reads like an engine bug. This finds it before anything
+/// compiles, so the export can stop at once and say which plugin and what to
+/// move.
+///
+/// The names come from the editor contract's own source in the tree being
+/// compiled (`crates/api/renzora_editor_api`), not from a list kept here, so the
+/// check grows with the contract. A text scan, so a first warning rather than a
+/// proof: comments are skipped, a name in a string is not, and the compile
+/// remains the real enforcement.
+pub fn editor_code_outside_editor_module(plugin_dir: &Path, engine_dir: &Path) -> Option<String> {
+    let names = editor_contract_names(&engine_dir.join("crates/api/renzora_editor_api"));
+    if names.is_empty() {
+        return None;
+    }
+    let src = plugin_dir.join("src");
+    let mut files = Vec::new();
+    collect_rs_files(&src, &mut files);
+    files.sort();
+    // `renzora::plugin!` declares the root `editor` module itself, and leaves it
+    // out of a game build. A crate root that also declares it would compile the
+    // editor half into the game, and beside the editor it is declared twice.
+    for root in ["lib.rs"] {
+        let Ok(text) = std::fs::read_to_string(src.join(root)) else { continue };
+        for (n, line) in text.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("").trim();
+            let decl = code
+                .trim_start_matches("pub(crate) ")
+                .trim_start_matches("pub ")
+                .replace(' ', "");
+            if decl.starts_with("modeditor;") || decl.starts_with("modeditor{") {
+                return Some(format!(
+                    "src/{root}:{} declares `mod editor` itself; `renzora::plugin!` declares it, \
+                     and leaves it out of a game build",
+                    n + 1
+                ));
+            }
+        }
+    }
+    for file in files {
+        let rel = file.strip_prefix(&src).unwrap_or(&file);
+        if rel == Path::new("editor.rs") || rel.starts_with("editor") && rel.components().count() > 1 {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&file) else { continue };
+        let text = blank_editor_blocks(&text);
+        for (n, line) in text.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            for word in code.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
+                if names.contains(word) {
+                    return Some(format!(
+                        "src/{}:{} uses {word}",
+                        rel.to_string_lossy().replace('\\', "/"),
+                        n + 1
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// `text` with every `editor! { ... }` block (any bracket kind) turned to spaces,
+/// newlines kept so line numbers still match the file.
+///
+/// What is inside one is the plugin's inline editor code, which `renzora::editor!`
+/// leaves out of a game build exactly as it does the editor folder, so the scan
+/// must not count it. Brackets are matched by counting the opening kind only,
+/// which a string or comment holding an unbalanced one could fool; that errs
+/// toward a false alarm, which the compile would then settle.
+fn blank_editor_blocks(text: &str) -> String {
+    let mut out: Vec<char> = text.chars().collect();
+    let chars = out.clone();
+    let mut i = 0;
+    while i + 7 <= chars.len() {
+        let at_word_start = i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_');
+        if at_word_start && chars[i..i + 7].iter().collect::<String>() == "editor!" {
+            let mut j = i + 7;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            let close = match chars.get(j) {
+                Some('{') => '}',
+                Some('(') => ')',
+                Some('[') => ']',
+                _ => {
+                    i += 7;
+                    continue;
+                }
+            };
+            let open = chars[j];
+            let mut depth = 0usize;
+            let mut end = j;
+            while end < chars.len() {
+                if chars[end] == open {
+                    depth += 1;
+                } else if chars[end] == close {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                end += 1;
+            }
+            for c in out.iter_mut().take(end.min(chars.len() - 1) + 1).skip(i) {
+                if *c != '\n' {
+                    *c = ' ';
+                }
+            }
+            i = end + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// The editor contract's public names: its top-level types and traits, its
+/// exported field macros, the `AppEditorExt` methods a plugin calls, and the
+/// `Inspectable` derive.
+fn editor_contract_names(api_dir: &Path) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    let mut files = Vec::new();
+    collect_rs_files(&api_dir.join("src"), &mut files);
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(&file) else { continue };
+        let mut in_ext_trait = false;
+        for line in text.lines() {
+            let rest = line.trim_start();
+            if line.starts_with("pub ") {
+                let mut words = line.split_whitespace().skip(1);
+                if let (Some("struct" | "enum" | "trait" | "type"), Some(name)) = (words.next(), words.next()) {
+                    let name: String = name.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                    if !name.is_empty() {
+                        names.insert(name);
+                    }
+                }
+            }
+            if let Some(name) = rest.strip_prefix("macro_rules! ") {
+                names.insert(name.trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_')).to_string());
+            }
+            if line.starts_with("pub trait AppEditorExt") {
+                in_ext_trait = true;
+            } else if in_ext_trait && line.starts_with('}') {
+                in_ext_trait = false;
+            } else if in_ext_trait {
+                if let Some(after) = rest.strip_prefix("fn ") {
+                    let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+                    names.insert(name);
+                }
+            }
+        }
+    }
+    names.insert("Inspectable".to_string());
+    names.retain(|n| !n.is_empty());
+    names
+}
+
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
 }
 
 /// Pair each wanted plugin id with the source directory that builds it, and drop
@@ -1332,11 +1534,16 @@ pub fn resolve_static_plugins(
         linked: Vec::new(),
         no_source: Vec::new(),
         unsupported: Vec::new(),
+        editor_only: Vec::new(),
     };
     for (id, editor_scope) in wanted {
         // Unix libraries are `lib<crate>.so`; the scan keeps the stem verbatim,
         // so strip the prefix before matching a crate name against it.
         let crate_name = id.strip_prefix("lib").unwrap_or(id.as_str());
+        if *editor_scope {
+            plan.editor_only.push(crate_name.to_string());
+            continue;
+        }
         match by_package
             .get(id.as_str())
             .or_else(|| by_package.get(crate_name))
@@ -1348,13 +1555,13 @@ pub fn resolve_static_plugins(
                 package: package.clone(),
                 library_stem: id.clone(),
                 dir: dir.clone(),
-                editor_scope: *editor_scope,
             }),
             None => plan.no_source.push(id.clone()),
         }
     }
     plan.linked.sort_by(|a, b| a.id.cmp(&b.id));
     plan.unsupported.sort();
+    plan.editor_only.sort();
     plan
 }
 
@@ -1533,18 +1740,15 @@ fn stage_static_plugins(
         ));
         // A plugin is an ordinary `impl Plugin`, and the only way to install one
         // is to hand `add_plugins` its type. There is no symbol to look up and
-        // nothing to describe.
-        //
-        // Editor-scope ones are not emitted at all. A lean binary is a game; an
-        // editor plugin compiled into one would run its editor systems there,
-        // which is worse than the file being absent.
-        if !p.editor_scope {
-            native_calls.push_str(&format!(
-                "    app.add_plugins({krate}::{expr});\n",
-                krate = p.id,
-                expr = p.expr,
-            ));
-        }
+        // nothing to describe. Its editor half, if it declared one, is not part
+        // of that type and is never compiled here (see `renzora::plugin!`).
+        // Editor-scope plugins never reach this list: `resolve_static_plugins`
+        // leaves them out of the build entirely.
+        native_calls.push_str(&format!(
+            "    app.add_plugins({krate}::{expr});\n",
+            krate = p.id,
+            expr = p.expr,
+        ));
     }
 
     let manifest = format!(
@@ -1979,6 +2183,7 @@ fn declares_hooks(source: &str) -> bool {
 fn stage_static_scripts(
     project_dir: &Path,
     copy_root: &Path,
+    keeps_ui: bool,
     progress: &mut dyn FnMut(String),
 ) -> Result<bool, String> {
     let crate_dir = copy_root.join("crates").join("renzora_static_scripts");
@@ -2026,9 +2231,12 @@ fn stage_static_scripts(
     // so a script reading a HUD widget or a markup name index is perfectly
     // legal, and used to fail this build with "unlinked crate renzora_ember"
     // because the generated manifest below only ever listed two of the three.
-    // Added on demand rather than always: a game with no UI strips ember
-    // entirely, and an unconditional dep would compile it back in.
-    let mut uses_ember = false;
+    // On exactly when the export keeps the Interface feature (`keeps_ui`): a
+    // game exported with UI gets the whole UI system in its scripts, as the
+    // shared image hands it to them everywhere else, and a game with UI turned
+    // off strips ember entirely, which this must not compile back in. It used
+    // to be decided by searching the scripts for `renzora::ui`, which tied what
+    // a game could do to how its code happened to be spelled.
     // The scripts that also exported a lifecycle hook, as table rows.
     //
     // `renzora::script!(update, hooks = …)` emits a second entry point beside
@@ -2055,10 +2263,6 @@ fn stage_static_scripts(
         let staged_name = format!("script_{i}.rs");
         let text = std::fs::read_to_string(src)
             .map_err(|e| format!("read {}: {e}", src.display()))?;
-        // `renzora::ui` is how a script reaches the UI framework; the old
-        // `renzora_ember` spelling is counted too, so such a script fails on its
-        // path rather than on a missing feature.
-        uses_ember |= text.contains("renzora::ui") || text.contains("renzora_ember");
         write_if_changed(&crate_dir.join("src").join(&staged_name), &text)?;
 
         mods.push_str(&format!("#[path = \"{staged_name}\"]\nmod script_{i};\n"));
@@ -2125,9 +2329,9 @@ fn stage_static_scripts(
          renzora = { path = \"../shared/renzora_sdk\", package = \"renzora_sdk\", features = [\"static_scripts\"] }\n\
          bevy = { workspace = true }\n"
     );
-    if uses_ember {
-        // At least one script uses `renzora::ui`: turn on the SDK's `ui`, which
-        // brings ember in with its default features off, for the same reason
+    if keeps_ui {
+        // The export keeps its UI: turn on the SDK's `ui`, which brings ember
+        // in with its default features off, for the same reason
         // `renzora_runtime` deps it that way: which of ember's features are on is
         // the export's decision, not this crate's, and turning them on here would
         // quietly un-strip `game_ui` (and the world-space 3D UI) in a build that
@@ -2250,34 +2454,92 @@ fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), Str
     // checkout name those crates differently, and both are correct where they
     // came from.
     //
-    // Only `path` dependencies are touched: a plugin depending on a published
-    // crate from crates.io is naming a version, and cargo resolves it the same
-    // way here as anywhere.
+    // `bevy` and `renzora` are rewritten whatever form they are in, and added
+    // when they are missing. Every build of a plugin takes both from the engine
+    // it is built in, never from these entries, so in a plugin's manifest they
+    // only serve its author's IDE: a path to a checkout, a git dependency on the
+    // engine repo, or nothing at all. Left as written, a git entry would make
+    // this build clone a second engine from GitHub, and a version would fetch a
+    // `renzora` from crates.io that is not the engine.
+    if doc.get("dependencies").is_none() {
+        doc.insert("dependencies", toml_edit::Item::Table(toml_edit::Table::new()));
+    }
     if let Some(deps) = doc.get_mut("dependencies").and_then(|d| d.as_table_like_mut()) {
-        // `renzora` and `bevy` are what a plugin links, and `renzora` is the one
-        // named by path. A plugin that draws UI lists `ui` among its `renzora`
-        // features (the framework is `renzora::ui`), and the feature list is
-        // kept, so that is what brings ember into this build.
-        //
         // A plugin's `renzora` is `renzora_sdk`, not the contract crate: the
         // contract is a hierarchy, and `renzora_sdk` is the top of it, putting
         // every subject crate (`renzora::net`, ...) back under the one name. The
         // staged SDK hands a plugin the same thing through `renzora_dylib`, so a
         // plugin compiled in here sees exactly the API it was written against.
         // `package` keeps the dependency's name `renzora`, so its code and its
-        // feature list need no change.
-        for (name, workspace_path, package) in [
-            ("renzora", "../../crates/shared/renzora_sdk", Some("renzora_sdk")),
-        ] {
-            let Some(dep) = deps.get_mut(name).and_then(|d| d.as_table_like_mut()) else {
-                continue;
-            };
-            if dep.get("path").is_some() {
-                dep.insert("path", toml_edit::value(workspace_path));
-                if let Some(package) = package {
-                    dep.insert("package", toml_edit::value(package));
+        // feature list need no change. A plugin that draws UI lists `ui` among
+        // its `renzora` features (the framework is `renzora::ui`), and that list
+        // is kept, which is what brings ember into this build.
+        let mut renzora = toml_edit::InlineTable::new();
+        renzora.insert("path", "../../crates/shared/renzora_sdk".into());
+        renzora.insert("package", "renzora_sdk".into());
+        if let Some(table) = deps.get("renzora").and_then(|d| d.as_table_like()) {
+            for key in ["features", "default-features", "optional"] {
+                if let Some(v) = table.get(key).and_then(|v| v.as_value()) {
+                    renzora.insert(key, v.clone());
                 }
             }
+        }
+        deps.insert("renzora", toml_edit::Item::Value(renzora.into()));
+        // Bevy's derive macros need a `bevy` entry to name Bevy's paths, so a
+        // manifest without one gets it; the loop below then repoints it.
+        if deps.get("bevy").is_none() {
+            deps.insert("bevy", toml_edit::value("*"));
+        }
+
+        // Bevy, unlike `renzora`, is named by VERSION, and that version has to
+        // be replaced too. A native plugin never reaches cargo (the build driver
+        // calls rustc against the staged SDK), so `bevy = "0.19"` in its manifest
+        // is decoration there. Here it is the opposite: cargo honours it, fetches
+        // that Bevy from crates.io beside the one in `bevy/`, and every engine
+        // type the plugin touches stops being a `Component` or a `Resource`
+        // ("multiple different versions of crate `bevy_ecs`"), 36 errors deep in
+        // a plugin nobody changed.
+        let bevy_names: Vec<String> = deps
+            .iter()
+            .map(|(name, _)| name.to_string())
+            .filter(|name| name == "bevy" || name.starts_with("bevy_"))
+            .collect();
+        for name in bevy_names {
+            let Some(item) = deps.get(&name) else { continue };
+            // A path, never `workspace = true`: the copy is not a workspace
+            // member (the root excludes `plugins/`), and cargo refuses to
+            // inherit into a package outside the workspace. The same path is
+            // the same package, so it still unifies with the engine's Bevy.
+            let path = if name == "bevy" {
+                "../../bevy".to_string()
+            } else {
+                format!("../../bevy/crates/{name}")
+            };
+            let mut repointed = toml_edit::InlineTable::new();
+            repointed.insert("path", path.into());
+            // `bevy` always goes in with its defaults off. Feature unification
+            // would otherwise turn every Bevy default back on in the engine
+            // too, undoing what the Features tab stripped; the engine's own
+            // feature list already covers what the plugin was written against.
+            if name == "bevy" {
+                repointed.insert("default-features", false.into());
+            }
+            // Keep what the plugin chose to turn on. Nothing else survives,
+            // `git`, `tag`, `branch` and `version` included: the source is
+            // always the engine's own `bevy/`.
+            if let Some(table) = item.as_table_like() {
+                for key in ["features", "optional"] {
+                    if let Some(v) = table.get(key).and_then(|v| v.as_value()) {
+                        repointed.insert(key, v.clone());
+                    }
+                }
+                if name != "bevy" {
+                    if let Some(v) = table.get("default-features").and_then(|v| v.as_value()) {
+                        repointed.insert("default-features", v.clone());
+                    }
+                }
+            }
+            deps.insert(&name, toml_edit::Item::Value(repointed.into()));
         }
     }
     let lib = doc
@@ -2324,7 +2586,7 @@ mod tests {
 
         let ws = project.join("ws");
         std::fs::create_dir_all(&ws).unwrap();
-        let staged = stage_static_scripts(&project, &ws, &mut |_| {}).unwrap();
+        let staged = stage_static_scripts(&project, &ws, false, &mut |_| {}).unwrap();
         assert!(staged, "two scripts is something to link");
 
         let crate_dir = ws.join("crates").join("renzora_static_scripts");
@@ -2353,9 +2615,8 @@ mod tests {
         // `#[no_mangle]` and the binary fails to link.
         let manifest = std::fs::read_to_string(crate_dir.join("Cargo.toml")).unwrap();
         assert!(manifest.contains("features = [\"static_scripts\"]"), "{manifest}");
-        // No script here uses the UI framework, so it must not be linked: a game
-        // with no UI strips ember, and an unconditional feature would compile it
-        // back.
+        // Staged as for an export without UI, so it must not be linked: a game
+        // with no UI strips ember, and the feature would compile it back.
         assert!(!manifest.contains("\"ui\""), "{manifest}");
 
         let _ = std::fs::remove_dir_all(&project);
@@ -2447,7 +2708,7 @@ mod tests {
 
         let ws = project.join("ws");
         std::fs::create_dir_all(&ws).unwrap();
-        assert!(stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+        assert!(stage_static_scripts(&project, &ws, false, &mut |_| {}).unwrap());
 
         let lib = std::fs::read_to_string(
             ws.join("crates")
@@ -2613,33 +2874,34 @@ mod tests {
         ));
     }
 
+    /// Scripts get the UI framework when the export keeps its Interface
+    /// feature, and not when it strips it, whatever the scripts say: a script
+    /// that never names `renzora::ui` still gets it, and one that does gets
+    /// nothing from a build without UI.
     #[test]
-    fn a_script_that_uses_the_ui_crate_gets_it_linked() {
+    fn scripts_get_the_ui_crate_when_the_export_keeps_ui() {
         let project =
             std::env::temp_dir().join(format!("renzora_static_ember_{}", std::process::id()));
         let scripts = project.join("scripts");
         std::fs::create_dir_all(&scripts).unwrap();
-        std::fs::write(
-            scripts.join("hud.rs"),
-            format!("use renzora::ui::game_ui::components::UiImageFill;\n{SCRIPT}"),
-        )
-        .unwrap();
+        // No mention of `renzora::ui` at all.
+        std::fs::write(scripts.join("hud.rs"), SCRIPT).unwrap();
 
         let ws = project.join("ws");
         std::fs::create_dir_all(&ws).unwrap();
-        assert!(stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+        let manifest_path = ws.join("crates").join("renzora_static_scripts").join("Cargo.toml");
 
-        let manifest = std::fs::read_to_string(
-            ws.join("crates")
-                .join("renzora_static_scripts")
-                .join("Cargo.toml"),
-        )
-        .unwrap();
+        assert!(stage_static_scripts(&project, &ws, true, &mut |_| {}).unwrap());
+        let kept = std::fs::read_to_string(&manifest_path).unwrap();
+        assert!(stage_static_scripts(&project, &ws, false, &mut |_| {}).unwrap());
+        let stripped = std::fs::read_to_string(&manifest_path).unwrap();
+
         // The SDK's `ui` feature, which brings ember in with its own features
         // left to the export (it deps ember with default features off), so a
         // build that dropped `game_ui` keeps it dropped.
-        assert!(manifest.contains("features = [\"static_scripts\", \"ui\"]"), "{manifest}");
-        assert!(!manifest.contains("renzora_ember"), "{manifest}");
+        assert!(kept.contains("features = [\"static_scripts\", \"ui\"]"), "{kept}");
+        assert!(!kept.contains("renzora_ember"), "{kept}");
+        assert!(stripped.contains("features = [\"static_scripts\"]"), "{stripped}");
 
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -2665,7 +2927,7 @@ mod tests {
 
         let ws = project.join("ws");
         std::fs::create_dir_all(&ws).unwrap();
-        assert!(stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+        assert!(stage_static_scripts(&project, &ws, false, &mut |_| {}).unwrap());
 
         let lib = std::fs::read_to_string(
             ws.join("crates/renzora_static_scripts/src/lib.rs"),
@@ -2696,7 +2958,7 @@ mod tests {
         let ws = project.join("ws");
         std::fs::create_dir_all(&ws).unwrap();
 
-        assert!(!stage_static_scripts(&project, &ws, &mut |_| {}).unwrap());
+        assert!(!stage_static_scripts(&project, &ws, false, &mut |_| {}).unwrap());
         assert!(!ws.join("crates").join("renzora_static_scripts").exists());
 
         let _ = std::fs::remove_dir_all(&project);
@@ -2856,9 +3118,9 @@ mod manifest_patch_tests {
     }
 
     /// A plugin names `renzora` by path, and the path that is correct beside the
-    /// editor names nothing inside the export workspace — cargo refuses the
-    /// entire workspace over it before compiling anything. `bevy` comes from the
-    /// registry and unifies on its own.
+    /// editor names nothing inside the export workspace: cargo refuses the
+    /// entire workspace over it before compiling anything. `bevy` is named by
+    /// version, and left alone that pulls a second Bevy from crates.io.
     #[test]
     fn a_plugins_engine_paths_are_repointed() {
         let out = patched(
@@ -2869,9 +3131,25 @@ mod manifest_patch_tests {
         assert!(out.contains("../../crates/shared/renzora_sdk"), "{out}");
         assert!(out.contains("package = \"renzora_sdk\""), "{out}");
         assert!(!out.contains("/somewhere/else"), "{out}");
-        assert!(out.contains("bevy = \"0.19\""), "{out}");
+        assert!(!out.contains("\"0.19\""), "{out}");
+        assert!(out.contains("bevy = { path = \"../../bevy\", default-features = false }"), "{out}");
+        // The copy is outside the workspace, so inheriting would not resolve.
+        assert!(!out.contains("workspace = true"), "{out}");
         // And the crate type has to become an rlib to be linked in.
         assert!(out.contains("rlib"), "{out}");
+    }
+
+    /// A Bevy sub-crate goes to its copy in `bevy/`, and the features a plugin
+    /// asked for, on either, survive the move.
+    #[test]
+    fn bevy_dependencies_point_at_the_engines_bevy() {
+        let out = patched(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n             [dependencies]\n             bevy = { version = \"0.19\", default-features = false, features = [\"bevy_pbr\"] }\n             bevy_picking = { version = \"0.19\", default-features = false }\n",
+        );
+        assert!(!out.contains("0.19"), "{out}");
+        assert!(out.contains("path = \"../../bevy\""), "{out}");
+        assert!(out.contains("\"bevy_pbr\""), "{out}");
+        assert!(out.contains("../../bevy/crates/bevy_picking"), "{out}");
     }
 
     /// Every other key of the dependency survives the rewrite. Dropping the
@@ -2889,15 +3167,158 @@ mod manifest_patch_tests {
         assert!(out.contains("\"ui\""), "{out}");
     }
 
-    /// A version dependency is not a path and must be left alone — cargo
-    /// resolves it here exactly as it does anywhere.
+    /// Whatever form the IDE entries take (git, version, or none at all), the
+    /// build gets the engine's own crates, and an unrelated dependency is left
+    /// exactly as written.
     #[test]
-    fn a_registry_dependency_is_untouched() {
-        let out = patched(
-            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n             [dependencies]\nrenzora = \"1\"\n",
+    fn engine_entries_are_replaced_in_every_form() {
+        let git = patched(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n             [dependencies]\n             bevy = { git = \"https://github.com/renzora/engine\", tag = \"r1-alpha8\" }\n             renzora = { git = \"https://github.com/renzora/engine\", tag = \"r1-alpha8\", package = \"renzora_sdk\", features = [\"ui\"] }\n             fastrand = \"2\"\n",
         );
-        assert!(out.contains("renzora = \"1\""), "{out}");
-        assert!(!out.contains("crates/renzora"), "{out}");
+        assert!(!git.contains("github.com"), "{git}");
+        assert!(git.contains("path = \"../../bevy\""), "{git}");
+        assert!(git.contains("../../crates/shared/renzora_sdk"), "{git}");
+        assert!(git.contains("\"ui\""), "{git}");
+        assert!(git.contains("fastrand = \"2\""), "{git}");
+
+        let version = patched("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies]\nrenzora = \"1\"\n");
+        assert!(!version.contains("renzora = \"1\""), "{version}");
+        assert!(version.contains("../../crates/shared/renzora_sdk"), "{version}");
+
+        let none = patched("[package]\nname = \"x\"\nversion = \"0.1.0\"\n");
+        assert!(none.contains("path = \"../../bevy\""), "{none}");
+        assert!(none.contains("../../crates/shared/renzora_sdk"), "{none}");
+    }
+}
+
+#[cfg(test)]
+mod editor_code_check_tests {
+    use super::*;
+
+    fn engine_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn plugin(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("renzora_editor_check_{}_{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (path, text) in files {
+            let file = dir.join("src").join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, text).unwrap();
+        }
+        dir
+    }
+
+    /// Editor code beside the runtime code (the shape `procedural_tree` and
+    /// `vignette` had) is found, with its file and line; the same code moved
+    /// into `src/editor.rs` passes; and a name only mentioned in a comment does
+    /// not count.
+    #[test]
+    fn editor_code_is_found_only_outside_the_editor_module() {
+        let mixed = plugin(
+            "mixed",
+            &[("lib.rs", "use bevy::prelude::*;\nuse renzora::{AppEditorExt, InspectorEntry};\n")],
+        );
+        let split = plugin(
+            "split",
+            &[
+                ("lib.rs", "// Registered from editor.rs, not with register_inspector here.\nuse bevy::prelude::*;\nrenzora::plugin!(P, Runtime);\n"),
+                ("editor.rs", "use renzora::{AppEditorExt, InspectorEntry};\n"),
+            ],
+        );
+        // The old shape of water/wind: the code is in editor.rs, but the plugin
+        // declares the module itself, so a game build would still compile it.
+        let self_declared = plugin(
+            "self_declared",
+            &[
+                ("lib.rs", "mod editor;\nrenzora::plugin!(P, Runtime);\n"),
+                ("editor.rs", "use renzora::AppEditorExt;\n"),
+            ],
+        );
+        // Inline editor code inside `renzora::editor!` blocks counts as gated;
+        // the same name after the block does not.
+        let inline = plugin(
+            "inline",
+            &[(
+                "lib.rs",
+                "renzora::editor! {\n    use renzora::{AppEditorExt, InspectorEntry};\n}\nfn build(app: &mut App) {\n    renzora::editor! { app.register_inspector(entry()); }\n}\n",
+            )],
+        );
+        let inline_then_leak = plugin(
+            "inline_leak",
+            &[("lib.rs", "renzora::editor! { use renzora::AppEditorExt; }\nfn f() -> renzora::InspectorEntry { todo!() }\n")],
+        );
+        let results = (
+            editor_code_outside_editor_module(&mixed, &engine_dir()),
+            editor_code_outside_editor_module(&split, &engine_dir()),
+            editor_code_outside_editor_module(&self_declared, &engine_dir()),
+            editor_code_outside_editor_module(&inline, &engine_dir()),
+            editor_code_outside_editor_module(&inline_then_leak, &engine_dir()),
+        );
+        for dir in [&mixed, &split, &self_declared, &inline, &inline_then_leak] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        assert_eq!(results.3, None);
+        assert_eq!(results.4.as_deref(), Some("src/lib.rs:2 uses InspectorEntry"));
+        assert_eq!(results.0.as_deref(), Some("src/lib.rs:2 uses AppEditorExt"));
+        assert_eq!(results.1, None);
+        assert_eq!(
+            results.2.as_deref(),
+            Some("src/lib.rs:1 declares `mod editor` itself; `renzora::plugin!` declares it, and leaves it out of a game build")
+        );
+    }
+
+    /// The names are read from the contract itself, and include the trait
+    /// methods and macros a plugin actually writes.
+    #[test]
+    fn the_contract_names_come_from_its_source() {
+        let names = editor_contract_names(&engine_dir().join("crates/api/renzora_editor_api"));
+        for name in ["AppEditorExt", "InspectorEntry", "EditorSelection", "register_inspector", "float_field"] {
+            assert!(names.contains(name), "{name} missing from {names:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod source_release_tests {
+    use super::*;
+
+    fn tree_stamped(tag: Option<&str>) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "renzora_src_stamp_{}_{}",
+            std::process::id(),
+            tag.unwrap_or("none")
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        if let Some(tag) = tag {
+            let stamp = crate::templates::TemplateStamp { tag: tag.into(), sha256: String::new() };
+            std::fs::write(
+                dir.join(crate::templates::TEMPLATE_STAMP),
+                serde_json::to_string(&stamp).unwrap(),
+            )
+            .unwrap();
+        }
+        dir
+    }
+
+    /// The previous nightly's source is refused after an update; this one's is
+    /// taken; an unstamped tree is refused whenever there is a tag to compare.
+    #[test]
+    fn downloaded_source_must_be_this_nightlys() {
+        let old = tree_stamped(Some("r1-alpha8-nightly-23nov26"));
+        let unstamped = tree_stamped(None);
+        let newer = Some("r1-alpha8-nightly-24nov26");
+        let results = (
+            source_is_this_release(&old, newer),
+            source_is_this_release(&old, Some("r1-alpha8-nightly-23nov26")),
+            source_is_this_release(&unstamped, newer),
+            source_is_this_release(&unstamped, None),
+        );
+        let _ = std::fs::remove_dir_all(&old);
+        let _ = std::fs::remove_dir_all(&unstamped);
+        assert_eq!(results, (false, true, false, true));
     }
 }
 

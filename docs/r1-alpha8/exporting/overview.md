@@ -185,11 +185,17 @@ What it strips/changes versus the copy modes:
 Because it compiles, lean mode needs `cargo`. If Rust is already on your `PATH`
 it's used directly. If not — e.g. on a canonical editor release where the user has
 no Rust — the editor **provisions `rustup` automatically** into a private cache
-beside the editor (its own `CARGO_HOME`/`RUSTUP_HOME`, the pinned toolchain,
-minimal profile). This **never touches your global environment** or any existing
-Rust install, and the toolchain is reused on later exports. The first lean export
-therefore does a one-time toolchain download plus a full from-scratch compile, so
-it takes several minutes; subsequent ones are incremental.
+at `~/.renzora/toolchain` (its own `CARGO_HOME`/`RUSTUP_HOME`, the toolchain
+`rust-toolchain.toml` pins, minimal profile). This **never touches your global
+environment** or any existing Rust install. The cache is per user, not inside the
+editor's folder, so it is reused across exports and across editor updates, and
+its crates.io cache comes along with it. The first lean export therefore does a
+one-time toolchain download plus a full from-scratch compile, so it takes several
+minutes; subsequent ones are incremental.
+
+The first lean export needs an internet connection: for the engine source, for
+Rust when it has to be provisioned, and for the crates the engine depends on.
+Later exports reuse all three.
 
 ### Where a lean build runs
 
@@ -211,7 +217,10 @@ for a compile the host can already do.
 
 Every lean build needs the **engine source**, which is what the mode recompiles.
 A canonical editor download does not ship it; the Packaging tab offers a
-**Download engine source** button when that is what is missing.
+**Download engine source** button when that is what is missing. It installs
+into `~/.renzora/src/<version>/` with a note of the release it came from, and
+it has to be the source of this exact editor: after you update to a newer
+nightly the button comes back, and downloading again replaces the old tree.
 
 ### Plugins
 
