@@ -108,7 +108,7 @@ Dragging out of the panel is how most things get used.
 
 - A **model** dropped in the viewport spawns at the drop point.
 - A **material** dropped on an object applies to it.
-- A **scene** dropped in the viewport or the Hierarchy is added as a nested scene instance.
+- A **scene** (a prefab, or any `.bsn`) dropped in the viewport or the Hierarchy is added as an instance of it. See [Prefabs](/docs/r1-alpha8/editor/scenes#prefabs).
 - A **script** dropped on an entity attaches to it.
 - An **image**, SVG included, dropped on a texture slot (a material, a particle emitter's Texture, a UI image's Source, a sprite's Add Sheet) uses it there, and dropped in the 2D viewport makes a sprite.
 

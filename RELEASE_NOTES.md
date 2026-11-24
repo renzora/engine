@@ -1,5 +1,40 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 22:56
+- feat(editor): the Hierarchy's right-click menu is grouped into Add, Edit, Attach, Prefab, Camera and Label Color submenus
+- feat(editor): Add in a row's menu puts any spawnable kind under that entity, not only an empty child
+- fix(scene): a prefab's insides keep their own names when applied, instead of gaining a number each time
+- fix(scene): filling in a prefab no longer logs a recursive-instance warning
+
+## 2026-11-24 22:48
+- feat(editor): Create Prefab turns any object into a prefab file and replaces it with an instance
+- feat(editor): Apply to Prefab pushes one instance's edits to the file and every other instance
+- feat(editor): Revert to Prefab discards an instance's edits, with undo
+- feat(scripting): Rust scripts spawn prefabs with `renzora::core::prefab::spawn_prefab`
+- fix(scripting): a script's `spawn_prefab` command now spawns the prefab
+
+## 2026-11-24 22:28
+- feat(network): a new UDP transport with ordered reliable messages, large-message splitting, round trip and packet loss figures, and a handshake that assigns player ids and turns away other games
+- feat(network): `Networked` entities replicate to every client: spawns, despawns, registered components and smoothed transforms, with late joiners sent the whole world
+- feat(network): an entity placed in the scene is the same entity on every peer instead of a second copy
+- feat(network): an owner-moved avatar responds instantly for its player and is passed on to everyone else
+- feat(network): a `NetworkPlayerSpawner` gives every player who joins, the host included, an avatar from a prefab, removed when they leave
+- feat(network): RPCs can go to the server, everyone, everyone else or one peer, and keep the real sender's id
+- feat(network): Rust scripts and plugins use multiplayer through `renzora::network`
+- feat(network): `--connect [address[:port]]` joins a server at startup
+- feat(editor): Play can start a listen or dedicated server and extra client windows, set by `play_mode` and `play_clients` in `[network]`
+- feat(editor): inspector cards for Player Spawner and Network Owner, and a Moved By choice on Network Transform
+- fix(network): `Networked` is saved with the scene instead of being stripped
+- fix(scene): a prefab instance added while the game runs now loads its contents
+- fix(scene): loading a prefab inside a scene no longer reports a finished scene load to scripts and loading screens
+
+## 2026-11-24 21:59
+- feat(viewport): the tools and undo / redo moved from the floating left shelf into the start of the viewport toolbar
+- feat(viewport): the four shading buttons are now one shading dropdown
+
+## 2026-11-24 22:01
+- feat(save): a plugin can keep save slots somewhere other than the save folder by installing a `renzora::save::SaveBackend`
+
 ## 2026-11-24 20:52
 - feat(export): a lean export without Allow profiling leaves out system timing spans and system names
 

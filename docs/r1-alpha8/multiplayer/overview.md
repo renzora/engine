@@ -1,208 +1,194 @@
 # Multiplayer Overview
 
-Renzora's networking is built on Lightyear 0.26, runs over native UDP, and lives entirely in the `renzora_network` crate.
+Renzora's multiplayer is its own: a UDP transport written for the engine, server-authoritative replication of the entities you mark, RPCs between peers, and an avatar for every player who joins. It lives in `renzora_network`, and a game reaches it as `renzora::network`.
 
-> ⚠️ **Alpha status — read this first.** Multiplayer is early and intentionally minimal. Only **native UDP** works, the handshake is **insecure** (a fixed all-zero key — LAN/dev only), and large parts are stubs (no client prediction, no avatar spawning, no alternate transports). It is enough to stand up a dedicated server, replicate `Transform`, and send RPCs between scripts. Do not ship a public, internet-facing game on it yet.
+> **Alpha status.** It works end to end (dedicated and listen servers, replication, RPCs, avatars, late joiners), and it is LAN-grade: traffic is **not encrypted** and there is no client-side prediction yet. Do not carry secrets over it, and expect a remote player's movement to be about 100 ms behind.
 
-## Architecture
+## The model in one paragraph
 
-There is **one engine binary** (`renzora`). It is not a separate "client" and "server" — the same executable picks a network role from a launch flag:
+One process is the **server**. It runs the game rules and owns the truth. Everyone else is a **client**: it loads the same project, joins, and is sent every entity you marked `Networked`, kept up to date as the server changes them. A player's own avatar is the exception: its owner moves it, so it responds instantly, and the server passes those moves on. Anything else a client wants, it asks the server for with an RPC.
 
-| Launch | Role | Rendering |
+## Roles
+
+There is one binary. A flag picks the role:
+
+| Launch | Role | Window |
 |---|---|---|
-| *(plain windowed launch)* | Client | full window |
-| `--server` | Headless **dedicated server** | none (no GPU, no window) |
-| `--host` | Windowed **listen server** (client + server in one process) | full window |
+| `renzora` | Client (offline until it connects) | yes |
+| `renzora --connect 10.0.0.5:7636` | Client that joins at startup | yes |
+| `renzora --host` | **Listen server**: the server plus a local player | yes |
+| `renzora --server` | **Dedicated server**: headless, no player of its own | no |
 
-- `--host` **wins over** `--server` if both are passed.
-- A `--server` or `--host` launch is **never** an editor session, even if the editor bundle is present beside the exe.
-- `--server` swaps in a headless schedule that ticks at the network tick rate; there is **no separate dedicated-server executable** — it is the same binary with `--server`.
-- In host mode the engine spawns the server and then a local client, which Lightyear promotes to an in-process `HostClient` (the local player never goes over UDP).
+An exported game takes the same flags. See [Server Setup](server-setup).
 
-A plain client does **not** take a connect flag. It launches disconnected and connects later from a script (see [Connecting](#connecting-from-a-script) below).
+## Testing from the editor
 
-> See [Server Setup](server-setup) for running and configuring the dedicated/listen server.
-
-## Transport
-
-**Only native UDP is implemented and compiled in.** `renzora_network` pulls Lightyear with just its `udp` and `netcode` features, and the transport is hardcoded to UDP.
+Set the session up once in `project.toml`, then press **Play**:
 
 ```toml
 [network]
-transport = "udp"        # parsed and shown in the editor, but NOT yet honored
+port = 7636
+play_mode = "host"   # "single" (default), "host" or "server"
+play_clients = 1     # extra client windows to open beside the game
 ```
 
-`TransportKind` has `udp`, `webtransport`, and `websocket` variants, and the value is read from `project.toml` and displayed in the editor's network settings panel — but **no code selects a transport from it**. `webtransport` and `websocket` are not wired up and the corresponding Lightyear features are not even enabled.
+- `host`: the game runs as a listen server, and `play_clients` more windows join it.
+- `server`: a headless dedicated server starts first (its log appears in the Console under **Server**), then the game and the extra clients join it.
 
-> On **WebGPU / WASM** the entire `renzora_network` crate compiles to a **no-op stub**. There is no browser multiplayer.
+**Stop**, or closing the game window, ends every process in the session. The editor's live link follows the main game window only.
 
-## Configuration
+## Marking things for multiplayer
 
-Network settings live in your project's `project.toml`:
-
-```toml
-[network]
-server_addr = "127.0.0.1"
-port        = 7636
-transport   = "udp"
-tick_rate   = 64
-max_clients = 32
-```
-
-| Key | Default | Meaning |
-|---|---|---|
-| `server_addr` | `"127.0.0.1"` | Address the server listens on |
-| `port` | `7636` | UDP port |
-| `transport` | `"udp"` | Transport kind (only `udp` works today) |
-| `tick_rate` | `64` | Server simulation rate in Hz |
-| `max_clients` | `32` | Maximum simultaneous clients |
-
-Server/host launches can override these from the command line; CLI flags take priority over `project.toml`:
-
-```bash
-# Headless dedicated server on a custom port and tick rate
-renzora --server --port 7777 --tick-rate 30 --max-clients 16
-
-# Windowed listen server (you play and host at once)
-renzora --host
-```
-
-Recognized flags: `--server`, `--host`, `--port`, `--addr` / `--address`, `--tick-rate`, `--max-clients`. (These are parsed only for server/host launches.)
-
-> During development, the renzora CLI is the quickest way to launch a role: `renzora run -- --server` runs the dedicated server, `renzora run runtime` runs a plain game client.
-
-## State replication
-
-Replication is component-based and driven by a marker:
-
-- Add the **`Networked`** marker to an entity and the server automatically inserts Lightyear's `Replicate::to_clients(All)` (plus an interpolation target on remotes).
-- **`Transform`** is the one gameplay component that actually replicates, with snapshot interpolation (linear `lerp`) on the receiving side so remote entities move smoothly between updates.
-- The fixed protocol replicates exactly: `Networked`, `NetworkId`, `Name`, `NetworkPlayer`, `NetworkOwner`, and `Transform`. There is **no generic component replication and no mesh replication**.
-
-> ⚠️ Replication today creates a **new** entity on each client carrying the interpolated `Transform`; it does **not** map network IDs onto your pre-existing scene entities, and the spawned entity has no mesh, so it is invisible until you give it one. `NetworkTransform.sync_rotation` / `sync_scale` are currently **inert** — only `interpolate` is read, and `Transform` always replicates in full. Client-side **prediction and reconciliation are not implemented** (the prediction module is an inert stub).
-
-See [State Replication](replication) for the details and current limitations.
-
-## Scripting API
-
-Networking is exposed to scripts on **native platforms only** — write multiplayer logic in `.lua` scripts.
-
-### Status globals
-
-| Function | Returns |
+| Component | What it does |
 |---|---|
-| `net_is_server()` | `true` on the dedicated/host server |
-| `net_is_client()` | `true` when networking is active and this is not the server |
-| `net_is_connected()` | connected to a server (client) or running (server) |
-| `net_player_count()` | connected client count (server only; `0` elsewhere) |
+| `Networked` | Replicate this entity to every client. |
+| `NetworkTransform` | How its transform replicates: who moves it (**Server** or **Owner**), interpolation, rotation and scale. |
+| `NetworkPlayerSpawner` | Give every player who joins an instance of a prefab, owned by them. |
+| `NetworkPrefab` | What a networked entity looks like: a prefab every peer instances locally. |
+| `NetworkOwner` | Whose it is. Set by the server; shown read-only in the Inspector. |
 
-```lua
-function on_update()
-    local role = net_is_server() and "SERVER" or "CLIENT"
-    local conn = net_is_connected() and "connected" or "offline"
-    action("ui_set_text", { name = "NetStatus", text = role .. " - " .. conn })
+All of them are in the Inspector under **Networking**. An entity placed in the scene and marked `Networked` is the **same** entity on every peer: the client matches it to its own copy by scene id rather than spawning a second one.
 
-    -- Player count is authoritative on the server/host only.
-    if net_is_server() then
-        action("ui_set_text", { name = "Players",
-            text = "Players: " .. tostring(net_player_count()) })
-    end
-end
+## A first multiplayer game
+
+1. Make a player prefab (a `.bsn` scene) with a mesh and a script.
+2. Put an entity with a **Player Spawner** in your level, and point it at the prefab.
+3. Set `play_mode = "host"` and `play_clients = 1`, and press Play.
+
+Two windows open, each with two avatars. The script on the prefab moves only the avatar it belongs to:
+
+```rust
+use bevy::prelude::*;
+use renzora::network as net;
+use renzora::ScriptCtx;
+
+fn update(ctx: &mut ScriptCtx) {
+    let me = ctx.entity();
+    let dt = ctx.delta();
+    let world = ctx.world();
+    // The networked entity is the prefab instance above this script.
+    let Some(avatar) = net::networked_root(world, me) else { return };
+    if !net::is_mine(world, avatar) {
+        return; // someone else's: the network moves it
+    }
+    let right = world
+        .get_resource::<ButtonInput<KeyCode>>()
+        .is_some_and(|k| k.pressed(KeyCode::KeyD));
+    if right {
+        if let Some(mut t) = world.get_mut::<Transform>(avatar) {
+            t.translation.x += 5.0 * dt;
+        }
+    }
+}
+
+renzora::script!(update);
 ```
 
-### RPCs
+The spawner gives avatars a `NetworkTransform` whose authority is **Owner**, which is what lets the owner's moves through.
 
-`rpc(name, args)` broadcasts a remote procedure call. `args` is an arbitrary table — numbers, strings, bools and `{x, y, z}` vectors round-trip. It is sent reliably; a client sends to the server, and the server relays to **every other** client (never echoing back to the sender).
+## Who runs what: `has_authority`
 
-```lua
-function on_update()
-    if is_key_just_pressed("KeyP") then
-        rpc("ping", { msg = "hello", at = elapsed })   -- to every other peer
-        print_log("sent ping")
-    end
-end
+Every peer runs every script. Game logic must run once, on the right peer:
 
--- Fires on remote peers when an RPC arrives. A script with no on_rpc ignores RPCs.
-function on_rpc(name, args, from)
-    if name == "ping" then
-        print_log("got ping from " .. tostring(from) .. ": " .. tostring(args.msg))
-    end
-end
+```rust
+if !renzora::network::has_authority(world, entity) {
+    return;
+}
 ```
 
-> ⚠️ **The original sender's id is lost through the server relay.** Only the server sees the true peer id; on a relayed client, `from` is always `0`. Use a field inside `args` if you need to identify who sent an RPC. `rpc()` is also a no-op (with a warning) when you are not connected.
+`has_authority` is true on the server for everything it simulates, true on a client for its own owner-moved avatar, and true for everything when there is no session. That last part means a multiplayer scene still plays single-player with no second code path.
 
-### Lifecycle hooks (server-authoritative)
-
-These hooks fire **only on the server/host**, so player presence is authoritative. Scripts also run on the headless dedicated server, which is where you put authoritative game logic.
-
-| Hook | When it fires |
+| Call | Answers |
 |---|---|
-| `on_rpc(name, args, from)` | a networked RPC arrives |
-| `on_player_joined(id)` | a peer connects (server/host only) |
-| `on_player_left(id)` | a peer disconnects (server/host only) |
+| `net::is_server(world)` | This process is the server (dedicated or host). |
+| `net::is_client(world)` | This process is a client. |
+| `net::is_connected(world)` | There is a live session. |
+| `net::local_peer_id(world)` | This peer's id. The host is `1`, a dedicated server `0`. |
+| `net::players(world)` | Everyone in the session. |
+| `net::is_mine(world, e)` | `e` (or its networked ancestor) belongs to this peer's player. |
+| `net::has_authority(world, e)` | This peer should simulate `e`. |
+| `net::owner_of(world, e)` / `net::networked_root(world, e)` | Ownership and the networked ancestor of a prefab's child. |
 
-```lua
-local count = 0
+## RPCs
 
--- These run only on the server/host.
-function on_player_joined(id)
-    count = count + 1
-    print_log("player " .. tostring(id) .. " joined — " .. count .. " online")
-    rpc("lobby", { count = count, who = id, joined = true })   -- tell the clients
-end
+An RPC is a name and some arguments, sent to one peer or many:
 
-function on_player_left(id)
-    if count > 0 then count = count - 1 end
-    rpc("lobby", { count = count, who = id, joined = false })
-end
+```rust
+use renzora::network::{Rpc, RpcTarget};
 
--- Runs on every client to receive the broadcast presence update.
-function on_rpc(name, args, from)
-    if name == "lobby" then
-        action("ui_set_text", { name = "Players", text = "Players: " .. tostring(args.count) })
-    end
-end
+// A client asks the server.
+Rpc::new("pickup").arg("coin", coin_id).to(RpcTarget::Server).send(world);
+
+// The server tells everyone.
+Rpc::new("scored").arg("player", who).arg("points", 3).to(RpcTarget::All).send(world);
 ```
 
-### Connecting from a script
+| Target | Goes to |
+|---|---|
+| `Server` | the server only |
+| `All` | every peer, the sender and the server included |
+| `Others` (default) | every peer but the sender |
+| `Peer(id)` | one peer |
 
-A plain client launches disconnected. Connection is driven through the generic `action()` verb, not a bare function or a CLI flag:
+RPCs are reliable and ordered unless you call `.unreliable()`. They arrive as a hook, with the sender's real id (stamped by the server, so a client cannot speak as someone else):
 
-```lua
-function on_ready()
-    -- With no arguments it connects to [network] server_addr:port.
-    action("net_connect", { address = "127.0.0.1", port = 7636 })
-end
+```rust
+use renzora::network::RpcArgs;
+use renzora::{ScriptCtx, ScriptHook};
 
--- Later, to disconnect:
--- action("net_disconnect")
+fn hooks(ctx: &mut ScriptCtx, hook: &ScriptHook) {
+    match hook {
+        ScriptHook::Rpc { name: "scored", args, from } => {
+            let points = args.i64("points").unwrap_or(0);
+            info!("{from} says: +{points}");
+        }
+        ScriptHook::PlayerJoined { id } => info!("{id} joined"), // server only
+        _ => {}
+    }
+}
 ```
 
-Attach a single connector script to one entity; your other networking scripts assume the connection already exists. The matching test scripts shipped in `assets/scripts/` are a good starting point: `net_connect`, `net_hud`, `net_lobby`, `net_chat`, `net_score`, `multiplayer_ping`, and `net_move`.
+With no session, an RPC to `Server` or `All` is delivered to this process's own scripts, so "ask the server" still works single-player.
 
-> ⚠️ The following script verbs exist but **do nothing on the wire yet** (they log a TODO): `action("net_send", ...)`, `action("net_send_message", ...)`, `action("net_spawn", ...)`, and `action("net_host_server", ...)` (the last just tells you to launch with `--server`). Use `rpc()` for messaging today.
+## Spawning shared things
+
+Only the server creates shared state. It spawns a networked prefab, and every client gets it:
+
+```rust
+use renzora::network::{self as net, OwnerKind};
+
+if net::is_server(world) {
+    net::spawn_prefab(world, "prefabs/coin.bsn", Transform::from_xyz(3.0, 0.5, 0.0), OwnerKind::Server);
+}
+```
+
+Despawn it on the server and it is despawned everywhere. A client calling `spawn_prefab` gets `None`: it should ask the server with an RPC.
+
+## Connecting
+
+```rust
+renzora::network::connect(world, "10.0.0.5", 7636); // "" and 0 take [network] server_addr / port
+renzora::network::disconnect(world);
+```
+
+Or launch with `--connect [address[:port]]`. A `--connect` launch keeps trying for a minute if the server is not up yet.
+
+## Other languages
+
+A language plugin reaches the same system through its verbs: `rpc(name, args)` (add `__to = "server" | "all" | "others" | <peer id>` and `__unreliable = true` to the arguments), `action("net_connect", { address, port })`, `action("net_disconnect")`, `action("net_spawn", { prefab, x, y, z })` (server only), and the `on_rpc(name, args, from)`, `on_player_joined(id)` and `on_player_left(id)` hooks.
 
 ## Editor panels
 
-`renzora_network_editor` adds inspector cards for `Networked` and `NetworkTransform` plus three native panels: **Network Monitor**, **Network Entities**, and **Network Settings**.
+**Network Monitor**, **Network Entities** and **Network Settings** show the editor's own view of a session. Since Play runs the game in its own process, watch a running session in the game's HUD or its log in the Console (categories **Runtime**, **Server** and **Client**).
 
-> The Settings panel is **read-only** — edit `[network]` in `project.toml` (there are no connect/host buttons yet). The Monitor panel's RTT, jitter, packet-loss, and Client ID rows are **not populated from Lightyear** and currently always show zeros.
+## Not built yet
 
-## Not implemented yet
+- Client-side prediction and reconciliation (a server-moved entity a client controls has a round trip of delay; owner-moved avatars do not).
+- Interest management: every client is sent every networked entity.
+- Encryption, and transports other than UDP. There is no browser multiplayer: on the web, `renzora::network` behaves as it does offline.
+- Networked physics: a dynamic rigid body replicated to a client is still simulated there. Make client copies kinematic, or move such things by script on the server.
 
-To set expectations, these are defined but **stub-only or absent** in this alpha:
+## Related
 
-- Client input replication (`PlayerInput` exists but is never registered).
-- Client-side prediction and server reconciliation (the prediction module is inert).
-- Automatic avatar/prefab spawning on join (nothing reacts to a new `NetworkPlayer`).
-- Alternate transports (WebTransport / WebSocket), interest management, authority transfer, networked physics, and any form of security.
-
-## Related (not game multiplayer)
-
-These run their own servers and are unrelated to Lightyear — don't confuse them with multiplayer:
-
-- **`renzora_marketplace`** — editor-only sign-in/register against the
-  renzora.com API, for buying and publishing assets.
-- **`mcp_server_plugin`** — editor MCP server (JSON-RPC) for tooling.
-- **`websocket_plugin`** — editor dev WebSocket server for remote editor commands.
+- [Server Setup](server-setup): flags, `[network]`, running a dedicated server.
+- [State Replication](replication): what replicates, when, and how to replicate your own components.

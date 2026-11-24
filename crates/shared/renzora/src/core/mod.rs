@@ -19,7 +19,7 @@ pub use renzora_crash_api as recoverable;
 pub use renzora_shell_api::{editor_events, keybindings, shell};
 
 // The scene layer, re-exported as modules the same way (flattened below).
-pub use renzora_scene_api::{asset_bytes, components, entity_id, shapes};
+pub use renzora_scene_api::{asset_bytes, components, entity_id, prefab, shapes};
 
 // The project layer, re-exported as modules so every `renzora::core::<mod>::X`
 // path keeps resolving (and flattened below, as before).

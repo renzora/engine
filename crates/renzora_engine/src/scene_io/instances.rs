@@ -19,6 +19,12 @@ use super::deny::{DenyOptionalSubsystems, DenyUiCameraTargets};
 use super::load::{load_scene, loading_stack_contains};
 use super::physics_filter::PhysicsFilter;
 
+thread_local! {
+    /// Instances an expansion pass further up the stack has already taken on:
+    /// the one whose file is loading and the ones queued after it.
+    static PENDING: std::cell::RefCell<Vec<Entity>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Expand every `SceneInstance` entity in the world that has no children yet:
 /// load the referenced source scene and reparent its roots under the instance.
 ///
@@ -49,6 +55,17 @@ pub fn expand_scene_instances(world: &mut World) {
             bevy::ecs::query::Has<renzora_scene_api::PartitionCell>,
         )>();
         for (entity, inst, is_cell) in q.iter(world) {
+            // Taken on by a pass further up the stack. Loading one instance's
+            // file runs a nested pass, and to that pass the instance itself
+            // (contents loaded, not yet parented) and every sibling instance
+            // of the same file still look empty. Taking them here tripped the
+            // cycle guard and logged a recursion warning whenever a file was
+            // placed twice; the outer pass fills them anyway. An instance the
+            // loaded file itself contains is not in the list, so a real cycle
+            // is still caught and reported below.
+            if PENDING.with(|s| s.borrow().contains(&entity)) {
+                continue;
+            }
             if skip_streamed && inst.streamed {
                 continue;
             }
@@ -84,6 +101,7 @@ pub fn expand_scene_instances(world: &mut World) {
         }
     }
 
+    PENDING.with(|s| s.borrow_mut().extend(to_expand.iter().map(|(e, _)| *e)));
     for (instance_entity, source_path) in to_expand {
         // No push here — `load_scene` records what it is loading, which is what
         // makes a self-referencing instance detectable. Pushing here as well
@@ -94,7 +112,18 @@ pub fn expand_scene_instances(world: &mut World) {
             q.iter(world).collect()
         };
 
-        load_scene(world, &source_path);
+        {
+            let _scope = super::load::InstanceExpansionScope::enter();
+            load_scene(world, &source_path);
+            // Done with this one: a later pass (a Revert, an Apply) may want
+            // it again.
+            PENDING.with(|s| {
+                let mut s = s.borrow_mut();
+                if let Some(i) = s.iter().rposition(|e| *e == instance_entity) {
+                    s.remove(i);
+                }
+            });
+        }
 
         let mut new_roots: Vec<Entity> = Vec::new();
         {
@@ -110,6 +139,29 @@ pub fn expand_scene_instances(world: &mut World) {
             world.entity_mut(root).insert(ChildOf(instance_entity));
         }
     }
+}
+
+/// Run condition for [`expand_added_scene_instances`]: a `SceneInstance` was
+/// added this frame that has nothing under it yet, in a running game.
+pub fn scene_instance_added_in_game(
+    added: Query<(), (Added<renzora_scene_api::SceneInstance>, Without<Children>)>,
+    session: Option<Res<renzora_project_api::EditorSession>>,
+) -> bool {
+    !added.is_empty() && !session.is_some_and(|s| s.is_editor())
+}
+
+/// Expand a `SceneInstance` that game code added after the scene loaded.
+///
+/// Scene load expands the instances it creates, and the editor's drops expand
+/// theirs on the spot, so before this nothing covered an instance added at run
+/// time: a networked avatar (`NetworkPrefab` becomes a `SceneInstance` on every
+/// peer) or a script spawning a prefab stayed an empty entity.
+///
+/// Never in the editor. There the live link mirrors a running game's instances
+/// *with* their children, and expanding the mirror as well would duplicate the
+/// whole prefab.
+pub fn expand_added_scene_instances(world: &mut World) {
+    expand_scene_instances(world);
 }
 
 /// Returns `true` if `source_path` resolves to the same file as
@@ -471,6 +523,23 @@ pub fn save_prefab_source(
             );
             ron::ser::to_string(&serializer).is_ok()
         });
+    }
+
+    // Save each entity under the name it was given, not the suffixed one the
+    // editor's scene-wide unique-name rule handed it. A prefab placed twice has
+    // its insides renamed `body`, `body_1`; without this, applying the second
+    // copy wrote `body_1` into the file, the next copy placed became `body_2`,
+    // and every apply grew the names by one. `BindName` is where the editor
+    // keeps the unsuffixed name, for exactly this kind of reader.
+    for entity in &mut scene.entities {
+        let Some(base) = world.get::<renzora_scene_api::BindName>(entity.entity).map(|b| b.0.clone()) else {
+            continue;
+        };
+        for component in &mut entity.components {
+            if component.reflect_type_path() == <Name as bevy::reflect::TypePath>::type_path() {
+                *component = Box::new(Name::new(base.clone()));
+            }
+        }
     }
 
     let registry = type_registry.read();

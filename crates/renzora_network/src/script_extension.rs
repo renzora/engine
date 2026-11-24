@@ -1,185 +1,153 @@
-//! Network script integration — handles networking actions from scripts.
+//! Networking from a script language backend.
 //!
-//! Scripts use the generic `action()` function for network operations:
+//! A Rust script calls `renzora::network` directly. A language plugin (Lua,
+//! from the marketplace) cannot, so its `rpc()` and `action("net_*", ...)`
+//! verbs arrive here as `ScriptAction`s and are put in the same
+//! [`NetOutbox`] a Rust script writes.
 //!
 //! ```lua
-//! action("net_send", { channel = "chat", data = "hello" })
-//! action("net_spawn", { name = "Bullet", x = 0, y = 1, z = 0 })
-//! action("net_rpc", { name = "damage", args = "25" })
+//! rpc("pickup", { coin = id, __to = "server" })   -- __to: server | all | others | <peer id>
+//! action("net_connect", { address = "10.0.0.5", port = 7636 })
+//! action("net_disconnect")
+//! action("net_spawn", { prefab = "prefabs/coin.bsn", x = 0, y = 1, z = 0 })  -- server only
 //! ```
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
-use renzora_scripting_api::ScriptAction;
+use renzora_network_api::{Delivery, NetOutbox, NetRequest, OutgoingRpc, OwnerKind, RpcTarget};
+use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 
-use crate::status::NetworkStatus;
+/// The argument the `rpc()` verb carries the RPC's name in.
+pub const RPC_NAME_KEY: &str = "__rpc";
+/// Who the RPC is for: `"server"`, `"all"`, `"others"`, or a peer id.
+pub const RPC_TARGET_KEY: &str = "__to";
+/// `true` to send unreliably.
+pub const RPC_UNRELIABLE_KEY: &str = "__unreliable";
 
-/// Observer that handles network-related ScriptAction events.
-pub fn handle_network_script_actions(
-    trigger: On<ScriptAction>,
-    status: Res<NetworkStatus>,
-    project: Option<Res<renzora_project_api::CurrentProject>>,
-    mut cmds: Commands,
-    mut outbox: ResMut<crate::rpc::PendingOutgoingRpc>,
-) {
-    use renzora_scripting_api::ScriptActionValue;
+pub fn handle_network_script_actions(trigger: On<ScriptAction>, mut commands: Commands) {
     let action = trigger.event();
-
-    let get_str = |key: &str| -> String {
-        match action.args.get(key) {
-            Some(ScriptActionValue::String(s)) => s.clone(),
-            _ => String::new(),
-        }
+    let str_arg = |key: &str| match action.args.get(key) {
+        Some(ScriptActionValue::String(s)) => s.clone(),
+        _ => String::new(),
     };
-    let get_f32 = |key: &str| -> f32 {
-        match action.args.get(key) {
-            Some(ScriptActionValue::Float(v)) => *v,
-            Some(ScriptActionValue::Int(v)) => *v as f32,
-            _ => 0.0,
-        }
-    };
-    let get_i64 = |key: &str| -> i64 {
-        match action.args.get(key) {
-            Some(ScriptActionValue::Int(v)) => *v,
-            Some(ScriptActionValue::Float(v)) => *v as i64,
-            _ => 0,
-        }
+    let num_arg = |key: &str| match action.args.get(key) {
+        Some(ScriptActionValue::Float(v)) => *v as f64,
+        Some(ScriptActionValue::Int(v)) => *v as f64,
+        _ => 0.0,
     };
 
     match action.name.as_str() {
         "net_connect" => {
-            // Whatever the call leaves out comes from the project's `[network]`
-            // section, so a game connects to the server it was configured for
-            // with a bare `net_connect`, and a script names an address only to
-            // go somewhere else.
-            let (address, port) = connect_target(
-                get_str("address"),
-                get_i64("port"),
-                project.as_ref().and_then(|p| p.config.network.as_ref()),
-            );
-            if address.is_empty() || port == 0 {
-                log::warn!("[network] net_connect: invalid address/port");
-                return;
-            }
-            log::info!("[network] Connect request: {}:{}", address, port);
-            cmds.insert_resource(crate::PendingNetworkConnect { address, port });
-        }
-        "net_disconnect" => {
-            log::info!("[network] Disconnect request");
-            cmds.insert_resource(crate::PendingNetworkDisconnect);
-        }
-        "net_host_server" => {
-            let port = get_i64("port") as u16;
-            let max_clients = get_i64("max_clients") as u16;
-            log::info!(
-                "[network] Host server request (port={}, max={}). \
-                 Run the runtime with `--server` for a dedicated server.",
-                port,
-                max_clients
-            );
-        }
-        "net_send" | "net_send_message" => {
-            if !status.is_connected() && !status.is_server {
-                log::warn!("[network] Script send ignored — not connected");
-                return;
-            }
-            let name = get_str("channel");
-            let data = get_str("data");
-            log::info!("[network] Script send event: {} ({}B)", name, data.len());
-            // TODO: send via Lightyear connection
-        }
-        "net_spawn" => {
-            if !status.is_connected() && !status.is_server {
-                log::warn!("[network] Script spawn ignored — not connected");
-                return;
-            }
-            let name = get_str("name");
-            let x = get_f32("x");
-            let y = get_f32("y");
-            let z = get_f32("z");
-            log::info!(
-                "[network] Script spawn request: {} at ({}, {}, {})",
-                name,
-                x,
-                y,
-                z
-            );
-            // TODO: send SpawnRequest to server
-        }
-        "net_rpc" => {
-            if !status.is_connected() && !status.is_server {
-                log::warn!("[network] Script RPC ignored — not connected");
-                return;
-            }
-            // Name comes from the reserved key set by the `rpc()` verb, or
-            // falls back to the legacy `action("net_rpc", { name = .. })` form.
-            let name_key = if action.args.contains_key(crate::rpc::RPC_NAME_KEY) {
-                crate::rpc::RPC_NAME_KEY
-            } else {
-                "name"
+            let request = NetRequest::Connect {
+                address: str_arg("address"),
+                port: u16::try_from(num_arg("port") as i64).unwrap_or(0),
             };
-            let name = match action.args.get(name_key) {
-                Some(ScriptActionValue::String(s)) => s.clone(),
-                _ => String::new(),
-            };
-            if name.is_empty() {
-                log::warn!("[network] Script RPC ignored — missing name");
-                return;
-            }
-            // Everything except the reserved name key is the payload.
-            let payload: std::collections::HashMap<String, ScriptActionValue> = action
-                .args
-                .iter()
-                .filter(|(k, _)| k.as_str() != name_key)
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            log::debug!("[network] Script RPC: {} ({} args)", name, payload.len());
-            outbox.queue.push(crate::rpc::OutgoingRpc {
-                name,
-                args: payload,
+            commands.queue(move |world: &mut World| {
+                world.get_resource_or_insert_with(NetOutbox::default).requests.push(request);
             });
         }
-        _ => {} // Not a network action
+        "net_disconnect" => {
+            commands.queue(|world: &mut World| {
+                world.get_resource_or_insert_with(NetOutbox::default).requests.push(NetRequest::Disconnect);
+            });
+        }
+        "net_rpc" => {
+            let Some(rpc) = parse_rpc(&action.args) else {
+                warn!("[network] rpc() ignored: it has no name");
+                return;
+            };
+            commands.queue(move |world: &mut World| {
+                world.get_resource_or_insert_with(NetOutbox::default).rpcs.push(rpc);
+            });
+        }
+        "net_spawn" => {
+            let prefab = match str_arg("prefab") {
+                p if !p.is_empty() => p,
+                _ => str_arg("name"),
+            };
+            let at = Vec3::new(num_arg("x") as f32, num_arg("y") as f32, num_arg("z") as f32);
+            commands.queue(move |world: &mut World| {
+                renzora_network_api::spawn_prefab(world, prefab, Transform::from_translation(at), OwnerKind::Server);
+            });
+        }
+        "net_send" | "net_send_message" | "net_host_server" => {
+            warn!(
+                "[network] `{}` is not a network verb any more: send with rpc(), host with `--host`",
+                action.name
+            );
+        }
+        _ => {}
     }
 }
 
-/// Where a `net_connect` goes: the address and port the script gave, with
-/// either one it left out (empty, or a port outside 1..=65535) taken from the
-/// project's `[network]` section, and that section's defaults when the project
-/// has none.
-fn connect_target(
-    address: String,
-    port: i64,
-    project: Option<&renzora_project_api::NetworkProjectConfig>,
-) -> (String, u16) {
-    let fallback = project.cloned().unwrap_or_default();
-    let address = if address.trim().is_empty() { fallback.server_addr } else { address };
-    let port = u16::try_from(port).ok().filter(|p| *p != 0).unwrap_or(fallback.port);
-    (address, port)
+/// An `rpc()` call's arguments to an outgoing RPC. The legacy
+/// `action("net_rpc", { name = ... })` form is still read.
+pub fn parse_rpc(args: &HashMap<String, ScriptActionValue>) -> Option<OutgoingRpc> {
+    let name_key = if args.contains_key(RPC_NAME_KEY) { RPC_NAME_KEY } else { "name" };
+    let name = match args.get(name_key) {
+        Some(ScriptActionValue::String(s)) if !s.is_empty() => s.clone(),
+        _ => return None,
+    };
+    let target = match args.get(RPC_TARGET_KEY) {
+        Some(ScriptActionValue::String(s)) => match s.to_ascii_lowercase().as_str() {
+            "server" => RpcTarget::Server,
+            "all" => RpcTarget::All,
+            _ => RpcTarget::Others,
+        },
+        Some(ScriptActionValue::Int(id)) => RpcTarget::Peer(*id as u64),
+        _ => RpcTarget::Others,
+    };
+    let delivery = match args.get(RPC_UNRELIABLE_KEY) {
+        Some(ScriptActionValue::Bool(true)) => Delivery::Unreliable,
+        _ => Delivery::Reliable,
+    };
+    let payload = args
+        .iter()
+        .filter(|(k, _)| ![name_key, RPC_TARGET_KEY, RPC_UNRELIABLE_KEY].contains(&k.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    Some(OutgoingRpc { target, delivery, name, args: payload })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::connect_target;
-    use renzora_project_api::NetworkProjectConfig;
+    use super::*;
 
-    fn project() -> NetworkProjectConfig {
-        NetworkProjectConfig { server_addr: "play.example.net".into(), port: 9000, ..Default::default() }
+    fn args(pairs: &[(&str, ScriptActionValue)]) -> HashMap<String, ScriptActionValue> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
     }
 
     #[test]
-    fn a_bare_connect_goes_to_the_projects_server() {
-        assert_eq!(connect_target(String::new(), 0, Some(&project())), ("play.example.net".into(), 9000));
+    fn the_reserved_keys_are_read_and_stripped() {
+        let rpc = parse_rpc(&args(&[
+            (RPC_NAME_KEY, ScriptActionValue::String("hit".into())),
+            (RPC_TARGET_KEY, ScriptActionValue::String("Server".into())),
+            (RPC_UNRELIABLE_KEY, ScriptActionValue::Bool(true)),
+            ("damage", ScriptActionValue::Int(3)),
+        ]))
+        .unwrap();
+        assert_eq!(rpc.name, "hit");
+        assert_eq!(rpc.target, RpcTarget::Server);
+        assert_eq!(rpc.delivery, Delivery::Unreliable);
+        assert_eq!(rpc.args.len(), 1);
     }
 
     #[test]
-    fn what_the_script_names_wins() {
-        assert_eq!(connect_target("10.0.0.5".into(), 7000, Some(&project())), ("10.0.0.5".into(), 7000));
-        assert_eq!(connect_target(String::new(), 7000, Some(&project())), ("play.example.net".into(), 7000));
+    fn the_old_form_still_works_and_defaults_to_others() {
+        let rpc = parse_rpc(&args(&[("name", ScriptActionValue::String("ping".into()))])).unwrap();
+        assert_eq!(rpc.target, RpcTarget::Others);
+        assert!(rpc.args.is_empty());
+        assert!(parse_rpc(&HashMap::new()).is_none());
     }
 
     #[test]
-    fn no_network_section_uses_its_defaults() {
-        let d = NetworkProjectConfig::default();
-        assert_eq!(connect_target(String::new(), -1, None), (d.server_addr, d.port));
+    fn a_number_targets_one_peer() {
+        let rpc = parse_rpc(&args(&[
+            (RPC_NAME_KEY, ScriptActionValue::String("dm".into())),
+            (RPC_TARGET_KEY, ScriptActionValue::Int(99)),
+        ]))
+        .unwrap();
+        assert_eq!(rpc.target, RpcTarget::Peer(99));
     }
 }

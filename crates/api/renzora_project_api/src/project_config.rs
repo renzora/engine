@@ -1095,6 +1095,36 @@ pub struct NetworkProjectConfig {
     /// Maximum number of connected clients.
     #[serde(default = "default_max_clients")]
     pub max_clients: u16,
+    /// What the editor's Play button starts. `"single"` (the default) runs
+    /// the game alone; `"host"` runs it as a listen server; `"server"` starts a
+    /// headless dedicated server and runs the game as its client. Testing
+    /// multiplayer without this meant starting every process by hand.
+    #[serde(default, skip_serializing_if = "PlayNetworkMode::is_single")]
+    pub play_mode: PlayNetworkMode,
+    /// Extra client windows Play opens beside the game, each connecting to the
+    /// local server. Ignored when `play_mode` is `"single"`.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub play_clients: u8,
+}
+
+/// See [`NetworkProjectConfig::play_mode`].
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PlayNetworkMode {
+    #[default]
+    Single,
+    Host,
+    Server,
+}
+
+impl PlayNetworkMode {
+    fn is_single(&self) -> bool {
+        *self == Self::Single
+    }
+}
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
 }
 
 fn default_server_addr() -> String {
@@ -1121,6 +1151,8 @@ impl Default for NetworkProjectConfig {
             transport: default_transport(),
             tick_rate: default_tick_rate(),
             max_clients: default_max_clients(),
+            play_mode: PlayNetworkMode::Single,
+            play_clients: 0,
         }
     }
 }
@@ -1962,10 +1994,19 @@ mod tests {
             transport: "websocket".into(),
             tick_rate: 30,
             max_clients: 8,
+            play_mode: PlayNetworkMode::Host,
+            play_clients: 2,
         };
         let s = toml::to_string_pretty(&n).expect("serialize");
+        assert!(s.contains("play_mode = \"host\""), "{s}");
         let parsed: NetworkProjectConfig = toml::from_str(&s).expect("parse");
         assert_eq!(n, parsed);
+    }
+
+    #[test]
+    fn a_single_player_play_mode_is_not_written() {
+        let s = toml::to_string_pretty(&NetworkProjectConfig::default()).expect("serialize");
+        assert!(!s.contains("play_"), "{s}");
     }
 
     // ── CurrentProject path helpers ───────────────────────────────────────

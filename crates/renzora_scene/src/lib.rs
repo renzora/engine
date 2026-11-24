@@ -2475,7 +2475,7 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
     use renzora_editor_framework::{FieldDef, FieldType, FieldValue, InspectorEntry};
     InspectorEntry {
         type_id: "scene_instance",
-        display_name: "Scene Instance",
+        display_name: "Prefab Instance",
         icon: "film-slate",
         category: "object",
         has_fn: |world, entity| world.get::<renzora_scene_api::SceneInstance>(entity).is_some(),
@@ -2544,6 +2544,21 @@ fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
                     }
                 },
             },
+            // The two prefab actions, here as well as in the hierarchy's
+            // menu, because the card is where the instance's source is shown
+            // and where a user looks for what it can do.
+            FieldDef {
+                name: "Apply to Prefab",
+                field_type: FieldType::Button { icon: "upload-simple" },
+                get_fn: |_, _| None,
+                set_fn: |w, e, _| renzora_undo::apply_prefab(w, e),
+            },
+            FieldDef {
+                name: "Revert to Prefab",
+                field_type: FieldType::Button { icon: "arrow-counter-clockwise" },
+                get_fn: |_, _| None,
+                set_fn: |w, e, _| renzora_undo::revert_prefab_with_undo(w, e),
+            },
         ],
     }
 }
@@ -2560,7 +2575,7 @@ impl Plugin for ScenePlugin {
         // from plain folder-like grouping entities).
         app.register_component_icon(ComponentIconEntry {
             type_id: std::any::TypeId::of::<renzora_scene_api::SceneInstance>(),
-            name: "Scene Instance",
+            name: "Prefab Instance",
             icon: "film-slate",
             color: [170, 200, 255],
             priority: 75,

@@ -22,6 +22,7 @@ description = "Everything a plugin or Rust script sees as `renzora`: the contrac
 [dependencies]
 renzora = { path = "../renzora" }
 renzora_net_api = { path = "../../api/renzora_net_api" }
+renzora_network_api = { path = "../../api/renzora_network_api" }
 renzora_audio_api = { path = "../../api/renzora_audio_api" }
 renzora_shell_api = { path = "../../api/renzora_shell_api" }
 renzora_diagnostics_api = { path = "../../api/renzora_diagnostics_api" }

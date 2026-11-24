@@ -92,14 +92,114 @@ pub fn handle_play_mode_transitions(world: &mut World) {
     let profiling_key = world
         .get_resource::<renzora_diagnostics_api::profiling::ProfilingAccess>()
         .map(|a| a.key.clone());
-    match spawn_runtime(&binary, &project_path, live_link.as_ref(), profiling_key.as_deref()) {
+    let network = world
+        .get_resource::<renzora_project_api::CurrentProject>()
+        .and_then(|p| p.config.network.clone())
+        .unwrap_or_default();
+    let session = PlaySession::from_config(&network);
+
+    // A dedicated server first, so it is listening by the time the game asks.
+    let server = session.server.as_ref().and_then(|args| {
+        console_info("PlayMode", "Starting a dedicated server for the session");
+        spawn_runtime(&binary, &project_path, None, None, args, "Server")
+            .map_err(|e| console_error("PlayMode", format!("Failed to start the server: {e}")))
+            .ok()
+    });
+    if session.server.is_some() && server.is_none() {
+        return;
+    }
+
+    // The game the editor follows: the only one on the live link.
+    match spawn_runtime(
+        &binary,
+        &project_path,
+        live_link.as_ref(),
+        profiling_key.as_deref(),
+        &session.game,
+        "Runtime",
+    ) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);
                 runtime.begin_preparing();
+                runtime.add_companions(server);
             }
         }
-        Err(e) => console_error("PlayMode", format!("Failed to start the game: {e}")),
+        Err(e) => {
+            console_error("PlayMode", format!("Failed to start the game: {e}"));
+            if let Some(mut server) = server {
+                let _ = server.kill();
+            }
+            return;
+        }
+    }
+
+    for (i, args) in session.clients.iter().enumerate() {
+        match spawn_runtime(&binary, &project_path, None, None, args, "Client") {
+            Ok(child) => {
+                if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
+                    runtime.add_companion(child);
+                }
+            }
+            Err(e) => console_error("PlayMode", format!("Failed to start test client {}: {e}", i + 1)),
+        }
+    }
+}
+
+/// The processes one press of Play starts, by their network flags.
+#[derive(Debug, PartialEq)]
+struct PlaySession {
+    /// A headless dedicated server, before everything else.
+    server: Option<Vec<String>>,
+    /// The game the editor follows over the live link.
+    game: Vec<String>,
+    /// Extra client windows.
+    clients: Vec<Vec<String>>,
+}
+
+impl PlaySession {
+    fn from_config(net: &renzora_project_api::NetworkProjectConfig) -> Self {
+        use renzora_project_api::PlayNetworkMode;
+        // Always the loopback address: whatever `server_addr` says is where a
+        // shipped game finds its server, not where this machine's test session
+        // runs.
+        let connect = vec!["--connect".to_string(), format!("127.0.0.1:{}", net.port)];
+        let extra = |n: u8| (0..n).map(|_| connect.clone()).collect();
+        match net.play_mode {
+            PlayNetworkMode::Single => Self { server: None, game: Vec::new(), clients: Vec::new() },
+            PlayNetworkMode::Host => {
+                Self { server: None, game: vec!["--host".into()], clients: extra(net.play_clients) }
+            }
+            PlayNetworkMode::Server => Self {
+                server: Some(vec!["--server".into()]),
+                game: connect.clone(),
+                clients: extra(net.play_clients),
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PlaySession;
+    use renzora_project_api::{NetworkProjectConfig, PlayNetworkMode};
+
+    #[test]
+    fn play_sessions() {
+        let mut net = NetworkProjectConfig { port: 9000, play_clients: 2, ..Default::default() };
+        let single = PlaySession::from_config(&net);
+        assert_eq!(single, PlaySession { server: None, game: vec![], clients: vec![] });
+
+        net.play_mode = PlayNetworkMode::Host;
+        let host = PlaySession::from_config(&net);
+        assert_eq!(host.game, vec!["--host"]);
+        assert_eq!(host.clients, vec![vec!["--connect", "127.0.0.1:9000"]; 2]);
+
+        net.play_mode = PlayNetworkMode::Server;
+        let dedicated = PlaySession::from_config(&net);
+        assert_eq!(dedicated.server, Some(vec!["--server".to_string()]));
+        assert_eq!(dedicated.game, vec!["--connect", "127.0.0.1:9000"]);
+        assert_eq!(dedicated.clients.len(), 2);
     }
 }
 

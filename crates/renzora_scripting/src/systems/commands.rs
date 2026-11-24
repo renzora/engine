@@ -284,6 +284,19 @@ pub fn apply_script_commands(
                 renzora_log_api::clog_info!("Scene", "LoadScene requested: {}", path);
                 pending_scene.requests.push(path);
             }
+            // Declared long before anything applied it: it fell through to the
+            // generic action route below, which no crate observes, so a
+            // script's prefab never appeared. Rotation is Euler degrees in the
+            // same order `SetRotation` uses.
+            ScriptCommand::SpawnPrefab { path, position, rotation } => {
+                let transform = Transform::from_translation(Vec3::from(position)).with_rotation(Quat::from_euler(
+                    EulerRot::YXZ,
+                    rotation[1].to_radians(),
+                    rotation[0].to_radians(),
+                    rotation[2].to_radians(),
+                ));
+                commands.spawn(renzora_scene_api::prefab::prefab_bundle(path, transform));
+            }
 
             // === Character Controller ===
             ScriptCommand::CharacterMove { direction } => {

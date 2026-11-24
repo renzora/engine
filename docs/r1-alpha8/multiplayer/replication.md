@@ -1,194 +1,85 @@
 # State Replication
 
-How the server keeps networked entities in sync on every client, built on Lightyear over native UDP.
+How the server keeps every client's copy of the world in step with its own.
 
-## How replication works
+## What replicates
 
-Renzora's multiplayer is built on **Lightyear 0.26**, configured with the `udp` + `netcode` features only. The whole `renzora_network` crate is **native-only** — on the WebGPU/`wasm32` export it compiles to a no-op stub, so replication does not run in the browser build.
+An entity replicates when it has `Networked`. For each one the server sends:
 
-Replication is **server-authoritative and opt-in**:
+- its **transform**, as the `NetworkTransform` on it says;
+- every **registered component** it has (see below), whenever one changes;
+- its **spawn** when it first appears and its **despawn** when it goes.
 
-- The **server** (`renzora --server`) or **host** (`renzora --host`, a windowed listen-server) owns the simulation.
-- A plain windowed launch is a **client**. It connects dynamically (see [Connecting](#connecting)).
-- An entity only replicates if you tag it with the **`Networked`** marker component. Nothing replicates by default.
+Nothing else. Children are not replicated one by one: a networked prefab is a `NetworkPrefab` path, and every peer instances the prefab from its own copy of the project. Meshes, materials and textures never cross the network.
 
-> ⚠️ There is **no generic component replication and no mesh replication.** The protocol registers a fixed, small set of types (below). You cannot mark an arbitrary component for sync — `app.replicate::<MyComponent>()` does not exist in this engine.
+## How it is sent
 
-### What gets replicated
+The server replicates up to 30 times a second (or the tick rate, if lower):
 
-`register_protocol` (in `renzora_network/src/protocol.rs`) registers exactly these replicated components, server → client:
+| What | Channel | When |
+|---|---|---|
+| Spawn, despawn, component changes | reliable, ordered | as they happen |
+| Transforms | unreliable | when they moved, and at least once a second regardless |
+| A late joiner's world | reliable, ordered | once, on joining |
 
-| Component | Purpose |
-|---|---|
-| `Networked` | Marker that opts the entity into replication |
-| `NetworkId(u64)` | Server-assigned network-wide id for the entity |
-| `Name` | The entity's name |
-| `NetworkPlayer` | Marker for a server-spawned player avatar |
-| `NetworkOwner(OwnerKind)` | Who owns the entity (`Server` or `Client(id)`) |
-| `Transform` | Position / rotation / scale, with linear interpolation |
+Reliable messages arrive exactly once and in order, however many packets are lost; large ones (a spawn with big components, a late joiner's whole world) are split and reassembled. Unreliable transforms are not resent: a newer one replaces a lost one, and the once-a-second refresh repairs a final position that was lost.
 
-Plus two channels — **Reliable** (ordered) and **Unreliable** (unordered), both bidirectional — and four message events: `SpawnRequest` / `DespawnRequest` (client → server) and `ChatMessage` / `GameEvent` (bidirectional). `GameEvent` is what RPCs ride on.
+## Scene entities and spawned entities
 
-## The `Networked` marker
+- **Placed in a scene.** Server and client load the same scene file, so both already have the entity. The server's spawn carries the entity's scene id, and the client adopts its own copy instead of making a second. If the client's scene has not finished loading, the spawn waits for it for a few seconds.
+- **Spawned at run time** (by `renzora::network::spawn_prefab` or a player spawner). The client spawns a new entity, applies the components, and instances its `NetworkPrefab`.
 
-Add `Networked` to any entity that should be synchronized. You can add it in the editor's Inspector (it's a reflected component and serializes into `.ron` scenes), or from a Rust plugin:
+When a client disconnects, what the network spawned on it is removed, and scene entities it adopted are released back to how the scene had them.
 
-```rust
-use bevy::prelude::*;
-use renzora_network::{Networked, NetworkTransform};
-
-fn spawn_crate(mut commands: Commands) {
-    commands.spawn((
-        Name::new("Crate"),
-        Transform::from_xyz(0.0, 1.0, 0.0),
-        Networked,                  // opt in to replication
-        NetworkTransform::default(),
-    ));
-}
-```
-
-On the **server**, the moment an entity gains `Networked`, the `auto_replicate_networked` system inserts Lightyear's `Replicate::to_clients(All)` and (unless interpolation is disabled) `InterpolationTarget::to_clients(All)`. A separate system assigns it a `NetworkId`. `Transform` then replicates because it is registered in the protocol.
-
-> There is no script function to mark an entity `Networked`. Replication is configured in the scene/Inspector or in engine code; scripts handle the *events* (RPCs) and gate server logic with `net_is_server()`.
-
-## Tuning replication with `NetworkTransform`
-
-`NetworkTransform` is an optional component that tunes how a `Networked` entity's `Transform` is sent. A `Networked` entity without one uses the defaults.
+## `NetworkTransform`
 
 | Field | Default | Effect |
 |---|---|---|
-| `interpolate` | `true` | Smoothly interpolate between snapshots on remote peers. `false` = snap to each received position |
-| `sync_rotation` | `true` | **Inert** — see below |
-| `sync_scale` | `false` | **Inert** — see below |
+| **Moved By** (`authority`) | `Server` | `Server`: the server moves it and clients follow. `Owner`: the owning client moves it, the server passes the moves on. |
+| `interpolate` | `true` | Draw smoothly between received positions. Off: snap to each. |
+| `sync_rotation` | `true` | Send rotation. |
+| `sync_scale` | `false` | Send scale. |
 
-> ⚠️ Only **`interpolate`** is actually read by the engine today. `sync_rotation` and `sync_scale` are **inert**: `Transform` always replicates wholesale (translation, rotation, and scale together). Don't rely on them to trim what's sent.
+An entity without one replicates translation and rotation, server-moved and interpolated.
 
-## Interpolation
+### Interpolation
 
-Remote peers don't own an entity, so they render it **between the two most recent server snapshots** rather than snapping at the tick rate. This hides network jitter and makes motion look smooth.
+Remote entities are drawn 100 ms in the past, between the two received positions either side of that moment. That delay is what hides uneven arrival and the occasional lost packet. All peers share the server's clock: the server stamps what it sends, and clients estimate its clock from those stamps and their round trip.
 
-This is wired by `register_protocol`, which registers `Transform` with `TransformLinearInterpolation::lerp` (translation lerp + rotation slerp). Entities the server marks `InterpolationTarget` get the interpolation systems; that's everything tagged `Networked` unless you set `interpolate = false` on its `NetworkTransform`.
+### Owner-moved entities
 
-> ⚠️ **There is no client-side prediction, reconciliation, or lag compensation.** `prediction.rs` exists but is inert (`smooth_correction` does nothing, `SNAP_THRESHOLD` is unused). Remote entities are interpolated-only; there is no rollback and no rewind-for-hit-detection. Likewise there is no delta compression, priority, relevancy culling, or quantization layer — `Transform` is replicated in full each time it changes.
+With **Moved By: Owner**, the owner's client sends where the entity is (up to 30 times a second, when it moves). The server accepts it only from that owner and only for an entity that allows it, draws it interpolated (on a host), and sends it to everyone else. The owner is never sent its own entity's position back, so nothing drags it.
+
+## Replicating your own components
+
+Register the component's type, and it replicates on every networked entity that has it. It must be reflected as a component:
+
+```rust
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
+struct Health(f32);
+
+// In a plugin:
+use renzora::network::AppReplicateExt;
+app.register_type::<Health>().replicate::<Health>();
+```
+
+The registry is also a resource, `renzora::network::ReplicationRegistry`, if a component needs registering later. Every peer must know the type: a client that has not registered it logs once and skips it.
+
+Registered by default: `Name`, `NetworkOwner`, `NetworkPlayer`, `NetworkPrefab` and `NetworkTransform`. `Name` is handy: a server renaming an avatar to `"Ana - 3 pts"` is a scoreboard every client sees, late joiners included.
+
+Each tick the server serializes every registered component and sends the ones whose value changed. That suits components that change now and then. For something that changes every frame, prefer an unreliable RPC.
 
 ## Ownership
 
-Every networked entity carries a `NetworkOwner`, which wraps an `OwnerKind`:
+`NetworkOwner` is `Server` for anything in a scene, and `Client(id)` for an avatar. When a player leaves, everything they own is despawned on every peer.
 
-```rust
-pub enum OwnerKind {
-    Server,        // NPCs, world objects (the default)
-    Client(u64),   // owned by a specific connected client
-}
-```
+## Saving
 
-`NetworkOwner` defaults to `Server`. The server assigns `Client(id)` to a player's avatar when that client connects. Ownership is **descriptive metadata that replicates** — the engine does not yet enforce authority based on it, so write server-authoritative logic explicitly and gate it with `net_is_server()`.
+`Networked`, `NetworkOwner`, `NetworkTransform` and `NetworkPlayerSpawner` save with the scene. `NetworkId`, which the server hands out per session, does not.
 
-### Player avatars (`NetworkPlayer`)
+## Limits
 
-`NetworkPlayer` is a marker meant for one server-spawned avatar per connected client; it's registered so clients receive it (and the owner) and can attach a visual via `Added<NetworkPlayer>`.
-
-> ⚠️ Avatar spawning is **not implemented yet.** Nothing in the engine spawns a `NetworkPlayer` on join, and no client system reacts to `Added<NetworkPlayer>`. The component is in the protocol so game code can build on it, but the engine does not give you a player avatar out of the box.
-
-### Replicated entities are *new* entities on the client
-
-Lightyear replicates by creating a **brand-new entity on each client** that carries the replicated components (including the interpolated `Transform`). It does **not** map a `NetworkId` onto a pre-existing scene entity.
-
-> ⚠️ A common gotcha: if both the server and clients already have the same object placed in a scene, the client's replicated copy is a *separate* entity. The `Transform` data syncs onto that new entity — but it has **no `Mesh`**, so by default you won't see it move. Replication transports data, not your scene's rendered objects.
-
-## RPCs for events
-
-For one-off events (a hit, a chat line, a score change), use **RPCs**. The script-facing call is `rpc(name, args)`:
-
-```lua
--- client: ask the server to apply damage
-function on_update()
-    if is_key_just_pressed("E") then
-        rpc("damage", { amount = 25 })
-    end
-end
-
--- server: receive it, validate, and broadcast a result
-function on_rpc(name, args, from)
-    if name == "damage" and net_is_server() then
-        -- from == the sender's peer id (server-side only; see warning)
-        rpc("damage_applied", { amount = args.amount })
-    end
-end
-```
-
-Under the hood, `rpc(name, args)` becomes a `net_rpc` `ScriptAction`, is serialized to a `GameEvent` JSON payload, and is sent on the **Reliable** channel. A client sends to the server; the server broadcasts to all clients. On receipt the event is delivered to local scripts via `on_rpc(name, args, from)`, and on the server it is **relayed to every other client** (no self-echo) — giving a client → server → clients fan-out.
-
-> ⚠️ **The origin peer id is lost through relay.** When the server relays a client's RPC to the other clients, the event arrives with `from = server`, and the engine maps the server/raw peer to `0`. So relayed clients always see `from = 0`. Only the **server itself** sees the true sender id in `on_rpc`. Don't use `from` for client-to-client identification.
-
-RPCs (and all networking) are native-only: the `on_rpc` / `on_player_joined` / `on_player_left` hooks never fire on a web build.
-
-### Network status and lifecycle
-
-| Function / hook | Notes |
-|---|---|
-| `net_is_server()` | True on the dedicated/host server |
-| `net_is_client()` | True when connected and not the server |
-| `net_is_connected()` | Connected (client) or running (server) |
-| `net_player_count()` | Connected client count (server only; `0` elsewhere) |
-| `rpc(name, args)` | Send an RPC (client → server, or server → all) |
-| `on_rpc(name, args, from)` | Receive an RPC |
-| `on_player_joined(id)` / `on_player_left(id)` | Fire **only on server/host**, with the real peer id |
-
-See the [Scripting overview](../scripting/overview) for how these hooks fit the wider lifecycle.
-
-## Connecting
-
-There is no bare `net_connect` global. Connection is driven through the generic `action()` channel:
-
-```lua
-action("net_connect", { address = "127.0.0.1", port = 7636 })
--- or connect to the server in the project's [network] section:
-action("net_connect")
--- ...later:
-action("net_disconnect")
-```
-
-An address or port the call leaves out comes from `[network] server_addr` and
-`port` in `project.toml` (`127.0.0.1:7636` when there is no `[network]`
-section), so an exported game connects where it was configured to.
-
-> The handshake is **insecure** (a zero private key, protocol id 0) — it is for LAN/dev only.
-
-Server/connection defaults come from `[network]` in `project.toml`, overlaid by the CLI flags `--port` / `--addr` / `--tick-rate` / `--max-clients`:
-
-```toml
-[network]
-server_addr = "127.0.0.1"
-port        = 7636
-transport   = "udp"   # only "udp" works (see note)
-tick_rate   = 64
-max_clients = 32
-```
-
-> ⚠️ `transport` accepts `udp`, `webtransport`, and `websocket`, but **only UDP is wired up.** The value is parsed and shown in the editor, yet no code selects a transport — Lightyear is compiled with the UDP feature only. `webtransport`/`websocket` are placeholders.
-
-## Editor panels
-
-`renzora_network_editor` adds Inspector cards for `Networked` and `NetworkTransform`, plus three native panels:
-
-- **Network Monitor** — connection state and client list.
-- **Network Entities** — replicated entities.
-- **Network Settings** — read-only; edit `[network]` in `project.toml` (no connect/host buttons yet).
-
-> ⚠️ The Network Monitor's RTT, jitter, packet-loss, and Client ID rows are **always zero/empty** — those `NetworkStatus` fields are never populated from Lightyear. Treat them as not-yet-implemented, not as a live readout.
-
-## What's not implemented yet
-
-To set expectations honestly, the following are **defined but stubbed or absent** in this alpha:
-
-- Client input replication (`PlayerInput` exists but is unregistered).
-- Client-side prediction / rollback / reconciliation (`prediction.rs` is inert).
-- Lag compensation / server rewind.
-- Automatic player-avatar spawning on `NetworkPlayer`.
-- Generic component replication, mesh replication, and `NetworkId`-to-scene-entity mapping.
-- Bandwidth features: delta compression, priority, relevancy/interest management, quantization.
-- Authority transfer, alternate transports (WebTransport/WebSocket), networked physics, and security.
-- `net_send` / `net_send_message` / `net_spawn` script actions (registered as TODO stubs that never reach the wire); `net_host_server` only logs "run with `--server`".
-
-What *does* work today: dedicated/host server modes, the fixed replicated-component protocol, tick sync, server-authoritative `Transform` replication with snapshot interpolation, RPCs (with the relay caveat above), and server-side join/leave lifecycle hooks.
+- Every client is sent every networked entity (no interest management).
+- No client-side prediction: something the server moves for a client (rather than its owner) reacts after a round trip.
+- A replicated rigid body is still simulated on each client. Make client copies kinematic, or move such things by script on the server.

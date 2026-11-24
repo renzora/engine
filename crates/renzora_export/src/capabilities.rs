@@ -1179,6 +1179,9 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "on_player_joined",
             "on_player_left",
             "ScriptHook::Rpc",
+            // A Rust script reaches it through the SDK module.
+            "renzora::network",
+            "network::",
         ],
         "scripting" => &["renzora_scripting::", "ScriptComponent"],
         // World-space picking only, and the needles are chosen carefully.

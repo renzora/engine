@@ -13,6 +13,7 @@
 //! - [`save`] / [`load`] — the two main pipelines
 //! - [`snapshot`] — the faithful, keeps-hierarchy variant used to undo a delete
 //! - [`instances`] — nested scenes, prefab write-back, cycle detection
+//! - [`prefab`]: make a prefab from an entity, apply one copy to all, revert
 //! - [`prune`] — load-time repair of scenes an earlier save polluted
 //! - [`events`] — load state + the events a load emits
 
@@ -24,6 +25,7 @@ mod lights;
 mod load;
 mod meshes;
 mod physics_filter;
+pub mod prefab;
 mod prune;
 mod save;
 mod snapshot;
@@ -39,7 +41,8 @@ pub use events::{
     SceneLoadFailed, SceneLoadPhase, SceneLoadState, SceneLoaded, SceneLoadedWithSkippedTypes,
 };
 pub use instances::{
-    expand_scene_instances, is_self_reference, paths_equal, save_all_scene_instances,
+    expand_added_scene_instances, expand_scene_instances, is_self_reference, paths_equal,
+    save_all_scene_instances, scene_instance_added_in_game,
     save_prefab_source, spawn_scene_instance, would_create_reference_cycle, SceneReferenceCache,
 };
 pub use lights::{rehydrate_lights, rehydrate_suns};

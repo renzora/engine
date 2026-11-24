@@ -67,7 +67,18 @@ Children move with their parent. You cannot drop an object into one of its own c
 
 The order of the top-level objects is saved with the scene, so a scene reopens in the order you left it. A new top-level object goes to the bottom of the list.
 
-Right-click a row for **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **Attach**, label colours and **Delete**.
+Right-click a row for its menu. Each group opens to the side when you hover it:
+
+| Submenu | Holds |
+|---|---|
+| **Add** | **Empty Entity**, then every kind of thing you can spawn, by category. Whatever you pick is added under this row's entity, at its origin. |
+| **Edit** | **Rename**, **Duplicate**, **Unparent**, **Group as Children** (with several selected), **Select as One** / **Select Parts**, **Separate Parts** (on a model part). |
+| **Attach** | New files for this entity: Rust Script, Material, Particle, Template, Scene. |
+| **Prefab** | **Create Prefab**, or on an instance **Apply to Prefab**, **Revert to Prefab** and **Unpack Scene Instance**; then **Instance Scene…**. See [Prefabs](#prefabs). |
+| **Camera** | Cameras only: **Set as Default Camera** and **Snap to Viewport**. |
+| **Label Color** | A colour for the row, or **Clear Color**. |
+
+Actions a plugin adds for the entity (such as **Partition into cells**) and **Delete** sit at the bottom.
 
 A label colour shows as a thin line down the left edge of the entity's row and of every row under it, and tints the entity's own icon. The names keep their normal colour.
 
@@ -198,19 +209,47 @@ This is also the only place a loading screen can work, because everything in the
 
 A loading screen reads `asset_progress()`, which stays at `"loading"` after a scene loads until the scene is ready to be seen: its models are in, its terrain is built, its materials are resolved, and textures and shaders have stopped arriving for half a second. It waits as long as that takes; if a scene is still loading after 30 seconds, the log says what it is waiting for, which finds a load that never ends (a material whose file is missing). Terrain streaming in or textures loading while the game plays do not bring it back.
 
-## Reusing scenes inside scenes
+## Prefabs
 
-Drop one scene inside another as a **scene instance**. Good for a prop, an enemy or a room you want in many places. Edit the original once and every copy follows.
+A prefab is something you build once and place many times: a prop, an enemy, a player, a room. It is a scene file, and every placed copy is an **instance** of it. Change the prefab and every instance changes.
 
-Three ways to add one:
+### Making one
 
-- Drag a `.bsn` file from the Assets panel onto the **viewport**. It lands under your cursor.
+Right-click an object in the Hierarchy and choose **Prefab ▸ Create Prefab**. The object and everything under it are saved to `prefabs/<name>.bsn`, and the object is replaced in place by an instance of that file, so nothing moves. **Ctrl+Z** puts the original object back (the file stays).
+
+The object you picked becomes the prefab's top object, under a new instance row that holds where this copy is placed. A script on that top object that wants the placed copy, rather than its own part of it, looks at its parent.
+
+### Placing one
+
+- Drag the `.bsn` from the Assets panel onto the **viewport**. It lands under your cursor.
 - Drag it onto the **Hierarchy**. It is added at the scene root.
-- Right-click in the Hierarchy and choose **Instance Scene**.
+- Right-click in the Hierarchy and choose **Prefab ▸ Instance Scene…**.
 
-Its contents appear nested under an instance row. **Unpack Scene Instance** breaks it apart into ordinary objects.
+Any scene file can be placed this way, not only the ones in `prefabs/`.
 
-When you save, only the instance's own position and overrides are stored in the host scene. Its insides still live in the original file, and edits to them are saved back there. A scene cannot reference itself.
+### Changing one
+
+Edit inside any instance, then push the change out:
+
+| Action | Where | What it does |
+|---|---|---|
+| **Apply to Prefab** | Hierarchy right-click **Prefab** menu, or the **Prefab Instance** card in the Inspector | Saves this instance's contents to the prefab file and rebuilds every other instance in the scene from it. |
+| **Revert to Prefab** | the same places | Throws away this instance's edits and rebuilds it from the file. **Ctrl+Z** brings them back. |
+| **Unpack Scene Instance** | Hierarchy right-click **Prefab** menu | Breaks the link: the contents become ordinary objects. |
+
+Saving the scene saves the edits of a prefab that is placed **once** back to its file for you. A prefab placed several times is left alone on save, because the editor cannot tell which copy's edits you meant: use **Apply to Prefab** on the one you want. Apply cannot be undone, because it writes a file other scenes may use.
+
+What a scene stores for an instance is only its placement. Its contents always come from the file. A scene cannot contain an instance of itself.
+
+### Spawning one while the game runs
+
+```rust
+use renzora::core::prefab::spawn_prefab;
+
+let coin = spawn_prefab(ctx.world(), "prefabs/coin.bsn", Transform::from_xyz(2.0, 0.5, 0.0));
+```
+
+The contents arrive on the next frame. A language plugin's `spawn_prefab(path, position, rotation)` does the same. For a prefab every player should see, spawn it with `renzora::network::spawn_prefab` on the server instead (see [Multiplayer](/docs/r1-alpha8/multiplayer/overview)).
 
 ## Shortcuts
 

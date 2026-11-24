@@ -68,14 +68,13 @@ pub(crate) trait DenyOptionalSubsystems: Sized {
 }
 
 impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
-    // Replication bookkeeping — an id and an owner assigned by whoever is
-    // authoritative at runtime, never something a saved scene should carry back.
-    // Stripped with the `networking` subsystem, where the types are gone.
+    // The id the server hands out for one session. Everything else networked
+    // (`Networked`, `NetworkOwner`, `NetworkTransform`, the player spawner) is
+    // authored and must save: `Networked` used to be denied here too, which
+    // made it impossible to mark anything in a scene for replication.
     #[cfg(feature = "networking")]
     fn deny_network_components(self) -> Self {
-        self.deny_component::<renzora_network::Networked>()
-            .deny_component::<renzora_network::NetworkOwner>()
-            .deny_component::<renzora_network::NetworkId>()
+        self.deny_component::<renzora_network::NetworkId>()
     }
     #[cfg(not(feature = "networking"))]
     fn deny_network_components(self) -> Self {

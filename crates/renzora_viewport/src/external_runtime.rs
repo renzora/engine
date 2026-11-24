@@ -42,6 +42,11 @@ pub enum RuntimePhase {
 #[derive(Resource, Default)]
 pub struct ExternalRuntime {
     child: Option<Child>,
+    /// The other processes of a multiplayer Play session: a dedicated server
+    /// and extra client windows (`[network] play_mode` / `play_clients`). They
+    /// live and die with `child`, so Stop, or closing the game window, ends
+    /// the whole session rather than leaving a server holding the port.
+    companions: Vec<Child>,
     phase: RuntimePhase,
     /// Seconds spent in [`RuntimePhase::Preparing`] so far.
     prepare_elapsed: f32,
@@ -64,6 +69,22 @@ impl ExternalRuntime {
     pub fn begin_preparing(&mut self) {
         self.phase = RuntimePhase::Preparing;
         self.prepare_elapsed = 0.0;
+    }
+
+    /// Track a process that belongs to this Play session.
+    pub fn add_companion(&mut self, child: Child) {
+        self.companions.push(child);
+    }
+
+    pub fn add_companions(&mut self, children: impl IntoIterator<Item = Child>) {
+        self.companions.extend(children);
+    }
+
+    fn kill_companions(&mut self) {
+        for mut c in self.companions.drain(..) {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
     }
 }
 
@@ -141,10 +162,15 @@ pub fn spawn_runtime(
     project_path: &Path,
     live_link: Option<&renzora_project_api::LiveLinkEndpoint>,
     profiling_key: Option<&str>,
+    extra_args: &[String],
+    console_label: &'static str,
 ) -> std::io::Result<Child> {
     use std::process::{Command, Stdio};
     let mut command = Command::new(binary);
     command.arg("--no-editor").arg("--project").arg(project_path);
+    // The network role of this process in a multiplayer Play session:
+    // `--host`, `--server`, or `--connect <addr>`.
+    command.args(extra_args);
     // Where to connect so edits made in the editor reach this game. See
     // `renzora_live_link`.
     if let Some(link) = live_link {
@@ -174,10 +200,10 @@ pub fn spawn_runtime(
     {
         renzora_platform_api::child_process::tie_to_editor(&child, "the game");
         if let Some(stdout) = child.stdout.take() {
-            renzora_platform_api::child_process::forward_to_console(stdout, "Runtime");
+            renzora_platform_api::child_process::forward_to_console(stdout, console_label);
         }
         if let Some(stderr) = child.stderr.take() {
-            renzora_platform_api::child_process::forward_to_console(stderr, "Runtime");
+            renzora_platform_api::child_process::forward_to_console(stderr, console_label);
         }
     }
     Ok(child)
@@ -188,6 +214,7 @@ pub fn spawn_runtime(
 pub fn kill_runtime(runtime: &mut ExternalRuntime) -> bool {
     runtime.phase = RuntimePhase::Idle;
     runtime.prepare_elapsed = 0.0;
+    runtime.kill_companions();
     let Some(mut child) = runtime.child.take() else {
         return false;
     };
@@ -226,8 +253,9 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
                 ),
             }
             // Game window closed (or it crashed): drop the handle so the
-            // Play button reads Play again.
+            // Play button reads Play again, and end the rest of the session.
             runtime.child = None;
+            runtime.kill_companions();
             runtime.phase = RuntimePhase::Idle;
             runtime.prepare_elapsed = 0.0;
         }
@@ -236,6 +264,7 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
             // try_wait failure is unrecoverable for this handle — drop it
             // so we don't keep retrying every frame.
             runtime.child = None;
+            runtime.kill_companions();
             runtime.phase = RuntimePhase::Idle;
             runtime.prepare_elapsed = 0.0;
         }

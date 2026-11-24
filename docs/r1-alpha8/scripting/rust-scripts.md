@@ -138,8 +138,8 @@ One function takes them all, so adding a hook later is not a new export.
 | `SceneLoaded` | A scene finished loading, or failed. Carries the path and the error. |
 | `AnimationEvent` | Animation playback crossed a clip marker. |
 | `Http` | A background HTTP request completed. Carries the status and body. |
-| `Rpc` | A networked call arrived. Carries the name, arguments and sender. |
-| `PlayerJoined` / `PlayerLeft` | A peer connected or disconnected. Host only. |
+| `Rpc` | A networked call arrived. Carries the name, arguments and the sender's peer id. See [Multiplayer](/docs/r1-alpha8/multiplayer/overview). |
+| `PlayerJoined` / `PlayerLeft` | A peer connected or disconnected. On the server (dedicated or host) only. |
 
 `SceneLoaded` only reaches scripts the load did not destroy, which in practice means scripts in a global scene. That is what makes a loading screen possible.
 

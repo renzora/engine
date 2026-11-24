@@ -18,6 +18,7 @@ pub mod asset_bytes; // the project/VFS byte loader for non-AssetServer assets
 pub mod components; // shared ECS components + entity-tag markers
 pub mod entity_id; // canonical unique snake_case entity ids (Name)
 pub mod shapes; // built-in shape registry (mesh factories by id)
+pub mod prefab; // spawning a prefab instance from code
 mod render_resolution; // a camera's render-resolution scale
 
 pub use asset_bytes::*;

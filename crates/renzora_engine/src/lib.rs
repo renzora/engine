@@ -602,6 +602,10 @@ impl Plugin for RuntimePlugin {
             )
             .add_systems(
                 Update,
+                scene_io::expand_added_scene_instances.run_if(scene_io::scene_instance_added_in_game),
+            )
+            .add_systems(
+                Update,
                 (
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_lights,

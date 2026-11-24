@@ -265,6 +265,33 @@ pub(crate) fn loading_stack_contains(path: &Path) -> bool {
     LOADING_STACK.with(|s| s.borrow().iter().any(|p| p == &abs))
 }
 
+thread_local! {
+    static INSTANCE_EXPANSION: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// While alive, a [`load_scene`] is filling in a `SceneInstance`, not loading a
+/// scene: it leaves `SceneLoadState` alone and fires no `SceneLoaded`.
+///
+/// Without it every prefab expansion looked like a scene load. During a level
+/// load, each nested instance set the phase to `Ready` before the level was
+/// done and sent every script a `SceneLoaded` naming the prefab; and since
+/// instances can now be added at run time (a networked avatar per joining
+/// player), a loading screen would have flickered at every join.
+pub(crate) struct InstanceExpansionScope;
+
+impl InstanceExpansionScope {
+    pub(crate) fn enter() -> Self {
+        INSTANCE_EXPANSION.with(|d| d.set(d.get() + 1));
+        Self
+    }
+}
+
+impl Drop for InstanceExpansionScope {
+    fn drop(&mut self) {
+        INSTANCE_EXPANSION.with(|d| d.set(d.get().saturating_sub(1)));
+    }
+}
+
 /// Pops the loading stack however [`load_scene`] returns — it has several early
 /// exits, and a stack that leaks an entry makes every later load of that scene
 /// look like a cycle.
@@ -304,10 +331,15 @@ pub fn load_scene(world: &mut World, path: &Path) {
     );
 
     let path_str = path.to_string_lossy().to_string();
-    if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
-        state.phase = SceneLoadPhase::Loading;
-        state.current_path = Some(path_str.clone());
-        state.progress = 0.0;
+    // A prefab filled in under an instance is part of some load, not one of
+    // its own. See `InstanceExpansionScope`.
+    let is_scene_load = INSTANCE_EXPANSION.with(|d| d.get()) == 0;
+    if is_scene_load {
+        if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+            state.phase = SceneLoadPhase::Loading;
+            state.current_path = Some(path_str.clone());
+            state.progress = 0.0;
+        }
     }
 
     // Try reading from Vfs (rpak archive) first.
@@ -382,13 +414,15 @@ pub fn load_scene(world: &mut World, path: &Path) {
     if trimmed.is_empty() || trimmed == "(entities: {}, resources: {})" {
         console_info("Scene", format!("Scene is empty: {}", path.display()));
         info!("Scene is empty: {}", path.display());
-        if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
-            state.phase = SceneLoadPhase::Ready;
-            state.progress = 1.0;
+        if is_scene_load {
+            if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+                state.phase = SceneLoadPhase::Ready;
+                state.progress = 1.0;
+            }
+            world.trigger(SceneLoaded {
+                path: path_str.clone(),
+            });
         }
-        world.trigger(SceneLoaded {
-            path: path_str.clone(),
-        });
         return;
     }
 
@@ -529,13 +563,15 @@ pub fn load_scene(world: &mut World, path: &Path) {
                 format!("=== Scene load complete: {} ===", path.display()),
             );
 
-            if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
-                state.phase = SceneLoadPhase::Ready;
-                state.progress = 1.0;
+            if is_scene_load {
+                if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+                    state.phase = SceneLoadPhase::Ready;
+                    state.progress = 1.0;
+                }
+                world.trigger(SceneLoaded {
+                    path: path_str.clone(),
+                });
             }
-            world.trigger(SceneLoaded {
-                path: path_str.clone(),
-            });
         }
         Err(e) => {
             console_error(
@@ -544,14 +580,16 @@ pub fn load_scene(world: &mut World, path: &Path) {
             );
             error!("Failed to write scene to world {}: {}", path.display(), e);
 
-            if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
-                state.phase = SceneLoadPhase::Failed;
+            if is_scene_load {
+                if let Some(mut state) = world.get_resource_mut::<SceneLoadState>() {
+                    state.phase = SceneLoadPhase::Failed;
+                }
+                let err_str = e.to_string();
+                world.trigger(SceneLoadFailed {
+                    path: path_str.clone(),
+                    error: err_str,
+                });
             }
-            let err_str = e.to_string();
-            world.trigger(SceneLoadFailed {
-                path: path_str.clone(),
-                error: err_str,
-            });
         }
     }
 }

@@ -30,6 +30,10 @@ pub use renzora_shell_api::undo::{
     active_context, execute, record, seal, UndoCommand, UndoContext, UndoStacks,
 };
 
+/// Create Prefab, Apply to Prefab and Revert to Prefab.
+pub mod prefab;
+pub use prefab::{apply_prefab, create_prefab_with_undo, revert_prefab_with_undo};
+
 /// Flip the active document tab's `is_modified` flag so the Save button
 /// enables. The save handlers in `renzora_scene` clear it back to false.
 fn mark_active_scene_tab_modified(world: &mut World) {

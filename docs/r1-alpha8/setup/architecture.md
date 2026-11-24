@@ -82,6 +82,7 @@ The layers, and what plugins still call each one:
 | `renzora_log_api` | The Console: `console_info`/`console_warn`/`console_error`, the `clog_*!` macros, the buffer the Console panel drains and the history it keeps. No dependencies at all | `renzora::console_log::console_warn`, `renzora::clog_warn!` |
 | `renzora_scripting_api` | The script vocabulary: `ScriptCtx`, hooks, `ScriptExtension`, `ScriptBackend`, commands, the property bridge, input actions, `script!`. Depends on Bevy only | `renzora::ScriptCtx`, `renzora::command`, `renzora::script!`, ... |
 | `renzora_net_api` | HTTP requests, their queue and the `Backend` contract | `renzora::net`, `renzora::net_backend` |
+| `renzora_network_api` | Multiplayer: the replication components, RPCs, ownership and session queries, `NetworkStatus` | `renzora::network` |
 | `renzora_audio_api` | The audio vocabulary and the audio backend contract | `renzora::audio`, `renzora::audio_backend` |
 | `renzora_diagnostics_api` | Profiling, probes, the load timeline, runtime warnings, content problems | `renzora::profiling`, `renzora::runtime_warnings`, ... |
 | `renzora_platform_api` | Version, the Rust toolchain, child processes, DLSS runtime, auth, plugin inventory and updates, the native `plugin!` macro and its ABI record (`native_plugin.rs`), the project index, streaming | `renzora::version`, `renzora::core::...` |

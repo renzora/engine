@@ -79,8 +79,12 @@ pub use renzora_animation_api::*;
 // they were.
 pub use renzora_platform_api::*;
 
-// `renzora::net` and `renzora::net_backend`.
+// `renzora::net` and `renzora::net_backend`: the HTTP client.
 pub use renzora_net_api::{net, net_backend};
+
+// `renzora::network`: multiplayer (replication, RPCs, ownership). Not the same
+// thing as `net`, which is HTTP.
+pub use renzora_network_api as network;
 
 // `renzora::audio` and `renzora::audio_backend`.
 pub use renzora_audio_api::{audio, audio_backend};

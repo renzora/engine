@@ -1,0 +1,26 @@
+[package]
+name = "renzora_network_api"
+version = "0.1.0"
+edition = "2021"
+description = "The multiplayer contract: the components a scene marks for replication, the session status, and the calls a script or plugin makes (RPCs, ownership, connect); plugins see it as `renzora::network`"
+
+# A contract subject layer. The UDP transport, the replication systems and the
+# server/client startup live in `renzora_network`, which is an optional engine
+# feature a single-player export strips. The vocabulary lives here so a Rust
+# script or a native plugin can name `Networked` and send an RPC without
+# linking that crate: both only ever see `renzora_sdk`, which re-exports this
+# one. Nothing here touches a socket. A call made with networking stripped is a
+# request nobody drains, which is the right behaviour for a single-player game
+# that happens to share code with a multiplayer one.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+# `ScriptActionValue`, so an RPC's arguments are the same bag a script hook
+# receives in `ScriptHook::Rpc`.
+renzora_scripting_api = { path = "../renzora_scripting_api" }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

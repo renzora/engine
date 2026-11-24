@@ -1,65 +1,59 @@
-//! Renzora networking crate — from-scratch UDP multiplayer (client/server/host).
+//! Multiplayer: a from-scratch UDP transport, server-authoritative
+//! replication, RPCs and player avatars.
 //!
-//! On native platforms: a synchronous UDP transport (see [`transport`]) with a
-//! reliable RPC channel + connection lifecycle. On WASM: no-op stub (UDP
-//! sockets are unavailable).
+//! What a game uses is in the contract, `renzora_network_api`
+//! (`renzora::network` to a script). This crate is what makes it happen, and
+//! is an optional engine feature: a single-player export strips it.
+//!
+//! | Module | Job |
+//! |---|---|
+//! | [`transport`] | datagrams, handshake, reliability, fragmentation (sans-IO) |
+//! | [`protocol`] | the game messages carried over it |
+//! | [`server`] | accept players, route RPCs, replicate |
+//! | [`client`] | connect, mirror the server's world, report own avatar |
+//! | [`interpolation`] | smooth remote motion on a shared server clock |
+//! | [`spawner`] | one avatar per player, prefab instancing |
+//! | [`reflect_io`] | components to bytes by type path |
+//! | [`script_extension`] | the `rpc()` / `net_*` verbs of language plugins |
+//!
+//! Native only. A browser cannot open a UDP socket, so on wasm the plugin
+//! registers the types and nothing else, and every `renzora::network` call
+//! behaves as it does offline.
+
+pub mod components;
+pub mod config;
+pub mod status;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
-pub mod components;
-pub mod config;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod input;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod messages;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod prediction;
+pub mod interpolation;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod protocol;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod reflect_io;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod rpc;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod script_extension;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
-pub mod status;
 #[cfg(not(target_arch = "wasm32"))]
-mod transport;
+pub mod spawner;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod transport;
 
-pub use components::{
-    NetworkId, NetworkOwner, NetworkPlayer, NetworkTransform, Networked, OwnerKind,
-};
+pub use components::*;
 pub use config::{NetworkConfig, TransportKind};
-#[cfg(not(target_arch = "wasm32"))]
-pub use input::PlayerInput;
-#[cfg(not(target_arch = "wasm32"))]
-pub use messages::{ChatMessage, DespawnRequest, GameEvent, SpawnRequest};
 #[cfg(not(target_arch = "wasm32"))]
 pub use server::NetworkServerPlugin;
 pub use status::NetworkStatus;
 
 use bevy::prelude::*;
+use renzora_network_api::{NetOutbox, ReplicationRegistry};
 
-// ── Dynamic connect/disconnect resources ────────────────────────────────────
-
-/// Insert this resource to request a client connection to a server.
-/// Consumed by `process_pending_connect`.
-#[derive(Resource)]
-pub struct PendingNetworkConnect {
-    pub address: String,
-    pub port: u16,
-}
-
-/// Insert this resource to request disconnection from the server.
-/// Consumed by `process_pending_disconnect`.
-#[derive(Resource)]
-pub struct PendingNetworkDisconnect;
-
-/// Tracks the client entity spawned by dynamic connect, so we can disconnect it.
-#[derive(Resource)]
-pub struct ActiveClientEntity(pub Entity);
-
-/// Runtime networking plugin.
+/// The network runtime. On every peer; the server half is added beside it by
+/// [`NetworkServerPlugin`] for `--server` and `--host`.
 #[derive(Default)]
 pub struct NetworkPlugin;
 
@@ -67,131 +61,59 @@ impl Plugin for NetworkPlugin {
     fn build(&self, app: &mut App) {
         info!("[network] NetworkPlugin");
 
-        // Shared status resource (read by editor panels and scripts)
-        app.init_resource::<NetworkStatus>();
-        app.init_resource::<renzora_scripting_api::NetworkBridge>();
-        // RPC bridge resources — outbound queue (drained to the wire) and the
-        // inbound inbox (drained by renzora_scripting into `on_rpc`). Init'd
-        // here so both the client and dedicated-server paths share them.
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            app.init_resource::<rpc::PendingOutgoingRpc>();
-            app.init_resource::<renzora_scripting_api::ScriptRpcInbox>();
-            app.init_resource::<renzora_scripting_api::ScriptNetLifecycleInbox>();
+        app.init_resource::<NetworkStatus>()
+            .init_resource::<NetOutbox>()
+            .init_resource::<renzora_scripting_api::NetworkBridge>()
+            .init_resource::<renzora_scripting_api::ScriptRpcInbox>()
+            .init_resource::<renzora_scripting_api::ScriptNetLifecycleInbox>();
+        // `init`, not `insert`: a plugin that built first may already have
+        // registered its own components with `app.replicate::<T>()`.
+        if !app.world().contains_resource::<ReplicationRegistry>() {
+            app.init_resource::<ReplicationRegistry>();
         }
 
-        // Register networked component types (scene serialization + inspector).
-        app.register_type::<components::Networked>();
-        app.register_type::<components::NetworkId>();
-        app.register_type::<components::NetworkOwner>();
-        app.register_type::<components::OwnerKind>();
-        app.register_type::<components::NetworkTransform>();
-        app.register_type::<components::NetworkPlayer>();
-
-        // A dedicated server adds `ServerPlugins` + protocol via
-        // `NetworkServerPlugin`; skip the client setup here so the protocol
-        // isn't registered twice.
-        if app.world().contains_resource::<renzora_project_api::DedicatedServer>() {
-            info!("[network] Dedicated server mode — skipping client setup");
-            return;
-        }
+        app.register_type::<Networked>()
+            .register_type::<NetworkId>()
+            .register_type::<NetworkOwner>()
+            .register_type::<OwnerKind>()
+            .register_type::<NetworkTransform>()
+            .register_type::<TransformAuthority>()
+            .register_type::<NetworkPlayer>()
+            .register_type::<NetworkPrefab>()
+            .register_type::<NetworkPlayerSpawner>();
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            // Host/listen-server mode (`--host`) runs BOTH plugin sets in one
-            // process. There, `NetworkServerPlugin` (added after this) owns the
-            // protocol, the shared observers, and the RPC-send system so each
-            // registers exactly once, after `ServerPlugins`. Here we add only
-            // the client half; in pure-client mode we add everything.
-            // Host/listen-server (`--host`) runs BOTH plugin sets in one
-            // process. The host IS the server (its scripts run server-side), so
-            // it needs no separate local client link — `NetworkServerPlugin`
-            // (added after this) owns the script-action observer + RPC send.
-            let host = app.world().contains_resource::<renzora_project_api::HostServer>();
-
-            // Client connection lifecycle + status. `process_pending_connect`
-            // builds a `NetworkClient` from a `PendingNetworkConnect` request;
-            // `client_poll` pumps it and delivers received RPCs to scripts.
+            app.init_resource::<spawner::PendingAvatars>();
+            app.add_observer(script_extension::handle_network_script_actions);
+            app.add_systems(Startup, client::connect_from_args);
+            app.add_systems(PreUpdate, (server::server_receive, client::client_receive));
             app.add_systems(
                 Update,
                 (
-                    process_pending_connect,
-                    process_pending_disconnect,
-                    client::client_poll,
-                    client::update_network_status,
+                    client::process_requests,
+                    rpc::route_offline,
+                    spawner::spawn_avatars,
+                    spawner::instance_prefabs,
+                    interpolation::apply_interpolation.run_if(resource_exists::<interpolation::NetClock>),
                     sync_network_bridge,
                 ),
             );
-
-            if !host {
-                // Pure client: own the script-action observer + RPC send.
-                app.add_observer(script_extension::handle_network_script_actions);
-                app.add_systems(Update, rpc::send_outgoing_rpcs);
-            }
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            info!("[network] Networking disabled on WASM");
+            app.add_systems(
+                PostUpdate,
+                (server::server_send, client::client_send, server::server_shutdown, client::client_shutdown),
+            );
         }
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn process_pending_connect(
-    mut commands: Commands,
-    pending: Option<Res<PendingNetworkConnect>>,
-    status: Option<Res<NetworkStatus>>,
-) {
-    let Some(pending) = pending else {
-        return;
-    };
-    if status.is_some_and(|s| s.is_connected()) {
-        log::warn!("[network] Already connected — ignoring connect request");
-        commands.remove_resource::<PendingNetworkConnect>();
-        return;
-    }
-
-    let server_addr = format!("{}:{}", pending.address, pending.port)
-        .parse::<std::net::SocketAddr>()
-        .unwrap_or_else(|_| {
-            std::net::SocketAddr::new(
-                std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-                pending.port,
-            )
-        });
-    commands.remove_resource::<PendingNetworkConnect>();
-
-    info!("[network] Connecting to {} ...", server_addr);
-    match client::NetworkClient::connect(server_addr, client::rand_client_id()) {
-        // Status flips to Connecting → Connected via `update_network_status`.
-        Ok(client) => commands.insert_resource(client),
-        Err(e) => log::error!("[network] Failed to open client socket: {e}"),
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn process_pending_disconnect(
-    mut commands: Commands,
-    pending: Option<Res<PendingNetworkDisconnect>>,
-    mut client: Option<ResMut<client::NetworkClient>>,
-) {
-    if pending.is_none() {
-        return;
-    }
-    if let Some(client) = client.as_mut() {
-        info!("[network] Disconnecting");
-        client.disconnect();
-    }
-    commands.remove_resource::<client::NetworkClient>();
-    commands.remove_resource::<PendingNetworkDisconnect>();
-    // `update_network_status` flips the status to Disconnected next frame.
-}
-
-/// Sync the lightweight `NetworkBridge` resource from the full `NetworkStatus`.
-#[cfg(not(target_arch = "wasm32"))]
+/// Mirror the status into the small `NetworkBridge` the scripting context
+/// reads, which cannot depend on this crate.
 fn sync_network_bridge(status: Res<NetworkStatus>, mut bridge: ResMut<renzora_scripting_api::NetworkBridge>) {
+    if !status.is_changed() {
+        return;
+    }
     bridge.is_server = status.is_server;
     bridge.is_connected = status.is_connected();
-    bridge.player_count = status.connected_clients.len() as i32;
+    bridge.player_count = status.players.len().max(status.connected_clients.len()) as i32;
 }
