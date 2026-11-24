@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 08:51
+- fix(export): a lean export builds again, without the animation, audio and networking it had switched off
+
 ## 2026-11-24 08:38
 - fix(ui): text that changes while its menu is hidden shows the new value when the menu opens
 
