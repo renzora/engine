@@ -32,9 +32,13 @@ use bevy::prelude::*;
 use bevy::ui_render::prelude::MaterialNode;
 
 use crate::font::{ui_font, EmberFonts};
-use crate::widgets::{
-    make_arc_params, ArcMaterial, ChartData, ChartPlugin, GaugePlugin, WaveData, WaveformPlugin,
-};
+use crate::widgets::{make_arc_params, ArcMaterial, ChartData, WaveData};
+#[cfg(feature = "chart")]
+use crate::widgets::ChartPlugin;
+#[cfg(feature = "gauge")]
+use crate::widgets::GaugePlugin;
+#[cfg(feature = "waveform")]
+use crate::widgets::WaveformPlugin;
 
 /// 32-sample cap shared by the chart/wave shaders.
 const MAX_SAMPLES: usize = 32;
@@ -423,6 +427,16 @@ fn vector_attach(world: &mut World) {
         if needs_font && fonts.is_none() {
             continue;
         }
+        // A build without the gauge widget (ember's `gauge` feature) has no arc
+        // material to draw these with. Said once per node, then left blank,
+        // rather than panicking on the missing asset store.
+        if matches!(spec.kind, VectorKind::Arc | VectorKind::Speedometer)
+            && !world.contains_resource::<Assets<ArcMaterial>>()
+        {
+            warn!("[vector] `vector=\"gauge\"` needs the Gauge widget, which this build leaves out");
+            world.entity_mut(e).insert(VectorBuilt);
+            continue;
+        }
         match spec.kind {
             VectorKind::Arc => {
                 let v = resolve_scalar(world, spec.host, &spec.value).unwrap_or(spec.min);
@@ -648,12 +662,17 @@ pub fn plugin(app: &mut App) {
     // `WidgetsPlugin` (editor) adds the same three; bevy panics on a duplicate
     // plugin TYPE at the `add_plugins` call (before `build()` runs), so guard
     // each at the call site — whichever path runs first installs it.
+    // Each only in a build that has the widget (see ember's manifest);
+    // `vector_attach` skips a kind whose material is missing.
+    #[cfg(feature = "gauge")]
     if !app.is_plugin_added::<GaugePlugin>() {
         app.add_plugins(GaugePlugin);
     }
+    #[cfg(feature = "chart")]
     if !app.is_plugin_added::<ChartPlugin>() {
         app.add_plugins(ChartPlugin);
     }
+    #[cfg(feature = "waveform")]
     if !app.is_plugin_added::<WaveformPlugin>() {
         app.add_plugins(WaveformPlugin);
     }

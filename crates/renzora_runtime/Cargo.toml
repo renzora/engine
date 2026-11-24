@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "auto_exposure", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "planar_reflection", "gizmos", "networking", "editor_tools", "svg", "remote_profiler"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "auto_exposure", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "planar_reflection", "gizmos", "networking", "editor_tools", "svg", "remote_profiler", "ui_node_graph", "ui_color_picker", "ui_curve_editor", "ui_gradient_editor", "ui_gauge", "ui_chart", "ui_waveform", "ui_code_editor", "ui_timeline", "ui_canvas", "ui_shape_circle", "ui_shape_arc", "ui_shape_radial_progress", "ui_shape_line", "ui_shape_triangle", "ui_shape_polygon", "ui_shape_rectangle", "ui_shape_wedge", "ui_shape_tri3"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -265,6 +265,30 @@ game_ui = ["ui", "scripting", "renzora_ember/game_ui", "renzora_dylib?/game_ui"]
 # requires `bevy_text`. Only for a game that draws no UI and no text at all —
 # `game_ui` turns it back on.
 ui = ["dep:renzora_ember", "renzora_engine/ui"]
+# Ember's heavy widgets, one feature each (see ember's manifest): each draws with
+# a UI material of its own, a render pipeline of 150 to 600 KiB, so the lean
+# exporter keeps only the ones the project uses. Only the rlib edge is named: an
+# editor build has `editor_tools`, which reaches the shared image and turns every
+# widget on there, so the two edges always agree.
+ui_node_graph = ["renzora_ember?/node_graph"]
+ui_color_picker = ["renzora_ember?/color_picker"]
+ui_curve_editor = ["renzora_ember?/curve_editor"]
+ui_gradient_editor = ["renzora_ember?/gradient_editor"]
+ui_gauge = ["renzora_ember?/gauge"]
+ui_chart = ["renzora_ember?/chart"]
+ui_waveform = ["renzora_ember?/waveform"]
+ui_code_editor = ["renzora_ember?/code_editor"]
+ui_timeline = ["renzora_ember?/timeline"]
+ui_canvas = ["renzora_ember?/canvas"]
+ui_shape_circle = ["renzora_ember?/shape_circle"]
+ui_shape_arc = ["renzora_ember?/shape_arc"]
+ui_shape_radial_progress = ["renzora_ember?/shape_radial_progress"]
+ui_shape_line = ["renzora_ember?/shape_line"]
+ui_shape_triangle = ["renzora_ember?/shape_triangle"]
+ui_shape_polygon = ["renzora_ember?/shape_polygon"]
+ui_shape_rectangle = ["renzora_ember?/shape_rectangle"]
+ui_shape_wedge = ["renzora_ember?/shape_wedge"]
+ui_shape_tri3 = ["renzora_ember?/shape_tri3"]
 # Translation packs — see the dependency comment.
 localization = ["dep:renzora_lang"]
 # Post-process effects, one feature per crate. These were a single `postfx`

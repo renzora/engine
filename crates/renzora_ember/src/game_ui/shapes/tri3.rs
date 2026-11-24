@@ -57,18 +57,9 @@ impl UiMaterial for Tri3Material {
     }
 }
 
-/// Attach the material the frame a `Tri3Shape` is first inserted (the canvas
-/// spawner inserts only the shape + `Node`).
-pub fn init_tri3_materials(
-    mut commands: Commands,
-    q: Query<(Entity, &Tri3Shape), (Added<Tri3Shape>, Without<MaterialNode<Tri3Material>>)>,
-    mut materials: ResMut<Assets<Tri3Material>>,
-) {
-    for (entity, shape) in &q {
-        let handle = materials.add(Tri3Material::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-}
+// The material is attached the frame a `Tri3Shape` is first inserted (the
+// canvas spawner inserts only the shape + `Node`) by the shared
+// `rehydrate_shape_material`, as for every shape.
 
 /// Repaint when the vertices/colour change.
 pub fn sync_tri3_materials(

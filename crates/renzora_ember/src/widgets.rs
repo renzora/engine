@@ -30,9 +30,14 @@ mod toggle_switch;
 mod asset_slot;
 mod asset_tile;
 mod color_picker;
+// The heavy widgets (see ember's manifest) still compile with their feature
+// off, so the code that names them keeps building; only their plugin is left
+// out. Unused then, by design.
+#[cfg_attr(not(feature = "color_picker"), allow(dead_code))]
 mod colorpicker;
 mod drag_value;
 mod fader;
+#[cfg_attr(not(feature = "gauge"), allow(dead_code))]
 mod gauge;
 mod knob;
 mod property_row;
@@ -42,7 +47,9 @@ mod vec3_edit;
 mod xy_pad;
 
 // Animation editors.
+#[cfg_attr(not(feature = "curve_editor"), allow(dead_code))]
 mod curve;
+#[cfg_attr(not(feature = "gradient_editor"), allow(dead_code))]
 mod gradient;
 
 // Themeable chrome shaders + images loaded from a theme folder (per surface).
@@ -56,6 +63,7 @@ pub use theme_shader::{
 mod audio_player;
 mod mixer;
 mod vu_meter;
+#[cfg_attr(not(feature = "waveform"), allow(dead_code))]
 mod waveform;
 
 // Typography.
@@ -109,7 +117,9 @@ mod popover;
 mod tooltip;
 
 // Menus / interaction / utilities.
+#[cfg_attr(not(feature = "chart"), allow(dead_code))]
 mod chart;
+#[cfg_attr(not(feature = "code_editor"), allow(dead_code, unused_imports))]
 mod code_editor;
 mod collapsible;
 mod context_menu;
@@ -118,6 +128,7 @@ mod hamburger;
 mod icon_menu;
 mod menu;
 mod multi_select;
+#[cfg_attr(not(feature = "node_graph"), allow(dead_code, unused_imports))]
 mod node_graph;
 mod overflow_row;
 mod overflow_strip;
@@ -133,7 +144,9 @@ mod sortable;
 mod spinner;
 mod submenu;
 mod scene;
+#[cfg_attr(not(feature = "timeline"), allow(dead_code))]
 mod timeline;
+#[cfg_attr(not(feature = "timeline"), allow(dead_code))]
 mod timeline_view;
 
 // The gallery showcase panels.
@@ -524,28 +537,43 @@ impl Plugin for WidgetsPlugin {
             Update,
             (file_image::request_file_images, file_image::poll_file_images).chain(),
         );
+        // The heavy widgets each sit behind a feature of their own (see the
+        // crate manifest): their plugin is where their material pipeline is.
+        #[cfg(feature = "node_graph")]
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(collapsible::CollapsiblePlugin);
         app.add_plugins(section::SectionPlugin);
-        app.add_plugins(timeline::TimelinePlugin);
-        app.add_plugins(timeline_view::TimelineViewPlugin);
+        #[cfg(feature = "timeline")]
+        app.add_plugins((timeline::TimelinePlugin, timeline_view::TimelineViewPlugin));
+        #[cfg(feature = "code_editor")]
         app.add_plugins(code_editor::CodeEditorPlugin);
         app.add_plugins(asset_slot::DndPlugin);
+        #[cfg(feature = "color_picker")]
         app.add_plugins(colorpicker::ColorPickerPlugin);
+        #[cfg(feature = "curve_editor")]
         app.add_plugins(curve::CurveEditorPlugin);
+        #[cfg(feature = "gradient_editor")]
         app.add_plugins(gradient::GradientEditorPlugin);
+        // The editor chrome's shaders (top bar, doc tabs, status bar, panels):
+        // five UI materials, about 0.9 MiB of pipeline code in a lean build,
+        // drawing surfaces a game never has. The surface types stay compiled,
+        // because the dock names them; without the plugin nothing renders them.
+        #[cfg(feature = "editor_tools")]
         app.add_plugins(theme_shader::ThemeShaderPlugin);
         // gauge / chart / waveform are ALSO added by the markup runtime
         // (`markup::vector::plugin`, via `MarkupPlugin`), which runs first.
         // bevy panics on a duplicate plugin TYPE at the `add_plugins` call
         // (before `build()`), so guard each here — whichever path runs first
         // installs it, the other skips.
+        #[cfg(feature = "gauge")]
         if !app.is_plugin_added::<gauge::GaugePlugin>() {
             app.add_plugins(gauge::GaugePlugin);
         }
+        #[cfg(feature = "chart")]
         if !app.is_plugin_added::<chart::ChartPlugin>() {
             app.add_plugins(chart::ChartPlugin);
         }
+        #[cfg(feature = "waveform")]
         if !app.is_plugin_added::<waveform::WaveformPlugin>() {
             app.add_plugins(waveform::WaveformPlugin);
         }

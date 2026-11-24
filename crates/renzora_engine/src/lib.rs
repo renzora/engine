@@ -20,12 +20,21 @@ pub mod material_binding;
 #[cfg(feature = "render_3d")]
 pub mod mesh_lod;
 pub mod named_entities;
+// The primitive meshers behind `MeshPrimitive` (cube, sphere and the
+// procedural set) and the registry that names them. Only the `render_3d` mesh
+// rehydration turns a primitive into a mesh, so without it they are code
+// nothing calls; registered ungated, they kept Bevy's primitive meshers and
+// all of these linked into a game that draws no mesh at all.
+#[cfg(feature = "render_3d")]
 pub mod procedural_meshes;
+#[cfg(feature = "render_3d")]
 pub mod procedural_meshes_more;
 pub mod save_location;
 pub mod scene_io;
 pub mod scene_stream;
+#[cfg(feature = "render_3d")]
 mod shapes;
+#[cfg(feature = "render_3d")]
 pub use shapes::builtin_shapes;
 #[cfg(feature = "render_3d")]
 pub mod texture_stream;
@@ -806,6 +815,7 @@ impl Plugin for RuntimePlugin {
             .add_observer(autoload::on_load_autoload_scenes)
             .add_observer(autoload::on_unload_autoload_scenes)
             .add_systems(Update, autoload::propagate_persistent_to_children);
+        #[cfg(feature = "render_3d")]
         app.insert_resource(shapes::builtin_shapes());
         app.init_resource::<renzora_scene_api::EffectRouting>();
         app.init_resource::<renzora_project_api::PendingSceneLoad>();

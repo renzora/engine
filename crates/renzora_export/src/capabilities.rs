@@ -80,6 +80,25 @@ pub const SECTIONS: &[(&str, &str)] = &[
 ];
 
 /// The capabilities offered for the lean export.
+/// One heavy UI widget's capability: its runtime feature is its id, it sits
+/// under the UI layer, and its default when nothing in the project can say is
+/// on, as for every structural piece. A macro because `runtime_features` needs
+/// a `'static` slice holding the id, which a `const fn` cannot build.
+macro_rules! widget_cap {
+    ($id:literal, $label:literal, $help:literal) => {
+        Capability {
+            id: $id,
+            section: "ui",
+            label: $label,
+            help: $help,
+            bevy_features: &[],
+            runtime_features: &[$id],
+            default_on: true,
+            group: Some("ui"),
+        }
+    };
+}
+
 pub const CAPABILITIES: &[Capability] = &[
     // ── Safe-leaf Bevy features (default off = auto-stripped) ───────────────
     Capability {
@@ -881,7 +900,36 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: true,
         group: Some("ui"),
     },
+    // ── Heavy UI widgets ──────────────────────────────────────────────────────
+    //
+    // One each for the widgets that draw with a UI material of their own: in
+    // Bevy every UI material is a whole render pipeline, 150 to 600 KiB of code
+    // where a plain widget (button, slider, text box) costs tens of KiB. The
+    // plain widgets always ship. Each is detected from its markup tag, its
+    // `vector="..."` kind, its builder name in a Rust script, or (shapes) its
+    // component in a scene, and a tag for one left out shows a placeholder
+    // saying which toggle to turn on.
+    widget_cap!("ui_gauge", "Gauge and knob", "The gauge, the knob that is drawn with it, and markup's `vector=\"gauge\"` (arc, ring, speedometer)."),
+    widget_cap!("ui_chart", "Charts", "Line charts, bar charts and sparklines, and markup's `vector=\"line\"` / `vector=\"bars\"`."),
+    widget_cap!("ui_waveform", "Waveform and audio player", "The waveform, the audio player built on it, and markup's `vector=\"waveform\"`."),
+    widget_cap!("ui_color_picker", "Colour picker", "The HSV colour picker (`hsv_picker`). The plain `color_picker` is sliders and always ships."),
+    widget_cap!("ui_curve_editor", "Curve editor", "The bezier curve editor."),
+    widget_cap!("ui_gradient_editor", "Gradient editor", "The colour-gradient editor."),
+    widget_cap!("ui_code_editor", "Code editor", "The code editor, with syntax highlighting and folding."),
+    widget_cap!("ui_timeline", "Timeline", "The timeline and timeline view widgets."),
+    widget_cap!("ui_node_graph", "Node graph", "The node-graph editor view: nodes, wires and comments."),
+    widget_cap!("ui_canvas", "Script drawing canvas", "Drawing from a script's `on_draw` onto a `canvas` node. Brings the arc, circle, line, rectangle and filled-triangle shapes it draws with."),
+    widget_cap!("ui_shape_circle", "Circle shape", "The Circle UI shape."),
+    widget_cap!("ui_shape_arc", "Arc shape", "The Arc UI shape."),
+    widget_cap!("ui_shape_radial_progress", "Radial progress shape", "The Radial Progress UI shape."),
+    widget_cap!("ui_shape_line", "Line shape", "The Line UI shape."),
+    widget_cap!("ui_shape_triangle", "Triangle shape", "The Triangle UI shape."),
+    widget_cap!("ui_shape_polygon", "Polygon shape", "The Polygon UI shape."),
+    widget_cap!("ui_shape_rectangle", "Rectangle shape", "The Rectangle UI shape (rounded corners, stroke)."),
+    widget_cap!("ui_shape_wedge", "Wedge shape", "The Wedge (pie slice) UI shape."),
+    widget_cap!("ui_shape_tri3", "Filled triangle", "The three-point filled triangle script drawing uses."),
 ];
+
 
 /// File extensions that imply a detectable capability is needed.
 ///
@@ -1182,6 +1230,39 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         // ── Interface ────────────────────────────────────────────────────────
         "ui" => &["bevy_ui::", "renzora_ember::", "UiCanvas"],
         "game_ui" => &["renzora_ember::game_ui", "UiCanvas", "HtmlTemplatePath"],
+
+        // ── Heavy UI widgets ─────────────────────────────────────────────────
+        //
+        // A markup tag (`<gauge`), a `vector="..."` kind, or the builder a Rust
+        // script calls (`gauge(`). Tags are matched with their `<` and builders
+        // with their `(`, so a word in prose or a field name does not count.
+        "ui_gauge" => &[
+            "<gauge", "<knob", "vector=\"gauge", "vector=\"arc", "vector=\"ring",
+            "vector=\"speedometer", "vector=\"dial", "gauge(", "knob(", "knob_pivoted(",
+        ],
+        "ui_chart" => &[
+            "<line_chart", "<bar_chart", "<sparkline", "vector=\"line", "vector=\"chart",
+            "vector=\"bar", "line_chart(", "line_chart_live(", "bar_chart(", "sparkline(",
+        ],
+        "ui_waveform" => &["<waveform", "vector=\"wave", "waveform(", "audio_player("],
+        "ui_color_picker" => &["<hsv_picker", "hsv_picker(", "bind_hsv_picker("],
+        "ui_curve_editor" => &["<curve", "curve_editor("],
+        "ui_gradient_editor" => &["gradient_editor("],
+        "ui_code_editor" => &["<code_editor", "code_editor(", "bind_code("],
+        "ui_timeline" => &["timeline(", "timeline_view(", "EmberTimeline"],
+        "ui_node_graph" => &["node_graph(", "node_graph_view(", "graph_node_view("],
+        // A canvas draws nothing without a script's `on_draw`.
+        "ui_canvas" => &["on_draw"],
+        // Shapes: the component a placed shape widget saves into its scene.
+        "ui_shape_circle" => &["CircleShape"],
+        "ui_shape_arc" => &["ArcShape"],
+        "ui_shape_radial_progress" => &["RadialProgressShape"],
+        "ui_shape_line" => &["LineShape"],
+        "ui_shape_triangle" => &["TriangleShape"],
+        "ui_shape_polygon" => &["PolygonShape"],
+        "ui_shape_rectangle" => &["RectangleShape"],
+        "ui_shape_wedge" => &["WedgeShape"],
+        "ui_shape_tri3" => &["Tri3Shape"],
 
         _ => &[],
     }
@@ -1568,9 +1649,27 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
             (c.id.to_string(), on)
         })
         .collect();
+    // Script drawing renders with five shapes, and ember's `canvas` feature
+    // turns them on in the build regardless; show that rather than five
+    // switches reading off for shapes that will ship.
+    if state.get("ui_canvas").copied().unwrap_or(false) {
+        for shape in CANVAS_SHAPES {
+            state.insert(shape.to_string(), true);
+        }
+    }
     enforce_dependencies(&mut state);
     state
 }
+
+/// The shapes script drawing (`ui_canvas`) renders with: ember's `canvas`
+/// feature names the same five.
+const CANVAS_SHAPES: &[&str] = &[
+    "ui_shape_arc",
+    "ui_shape_circle",
+    "ui_shape_line",
+    "ui_shape_rectangle",
+    "ui_shape_tri3",
+];
 
 /// Whether the export copy's `dist-lean` profile should be patched to
 /// `panic = "abort"`.
@@ -2122,6 +2221,49 @@ mod tests {
         );
         let s = p.state();
         assert!(s["render_3d"] && s["render_2d"]);
+    }
+
+    /// A heavy widget ships when the markup uses its tag or `vector` kind, and
+    /// not otherwise; the shapes follow their scene components.
+    #[test]
+    fn heavy_ui_widgets_follow_what_the_project_uses() {
+        let p = TempProject::new(
+            "widgets",
+            &[
+                ("scenes/main.bsn", "entity 1 {\n renzora_ember::game_ui::components::shapes::WedgeShape: (),\n}\n"),
+                ("ui/hud.html", "<column><knob bind=\"volume\"/><node vector=\"line\"/></column>\n"),
+            ],
+        );
+        let s = p.state();
+        assert!(s["ui_gauge"], "<knob> draws with the gauge");
+        assert!(s["ui_chart"], "vector=\"line\" is a chart");
+        assert!(s["ui_shape_wedge"]);
+        for id in ["ui_waveform", "ui_code_editor", "ui_node_graph", "ui_canvas", "ui_shape_circle"] {
+            assert!(!s[id], "`{id}` is not used");
+        }
+        assert!(
+            disabled_runtime_features(&s).contains(&"ui_node_graph".to_string()),
+            "an unused widget's runtime feature is stripped"
+        );
+    }
+
+    /// Script drawing brings the five shapes it renders with.
+    #[test]
+    fn script_drawing_keeps_its_shapes() {
+        let p = TempProject::new(
+            "canvas",
+            &[
+                ("scenes/main.bsn", "entity 1 {\n bevy_ecs::name::Name: \"root\",\n}\n"),
+                ("scripts/hud.lua", "function on_draw(g)\n  g:circle(10, 10, 5)\nend\n"),
+                ("ui/hud.html", "<node canvas width=\"300px\" height=\"300px\"></node>\n"),
+            ],
+        );
+        let s = p.state();
+        assert!(s["ui_canvas"]);
+        for id in CANVAS_SHAPES {
+            assert!(s[*id], "`{id}` is drawn by the canvas");
+        }
+        assert!(!s["ui_shape_wedge"]);
     }
 
     /// SVG support ships only with an SVG file.

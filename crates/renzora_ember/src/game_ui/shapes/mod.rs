@@ -40,29 +40,11 @@ pub struct ShapesPlugin;
 
 impl Plugin for ShapesPlugin {
     fn build(&self, app: &mut App) {
-        // Register embedded shaders
-        bevy::asset::embedded_asset!(app, "circle.wesl");
-        bevy::asset::embedded_asset!(app, "arc.wesl");
-        bevy::asset::embedded_asset!(app, "radial_progress.wesl");
-        bevy::asset::embedded_asset!(app, "line.wesl");
-        bevy::asset::embedded_asset!(app, "triangle.wesl");
-        bevy::asset::embedded_asset!(app, "polygon.wesl");
-        bevy::asset::embedded_asset!(app, "rectangle.wesl");
-        bevy::asset::embedded_asset!(app, "wedge.wesl");
-        bevy::asset::embedded_asset!(app, "tri3.wesl");
-
-        app.add_plugins((
-            UiMaterialPlugin::<CircleMaterial>::default(),
-            UiMaterialPlugin::<ArcMaterial>::default(),
-            UiMaterialPlugin::<RadialProgressMaterial>::default(),
-            UiMaterialPlugin::<LineMaterial>::default(),
-            UiMaterialPlugin::<TriangleMaterial>::default(),
-            UiMaterialPlugin::<PolygonMaterial>::default(),
-            UiMaterialPlugin::<RectangleMaterial>::default(),
-            UiMaterialPlugin::<WedgeMaterial>::default(),
-            UiMaterialPlugin::<Tri3Material>::default(),
-        ));
-
+        // Every shape type stays registered, so a scene naming one still loads
+        // in a build without it (it just draws nothing). What each shape's
+        // feature decides is whether its material is: a `UiMaterialPlugin` is a
+        // whole render pipeline, about 200 KiB of code per shape, which is why
+        // a lean export keeps only the shapes the project uses.
         app.register_type::<UiShapeWidget>();
         app.register_type::<CircleShape>();
         app.register_type::<ArcShape>();
@@ -73,114 +55,105 @@ impl Plugin for ShapesPlugin {
         app.register_type::<RectangleShape>();
         app.register_type::<WedgeShape>();
 
-        app.add_systems(
-            Update,
-            (
-                circle::sync_circle_materials,
-                arc::sync_arc_materials,
-                radial_progress::sync_radial_progress_materials,
-                line::sync_line_materials,
-                triangle::sync_triangle_materials,
-                polygon::sync_polygon_materials,
-                rectangle::sync_rectangle_materials,
-                wedge::sync_wedge_materials,
-                tri3::sync_tri3_materials,
-                tri3::init_tri3_materials,
-            ),
-        );
-        app.add_systems(
-            Update,
-            (
-                rehydrate_basic_shape_materials,
-                rehydrate_polygonal_shape_materials,
-            ),
-        );
+        #[cfg(feature = "shape_circle")]
+        {
+            bevy::asset::embedded_asset!(app, "circle.wesl");
+            add_shape::<CircleMaterial, _>(app, circle::sync_circle_materials);
+        }
+        #[cfg(feature = "shape_arc")]
+        {
+            bevy::asset::embedded_asset!(app, "arc.wesl");
+            add_shape::<ArcMaterial, _>(app, arc::sync_arc_materials);
+        }
+        #[cfg(feature = "shape_radial_progress")]
+        {
+            bevy::asset::embedded_asset!(app, "radial_progress.wesl");
+            add_shape::<RadialProgressMaterial, _>(app, radial_progress::sync_radial_progress_materials);
+        }
+        #[cfg(feature = "shape_line")]
+        {
+            bevy::asset::embedded_asset!(app, "line.wesl");
+            add_shape::<LineMaterial, _>(app, line::sync_line_materials);
+        }
+        #[cfg(feature = "shape_triangle")]
+        {
+            bevy::asset::embedded_asset!(app, "triangle.wesl");
+            add_shape::<TriangleMaterial, _>(app, triangle::sync_triangle_materials);
+        }
+        #[cfg(feature = "shape_polygon")]
+        {
+            bevy::asset::embedded_asset!(app, "polygon.wesl");
+            add_shape::<PolygonMaterial, _>(app, polygon::sync_polygon_materials);
+        }
+        #[cfg(feature = "shape_rectangle")]
+        {
+            bevy::asset::embedded_asset!(app, "rectangle.wesl");
+            add_shape::<RectangleMaterial, _>(app, rectangle::sync_rectangle_materials);
+        }
+        #[cfg(feature = "shape_wedge")]
+        {
+            bevy::asset::embedded_asset!(app, "wedge.wesl");
+            add_shape::<WedgeMaterial, _>(app, wedge::sync_wedge_materials);
+        }
+        #[cfg(feature = "shape_tri3")]
+        {
+            bevy::asset::embedded_asset!(app, "tri3.wesl");
+            add_shape::<Tri3Material, _>(app, tri3::sync_tri3_materials);
+        }
     }
 }
 
-/// Rehydrates `MaterialNode` handles after scene deserialization.
-/// Shape components survive serialization but `MaterialNode<T>` handles don't.
-//
-// Bevy's system fn parameter limit is 16. The combined rehydrate query uses
-// 17 (1 commands + 8 queries + 8 asset resources), so we split the work.
-fn rehydrate_basic_shape_materials(
-    mut commands: Commands,
-    circles: Query<
-        (Entity, &CircleShape),
-        (Added<CircleShape>, Without<MaterialNode<CircleMaterial>>),
-    >,
-    arcs: Query<(Entity, &ArcShape), (Added<ArcShape>, Without<MaterialNode<ArcMaterial>>)>,
-    radials: Query<
-        (Entity, &RadialProgressShape),
-        (
-            Added<RadialProgressShape>,
-            Without<MaterialNode<RadialProgressMaterial>>,
-        ),
-    >,
-    lines: Query<(Entity, &LineShape), (Added<LineShape>, Without<MaterialNode<LineMaterial>>)>,
-    mut circle_mats: ResMut<Assets<CircleMaterial>>,
-    mut arc_mats: ResMut<Assets<ArcMaterial>>,
-    mut radial_mats: ResMut<Assets<RadialProgressMaterial>>,
-    mut line_mats: ResMut<Assets<LineMaterial>>,
-) {
-    for (entity, shape) in &circles {
-        let handle = circle_mats.add(CircleMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-    for (entity, shape) in &arcs {
-        let handle = arc_mats.add(ArcMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-    for (entity, shape) in &radials {
-        let handle = radial_mats.add(RadialProgressMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-    for (entity, shape) in &lines {
-        let handle = line_mats.add(LineMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
+/// A shape's material, built from its component.
+pub trait ShapeMaterial: UiMaterial {
+    type Shape: Component;
+    fn from_shape(shape: &Self::Shape) -> Self;
 }
 
-fn rehydrate_polygonal_shape_materials(
+macro_rules! shape_material {
+    ($($mat:ty => $shape:ty),* $(,)?) => {$(
+        impl ShapeMaterial for $mat {
+            type Shape = $shape;
+            fn from_shape(shape: &$shape) -> Self {
+                <$mat>::from_shape(shape)
+            }
+        }
+    )*};
+}
+shape_material!(
+    CircleMaterial => CircleShape,
+    ArcMaterial => ArcShape,
+    RadialProgressMaterial => RadialProgressShape,
+    LineMaterial => LineShape,
+    TriangleMaterial => TriangleShape,
+    PolygonMaterial => PolygonShape,
+    RectangleMaterial => RectangleShape,
+    WedgeMaterial => WedgeShape,
+    Tri3Material => Tri3Shape,
+);
+
+/// Install one shape's material pipeline, its repaint system and its
+/// rehydration. Called only for the shapes this build includes.
+#[allow(dead_code)]
+fn add_shape<M, Marker>(app: &mut App, sync: impl IntoScheduleConfigs<bevy::ecs::system::ScheduleSystem, Marker>)
+where
+    M: ShapeMaterial,
+    M::Data: PartialEq + Eq + std::hash::Hash + Clone,
+{
+    app.add_plugins(UiMaterialPlugin::<M>::default());
+    app.add_systems(Update, (sync, rehydrate_shape_material::<M>));
+}
+
+/// Rehydrates a shape's `MaterialNode` after scene deserialization (or a fresh
+/// spawn that brought only the component). Shape components survive
+/// serialization; `MaterialNode<T>` handles don't.
+#[allow(dead_code)]
+fn rehydrate_shape_material<M: ShapeMaterial>(
     mut commands: Commands,
-    triangles: Query<
-        (Entity, &TriangleShape),
-        (
-            Added<TriangleShape>,
-            Without<MaterialNode<TriangleMaterial>>,
-        ),
-    >,
-    polygons: Query<
-        (Entity, &PolygonShape),
-        (Added<PolygonShape>, Without<MaterialNode<PolygonMaterial>>),
-    >,
-    rectangles: Query<
-        (Entity, &RectangleShape),
-        (
-            Added<RectangleShape>,
-            Without<MaterialNode<RectangleMaterial>>,
-        ),
-    >,
-    wedges: Query<(Entity, &WedgeShape), (Added<WedgeShape>, Without<MaterialNode<WedgeMaterial>>)>,
-    mut tri_mats: ResMut<Assets<TriangleMaterial>>,
-    mut poly_mats: ResMut<Assets<PolygonMaterial>>,
-    mut rect_mats: ResMut<Assets<RectangleMaterial>>,
-    mut wedge_mats: ResMut<Assets<WedgeMaterial>>,
+    shapes: Query<(Entity, &M::Shape), (Added<M::Shape>, Without<MaterialNode<M>>)>,
+    mut materials: ResMut<Assets<M>>,
 ) {
-    for (entity, shape) in &triangles {
-        let handle = tri_mats.add(TriangleMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-    for (entity, shape) in &polygons {
-        let handle = poly_mats.add(PolygonMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-    for (entity, shape) in &rectangles {
-        let handle = rect_mats.add(RectangleMaterial::from_shape(shape));
-        commands.entity(entity).try_insert(MaterialNode(handle));
-    }
-    for (entity, shape) in &wedges {
-        let handle = wedge_mats.add(WedgeMaterial::from_shape(shape));
+    for (entity, shape) in &shapes {
+        let handle = materials.add(M::from_shape(shape));
         commands.entity(entity).try_insert(MaterialNode(handle));
     }
 }

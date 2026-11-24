@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 10:55
+- feat(export): each heavy UI widget and UI shape is its own Features toggle, kept only when the project uses it
+- feat(export): a lean export leaves out the editor chrome's theme shaders and the primitive meshers when nothing can draw a mesh
+- fix(ui): a markup tag for a widget left out of the build shows a note instead of failing
+
 ## 2026-11-24 10:02
 - feat(export): a running export is a small status card with one Cancel, and Open folder, Back and Close when it ends
 - feat(export): a finished export opens its folder

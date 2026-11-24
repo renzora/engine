@@ -1237,148 +1237,57 @@ fn spawn_draggable_window(world: &mut World, r: &Ref) -> Entity {
 
 // ── HUD spawn functions ────────────────────────────────────────────────────
 
-fn spawn_circle(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::CircleShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::CircleMaterial>>()
-        .add(shapes::CircleMaterial::from_shape(&shape));
+/// A shape widget: the component and its layout only. Its material is
+/// attached by `shapes::rehydrate_shape_material`, the same path a shape
+/// loaded from a scene takes, so a build that left this shape's material out
+/// spawns it harmlessly (it draws nothing) instead of reaching for an asset
+/// store that does not exist.
+fn spawn_shape(
+    world: &mut World,
+    name: &'static str,
+    widget_type: UiWidgetType,
+    (width, height): (Val, Val),
+    shape: impl Component,
+) -> Entity {
     world
         .spawn((
-            Name::new("Circle"),
-            UiWidget {
-                widget_type: UiWidgetType::Circle,
-                locked: false,
-            },
+            Name::new(name),
+            UiWidget { widget_type, locked: false },
             UiShapeWidget,
-            Node {
-                width: pct_w(64.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
+            Node { width, height, ..default() },
             shape,
         ))
         .id()
+}
+
+fn spawn_circle(world: &mut World, r: &Ref) -> Entity {
+    let size = (pct_w(64.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Circle", UiWidgetType::Circle, size, shapes::CircleShape::default())
 }
 
 fn spawn_arc(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::ArcShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::ArcMaterial>>()
-        .add(shapes::ArcMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Arc"),
-            UiWidget {
-                widget_type: UiWidgetType::Arc,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(64.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(64.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Arc", UiWidgetType::Arc, size, shapes::ArcShape::default())
 }
 
 fn spawn_radial_progress(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::RadialProgressShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::RadialProgressMaterial>>()
-        .add(shapes::RadialProgressMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Radial Progress"),
-            UiWidget {
-                widget_type: UiWidgetType::RadialProgress,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(64.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(64.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Radial Progress", UiWidgetType::RadialProgress, size, shapes::RadialProgressShape::default())
 }
 
 fn spawn_line(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::LineShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::LineMaterial>>()
-        .add(shapes::LineMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Line"),
-            UiWidget {
-                widget_type: UiWidgetType::Line,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(100.0, r),
-                height: pct_h(4.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(100.0, r), pct_h(4.0, r));
+    spawn_shape(world, "Line", UiWidgetType::Line, size, shapes::LineShape::default())
 }
 
 fn spawn_triangle(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::TriangleShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::TriangleMaterial>>()
-        .add(shapes::TriangleMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Triangle"),
-            UiWidget {
-                widget_type: UiWidgetType::Triangle,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(64.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(64.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Triangle", UiWidgetType::Triangle, size, shapes::TriangleShape::default())
 }
 
 fn spawn_polygon(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::PolygonShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::PolygonMaterial>>()
-        .add(shapes::PolygonMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Polygon"),
-            UiWidget {
-                widget_type: UiWidgetType::Polygon,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(64.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(64.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Polygon", UiWidgetType::Polygon, size, shapes::PolygonShape::default())
 }
 
 fn spawn_rectangle(world: &mut World, r: &Ref) -> Entity {
@@ -1387,50 +1296,13 @@ fn spawn_rectangle(world: &mut World, r: &Ref) -> Entity {
         corner_radius: [8.0; 4],
         ..default()
     };
-    let handle = world
-        .resource_mut::<Assets<shapes::RectangleMaterial>>()
-        .add(shapes::RectangleMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Rectangle"),
-            UiWidget {
-                widget_type: UiWidgetType::Rectangle,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(96.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(96.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Rectangle", UiWidgetType::Rectangle, size, shape)
 }
 
 fn spawn_wedge(world: &mut World, r: &Ref) -> Entity {
-    let shape = shapes::WedgeShape::default();
-    let handle = world
-        .resource_mut::<Assets<shapes::WedgeMaterial>>()
-        .add(shapes::WedgeMaterial::from_shape(&shape));
-    world
-        .spawn((
-            Name::new("Wedge"),
-            UiWidget {
-                widget_type: UiWidgetType::Wedge,
-                locked: false,
-            },
-            UiShapeWidget,
-            Node {
-                width: pct_w(64.0, r),
-                height: pct_h(64.0, r),
-                ..default()
-            },
-            MaterialNode(handle),
-            shape,
-        ))
-        .id()
+    let size = (pct_w(64.0, r), pct_h(64.0, r));
+    spawn_shape(world, "Wedge", UiWidgetType::Wedge, size, shapes::WedgeShape::default())
 }
 
 // ── Menu widget spawn functions ─────────────────────────────────────────────

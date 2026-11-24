@@ -24,6 +24,11 @@
 //! `params` (x = time) + bg/accent/fg colors; `@binding(1)` = the theme image
 //! (`texture_2d<f32>`); `@binding(2)` = its sampler. Fixed layout, so a downloaded
 //! theme can't declare arbitrary bindings (kept sandboxable).
+//!
+//! Only the editor installs [`ThemeShaderPlugin`] (ember's `editor_tools`
+//! feature): a game build compiles the surface types the dock names, and the
+//! rest is never called.
+#![cfg_attr(not(feature = "editor_tools"), allow(dead_code))]
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};

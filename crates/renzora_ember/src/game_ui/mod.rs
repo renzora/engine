@@ -145,6 +145,10 @@ impl Plugin for GameUiPlugin {
             world_panel::register(app);
             world_ui_mesh::register(app);
         }
+        // Script drawing (`on_draw` onto a `canvas` node). Its own feature, which
+        // brings the five shapes it draws with; without it a `canvas` node is an
+        // ordinary empty node.
+        #[cfg(feature = "canvas")]
         script_canvas::register(app);
 
         // ── Canvas scaler & visibility-mode ──────────────────────────────

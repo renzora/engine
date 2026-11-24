@@ -390,6 +390,12 @@ tables of content) take the full width of their parent unless you give the tag a
 `height` when you set one; a `<scroll>` needs one, or it grows to fit everything
 and has nothing to scroll.
 
+A few widgets are large enough that a lean export leaves them out unless the
+project uses them: the gauge and knob, charts, waveform, HSV picker, curve and
+code editors. Using the tag anywhere in the project's markup is what keeps it
+(see [Exporting](../exporting/overview.md)). If one is missing from a build, its
+tag shows *"&lt;tag&gt; is not in this build"* instead.
+
 ### Controls tied to a value
 
 These take `setting=` or `bind=` (below) and keep it in step both ways.

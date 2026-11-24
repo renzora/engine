@@ -76,6 +76,23 @@ fn refs(items: &[String]) -> Vec<&str> {
     items.iter().map(String::as_str).collect()
 }
 
+/// What a tag builds when this build leaves its widget out (one of ember's
+/// heavy-widget features is off, which a lean export does when the scan finds
+/// no use of it). A visible note, and a warning naming the export toggle,
+/// rather than a blank box nobody can explain.
+#[allow(dead_code)]
+fn left_out(commands: &mut Commands, fonts: &EmberFonts, tag: &str, toggle: &str) -> Built {
+    warn!("[markup] <{tag}> is not in this build: turn on \"{toggle}\" in the export's Features tab");
+    let note = commands
+        .spawn((
+            Text::new(format!("<{tag}> is not in this build")),
+            crate::font::ui_font(&fonts.ui, 11.0),
+            TextColor(crate::theme::rgb(text_muted())),
+        ))
+        .id();
+    Built::fixed(note)
+}
+
 pub(super) fn build(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -128,7 +145,12 @@ pub(super) fn build(
                     fader(commands, unit)
                 }
             } else {
-                knob(commands, unit)
+                #[cfg(feature = "gauge")]
+                {
+                    knob(commands, unit)
+                }
+                #[cfg(not(feature = "gauge"))]
+                return left_out(commands, fonts, "knob", "Gauge and knob");
             };
             bind_number(commands, w, source, NumberMap { unit_range: Some((min, max)), step: a.number("step", 0.0) });
             Built::fixed(w)
@@ -178,17 +200,23 @@ pub(super) fn build(
             let at = |i: usize| c.get(i).copied().unwrap_or(128.0).clamp(0.0, 255.0) as u8;
             Built::fixed(color_picker(commands, (at(0), at(1), at(2))))
         }
+        #[cfg(feature = "color_picker")]
         ElementKind::HsvPicker => Built::fixed(hsv_picker(
             commands,
             a.number("hue", 0.6),
             a.number("saturation", 0.7),
             a.number("value", 0.9),
         )),
+        #[cfg(not(feature = "color_picker"))]
+        ElementKind::HsvPicker => left_out(commands, fonts, "hsv_picker", "Colour picker"),
+        #[cfg(feature = "curve_editor")]
         ElementKind::Curve => {
             let p = a.numbers("points");
             let at = |i: usize, d: f32| p.get(i).copied().unwrap_or(d);
             Built::fixed(curve_editor(commands, Vec2::new(at(0, 0.25), at(1, 0.1)), Vec2::new(at(2, 0.75), at(3, 0.9))))
         }
+        #[cfg(not(feature = "curve_editor"))]
+        ElementKind::Curve => left_out(commands, fonts, "curve", "Curve editor"),
         ElementKind::Multiline => Built::tall(textarea(commands, ui, a.text("placeholder"), &a.prose("value"))),
         ElementKind::TagsInput => {
             let tags = a.list("tags");
@@ -238,7 +266,10 @@ pub(super) fn build(
         } else {
             progress(commands, a.number("value", 0.0))
         }),
+        #[cfg(feature = "gauge")]
         ElementKind::Gauge => Built::fixed(gauge(commands, fonts, a.number("value", 0.0))),
+        #[cfg(not(feature = "gauge"))]
+        ElementKind::Gauge => left_out(commands, fonts, "gauge", "Gauge and knob"),
         ElementKind::FloatingLabel => {
             Built::filling(floating_label(commands, ui, a.text("label"), a.text("value")))
         }
@@ -270,11 +301,29 @@ pub(super) fn build(
         ElementKind::Grid => Built::filling(grid(commands, ui, a.count("count", 6), a.count("columns", 3))),
         ElementKind::Markdown => Built::filling(markdown_view(commands, fonts, &a.prose("text"))),
         ElementKind::CodeBlock => Built::filling(code_block(commands, fonts, &a.prose("text"))),
+        #[cfg(feature = "code_editor")]
         ElementKind::CodeEditor => Built::tall(code_editor(commands, &a.prose("text"))),
+        #[cfg(not(feature = "code_editor"))]
+        ElementKind::CodeEditor => left_out(commands, fonts, "code_editor", "Code editor"),
+        #[cfg(feature = "chart")]
         ElementKind::LineChart => Built::fixed(line_chart(commands, fonts, &a.numbers("values"))),
+        #[cfg(feature = "chart")]
         ElementKind::BarChart => Built::fixed(bar_chart(commands, &a.numbers("values"))),
+        #[cfg(feature = "chart")]
         ElementKind::Sparkline => Built::fixed(sparkline(commands, &a.numbers("values"))),
+        #[cfg(not(feature = "chart"))]
+        ElementKind::LineChart | ElementKind::BarChart | ElementKind::Sparkline => {
+            let tag = match el.kind {
+                ElementKind::LineChart => "line_chart",
+                ElementKind::BarChart => "bar_chart",
+                _ => "sparkline",
+            };
+            left_out(commands, fonts, tag, "Charts")
+        }
+        #[cfg(feature = "waveform")]
         ElementKind::Waveform => Built::fixed(waveform(commands, &a.numbers("values"))),
+        #[cfg(not(feature = "waveform"))]
+        ElementKind::Waveform => left_out(commands, fonts, "waveform", "Waveform and audio player"),
         ElementKind::VuMeter => Built::fixed(vu_meter(commands)),
         ElementKind::MixerStrip => {
             Built::fixed(mixer_strip(commands, fonts, a.text("label"), a.number("value", 0.8)))

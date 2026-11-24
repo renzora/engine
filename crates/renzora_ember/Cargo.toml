@@ -12,7 +12,7 @@ description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets,
 # widget library, docking, theming and the foundational `cursor_icon`/`icons`
 # helpers stay regardless (every widget needs them). `renzora_runtime` deps this
 # crate with `default-features = false` and forwards its own `game_ui` feature.
-default = ["game_ui", "render_3d", "editor_tools"]
+default = ["game_ui", "render_3d", "editor_tools", "all_widgets"]
 # Also pulls scripting: every `renzora_scripting` use in this crate sits inside
 # `markup`/`game_ui` (data binding, input fields, the reflection queue behind
 # widgets), so a game with no markup UI needs neither.
@@ -38,7 +38,56 @@ render_3d = ["renzora_text_mesh/render_3d"]
 # Each call site already had a wasm no-op twin, so switching this off takes the
 # same path the browser build has always taken: copy silently fails, paste
 # yields `None`, an image request resolves to its placeholder.
-editor_tools = ["dep:arboard", "dep:image"]
+#
+# Also every widget below, and the editor chrome's theme shaders (installed only
+# under this feature): the editor uses all of them.
+editor_tools = ["dep:arboard", "dep:image", "all_widgets"]
+
+# ── The heavy widgets ─────────────────────────────────────────────────────────
+#
+# Each of these draws with its own `UiMaterial`, and in Bevy every UI material is
+# a whole render pipeline: about 150 to 600 KiB of code per widget, where a plain
+# widget (button, slider, checkbox) is tens of KiB. Each feature gates only the
+# widget's plugin and the markup that builds it; the module still compiles, so
+# nothing that names its types breaks, and the linker drops what nothing calls.
+# A markup tag for a widget left out shows a placeholder saying so.
+#
+# ON by default (`all_widgets`). `renzora_runtime` forwards one `ui_<name>`
+# feature per widget, which the lean exporter keeps exactly when the project
+# uses that widget (see `renzora_export::capabilities`).
+all_widgets = [
+    "node_graph", "color_picker", "curve_editor", "gradient_editor", "gauge",
+    "chart", "waveform", "code_editor", "timeline", "canvas",
+    "shape_circle", "shape_arc", "shape_radial_progress", "shape_line",
+    "shape_triangle", "shape_polygon", "shape_rectangle", "shape_wedge", "shape_tri3",
+]
+node_graph = []
+# The HSV picker (`hsv_picker`); the plain `color_picker` is sliders and stays.
+color_picker = []
+curve_editor = []
+gradient_editor = []
+# The gauge's arc material, which the knob and markup's `vector="gauge"` (arc,
+# ring, speedometer) draw with too.
+gauge = []
+# Line and bar charts, and markup's `vector="line"` / `vector="bars"`.
+chart = []
+# The waveform, the audio player built on it, and markup's `vector="waveform"`.
+waveform = []
+code_editor = []
+timeline = []
+# Script drawing: a markup node with `canvas`, drawn by a script's `on_draw`.
+# It renders with five of the shapes below.
+canvas = ["shape_arc", "shape_circle", "shape_line", "shape_rectangle", "shape_tri3"]
+# The game UI's SDF shapes, one material each.
+shape_circle = []
+shape_arc = []
+shape_radial_progress = []
+shape_line = []
+shape_triangle = []
+shape_polygon = []
+shape_rectangle = []
+shape_wedge = []
+shape_tri3 = []
 
 [dependencies]
 renzora_shell_api = { path = "../api/renzora_shell_api" }

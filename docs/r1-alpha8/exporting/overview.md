@@ -504,6 +504,27 @@ Three small pieces follow other signals:
 - The **companion profiler** ships only when **Allow profiling** is on, since
   without the key it bakes in nothing can reach it.
 
+**Heavy UI widgets** each have a switch of their own under **Interface**. Most
+widgets cost tens of KB and always ship, but a few draw with a shader of their
+own, which brings a whole render pipeline: 150 to 600 KB each. Each is kept
+when the project uses it:
+
+| Switch | Kept when the project has |
+|---|---|
+| Gauge and knob | `<gauge>`, `<knob>`, `vector="gauge"` (or `arc`, `ring`, `speedometer`, `dial`), or a script calling `gauge(` / `knob(` |
+| Charts | `<line_chart>`, `<bar_chart>`, `<sparkline>`, `vector="line"` / `vector="bars"`, or their builders |
+| Waveform and audio player | `<waveform>`, `vector="waveform"`, `waveform(` or `audio_player(` |
+| Colour picker | `<hsv_picker>` or `hsv_picker(` |
+| Curve editor, Gradient editor, Code editor, Timeline, Node graph | their tag or builder in markup or a script |
+| Script drawing canvas | a script with `on_draw` (it also keeps the five shapes it draws with) |
+| Circle, Arc, Radial progress, Line, Triangle, Polygon, Rectangle, Wedge, Filled triangle | that shape placed in a scene |
+
+A tag whose widget was left out shows *"&lt;tag&gt; is not in this build"* in
+the game, and the log names the switch to turn on.
+
+The editor's own themed chrome (top bar, tabs, status bar, panel shaders) never
+ships in a game.
+
 > A game that makes any network request also needs `plugins/http` staged beside
 > it — the engine carries no HTTP client. See
 > [Network backends](../extending/network-backends.md). Leaving it out is how a
