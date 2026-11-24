@@ -90,6 +90,10 @@ pub fn extract_authored(
         .deny_component::<bevy::camera::primitives::Aabb>()
         // Runtime mirror of the camera's projection, rebuilt every frame.
         .deny_component::<crate::camera_script::CameraReadState>()
+        // The settings mirror a game keeps on every scripted entity so
+        // `get_setting` can read it. Runtime state, rebuilt every frame; a
+        // scene that saved it would carry one session's settings into the file.
+        .deny_component::<renzora_project_api::SettingsReadState>()
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
@@ -202,6 +206,10 @@ pub fn saveable_entities(world: &mut World) -> Vec<Entity> {
         // open, so the next load spawns two of each: two music players, two
         // HUD roots.
         Without<renzora_scene_api::Persistent>,
+        // The editor's "Spawned during Play" group, which only shows what a
+        // running game made. The entities in it are still listed (they are
+        // the game's, and the live link tracks them); the group is not.
+        Without<renzora_scene_api::PlaySpawnGroup>,
     )>();
     let mut entities: Vec<Entity> = query.iter(world).collect();
 

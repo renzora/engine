@@ -1,5 +1,84 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 05:21
+- fix(editor): a camera or UI a game script spawns during Play no longer draws over the editor's interface
+- feat(editor): objects the game spawns during Play are grouped under "Spawned during Play" in the Hierarchy
+- fix(scene): a camera's default-UI-camera flag is no longer saved into scenes
+
+## 2026-11-24 04:50
+- fix(runtime): lowering the render scale and raising it back no longer leaves the game drawn zoomed in until the window is resized
+
+## 2026-11-24 04:31
+- feat(ui): a game has ember's full widget toolkit, so a script can build UI from the same widgets the editor uses
+- fix(ui): buttons and icons in a shipped game's UI respond and draw without the editor
+
+## 2026-11-24 04:03
+- feat(network): `net_connect` with no address or port connects to the project's `[network]` server
+- fix(lang): a project's own `languages/*.toml` packs are loaded in the editor and in the game
+- fix(export): an export includes the project's language packs
+- feat(ui): game UI markup can show a translated string with `{{ t("key") }}`, which follows a language change while the game runs
+- fix(export): the capability scan keeps audio for a script that only sets volumes, and localization for a translated UI or a non-English Game Language
+- fix(runtime): turning viewport stretching off gives each camera back the MSAA it had
+- fix(rendering): a sky switched back on after a Graphics Quality change no longer comes back at the old probe size
+
+## 2026-11-24 03:24
+- fix(runtime): a game running in the editor's Game panel follows a VSync change too
+
+## 2026-11-24 03:15
+- fix(runtime): a game applies its window size, mode, resizability and VSync when they change while it runs
+- fix(runtime): a game uses its project's graphics backend instead of the editor user's, from its next launch
+- feat(settings): Settings > Project > Rendering has a Game Graphics Backend for the exported game, separate from the editor's
+- fix(runtime): changing the viewport resolution or stretch mode rebuilds the stretched view while the game runs
+- fix(runtime): changing the 2D image filter updates sprites that are already on screen
+- fix(server): a packed dedicated or host server uses the `[network]` settings it was exported with
+- fix(lang): a shipped game starts in the project's language, or the player's system language, instead of the editor user's
+- feat(settings): Settings > Project has a Game Language, the language an exported game starts in
+- fix(plugin): a shipped game loads every native plugin it shipped with, ignoring the editor's disabled-plugins list
+- fix(rendering): Graphics Quality is applied by one runtime system in every session and follows live changes, including from scripts
+- fix(rendering): changing the Graphics Quality tier while running no longer risks a sky-lighting crash
+- fix(audio): a change to the game's audio settings while the game runs is heard straight away
+- fix(audio): an exported game no longer writes project.toml when its volume changes
+- fix(scripting): `set_master_volume` from a script now changes the master volume, the same value the Mixer's Master fader shows
+- feat(scripting): scripts can set or mute any mixer bus by key with `set_bus_volume` and `set_bus_muted`
+- feat(scripting): scripts can read and change any game setting while the game runs with `set_setting` and `get_setting`
+- feat(ui): game UI has a player UI-size multiplier, `GameUiScale` (`ui.scale` from scripts)
+- feat(input): scripts can rebind the action map while the game runs, through `renzora::InputMap` or `set_setting("input.<action>.<slot>", ...)`
+- fix(runtime): the frame-rate limit follows `[window] max_fps` live, and the separate `FrameRateLimit` resource is gone
+
+## 2026-11-24 01:54
+- fix(scene): saving while the Export dialog or any other editor popup is open no longer writes its widgets into the scene
+
+## 2026-11-24 01:18
+- feat(runtime): a Frame Rate Limit setting holds the game to a chosen rate such as 30 or 60, and scripts can change it while the game runs
+
+## 2026-11-24 00:45
+- fix(export): Rust scripts in a lean export get the whole UI system whenever the export keeps its Interface feature
+
+## 2026-11-23 23:04
+- feat(plugin): a plugin's editor code in `src/editor.rs` or `src/editor/` loads in the editor and is left out of lean game builds
+- feat(plugin): `renzora::editor! { ... }` marks inline editor code that lean game builds leave out
+- feat(plugin): `cargo build` in a plugin's folder stops with an explanation instead of building a second Bevy
+- fix(export): a lean export leaves editor-only plugins out of the build instead of failing to compile them
+- feat(export): a lean export stops before compiling when a plugin has editor code outside its editor folder, naming the file and line
+- fix(export): a lean export builds a plugin against the engine's own Bevy and SDK however its manifest names them
+
+## 2026-11-23 22:22
+- fix(export): a lean export no longer compiles from engine source an earlier nightly downloaded; updating brings the Download engine source button back
+- fix(export): the Rust a lean export installs is the version the engine source needs
+- fix(export): the Rust a lean export installs lives in `~/.renzora/toolchain`, so editor updates reuse it instead of installing it again
+
+## 2026-11-23 22:19
+- fix(export): downloading the engine source for a lean build no longer fails on Windows with "A required privilege is not held by the client"
+
+## 2026-11-23 22:00
+- fix(export): a lean export that compiles in a plugin builds it against the engine's own Bevy instead of a second one from crates.io
+
+## 2026-11-23 19:53
+- fix(play): a game playing in the Game panel takes the keyboard when Play starts and whenever you click into it
+- fix(play): a global scene's entities, such as a loading screen, are no longer removed from the game moments after Play starts
+- fix(physics): opening a scene no longer puts a static body back on shapes whose physics you removed
+- fix(scene): stopping a game that removed a particle effect, or undoing its deletion, no longer leaves stray `vfx_emitter` entities in the scene
+
 ## 2026-11-23 09:24
 - fix(sdk): the macOS editor unpacks its plugin SDK again; the archive keeps any engine library the app does not ship beside the executable
 

@@ -153,6 +153,9 @@ struct Session {
     despawned: Vec<String>,
     /// Entities the user despawned during play, which must stay gone.
     user_despawned: HashSet<u64>,
+    /// "Spawned during Play": the group the game's own top-level entities are
+    /// shown under, made when the first one arrives. See [`Mirror::applied`].
+    play_root: Option<Entity>,
 }
 
 /// Record, as the game's changes are applied, what it takes to undo them.
@@ -177,6 +180,97 @@ impl ApplySide for Mirror<'_> {
     fn touching(&mut self, id: u64, ty: &str) {
         self.0.game_touched.insert((id, ty.to_string()));
     }
+
+    /// Keep what the game sends inside the play view.
+    ///
+    /// The editor's world also holds the editor itself, so a mirrored entity
+    /// that draws to the window draws over the editor. Two kinds can:
+    ///
+    /// - **A camera.** It renders to its target whatever its parent, so it is
+    ///   made inactive here, as the editor already makes scene cameras.
+    ///   `Camera` is never mirrored (the save leaves it out), so this does not
+    ///   travel back and switch the game's camera off.
+    /// - **A UI root.** It draws through the default UI camera, which in the
+    ///   editor is the editor's own. It is pointed at the viewport camera at
+    ///   once; `renzora_ember`'s canvas router then keeps it where the
+    ///   scene's canvases go (`sync_ui_canvas_target_camera`).
+    ///
+    /// And the game's own top-level entities are grouped under "Spawned during
+    /// Play", except UI roots: Bevy only lays out a UI node with no parent, so
+    /// one put in the group would never be drawn at all.
+    fn applied(&mut self, world: &mut World, entity: Entity, id: u64) {
+        let Ok(e) = world.get_entity(entity) else { return };
+        let is_editor_camera = e.contains::<renzora_scene_api::EditorCamera>();
+        let camera_active = e.get::<Camera>().is_some_and(|c| c.is_active);
+        let is_ui = e.contains::<Node>();
+        let parent = e.get::<ChildOf>().map(|c| c.parent());
+        let has_target = e.contains::<bevy::ui::UiTargetCamera>();
+
+        if camera_active && !is_editor_camera {
+            if let Some(mut camera) = world.get_mut::<Camera>(entity) {
+                camera.is_active = false;
+            }
+        }
+
+        if is_ui && parent.is_none() && !has_target {
+            lock_to_viewport(world, entity);
+        }
+
+        if !self.0.spawned.contains(&id) {
+            return;
+        }
+        let root = self.0.play_root;
+        match (is_ui, parent) {
+            // A top-level game entity: into the group.
+            (false, None) => {
+                let root = play_root(world, &mut self.0.play_root);
+                world.entity_mut(entity).insert(ChildOf(root));
+            }
+            // Turned out to be UI after it was grouped (its `Node` arrives after
+            // the spawn): back out, or it would never be drawn.
+            (true, Some(p)) if Some(p) == root => {
+                world.entity_mut(entity).remove::<ChildOf>();
+                lock_to_viewport(world, entity);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Point a mirrored UI root at the editor's viewport camera, so it draws into
+/// the viewport and never through the editor's own UI camera.
+#[cfg(not(target_arch = "wasm32"))]
+fn lock_to_viewport(world: &mut World, entity: Entity) {
+    let viewport = {
+        let mut q = world.query_filtered::<Entity, With<renzora_scene_api::EditorCamera>>();
+        q.iter(world).next()
+    };
+    if let Some(viewport) = viewport {
+        world.entity_mut(entity).insert(bevy::ui::UiTargetCamera(viewport));
+    }
+}
+
+/// The "Spawned during Play" group, made on first use.
+///
+/// `PlaySpawnGroup` keeps it out of the scene and out of the link: it is the
+/// editor's own way of showing the game, so a save must not write it and the
+/// game must not be sent it. Not `Persistent`, which would spread to every
+/// entity put in it; see `PlaySpawnGroup`.
+#[cfg(not(target_arch = "wasm32"))]
+fn play_root(world: &mut World, slot: &mut Option<Entity>) -> Entity {
+    if let Some(root) = slot.filter(|r| world.get_entity(*r).is_ok()) {
+        return root;
+    }
+    let root = world
+        .spawn((
+            Name::new("Spawned during Play"),
+            Transform::default(),
+            Visibility::default(),
+            renzora_scene_api::PlaySpawnGroup,
+        ))
+        .id();
+    *slot = Some(root);
+    root
 }
 
 /// Bind a loopback port and accept the game on a thread of its own.
@@ -527,6 +621,17 @@ fn end_session(world: &mut World) {
     let restored = undo.len() + session.despawned.len();
     apply(world, undo, &mut Tracker::default(), &mut Quiet, &mut HashSet::new());
 
+    // The group goes with the game. Anything still in it was kept (the Keep
+    // button adopts what the game spawned), so it moves to the top level
+    // first, where it would have been without the group.
+    if let Some(root) = session.play_root.filter(|r| world.get_entity(*r).is_ok()) {
+        let kept: Vec<Entity> = world.get::<Children>(root).map(|c| c.to_vec()).unwrap_or_default();
+        for child in kept {
+            world.entity_mut(child).remove::<ChildOf>();
+        }
+        world.entity_mut(root).despawn();
+    }
+
     world.resource_mut::<GameLink>().connected = false;
     let pending_save = world
         .remove_resource::<LivePlaySession>()
@@ -645,6 +750,105 @@ mod tests {
         assert_eq!(world.get::<Visibility>(crate_e), Some(&Visibility::Hidden), "the user's edit was lost");
         assert!(world.get_resource::<renzora_project_api::SaveSceneRequested>().is_some(), "the held save never ran");
         assert!(!world.resource::<GameLink>().connected);
+    }
+
+    fn value_of<T: Reflect + bevy::reflect::TypePath>(v: &T, world: &World) -> String {
+        let registry = world.resource::<AppTypeRegistry>().read();
+        ron::ser::to_string(&bevy::reflect::serde::TypedReflectSerializer::new(v, &registry)).unwrap()
+    }
+
+    /// What the game spawns at the top level is shown under one group, and the
+    /// group goes when the game does.
+    #[test]
+    fn game_spawns_are_grouped_and_the_group_goes_at_stop() {
+        let (mut world, _, mut game) = editor_with_game();
+        game_sends(&mut game, &[LinkMessage::Spawn { id: 99, parent: None, name: "bullet".into() }]);
+        frames_until(&mut world, |w| named(w, "bullet").is_some());
+
+        let bullet = named(&mut world, "bullet").unwrap();
+        let group = named(&mut world, "Spawned during Play").expect("no group was made");
+        assert_eq!(world.get::<ChildOf>(bullet).map(|c| c.parent()), Some(group));
+
+        drop(game);
+        frames_until(&mut world, |w| w.get_resource::<LivePlaySession>().is_none());
+        assert!(named(&mut world, "Spawned during Play").is_none(), "the group outlived the game");
+    }
+
+    /// Grouping must not make the editor think the game's entity is gone. The
+    /// group was once marked `Persistent`, which spreads to children, and the
+    /// link ignores persistent entities: the editor's next scan told the game
+    /// to despawn everything it had just grouped, the game's camera included.
+    #[test]
+    fn grouping_never_sends_the_game_a_despawn() {
+        let (mut world, _, mut game) = editor_with_game();
+        // The editor's marker-spreading system, run every frame as in the app.
+        // Run once first so its next run sees the grouping as newly added.
+        let mut frame = Schedule::default();
+        frame.add_systems(renzora_engine::autoload::propagate_persistent_to_children);
+        frame.run(&mut world);
+
+        game_sends(&mut game, &[LinkMessage::Spawn { id: 99, parent: None, name: "bullet".into() }]);
+        frames_until(&mut world, |w| named(w, "bullet").is_some());
+        let bullet = named(&mut world, "bullet").unwrap();
+        assert!(world.get::<ChildOf>(bullet).is_some(), "the bullet was not grouped");
+
+        // A frame passes, then the editor scans and sends.
+        world.increment_change_tick();
+        frame.run(&mut world);
+        world.resource_mut::<LinkServer>().client.as_mut().unwrap().since_scan = 1.0;
+        send(&mut world);
+
+        game.set_read_timeout(Some(Duration::from_millis(300))).unwrap();
+        let mut sent = Vec::new();
+        let mut reader = BufReader::new(game.try_clone().unwrap());
+        let mut line = String::new();
+        while matches!(reader.read_line(&mut line), Ok(n) if n > 0) {
+            sent.push(std::mem::take(&mut line));
+        }
+        assert!(
+            !sent.iter().any(|l| l.contains("\"despawn\"")),
+            "the editor told the game to despawn: {sent:?}"
+        );
+        assert!(named(&mut world, "bullet").is_some());
+    }
+
+    /// Nothing the game sends can draw over the editor: a camera arrives
+    /// switched off, and a UI root is pointed at the viewport camera and left at
+    /// the top level, where Bevy draws it.
+    #[test]
+    fn a_mirrored_camera_and_ui_root_stay_inside_the_play_view() {
+        let (mut world, _, mut game) = editor_with_game();
+        {
+            let registry = world.resource::<AppTypeRegistry>().clone();
+            let mut r = registry.write();
+            r.register::<Camera2d>();
+            r.register::<Node>();
+        }
+        let viewport = world.spawn((renzora_scene_api::EditorCamera, Name::new("viewport"))).id();
+
+        let camera = value_of(&Camera2d, &world);
+        let node = value_of(&Node::default(), &world);
+        game_sends(
+            &mut game,
+            &[
+                LinkMessage::Spawn { id: 50, parent: None, name: "game_ui_camera".into() },
+                LinkMessage::Set { id: 50, ty: Camera2d::type_path().into(), value: camera },
+                LinkMessage::Spawn { id: 51, parent: None, name: "game_ui_root".into() },
+                LinkMessage::Set { id: 51, ty: Node::type_path().into(), value: node },
+            ],
+        );
+        frames_until(&mut world, |w| named(w, "game_ui_root").is_some_and(|e| w.get::<Node>(e).is_some()));
+
+        let cam = named(&mut world, "game_ui_camera").unwrap();
+        assert_eq!(world.get::<Camera>(cam).map(|c| c.is_active), Some(false), "the camera would render to the window");
+
+        let root = named(&mut world, "game_ui_root").unwrap();
+        assert!(world.get::<ChildOf>(root).is_none(), "a UI root under a parent is never drawn");
+        assert_eq!(
+            world.get::<bevy::ui::UiTargetCamera>(root).map(|t| t.entity()),
+            Some(viewport),
+            "the UI root would draw through the editor's own UI camera"
+        );
     }
 
     #[test]

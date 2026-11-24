@@ -20,6 +20,10 @@ pub trait ApplySide {
     fn despawning(&mut self, _world: &mut World, _entity: Entity, _id: u64) {}
     /// Component `ty` on entity `id` is about to be set or removed.
     fn touching(&mut self, _id: u64, _ty: &str) {}
+    /// A message was just applied to `entity`, scene id `id` (spawned, or a
+    /// component set or removed). The side can correct anything it must not
+    /// take as sent.
+    fn applied(&mut self, _world: &mut World, _entity: Entity, _id: u64) {}
 }
 
 /// Nothing to record.
@@ -61,6 +65,7 @@ pub fn apply(
                 let entity = spawned.id();
                 by_id.insert(*id, entity);
                 side.spawned(world, entity, *id);
+                side.applied(world, entity, *id);
             }
             LinkMessage::Despawn { id } => {
                 if let Some(entity) = by_id.remove(id) {
@@ -110,6 +115,7 @@ pub fn apply(
                 } else {
                     reflect_component.remove(&mut entity_mut);
                 }
+                side.applied(world, entity, *id);
             }
             _ => {
                 rest.push(message);

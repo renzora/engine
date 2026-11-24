@@ -762,6 +762,15 @@ fn ensure_ui_visibility_components(
     }
 }
 
+/// A top-level UI node that belongs to the scene but is not a canvas: see the
+/// end of [`sync_ui_canvas_target_camera`].
+type SceneUiRoot = (
+    With<bevy::ui::Node>,
+    With<renzora_scene_api::SceneEntityId>,
+    Without<ChildOf>,
+    Without<UiCanvas>,
+);
+
 /// Route every UI canvas to the one camera it should render through this frame.
 ///
 /// This is the **single authority** on canvas `UiTargetCamera` in the editor,
@@ -803,6 +812,7 @@ fn sync_ui_canvas_target_camera(
     editor_cam_2d: Query<Entity, With<renzora_scene_api::EditorCamera2d>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>, &UiCanvas)>,
+    scene_ui_roots: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), SceneUiRoot>,
     settings: Option<Res<renzora_viewport_api::ViewportSettings>>,
     dock: Option<Res<renzora_ember::dock::Dock>>,
     fixed: Option<Res<renzora_ember::dock::FixedDock>>,
@@ -854,6 +864,20 @@ fn sync_ui_canvas_target_camera(
         }
         let needs_insert = existing_target_cam.is_none_or(|tc| tc.entity() != target);
         if needs_insert {
+            commands
+                .entity(entity)
+                .insert(bevy::ui::UiTargetCamera(target));
+        }
+    }
+
+    // Scene UI that is not under a canvas: a root a game script spawned and the
+    // live link mirrored here during Play, or one a scene was saved with. It is
+    // routed exactly like a canvas. Left alone it falls back to Bevy's default
+    // UI camera, which in the editor is the editor's own, and draws over the
+    // editor's whole interface. Editor chrome is never caught here: it carries
+    // no `SceneEntityId`.
+    for (entity, existing_target_cam) in &scene_ui_roots {
+        if existing_target_cam.is_none_or(|tc| tc.entity() != target) {
             commands
                 .entity(entity)
                 .insert(bevy::ui::UiTargetCamera(target));

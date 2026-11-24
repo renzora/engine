@@ -19,10 +19,17 @@ impl DenyUiCameraTargets for DynamicSceneBuilder<'_> {
     /// loads (e.g. an editor-only play-mode camera), and `ComputedUiTargetCamera`
     /// is a runtime-derived mirror — persisting either makes UI render to a dead
     /// entity in the runtime and silently disappear.
+    ///
+    /// `IsDefaultUiCamera` goes too. A scene loaded into the editor shares its
+    /// world with the editor's own interface, and a camera carrying it there
+    /// takes every untargeted UI root with it, the editor's included: the
+    /// editor's chrome vanished the moment a game script's UI camera was
+    /// mirrored in during Play. A game that wants one marks it from a script.
     #[cfg(feature = "ui")]
     fn deny_ui_camera_targets(self) -> Self {
         self.deny_component::<bevy::ui::UiTargetCamera>()
             .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+            .deny_component::<bevy::ui::IsDefaultUiCamera>()
     }
 
     #[cfg(not(feature = "ui"))]

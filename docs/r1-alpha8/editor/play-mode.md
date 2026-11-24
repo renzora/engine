@@ -38,6 +38,10 @@ A second or two after you press Play, the Console says **Game connected**. From 
 
 **You see the game in the editor.** The Hierarchy, the Inspector and the viewport show the game as it runs: the player's position as they walk, a crate tumbling, a bullet the game spawned appearing in the Hierarchy and disappearing when it hits. Select the player and the Inspector shows its live values.
 
+Objects the game spawns at the top level appear under a **Spawned during Play** group in the Hierarchy, so what the game made is easy to tell from your scene. The group goes when the game stops. UI a script builds without a canvas is the exception: it stays at the top level, because Bevy only draws a UI root that has no parent.
+
+**Nothing from the game can draw over the editor.** What the game shows stays inside the viewport. A camera the game spawns appears switched off in the editor (the game's own copy keeps rendering), and UI the game builds draws into the viewport the same way a scene's canvases do. Both stay in the Hierarchy and the Inspector, and edits to them still reach the game.
+
 **Your edits reach the game.** Change a component in the Inspector (a light's colour, a material, a collider's size, a value on one of your own components), move something with the gizmo, add or remove a component, add or delete an object, and the running game picks it up a moment later.
 
 **Stop puts the game's changes back and keeps yours.** When the game ends, everything it did to the scene is undone: the player returns to the start, spawned objects go, removed ones come back. Everything you changed while it ran stays. If you edited something the game was also moving, your value wins.
