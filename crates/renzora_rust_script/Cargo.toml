@@ -15,7 +15,12 @@ description = "Rust scripts — per-entity native code compiled from the project
 # feature rather than a separate one is right because the two are never
 # independent: a build without the shared images cannot run a script at all, so
 # there is nothing to offer adding.
-dynamic_linking = ["renzora/editor"]
+#
+# And it is what brings the compiler: building a script into a dylib, watching
+# sources and installing the toolchain all serve the dylib path only, so a
+# static build (a lean export, whose scripts are compiled in) does not carry
+# `renzora_plugin_build` or the code that drives it.
+dynamic_linking = ["renzora/editor", "dep:renzora_plugin_build"]
 # The other way a script can run: compiled INTO the binary rather than loaded.
 #
 # Turns on the opposite half of this crate. `dynamic_linking` builds each script
@@ -45,8 +50,8 @@ renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 renzora_physics_api = { path = "../api/renzora_physics_api" }
 # The same compiler driver the native-plugin loader uses. A script and a plugin
 # are built identically — the difference is only what the engine does with the
-# result.
-renzora_plugin_build = { path = "../renzora_plugin_build" }
+# result. Optional under `dynamic_linking`, see there.
+renzora_plugin_build = { path = "../renzora_plugin_build", optional = true }
 # For `ScriptComponent` and `ScriptBackend`. A Rust script is attached exactly
 # like a Lua one — same component, routed by file extension — so this crate has
 # to speak the scripting layer's vocabulary even though it bypasses its

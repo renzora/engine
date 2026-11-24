@@ -50,7 +50,9 @@ pub use renzora_engine;
 // The same, for the first-run setup the binary runs before Bevy starts. It
 // moved out of the editor executable when the editor became a loadable image
 // and there was only one binary left to run it.
-#[cfg(not(target_arch = "wasm32"))]
+// Only with `dynamic_linking`: everything it loads links the shared images, so a
+// static build (a lean export) has nothing to load and does not compile it.
+#[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
 pub use renzora_native_plugin;
 
 // Always compiled now. Whether it's added is decided at RUNTIME by the

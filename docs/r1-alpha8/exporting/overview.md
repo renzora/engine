@@ -179,6 +179,11 @@ What it strips/changes versus the copy modes:
 - On Windows it also static-links the MSVC runtime (no `VCRUNTIME140.dll`
   dependency), which is safe here precisely because a lean binary has no dynamic
   plugin ABI to preserve.
+- **No plugin loader, no script compiler, no live link.** A static binary cannot
+  load a plugin or a script library from disk, so it carries neither the loader
+  nor the compiler behind them: the plugins you ship and your Rust scripts are
+  compiled into it instead. The live link, which only serves a game Play starts,
+  is left out too.
 
 ### It needs a Rust toolchain — installed automatically
 
@@ -391,6 +396,12 @@ proof that terrain is used, and its absence from every scene is proof that it
 isn't. Subsystems a script can reach without naming a type are matched on the
 script API instead — a Lua file calling `play_sound` keeps audio, one calling
 `parkour_jump` keeps the traversal controller.
+
+A few features ride on others or on one component. **IK**, constraints and spring
+bones belong to **Skeletal animation**: an IK component in a scene or an IK call in
+a script keeps animation on, and a game without either drops both. **Planar
+reflections** (mirrors) are their own toggle, kept exactly when a scene has a
+`PlanarReflection`.
 
 The scan runs on **every** fresh open, so editing a scene and re-opening the
 dialog changes what it offers — saved presets included. A preset stores the

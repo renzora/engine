@@ -57,10 +57,12 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_forward_decal::DecalPlugin::default());
     #[cfg(feature = "gaussian_splatting")]
     app.add_plugins(renzora_gaussian_splatting::GaussianSplatPlugin::default());
+    #[cfg(feature = "animation")]
     app.add_plugins(renzora_ik::IkPlugin::default());
     #[cfg(feature = "light2d")]
     app.add_plugins(renzora_light2d::Light2dPlugin::default());
     app.add_plugins(renzora_lighting::LightingPlugin::default());
+    #[cfg(feature = "dynamic_linking")]
     app.add_plugins(renzora_live_link::LiveLinkPlugin::default());
     #[cfg(feature = "motion_blur")]
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin::default());
@@ -75,6 +77,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_parkour::ParkourPlugin::default());
     #[cfg(feature = "particles")]
     app.add_plugins(renzora_particles::ParticlesPlugin::default());
+    #[cfg(feature = "planar_reflection")]
     app.add_plugins(renzora_planar_reflection::PlanarReflectionPlugin::default());
     app.add_plugins(renzora_postprocess::PostProcessPlugin::default());
     app.add_plugins(renzora_profiler::ProfilerPlugin::default());
@@ -102,6 +105,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_terrain::TerrainPlugin::default());
     #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain::foliage::FoliagePlugin::default());
+    #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain_graph::TerrainGraphPlugin::default());
     #[cfg(feature = "tilemap")]
     app.add_plugins(renzora_tilemap::TilemapPlugin::default());

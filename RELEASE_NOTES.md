@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 09:04
+- fix(export): a lean export no longer compiles terrain, IK, mirrors, the plugin loader, the script compiler or the live link it does not use
+- feat(export): planar reflections are their own feature, kept only when a scene has a mirror
+- fix(sync): an optional crate listed after a comment in a multi-line feature gets its gate in the generated plugin list
+
 ## 2026-11-24 08:51
 - fix(export): a lean export builds again, without the animation, audio and networking it had switched off
 

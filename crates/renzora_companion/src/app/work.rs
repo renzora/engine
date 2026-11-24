@@ -177,7 +177,7 @@ fn texture_thumbnail(args: job_args::TextureThumbnail, ctx: &JobCtx) -> Result<S
 fn rust_script(args: job_args::RustScriptBuild, ctx: &JobCtx) -> Result<String, String> {
     ctx.progress(None, "compiling");
     let sdk = renzora_plugin_build::Sdk::load(&args.sdk_dir).map_err(|e| e.to_string())?;
-    let built = renzora_rust_script::build_to_path(&sdk, &args.project, &args.source)?;
+    let built = renzora_plugin_build::script::build_to_path(&sdk, &args.project, &args.source)?;
     Ok(built.display().to_string())
 }
 

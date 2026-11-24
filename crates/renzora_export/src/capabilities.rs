@@ -482,6 +482,16 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
+        id: "planar_reflection",
+        section: "render_3d",
+        label: "Planar reflections",
+        help: "Mirrors: a flat mesh that shows the scene from a mirrored camera.",
+        bevy_features: &[],
+        runtime_features: &["planar_reflection"],
+        default_on: true,
+        group: None,
+    },
+    Capability {
         id: "sprite_anim",
         section: "render_2d",
         label: "2D sprite animation",
@@ -986,6 +996,7 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "GaussianSplat",
         ],
         "forward_decal" => &["renzora_forward_decal::", "DecalSettings"],
+        "planar_reflection" => &["renzora_planar_reflection::", "PlanarReflection"],
         "cloth" => &["renzora_cloth::", "bevy_silk::"],
         // Its settings component is the only trace Solari leaves in a scene: a
         // lit scene looks the same either way, so nothing else can tell.
@@ -1057,6 +1068,16 @@ fn detection_types(id: &str) -> &'static [&'static str] {
             "set_anim_param",
             "set_anim_bool",
             "set_anim_trigger",
+            // IK, constraints and spring bones ride this capability: they pose
+            // skeletons, so a game without animation has none to pose. A scene
+            // that uses only IK (a look-at) still has to keep it.
+            "renzora_ik::",
+            "ik_set_",
+            "look_at_set_",
+            "foot_ik_set_weight",
+            "rotation_limit_set_weight",
+            "copy_constraint_set_weight",
+            "spring_bones_",
         ],
         "audio" => &[
             "renzora_audio::",
@@ -1586,6 +1607,7 @@ pub const RENDER_3D_DEPENDENTS: &[&str] = &[
     "parkour",
     "gaussian_splatting",
     "forward_decal",
+    "planar_reflection",
     // Hardware ray tracing is bevy_pbr's, so it cannot outlive it either.
     "solari",
 ];

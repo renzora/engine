@@ -71,7 +71,11 @@
 
 pub mod backend;
 pub mod hooks;
+// Building scripts into dylibs and loading them: the `dynamic_linking` half (see
+// the manifest). A static build dispatches compiled-in scripts and has neither.
+#[cfg(feature = "dynamic_linking")]
 pub mod toolchain;
+#[cfg(feature = "dynamic_linking")]
 pub mod watch;
 
 use std::collections::HashMap;
@@ -79,12 +83,19 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
-use libloading::{Library, Symbol};
+use libloading::Library;
+#[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
+use libloading::Symbol;
 #[cfg(target_arch = "wasm32")]
-use wasm_dl::{Library, Symbol};
+use wasm_dl::Library;
+#[cfg(all(target_arch = "wasm32", feature = "dynamic_linking"))]
+use wasm_dl::Symbol;
 use renzora_log_api::console_error;
+#[cfg(feature = "dynamic_linking")]
 use renzora_project_api::SplashState;
-use renzora_scripting::{scripts_should_run, ScriptComponent};
+#[cfg(any(feature = "static_scripts", feature = "dynamic_linking"))]
+use renzora_scripting::scripts_should_run;
+use renzora_scripting::ScriptComponent;
 
 /// `libloading`'s shape, for a platform that has no dynamic loading at all.
 ///
@@ -176,9 +187,10 @@ impl Plugin for RustScriptPlugin {
         // generated and the linker resolved — so all that is left is to publish
         // the table and dispatch from it.
         //
-        // Deliberately checked BEFORE `dynamic_linking`: an export has neither
-        // the shared images nor a Rust toolchain, and would otherwise take the
-        // early return below and report `No backend for Some("rs")`.
+        // Wins over `dynamic_linking` if both were ever on: an export has neither
+        // the shared images nor a Rust toolchain, and the dylib path would report
+        // `No backend for Some("rs")`. Each configuration compiles exactly one of
+        // the three branches below, so there is no early return to step around.
         #[cfg(feature = "static_scripts")]
         {
             app.init_resource::<LoadedScripts>()
@@ -203,14 +215,14 @@ impl Plugin for RustScriptPlugin {
                         .in_set(renzora_scripting::ScriptingSet::ScriptExecution)
                         .run_if(scripts_should_run),
                 );
-            return;
         }
 
-        #[cfg(not(feature = "static_scripts"))]
-        if !cfg!(feature = "dynamic_linking") {
+        #[cfg(all(not(feature = "static_scripts"), not(feature = "dynamic_linking")))]
+        {
+            let _ = app;
             debug!("rust scripts unavailable: this build links no shared engine image");
-            return;
         }
+        #[cfg(all(feature = "dynamic_linking", not(feature = "static_scripts")))]
         app.init_resource::<LoadedScripts>()
             .init_resource::<watch::ScriptWatcher>()
             // The compiler check and the install prompt's answer. The prompt
@@ -347,6 +359,7 @@ impl Plugin for RustScriptPlugin {
 
 /// A game process rather than the editor: Play's child, or an exported game.
 /// Absent counts as a game, matching `EditorSession`'s own default.
+#[cfg(feature = "dynamic_linking")]
 fn not_editor_session(session: Option<Res<renzora_project_api::EditorSession>>) -> bool {
     !session.is_some_and(|s| s.is_editor())
 }
@@ -359,6 +372,7 @@ fn not_editor_session(session: Option<Res<renzora_project_api::EditorSession>>) 
 /// does not list it, and the execution loop reports `No backend for Some("rs")`.
 ///
 /// The steady-state cost is one `bool` test per frame.
+#[cfg(any(feature = "static_scripts", feature = "dynamic_linking"))]
 fn register_backend(
     engine: Option<ResMut<renzora_scripting::ScriptEngine>>,
     mut done: Local<bool>,
@@ -483,6 +497,7 @@ impl LoadedScripts {
 /// Defined in `renzora_plugin_build`, which has no Bevy, so the standalone
 /// companion builds scripts with the same code; split from [`load_library`] so
 /// the compile can run off the main thread.
+#[cfg(feature = "dynamic_linking")]
 pub use renzora_plugin_build::script::build_to_path;
 
 /// `dlopen` a built script and find its entry point.
@@ -587,6 +602,7 @@ pub const PREBUILT_MANIFEST: &str = "scripts.index";
 ///
 /// Runs once. Absent manifest means no scripts were shipped, which is the normal
 /// case for a project that has none.
+#[cfg(feature = "dynamic_linking")]
 fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool>) {
     if *done {
         return;
@@ -642,6 +658,7 @@ fn load_prebuilt_scripts(mut loaded: ResMut<LoadedScripts>, mut done: Local<bool
     }
 }
 
+#[cfg(feature = "dynamic_linking")]
 pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Library), String> {
     let lib = unsafe { Library::new(path) }.map_err(|e| e.to_string())?;
     let f: Symbol<ScriptFn> = match unsafe { lib.get(SCRIPT_SYMBOL) } {
@@ -675,6 +692,7 @@ pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Libr
 /// under Application Support because a signed `.app` cannot be written into —
 /// so a caller appending `"sdk"` to an install root is now wrong there, and
 /// resolving it in one place is what stops that reappearing.
+#[cfg(feature = "dynamic_linking")]
 pub fn sdk_dir() -> Option<PathBuf> {
     exe_dir().map(|root| renzora_plugin_build::install::sdk_dir(&root))
 }
@@ -787,6 +805,7 @@ pub(crate) fn describe_panic(name: &str, caught: &renzora_crash_api::CaughtPanic
 /// NOT simply the executable's parent: inside a Linux AppImage that is a
 /// read-only temporary mount with no SDK beside it. See
 /// [`renzora_plugin_build::install`].
+#[cfg(feature = "dynamic_linking")]
 fn exe_dir() -> Option<PathBuf> {
     renzora_plugin_build::install::root()
 }

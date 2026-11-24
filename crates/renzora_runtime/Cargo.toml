@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "auto_exposure", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "gizmos", "networking", "editor_tools"]
+default = ["crash_dialog", "shader_graph", "tonemapping_luts", "scripting", "ui", "gltf", "navmesh", "terrain", "audio", "particles", "animation", "game_ui", "bloom", "auto_exposure", "ssao", "ssr", "ssil", "dof", "motion_blur", "distance_fog", "volumetric_fog", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "solari", "virtual_geometry", "localization", "script_http", "physics_3d", "physics_2d", "avian", "render_3d", "render_2d", "tilemap", "sprite_anim", "cloth", "gaussian_splatting", "ragdoll", "parkour", "light2d", "forward_decal", "planar_reflection", "gizmos", "networking", "editor_tools"]
 # The native crash message box. Forwarded rather than inherited: this crate deps
 # `renzora_engine` with `default-features = false`, so without an explicit switch
 # the dialog would vanish from the editor too — and the whole point is to drop it
@@ -64,8 +64,16 @@ dynamic_linking = [
     # both on". That is harmless in practice: `dynamic_linking` is only ever
     # enabled for a full editor/dev build, where `ui` is on via `default`.
     "renzora_dylib/ui",
+    # The plugin loader and the first-run plugin build: what they load links the
+    # shared images, so a static build has nothing they could ever load. Optional
+    # here so a lean export does not compile the loader, the compiler driver and
+    # the SDK reader for a binary that turns every plugin down.
+    "dep:renzora_native_plugin",
     "renzora_native_plugin/dynamic_linking",
     "renzora_rust_script/dynamic_linking",
+    # The live link only serves a game Play started (`--live-link`), which is
+    # always the dynamically linked build beside the editor; an export never is.
+    "dep:renzora_live_link",
 ]
 # The static counterpart: Rust scripts compiled into the binary rather than
 # loaded as dylibs. Set only by the lean exporter — see `static_scripts` in the
@@ -96,7 +104,7 @@ render_3d = [
     "renzora_ember?/render_3d",
     "renzora_dylib?/render_3d",
     "renzora_particles?/render_3d",
-    "renzora_planar_reflection/render_3d",
+    "renzora_planar_reflection?/render_3d",
 ]
 # The node-graph material system. Its own capability: ~1 MiB that a game using
 # only StandardMaterial never touches. Auto-detected from `.material` assets.
@@ -160,7 +168,7 @@ scripting = [
     "renzora_ragdoll?/scripting",
     "renzora_parkour?/scripting",
     "renzora_lang?/scripting",
-    "renzora_ik/scripting",
+    "renzora_ik?/scripting",
 ]
 # Solari ray-traced lighting: the `renzora_solari` plugin plus the runtime's
 # GPU ray-tracing probe. Paired with the root `bevy/bevy_solari` feature by the
@@ -203,6 +211,9 @@ networking = ["dep:renzora_network", "renzora_engine/networking"]
 # this never pulls an optional subsystem in on its own.
 gizmos = ["renzora_light2d?/gizmos"]
 forward_decal = ["dep:renzora_forward_decal"]
+# Mirrors. Its own capability, auto-detected from a `PlanarReflection` in a
+# scene; a game without one drops the mirrored-camera renderer.
+planar_reflection = ["dep:renzora_planar_reflection"]
 navmesh = ["dep:renzora_navmesh"]
 # The particle system, `renzora_particles`, which also plays effects made for
 # the retired bevy_hanabi integration (see its `legacy` module).
@@ -218,13 +229,19 @@ sprite_anim = ["dep:renzora_sprite_anim"]
 # navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
 # `shader_graph` too: a terrain is textured by a node-graph landscape material,
 # and `renzora_terrain` links the material crate for it.
-terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain", "shader_graph"]
+# The terrain graph builds a terrain's heights and depends on `renzora_terrain`,
+# so it goes with it: always compiled, it brought terrain (and the physics it
+# collides through) back into every export that had switched terrain off.
+terrain = ["dep:renzora_terrain", "dep:renzora_terrain_graph", "renzora_engine/terrain", "renzora_navmesh?/terrain", "shader_graph"]
 # Pulls the backend as well as the API. They are two crates because the mixer
 # links neither Bevy nor the engine, not because a build would ever want one
 # without the other: `renzora_audio` is the bus graph, the components and the
 # timeline, and every one of them is inert with nothing to render a block.
 audio = ["dep:renzora_audio", "dep:renzora_audio_backend", "renzora_engine/audio"]
-animation = ["dep:renzora_animation", "renzora_engine/animation"]
+# IK, constraints and spring bones go with it: they pose skeletons, and a game
+# with no animation has none to pose. (The exporter's animation capability is
+# detected from IK components and script calls as well.)
+animation = ["dep:renzora_animation", "dep:renzora_ik", "renzora_engine/animation"]
 # Pulls `scripting`: ember's markup runtime binds `.html` fields to script
 # values, so game UI without the scripting layer wouldn't compile. Pulls `ui` for
 # the obvious reason — markup renders through bevy_ui.
@@ -288,10 +305,9 @@ renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
 renzora_parkour = { path = "../renzora_parkour", optional = true }
 renzora_light2d = { path = "../renzora_light2d", optional = true }
 renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
-# IK, constraints and spring bones. Hand-written rather than generated only so
-# `scripting` above can forward to it; not optional, so the generator emits an
-# ungated install line, and there is no exporter capability to strip it yet.
-renzora_ik = { path = "../renzora_ik" }
+# IK, constraints and spring bones. Optional under `animation` (see there); the
+# generator reads that gate back and emits the matching `#[cfg]` in `plugins.rs`.
+renzora_ik = { path = "../renzora_ik", optional = true }
 # Moved out of the generated block below and made strippable, per the procedure
 # in `xtask/src/sync.rs`: wind sways meshes through a `StandardMaterial`
 # extension, so it is bevy_pbr all the way down and cannot compile at all in a 2D
@@ -362,11 +378,12 @@ renzora_ember = { path = "../renzora_ember", default-features = false, optional 
 # its renderers a lean export compiles; a 2D export has no bevy_pbr to build
 # the 3D one against.
 renzora_particles = { path = "../renzora_particles", optional = true, default-features = false }
-# Moved out of the generated block so a 2D export can build it without its
-# renderer: `default-features = false`, with `render_3d` above forwarding the
-# feature. Deliberately NOT optional: the component is registered in every
-# build, so a scene carrying a mirror still loads in an export that draws none.
-renzora_planar_reflection = { path = "../renzora_planar_reflection", default-features = false }
+# `default-features = false` so a 2D export can build it without its renderer,
+# with `render_3d` above forwarding the feature. Optional under
+# `planar_reflection`, a capability detected from the component itself: an
+# export keeps it exactly when a scene carries a mirror, so the case it was once
+# kept for (a mirror in a scene that would then fail to load) cannot arise.
+renzora_planar_reflection = { path = "../renzora_planar_reflection", default-features = false, optional = true }
 # Optional under `networking`. It was non-optional because the binary's
 # `--server`/`--host` path reached it through `renzora_runtime::renzora_network`
 # and there was nowhere to put the `#[cfg]`; `src/server.rs` is that somewhere
@@ -418,8 +435,14 @@ renzora_clouds = { path = "../renzora_clouds", optional = true }
 # The plugin loader. NOT a generated entry: it is added by hand at the end of
 # each binary's assembly, so an installed plugin's systems land where a
 # statically linked one's would. Declared here because this crate forwards
-# `dynamic_linking` to it and re-exports it for the binaries.
-renzora_native_plugin = { path = "../renzora_native_plugin" }
+# `dynamic_linking` to it and re-exports it for the binaries. Optional under
+# `dynamic_linking`: see there.
+renzora_native_plugin = { path = "../renzora_native_plugin", optional = true }
+# Moved out of the generated block below: optional under `dynamic_linking` (see
+# there), which the generator reads back to gate its install line.
+renzora_live_link = { path = "../renzora_live_link", optional = true }
+# Moved out of the generated block below: optional under `terrain` (see there).
+renzora_terrain_graph = { path = "../renzora_terrain_graph", optional = true }
 
 # ── generated by `cargo renzora sync` — declared plugin crates ──
 # Discovered from their plugin declarations. Plain, non-optional
@@ -432,12 +455,10 @@ renzora_native_plugin = { path = "../renzora_native_plugin" }
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
-renzora_live_link = { path = "../renzora_live_link" }
 renzora_net = { path = "../renzora_net" }
 renzora_profiler = { path = "../renzora_profiler" }
 renzora_rust_script = { path = "../renzora_rust_script" }
 renzora_svg = { path = "../renzora_svg" }
-renzora_terrain_graph = { path = "../renzora_terrain_graph" }
 # ── end generated ──
 
 # Loading the editor image beside the executable — see `src/editor_image.rs`.

@@ -22,8 +22,9 @@ renzora_profiler = { path = "../renzora_profiler" }
 # The protocol with the editor, re-exported as `protocol`.
 renzora_companion_proto = { path = "../renzora_companion_proto" }
 serde = { version = "1", features = ["derive"] }
-# The job handlers call the same functions the editor used to call itself.
-renzora_rust_script = { path = "../renzora_rust_script" }
+# The job handlers call the same functions the editor used to call itself. A
+# script builds through `renzora_plugin_build` directly, the crate that defines
+# the compile.
 renzora_plugin_build = { path = "../renzora_plugin_build" }
 renzora_rvg = { path = "../renzora_rvg", features = ["bake"] }
 renzora_marketplace = { path = "../renzora_marketplace" }

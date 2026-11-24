@@ -17,8 +17,10 @@
 )]
 
 // The first-run setup window — unpacking the SDK and building native plugins
-// before the editor exists. Editor sessions only; see the call site.
-#[cfg(not(target_arch = "wasm32"))]
+// before the editor exists. Editor sessions only; see the call site. Like the
+// plugin loader it serves, only in a build with the shared images
+// (`dynamic_linking`): a static lean export loads no plugin, so has none to build.
+#[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
 mod setup_ui;
 
 use bevy::prelude::*;
@@ -80,10 +82,10 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     // The pass over `plugins/`, after the engine crates so a plugin's systems
     // land in the same place a statically linked one's would.
     //
-    // Desktop-only, matching the re-export it reaches through: wasm has no
-    // dynamic linking at all, so there is nothing on disk for this to scan and
-    // `renzora_runtime` does not compile the crate there.
-    #[cfg(not(target_arch = "wasm32"))]
+    // Only with the shared images, matching the re-export it reaches through:
+    // wasm has no dynamic linking at all, and a static lean export turns every
+    // plugin down, so neither compiles the loader.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
     app.add_plugins(renzora_runtime::renzora_native_plugin::NativePluginLoader::default());
 }
 
@@ -112,7 +114,7 @@ pub fn start() {
 /// launches afterwards finds nothing left to build. A plugin that fails is
 /// reported and skipped, not fatal: one broken third-party plugin must not fail
 /// an engine build, and the editor still names it in Settings.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
 fn build_plugins_headless() {
     use renzora_runtime::renzora_native_plugin::prebuild::{self, Progress};
     let prepared = prebuild::run(&mut |p| match &p {
@@ -167,7 +169,7 @@ fn main() {
     // compiles its installed plugins in the build's own terminal. Without it the
     // editor found them stale on launch, opened the setup window to compile
     // them and then restarted, which made every engine build two waits.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
     if std::env::args().any(|a| a == "--build-plugins") {
         build_plugins_headless();
         return;
@@ -232,7 +234,7 @@ fn main() {
     // the run that finished: an interrupted build leaves `needed()` true, so
     // relaunching would open the same window again — which is what pressing ×
     // during a build used to do, over and over.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "dynamic_linking"))]
     if renzora_runtime::renzora_native_plugin::prebuild::needed() {
         match setup_ui::run() {
             setup_ui::Outcome::Finished => {
