@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 09:46
+- feat(export): the lean build console is on by default and opens on macOS and Linux too
+- feat(export): the export dialog shows a short status instead of the full build log
+- fix(export): a lean export with 3D rendering off no longer fails to compile in renzora_lighting
+
 ## 2026-11-24 09:35
 - fix(export): closing the export dialog during a build no longer leaves the Export button disabled
 

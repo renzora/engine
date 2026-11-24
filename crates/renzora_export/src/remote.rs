@@ -90,7 +90,8 @@ pub struct ExportJob {
     pub disabled_runtime_features: Vec<String>,
     pub lean_profile: LeanProfile,
     pub upx_compress: bool,
-    /// `default` so a job from an editor that predates the option still reads.
+    /// `default` so a job from an editor that predates the option still reads;
+    /// such an editor showed the build in its dialog, so off.
     #[serde(default)]
     pub build_console: bool,
     pub included_files: Option<Vec<String>>,

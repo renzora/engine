@@ -6,6 +6,14 @@ edition = "2021"
 # No `editor` feature: lean runtime crate. The Sun inspector moved to the nested
 # renzora_lighting_editor crate (crates/renzora_lighting/editor).
 
+[features]
+# The camera-side shadow systems (`src/shadows.rs`): bevy_pbr's
+# `ContactShadows` and the soft-shadow fields Bevy's PCSS feature adds to
+# lights. Not default, because the editor crates depend on this one with
+# default features and would switch it back on in a lean export with no 3D:
+# `renzora_engine/render_3d` forwards it instead.
+render_3d = []
+
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }

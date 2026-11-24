@@ -1,14 +1,19 @@
-//! The build log view: a heading, a progress bar, a scrolling terminal of the
-//! live build output, and Copy log / Cancel.
+//! The export's progress view: what is happening, in a line, and Copy log /
+//! Cancel.
+//!
+//! It used to stream the whole build log into a terminal box here. A lean
+//! build now shows cargo in a real terminal window (`crate::console`), where it
+//! has its colours and progress bar, so repeating it here was a worse copy of
+//! that window. What remains is the step the export is on, the result, and on
+//! a failure the error. The full log is still collected, so Copy log has it.
 
 use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::interaction::PASS_THROUGH;
-use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color};
-use renzora_ember::reactive::{react, Rx};
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{scroll_view_pinned, spinner};
+use renzora_ember::widgets::{scroll_area, spinner};
 use renzora_ember::UiInteraction;
 
 use crate::overlay::{ExportOverlayState, ExportProgress};
@@ -16,38 +21,8 @@ use crate::overlay::{ExportOverlayState, ExportProgress};
 use super::widgets::{cursor, mode_label, pill_button, txt};
 use super::{CancelOrBackBtn, CopyLogBtn, LogScroll, GREEN, RED};
 
-/// Rough crate count for a full lean build, used only to scale the progress bar
-/// (cargo gives no total in piped mode). Over/under-estimating just makes the bar
-/// move a little fast or slow; it snaps to full on "Finished"/Done.
-const LEAN_BUILD_ESTIMATE: f32 = 480.0;
-
-/// Progress-bar fraction (0..1) from compiled-crate count, full once finished.
-fn build_fraction(s: &ExportOverlayState) -> f32 {
-    if s.build_finished {
-        1.0
-    } else if s.build_compiled == 0 {
-        0.02
-    } else {
-        (s.build_compiled as f32 / LEAN_BUILD_ESTIMATE).min(0.97)
-    }
-}
-
-/// Reactively drive a node's width as a percentage (for the progress fill).
-fn bind_width_pct(
-    commands: &mut Commands,
-    target: Entity,
-    value: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
-) {
-    react(commands, move |w: &mut World| {
-        if w.get_entity(target).is_err() {
-            return false;
-        }
-        let v = value(&Rx::new(&*w)).clamp(0.0, 1.0);
-        if let Some(mut n) = w.get_mut::<Node>(target) {
-            n.width = Val::Percent(v * 100.0);
-        }
-        true
-    });
+fn progress(w: &renzora_ember::reactive::Rx) -> Option<ExportProgress> {
+    w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone())
 }
 
 pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -55,61 +30,79 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(10.0), flex_grow: 1.0, min_height: Val::Px(0.0), padding: UiRect::all(Val::Px(20.0)), ..default() })
         .id();
 
-    // Heading — reflects the current phase.
-    let heading_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+    // The status, in the middle of the dialog.
+    let body = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_grow: 1.0,
+            min_height: Val::Px(0.0),
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            row_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+
+    let heading_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(10.0), ..default() }).id();
     let sp = spinner(commands);
     bind_display(commands, sp, |w| {
         w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false)
     });
-    let heading = txt(commands, fonts, "", 16.0, text_primary());
-    bind_text(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
+    let heading = txt(commands, fonts, "", 18.0, text_primary());
+    bind_text(commands, heading, |w| match progress(w) {
         Some(ExportProgress::Done(_)) => renzora_lang_api::t("export.status.complete"),
         Some(ExportProgress::Error(_)) => renzora_lang_api::t("export.status.failed"),
-        _ => renzora_lang_api::t("export.status.exporting"),
+        _ => renzora_lang_api::t("export.status.exporting_project"),
     });
+    bind_text_color(commands, heading, |w| match progress(w) {
+        Some(ExportProgress::Done(_)) => rgb(GREEN),
+        Some(ExportProgress::Error(_)) => rgb(RED),
+        _ => rgb(text_primary()),
+    });
+    commands.entity(heading_row).add_children(&[sp, heading]);
+
     // Which build this is, since the settings that said so are hidden while it
     // runs.
-    let sub = txt(commands, fonts, "", 11.5, text_muted());
+    let sub = txt(commands, fonts, "", 12.0, text_muted());
     bind_text(commands, sub, |w| {
         w.get_resource::<ExportOverlayState>()
             .map(|s| format!("{} · {}", s.platform.display_name(), mode_label(s.platform, s.packaging_mode)))
             .unwrap_or_default()
     });
-    bind_text_color(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
-        Some(ExportProgress::Done(_)) => rgb(GREEN),
-        Some(ExportProgress::Error(_)) => rgb(RED),
-        _ => rgb(text_primary()),
-    });
-    commands.entity(heading_row).add_children(&[sp, heading, sub]);
 
-    // Progress bar.
-    let track = commands.spawn((Node { width: Val::Percent(100.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb(card_bg())))).id();
-    let fill = commands.spawn((Node { width: Val::Percent(2.0), height: Val::Percent(100.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(accent())))).id();
-    commands.entity(track).add_child(fill);
-    bind_width_pct(commands, fill, |w| w.get_resource::<ExportOverlayState>().map(build_fraction).unwrap_or(0.0));
-    bind_bg(commands, fill, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
-        Some(ExportProgress::Error(_)) => rgb(RED),
-        Some(ExportProgress::Done(_)) => rgb(GREEN),
-        _ => rgb(accent()),
+    // One line: the step it is on, where it put the result, or why it failed.
+    // An error can run to cargo's last sixty lines when the build ran here
+    // rather than in a console, so it scrolls instead of growing the dialog.
+    let detail = commands
+        .spawn((
+            Text::new(""),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+            TextLayout::justify(Justify::Center),
+            PASS_THROUGH,
+        ))
+        .id();
+    bind_text(commands, detail, |w| {
+        let Some(s) = w.get_resource::<ExportOverlayState>() else { return String::new() };
+        match &s.progress {
+            ExportProgress::Done(msg) | ExportProgress::Error(msg) => msg.clone(),
+            ExportProgress::Working(step) => step.trim().to_string(),
+            _ => String::new(),
+        }
     });
+    bind_text_color(commands, detail, |w| match progress(w) {
+        Some(ExportProgress::Error(_)) => rgb(text_primary()),
+        _ => rgb(text_muted()),
+    });
+    let detail_scroll = scroll_area(commands, detail, 260.0);
+    commands.entity(detail_scroll).insert(LogScroll);
+    let detail_box = commands
+        .spawn(Node { width: Val::Percent(100.0), margin: UiRect::top(Val::Px(6.0)), flex_direction: FlexDirection::Column, ..default() })
+        .add_child(detail_scroll)
+        .id();
 
-    // Terminal — dark monospace box with the FULL build log in a pinned scroll
-    // view: it auto-follows the bottom as new output streams in, but releases if
-    // the user scrolls up to read back (an error can otherwise be pushed out of
-    // view by cargo's huge linker-command dump). `build_log` is tail-capped at 600
-    // lines upstream so this stays bounded.
-    // Fills whatever height the modal has rather than a fixed 360 px. The modal
-    // is tall and the log was showing twenty lines of an eight-hundred-line
-    // build with empty space beneath it; `min_height` keeps it usable when the
-    // window is short.
-    let term = commands.spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(220.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(10.0)), border_radius: BorderRadius::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
-    let log_text = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_muted())), PASS_THROUGH)).id();
-    bind_text(commands, log_text, |w| {
-        w.get_resource::<ExportOverlayState>().map(|s| s.build_log.join("\n")).unwrap_or_default()
-    });
-    let log_scroll = scroll_view_pinned(commands, log_text);
-    commands.entity(log_scroll).insert(LogScroll);
-    commands.entity(term).add_child(log_scroll);
+    commands.entity(body).add_children(&[heading_row, sub, detail_box]);
 
     // Buttons: Copy log (left), Cancel/Back (right).
     let btn_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
@@ -127,6 +120,6 @@ pub(super) fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Ent
     commands.entity(btn).add_child(btn_label);
     commands.entity(btn_row).add_children(&[copy_btn, btn]);
 
-    commands.entity(view).add_children(&[heading_row, track, term, btn_row]);
+    commands.entity(view).add_children(&[body, btn_row]);
     view
 }

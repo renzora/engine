@@ -185,15 +185,30 @@ What it strips/changes versus the copy modes:
   compiled into it instead. The live link, which only serves a game Play starts,
   is left out too.
 
-### Watching the build in a console (Windows)
+### Watching the build in a console
 
-A lean build compiles for several minutes, and the dialog shows cargo's output
-line by line. To see it as cargo itself shows it, with colours and the live
-progress bar, turn on **Show the build in a console** under the packaging mode.
-The compile then runs in a console window of its own. The window closes by
-itself when the build succeeds and stays open after a failure, so the errors are
-still there to read; **Cancel** in the dialog stops the build either way. The
-option is saved with the preset.
+A lean build compiles in a terminal window of its own, so you see cargo as it
+shows itself, with colours and the live progress bar. While it runs, the export
+dialog shows only **Exporting project…** and the step it is on; **Copy log**
+still copies everything the export printed.
+
+The window closes by itself when the build succeeds and stays open after a
+failure, so the errors are still there to read. **Cancel** in the dialog stops
+the build either way. Closing the window yourself mid-build fails the export.
+
+- **Windows** opens a console window (in Windows Terminal, if that is your
+  default terminal).
+- **macOS** opens Terminal. Depending on your Terminal profile, the window may
+  stay open after a successful build, marked *Process completed*.
+- **Linux** opens `$TERMINAL` if you have set it, otherwise the first of
+  `x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`, `kitty`,
+  `alacritty`, `wezterm`, `foot` and `xterm` that is installed. With no desktop
+  (an SSH session) or no terminal found, the build runs in the dialog instead and
+  the dialog says why.
+
+It is on by default. Turn off **Show the build in a console** under the
+packaging mode to build inside the dialog instead, which also shows cargo's
+output when the build fails. The choice is saved with the preset.
 
 ### It needs a Rust toolchain — installed automatically
 

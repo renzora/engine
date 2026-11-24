@@ -38,7 +38,7 @@ crash_dialog = ["dep:rfd", "dep:arboard"]
 # denies (scene_io.rs) and the render-mode/contact-shadow setup (lib.rs). NOTE: a
 # full 2D build also needs the bevy `3d` meta-feature dropped at the root manifest
 # + bevy_light handling — see plan (2D MODE).
-render_3d = ["renzora_render_api/render_3d"]
+render_3d = ["renzora_render_api/render_3d", "renzora_lighting/render_3d"]
 # The node-graph material system (`renzora_shader`). Split out of `render_3d`
 # because it's a large slice of it (~1 MiB of code) that a game using only
 # StandardMaterial never touches. Gates the `GraphMaterial`/`MaterialResolved`

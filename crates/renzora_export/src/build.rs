@@ -30,67 +30,6 @@ use std::time::Duration;
 use crate::templates::Platform;
 use crate::toolchain::Toolchain;
 
-/// `cmd` (cargo, fully set up) run in a console window of its own.
-///
-/// Wrapped in `cmd /c "<cargo> || pause"`: a console closes when its process
-/// exits, which would take a failed build's errors with it, so the window waits
-/// for a key on failure and closes by itself on success. The exit code is kept,
-/// so the export still knows whether the build worked. The working directory
-/// and environment are copied over (`CARGO_ENCODED_RUSTFLAGS` is what makes the
-/// build static), and output is left unpiped so cargo sees a terminal.
-#[cfg(target_os = "windows")]
-fn console_command(cmd: &std::process::Command) -> std::process::Command {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-
-    // Quoted for `cmd` when it has a space; nothing a cargo line carries
-    // (paths, `--profile`, a comma-separated feature list) needs more.
-    let quote = |s: &std::ffi::OsStr| {
-        let s = s.to_string_lossy();
-        if s.contains(' ') { format!("\"{s}\"") } else { s.into_owned() }
-    };
-    let mut line = quote(cmd.get_program());
-    for arg in cmd.get_args() {
-        line.push(' ');
-        line.push_str(&quote(arg));
-    }
-    let mut wrapper = std::process::Command::new("cmd.exe");
-    wrapper.raw_arg(format!(
-        "/c \"{line} || (echo. & echo The build failed. Press any key to close this window. & pause >nul & exit /b 1)\""
-    ));
-    if let Some(dir) = cmd.get_current_dir() {
-        wrapper.current_dir(dir);
-    }
-    for (key, value) in cmd.get_envs() {
-        match value {
-            Some(value) => wrapper.env(key, value),
-            None => wrapper.env_remove(key),
-        };
-    }
-    wrapper.creation_flags(CREATE_NEW_CONSOLE);
-    wrapper
-}
-
-/// Never called off Windows: `build_lean` only asks for a console there.
-#[cfg(not(target_os = "windows"))]
-fn console_command(_cmd: &std::process::Command) -> std::process::Command {
-    unreachable!("a build console is Windows only")
-}
-
-/// End `pid` and everything it started. Windows only, like the console.
-fn kill_tree(pid: u32) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/T", "/F", "/PID", &pid.to_string()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    #[cfg(not(target_os = "windows"))]
-    let _ = pid;
-}
-
 /// Per-host RUSTFLAGS for the lean build, encoded for `CARGO_ENCODED_RUSTFLAGS`
 /// (`\x1f`-separated args). An *empty* string still counts as "set", so cargo
 /// drops the config's `prefer-dynamic` (and the Linux `mold` link-arg) — exactly
@@ -461,8 +400,9 @@ pub fn build_lean(
     // Compile DLSS in. Decided by the caller with [`export_has_dlss`], which
     // also decides whether the DLSS libraries are shipped beside the result.
     dlss: bool,
-    // Run cargo in a console window of its own (see [`console_command`]).
-    // Honoured for a native build on Windows only; ignored anywhere else.
+    // Run cargo in a terminal window of its own (see [`crate::console`]).
+    // Ignored for a container build; falls back to the dialog where no
+    // terminal can be opened.
     build_console: bool,
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
@@ -630,18 +570,60 @@ pub fn build_lean(
     // A console of its own, or the dialog's log. Not both: a process writes to
     // a console or to a pipe, and the point of the console is that cargo sees a
     // terminal, which is what gives it colours and the redrawn progress bar.
-    let console = build_console && !in_container && cfg!(target_os = "windows");
-    let mut cmd = if console {
-        progress("Building in its own console window. It closes on success and stays open if the build fails.".into());
-        console_command(&cmd)
-    } else {
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        cmd
+    // A container build has its own output path, and a machine with no
+    // terminal to open falls back to the dialog.
+    let built: Result<(), String> = 'build: {
+        if build_console && !in_container {
+            progress("Building in its own console window. It closes on success and stays open if the build fails.".into());
+            match crate::console::run(&cmd, &ws.join("target"), cancel)? {
+                crate::console::Finished::Code(0) => break 'build Ok(()),
+                crate::console::Finished::Code(code) => {
+                    break 'build Err(format!(
+                        "Lean build failed (cargo exited with {code}). The compiler's output is in the build console."
+                    ))
+                }
+                crate::console::Finished::Cancelled => break 'build Err("Export cancelled".into()),
+                crate::console::Finished::NoTerminal(why) => {
+                    progress(format!("{why} Building here instead."));
+                }
+            }
+        }
+        run_piped(cmd, cancel, progress)
     };
+    built?;
+
+    // `--target` nests the output under the triple; a plain host build has no
+    // `--target` and writes straight into `target/<profile>/`. That follows the
+    // flag, not the container, which is why the web (native, but targeted)
+    // lands in the nested path too.
+    let bin = match target_triple {
+        Some(triple) => ws
+            .join("target")
+            .join(triple)
+            .join("dist-lean")
+            .join(bin_filename(platform)),
+        None => ws.join("target").join("dist-lean").join(bin_filename(platform)),
+    };
+    if !bin.is_file() {
+        return Err(format!(
+            "Lean build reported success but the binary is missing at {}",
+            bin.display()
+        ));
+    }
+    Ok(bin)
+}
+
+/// Run `cmd` with its output piped into the dialog: each stderr line becomes a
+/// progress line, and the last 60 make the error if cargo fails.
+fn run_piped(
+    mut cmd: std::process::Command,
+    cancel: &Arc<AtomicBool>,
+    progress: &mut dyn FnMut(String),
+) -> Result<(), String> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start cargo: {e}"))?;
-    let pid = child.id();
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -660,11 +642,6 @@ pub fn build_lean(
         std::thread::spawn(move || {
             while !done.load(Ordering::Relaxed) {
                 if cancel.load(Ordering::Relaxed) {
-                    // In a console the child is `cmd.exe`, and killing it alone
-                    // leaves cargo compiling in the window: end the whole tree.
-                    if console {
-                        kill_tree(pid);
-                    }
                     if let Ok(mut c) = child.lock() {
                         let _ = c.kill();
                     }
@@ -690,7 +667,6 @@ pub fn build_lean(
     let mut tail: Vec<String> = Vec::new();
     if let Some(err) = stderr {
         for line in BufReader::new(err).lines().map_while(Result::ok) {
-            // Surface the most recent cargo line as progress (compiling crate N…).
             progress(line.clone());
             tail.push(line);
             if tail.len() > 60 {
@@ -710,38 +686,13 @@ pub fn build_lean(
         return Err("Export cancelled".into());
     }
     if !status.success() {
-        // A console build's output went to its window, not to `tail`.
-        let detail = if console {
-            "The compiler's output is in the build console.".to_string()
-        } else {
-            tail.join("\n")
-        };
         return Err(format!(
             "Lean build failed (cargo exited with {}):\n{}",
             status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".into()),
-            detail
+            tail.join("\n")
         ));
     }
-
-    // `--target` nests the output under the triple; a plain host build has no
-    // `--target` and writes straight into `target/<profile>/`. That follows the
-    // flag, not the container — which is why the web (native, but targeted)
-    // lands in the nested path too.
-    let bin = match target_triple {
-        Some(triple) => ws
-            .join("target")
-            .join(triple)
-            .join("dist-lean")
-            .join(bin_filename(platform)),
-        None => ws.join("target").join("dist-lean").join(bin_filename(platform)),
-    };
-    if !bin.is_file() {
-        return Err(format!(
-            "Lean build reported success but the binary is missing at {}",
-            bin.display()
-        ));
-    }
-    Ok(bin)
+    Ok(())
 }
 
 /// The icon the root `build.rs` embeds into the executable's resource table.

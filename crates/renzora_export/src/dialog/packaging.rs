@@ -91,11 +91,11 @@ fn build_mode_group(commands: &mut Commands, fonts: &EmberFonts, web: bool, host
     });
     rows.push(foot);
 
-    // Watch the lean build in a real console: cargo's own colours and progress
-    // bar, which the dialog's line log cannot show. Windows only (there is no
-    // portable "open a terminal"), and only for a native build of this machine's
-    // platform, which is the one cargo runs here.
-    if cfg!(target_os = "windows") && host && !web {
+    // Watch the lean build in a real terminal: cargo's own colours and progress
+    // bar, and a failed build's errors kept on screen. Only where the lean
+    // build runs cargo on this machine (`host`), the web's included; see
+    // `crate::console` for how each OS opens one.
+    if host {
         let console = switch_row(
             commands,
             fonts,

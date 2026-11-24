@@ -36,6 +36,8 @@ mod presets;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod remote;
 #[cfg(not(target_arch = "wasm32"))]
+mod console;
+#[cfg(not(target_arch = "wasm32"))]
 mod templates;
 #[cfg(not(target_arch = "wasm32"))]
 mod toolchain;

@@ -252,7 +252,7 @@ impl Default for ExportOverlayState {
             allow_profiling: false,
             compression_level: 3,
             upx_compress: false,
-            build_console: false,
+            build_console: true,
             icon_path: None,
             include_server: false,
             enable_modding: false,

@@ -56,7 +56,8 @@ pub struct ExportPreset {
     pub compression_level: i32,
     #[serde(default)]
     pub upx_compress: bool,
-    #[serde(default)]
+    /// On for a preset saved before the option existed, like a new one.
+    #[serde(default = "default_true")]
     pub build_console: bool,
     #[serde(default)]
     pub icon_path: Option<String>,
@@ -109,6 +110,9 @@ fn default_height() -> u32 {
 fn default_compression() -> i32 {
     3
 }
+fn default_true() -> bool {
+    true
+}
 fn default_simplify_ratio() -> f32 {
     0.5
 }
@@ -130,7 +134,7 @@ impl ExportPreset {
             allow_profiling: false,
             compression_level: default_compression(),
             upx_compress: false,
-            build_console: false,
+            build_console: true,
             icon_path: None,
             include_server: false,
             enable_modding: false,
