@@ -959,8 +959,13 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // the game has off).
     let disabled_bevy_features =
         crate::capabilities::disabled_bevy_features(&export_state.capabilities);
-    let disabled_runtime_features =
+    let mut disabled_runtime_features =
         crate::capabilities::disabled_runtime_features(&export_state.capabilities);
+    // The companion's profiler is only reachable through the key Allow profiling
+    // bakes in, so without the key it is code nothing can call.
+    if !export_state.allow_profiling {
+        disabled_runtime_features.push("remote_profiler".to_string());
+    }
     let lean_profile = crate::capabilities::lean_profile(&export_state.capabilities);
     let solari_on = export_state.capabilities.get("solari").copied().unwrap_or(false);
     // UPX is post-build, so unlike the profile knobs it applies to the copy-based

@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 09:28
+- fix(export): a lean export of a UI-only game no longer keeps 3D rendering, 2D sprites, post-processing or the tonemapping tables
+- feat(export): a lean export drops SVG support, the HTTP request pump and the companion profiler when the game does not use them
+
 ## 2026-11-24 09:19
 - feat(export): a lean build can run in its own console window, showing cargo's colours and progress bar
 - fix(export): a lean build no longer warns about the generated plugin crate's lints or an unused variable

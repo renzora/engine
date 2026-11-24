@@ -217,6 +217,17 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: false,
         group: None,
     },
+    Capability {
+        id: "svg",
+        section: "assets",
+        label: "SVG images",
+        help: "Loads .svg / .svgz files as images (the usvg parser and tiny-skia \
+               rasterizer). Auto-enabled when the project ships an SVG file.",
+        bevy_features: &[],
+        runtime_features: &["svg"],
+        default_on: true,
+        group: None,
+    },
     // ── Structural subsystems (default on = kept; uncheck to strip) ─────────
     Capability {
         id: "atmosphere",
@@ -897,6 +908,8 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
         "particles" => &["particle", "vfx"],
         // Audio files a script may play without any scene naming an emitter.
         "audio" => &["mp3", "ogg", "wav", "flac"],
+        // A game draws an SVG only from a file it ships.
+        "svg" => &["svg", "svgz"],
         // Mirrors `image_extra`'s `bevy_features` — an extension listed here that has
         // no decoder behind it would flip the capability on for nothing.
         "image_extra" => &[
@@ -1181,6 +1194,63 @@ fn detection_types(id: &str) -> &'static [&'static str] {
 /// avian2d or avian3d at runtime from whether the entity is a 2D one — so the
 /// scene genuinely does not record the answer. The avian paths are listed anyway
 /// for a scene that names one directly.
+/// Something in the world for a camera to draw, other than UI.
+///
+/// A camera alone proves nothing: every scene camera carries the effects the
+/// camera preset seeds (bloom, anti-aliasing, a tonemapping curve, contact
+/// shadows), and a Rust script that spawns a `Camera2d` to hold its UI does not
+/// make the game 2D. Those cameras are what kept the whole 3D pipeline, 2D
+/// sprites and the post-process stack in a menu-only game. UI is drawn after
+/// tonemapping, so with nothing else on screen every one of them is a no-op.
+///
+/// So the pipelines and the camera effects need world content to be kept: one
+/// of these needles, a model file, or a subsystem that draws (see
+/// [`has_world_content`]). The script calls are the ones that create content at
+/// runtime, so a game that builds its world from code keeps its renderer.
+const WORLD_CONTENT: &[&str] = &[
+    "Mesh3d",
+    "Mesh2d",
+    "MeshMaterial3d",
+    "MeshMaterial2d",
+    "MeshPrimitive",
+    "MeshInstanceData",
+    "Node2d",
+    "SceneRoot",
+    "Sprite",
+    "WorldUiRoot",
+    "spawn_entity",
+    "spawn_model",
+    "spawn_primitive",
+    "spawn_scene_instance",
+];
+
+/// Capabilities that only change how a camera draws what is already there.
+fn is_camera_effect(c: &Capability) -> bool {
+    c.id == "postfx" || c.id == "tonemapping_luts" || c.group == Some("postfx")
+}
+
+/// Whether the project puts anything in the world, per [`WORLD_CONTENT`].
+fn has_world_content(scan: &ProjectScan, detected: &dyn Fn(&str) -> Option<bool>) -> bool {
+    // A physics body is an object in the world, whether or not the scene file
+    // names its mesh.
+    if scan.saw_any(WORLD_CONTENT) || scan.saw_any(PHYSICS_MARKERS) {
+        return true;
+    }
+    if ["glb", "gltf", "rvg"].iter().any(|e| scan.extensions.contains(*e)) {
+        return true;
+    }
+    // A subsystem that draws something of its own: terrain, the sky set,
+    // particles, tilemaps and the rest. Physics and navigation do not draw, and
+    // the camera effects are exactly what this question is deciding.
+    const DRAWS: &[&str] = &["particles", "tilemap", "sprite_anim", "light2d", "solari"];
+    RENDER_3D_DEPENDENTS
+        .iter()
+        .chain(DRAWS)
+        .filter(|id| CAPABILITIES.iter().find(|c| c.id == **id).is_some_and(|c| !is_camera_effect(c)))
+        .filter(|id| !matches!(**id, "ragdoll" | "parkour"))
+        .any(|id| detected(id).unwrap_or(false))
+}
+
 const PHYSICS_MARKERS: &[&str] = &[
     "renzora_physics::",
     "avian2d::",
@@ -1283,6 +1353,7 @@ pub fn scan_project(root: &Path, extra: &[String]) -> ProjectScan {
         needles.extend(detection_types(c.id));
     }
     needles.extend(PHYSICS_MARKERS);
+    needles.extend(WORLD_CONTENT);
     // The http verbs, which used to be their own full walk of the project.
     needles.extend(["http_get", "http_post"]);
     needles.sort_unstable();
@@ -1438,20 +1509,25 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
     };
 
     // Resolved first: physics and several others are answered in terms of them.
-    let mut three_d = detected("render_3d").unwrap_or(true);
-    let mut two_d = detected("render_2d").unwrap_or(true);
-    if !three_d && !two_d {
+    let world = has_world_content(scan, &detected);
+    let mut three_d = world && detected("render_3d").unwrap_or(true);
+    let mut two_d = world && detected("render_2d").unwrap_or(true);
+    // Content with no pipeline in evidence (a script building its world from
+    // calls the needles cannot place) keeps both. No content at all is a UI
+    // game, which draws with neither: see `WORLD_CONTENT`.
+    if world && !three_d && !two_d {
         three_d = true;
         two_d = true;
     }
     let physics = scan.saw_any(PHYSICS_MARKERS);
     // The post-process stack as a whole is exactly "any of its effects", so it is
-    // answered by its children rather than by markers of its own — there is no
+    // answered by its children rather than by markers of its own: there is no
     // such thing as a scene that uses post-processing but no effect.
-    let any_postfx = CAPABILITIES
-        .iter()
-        .filter(|c| c.group == Some("postfx"))
-        .any(|c| detected(c.id).unwrap_or(c.default_on));
+    let any_postfx = world
+        && CAPABILITIES
+            .iter()
+            .filter(|c| c.group == Some("postfx"))
+            .any(|c| detected(c.id).unwrap_or(c.default_on));
 
     let mut state: HashMap<String, bool> = CAPABILITIES
         .iter()
@@ -1484,6 +1560,9 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
                         || scan.saw_dir("languages")
                         || scan.default_language.as_deref().is_some_and(|l| l != "en")
                 }
+                // A camera's seeded effects, with nothing in the world to apply
+                // them to.
+                _ if !world && is_camera_effect(c) => false,
                 _ => detected(c.id).unwrap_or(c.default_on),
             };
             (c.id.to_string(), on)
@@ -1962,11 +2041,10 @@ mod tests {
         assert!(disabled_runtime_features(&state).contains(&"avian".to_string()));
     }
 
-    /// A scene with no renderer in evidence — a pure-UI menu project — keeps
-    /// both pipelines. "No evidence" is not "not used", and a game that cannot
-    /// draw is a worse outcome than a game that is a few MB larger.
+    /// A pure-UI project draws with neither pipeline: UI is its own pass, so it
+    /// keeps the UI layer and loses 3D, 2D sprites and the camera effects.
     #[test]
-    fn neither_pipeline_in_evidence_keeps_both() {
+    fn a_ui_only_project_strips_both_pipelines() {
         let p = TempProject::new(
             "menu",
             &[(
@@ -1975,8 +2053,83 @@ mod tests {
             )],
         );
         let s = p.state();
-        assert!(s["render_2d"] && s["render_3d"]);
+        assert!(!s["render_2d"] && !s["render_3d"]);
         assert!(s["ui"]);
+    }
+
+    /// The case that kept everything on: a camera the preset seeded with bloom,
+    /// anti-aliasing, a tonemapping curve and contact shadows, plus a script
+    /// spawning a `Camera2d` for its UI. With nothing in the world, none of it
+    /// can show.
+    #[test]
+    fn a_camera_alone_is_not_world_content() {
+        let p = TempProject::new(
+            "camera_only",
+            &[
+                (
+                    "scenes/main.bsn",
+                    "entity 1 {\n\
+                     bevy_core_pipeline::core_3d::Camera3d: (),\n\
+                     bevy_pbr::ContactShadows: (),\n\
+                     renzora_bloom_effect::BloomSettings: (),\n\
+                     renzora_antialiasing::settings::AntiAliasing: (),\n\
+                     renzora_auto_exposure::AutoExposureSettings: (),\n\
+                     renzora_tonemapping::TonemappingSettings: (mode: AgX),\n\
+                     }\n",
+                ),
+                ("scripts/ui.rs", "commands.spawn((Camera2d, IsDefaultUiCamera));\n"),
+                ("ui/menu.html", "<column></column>\n"),
+            ],
+        );
+        let s = p.state();
+        for id in ["render_3d", "render_2d", "postfx", "bloom", "antialiasing", "auto_exposure", "tonemapping_luts"] {
+            assert!(!s[id], "`{id}` has nothing in the world to draw");
+        }
+        assert!(s["game_ui"]);
+    }
+
+    /// The same camera with a mesh in front of it keeps its effects.
+    #[test]
+    fn a_camera_with_content_keeps_its_effects() {
+        let p = TempProject::new(
+            "camera_content",
+            &[(
+                "scenes/main.bsn",
+                "entity 1 {\n\
+                 bevy_core_pipeline::core_3d::Camera3d: (),\n\
+                 renzora_bloom_effect::BloomSettings: (),\n\
+                 renzora_tonemapping::TonemappingSettings: (mode: AgX),\n\
+                 }\n\
+                 entity 2 {\n bevy_mesh::components::Mesh3d: (),\n}\n",
+            )],
+        );
+        let s = p.state();
+        for id in ["render_3d", "postfx", "bloom", "tonemapping_luts"] {
+            assert!(s[id], "`{id}` applies to the mesh");
+        }
+    }
+
+    /// A world built entirely from script calls the pipeline needles cannot
+    /// place still counts as content, and keeps both pipelines.
+    #[test]
+    fn a_world_spawned_from_script_keeps_both_pipelines() {
+        let p = TempProject::new(
+            "script_world",
+            &[
+                ("scenes/main.bsn", "entity 1 {\n bevy_ecs::name::Name: \"root\",\n}\n"),
+                ("scripts/level.lua", "function on_ready()\n  spawn_entity(\"crate\")\nend\n"),
+            ],
+        );
+        let s = p.state();
+        assert!(s["render_3d"] && s["render_2d"]);
+    }
+
+    /// SVG support ships only with an SVG file.
+    #[test]
+    fn svg_follows_svg_files() {
+        let scene = ("scenes/main.bsn", "entity 1 {\n bevy_ecs::name::Name: \"root\",\n}\n");
+        assert!(!TempProject::new("no_svg", &[scene]).state()["svg"]);
+        assert!(TempProject::new("svg", &[scene, ("ui/logo.svg", "<svg/>")]).state()["svg"]);
     }
 
     /// A project with no scenes at all tells us nothing, so every capability
@@ -2144,7 +2297,8 @@ mod tests {
             "tm_lut",
             &[(
                 "scenes/level.bsn",
-                "entity 1 {\n bevy_core_pipeline::tonemapping::Tonemapping: TonyMcMapface,\n}\n",
+                "entity 1 {\n bevy_core_pipeline::tonemapping::Tonemapping: TonyMcMapface,\n}\n\
+                 entity 2 {\n bevy_mesh::components::Mesh3d: (),\n}\n",
             )],
         );
         assert!(lut.state()["tonemapping_luts"]);

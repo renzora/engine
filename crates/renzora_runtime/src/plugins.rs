@@ -68,6 +68,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_motion_blur::MotionBlurPlugin::default());
     #[cfg(feature = "navmesh")]
     app.add_plugins(renzora_navmesh::NavMeshPlugin::default());
+    #[cfg(feature = "script_http")]
     app.add_plugins(renzora_net::NetPlugin::default());
     #[cfg(feature = "networking")]
     app.add_plugins(renzora_network::NetworkPlugin::default());
@@ -80,6 +81,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "planar_reflection")]
     app.add_plugins(renzora_planar_reflection::PlanarReflectionPlugin::default());
     app.add_plugins(renzora_postprocess::PostProcessPlugin::default());
+    #[cfg(feature = "remote_profiler")]
     app.add_plugins(renzora_profiler::ProfilerPlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
@@ -100,6 +102,7 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_ssil::SsilPlugin::default());
     #[cfg(feature = "ssr")]
     app.add_plugins(renzora_ssr::SsrPlugin::default());
+    #[cfg(feature = "svg")]
     app.add_plugins(renzora_svg::SvgPlugin::default());
     #[cfg(feature = "terrain")]
     app.add_plugins(renzora_terrain::TerrainPlugin::default());
