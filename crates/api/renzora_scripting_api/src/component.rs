@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// A single script entry within a ScriptComponent
 #[derive(Clone, Reflect)]
@@ -114,9 +114,16 @@ impl ScriptComponent {
 }
 
 /// Script-local variables that can be set from the inspector
+///
+/// Kept in name order, not a hash map's. The live link tells whether a
+/// component changed by comparing its serialized text, and two maps holding the
+/// same variables serialized them in different orders: the editor then took its
+/// own copy for an edit and sent it back, overwriting a newer value the game
+/// had just set. A sorted map serializes the same contents the same way, which
+/// also keeps a saved scene's variables from reshuffling on every save.
 #[derive(Clone, Default, Reflect, Serialize, Deserialize)]
 pub struct ScriptVariables {
-    values: HashMap<String, ScriptValue>,
+    values: BTreeMap<String, ScriptValue>,
 }
 
 impl ScriptVariables {
@@ -247,4 +254,27 @@ pub struct ScriptRuntimeState {
     /// would log its error again on every frame instead of once.
     pub fixed_has_error: bool,
     pub last_script_modified: Option<std::time::SystemTime>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The same variables come out in the same order however they went in, so
+    /// they serialize identically. See [`ScriptVariables`] for why that matters.
+    #[test]
+    fn variables_are_in_name_order_whatever_the_insertion_order() {
+        let names = ["level", "hints", "zoom", "ammo"];
+        let mut forward = ScriptVariables::default();
+        let mut backward = ScriptVariables::default();
+        for n in names {
+            forward.set(n, ScriptValue::Bool(true));
+        }
+        for n in names.iter().rev() {
+            backward.set(*n, ScriptValue::Bool(true));
+        }
+        let order = |v: &ScriptVariables| v.iter_all().map(|(k, _)| k.clone()).collect::<Vec<_>>();
+        assert_eq!(order(&forward), ["ammo", "hints", "level", "zoom"]);
+        assert_eq!(order(&forward), order(&backward));
+    }
 }

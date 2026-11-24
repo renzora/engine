@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 07:53
+- fix(play): a script variable the game changes during Play is no longer sometimes put back by the editor
+
 ## 2026-11-24 07:40
 - feat(ui): a game's UI can be drawn in any editor theme, chosen in Project Settings and switchable by the player with `<dropdown setting="ui_theme" />`
 - fix(ui): a ticked row in a multi-select list shows its tick
