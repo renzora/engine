@@ -25,6 +25,7 @@ pub use renzora_scene_api::{asset_bytes, components, entity_id, shapes};
 // path keeps resolving (and flattened below, as before).
 pub use renzora_project_api::{
     image_formats, play_mode, project_config, project_files, session, settings_file,
+    settings_path,
 };
 // The two play-mode run conditions that read the editor viewport, kept beside
 // `ViewportSettings`. Flattened here so `renzora::core::in_three_view` still works.

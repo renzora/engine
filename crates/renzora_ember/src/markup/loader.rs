@@ -137,14 +137,24 @@ fn spawn_subtree(
     apply_xnode_to(commands, ctx, child, node, template, &node_path);
 
     // `<for>` spawns children per entity at runtime; `<input>` and `<icon>`
-    // own their own text content. None recurse their markup children here.
-    if is_for_node(node) || is_input_node(node) || is_icon_node(node) {
+    // own their own text content, and a control (`<dropdown>`, `<slider>`, ...)
+    // is filled by its ember widget. None recurse their markup children here.
+    if is_for_node(node) || is_input_node(node) || is_icon_node(node) || control_kind(node).is_some() {
         return;
     }
     for (i, grand) in node.children.iter().enumerate() {
         let mut grand_path = node_path.clone();
         grand_path.push(i as u32);
         spawn_subtree(commands, ctx, child, grand, template, grand_path);
+    }
+}
+
+/// The ember control a `<dropdown>`, `<switch>`, `<checkbox>` or `<slider>`
+/// element stands for; see `markup::controls`.
+fn control_kind(node: &XNode) -> Option<crate::markup::controls::ControlKind> {
+    match &node.node_type {
+        NodeType::Custom(n) => crate::markup::controls::ControlKind::from_tag(n),
+        _ => None,
     }
 }
 
@@ -396,6 +406,10 @@ fn apply_xnode_to(
         commands
             .entity(entity)
             .insert(crate::game_ui::script_canvas::ScriptCanvas::new(ctx.host));
+    } else if control_kind(node).is_some() {
+        // `<dropdown>`, `<switch>`, `<checkbox>`, `<slider>` — styled like a
+        // node here, and the control stamped once its attributes are compiled
+        // (below), so a `{prop}` in `setting=` or `options=` resolves first.
     } else if let NodeType::Custom(name) = &node.node_type {
         // Bare `<custom_tag>` with no `template=` attribute. The file-stem
         // registry that used to resolve these is gone — components must be
@@ -478,6 +492,9 @@ fn apply_xnode_to(
 
     let mut ec = commands.entity(entity);
     ec.insert(layout);
+    if let Some(kind) = control_kind(node) {
+        ec.insert(crate::markup::controls::MarkupControl::new(kind, &defs, ctx.host));
+    }
 
     // `show="{{ cond }}"` — conditional visibility. Stamp a `ShowBinding` the
     // binding system evaluates each frame (Display::None when falsy).

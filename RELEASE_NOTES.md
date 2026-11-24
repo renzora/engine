@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 06:49
+- feat(ui): game UI templates can declare `<dropdown>`, `<switch>`, `<checkbox>` and `<slider>` controls tied to a game setting or a script variable, and they show in the editor too
+- feat(scripting): Rust scripts can read and write any game setting by path through `renzora::settings_path`
+
 ## 2026-11-24 06:22
 - feat(play): Play opens the game in its own window, exactly as an exported game runs; the Game panel and the Embed Game in Editor setting are gone
 - fix(play): a game's UI is no longer mirrored into the editor while it plays, so the editor can no longer disturb it

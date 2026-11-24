@@ -104,7 +104,7 @@ fn entity_by_name(world: &World, name: &str) -> Option<Entity> {
 /// Write `value` to a target path. Component fields (`Entity.Component.field`)
 /// are enqueued for scripting's reflection writer; script vars (`Entity.var`
 /// or bare `var`) are written directly on the entity's `ScriptComponent`.
-fn write_target(world: &mut World, host: Entity, path: &str, value: PropertyValue) {
+pub(crate) fn write_target(world: &mut World, host: Entity, path: &str, value: PropertyValue) {
     let segs: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
     if segs.is_empty() {
         return;

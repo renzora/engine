@@ -360,6 +360,43 @@ local size = get_setting_number("ui.scale")
 
 A Rust script sets the resource directly: `ctx.world().resource_mut::<renzora::GameUiScale>().set(1.25)`. Writing Bevy's `UiScale` yourself does not work: the canvas scaler owns it and rewrites it whenever the fit changes. See [Game settings](../api/scripting.md#game-settings-set_setting-get_setting) for every other setting a script can change.
 
+## Settings controls in markup
+
+Four tags put a real control into a template: the same widgets the editor's own
+panels use. Because they are part of the template, they show in the editor's
+viewport and UI editor exactly as in the game.
+
+```html
+<dropdown setting="window.mode" options="Windowed,Fullscreen,Borderless" />
+<dropdown setting="window.max_fps" options="Unlimited,30 FPS,60 FPS" values="0,30,60" />
+<switch setting="window.vsync" />
+<slider setting="audio.buses.Music.volume" min="0" max="1" step="0.01" width="100%" />
+<slider setting="ui.scale" min="0.75" max="1.5" step="0.05" />
+<dropdown setting="language" />
+<checkbox bind="show_hints" />
+```
+
+| Tag | Control | Attributes |
+|---|---|---|
+| `<dropdown>` | a dropdown | `options` (comma-separated labels), `values` (what each label stands for; the labels themselves if left out) |
+| `<switch>` | an on/off switch | |
+| `<checkbox>` | a checkbox | |
+| `<slider>` | a slider | `min`, `max`, `step` (changes snap to it) |
+
+Each is tied to one value:
+
+- `setting="<path>"` is a game setting, by the same path `set_setting` takes
+  (see [Game settings](../api/scripting.md#game-settings-set_setting-get_setting)).
+  Two more work here: `ui.scale` (the player's UI size) and `language` (the active
+  language; a language dropdown with no `options` lists the languages the game
+  has). Changing the control changes the setting while the game runs.
+- `bind="<var>"` is a variable on the canvas's script, for anything that is not a
+  single setting: the script reads the variable and does what it means.
+
+A control can be styled like any `<node>` (`width`, `margin` and so on). In the
+editor, controls show their values but don't change them, so laying out a menu
+never changes your project's settings by accident.
+
 ## Ember widgets in a Rust script
 
 A game has the same widget toolkit the editor builds its own panels from:
