@@ -99,6 +99,33 @@ The files are plain JSON and the player can read and edit them. Keep anything a 
 
 Renaming the game in `project.toml` changes the folder name, so saves made under the old name stop showing up.
 
+## Keeping saves somewhere else
+
+A plugin can move the slots off the disk entirely, into a database or a cloud store, without any change to your scripts: every `save_write`, `save_load`, `save_exists`, `save_delete` and `save_slots` goes to it instead of the folder. The **MySQL Saves** plugin on the Marketplace is one, keeping slots in a MySQL database on the player's machine.
+
+Values work exactly as above either way; only where a written slot lands changes. When the store cannot be reached, `save_write` and `save_load` return `false` with the reason, `save_exists` is `false` and `save_slots` is empty.
+
+To write one, implement `renzora::save::SaveBackend` and install it with `renzora::save::set_backend`:
+
+```rust
+use renzora::save::{SaveBackend, SaveError};
+
+struct MyStore;
+
+impl SaveBackend for MyStore {
+    fn name(&self) -> &str { "My store" }
+    fn write(&self, slot: &str, text: &str) -> Result<(), SaveError> { /* keep text as slot */ }
+    fn read(&self, slot: &str) -> Result<Option<String>, SaveError> { /* None if missing */ }
+    fn delete(&self, slot: &str) -> Result<(), SaveError> { /* missing is fine */ }
+    fn slots(&self) -> Result<Vec<String>, SaveError> { /* every slot name */ }
+}
+
+// In the plugin's `build`:
+renzora::save::set_backend(Some(Box::new(MyStore)));
+```
+
+A backend stores text, not values: the engine turns the values into a save and back, so the version check and the damaged-save checks are the same wherever the text is kept. Slot names reach it already checked. Calls are synchronous, because a script reads values in the same hook that loads them, so a backend that talks over a network should keep its own timeouts short. Declare the plugin `Runtime` so it ships with the game.
+
 ## Rust scripts
 
 The same store is `renzora::save`:

@@ -32,10 +32,24 @@
 //! per-user data folder and the game's name (see [`default_directory`]). The
 //! engine points the store there once the project is known. On the web there
 //! is no folder; slots are kept in memory and last until the tab closes.
+//!
+//! # Somewhere else: a save backend
+//!
+//! A plugin can take the slots somewhere else entirely (a database, a cloud
+//! store) by installing a [`SaveBackend`] with [`set_backend`]. Every slot call
+//! then goes to it instead of the folder, so a game's scripts do not change:
+//! `save_write("slot1")` is the same call whether the slot lands in a file or a
+//! table.
+//!
+//! The backend stores **text**, not values. Turning the working set into a
+//! save, and a save back into values, stays here, so the layout version, the
+//! "made by a newer engine" refusal and the corruption checks behave the same
+//! wherever the text is kept. A backend that had to re-implement them would
+//! sooner or later disagree with the folder about what a valid save is.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 
 use serde::{Deserialize, Serialize};
 
@@ -130,6 +144,64 @@ fn store() -> MutexGuard<'static, Store> {
     STORE.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+// ── Backends ────────────────────────────────────────────────────────────────
+
+/// Where slots are kept, when it is not the save folder.
+///
+/// Each call receives a slot name that has already passed the slot-name check,
+/// so a backend may use it as a key as it is. Calls are synchronous, as the
+/// folder's are: a script asks `if save_load("slot1") then` and reads values in
+/// the same hook, so there is no later frame to finish the work in. A backend
+/// talking to something slow should bound its own waits (connect and read
+/// timeouts) rather than hold the game indefinitely.
+///
+/// Errors are [`SaveError`]s; [`SaveError::Io`] with a sentence a player or
+/// developer can act on is the usual one.
+pub trait SaveBackend: Send + Sync + 'static {
+    /// For logs, e.g. `"MySQL"`.
+    fn name(&self) -> &str;
+
+    /// Store `text` as `slot`, replacing what was there. Should be all or
+    /// nothing: a failure must leave the previous save readable.
+    fn write(&self, slot: &str, text: &str) -> Result<(), SaveError>;
+
+    /// What `slot` holds, or `None` if there is no such slot.
+    fn read(&self, slot: &str) -> Result<Option<String>, SaveError>;
+
+    /// Remove `slot`. Removing one that does not exist is not an error.
+    fn delete(&self, slot: &str) -> Result<(), SaveError>;
+
+    /// The name of every slot this backend holds, in any order.
+    fn slots(&self) -> Result<Vec<String>, SaveError>;
+
+    /// Whether `slot` exists. The default reads it; override when the store
+    /// can answer more cheaply than by fetching the whole save.
+    fn exists(&self, slot: &str) -> Result<bool, SaveError> {
+        self.read(slot).map(|text| text.is_some())
+    }
+}
+
+/// Kept apart from [`STORE`] so a backend call (possibly a network round
+/// trip) never holds the working set's lock: a `save_get` on another thread
+/// should not wait behind a slow `save_write`.
+static BACKEND: RwLock<Option<Arc<dyn SaveBackend>>> = RwLock::new(None);
+
+/// Send every slot call to `backend` instead of the folder, or back to the
+/// folder with `None`. The working set is untouched either way.
+pub fn set_backend(backend: Option<Box<dyn SaveBackend>>) {
+    let backend: Option<Arc<dyn SaveBackend>> = backend.map(Arc::from);
+    *BACKEND.write().unwrap_or_else(PoisonError::into_inner) = backend;
+}
+
+/// The installed backend's name, or `None` while slots go to the folder.
+pub fn backend_name() -> Option<String> {
+    backend().map(|b| b.name().to_string())
+}
+
+fn backend() -> Option<Arc<dyn SaveBackend>> {
+    BACKEND.read().unwrap_or_else(PoisonError::into_inner).clone()
+}
+
 // ── The working set ─────────────────────────────────────────────────────────
 
 pub fn get(key: &str) -> Option<ScriptValue> {
@@ -171,6 +243,10 @@ pub fn write(slot: &str) -> Result<(), SaveError> {
         values: store.values.clone(),
     };
     let text = serde_json::to_string_pretty(&file).map_err(|e| SaveError::Io(e.to_string()))?;
+    if let Some(backend) = backend() {
+        drop(store);
+        return backend.write(slot, &text);
+    }
     if let Some(memory) = &mut store.memory {
         memory.insert(slot.to_string(), text);
         return Ok(());
@@ -199,6 +275,12 @@ pub fn exists(slot: &str) -> bool {
     if check_slot(slot).is_err() {
         return false;
     }
+    if let Some(backend) = backend() {
+        // `exists` has no way to report an error, and "the database is down"
+        // is not "there is a save": a load menu asking this should show the
+        // slot as empty and let the load itself say what went wrong.
+        return backend.exists(slot).unwrap_or(false);
+    }
     let store = store();
     if let Some(memory) = &store.memory {
         return memory.contains_key(slot);
@@ -212,6 +294,9 @@ pub fn exists(slot: &str) -> bool {
 /// Remove `slot`. Removing one that does not exist is not an error.
 pub fn delete(slot: &str) -> Result<(), SaveError> {
     check_slot(slot)?;
+    if let Some(backend) = backend() {
+        return backend.delete(slot);
+    }
     let mut store = store();
     if let Some(memory) = &mut store.memory {
         memory.remove(slot);
@@ -230,7 +315,17 @@ pub fn delete(slot: &str) -> Result<(), SaveError> {
 /// failing the list: one damaged slot should not hide the others from a load
 /// menu.
 pub fn list() -> Vec<SlotInfo> {
-    let names: Vec<String> = {
+    let backend = backend();
+    let names: Vec<String> = if let Some(backend) = &backend {
+        // As for `exists`: an unreachable store lists as empty rather than
+        // failing, since a load menu has nowhere to show the error.
+        backend
+            .slots()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|name| check_slot(name).is_ok())
+            .collect()
+    } else {
         let store = store();
         if let Some(memory) = &store.memory {
             memory.keys().cloned().collect()
@@ -354,7 +449,9 @@ fn slot_path(dir: &Path, slot: &str) -> PathBuf {
 
 fn read(slot: &str) -> Result<SaveFile, SaveError> {
     check_slot(slot)?;
-    let text = {
+    let text = if let Some(backend) = backend() {
+        backend.read(slot)?
+    } else {
         let store = store();
         if let Some(memory) = &store.memory {
             memory.get(slot).cloned()
@@ -423,6 +520,7 @@ mod tests {
             std::thread::current().id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
+        set_backend(None);
         let mut store = store();
         store.values.clear();
         store.memory = None;
@@ -529,6 +627,104 @@ mod tests {
         load("m").unwrap();
         assert!(matches!(get("x"), Some(ScriptValue::Float(v)) if v == 1.5));
         store().memory = None;
+    }
+
+    /// A backend over a shared map, so a test can look at what it was given.
+    #[derive(Default, Clone)]
+    struct MapBackend {
+        slots: Arc<Mutex<BTreeMap<String, String>>>,
+        down: Arc<Mutex<bool>>,
+    }
+
+    impl MapBackend {
+        fn check(&self) -> Result<(), SaveError> {
+            if *self.down.lock().unwrap() {
+                Err(SaveError::Io("the store is down".into()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    impl SaveBackend for MapBackend {
+        fn name(&self) -> &str {
+            "map"
+        }
+        fn write(&self, slot: &str, text: &str) -> Result<(), SaveError> {
+            self.check()?;
+            self.slots.lock().unwrap().insert(slot.into(), text.into());
+            Ok(())
+        }
+        fn read(&self, slot: &str) -> Result<Option<String>, SaveError> {
+            self.check()?;
+            Ok(self.slots.lock().unwrap().get(slot).cloned())
+        }
+        fn delete(&self, slot: &str) -> Result<(), SaveError> {
+            self.check()?;
+            self.slots.lock().unwrap().remove(slot);
+            Ok(())
+        }
+        fn slots(&self) -> Result<Vec<String>, SaveError> {
+            self.check()?;
+            Ok(self.slots.lock().unwrap().keys().cloned().collect())
+        }
+    }
+
+    #[test]
+    fn a_backend_takes_every_slot_call_and_the_folder_sees_none() {
+        let (_guard, dir) = fresh();
+        let map = MapBackend::default();
+        set_backend(Some(Box::new(map.clone())));
+        assert_eq!(backend_name().as_deref(), Some("map"));
+
+        set("coins", ScriptValue::Int(7));
+        write("slot1").unwrap();
+        assert!(!dir.join("slot1.json").exists(), "the folder was written to");
+        assert!(map.slots.lock().unwrap().contains_key("slot1"));
+        assert!(exists("slot1"));
+        assert_eq!(list().into_iter().map(|s| s.name).collect::<Vec<_>>(), ["slot1"]);
+
+        clear();
+        load("slot1").unwrap();
+        assert!(matches!(get("coins"), Some(ScriptValue::Int(7))));
+
+        delete("slot1").unwrap();
+        assert!(!exists("slot1"));
+        assert!(matches!(load("slot1"), Err(SaveError::NotFound(_))));
+        set_backend(None);
+    }
+
+    #[test]
+    fn a_backend_gets_the_same_version_and_corruption_checks_as_the_folder() {
+        let (_guard, _dir) = fresh();
+        let map = MapBackend::default();
+        map.slots.lock().unwrap().insert("future".into(), r#"{"version": 99}"#.into());
+        map.slots.lock().unwrap().insert("junk".into(), "nope".into());
+        map.slots.lock().unwrap().insert("../bad".into(), "{}".into());
+        set_backend(Some(Box::new(map)));
+
+        assert_eq!(load("future"), Err(SaveError::TooNew { found: 99 }));
+        assert!(matches!(load("junk"), Err(SaveError::Corrupt(_))));
+        // A name the folder would refuse is never offered from a backend either.
+        assert!(list().is_empty());
+        set_backend(None);
+    }
+
+    #[test]
+    fn a_failing_backend_keeps_the_game_in_progress_and_says_why() {
+        let (_guard, _dir) = fresh();
+        let map = MapBackend::default();
+        set_backend(Some(Box::new(map.clone())));
+        set("level", ScriptValue::Int(2));
+        write("a").unwrap();
+
+        *map.down.lock().unwrap() = true;
+        set("level", ScriptValue::Int(5));
+        assert_eq!(load("a"), Err(SaveError::Io("the store is down".into())));
+        assert!(matches!(get("level"), Some(ScriptValue::Int(5))));
+        assert!(!exists("a"));
+        assert!(list().is_empty());
+        set_backend(None);
     }
 
     #[test]
