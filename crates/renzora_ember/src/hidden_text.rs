@@ -1,5 +1,7 @@
-//! Keeps text inside a hidden (`Display::None`) subtree from being laid out
-//! again every frame when the UI is scaled.
+//! Two fixes for text inside hidden UI: a text changed while hidden is laid
+//! out when it is shown (see [`relayout_text_on_show`]), and text inside a
+//! hidden (`Display::None`) subtree is not laid out again every frame when the
+//! UI is scaled (the rest of this note).
 //!
 //! Bevy's `measure_text_system` measures a text node again whenever its
 //! window's scale factor differs from the node's
@@ -32,10 +34,29 @@ use bevy::ui::{ComputedUiRenderTargetInfo, UiSystems};
 pub(crate) fn plugin(app: &mut App) {
     app.add_systems(
         PostUpdate,
-        match_hidden_text_scale
+        (relayout_text_on_show, match_hidden_text_scale)
             .after(UiSystems::Propagate)
             .before(UiSystems::Content),
     );
+}
+
+/// Lay out a text node again when it becomes visible.
+///
+/// A text changed while its UI is hidden (`Visibility::Hidden` on a menu that
+/// starts closed) has its change consumed without the new value being laid
+/// out: the `Text` holds the new string while the glyphs on screen are the old
+/// one, and showing the UI does not change that. Measured in a game: a spin
+/// slider whose number was written while its panel was hidden held "245.5"
+/// with the single glyph of its starting "0", and still did a second after the
+/// panel opened. Marking the text changed on the frame it becomes visible lays
+/// out what it says now. `Changed<InheritedVisibility>` fires only on the
+/// transition, so a steady frame costs nothing.
+fn relayout_text_on_show(mut text: Query<(&InheritedVisibility, &mut Text), Changed<InheritedVisibility>>) {
+    for (visible, mut text) in &mut text {
+        if visible.get() {
+            text.set_changed();
+        }
+    }
 }
 
 /// Set a hidden text node's scale to its window's, so Bevy does not measure it

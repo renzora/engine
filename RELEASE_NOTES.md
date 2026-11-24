@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 08:38
+- fix(ui): text that changes while its menu is hidden shows the new value when the menu opens
+
 ## 2026-11-24 08:15
 - feat(play): the editor viewport pauses while the game runs in its own window, and says so
 
