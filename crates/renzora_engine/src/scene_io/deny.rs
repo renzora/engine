@@ -25,11 +25,26 @@ impl DenyUiCameraTargets for DynamicSceneBuilder<'_> {
     /// takes every untargeted UI root with it, the editor's included: the
     /// editor's chrome vanished the moment a game script's UI camera was
     /// mirrored in during Play. A game that wants one marks it from a script.
+    ///
+    /// And everything bevy_ui and bevy_text derive from the authored node and
+    /// font every frame: the computed layout (`ComputedNode`,
+    /// `UiGlobalTransform`, `ComputedStackIndex`, `ComputedUiRenderTargetInfo`),
+    /// text measurement (`ContentSize`) and the resolved font size (`EmSize`).
+    /// Saved, they are only stale numbers; mirrored by the live link they were
+    /// worse: the editor lays its copy of the game's UI out at another size,
+    /// so its computed values differ, and sending them back made the game's
+    /// UI jump between the two layouts every few frames.
     #[cfg(feature = "ui")]
     fn deny_ui_camera_targets(self) -> Self {
         self.deny_component::<bevy::ui::UiTargetCamera>()
             .deny_component::<bevy::ui::ComputedUiTargetCamera>()
             .deny_component::<bevy::ui::IsDefaultUiCamera>()
+            .deny_component::<bevy::ui::ComputedNode>()
+            .deny_component::<bevy::ui::UiGlobalTransform>()
+            .deny_component::<bevy::ui::ComputedStackIndex>()
+            .deny_component::<bevy::ui::ComputedUiRenderTargetInfo>()
+            .deny_component::<bevy::ui::ContentSize>()
+            .deny_component::<bevy::text::EmSize>()
     }
 
     #[cfg(not(feature = "ui"))]

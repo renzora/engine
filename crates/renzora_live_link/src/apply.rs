@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude::*;
-use bevy::reflect::serde::TypedReflectDeserializer;
+use bevy::reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
 use renzora_scene_api::SceneEntityId;
 use serde::de::DeserializeSeed;
 
@@ -66,6 +66,18 @@ pub fn apply(
                 by_id.insert(*id, entity);
                 side.spawned(world, entity, *id);
                 side.applied(world, entity, *id);
+                // The name came with the spawn, so this side holds it as a
+                // value the other side already has; recorded, it is not sent
+                // back as an edit on the first scan of the new entity.
+                let name = ron::ser::to_string(&TypedReflectSerializer::new(
+                    &Name::new(name.clone()),
+                    &registry.read(),
+                ));
+                tracker.note(&message);
+                if let Ok(value) = name {
+                    tracker.note(&LinkMessage::Set { id: *id, ty: Name::type_path().into(), value });
+                }
+                continue;
             }
             LinkMessage::Despawn { id } => {
                 if let Some(entity) = by_id.remove(id) {
@@ -112,9 +124,32 @@ pub fn apply(
                             continue;
                         }
                     }
+                    // Record what this side now holds, not what was sent. A
+                    // value that does not survive the trip unchanged (an asset
+                    // handle made at runtime, such as an icon's font, comes out
+                    // as the default) would otherwise differ from the record
+                    // on the next scan and be sent straight back as an edit,
+                    // replacing the original on the side that had it right:
+                    // a game's icons turned into blank boxes that way.
+                    let held = world.get_entity(entity).ok().and_then(|e| {
+                        let component = reflect_component.reflect(e)?;
+                        ron::ser::to_string(&TypedReflectSerializer::new(
+                            component.as_partial_reflect(),
+                            &registry,
+                        ))
+                        .ok()
+                    });
+                    drop(registry);
+                    side.applied(world, entity, *id);
+                    tracker.note(&match held {
+                        Some(value) => LinkMessage::Set { id: *id, ty: ty.clone(), value },
+                        None => message,
+                    });
+                    continue;
                 } else {
                     reflect_component.remove(&mut entity_mut);
                 }
+                drop(registry);
                 side.applied(world, entity, *id);
             }
             _ => {

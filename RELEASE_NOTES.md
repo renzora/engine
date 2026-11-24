@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-24 06:04
+- fix(play): a game's UI no longer flickers while it plays in the editor
+- fix(play): icons in a game's UI show while it plays in the editor instead of blank boxes
+- fix(scene): scenes no longer save the UI layout and text measurements Bevy recomputes every frame
+
 ## 2026-11-24 05:21
 - fix(editor): a camera or UI a game script spawns during Play no longer draws over the editor's interface
 - feat(editor): objects the game spawns during Play are grouped under "Spawned during Play" in the Hierarchy

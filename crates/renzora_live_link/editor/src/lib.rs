@@ -812,6 +812,43 @@ mod tests {
         assert!(named(&mut world, "bullet").is_some());
     }
 
+    /// A value from the game is never sent back to it just because it does not
+    /// come out of the trip character for character. A runtime asset handle
+    /// (an icon's font) does not survive at all, and sending the editor's copy
+    /// back replaced the game's icons with blank boxes; any value whose text
+    /// changes on the way through does the same, so a spaced-out `Transform`
+    /// stands in for it here.
+    #[test]
+    fn a_value_from_the_game_is_not_echoed_back() {
+        // A new entity, as the icons were: the editor's first scan of an entity
+        // it has not seen serializes every component and compares each one.
+        let (mut world, _, mut game) = editor_with_game();
+        let spaced = transform_value(Transform::from_xyz(2.0, 0.0, 0.0), &world).replace(',', ", ");
+        game_sends(
+            &mut game,
+            &[
+                LinkMessage::Spawn { id: 77, parent: None, name: "icon".into() },
+                LinkMessage::Set { id: 77, ty: Transform::type_path().into(), value: spaced },
+            ],
+        );
+        frames_until(&mut world, |w| {
+            named(w, "icon").and_then(|e| w.get::<Transform>(e)).is_some_and(|t| t.translation.x == 2.0)
+        });
+
+        world.increment_change_tick();
+        world.resource_mut::<LinkServer>().client.as_mut().unwrap().since_scan = 1.0;
+        send(&mut world);
+
+        game.set_read_timeout(Some(Duration::from_millis(300))).unwrap();
+        let mut reader = BufReader::new(game.try_clone().unwrap());
+        let mut line = String::new();
+        let mut sent = Vec::new();
+        while matches!(reader.read_line(&mut line), Ok(n) if n > 0) {
+            sent.push(std::mem::take(&mut line));
+        }
+        assert!(sent.is_empty(), "the editor sent the game's value back: {sent:?}");
+    }
+
     /// Nothing the game sends can draw over the editor: a camera arrives
     /// switched off, and a UI root is pointed at the viewport camera and left at
     /// the top level, where Bevy draws it.
