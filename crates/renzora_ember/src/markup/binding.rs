@@ -124,6 +124,14 @@ fn render_template(
             continue;
         };
         let path = after[..end].trim();
+        // `{{ t("menu.play") }}`: a translated string. Bindings re-render every
+        // frame and write only on a change, so this follows a language switch
+        // with no event to listen for.
+        if let Some(key) = translation_key(path) {
+            out.push_str(&renzora_lang_api::t(key));
+            rest = &after[end + 2..];
+            continue;
+        }
         match resolve_path(world, registry, names, host, path) {
             Some(v) => out.push_str(&v),
             None => {
@@ -137,6 +145,16 @@ fn render_template(
     }
     out.push_str(rest);
     out
+}
+
+/// The key in a `t("key")` / `t('key')` token, or `None` for any other token.
+/// Quoted, so a translation call is never mistaken for a script variable that
+/// happens to be named `t`.
+fn translation_key(token: &str) -> Option<&str> {
+    let inner = token.strip_prefix('t')?.trim_start().strip_prefix('(')?.strip_suffix(')')?.trim();
+    let quote = inner.chars().next().filter(|c| *c == '"' || *c == '\'')?;
+    let key = inner.strip_prefix(quote)?.strip_suffix(quote)?;
+    (!key.is_empty()).then_some(key)
 }
 
 /// Resolve one `Component.field…` or `Entity.Component.field…` path to a
@@ -700,4 +718,34 @@ pub fn plugin(app: &mut App) {
         )
             .chain(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translation_tokens_are_recognised() {
+        assert_eq!(translation_key(r#"t("menu.play")"#), Some("menu.play"));
+        assert_eq!(translation_key("t('menu.play')"), Some("menu.play"));
+        assert_eq!(translation_key(r#"t ( "menu.play" )"#), Some("menu.play"));
+        // A script variable, a component path, and malformed calls are not.
+        assert_eq!(translation_key("t"), None);
+        assert_eq!(translation_key("title"), None);
+        assert_eq!(translation_key("Sun.azimuth"), None);
+        assert_eq!(translation_key("t(menu.play)"), None);
+        assert_eq!(translation_key(r#"t("")"#), None);
+    }
+
+    #[test]
+    fn a_translation_token_renders_the_active_string() {
+        // A key no other test uses: the table is process-global.
+        renzora_lang_api::register_translations("en", [("test.markup.t_token", "Play")]);
+        let mut world = World::new();
+        let host = world.spawn_empty().id();
+        let registry = TypeRegistry::default();
+        let names = HashMap::default();
+        let out = render_template(&world, &registry, &names, host, r#"[{{ t("test.markup.t_token") }}]"#);
+        assert_eq!(out, "[Play]");
+    }
 }

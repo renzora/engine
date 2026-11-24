@@ -309,7 +309,12 @@ impl Default for ReflectionProbeSource {
 }
 
 /// Marker component to hide an entity (and its children) from the hierarchy panel.
-#[derive(Component)]
+///
+/// It also keeps them out of every scene save (`saveable_entities` skips the
+/// entity and anything under it), which is what makes it the mark of editor
+/// chrome. `Default` so a component can `#[require]` it: ember's overlay and
+/// modal markers do, so a dialog is never written into the scene it sits over.
+#[derive(Component, Default)]
 pub struct HideInHierarchy;
 
 /// The name an entity had before the editor made it unique, kept for binding
@@ -407,6 +412,19 @@ pub enum RenderPhase {
 #[reflect(Component)]
 #[type_path = "renzora::core::components"]
 pub struct Persistent;
+
+/// The editor's "Spawned during Play" group: what a game running from the
+/// editor spawned at the top level, mirrored by the live link, is shown under
+/// it. The group itself is the editor's own, so it is never saved and never
+/// sent to the game.
+///
+/// Deliberately not [`Persistent`]. That marker spreads to every child
+/// (`renzora_engine::autoload::propagate_persistent_to_children`), and the live
+/// link ignores persistent entities, so a group marked with it made everything
+/// in it look deleted: the editor told the game to despawn them, and a game
+/// lost its own camera the moment it was grouped.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct PlaySpawnGroup;
 
 /// A scene entity's identity across processes and across loads.
 ///

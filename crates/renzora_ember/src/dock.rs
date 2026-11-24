@@ -33,6 +33,8 @@ mod interact;
 mod os_frame;
 mod reconcile;
 mod routing;
+/// Installed by `EmberRuntimePlugin`: scroll areas need the cursor in a game too.
+pub(crate) use routing::track_global_cursor;
 mod sizing;
 pub mod tree;
 pub mod windows;
@@ -72,7 +74,6 @@ impl Plugin for DockPlugin {
             .init_resource::<DockWindowRequests>()
             .init_resource::<DockWindowCloseRequests>()
             .init_resource::<windows::FloatDrag>()
-            .init_resource::<GlobalCursor>()
             .init_resource::<FocusPanelRequest>()
             .init_resource::<FocusedPanel>()
             .init_resource::<drag::PendingSwitch>()
@@ -83,20 +84,14 @@ impl Plugin for DockPlugin {
             .init_resource::<GrabRootDivider>()
             .init_resource::<drag::TabDrag>()
             .init_resource::<DockDragWatch>()
-            .init_resource::<crate::font::FontRegistry>()
             .add_systems(
                 Update,
                 (
-                    crate::font::load_fonts,
-                    crate::font::scan_project_fonts,
                     // Before anything that routes by area: until the fixed
                     // area's entity is known, its leaves look like the
                     // primary's to `area_tree_mut` and a drag would edit the
                     // wrong tree.
                     track_fixed_dock_area,
-                    // Screen-space cursor first: divider/tab drags and the
-                    // tear-off window follow all read it this frame.
-                    routing::track_global_cursor,
                     drag::divider_drag,
                     drag::tab_drag,
                     // Grip-press tear-offs land before the spawn below, so the

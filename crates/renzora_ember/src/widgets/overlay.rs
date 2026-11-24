@@ -20,7 +20,14 @@ pub struct Overlay;
 /// never bleeds through to panels behind it — *without* the click-outside
 /// dismiss behavior of [`Overlay`]. [`overlay`] roots carry both; a custom modal
 /// (e.g. the Settings overlay, which closes via its own button) adds just this.
+///
+/// Requires `HideInHierarchy`, which keeps the modal and everything in it out
+/// of scene saves. Without it a modal open during a save had its named widgets
+/// (`toggle-switch`, `text-input`, `icon:*`) written into the scene: the Export
+/// dialog's "Save and export" did exactly that, and the widgets shipped in the
+/// exported game.
 #[derive(Component)]
+#[require(renzora_scene_api::HideInHierarchy)]
 pub struct ModalSurface;
 
 #[derive(Component)]
@@ -436,5 +443,17 @@ mod dismiss_tests {
         world.insert_resource(ButtonInput::<MouseButton>::default());
         world.run_system_once(overlay_dismiss).unwrap();
         assert!(world.get_entity(only).is_ok());
+    }
+
+    /// A modal or floating surface is editor chrome: it carries
+    /// `HideInHierarchy`, so a scene save open behind it skips it and every
+    /// widget inside it.
+    #[test]
+    fn modal_and_floating_surfaces_are_hidden_from_saves() {
+        let mut world = World::new();
+        let modal = world.spawn(ModalSurface).id();
+        let popup = world.spawn(crate::widgets::popup::OverlaySurface).id();
+        assert!(world.get::<renzora_scene_api::HideInHierarchy>(modal).is_some());
+        assert!(world.get::<renzora_scene_api::HideInHierarchy>(popup).is_some());
     }
 }

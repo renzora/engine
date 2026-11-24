@@ -227,7 +227,14 @@ fn screen_menu_anchored(
 /// Marks a floating UI surface (popup panel, dropdown list, context menu) that
 /// should swallow pointer wheel/clicks so they never bleed through to the panels
 /// or viewport behind it. Attached automatically to popups/dropdowns/menus.
+///
+/// Requires `HideInHierarchy` for the same reason [`ModalSurface`] does: a
+/// floating surface is never scene content, so nothing under it may be saved
+/// into the scene, whatever names its widgets carry.
+///
+/// [`ModalSurface`]: crate::widgets::overlay::ModalSurface
 #[derive(Component)]
+#[require(renzora_scene_api::HideInHierarchy)]
 pub struct OverlaySurface;
 
 /// True while pointer interaction is **captured by a floating overlay or a

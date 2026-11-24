@@ -66,16 +66,23 @@ pub mod widgets;
 /// than a single panel. Queued here, drained by `renzora_editor_framework`.
 pub mod workspace;
 
-/// Registers all of ember's runtime systems (theme + dock + widgets + fonts +
-/// the reactive bindings/keyed-list drivers).
-pub struct EmberPlugin;
+/// Everything ember needs to run its widgets, in every session: the interaction
+/// state buttons read, the theme, the widget systems, icons and fonts, and the
+/// reactive bindings.
+///
+/// A runtime plugin, so a shipped game has the same widget toolkit the editor
+/// builds its panels from, and a game script can use any of it. It used to be
+/// installed only by the editor's shell, as part of [`EmberPlugin`], so in a
+/// game nothing derived `UiInteraction` (no button could be pressed), icons
+/// drew nothing, and a widget a script spawned sat inert.
+#[derive(Default)]
+pub struct EmberRuntimePlugin;
 
-impl Plugin for EmberPlugin {
+impl Plugin for EmberRuntimePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             interaction::UiInteractionPlugin,
             style::ThemePlugin,
-            dock::DockPlugin,
             stacking::StackingPlugin,
             widgets::WidgetsPlugin,
             reactive::ReactivePlugin,
@@ -87,6 +94,18 @@ impl Plugin for EmberPlugin {
         // module. (When markup IS present, it no longer installs them.)
         cursor_icon::plugin(app);
         icons::plugin(app);
+        // The fonts every text-drawing widget takes (`EmberFonts`). These used
+        // to be loaded by the dock, so a game, which has no dock, had no fonts
+        // and could build no dropdown, label or text input.
+        app.init_resource::<font::FontRegistry>()
+            .add_message::<renzora_project_api::project_files::ProjectFileChanged>()
+            .add_systems(Update, (font::load_fonts, font::scan_project_fonts));
+        // The screen-space cursor scroll-thumb drags follow (and, in the
+        // editor, divider and tab drags and torn-off windows). Also once owned
+        // by the dock, which left a game's scroll areas failing every frame.
+        // `PreUpdate`, so every `Update` reader sees this frame's position.
+        app.init_resource::<dock::GlobalCursor>()
+            .add_systems(PreUpdate, dock::track_global_cursor);
         // Each node's mouse position, from picking; see `ui_cursor`.
         ui_cursor::plugin(app);
         // Hidden menus would otherwise lay their text out every frame at any UI
@@ -103,6 +122,23 @@ impl Plugin for EmberPlugin {
         resize::plugin(app);
         // Off unless `RENZORA_UI_CHURN` is set: see `ui_churn`.
         ui_churn::plugin(app);
+    }
+}
+
+/// The editor's ember: [`EmberRuntimePlugin`] plus docking, which only the
+/// editor's panel layout uses.
+///
+/// In the editor the runtime has already installed [`EmberRuntimePlugin`], so
+/// this adds docking alone; a process with no runtime plugin list (the
+/// companion) gets both.
+pub struct EmberPlugin;
+
+impl Plugin for EmberPlugin {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<EmberRuntimePlugin>() {
+            app.add_plugins(EmberRuntimePlugin);
+        }
+        app.add_plugins(dock::DockPlugin);
     }
 }
 

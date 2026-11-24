@@ -19,6 +19,8 @@ use bevy::app::App;
 pub(crate) fn add_runtime_plugins(app: &mut App) {
     #[cfg(feature = "localization")]
     app.add_plugins(renzora_lang::LangPlugin::default());
+    #[cfg(feature = "ui")]
+    app.add_plugins(renzora_ember::EmberRuntimePlugin::default());
     #[cfg(feature = "animation")]
     app.add_plugins(renzora_animation::AnimationPlugin::default());
     #[cfg(feature = "antialiasing")]

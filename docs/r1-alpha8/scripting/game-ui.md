@@ -105,6 +105,7 @@ What goes inside the braces? A few common forms:
 - `{{ score }}` — a variable from the script on the same entity as this UI.
 - `{{ Player.score }}` — a variable on the entity you named `Player`.
 - `{{ Name }}` — the entity's name.
+- `{{ t("menu.play") }}`: the text for `menu.play` in the player's current language, from your project's `languages/*.toml` packs. Change the language while the game runs and it switches on the next frame. See [Localization](/docs/r1-alpha8/extending/localization).
 
 So when your Lua script changes `score`, the text on screen changes too. You don't have to do anything else.
 
@@ -347,6 +348,56 @@ The difference only shows up once a canvas holds more than one thing. A single c
 So: **Fit** for menus, dialogue, anything you laid out by eye. **Expand** for a HUD whose corners are meant to hug the screen edges however wide it gets. **Constant** for pixel-art UI that must not resample.
 
 Fit is what the UI editor shows you, which is why it's the default — the editor renders at the reference size, so the panel and the game agree. World UI Panels ignore the setting entirely: their surface *is* the reference resolution, so there's nothing to reconcile.
+
+### Player's UI size
+
+On top of the fit, the game applies a player multiplier: a "UI size" option in your settings menu. `1` is the canvas as designed, `1.25` is a quarter larger, and it is clamped to between `0.25` and `4` so a bad value cannot make the UI unreadable. It takes effect on the next frame, and it is not saved: store the player's choice yourself and set it again on start.
+
+```lua
+set_setting("ui.scale", "1.25")
+local size = get_setting_number("ui.scale")
+```
+
+A Rust script sets the resource directly: `ctx.world().resource_mut::<renzora::GameUiScale>().set(1.25)`. Writing Bevy's `UiScale` yourself does not work: the canvas scaler owns it and rewrites it whenever the fit changes. See [Game settings](../api/scripting.md#game-settings-set_setting-get_setting) for every other setting a script can change.
+
+## Ember widgets in a Rust script
+
+A game has the same widget toolkit the editor builds its own panels from:
+dropdowns, switches, sliders, checkboxes, text inputs, steppers, knobs, colour
+pickers and the rest of `renzora::ui::widgets`. A Rust script creates one with
+the same builder function an editor panel calls, and binds it to whatever it
+controls with `bind_2way`, which keeps the two in step both ways: the player's
+edit is written to your state, and a change made anywhere else shows on the
+widget.
+
+```rust
+use bevy::ecs::world::CommandQueue;
+use renzora::ui::reactive::bind_2way;
+use renzora::ui::widgets::{slider_ranged, toggle_switch};
+
+let world = ctx.world();
+let row = /* the node to put it in, such as a named slot in your template */;
+let mut queue = CommandQueue::default();
+{
+    let mut commands = Commands::new(&mut queue, world);
+    let vsync = toggle_switch(&mut commands, true);
+    bind_2way(
+        &mut commands,
+        vsync,
+        |w: &World| w.resource::<renzora::CurrentProject>().config.window.vsync,
+        |w: &mut World, on: &bool| {
+            w.resource_mut::<renzora::CurrentProject>().config.window.vsync = *on
+        },
+    );
+    commands.entity(row).add_child(vsync);
+}
+queue.apply(world);
+```
+
+A good split is a template for the layout, with an empty
+`<node name="slot_vsync" />` where each control goes, and the script putting
+the widget into it. Builders that draw text (`dropdown`) also take
+`&renzora::ui::font::EmberFonts`, which the game has as a resource.
 
 ## UI in the 3D world
 
