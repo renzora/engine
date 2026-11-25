@@ -1,10 +1,11 @@
-<!-- Reusable menu button. Auto-registered as <menu_button> by HuiAutoLoadPlugin
-     (scans assets/ui/components/). Authored once, reused across templates.
+<!-- Reusable menu button. Mount it by path:
+         <node template="ui/components/menu_button.html" text="Play" action="start_game" />
+     Authored once, reused across templates.
 
      Properties:
        text     visible label
-       action   markup callback name; forwarded to Lua's on_ui(name, args)
-                via renzora_hui when there is no Rust HtmlFunctions binding.
+       action   markup callback name; forwarded to every script's `Ui`
+                hook.
        primary / secondary   colors -->
 <template>
     <property name="text">Button</property>

@@ -15,7 +15,7 @@
      highlights the cell diagonally opposite. All three are distinguishable from
      this sheet alone, without a debugger.
 
-     `on_press` names go to Lua's `on_ui(name, args)` hook (broadcast) when no
+     `on_press` names go to every script's `Ui` hook (Lua: `on_ui`) when no
      Rust binding claims them, so a script can log exactly which cell fired. -->
 <template>
     <property name="edge">#222B38</property>

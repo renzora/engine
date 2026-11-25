@@ -1,10 +1,10 @@
 <!-- Example: tabbed browser driven by gamepad.
-     Pair with `assets/scripts/example_tab_browser.lua`.
+     Pair with `assets/scripts/example_tab_browser.rs`.
 
-     The Lua side reads L1/R1 to cycle `tab_*` entities and uses the left
-     stick's Y axis to step through `item_*` entities, calling `set_on(...)`
-     to update their `BackgroundColor` to highlight the active tab + selected
-     item. The script also handles `on_press` so the same UI works with mouse. -->
+     The script reads L1/R1 to cycle `tab_*` entities and uses the left
+     stick's Y axis to step through `item_*` entities, setting their
+     `BackgroundColor` to highlight the active tab + selected item. It also
+     handles the `on_press` callbacks so the same UI works with a mouse. -->
 <template>
     <node
         position="absolute"
@@ -17,8 +17,8 @@
         padding="32px"
         row_gap="20px"
     >
-        <!-- Tab strip. `name="tab_*"` lets the Lua side find each one by name
-             via `set_on(name, "BackgroundColor.color", ...)`. -->
+        <!-- Tab strip. `name="tab_*"` lets the script find each one by name
+             and recolour its `BackgroundColor`. -->
         <node flex_direction="row" column_gap="6px" padding="4px" background="#11151C" border_radius="10px">
             <button name="tab_loadout" padding="10px 18px 10px 18px" background="#4C8BF5" border_radius="6px" hover:background="#6BA1F8" delay="0.12s" on_press="select_tab_loadout">
                 <text font_size="13" font_color="#FFFFFF">Loadout</text>

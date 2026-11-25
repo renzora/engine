@@ -1,9 +1,9 @@
 <!-- Bundled custom-cursor component.
 
      Use:
-         <cursor />
-         <cursor size="20px" color="#F1C40F" />
-         <cursor src="cursors/arrow.png" />
+         <node template="ui/components/cursor.html" />
+         <node template="ui/components/cursor.html" size="20px" color="#F1C40F" />
+         <node template="ui/components/cursor.html" src="cursors/arrow.png" />
 
      With no `src`, renders as a styled colored dot (the background/border
      properties below). Drop a PNG/JPG onto the inspector's "UI Image" Source
@@ -11,7 +11,7 @@
      `<image>` into an image cursor.
 
      Behind the scenes: any markup entity named "cursor_follow" is repositioned
-     by `renzora_hui::cursor` each frame to the window's cursor position, and
+     by ember's markup cursor system each frame to the window's cursor position, and
      the OS cursor is auto-hidden while any such entity exists.
 -->
 <template>

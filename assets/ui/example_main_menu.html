@@ -1,10 +1,10 @@
 <!-- Example: gamepad/keyboard-navigable main menu.
-     Pair with `assets/scripts/example_main_menu.lua` (engine repo) or
-     `scripts/example_main_menu.lua` (your project).
+     Pair with `assets/scripts/example_main_menu.rs` (engine repo) or
+     `scripts/example_main_menu.rs` (your project).
 
-     Each <button> has `name="btn_..."` so the Lua side can target it via
-     `set_on("btn_play", "BorderColor.top", ...)`. The root `name=` lets the
-     script hide/show the whole menu with `action("hui_hide"/"hui_show", ...)`.
+     Each <button> has `name="btn_..."` so the script can find it by name and
+     set its `BorderColor`. The root `name=` lets the script hide/show the
+     whole menu with the `hui_hide` / `hui_show` actions.
 
      btn_play starts focused (its border is the highlight color) so the menu
      has a sensible initial state before the script does its first repaint. -->
@@ -92,10 +92,10 @@
 
         <text font_size="11" font_color="#5A6678">Left stick / arrows · A or Enter to confirm</text>
 
-        <!-- Custom cursor — explicit template path, so the rpak BFS finds the
+        <!-- Custom cursor: an explicit template path, so the rpak BFS finds the
              quoted path automatically and bundles it. The entity the inner
-             template spawns is named `cursor_follow`, which `renzora_hui::
-             cursor` repositions every frame from the window's cursor
+             template spawns is named `cursor_follow`, which ember's markup
+             cursor system repositions every frame from the window's cursor
              position. OS cursor auto-hides. -->
         <node template="ui/components/cursor.html"
               size="16px"

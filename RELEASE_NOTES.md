@@ -1,5 +1,18 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 12:33
+- chore(assets): the example scripts, UI templates, particles and themes drop their `lab_NNN_` / `Lab NN` name prefix
+- fix(assets): the boids flock example stays around its manager instead of flying off
+
+## 2026-11-25 11:46
+- feat(assets): the engine's example scripts are Rust scripts now; the Lua versions are removed
+- feat(scripting): Rust scripts can make HTTP requests with the `http_get` and `http_post` actions
+- fix(scripting): `get_animation_length` returns the clip's length instead of always 0
+- fix(assets): UI templates bind to entities by their lowercase ids, so their `{{ }}` values show again
+
+## 2026-11-25 11:05
+- chore(assets): remove the legacy `.wgsl` shaders, the unused font folder and the old blueprint checkerboard material
+
 ## 2026-11-25 09:25
 - feat(plugin): plugins can build a GLB into an `.rvg` model with `renzora::build_model_file`
 

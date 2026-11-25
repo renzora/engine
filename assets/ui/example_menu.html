@@ -1,15 +1,14 @@
 <!-- Example main menu authored entirely in markup.
 
-     Spawn it from Rust:
-         cmd.spawn(HtmlNode(server.load("ui/example_menu.html")));
-     or from a Lua script:
-         action("hui_spawn", { template = "ui/example_menu.html" })
+     Spawn it from Rust as a canvas:
+         cmd.spawn((UiCanvas::default(), HtmlTemplatePath("ui/example_menu.html".into())));
+     or from a script (see scripts/ui_menu.rs):
+         ScriptAction::new("hui_spawn", me).arg("template", "ui/example_menu.html").send(world)
 
-     Each <node template="ui/components/menu_button.html">'s `action` is the markup callback name. When no Rust
-     HtmlFunctions binding exists, renzora_hui forwards it to every script's
-         function on_ui(name, args) ... end
-     hook (broadcast, like on_rpc). The optional `tag:`-prefixed attributes
-     arrive as the `args` table. -->
+     Each <node template="ui/components/menu_button.html">'s `action` is the
+     markup callback name, forwarded to every script's `Ui` hook (broadcast,
+     like RPCs). The `tag:`-prefixed attributes are not
+     forwarded yet, so `args` arrives empty. -->
 <template>
     <property name="title">Renzora</property>
 
