@@ -1,10 +1,18 @@
 //! Format detection and supported extension lists.
+//!
+//! The built-in formats are the enum's named variants. A plugin adds formats
+//! through `renzora::register_import_format`, and those are
+//! [`ModelFormat::Plugin`]: detected, listed and converted the same way, with
+//! the plugin's converter producing the GLB.
 
 use std::path::Path;
 
 /// Supported 3D model formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFormat {
+    /// A format a plugin registered, by the registered extension that matched.
+    /// Looked up again in the registry when it is converted.
+    Plugin(&'static str),
     Gltf,
     Glb,
     Obj,
@@ -22,6 +30,9 @@ pub enum ModelFormat {
 impl ModelFormat {
     pub fn display_name(&self) -> &'static str {
         match self {
+            Self::Plugin(ext) => renzora_project_api::import_format_for(ext)
+                .map(|f| f.name)
+                .unwrap_or("Plugin format"),
             Self::Gltf => "GLTF",
             Self::Glb => "GLB",
             Self::Obj => "OBJ (Wavefront)",
@@ -54,16 +65,41 @@ pub fn detect_format(path: &Path) -> Option<ModelFormat> {
         "dae" => Some(ModelFormat::Dae),
         "bvh" => Some(ModelFormat::Bvh),
         "blend" => Some(ModelFormat::Blend),
-        _ => None,
+        // A built-in format keeps its extension; only an extension none of
+        // them claims goes to the plugins.
+        other => renzora_project_api::import_format_for(other).and_then(|format| {
+            format
+                .extensions
+                .iter()
+                .find(|e| **e == other)
+                .map(|e| ModelFormat::Plugin(e))
+        }),
     }
 }
 
-/// Returns the list of supported file extensions (without dots).
-pub fn supported_extensions() -> &'static [&'static str] {
-    &[
-        "gltf", "glb", "obj", "stl", "ply", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae",
-        "bvh", "blend",
-    ]
+const BUILT_IN_EXTENSIONS: &[&str] = &[
+    "gltf", "glb", "obj", "stl", "ply", "fbx", "usd", "usda", "usdc", "usdz", "abc", "dae",
+    "bvh", "blend",
+];
+
+/// Returns the list of supported file extensions (without dots): the built-in
+/// formats' and every plugin-registered one.
+pub fn supported_extensions() -> Vec<&'static str> {
+    let mut all = BUILT_IN_EXTENSIONS.to_vec();
+    for format in renzora_project_api::import_formats() {
+        for ext in format.extensions {
+            if !all.contains(ext) {
+                all.push(ext);
+            }
+        }
+    }
+    all
+}
+
+/// Whether this file may be converted by the companion process. A plugin's
+/// format may not: the companion loads no plugins, so it has no converter.
+pub fn converts_in_companion(path: &Path) -> bool {
+    !matches!(detect_format(path), Some(ModelFormat::Plugin(_)))
 }
 
 /// Check if a file path has a supported 3D model extension.
@@ -139,6 +175,27 @@ mod tests {
         assert!(is_supported(Path::new("a.obj")));
         assert!(!is_supported(Path::new("a.txt")));
         assert!(!is_supported(Path::new("noext")));
+    }
+
+    #[test]
+    fn a_plugin_format_is_detected_listed_and_kept_out_of_the_companion() {
+        fn convert(
+            _: &Path,
+            _: &renzora_project_api::ImportConvertOptions,
+        ) -> Result<renzora_project_api::ConvertedModel, String> {
+            Err("not in this test".into())
+        }
+        renzora_project_api::register_import_format(renzora_project_api::ImportFormat {
+            name: "Plugin Test Format",
+            extensions: &["plgtst"],
+            convert,
+        });
+        let format = detect_format(Path::new("part.PLGTST"));
+        assert_eq!(format, Some(ModelFormat::Plugin("plgtst")));
+        assert_eq!(format.unwrap().display_name(), "Plugin Test Format");
+        assert!(supported_extensions().contains(&"plgtst"));
+        assert!(!converts_in_companion(Path::new("part.plgtst")));
+        assert!(converts_in_companion(Path::new("part.fbx")));
     }
 
     #[test]

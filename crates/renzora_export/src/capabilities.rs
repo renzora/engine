@@ -837,8 +837,9 @@ pub const CAPABILITIES: &[Capability] = &[
         section: "systems",
         label: "Scripting",
         help: "The scripting layer: hooks (on_ready/on_update/…), the command queue, and the \
-               script vocabularies every subsystem declares. Auto-enabled when the project \
-               contains .lua files. Off strips it from the engine, ember, animation, physics, \
+               script vocabularies every subsystem declares. Auto-enabled when a scene \
+               has scripts or the project contains script files of any installed \
+               language plugin. Off strips it from the engine, ember, animation, physics, \
                navmesh, ragdoll and localization at once. Game UI needs it, \
                so keeping it brings scripting back automatically.",
         bevy_features: &[],
@@ -967,7 +968,10 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
         // The scripting layer only when the project ships scripts. Safe to decide
         // from files alone: the other thing that needs it, ember's markup UI,
         // enables it through Cargo (`game_ui` lists `scripting`), so a project
-        // with .html UI but no .lua still gets it.
+        // with .html UI but no .lua still gets it. Other languages' files come
+        // from the plugins that run them (`plugin_script_extensions`), so a
+        // language from the marketplace needs no entry here; `lua` stays for a
+        // Lua plugin built before plugins could say so.
         "scripting" => &["lua"],
         // The glTF loader only when the project ships models. A scene built from
         // engine primitives never touches it, and it isn't cheap: `bevy_gltf`
@@ -1413,6 +1417,11 @@ impl ProjectScan {
         self.found.contains(needle)
     }
 
+    /// Is there a file with this extension (any case, no dot) anywhere?
+    pub fn has_extension(&self, ext: &str) -> bool {
+        self.extensions.contains(&ext.to_ascii_lowercase())
+    }
+
     fn saw_any(&self, needles: &[&str]) -> bool {
         needles.iter().any(|n| self.found.contains(*n))
     }
@@ -1580,15 +1589,21 @@ pub fn defaults_from_scan(scan: Option<&ProjectScan>) -> HashMap<String, bool> {
             .collect();
     };
 
+    // Script files of every language a plugin runs, as well as the static list:
+    // a project scripted only in a plugin's language is still a scripted
+    // project, even when no scene names a script yet (one spawned from code).
+    let plugin_script_exts = renzora_project_api::plugin_script_extensions();
     let detected = |id: &str| -> Option<bool> {
         let exts = detection_extensions(id);
         let types = detection_types(id);
         if exts.is_empty() && types.is_empty() {
             return None;
         }
+        let by_plugin = id == "scripting" && plugin_script_exts.iter().any(|e| scan.has_extension(e));
         Some(
             exts.iter().any(|e| scan.extensions.contains(*e))
-                || types.iter().any(|t| scan.saw(t)),
+                || types.iter().any(|t| scan.saw(t))
+                || by_plugin,
         )
     };
 

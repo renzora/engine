@@ -161,7 +161,9 @@ pub fn is_importable(path: &Path) -> bool {
 
 /// Every accepted extension, flattened — the "All importable" dialog filter.
 pub fn all_importable_extensions() -> Vec<&'static str> {
-    let mut v: Vec<&'static str> = renzora_import::supported_extensions().to_vec();
+    // Includes formats plugins registered, so a plugin's format is offered
+    // in the file picker as soon as the plugin is installed.
+    let mut v: Vec<&'static str> = renzora_import::supported_extensions();
     v.extend_from_slice(IMAGE_EXTS);
     v.extend_from_slice(AUDIO_EXTS);
     v.extend_from_slice(SCENE_EXTS);
@@ -293,7 +295,7 @@ pub(crate) fn pick_importable_files() -> Option<Vec<std::path::PathBuf>> {
     rfd::FileDialog::new()
         .set_title("Select files to import")
         .add_filter("All importable", &all)
-        .add_filter("3D Models", renzora_import::supported_extensions())
+        .add_filter("3D Models", &renzora_import::supported_extensions())
         .add_filter("Images", IMAGE_EXTS)
         .add_filter("Audio", AUDIO_EXTS)
         .add_filter("Scenes / Prefabs", SCENE_EXTS)

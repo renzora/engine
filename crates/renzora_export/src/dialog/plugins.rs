@@ -13,7 +13,7 @@ use crate::overlay::{ExportOverlayState, PackagingMode, PluginLinkMode};
 use crate::templates::Platform;
 
 use super::settings::{finish_tab, tab_panel};
-use super::widgets::{card_row, choice_card, group, txt};
+use super::widgets::{card_row, choice_card, group, setting_row, switch_control, txt};
 use super::{Choice, AMBER};
 
 pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, host: bool, tab_max: f32) -> Entity {
@@ -354,6 +354,48 @@ pub(super) fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, p: 
         queue.apply(world);
     });
     secs.push(group(commands, fonts, &renzora_lang_api::t("export.section.plugins"), &[body]));
+
+    // Switches the plugins themselves declared (`PluginExportOption`), one
+    // group per plugin, shown while that plugin is ticked. The engine draws
+    // them and keeps their values; what they mean is the plugin's business,
+    // which is why their text is the plugin's own rather than a translation.
+    for export in renzora_project_api::plugin_exports() {
+        if export.options.is_empty() {
+            continue;
+        }
+        let plugin = export.plugin.clone();
+        let mut rows = Vec::new();
+        for option in &export.options {
+            let key = renzora_project_api::plugin_option_key(&plugin, &option.id);
+            let default = option.default;
+            let sw = switch_control(commands, default);
+            let get_key = key.clone();
+            bind_2way(
+                commands,
+                sw,
+                move |w| {
+                    w.get_resource::<ExportOverlayState>()
+                        .and_then(|s| s.plugin_options.get(&get_key).copied())
+                        .unwrap_or(default)
+                },
+                move |w, v: &bool| {
+                    if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                        s.plugin_options.insert(key.clone(), *v);
+                    }
+                },
+            );
+            rows.push(setting_row(commands, fonts, &option.label, Some(&option.help), sw));
+        }
+        // Titled with the plugin's id, as its card is.
+        let sec = group(commands, fonts, &plugin, &rows);
+        // Matched on the id or its `lib`-less name, the way the stage call is.
+        bind_display(commands, sec, move |w| {
+            w.get_resource::<ExportOverlayState>().is_some_and(|s| {
+                s.selected_plugins.iter().any(|id| id == &plugin || id.strip_prefix("lib") == Some(plugin.as_str()))
+            })
+        });
+        secs.push(sec);
+    }
     finish_tab(commands, panel, &secs, tab_max);
     panel
 }

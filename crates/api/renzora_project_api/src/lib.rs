@@ -11,9 +11,12 @@
 //! Modules are flattened into the root the same way `renzora::core` flattens
 //! them, except `settings_file`, which callers always name explicitly.
 
+pub mod game_archive; // a game's .rpak, read by plugins as bytes
 pub mod image_formats; // which extensions load as an Image (raster + SVG)
+pub mod import_formats; // model formats a plugin teaches the importer
 pub mod model_file; // GLB to `.rvg`, for code that cannot link the builder
 pub mod play_mode; // Play / Simulate / Edit state and its run conditions
+pub mod plugin_export; // what a plugin tells the exporter: its scripts, its files
 pub mod project_config;
 pub mod project_files; // what changed on disk under the open project
 pub mod session; // process kind + the editor's one-shot requests
@@ -23,9 +26,12 @@ mod quality; // the graphics-quality tier, a project setting
 mod app_state; // launcher/loading/editor phase and the open-project requests
 
 pub use app_state::*;
+pub use game_archive::*;
 pub use image_formats::*;
+pub use import_formats::*;
 pub use model_file::{build_model_file, install_model_file_builder, ModelFileBuilder};
 pub use play_mode::*;
+pub use plugin_export::*;
 pub use project_config::*;
 pub use project_files::*;
 pub use quality::*;

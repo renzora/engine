@@ -764,6 +764,10 @@ fn convert_in_companion(
 ) -> Option<Result<(renzora_import::ImportResult, bool), String>> {
     use renzora_import::remote::{ConvertArgs, Converted, CONVERT_KIND};
     let companion = companion?;
+    // A plugin's format converts here: the companion loads no plugins.
+    if !renzora_import::formats::converts_in_companion(source) {
+        return None;
+    }
     let _ = std::fs::remove_dir_all(scratch);
     let args = ConvertArgs { source: source.to_path_buf(), settings: settings.clone(), out_dir: scratch.to_path_buf() };
     let target = source.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

@@ -171,6 +171,9 @@ pub struct ExportOverlayState {
     pub available_plugins: Vec<renzora_native_plugin::InstalledNativePlugin>,
     /// Which plugins are selected for export (by id).
     pub selected_plugins: std::collections::HashSet<String>,
+    /// The values of options plugins declared (`PluginExportOption`), keyed by
+    /// `plugin_option_key`. Only what the user changed; the rest are defaults.
+    pub plugin_options: std::collections::HashMap<String, bool>,
     /// Files beside the binary, or compiled into it. See [`PluginLinkMode`].
     pub plugin_link_mode: PluginLinkMode,
     /// Wrap the finished export in its platform's application bundle — an
@@ -279,6 +282,7 @@ impl Default for ExportOverlayState {
             active_task: None,
             available_plugins: Vec::new(),
             selected_plugins: std::collections::HashSet::new(),
+            plugin_options: std::collections::HashMap::new(),
             // Off by default: a bundle is a deliberate choice about how the game
             // is delivered, and an export that silently rearranged its output
             // into a directory the user did not ask for would be worse than one
@@ -1087,7 +1091,29 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // The dedicated server reuses the game binary (run with `--server`), so
     // there's no separate server template to resolve here.
 
+    // What each selected plugin ships beside itself, asked here because the
+    // worker may be the companion, which loads no plugins. A plugin that says
+    // the export cannot go ahead (its scripts do not compile) stops it: a game
+    // shipped without them would run with its logic missing and no error.
+    let plugin_options = world.resource::<ExportOverlayState>().plugin_options.clone();
+    let (plugin_files, plugin_notes) = match stage_plugins(
+        &selected_plugins,
+        &project.path,
+        platform,
+        link_plugins_in,
+        &plugin_options,
+    ) {
+        Ok(staged) => staged,
+        Err(e) => {
+            world.resource_mut::<ExportOverlayState>().progress = ExportProgress::Error(e);
+            return;
+        }
+    };
+
     let (tx, rx) = mpsc::channel();
+    for note in plugin_notes {
+        let _ = tx.send(ExportMsg::Progress(note));
+    }
     let cancel = Arc::new(AtomicBool::new(false));
 
     // Switch to the live log view, reset its state, and store the task.
@@ -1140,9 +1166,110 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         build_console,
         included_files,
         dlss,
+        plugin_files,
     };
     let remote = world.get_resource::<renzora_platform_api::CompanionJobs>().map(|j| j.remote());
     crate::remote::start(job, tx, cancel, remote);
+}
+
+/// Files the plugins ship, each with the id of the plugin it belongs to.
+type PluginFiles = Vec<(String, renzora_project_api::PluginFile)>;
+
+/// Run the stage function of every selected plugin that declared one, and
+/// collect what they ship (by plugin id) and what they want said in the log.
+fn stage_plugins(
+    selected: &[renzora_native_plugin::InstalledNativePlugin],
+    project_root: &std::path::Path,
+    platform: Platform,
+    linked_in: bool,
+    saved_options: &std::collections::HashMap<String, bool>,
+) -> Result<(PluginFiles, Vec<String>), String> {
+    let exports = renzora_project_api::plugin_exports();
+    let mut files = Vec::new();
+    let mut notes = Vec::new();
+    for plugin in selected {
+        let bare = plugin.id.strip_prefix("lib").unwrap_or(&plugin.id);
+        let Some(export) = exports.iter().find(|e| e.plugin == plugin.id || e.plugin == bare) else {
+            continue;
+        };
+        let Some(stage) = export.stage else { continue };
+        let options = export.option_values(saved_options);
+        let target = renzora_project_api::PluginExportTarget {
+            project_root,
+            platform: platform.dist_dir_name(),
+            linked_in,
+            options: &options,
+        };
+        let staged = stage(&target).map_err(|e| format!("{bare}: {e}"))?;
+        notes.extend(staged.notes.into_iter().map(|n| format!("{bare}: {n}")));
+        files.extend(staged.files.into_iter().map(|f| (plugin.id.clone(), f)));
+    }
+    Ok((files, notes))
+}
+
+/// Pack the plugin files that asked for the archive, each at
+/// `plugin_archive_path(id, path)`, where the plugin reads it back.
+fn pack_plugin_files(packer: &mut RpakPacker, files: &[(String, renzora_project_api::PluginFile)], tx: &mpsc::Sender<ExportMsg>) {
+    for (id, file) in files {
+        let stem = id.strip_prefix("lib").unwrap_or(id).replace('-', "_");
+        // The same rule as a file written beside the game: nothing that
+        // climbs out of the plugin's own place.
+        if renzora_project_api::plugin_file_path(std::path::Path::new(""), &file.path).is_none() {
+            let _ = tx.send(ExportMsg::Progress(format!(
+                "WARN: {stem} asked to pack `{}`, which is outside its own place; skipped",
+                file.path
+            )));
+            continue;
+        }
+        let bytes = match &file.source {
+            renzora_project_api::PluginFileSource::Copy(src) => match std::fs::read(src) {
+                Ok(b) => b,
+                Err(e) => {
+                    let _ = tx.send(ExportMsg::Progress(format!("WARN: {stem}: could not read {}: {e}", src.display())));
+                    continue;
+                }
+            },
+            renzora_project_api::PluginFileSource::Bytes(b) => b.clone(),
+        };
+        packer.add_file(&renzora_project_api::plugin_archive_path(&stem, &file.path), bytes);
+    }
+}
+
+/// Write what the plugins' stage functions listed into each plugin's folder in
+/// the game, `plugins/<id>/`. Returns how many files were written.
+fn write_plugin_files(
+    output_dir: &std::path::Path,
+    files: &[(String, renzora_project_api::PluginFile)],
+    tx: &mpsc::Sender<ExportMsg>,
+) -> usize {
+    let mut written = 0;
+    for (id, file) in files {
+        // The same folder name the library copy above uses, so the plugin
+        // finds these beside itself.
+        let stem = id.strip_prefix("lib").unwrap_or(id).replace('-', "_");
+        let plugin_dir = output_dir.join("plugins").join(&stem);
+        let Some(dest) = renzora_project_api::plugin_file_path(&plugin_dir, &file.path) else {
+            let _ = tx.send(ExportMsg::Progress(format!(
+                "WARN: {stem} asked to ship `{}`, which is outside its own folder; skipped",
+                file.path
+            )));
+            continue;
+        };
+        if let Some(parent) = dest.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let result = match &file.source {
+            renzora_project_api::PluginFileSource::Copy(src) => std::fs::copy(src, &dest).map(|_| ()),
+            renzora_project_api::PluginFileSource::Bytes(bytes) => std::fs::write(&dest, bytes),
+        };
+        match result {
+            Ok(()) => written += 1,
+            Err(e) => {
+                let _ = tx.send(ExportMsg::Progress(format!("WARN: {stem}: could not write {}: {e}", file.path)));
+            }
+        }
+    }
+    written
 }
 
 /// Build or refresh the `.rvg` beside every model in the project. A model that
@@ -1209,6 +1336,8 @@ pub(crate) fn export_worker(
     included_files: Option<Vec<String>>,
     // Ship DLSS: compiled into a lean binary, libraries beside the executable.
     dlss: bool,
+    // What the selected plugins ship beside themselves; see `stage_plugins`.
+    plugin_files: Vec<(String, renzora_project_api::PluginFile)>,
     cancel: Arc<AtomicBool>,
 ) {
     // Bring every model's virtual geometry up to date first, so the pack below
@@ -1251,6 +1380,15 @@ pub(crate) fn export_worker(
 
     // Strip editor-only components from scene files
     packer.strip_for_runtime();
+
+    // The plugin files that asked to travel inside the archive (a single-file
+    // game stays one file); the rest are written beside the game further down.
+    let (archived, plugin_files): (PluginFiles, PluginFiles) =
+        plugin_files.into_iter().partition(|(_, f)| f.in_archive);
+    if !archived.is_empty() {
+        let _ = tx.send(ExportMsg::Progress(format!("Packing {} plugin file(s)...", archived.len())));
+        pack_plugin_files(&mut packer, &archived, &tx);
+    }
 
     // Mesh optimization
     let mesh_settings = MeshOptSettings {
@@ -1933,6 +2071,24 @@ pub(crate) fn export_worker(
                     "[export] Linked {} plugins into the binary",
                     linked_ids.len()
                 );
+            }
+
+            // What the plugins asked to ship beside themselves, into their own
+            // folders. After the library copy, so a copied plugin's folder and
+            // its files are one; a plugin linked into a lean binary gets the
+            // folder here, holding only these. Not for the web, which reads no
+            // files beside the game.
+            if !plugin_files.is_empty() {
+                if is_wasm {
+                    let _ = tx.send(ExportMsg::Progress(format!(
+                        "{} plugin file(s) left out: a web game cannot read files beside itself.",
+                        plugin_files.len()
+                    )));
+                } else {
+                    let _ = tx.send(ExportMsg::Progress("Copying plugin files...".into()));
+                    let n = write_plugin_files(&output_dir, &plugin_files, &tx);
+                    info!("[export] Wrote {n} plugin file(s)");
+                }
             }
 
             // Pack the shipped libraries too. For a copy-based export this is

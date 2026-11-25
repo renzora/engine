@@ -287,9 +287,18 @@ which, and the plugin checkboxes below it pick *what* either way.
 Those checkboxes are pre-ticked from the same project scan the Features tab uses,
 so a fresh open lists the plugins your content actually references — a plugin's
 components carry its crate name (`renzora_matrix::MatrixSettings`), and the scan
-now looks in scripts and markup as well as scenes. A plugin nothing references is
-left unticked rather than shipped by default; tick it if you load it some way the
-scan can't see.
+now looks in scripts and markup as well as scenes. A language plugin is ticked
+when the project has its script files (`.cs` for C#, `.py` for Python), which the
+plugin declares itself, since a scene names a script by its path and never by the
+plugin. A plugin nothing references is left unticked rather than shipped by
+default; tick it if you load it some way the scan can't see.
+
+A plugin can also ship files of its own with the game, such as C#'s compiled
+scripts. They go into its folder, `plugins/<id>/`, in every desktop packaging
+mode, and the export log says what each plugin added. A plugin's own switches
+(C#'s *Bundle the .NET runtime*) appear below the plugin cards while it is
+ticked, and are saved with the preset. See *Shipping with an
+exported game* in [Native plugins](../extending/native-plugins.md).
 
 | Mode | What you ship | Works with |
 |---|---|---|

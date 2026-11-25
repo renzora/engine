@@ -99,6 +99,10 @@ pub struct ExportPreset {
     /// defaults on.
     #[serde(default)]
     pub capabilities: HashMap<String, bool>,
+    /// Plugin-declared export options the user changed, keyed by
+    /// `plugin_option_key`.
+    #[serde(default)]
+    pub plugin_options: HashMap<String, bool>,
 }
 
 fn default_width() -> u32 {
@@ -149,6 +153,7 @@ impl ExportPreset {
             bundle_app: false,
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: HashMap::new(),
+            plugin_options: HashMap::new(),
         }
     }
 
@@ -180,6 +185,7 @@ impl ExportPreset {
             bundle_app: state.bundle_app,
             plugin_link_mode: state.plugin_link_mode,
             capabilities: state.capabilities.clone(),
+            plugin_options: state.plugin_options.clone(),
         }
     }
 
@@ -236,6 +242,7 @@ impl ExportPreset {
         state.selected_plugins = self.selected_plugins.clone();
         state.bundle_app = self.bundle_app;
         state.plugin_link_mode = self.plugin_link_mode;
+        state.plugin_options = self.plugin_options.clone();
         // Merge rather than replace: a capability added by a newer engine is
         // absent from an older preset, and dropping it would silently strip a
         // feature the user never chose to turn off.

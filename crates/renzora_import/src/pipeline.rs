@@ -70,6 +70,8 @@ pub fn convert_in_place(
         ..Default::default()
     };
 
+    // Not a plugin's format: the companion loads no plugins to convert it.
+    let remote = remote.filter(|_| crate::formats::converts_in_companion(source));
     let in_companion = remote.and_then(|remote| {
         let out_dir = std::env::temp_dir().join(format!(
             "renzora-in-place-{}-{:016x}",

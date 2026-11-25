@@ -96,6 +96,12 @@ pub struct ExportJob {
     pub build_console: bool,
     pub included_files: Option<Vec<String>>,
     pub dlss: bool,
+    /// Files the selected plugins ship beside themselves, by plugin id, as
+    /// their stage functions listed them in the editor (see
+    /// `renzora_project_api::plugin_export`). Gathered there because the
+    /// companion loads no plugins. `default` for a job from an older editor.
+    #[serde(default)]
+    pub plugin_files: Vec<(String, renzora_project_api::PluginFile)>,
 }
 
 impl ExportJob {
@@ -136,6 +142,7 @@ impl ExportJob {
             self.build_console,
             self.included_files,
             self.dlss,
+            self.plugin_files,
             cancel,
         );
     }
@@ -251,6 +258,14 @@ mod tests {
             build_console: true,
             included_files: Some(vec!["scenes/main.bsn".into()]),
             dlss: false,
+            plugin_files: vec![(
+                "some_plugin".into(),
+                renzora_project_api::PluginFile {
+                    path: "export/manifest.txt".into(),
+                    source: renzora_project_api::PluginFileSource::Bytes(b"hello".to_vec()),
+                    in_archive: true,
+                },
+            )],
         };
         let back: ExportJob = serde_json::from_str(&serde_json::to_string(&job).unwrap()).unwrap();
         assert_eq!(back.platform, job.platform);
@@ -260,6 +275,9 @@ mod tests {
         assert_eq!(back.build_console, job.build_console);
         assert_eq!(back.included_files, job.included_files);
         assert_eq!(back.selected_plugins[0].id, "spline");
+        assert_eq!(back.plugin_files.len(), 1);
+        assert_eq!(back.plugin_files[0].1.path, "export/manifest.txt");
+        assert!(back.plugin_files[0].1.in_archive);
         assert_eq!(back.project_config.main_scene, job.project_config.main_scene);
         let plugin: renzora_native_plugin::InstalledNativePlugin = back.selected_plugins[0].clone().into();
         assert_eq!(plugin.scope, renzora_platform_api::NativePluginScope::Runtime);

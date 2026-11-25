@@ -270,6 +270,22 @@ pub fn convert_to_glb_with_progress(
         ModelFormat::Usd | ModelFormat::Usdz => crate::usd::convert(source_path, settings)?,
         ModelFormat::Abc => crate::abc::convert(source_path, settings)?,
         ModelFormat::Dae => crate::dae::convert(source_path, settings)?,
+        // A plugin's format: its converter makes the GLB, and from there it is
+        // one more model through the same pass.
+        ModelFormat::Plugin(ext) => {
+            let format = renzora_project_api::import_format_for(ext)
+                .ok_or_else(|| ImportError::UnsupportedFormat(ext.to_string()))?;
+            let options = renzora_project_api::ImportConvertOptions {
+                scale: settings.scale,
+                z_up: settings.up_axis == crate::settings::UpAxis::ZUp,
+                flip_uvs: settings.flip_uvs,
+                generate_normals: settings.generate_normals,
+            };
+            let model = (format.convert)(source_path, &options).map_err(|e| {
+                ImportError::ConversionError(format!("{}: {e}", format.name))
+            })?;
+            ConvertedGlb { glb_bytes: model.glb, warnings: model.warnings }
+        }
     };
 
     Ok(crate::gltf_pass::finish_converted_glb(

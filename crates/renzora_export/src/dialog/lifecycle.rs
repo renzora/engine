@@ -329,8 +329,18 @@ fn scan_plugins(world: &mut World) {
         // would make the selection a high-water mark — a plugin detected once
         // would stay ticked after the scene that used it was deleted.
         s.selected_plugins.clear();
+        // A language plugin is needed by its script files, which no scene names
+        // by the plugin's crate: a scene refers to `scripts/player.cs` by path.
+        let exports = renzora_project_api::plugin_exports();
+        let runs_scripts_here = |id: &str| {
+            let bare = id.strip_prefix("lib").unwrap_or(id);
+            exports.iter().any(|e| {
+                (e.plugin == id || e.plugin == bare)
+                    && scan.as_ref().is_some_and(|scan| e.script_extensions.iter().any(|x| scan.has_extension(x)))
+            })
+        };
         for (id, needle) in &needles {
-            if scan.as_ref().is_none_or(|scan| scan.saw(needle)) {
+            if scan.as_ref().is_none_or(|scan| scan.saw(needle)) || runs_scripts_here(id) {
                 s.selected_plugins.insert(id.clone());
             }
         }

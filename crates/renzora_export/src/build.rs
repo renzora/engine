@@ -793,10 +793,11 @@ fn write_bytes_if_changed(path: &Path, content: &[u8]) -> Result<(), String> {
 /// cache, so it's both isolated and incremental. Returns the copy's root.
 ///
 /// This is a copy-if-newer mirror (by size + mtime), not a full re-copy: the
-/// first export copies everything, later ones only touch changed files. It does
-/// NOT delete files removed from the source — deleting a crate then re-exporting
-/// without clearing `target/export-src` is the one case that needs a manual
-/// clear (rare); everything else just works.
+/// first export copies everything, later ones only touch changed files. Files
+/// and crates removed from the source are removed from the copy too: when they
+/// were not, a module turned from `transport.rs` into `transport/mod.rs` left
+/// both in the copy, and every later lean export failed with E0761 ("file for
+/// module found at both") in a crate nobody had touched since.
 fn sync_export_workspace(
     engine_src: &Path,
     progress: &mut dyn FnMut(String),
@@ -875,6 +876,9 @@ fn sync_crates(
     drop_plugins: &HashSet<String>,
     copied: &mut usize,
 ) -> Result<(), String> {
+    // A crate deleted from the source goes from the copy too: `crates/*` is a
+    // workspace members glob, so a leftover would still be built.
+    prune_removed(src, dest, &["renzora_static_plugins", "renzora_static_scripts"]);
     for entry in std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name();
@@ -899,13 +903,36 @@ fn sync_crates(
         }
         if ft.is_dir() {
             std::fs::create_dir_all(&d).map_err(|e| format!("mkdir {}: {e}", d.display()))?;
-            sync_dir(&s, &d, copied)?;
+            // `stage_static_scripts` writes generated files into this crate
+            // after the sync; pruning it would delete and rewrite them on every
+            // export and recompile the crate each time.
+            if name_str == "renzora_static_scripts" {
+                sync_tree(&s, &d, copied, false)?;
+            } else {
+                sync_dir(&s, &d, copied)?;
+            }
         } else if ft.is_file() && should_copy(&s, &d) {
             std::fs::copy(&s, &d).map_err(|e| format!("copy {}: {e}", s.display()))?;
             *copied += 1;
         }
     }
     Ok(())
+}
+
+/// Remove from `dest` every entry `src` does not have, except `keep`. Best
+/// effort: a file that will not go is left, and the build reports it if it
+/// matters.
+fn prune_removed(src: &Path, dest: &Path, keep: &[&str]) {
+    let Ok(entries) = std::fs::read_dir(dest) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if keep.contains(&name_str.as_ref()) || src.join(&name).exists() {
+            continue;
+        }
+        let path = entry.path();
+        let _ = if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
+    }
 }
 
 /// Names of `crates/` entries that build a cdylib — never in the lean binary's
@@ -942,10 +969,20 @@ fn is_cdylib_crate(manifest: &str) -> bool {
     })
 }
 
-/// Recursive copy-if-newer of `src` → `dest`. Inside the tree only build/vcs
-/// noise (never source) is skipped, so no needed crate file is missed.
+/// Recursive mirror of `src` → `dest`: copy-if-newer, and whatever `src` no
+/// longer has is removed. Inside the tree only build/vcs noise (never source)
+/// is skipped, so no needed crate file is missed.
 fn sync_dir(src: &Path, dest: &Path, copied: &mut usize) -> Result<(), String> {
+    sync_tree(src, dest, copied, true)
+}
+
+/// [`sync_dir`], with pruning optional for a tree that also holds generated
+/// files the source does not.
+fn sync_tree(src: &Path, dest: &Path, copied: &mut usize, prune: bool) -> Result<(), String> {
     const DEEP_SKIP: &[&str] = &["target", ".git"];
+    if prune {
+        prune_removed(src, dest, DEEP_SKIP);
+    }
     for entry in std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name();
@@ -957,7 +994,7 @@ fn sync_dir(src: &Path, dest: &Path, copied: &mut usize) -> Result<(), String> {
                 continue;
             }
             std::fs::create_dir_all(&d).map_err(|e| format!("mkdir {}: {e}", d.display()))?;
-            sync_dir(&s, &d, copied)?;
+            sync_tree(&s, &d, copied, prune)?;
         } else if ft.is_file() && should_copy(&s, &d) {
             std::fs::copy(&s, &d).map_err(|e| format!("copy {}: {e}", s.display()))?;
             *copied += 1;
@@ -2591,6 +2628,14 @@ fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), Str
         kinds.push("rlib");
         lib.insert("crate-type", toml_edit::value(kinds));
     }
+    // An empty `[lints]` says the plugin keeps its own lint settings. The copy
+    // sits under the export workspace's root, so without it cargo printed a
+    // `missing [lints] to inherit [workspace.lints]` warning per plugin on every
+    // lean export. Inheriting instead would hold a marketplace plugin to the
+    // engine's own lints, which its author never built against.
+    if doc.get("lints").is_none() {
+        doc.insert("lints", toml_edit::Item::Table(toml_edit::Table::new()));
+    }
 
     write_if_changed(dest_manifest, &doc.to_string())
 }
@@ -2602,6 +2647,37 @@ mod tests {
     /// The minimum that counts as a script: it calls `renzora::script!`, which
     /// is what `collect_project_scripts` looks for.
     const SCRIPT: &str = "fn update(_c: &mut ScriptCtx) {}\nrenzora::script!(update);\n";
+
+    /// A module that became a folder leaves no old file behind in the copy, and
+    /// a crate removed from the source leaves the copy, while the generated
+    /// scripts crate keeps what export staging wrote into it.
+    #[test]
+    fn the_export_copy_drops_what_the_source_no_longer_has() {
+        let root = std::env::temp_dir().join(format!("renzora_sync_prune_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (src, dest) = (root.join("src"), root.join("dest"));
+        let write = |p: &Path, s: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, s).unwrap();
+        };
+        // What an earlier export copied: `transport.rs`, and a crate since deleted.
+        write(&dest.join("net/src/transport.rs"), "old");
+        write(&dest.join("gone/Cargo.toml"), "old");
+        write(&dest.join("renzora_static_scripts/src/generated.rs"), "staged");
+        // The source now.
+        write(&src.join("net/src/transport/mod.rs"), "new");
+        write(&src.join("net/src/lib.rs"), "pub mod transport;");
+        write(&src.join("renzora_static_scripts/Cargo.toml"), "stub");
+
+        let mut copied = 0;
+        sync_crates(&src, &dest, &HashSet::new(), &mut copied).unwrap();
+
+        assert!(!dest.join("net/src/transport.rs").exists(), "the old module file was left behind");
+        assert!(dest.join("net/src/transport/mod.rs").is_file());
+        assert!(!dest.join("gone").exists(), "a deleted crate stayed in the copy");
+        assert!(dest.join("renzora_static_scripts/src/generated.rs").is_file(), "generated scripts were pruned");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     /// A project with two scripts produces a module and a table entry for each,
     /// and copies the sources beside the generated lib.
@@ -3156,6 +3232,17 @@ mod manifest_patch_tests {
         let out = std::fs::read_to_string(&dest).unwrap();
         let _ = std::fs::remove_dir_all(&src);
         out
+    }
+
+    /// The copy declares its own lints, so cargo does not warn that it inherits
+    /// none from the export workspace; a plugin's own `[lints]` is kept.
+    #[test]
+    fn a_plugin_declares_its_own_lints() {
+        let out = patched("[package]\nname = \"p\"\nversion = \"0.1.0\"\n");
+        assert!(out.contains("[lints]"), "{out}");
+        assert!(!out.contains("workspace = true"), "{out}");
+        let own = patched("[package]\nname = \"p\"\nversion = \"0.1.0\"\n\n[lints.rust]\nunused = \"allow\"\n");
+        assert!(own.contains("unused = \"allow\""), "{own}");
     }
 
     /// A plugin names `renzora` by path, and the path that is correct beside the

@@ -538,6 +538,12 @@ impl Plugin for RuntimePlugin {
                 app.insert_resource(renzora_project_api::VirtualFileReader::new(move |path| {
                     vfs_for_reader.read_string(path)
                 }));
+                // The same archive for plugins, as bytes: the files a plugin
+                // shipped in it at export (a compiled build, a runtime) are
+                // binary, and a plugin reads them off its own threads.
+                if let Some(archive) = vfs.archive_arc() {
+                    renzora_project_api::install_game_archive(std::sync::Arc::new(PluginArchive(archive)));
+                }
                 app.insert_resource(vfs);
             } else {
                 app.insert_resource(vfs);
@@ -894,6 +900,20 @@ impl Plugin for RuntimePlugin {
 /// to lose an ordering that has nothing to do with scripting.
 #[cfg(not(feature = "scripting"))]
 fn setup_vfs_script_reader() {}
+
+/// The game's archive, as `renzora_project_api::game_archive` hands it to
+/// plugins: reads only, from the copy the asset reader already shares.
+struct PluginArchive(std::sync::Arc<renzora_rpak::RpakArchive>);
+
+impl renzora_project_api::GameArchive for PluginArchive {
+    fn read(&self, path: &str) -> Option<Vec<u8>> {
+        self.0.get(path)
+    }
+
+    fn paths_under(&self, prefix: &str) -> Vec<String> {
+        self.0.paths().filter(|p| p.starts_with(prefix)).map(str::to_string).collect()
+    }
+}
 
 /// Wire the VFS file reader into the scripting engine so scripts can be loaded
 /// from rpak archives (Android, exported builds) instead of the filesystem.

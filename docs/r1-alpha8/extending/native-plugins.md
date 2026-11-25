@@ -361,6 +361,121 @@ Write the result where the model belongs and point `MeshInstanceData` at it. A
 plugin that writes a `.glb` and stops gets two files per model instead: the
 editor builds an `.rvg` of virtual geometry beside any `.glb` it finds.
 
+#### Teaching the importer a file format
+
+The importer converts every source format to a GLB, then runs one shared
+pipeline on it: the preview, texture baking, `.material` extraction, animations
+and the stored `.rvg`. A plugin adds a format by supplying that GLB:
+
+```rust
+fn build(&self, _app: &mut App) {
+    renzora::register_import_format(renzora::ImportFormat {
+        name: "3MF (3D Manufacturing Format)",
+        extensions: &["3mf"],
+        convert: my_3mf_to_glb,
+    });
+}
+
+fn my_3mf_to_glb(
+    path: &std::path::Path,
+    options: &renzora::ImportConvertOptions,
+) -> Result<renzora::ConvertedModel, String> {
+    // Read `path`, build a GLB in Y-up metres with named materials, apply
+    // `options.scale` (and `options.z_up` / `options.flip_uvs` where the
+    // format leaves those open), and return it with any warnings.
+    Ok(renzora::ConvertedModel { glb, warnings })
+}
+```
+
+From then on the format is importable everywhere a built-in one is: the Import
+dialog's file filter, files dropped on the editor from the desktop, and an
+import into the project in place. Its models get the same treatment as an FBX,
+and each glTF material becomes an editable `.material` named after it.
+
+| `ImportConvertOptions` | What it carries |
+|---|---|
+| `scale` | The Import window's scale, on top of the format's own units |
+| `z_up` | The user said the source is Z up; a format that defines its up axis can ignore it |
+| `flip_uvs` | Flip V (`1 - v`) |
+| `generate_normals` | Make normals for geometry that has none |
+
+The converter runs on the importer's worker thread, so it gets a path rather
+than the world. A format registered later for an extension takes it over from
+an earlier plugin's, but never from a built-in format. Plugin formats always
+convert in the editor process: the companion process that converts large
+built-in formats loads no plugins. The `format_3mf` plugin is a complete
+example.
+
+#### Shipping with an exported game
+
+The exporter ships a plugin's library, and knows nothing else about it. A
+plugin that needs more in a game, or that a project needs without any scene
+naming it, says so with `register_plugin_export`:
+
+```rust
+fn build(&self, _app: &mut App) {
+    renzora::register_plugin_export(renzora::PluginExport {
+        plugin: "my_lang".into(),               // the plugin's folder name
+        script_extensions: vec!["mls".into()],  // its script files, if it runs any
+        stage: Some(stage),                     // or None: nothing beyond the library
+        options: vec![renzora::PluginExportOption {
+            id: "bundle_runtime".into(),
+            label: "Bundle the My Lang runtime".into(),
+            help: "Players install nothing; adds 20 MB.".into(),
+            default: true,
+        }],
+    });
+}
+
+fn stage(target: &renzora::PluginExportTarget) -> Result<renzora::PluginExportFiles, String> {
+    let mut out = renzora::PluginExportFiles::default();
+    if target.option("bundle_runtime") {
+        out.copy("export/runtime/mylang.dll", "/where/it/is/mylang.dll");
+    }
+    out.copy("export/compiled.bin", target.project_root.join(".cache/compiled.bin"));
+    out.bytes("export/manifest.txt", "version=1\n");
+    out.notes.push("players need the My Lang runtime".into());
+    Ok(out)
+}
+```
+
+- **`script_extensions`**: a project with files of these extensions needs the
+  plugin. The Export window ticks it in the Plugins tab and keeps the Scripting
+  feature on, even when no scene names the plugin, which a scene never does for
+  a script: it refers to `scripts/player.mls` by path.
+- **`stage`** runs in the editor when an export starts, with the project folder,
+  the platform's folder name (`windows-x64`, `linux-x64`, `macos-arm64`,
+  `web-wasm32`, ...) and whether the plugin is linked into a lean binary. The
+  files it lists are written into the plugin's own folder in the game,
+  `plugins/<id>/`, in every desktop packaging mode, lean included; at run time
+  `renzora::plugin_dir("<id>")` finds them. A path that would leave that folder
+  (`..`, an absolute path) is refused. An `Err` stops the export with its
+  message, for a plugin that cannot ship a working game (scripts that do not
+  compile); `notes` go to the export log.
+- **Into the archive, for a single-file game:** `out.archive_copy(path, src)`
+  and `out.archive_bytes(path, bytes)` pack a file into the game's `.rpak`
+  instead of writing it beside the game, at
+  `renzora::plugin_archive_path("<id>", path)`. At run time
+  `renzora::game_archive_read(key)` reads it back as bytes and
+  `renzora::game_archive_paths(prefix)` lists a tree; both are empty outside an
+  exported game. A plugin that needs real files (a native library, assemblies)
+  writes them out itself, as the `csharp` plugin does into the player's cache.
+- **`options`** are switches the Export window shows in the Plugins tab, under a
+  heading with the plugin's id, while the plugin is ticked. Their values are
+  saved with the export preset and reach `stage` as `target.option("id")`.
+  Write the label and help in the plugin; the engine shows them as given.
+
+End a declaration with `..Default::default()` when you leave fields out, so it
+still builds when a later engine adds one.
+
+`stage` runs on the editor's main thread, so reuse work already done rather than
+starting long builds. It runs there rather than in the export worker because the
+worker may be the companion process, which loads no plugins; what it returns is
+plain data and travels with the export. A web export writes no plugin files,
+since a browser reads none, and says so in the log. The `csharp` plugin is a
+complete example: it ships its compiled scripts and the C# host, bundles the
+.NET runtime behind an option, and its game loads them instead of compiling.
+
 ### Crates from crates.io
 
 Add them to your plugin's `Cargo.toml` like any Rust project:

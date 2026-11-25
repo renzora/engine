@@ -77,7 +77,14 @@ pub(super) fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Enti
             // active and would also re-sync the preset we just pushed.
             state.active_preset = Some(last);
             if let Some(p) = state.presets.get(last).cloned() {
-                p.apply(&mut state);
+                // A new preset has made no choices yet: its plugin list is
+                // empty because nobody has picked, not because the game needs
+                // none. So it is applied unpinned and the project is scanned
+                // again, which ticks the plugins and features the project uses.
+                // Applied pinned, every first export shipped no plugins at all.
+                p.apply_as_default(&mut state);
+                state.plugins_scanned = false;
+                state.plugins_scanned_for = None;
             }
             state.save_presets();
         },

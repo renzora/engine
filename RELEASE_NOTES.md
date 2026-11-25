@@ -1,5 +1,23 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 14:42
+- fix(export): a lean export no longer fails on source files the engine has since deleted or moved
+- fix(export): a new export preset starts with the plugins and features the project uses ticked, instead of none
+- fix(export): a lean export no longer warns about missing `[lints]` for every plugin it links in
+- feat(export): plugins can add their own switches to the Export window's Plugins tab
+- feat(export): plugins can pack files into the game's archive and read them back at run time, so a single-file game stays one file
+
+## 2026-11-25 14:21
+- feat(export): plugins can ship files with an exported game and name the script files that need them, with renzora::register_plugin_export
+- feat(export): the Export window ticks a language plugin and keeps scripting on when the project has that language's script files
+
+## 2026-11-25 13:46
+- feat(lang): the status bar and dashboard language buttons open a searchable language overlay instead of a drop-up
+
+## 2026-11-25 13:08
+- feat(lang): every built-in language is fully translated again, covering all of the editor's current text
+- feat(lang): Swedish, Danish, Norwegian, Finnish, Czech, Hungarian, Romanian, Greek, Hebrew and Malay are new built-in languages
+
 ## 2026-11-25 12:33
 - chore(assets): the example scripts, UI templates, particles and themes drop their `lab_NNN_` / `Lab NN` name prefix
 - fix(assets): the boids flock example stays around its manager instead of flying off
@@ -12,6 +30,9 @@
 
 ## 2026-11-25 11:05
 - chore(assets): remove the legacy `.wgsl` shaders, the unused font folder and the old blueprint checkerboard material
+
+## 2026-11-25 10:01
+- feat(import): plugins can add model formats to the importer with `renzora::register_import_format`
 
 ## 2026-11-25 09:25
 - feat(plugin): plugins can build a GLB into an `.rvg` model with `renzora::build_model_file`
