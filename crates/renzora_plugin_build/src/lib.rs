@@ -415,7 +415,20 @@ impl Sdk {
         for (key, value) in native_build::rustc::env_vars(&target) {
             cmd.env(key, value);
         }
-        cmd.args(&args);
+        // Through a response file, not the command line. Every dependency
+        // directory is an `-L dependency=` argument, and a plugin with a large
+        // tree (an embedded Python has 256) passes 50,000 characters, past the
+        // 32,767 Windows allows a command line, so rustc never started: "The
+        // filename or extension is too long". rustc reads one argument per line
+        // from `@file`, on every platform, so there is one way to call it.
+        let argfile = out.with_extension("rustc-args");
+        if let Some(parent) = argfile.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&argfile, args.join("\n"))?;
+        let mut at = std::ffi::OsString::from("@");
+        at.push(&argfile);
+        cmd.arg(at);
         // No `-C incremental`: measured on `system_monitor` and `text3d`, it
         // saved about a second per warm rebuild, made a cold one 7 s slower,
         // and added a cache folder per plugin. The kept `deps/` below is what
