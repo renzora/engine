@@ -40,8 +40,8 @@ mod script_extension;
 /// `languages/` directory. English is the fallback and must stay first so a
 /// half-written non-English pack can never starve the resolver of a base.
 ///
-/// As the other 15 target languages are authored, add them here — that's the
-/// only edit needed to ship a new built-in language.
+/// Adding a line here is the only edit needed to ship a new built-in language;
+/// the pickers list whatever packs are registered.
 const EMBEDDED_PACKS: &[(&str, &str)] = &[
     ("en", include_str!("../../../languages/en.toml")),
     ("de", include_str!("../../../languages/de.toml")),
@@ -63,6 +63,16 @@ const EMBEDDED_PACKS: &[(&str, &str)] = &[
     ("id", include_str!("../../../languages/id.toml")),
     ("vi", include_str!("../../../languages/vi.toml")),
     ("th", include_str!("../../../languages/th.toml")),
+    ("sv", include_str!("../../../languages/sv.toml")),
+    ("da", include_str!("../../../languages/da.toml")),
+    ("nb", include_str!("../../../languages/nb.toml")),
+    ("fi", include_str!("../../../languages/fi.toml")),
+    ("cs", include_str!("../../../languages/cs.toml")),
+    ("hu", include_str!("../../../languages/hu.toml")),
+    ("ro", include_str!("../../../languages/ro.toml")),
+    ("el", include_str!("../../../languages/el.toml")),
+    ("he", include_str!("../../../languages/he.toml")),
+    ("ms", include_str!("../../../languages/ms.toml")),
 ];
 
 /// Tracks external pack files and their last-seen modified time, so a rescan
@@ -285,7 +295,20 @@ fn match_locale(tag: &str, available: &[String]) -> Option<String> {
             _ => {}
         }
     }
+    // Some languages reach us under a code no pack is keyed by. Norway's OS
+    // locales say `no` (or `nn` for Nynorsk) where the pack is Bokmål, `nb`, the
+    // written form most players read; and older Java-derived locales still use
+    // the withdrawn ISO codes `iw` for Hebrew and `in` for Indonesian.
+    let alias = match language.as_str() {
+        "no" | "nn" => Some("nb"),
+        "iw" => Some("he"),
+        "in" => Some("id"),
+        _ => None,
+    };
     candidates.push(language);
+    if let Some(alias) = alias {
+        candidates.push(alias.to_string());
+    }
 
     candidates.iter().find_map(|candidate| {
         available
@@ -752,6 +775,21 @@ mod tests {
             ("zh-CN", Some("zh")),
             ("sv-SE", None),
             ("", None),
+        ] {
+            assert_eq!(match_locale(tag, &packs).as_deref(), expected, "{tag}");
+        }
+    }
+
+    #[test]
+    fn locale_codes_without_a_pack_of_their_own_fall_back_to_an_alias() {
+        let packs = codes(&["en", "nb", "he", "id"]);
+        for (tag, expected) in [
+            ("nb-NO", Some("nb")),
+            ("no_NO.UTF-8", Some("nb")),
+            ("nn-NO", Some("nb")),
+            ("iw-IL", Some("he")),
+            ("he-IL", Some("he")),
+            ("in-ID", Some("id")),
         ] {
             assert_eq!(match_locale(tag, &packs).as_deref(), expected, "{tag}");
         }

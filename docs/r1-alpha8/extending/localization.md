@@ -34,7 +34,23 @@ renzora::lang::t_args("status.saved", &[("file", &name)]);
 
 1. **Built-in packs** are compiled into the binary from the repo-root
    `languages/` directory, so an exported game is fully localized with no extra
-   files.
+   files. The engine ships 30, each covering every key English has:
+
+   | Code | Language | Code | Language | Code | Language |
+   |---|---|---|---|---|---|
+   | `en` | English | `ru` | Русский | `sv` | Svenska |
+   | `de` | Deutsch | `pl` | Polski | `da` | Dansk |
+   | `es` | Español | `nl` | Nederlands | `nb` | Norsk bokmål |
+   | `fr` | Français | `tr` | Türkçe | `fi` | Suomi |
+   | `ja` | 日本語 | `uk` | Українська | `cs` | Čeština |
+   | `zh` | 简体中文 | `ar` | العربية | `hu` | Magyar |
+   | `zh-TW` | 繁體中文 | `hi` | हिन्दी | `ro` | Română |
+   | `ko` | 한국어 | `id` | Bahasa Indonesia | `el` | Ελληνικά |
+   | `it` | Italiano | `vi` | Tiếng Việt | `he` | עברית |
+   | `pt-BR` | Português (Brasil) | `th` | ไทย | `ms` | Bahasa Melayu |
+
+   Arabic and Hebrew are translated, but right-to-left layout is not done yet,
+   so their text currently runs left to right.
 2. **External packs** — any `languages/*.toml` next to the executable or in the
    working directory — are loaded on top and *override* a built-in of the same
    `code`, key for key. The folder is re-scanned every couple of seconds, so
@@ -113,12 +129,16 @@ up without another call.
 The editor and a game choose differently, because the editor's language is the
 person editing's preference and a game's is the game's:
 
-- **The editor** starts in your interface language, **Settings > Appearance >
-  Language**, saved in `~/.renzora/settings.toml` under `[app] language`.
+- **The editor** starts in your interface language, saved in
+  `~/.renzora/settings.toml` under `[app] language`. Change it from **Settings >
+  Appearance > Language**, or from the language button in the editor's status
+  bar or at the foot of the dashboard rail: both open a searchable grid of
+  every installed language, and picking one switches the editor at once.
 - **A game** starts in the project's `default_language` (a language code in
   `project.toml`, such as `"de"` or `"pt-BR"`). Without one it follows the
   player's system language when a pack for it is available (`de-DE` finds
-  `de`, `zh-Hant-TW` finds `zh-TW`), and otherwise starts in English. It never
+  `de`, `zh-Hant-TW` finds `zh-TW`, a Norwegian `no` or `nn` system finds
+  `nb`), and otherwise starts in English. It never
   reads the editor's `settings.toml`, so a game exported from a German editor
   does not start in German on a player's machine unless the project says so.
 

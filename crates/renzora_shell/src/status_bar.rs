@@ -1,5 +1,5 @@
-//! The bottom status bar, and the two dropups that live in it (theme and
-//! language). Also [`apply_chrome_style`], which repaints the top and status
+//! The bottom status bar, the theme dropup and the language button that live in
+//! it. Also [`apply_chrome_style`], which repaints the top and status
 //! bars from the ember `Theme.chrome` — it is here because [`ChromeBar`] is.
 //!
 //! Plugin-contributed status items are rendered through a reactive keyed list,
@@ -153,8 +153,9 @@ pub(crate) fn build_status_bar(
     renzora_ember::reactive::tracked::keyed_list(commands, left_items, status_snapshot_left);
     commands.entity(left_content).add_children(&[ready, saved, left_items]);
 
-    // The language + theme dropups — fixed elements on the right, before metrics.
-    let lang_picker = language_dropup(commands, fonts);
+    // The language button and theme dropup: fixed elements on the right, before
+    // metrics.
+    let lang_picker = language_button(commands, fonts);
     let dropup = theme_dropup(commands, fonts, themes, active, theme_menu_open);
 
     let right_content = commands
@@ -299,69 +300,15 @@ fn theme_dropup(
     trigger
 }
 
-/// Marks the status-bar language picker trigger.
-#[derive(Component)]
-struct LanguageDropup;
-
-/// The language picker dropup in the status bar: shows the active language and
-/// opens a menu (flipped up) of every registered language — built-in packs plus
-/// any external `languages/*.toml`. Picking one calls `renzora_lang_api::set_active`
-/// and persists it via `renzora_project_api::save_language`; the resulting `LanguageChanged`
-/// drives whatever live relocalization is wired up. Mirrors `theme_dropup`.
-fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// The language button in the status bar: the active language's native name,
+/// which opens ember's language overlay (a searchable grid of every registered
+/// language). Picking one there applies and saves it, and the resulting
+/// `LanguageChanged` rebuilds the chrome, this button included.
+fn language_button(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let langs = renzora_lang_api::available();
     let active = renzora_lang_api::active_code();
 
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                // Flip up (bar is at the window bottom), anchored to the right.
-                bottom: Val::Percent(100.0),
-                right: Val::Px(0.0),
-                margin: UiRect::bottom(Val::Px(4.0)),
-                flex_direction: FlexDirection::Column,
-                min_width: Val::Px(160.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
-            BorderColor::all(rgb(divider())),
-            GlobalZIndex(600),
-            renzora_ember::UiCursor::default(),
-            Name::new("language-menu"),
-        ))
-        .id();
-
-    let mut rows = Vec::new();
-    for m in &langs {
-        let code = m.code.clone();
-        let label = if m.name.is_empty() {
-            m.code.clone()
-        } else {
-            m.name.clone()
-        };
-        let icon = if m.code == active { "check" } else { "globe" };
-        rows.push(menu_item(commands, fonts, icon, &label, move |_w| {
-            renzora_lang_api::set_active(&code);
-            let _ = renzora_project_api::save_language(&code);
-        }));
-    }
-    let content = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            ..default()
-        })
-        .id();
-    commands.entity(content).add_children(&rows);
-    let scroll = scroll_area_keyed(commands, content, 260.0, "status-language-menu");
-    commands.entity(panel).add_child(scroll);
-
-    // Trigger shows the active language's native name (falls back to its code).
+    // The active language's native name (falls back to its code).
     let active_name = langs
         .iter()
         .find(|m| m.code == active)
@@ -388,7 +335,6 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             TextColor(rgb(text_muted())),
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-up", text_muted(), 9.0);
     let trigger = commands
         .spawn((
             Node {
@@ -397,19 +343,17 @@ fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 column_gap: Val::Px(5.0),
                 padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
-                position_type: PositionType::Relative,
                 flex_shrink: 0.0,
                 ..default()
             },
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
-            Popup { panel, open: false },
-            LanguageDropup,
+            renzora_ember::widgets::LanguageOverlayTrigger,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new("language-dropup"),
+            Name::new("language-button"),
         ))
         .id();
-    commands.entity(trigger).add_children(&[icon, label, caret, panel]);
+    commands.entity(trigger).add_children(&[icon, label]);
     trigger
 }
 

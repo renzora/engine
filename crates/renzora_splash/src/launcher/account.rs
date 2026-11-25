@@ -25,7 +25,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::interaction::{BLOCK, PASS_THROUGH};
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::reactive::Rx;
-use renzora_ember::widgets::{menu_item, scroll_area_keyed, HoverTooltip, Popup};
+use renzora_ember::widgets::{HoverTooltip, LanguageOverlayTrigger};
 use renzora_ember::UiInteraction;
 
 use super::chrome::{SplashUrl, DISCORD_URL, GITHUB_URL, WEBSITE_URL, YOUTUBE_URL};
@@ -307,57 +307,14 @@ fn sign_out_click(
 
 // ── Language picker ──────────────────────────────────────────────────────────
 
-/// Compact language picker for the rail footer: a globe + the active language's
-/// native name that opens a dropdown of every registered language (built-in
-/// packs + any external `languages/*.toml`). Picking one applies and persists it
-/// (`set_active` + `save_language`), so the choice is already in effect when the
-/// editor opens. Uses the shared ember `Popup`/`menu_item` widgets — their toggle
-/// systems run in every state, including Splash.
+/// Compact language button for the rail footer: a globe + the active language's
+/// native name, which opens ember's language overlay (the same searchable grid
+/// the editor's status bar opens). Picking one there applies and saves it, so
+/// the choice is already in effect when the editor opens. The overlay's systems
+/// run in every state, including Splash.
 pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let langs = renzora_lang_api::available();
     let active = renzora_lang_api::active_code();
-
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                // Opens upward: the trigger is the last row in the rail, so a
-                // downward menu would fall off the bottom of the window.
-                bottom: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                margin: UiRect::bottom(Val::Px(4.0)),
-                flex_direction: FlexDirection::Column,
-                min_width: Val::Px(178.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(c(22, 24, 30)),
-            BorderColor::all(border_soft()),
-            GlobalZIndex(700),
-            renzora_ember::UiCursor::default(),
-            Name::new("splash-language-menu"),
-        ))
-        .id();
-
-    let mut rows = Vec::new();
-    for m in &langs {
-        let code = m.code.clone();
-        let label = if m.name.is_empty() { m.code.clone() } else { m.name.clone() };
-        let icon = if m.code == active { "check" } else { "globe" };
-        rows.push(menu_item(commands, fonts, icon, &label, move |_w| {
-            renzora_lang_api::set_active(&code);
-            let _ = renzora_project_api::save_language(&code);
-        }));
-    }
-    let content = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
-        .id();
-    commands.entity(content).add_children(&rows);
-    let scroll = scroll_area_keyed(commands, content, 280.0, "splash-language-menu");
-    commands.entity(panel).add_child(scroll);
 
     let active_name = langs
         .iter()
@@ -377,14 +334,11 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
             PASS_THROUGH,
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-up", ICON_MUTED, 9.0);
-    commands.entity(caret).insert(PASS_THROUGH);
     let trigger = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(28.0),
-                position_type: PositionType::Relative,
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(6.0),
@@ -395,7 +349,7 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
             BackgroundColor(Color::NONE),
             UiInteraction::default(),
             BLOCK,
-            Popup { panel, open: false },
+            LanguageOverlayTrigger,
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-language-picker"),
         ))
@@ -403,7 +357,7 @@ pub(crate) fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts)
     bind_bg(commands, trigger, move |w| {
         if is_hovered(w, trigger) { panel_hover() } else { Color::NONE }
     });
-    commands.entity(trigger).add_children(&[icon, label, caret, panel]);
+    commands.entity(trigger).add_children(&[icon, label]);
     trigger
 }
 

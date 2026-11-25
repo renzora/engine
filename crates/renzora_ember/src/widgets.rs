@@ -133,6 +133,7 @@ mod node_graph;
 mod overflow_row;
 mod overflow_strip;
 mod overlay;
+mod language_picker;
 mod ruler;
 mod toolbar;
 mod markdown;
@@ -258,6 +259,7 @@ pub use overflow_strip::{
     overflow_strip, overflow_strip_gap, OverflowBudget, OverflowEntry, OverflowKeep, OverflowStrip,
 };
 pub use overlay::*;
+pub use language_picker::{language_overlay, LanguageOverlayTrigger};
 pub use scroll_area::*;
 pub use section::{
     section, section_with_header, section_with_header_icon_open, section_with_header_open,
@@ -314,6 +316,20 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<toast::ToastStack>();
         // On their own: the main widget tuple is at Bevy's 20-system limit.
         app.add_systems(Update, (toast::drain_toasts, toast::toast_clicks));
+        // Unordered against `overlay_dismiss` for the same reason the menu
+        // openers are (see the note on `screen_menu_dismiss` below): an
+        // ordering would flush the new overlay into the world while the
+        // opening click is still `just_pressed`, and dismiss would close it on
+        // the frame it appeared.
+        app.add_systems(
+            Update,
+            (
+                language_picker::language_overlay_open,
+                language_picker::language_search_focus,
+                language_picker::language_search_filter,
+                language_picker::language_tile_pick,
+            ),
+        );
         app.init_resource::<overflow_row::RowDrag>();
         // Compute the "pointer is on a scrollbar" flag before any panel's Update
         // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
