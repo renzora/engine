@@ -55,6 +55,15 @@ is compiled. A plugin is asked about once per build: if it has none, it is not
 asked again until the engine changes, so a missing binary never reopens the
 setup window on every launch.
 
+### One version, a binary per build
+
+A plugin version is rebuilt for every nightly and release whether or not its
+code changed, because a binary only runs on the build it was compiled against.
+So version 0.1.4, untouched for a week, has seven binaries: one per nightly,
+each filed under its build. The editor never chooses between them; it asks for
+its own build's. On renzora.com, the listing page's prebuilt section has a
+build picker (newest first) for downloading one by hand.
+
 ## Security
 
 A prebuilt is a native library mapped into the editor's own process, so it is
@@ -100,7 +109,16 @@ installable until they are replaced.
 
 On a nightly or release, each desktop lane runs the plugin check it already ran
 with `--emit`: every plugin that builds against that lane's SDK and carries its
-build stamp is written out with a signed `prebuilt.json`. Once the release is
+build stamp is written out with a signed `prebuilt.json`.
+
+It compiles the plugins as the marketplace will list them once the release is
+out, not renzora/plugins `main`: the plugins repository's
+`publish-changed.sh --stage` lays them out, taking `main` for every plugin
+except one changed without a version bump, which stays at the commit it was
+last published from. So a binary labelled 1.2.0 always holds 1.2.0's code. The
+flip side is that a published version which no longer compiles against a new
+build gets no binary for it: fix it and bump its version, and it ships with
+the next release. Once the release is
 published, the `prebuilts` job uploads them to `POST /api/prebuilt-plugins/upload`.
 The marketplace files each under its listing (by `marketplace_id`), platform and
 engine stamp, and stores the bytes once per SHA-256.
@@ -134,7 +152,8 @@ PREBUILT_SIGNING_KEY=<hex secret> cargo run --profile dist -p renzora_plugin_bui
 | Route | Use |
 |---|---|
 | `GET /api/prebuilt-plugins/<asset id>?engine=<stamp>&platform=<platform>` | The binary for this exact build, or 404 |
-| `GET /api/prebuilt-plugins/<asset id>/latest` | The newest binary per platform, for the listing page |
+| `GET /api/prebuilt-plugins/<asset id>/latest[?engine_tag=<tag>]` | The binary per platform for one engine build, or the newest of each, for the listing page |
+| `GET /api/prebuilt-plugins/<asset id>/engine-builds` | The engine builds the plugin has binaries for, newest first, for the listing page's build picker |
 | `GET /api/prebuilt-plugins/<asset id>/file/<id>` | The bytes, counted as a download |
 | `POST /api/prebuilt-plugins/upload` | CI's upload; admin token, multipart `statement`, `engine_tag`, `engine_version`, `library` |
 
@@ -142,4 +161,5 @@ Platforms use the engine's `dist/` names: `windows-x64`, `windows-arm64`,
 `macos-x64`, `macos-arm64`, `linux-x64`, `linux-arm64`.
 
 A plugin's listing page on renzora.com shows its prebuilt binaries under the
-download button, leading with the visitor's own platform.
+download button, leading with the visitor's own platform, for the engine build
+chosen in its picker (the newest by default).

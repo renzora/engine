@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 16:56
+- fix(plugins): a release's prebuilt plugin binaries hold the code of the version they are labelled with, not unreleased changes
+
 ## 2026-11-25 14:42
 - fix(export): a lean export no longer fails on source files the engine has since deleted or moved
 - fix(export): a new export preset starts with the plugins and features the project uses ticked, instead of none

@@ -751,7 +751,24 @@ jobs:
             echo "::warning::no staged SDK at $out/sdk, skipping the plugin check"
             exit 0
           fi
-          git clone --depth 1 https://github.com/renzora/plugins "$RUNNER_TEMP/plugins"
+          # The sources the marketplace will list once this release is out,
+          # not plugins `main`: a plugin changed without a version bump is
+          # held back at the commit it was last published from, so a prebuilt
+          # labelled 1.2.0 holds 1.2.0's code and unreleased work stays
+          # unreleased. The plugins repository's own publish script decides,
+          # the same rule its publish job applies. Full history and tags,
+          # since that is what it compares; without the script (an older
+          # plugins repository) it falls back to `main`.
+          git clone --quiet --filter=blob:none https://github.com/renzora/plugins "$RUNNER_TEMP/plugins-repo"
+          stage="$RUNNER_TEMP/plugins-repo/.github/scripts/publish-changed.sh"
+          if [ -f "$stage" ] && grep -q -- '--stage' "$stage" \
+            && (cd "$RUNNER_TEMP/plugins-repo" && bash "$stage" HEAD --stage "$RUNNER_TEMP/plugins"); then
+            :
+          else
+            echo "::warning::could not stage the plugins' release sources; checking plugins main instead"
+            rm -rf "$RUNNER_TEMP/plugins"
+            cp -r "$RUNNER_TEMP/plugins-repo" "$RUNNER_TEMP/plugins"
+          fi
           emit=()
           if [ "$PUBLISHING" != "none" ] && [ -n "$PREBUILT_SIGNING_KEY" ]; then
             emit=(--emit "$RUNNER_TEMP/prebuilts")
