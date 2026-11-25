@@ -129,7 +129,7 @@ Include:
 
 ### Prerequisites
 
-- **Rust**, installed via [rustup](https://rustup.rs/). `rust-toolchain.toml` pins the version (currently **1.95.0**) and rustup selects it automatically; nightly is not required.
+- **Rust**, installed via [rustup](https://rustup.rs/). `rust-toolchain.toml` pins the version (currently **1.100.0**) and rustup selects it automatically; nightly is not required.
 - **Git**
 - Your platform's usual native build dependencies — a C/C++ toolchain, and on Linux the graphics/audio dev headers:
 
