@@ -11,7 +11,7 @@ use crate::input::{update_script_input, ScriptInput};
 use crate::resources::update_script_timers;
 use crate::resources::ScriptTimers;
 use crate::systems::execution::{
-    ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptReflectionQueue,
+    ScriptCommandQueue, ScriptEnvironmentCommands, ScriptReflectionQueue,
 };
 
 /// Events emitted when scripts are hot-reloaded.
@@ -84,7 +84,6 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<renzora_scripting_api::ScriptDrawSurfaces>()
             .init_resource::<CharacterCommandQueue>()
             .init_resource::<renzora_animation_api::TransformWriteQueue>()
-            .init_resource::<ScriptLogBuffer>()
             .init_resource::<ScriptEnvironmentCommands>()
             .init_resource::<ScriptReflectionQueue>()
             .init_resource::<ScriptReloadEvents>()
@@ -194,6 +193,10 @@ impl Plugin for ScriptingPlugin {
         // Bridge lifecycle/cursor ScriptActions (a script's generic `action()`
         // call; despawn + cursor lock would otherwise be no-ops).
         app.add_observer(handle_lifecycle_actions);
+
+        // Scripts on the plugin bus: their events and a plugin's in one space,
+        // and `action(name, ...)` calling a bus service of that name.
+        crate::bus_bridge::install(app);
     }
 }
 

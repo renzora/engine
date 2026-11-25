@@ -1,0 +1,15 @@
+[package]
+name = "renzora_bus_api"
+version = "0.1.0"
+edition = "2021"
+description = "Named events and services that plugins use to talk to each other without sharing Rust types; plugins and scripts see it as `renzora::bus`"
+
+# A contract subject layer with nothing below it but Bevy. The bus itself is a
+# `Resource`, not a static, but its TypeId must still be the same one in every
+# native plugin, so the crate stays reachable from `renzora_sdk` and
+# `renzora_dylib` embeds one copy.
+[dependencies]
+bevy = { workspace = true }
+
+[lints]
+workspace = true

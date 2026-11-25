@@ -88,6 +88,7 @@ The layers, and what plugins still call each one:
 | `renzora_platform_api` | Version, the Rust toolchain, child processes, DLSS runtime, auth, plugin inventory and updates, the native `plugin!` macro and its ABI record (`native_plugin.rs`), the project index, streaming | `renzora::version`, `renzora::core::...` |
 | `renzora_animation_api` | Animation clips, bone styles, sprite animation | `renzora::AnimClip`, `renzora::bone_style`, ... |
 | `renzora_save_api` | Save games | `renzora::save` |
+| `renzora_bus_api` | Named events and services between plugins | `renzora::bus` |
 | `renzora_physics_api` | The physics contract, vehicles, scene queries | `renzora::physics`, `renzora::vehicle`, `renzora::scene_query` |
 | `renzora_world_api` | World environment, wind, sun, splines | `renzora::WorldEnvironment`, `renzora::Sun`, ... |
 | `renzora_render_api` | The GPU capability flags, `SolariLit` and the ray tracer's stand-in contracts (`gi`), auto exposure, post effects, the post-process framework (`postprocess` feature), the grid (`grid` feature), the blockout grid texture | `renzora::SolariLit`, `renzora::PostEffects`, `renzora::postprocess`, ... |

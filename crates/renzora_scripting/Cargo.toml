@@ -36,7 +36,9 @@ renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 renzora_physics_api = { path = "../api/renzora_physics_api" }
 # The transform writes scripts queue, which animation drains too.
 renzora_animation_api = { path = "../api/renzora_animation_api" }
-serde = { version = "1", features = ["derive"] }
+# The plugin bus, which `bus_bridge` joins to script events.
+renzora_bus_api = { path = "../api/renzora_bus_api" }
+serde ={ version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 

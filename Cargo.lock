@@ -7690,6 +7690,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_bus_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "renzora_camera"
 version = "0.1.0"
 dependencies = [
@@ -7832,7 +7839,6 @@ dependencies = [
  "renzora_lang_api",
  "renzora_log_api",
  "renzora_project_api",
- "renzora_scripting",
 ]
 
 [[package]]
@@ -9263,6 +9269,7 @@ dependencies = [
  "log",
  "renzora",
  "renzora_animation_api",
+ "renzora_bus_api",
  "renzora_diagnostics_api",
  "renzora_log_api",
  "renzora_net_api",
@@ -9302,6 +9309,7 @@ dependencies = [
  "renzora",
  "renzora_animation_api",
  "renzora_audio_api",
+ "renzora_bus_api",
  "renzora_diagnostics_api",
  "renzora_ember",
  "renzora_material_api",

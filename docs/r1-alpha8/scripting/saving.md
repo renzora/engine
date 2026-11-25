@@ -101,7 +101,7 @@ Renaming the game in `project.toml` changes the folder name, so saves made under
 
 ## Keeping saves somewhere else
 
-A plugin can move the slots off the disk entirely, into a database or a cloud store, without any change to your scripts: every `save_write`, `save_load`, `save_exists`, `save_delete` and `save_slots` goes to it instead of the folder. The **MySQL Saves** plugin on the Marketplace is one, keeping slots in a MySQL database on the player's machine.
+A plugin can move the slots off the disk entirely, into a database or a cloud store, without any change to your scripts: every `save_write`, `save_load`, `save_exists`, `save_delete` and `save_slots` goes to it instead of the folder. The **MySQL** plugin on the Marketplace is one, keeping slots in a MySQL database on the player's machine (and letting scripts query it).
 
 Values work exactly as above either way; only where a written slot lands changes. When the store cannot be reached, `save_write` and `save_load` return `false` with the reason, `save_exists` is `false` and `save_slots` is empty.
 

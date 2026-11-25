@@ -188,12 +188,19 @@ pub fn dispatch_hooks(world: &mut World) {
         .get_resource::<renzora_scripting_api::ScriptNetLifecycleInbox>()
         .map(|i| i.pending.clone())
         .unwrap_or_default();
+    // The queue Lua's `on_event` drains, read before that drain (this system
+    // runs ahead of `ScriptExecution`), so both languages hear each event once.
+    let game_events: Vec<renzora_scripting_api::GameEvent> = world
+        .get_resource::<renzora_scripting_api::GameEventQueue>()
+        .map(|q| q.pending.clone())
+        .unwrap_or_default();
 
     if scene_events.is_empty()
         && ui_events.is_empty()
         && rpc_events.is_empty()
         && anim_events.is_empty()
         && player_events.is_empty()
+        && game_events.is_empty()
     {
         return;
     }
@@ -240,6 +247,16 @@ pub fn dispatch_hooks(world: &mut World) {
         let hook = ScriptHook::AnimationEvent {
             name: &ev.name,
             source: Entity::from_bits(ev.entity_bits),
+        };
+        for (entity, name, f) in &targets {
+            call(world, *entity, name, *f, &hook);
+        }
+    }
+    for ev in &game_events {
+        let hook = ScriptHook::Event {
+            name: &ev.name,
+            args: &ev.args,
+            from: ev.from,
         };
         for (entity, name, f) in &targets {
             call(world, *entity, name, *f, &hook);

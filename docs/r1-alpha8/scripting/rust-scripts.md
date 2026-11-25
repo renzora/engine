@@ -140,8 +140,51 @@ One function takes them all, so adding a hook later is not a new export.
 | `Http` | A background HTTP request completed. Carries the status and body. |
 | `Rpc` | A networked call arrived. Carries the name, arguments and the sender's peer id. See [Multiplayer](/docs/r1-alpha8/multiplayer/overview). |
 | `PlayerJoined` / `PlayerLeft` | A peer connected or disconnected. On the server (dedicated or host) only. |
+| `Event` | A game event: one a script emitted, or an answer from a plugin. Carries the name, arguments and the entity that sent it. The same events Lua's `on_event` gets. |
 
 `SceneLoaded` only reaches scripts the load did not destroy, which in practice means scripts in a global scene. That is what makes a loading screen possible.
+
+## Calling a plugin's functions
+
+A plugin adds script functions by declaring them (`mysql_query`, `http_*`, a weather plugin's `set_rain`). Each one is a `ScriptAction` underneath, so a Rust script calls it by sending that action with the same arguments:
+
+```rust
+use renzora::script_bridge::ScriptAction;
+
+ScriptAction::new("mysql_query", ctx.entity())
+    .arg("sql", "SELECT name, score FROM players ORDER BY score DESC LIMIT 10")
+    .arg("callback", "top_ten")
+    .send(ctx.world());
+```
+
+A function that does slow work cannot return its result. The plugin answers later with an event named by the callback:
+
+```rust
+fn hooks(ctx: &mut ScriptCtx, hook: &ScriptHook) {
+    if let ScriptHook::Event { name: "top_ten", args, .. } = hook {
+        if let Some(ScriptActionValue::String(rows)) = args.get("rows") {
+            let rows: Vec<renzora::serde_json::Value> =
+                renzora::serde_json::from_str(rows).unwrap_or_default();
+            info!("{} players", rows.len());
+        }
+    }
+}
+```
+
+A plugin's documentation lists its functions, their arguments and what its answer carries.
+
+### The plugin bus
+
+Events a plugin emits on [the plugin bus](/docs/r1-alpha8/extending/plugin-bus) arrive as `ScriptHook::Event` too, and an event a script emits reaches plugins. A Rust script can also call a plugin's bus service directly and get the answer straight back, since it holds `&mut World`:
+
+```rust
+use renzora::bus::prelude::*;
+
+match ctx.world().call("inventory.add_item", BusValue::map().with("id", "sword")) {
+    Ok(answer) => info!("added: {answer:?}"),
+    Err(err) => warn!("{err}"),
+}
+```
 
 ## Drawing
 

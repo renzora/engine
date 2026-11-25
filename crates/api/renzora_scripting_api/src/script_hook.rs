@@ -116,6 +116,22 @@ pub enum ScriptHook<'a> {
         body: &'a str,
     },
 
+    /// A broadcast game event: the Rust counterpart to Lua's
+    /// `on_event(name, args)`, from the same queue.
+    ///
+    /// Anything can send one: a script's `emit`, an engine crate, or a plugin
+    /// answering an action. That last is what makes a plugin's script functions
+    /// usable from Rust. A function that does slow work (a database query, a
+    /// download) cannot return its result, so the plugin answers later with an
+    /// event named by the caller, and without this a Rust script never heard
+    /// the answer.
+    Event {
+        name: &'a str,
+        args: &'a HashMap<String, ScriptActionValue>,
+        /// The entity whose script emitted it; `None` from engine or plugin code.
+        from: Option<Entity>,
+    },
+
     /// A peer connected. Server-authoritative: only the host sees these.
     PlayerJoined { id: u64 },
     /// A peer disconnected.
@@ -158,6 +174,7 @@ impl ScriptHook<'_> {
             ScriptHook::SceneLoaded { .. } => "scene_loaded",
             ScriptHook::AnimationEvent { .. } => "animation_event",
             ScriptHook::Http { .. } => "http",
+            ScriptHook::Event { .. } => "event",
             ScriptHook::PlayerJoined { .. } => "player_joined",
             ScriptHook::PlayerLeft { .. } => "player_left",
             ScriptHook::FixedUpdate { .. } => "fixed_update",

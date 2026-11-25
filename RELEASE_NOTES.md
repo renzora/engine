@@ -1,5 +1,21 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 02:15
+- fix(plugin): a native plugin with a large dependency tree now builds on Windows instead of failing with "The filename or extension is too long"
+
+## 2026-11-25 01:41
+- fix(scripting): a script's `print_log` line appears in the Console once instead of twice
+
+## 2026-11-25 00:54
+- feat(scripting): scripts hear plugin bus events in `on_event`, their `emit` reaches plugins, and `action` calls a bus service with the answer sent to a callback event
+
+## 2026-11-25 00:28
+- feat(plugin): native plugins can talk to each other through named events and services on `renzora::bus`
+
+## 2026-11-24 23:50
+- feat(scripting): Rust scripts receive game events, and a plugin's answers, as `ScriptHook::Event`
+- feat(scripting): `ScriptAction::new(name, entity).arg(..).send(world)` lets a Rust script call a plugin's script functions
+
 ## 2026-11-24 22:56
 - feat(editor): the Hierarchy's right-click menu is grouped into Add, Edit, Attach, Prefab, Camera and Label Color submenus
 - feat(editor): Add in a row's menu puts any spawnable kind under that entity, not only an empty child

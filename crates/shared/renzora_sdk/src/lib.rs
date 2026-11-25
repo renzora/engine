@@ -41,6 +41,9 @@ pub use renzora::viewport_types::GameUiScale;
 // `renzora::save`.
 pub use renzora_save_api as save;
 
+// `renzora::bus`: named events and services between plugins.
+pub use renzora_bus_api as bus;
+
 // `renzora::physics`, `renzora::vehicle`, `renzora::scene_query`.
 pub use renzora_physics_api::{physics, scene_query, vehicle};
 

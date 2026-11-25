@@ -17,21 +17,6 @@ fn drain_log_buffer(mut console: ResMut<ConsoleState>, time: Res<Time>, mut fram
     console.drain_shared_buffer(time.elapsed_secs_f64(), *frame);
 }
 
-/// Drain script log messages into the console.
-fn drain_script_logs(
-    mut console: ResMut<ConsoleState>,
-    mut log_buffer: ResMut<renzora_scripting::systems::ScriptLogBuffer>,
-) {
-    for entry in log_buffer.entries.drain(..) {
-        let level = match entry.level.as_str() {
-            "warn" => LogLevel::Warning,
-            "error" => LogLevel::Error,
-            _ => LogLevel::Info,
-        };
-        console.log(level, "Script", entry.message);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -45,10 +30,10 @@ impl Plugin for ConsolePlugin {
         app.insert_resource(ConsoleState::default());
 
         use renzora_project_api::SplashState;
-        app.add_systems(
-            Update,
-            (drain_log_buffer, drain_script_logs).run_if(in_state(SplashState::Editor)),
-        );
+        // Script `print_log` lines arrive through the shared buffer like any
+        // other log. A second drain of a scripting-only buffer used to add
+        // each of them again.
+        app.add_systems(Update, drain_log_buffer.run_if(in_state(SplashState::Editor)));
 
         // The console panel for the bevy_ui editor shell.
         panel::register(app);

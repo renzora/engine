@@ -465,7 +465,7 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
   (`renzora_log_api`, `renzora_lang_api`, `renzora_project_api`,
   `renzora_scene_api`, `renzora_viewport_api`, `renzora_crash_api`,
   `renzora_shell_api`, `renzora_editor_api`, `renzora_platform_api`,
-  `renzora_diagnostics_api`, `renzora_save_api`, `renzora_scripting_api`,
+  `renzora_diagnostics_api`, `renzora_save_api`, `renzora_bus_api`, `renzora_scripting_api`,
   `renzora_net_api`, `renzora_audio_api`, `renzora_animation_api`,
   `renzora_physics_api`, `renzora_world_api`, `renzora_render_api`,
   `renzora_solari_api`, `renzora_material_api`, `renzora_shader_api`), so an

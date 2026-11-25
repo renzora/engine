@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions};
 
 use super::execution::{
-    ReflectionSet, ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptLogEntry,
+    ReflectionSet, ScriptCommandQueue, ScriptEnvironmentCommands,
     ScriptReflectionQueue,
 };
 use crate::command::{CharacterCommand, CharacterCommandQueue, ScriptCommand};
@@ -23,7 +23,6 @@ pub fn apply_script_commands(
     mut timers: ResMut<ScriptTimers>,
     mut visibility_query: Query<&mut Visibility>,
     name_query: Query<(Entity, &Name)>,
-    mut log_buffer: ResMut<ScriptLogBuffer>,
     mut pending_env: ResMut<ScriptEnvironmentCommands>,
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
     mut pending_scene: ResMut<renzora_project_api::PendingSceneLoad>,
@@ -208,10 +207,13 @@ pub fn apply_script_commands(
 
             // === Debug ===
             ScriptCommand::Log { level, message } => {
-                // Route to two sinks: the in-memory console buffer (read by the
-                // editor console panel) AND a real tracing log. Without the
-                // tracing emit, `print_log` is invisible in runtime/headless
-                // builds, which have no console panel — only stdout.
+                // Two sinks: the console buffer (the editor's Console panel)
+                // and a tracing log, without which `print_log` is invisible in
+                // runtime and headless builds, which have no Console panel and
+                // only stdout. There used to be a third, a `ScriptLogBuffer`
+                // the Console panel ALSO drained into itself, so every line
+                // appeared twice; nothing else read it, and in a game nothing
+                // drained it at all.
                 match level.to_ascii_lowercase().as_str() {
                     "warn" => {
                         renzora_log_api::clog_warn!("Script", "{}", message);
@@ -226,10 +228,6 @@ pub fn apply_script_commands(
                         info!(target: "script", "{}", message);
                     }
                 }
-                log_buffer.entries.push(ScriptLogEntry {
-                    level: level.clone(),
-                    message: message.clone(),
-                });
             }
 
             // === Entity name ===

@@ -94,18 +94,6 @@ pub struct ReflectionSet {
     pub value: crate::command::PropertyValue,
 }
 
-/// Buffer of script log messages for external consumers (e.g. editor console).
-#[derive(Resource, Default)]
-pub struct ScriptLogBuffer {
-    pub entries: Vec<ScriptLogEntry>,
-}
-
-/// A single script log entry.
-pub struct ScriptLogEntry {
-    pub level: String,
-    pub message: String,
-}
-
 // Re-export from renzora
 pub use renzora_animation_api::TransformWrite;
 

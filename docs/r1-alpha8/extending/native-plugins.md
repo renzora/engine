@@ -269,6 +269,8 @@ The UI framework is `renzora::ui`. Plugins written before it existed imported a 
 
 Anything else in the workspace is not reachable. If your plugin needs a type from another `renzora_*` crate, that type belongs in `renzora` — that is the rule the engine's own crates follow.
 
+Another native plugin's types are not reachable either, because each plugin is compiled on its own. To talk to another plugin, use **[the plugin bus](plugin-bus.md)** (`renzora::bus`): named events and services whose payloads are contract types both sides already have.
+
 ### Undo works from a plugin
 
 Worth stating because the crate name misleads: `UndoCommand`, `record`, `UndoContext`, `UndoStacks`, `undo_once` and `redo_once` all live in **`renzora::undo`**. `renzora_undo` is a thin crate that re-exports them and owns the stack plugin, so a native plugin implements the trait and records against the same history the rest of the editor uses — Ctrl+Z crosses the plugin boundary without knowing it did.

@@ -11,7 +11,6 @@ renzora_lang_api = { path = "../api/renzora_lang_api" }
 renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
 renzora_ember = { path = "../renzora_ember" }
-renzora_scripting = { path = "../renzora_scripting" }
 
 [lints]
 workspace = true

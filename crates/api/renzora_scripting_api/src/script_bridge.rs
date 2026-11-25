@@ -27,6 +27,76 @@ pub struct ScriptAction {
     pub args: std::collections::HashMap<String, ScriptActionValue>,
 }
 
+impl ScriptAction {
+    /// An action named `name`, sent on behalf of `entity` (a script's own
+    /// entity, `ctx.entity()`).
+    ///
+    /// The Rust form of Lua's `action(name, args)`, and how a Rust script
+    /// calls a script function a plugin declared: the function is this action,
+    /// so `mysql_query(sql, callback)` in Lua is
+    /// `ScriptAction::new("mysql_query", me).arg("sql", sql).arg("callback", cb).send(world)`.
+    pub fn new(name: impl Into<String>, entity: bevy::ecs::entity::Entity) -> Self {
+        Self { name: name.into(), entity, target_entity: None, args: Default::default() }
+    }
+
+    pub fn arg(mut self, key: impl Into<String>, value: impl Into<ScriptActionValue>) -> Self {
+        self.args.insert(key.into(), value.into());
+        self
+    }
+
+    /// Aim it at another entity, by name or id, as Lua's `action_on` does.
+    pub fn on(mut self, target: impl Into<String>) -> Self {
+        self.target_entity = Some(target.into());
+        self
+    }
+
+    /// Fire it now. Whoever observes the action handles it before this returns.
+    pub fn send(self, world: &mut bevy::prelude::World) {
+        world.trigger(self);
+    }
+}
+
+impl From<f32> for ScriptActionValue {
+    fn from(v: f32) -> Self {
+        Self::Float(v)
+    }
+}
+impl From<f64> for ScriptActionValue {
+    fn from(v: f64) -> Self {
+        Self::Float(v as f32)
+    }
+}
+impl From<i64> for ScriptActionValue {
+    fn from(v: i64) -> Self {
+        Self::Int(v)
+    }
+}
+impl From<i32> for ScriptActionValue {
+    fn from(v: i32) -> Self {
+        Self::Int(v as i64)
+    }
+}
+impl From<bool> for ScriptActionValue {
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
+}
+impl From<&str> for ScriptActionValue {
+    fn from(v: &str) -> Self {
+        Self::String(v.to_string())
+    }
+}
+impl From<String> for ScriptActionValue {
+    fn from(v: String) -> Self {
+        Self::String(v)
+    }
+}
+impl From<bevy::math::Vec3> for ScriptActionValue {
+    fn from(v: bevy::math::Vec3) -> Self {
+        Self::Vec3(v.to_array())
+    }
+}
+
 /// Value types for script action arguments.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScriptActionValue {

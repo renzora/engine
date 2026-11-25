@@ -16,6 +16,7 @@
 // so no caller, in this crate or outside it, had to change.
 pub use renzora_scripting_api::{backend, command, component, context, get_handler};
 
+pub mod bus_bridge;
 mod engine;
 pub mod extension;
 pub mod http;
