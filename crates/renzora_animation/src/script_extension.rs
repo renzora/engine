@@ -40,7 +40,10 @@ impl ScriptExtension for AnimationScriptExtension {
                 .arg("layer_name", ParamKind::Str)
                 .doc("Fade an animation layer's clip out.")
                 .build(),
-            Bind::read("get_animation_length", "AnimatorReadState", "clip_lengths.{0}")
+            // `clip_lengths` is a map, and a reflect path reaches a map entry
+            // only as `["key"]`: the `.{0}` form this used to have is a field
+            // access, which a map refuses, so the function always returned 0.
+            Bind::read("get_animation_length", "AnimatorReadState", "clip_lengths[\"{0}\"]")
                 .arg("name", ParamKind::Str)
                 .doc("Length of a clip in seconds, or 0 if it is not loaded.")
                 .build(),

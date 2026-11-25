@@ -194,6 +194,9 @@ impl Plugin for ScriptingPlugin {
         // call; despawn + cursor lock would otherwise be no-ops).
         app.add_observer(handle_lifecycle_actions);
 
+        // `http_get` / `http_post` as actions, for scripts with no command queue.
+        app.add_observer(crate::http::on_http_action);
+
         // Scripts on the plugin bus: their events and a plugin's in one space,
         // and `action(name, ...)` calling a bus service of that name.
         crate::bus_bridge::install(app);

@@ -79,7 +79,8 @@ pub enum BindingKind {
     /// `component` and `field` may contain `{0}`, `{1}` … placeholders, which
     /// the backend substitutes with the call's arguments. That is what lets
     /// `get_animation_length(name)` be declared rather than written: it is
-    /// `Read { component: "AnimatorReadState", field: "clip_lengths.{0}" }`.
+    /// `Read { component: "AnimatorReadState", field: "clip_lengths[\"{0}\"]" }`
+    /// (a map entry is `["key"]` in a reflect path; `.key` is a field access).
     Read { component: String, field: String },
     /// Look the argument up in the localization table and return the result.
     Translate,
@@ -137,8 +138,8 @@ impl Bind {
     /// A function that reads a reflected field and returns it.
     ///
     /// `component` and `field` may contain `{0}`, `{1}` … placeholders, which
-    /// the backend substitutes with the call's arguments — that is what lets
-    /// `get_animation_length(name)` read `clip_lengths.{0}`.
+    /// the backend substitutes with the call's arguments. That is what lets
+    /// `get_animation_length(name)` read `clip_lengths["{0}"]`.
     pub fn read(name: &str, component: &str, field: &str) -> Self {
         Self(Binding {
             name: name.to_string(),

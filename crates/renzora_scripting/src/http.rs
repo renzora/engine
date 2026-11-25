@@ -128,6 +128,34 @@ impl HttpInbox {
     }
 }
 
+/// `http_get` / `http_post` sent as a [`ScriptAction`], the way a Rust script
+/// calls them: `ScriptAction::new("http_get", e).arg("url", ..).arg("callback", ..)`.
+///
+/// Lua reaches the inbox through `ScriptCommand::HttpRequest`, but a Rust
+/// script links only `bevy` and `renzora`, and neither the command queue nor
+/// this inbox is in the SDK. Without this a Rust script could receive the
+/// `Http` hook and never start the request that fires it. The answer arrives
+/// the same way for both languages: the `Http` hook / `on_http`, next frame.
+pub fn on_http_action(trigger: On<renzora_scripting_api::ScriptAction>, inbox: Res<HttpInbox>) {
+    use renzora_scripting_api::ScriptActionValue as V;
+    let action = trigger.event();
+    let method = match action.name.as_str() {
+        "http_get" => "GET",
+        "http_post" => "POST",
+        _ => return,
+    };
+    let text = |key: &str| match action.args.get(key) {
+        Some(V::String(s)) => Some(s.clone()),
+        _ => None,
+    };
+    let Some(url) = text("url") else {
+        renzora_log_api::clog_warn!("Script", "{}: missing string arg `url`", action.name);
+        return;
+    };
+    let body = if method == "POST" { Some(text("body").unwrap_or_default()) } else { None };
+    inbox.request(method.to_string(), url, body, text("callback").unwrap_or_default());
+}
+
 /// Build the request every path below sends.
 ///
 /// The JSON default is a convenience for the common case, but sending it *as

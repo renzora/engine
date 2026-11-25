@@ -173,6 +173,25 @@ fn hooks(ctx: &mut ScriptCtx, hook: &ScriptHook) {
 
 A plugin's documentation lists its functions, their arguments and what its answer carries.
 
+### HTTP requests
+
+`http_get` and `http_post` work the same way. The request runs in the background, and its answer arrives as the `Http` hook, tagged with the callback name you chose:
+
+```rust
+ScriptAction::new("http_get", ctx.entity())
+    .arg("url", "https://example.com/api/leaderboard")
+    .arg("callback", "leaderboard")
+    .send(ctx.world());
+
+fn hooks(ctx: &mut ScriptCtx, hook: &ScriptHook) {
+    if let ScriptHook::Http { callback: "leaderboard", status, body } = hook {
+        // A status of 0 means the request never completed; `body` is the error.
+    }
+}
+```
+
+`http_post` takes a `body` argument as well.
+
 ### The plugin bus
 
 Events a plugin emits on [the plugin bus](/docs/r1-alpha8/extending/plugin-bus) arrive as `ScriptHook::Event` too, and an event a script emits reaches plugins. A Rust script can also call a plugin's bus service directly and get the answer straight back, since it holds `&mut World`:
