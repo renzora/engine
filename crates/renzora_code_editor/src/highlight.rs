@@ -1,9 +1,15 @@
 //! Keyword-based syntax tokenizer.
 //!
-//! A single-pass tokenizer with per-language keyword / type lists, producing
-//! `(byte_len, TokenKind)` spans per line. Intentionally simple: no parser, no
-//! tree-sitter, no syntect — those are a follow-up if/when we need richer
-//! grammars. The bevy-native code editor consumes [`highlight_line`] directly.
+//! A single-pass tokenizer driven by a [`CodeSyntax`] (keyword and type lists,
+//! comment and string delimiters), producing `(byte_len, TokenKind)` spans per
+//! line. Intentionally simple: no parser, no tree-sitter, no syntect.
+//!
+//! The formats the editor itself owns are the [`Language`] enum, each turned
+//! into a [`CodeSyntax`] by [`Language::syntax`]. A scripting language is a
+//! plugin, so it brings its own [`CodeSyntax`] through `add_code_syntax`, and
+//! [`highlight_syntax`] colours it with the same code.
+
+use renzora_scripting_api::CodeSyntax;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
@@ -41,30 +47,31 @@ impl Language {
         }
     }
 
-    /// Line-comment prefix for the language, if it supports them.
-    pub fn line_comment(self) -> Option<&'static str> {
+    /// What the status bar calls the format.
+    pub fn name(self) -> &'static str {
         match self {
-            Language::Lua => Some("--"),
-            Language::Rust | Language::Wgsl | Language::Sql | Language::Bsn => {
-                Some("//")
-            }
-            Language::Python | Language::Shell | Language::Toml => Some("#"),
-            Language::Json | Language::Html | Language::PlainText => None,
+            Language::Lua => "Lua",
+            Language::Rust => "Rust",
+            Language::Wgsl => "WGSL",
+            Language::Python => "Python",
+            Language::Shell => "Shell",
+            Language::Sql => "SQL",
+            Language::Json => "JSON",
+            Language::Toml => "TOML",
+            Language::Bsn => "BSN",
+            Language::Html => "HTML",
+            Language::PlainText => "Text",
         }
     }
 
-    /// Whether the language uses C-style `/* */` block comments.
-    fn has_c_block_comment(self) -> bool {
-        matches!(
-            self,
-            Language::Rust | Language::Wgsl | Language::Bsn
-        )
-    }
-
-    /// Whether a capitalized (PascalCase) identifier should be colored as a type.
-    /// True for BSN, where components are written as PascalCase type paths.
-    fn caps_are_types(self) -> bool {
-        matches!(self, Language::Bsn)
+    /// Line-comment prefix for the language, if it supports them.
+    pub fn line_comment(self) -> Option<&'static str> {
+        match self {
+            Language::Lua | Language::Sql => Some("--"),
+            Language::Rust | Language::Wgsl | Language::Bsn => Some("//"),
+            Language::Python | Language::Shell | Language::Toml => Some("#"),
+            Language::Json | Language::Html | Language::PlainText => None,
+        }
     }
 
     /// Block-comment delimiters for languages that support them. Used by the
@@ -74,6 +81,21 @@ impl Language {
             Language::Rust | Language::Wgsl | Language::Bsn => Some(("/*", "*/")),
             Language::Html => Some(("<!--", "-->")),
             _ => None,
+        }
+    }
+
+    /// The format as the generic tokenizer reads it. HTML's block comment is
+    /// left out: HTML has its own tokenizer, which owns `<!-- -->`.
+    pub fn syntax(self) -> CodeSyntax {
+        CodeSyntax {
+            keywords: keywords_for(self),
+            types: types_for(self),
+            // BSN writes components as PascalCase type paths.
+            caps_are_types: matches!(self, Language::Bsn),
+            line_comment: self.line_comment(),
+            block_comment: if self == Language::Html { None } else { self.block_comment() },
+            multiline_strings: if self == Language::Python { &["\"\"\"", "'''"] } else { &[] },
+            ..CodeSyntax::new(self.name(), &[])
         }
     }
 }
@@ -181,17 +203,21 @@ pub enum TokenKind {
     Comment,
 }
 
-/// Cross-line tokenizer state carried into the next line: whether we're inside a
-/// C-style `/* ... */` block comment or an HTML `<!-- ... -->` comment (the
-/// multi-line constructs the tokenizer recognises; Lua `--` long comments are
-/// treated as line comments, matching the previous behaviour).
+/// Cross-line tokenizer state carried into the next line: whether we're inside
+/// a block comment, an HTML `<!-- ... -->` comment, or a string that spans
+/// lines (the index of its delimiter in [`CodeSyntax::multiline_strings`]).
+/// Lua `--[[` long comments are treated as line comments.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum LineState {
     #[default]
     Normal,
     BlockComment,
     HtmlComment,
+    MultilineString(u8),
 }
+
+/// [`LineState::MultilineString`]'s encoding starts here, clear of the others.
+const MULTILINE_STRING_BASE: u32 = 16;
 
 impl LineState {
     /// Encode for the ember widget, which threads cross-line state as an opaque
@@ -201,6 +227,7 @@ impl LineState {
             LineState::Normal => 0,
             LineState::BlockComment => 1,
             LineState::HtmlComment => 2,
+            LineState::MultilineString(i) => MULTILINE_STRING_BASE + i as u32,
         }
     }
 
@@ -209,18 +236,63 @@ impl LineState {
         match v {
             1 => LineState::BlockComment,
             2 => LineState::HtmlComment,
+            v if v >= MULTILINE_STRING_BASE => {
+                LineState::MultilineString((v - MULTILINE_STRING_BASE).min(u8::MAX as u32) as u8)
+            }
             _ => LineState::Normal,
         }
     }
 }
 
-/// Tokenize a SINGLE line (no trailing `\n`) given the incoming cross-line
-/// state. Returns the spans as `(byte_len, kind)` pairs that exactly cover the
-/// line, plus the outgoing state for the next line. This is the canonical
-/// tokenizer the native editor builds on.
+/// Tokenize a SINGLE line (no trailing `\n`) of one of the editor's own
+/// formats, given the incoming cross-line state. Returns the spans as
+/// `(byte_len, kind)` pairs that exactly cover the line, plus the outgoing
+/// state for the next line.
 pub fn highlight_line(
     line: &str,
     lang: Language,
+    incoming: LineState,
+) -> (Vec<(u32, TokenKind)>, LineState) {
+    match lang {
+        Language::PlainText => {
+            let spans = if line.is_empty() { Vec::new() } else { vec![(line.len() as u32, TokenKind::Normal)] };
+            (spans, LineState::Normal)
+        }
+        // HTML is tag-structured, not identifier-structured, so it has its own
+        // tokenizer (which also owns the `<!-- -->` continuation).
+        Language::Html => highlight_html_line(line, incoming),
+        _ => highlight_syntax(line, &lang.syntax(), incoming),
+    }
+}
+
+/// Where `needle` sits in `bytes` at `i`.
+fn starts_at(bytes: &[u8], i: usize, needle: &str) -> bool {
+    let n = needle.as_bytes();
+    !n.is_empty() && i + n.len() <= bytes.len() && &bytes[i..i + n.len()] == n
+}
+
+/// Scan a string body from `from` for `close`, skipping backslash escapes.
+/// Returns the index just past `close`, or `None` if the line ends first.
+fn string_end(bytes: &[u8], from: usize, close: &str) -> Option<usize> {
+    let mut j = from;
+    while j < bytes.len() {
+        if bytes[j] == b'\\' {
+            j += 2;
+            continue;
+        }
+        if starts_at(bytes, j, close) {
+            return Some(j + close.len());
+        }
+        j += 1;
+    }
+    None
+}
+
+/// Tokenize a SINGLE line by `syntax`: the path every identifier-structured
+/// language takes, the editor's own and every plugin's alike.
+pub fn highlight_syntax(
+    line: &str,
+    syntax: &CodeSyntax,
     incoming: LineState,
 ) -> (Vec<(u32, TokenKind)>, LineState) {
     let mut spans: Vec<(u32, TokenKind)> = Vec::new();
@@ -230,74 +302,96 @@ pub fn highlight_line(
         }
     };
 
-    if matches!(lang, Language::PlainText) {
-        push(line.len(), TokenKind::Normal);
-        return (spans, LineState::Normal);
-    }
-
-    // HTML is tag-structured, not identifier-structured — tokenize it separately
-    // (it also owns the `<!-- -->` comment continuation).
-    if matches!(lang, Language::Html) {
-        return highlight_html_line(line, incoming);
-    }
-
     let bytes = line.as_bytes();
     let len = bytes.len();
     let mut i = 0usize;
 
     // Continuation of a block comment started on a previous line.
     if incoming == LineState::BlockComment {
-        let mut j = 0usize;
-        while j + 1 < len && !(bytes[j] == b'*' && bytes[j + 1] == b'/') {
-            j += 1;
-        }
-        if j + 1 < len {
-            // Found the closing `*/` on this line.
-            push(j + 2, TokenKind::Comment);
-            i = j + 2;
-        } else {
-            push(len, TokenKind::Comment);
-            return (spans, LineState::BlockComment);
+        if let Some((_, close)) = syntax.block_comment {
+            match find_sub(bytes, close.as_bytes(), 0) {
+                Some(p) => {
+                    push(p + close.len(), TokenKind::Comment);
+                    i = p + close.len();
+                }
+                None => {
+                    push(len, TokenKind::Comment);
+                    return (spans, LineState::BlockComment);
+                }
+            }
         }
     }
 
-    let keywords = keywords_for(lang);
-    let types = types_for(lang);
-    let line_comment = lang.line_comment();
-    let has_block_comment = lang.has_c_block_comment();
-    let caps_are_types = lang.caps_are_types();
+    // Continuation of a string started on a previous line.
+    if let LineState::MultilineString(k) = incoming {
+        if let Some(delim) = syntax.multiline_strings.get(k as usize) {
+            match string_end(bytes, 0, delim) {
+                Some(end) => {
+                    push(end, TokenKind::String);
+                    i = end;
+                }
+                None => {
+                    push(len, TokenKind::String);
+                    return (spans, incoming);
+                }
+            }
+        }
+    }
 
-    while i < len {
+    let keywords = syntax.keywords;
+    let types = syntax.types;
+    let quotes = syntax.quotes.as_bytes();
+    let ident_extra = syntax.identifier_chars.as_bytes();
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || ident_extra.contains(&c);
+
+    'scan: while i < len {
         let b = bytes[i];
 
-        // --- Line comment (to end of line) ---
-        if let Some(prefix) = line_comment {
-            let pb = prefix.as_bytes();
-            if i + pb.len() <= len && &bytes[i..i + pb.len()] == pb {
-                push(len - i, TokenKind::Comment);
-                i = len;
-                continue;
+        // --- Block comment (may not close on this line) ---
+        // Before the line comment, so Lua's `--[[` is not taken for `--`.
+        if let Some((open, close)) = syntax.block_comment {
+            if starts_at(bytes, i, open) {
+                match find_sub(bytes, close.as_bytes(), i + open.len()) {
+                    Some(p) => {
+                        push(p + close.len() - i, TokenKind::Comment);
+                        i = p + close.len();
+                        continue;
+                    }
+                    None => {
+                        push(len - i, TokenKind::Comment);
+                        return (spans, LineState::BlockComment);
+                    }
+                }
             }
         }
 
-        // --- Block comment /* ... */ (may not close on this line) ---
-        if has_block_comment && i + 1 < len && b == b'/' && bytes[i + 1] == b'*' {
-            let mut j = i + 2;
-            while j + 1 < len && !(bytes[j] == b'*' && bytes[j + 1] == b'/') {
-                j += 1;
-            }
-            if j + 1 < len {
-                push((j + 2) - i, TokenKind::Comment);
-                i = j + 2;
-                continue;
-            } else {
+        // --- Line comment (to end of line) ---
+        if let Some(prefix) = syntax.line_comment {
+            if starts_at(bytes, i, prefix) {
                 push(len - i, TokenKind::Comment);
-                return (spans, LineState::BlockComment);
+                break;
+            }
+        }
+
+        // --- String that may span lines: `...` or """...""" ---
+        for (k, delim) in syntax.multiline_strings.iter().enumerate() {
+            if starts_at(bytes, i, delim) {
+                match string_end(bytes, i + delim.len(), delim) {
+                    Some(end) => {
+                        push(end - i, TokenKind::String);
+                        i = end;
+                        continue 'scan;
+                    }
+                    None => {
+                        push(len - i, TokenKind::String);
+                        return (spans, LineState::MultilineString(k.min(u8::MAX as usize) as u8));
+                    }
+                }
             }
         }
 
         // --- String "..." or '...' (single line) ---
-        if b == b'"' || b == b'\'' {
+        if quotes.contains(&b) {
             let quote = b;
             let mut j = i + 1;
             while j < len && bytes[j] != quote {
@@ -365,16 +459,16 @@ pub fn highlight_line(
         }
 
         // --- Identifier / keyword / type / function name ---
-        if b.is_ascii_alphabetic() || b == b'_' {
+        if b.is_ascii_alphabetic() || b == b'_' || ident_extra.contains(&b) {
             let mut j = i + 1;
-            while j < len && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+            while j < len && is_ident(bytes[j]) {
                 j += 1;
             }
             let word = &line[i..j];
             let kind = if keywords.contains(&word) {
                 TokenKind::Keyword
             } else if types.contains(&word)
-                || (caps_are_types && word.as_bytes()[0].is_ascii_uppercase())
+                || (syntax.caps_are_types && word.as_bytes()[0].is_ascii_uppercase())
             {
                 TokenKind::Type
             } else if j < len && bytes[j] == b'(' {
@@ -649,9 +743,91 @@ mod tests {
         assert!(has(&r, ".3", TokenKind::Number));
     }
 
+    /// A plugin-registered syntax shaped like JavaScript's.
+    const JS: CodeSyntax = CodeSyntax {
+        keywords: &["function", "const", "return"],
+        caps_are_types: true,
+        line_comment: Some("//"),
+        block_comment: Some(("/*", "*/")),
+        multiline_strings: &["`"],
+        identifier_chars: "$",
+        ..CodeSyntax::new("JavaScript", &["js"])
+    };
+
+    fn stoks(line: &str, st: LineState) -> (Vec<(String, TokenKind)>, LineState) {
+        let (spans, out) = highlight_syntax(line, &JS, st);
+        let mut runs = Vec::new();
+        let mut i = 0usize;
+        for (len, kind) in spans {
+            runs.push((line[i..i + len as usize].to_string(), kind));
+            i += len as usize;
+        }
+        assert_eq!(i, line.len(), "spans must cover the whole line: {line:?}");
+        (runs, out)
+    }
+
+    #[test]
+    fn plugin_syntax_keywords_types_and_dollar_identifiers() {
+        let (r, _) = stoks("const $el = Mood.Angry; // note", LineState::Normal);
+        assert!(has(&r, "const", TokenKind::Keyword));
+        assert!(has(&r, "$el", TokenKind::Normal));
+        assert!(has(&r, "Mood", TokenKind::Type));
+        assert!(has(&r, "// note", TokenKind::Comment));
+    }
+
+    #[test]
+    fn plugin_syntax_template_string_spans_lines() {
+        let (r, st) = stoks("log(`one ${a}", LineState::Normal);
+        assert!(has(&r, "log", TokenKind::Function));
+        assert!(has(&r, "`one ${a}", TokenKind::String));
+        assert_eq!(st, LineState::MultilineString(0));
+        let (r, st) = stoks("two \\` still` + 1", st);
+        assert!(has(&r, "two \\` still`", TokenKind::String));
+        assert!(has(&r, "1", TokenKind::Number));
+        assert_eq!(st, LineState::Normal);
+    }
+
+    #[test]
+    fn plugin_syntax_block_comment_spans_lines() {
+        let (_, st) = stoks("x /* open", LineState::Normal);
+        assert_eq!(st, LineState::BlockComment);
+        let (r, st) = stoks("done */ return", st);
+        assert!(has(&r, "done */", TokenKind::Comment));
+        assert!(has(&r, "return", TokenKind::Keyword));
+        assert_eq!(st, LineState::Normal);
+    }
+
+    /// A block comment whose opener starts with the line comment: Lua's
+    /// `--[[` must not be taken for `--`.
+    #[test]
+    fn block_comment_wins_over_its_line_comment_prefix() {
+        const LUA: CodeSyntax = CodeSyntax {
+            keywords: &["local"],
+            line_comment: Some("--"),
+            block_comment: Some(("--[[", "]]")),
+            ..CodeSyntax::new("Lua", &["lua"])
+        };
+        let (_, st) = highlight_syntax("--[[ open", &LUA, LineState::Normal);
+        assert_eq!(st, LineState::BlockComment);
+        let (spans, st) = highlight_syntax("]] local", &LUA, st);
+        assert_eq!(st, LineState::Normal);
+        assert_eq!(spans.last(), Some(&(5, TokenKind::Keyword)));
+        let (_, st) = highlight_syntax("-- plain", &LUA, LineState::Normal);
+        assert_eq!(st, LineState::Normal);
+    }
+
+    #[test]
+    fn python_triple_quotes_span_lines() {
+        let (_, st) = toks("s = \"\"\"doc", Language::Python, LineState::Normal);
+        assert_eq!(st, LineState::MultilineString(0));
+        let (r, st) = toks("end\"\"\" if x", Language::Python, st);
+        assert!(has(&r, "if", TokenKind::Keyword));
+        assert_eq!(st, LineState::Normal);
+    }
+
     #[test]
     fn line_state_u32_roundtrip() {
-        for s in [LineState::Normal, LineState::BlockComment, LineState::HtmlComment] {
+        for s in [LineState::Normal, LineState::BlockComment, LineState::HtmlComment, LineState::MultilineString(0), LineState::MultilineString(1)] {
             assert_eq!(LineState::from_u32(s.to_u32()), s);
         }
     }

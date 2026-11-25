@@ -14,6 +14,8 @@ bevy = { workspace = true }
 renzora_diagnostics_api = { path = "../api/renzora_diagnostics_api" }
 log = "0.4"
 renzora_scripting = { path = "../renzora_scripting" }
+# `CodeSyntax`: the syntax a language plugin registers for its files.
+renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 
 [lints]
 workspace = true

@@ -128,6 +128,42 @@ image makes it singular, exactly as it already does for the translation table.
 drains in `PreStartup`, so your plugin has no ordering relationship with it:
 registration works whichever happened to be added first.
 
+## Syntax colouring in the code editor
+
+The code editor cannot know in advance which languages a project will have, so
+it colours a plugin's files only once the plugin describes the syntax. Register a
+`CodeSyntax` next to the backend:
+
+```rust
+use renzora::{AppCodeSyntaxExt, CodeSyntax};
+
+app.add_code_syntax(CodeSyntax {
+    keywords: &["var", "class", "if", "else", "while", "return", "true", "false", "null"],
+    caps_are_types: true,                    // classes are capitalised
+    line_comment: Some("//"),                // also what Ctrl+/ inserts
+    block_comment: Some(("/*", "*/")),
+    multiline_strings: &["\"\"\""],          // strings that may span lines
+    ..CodeSyntax::new("Wren", &["wren"])     // status-bar name, extensions
+});
+```
+
+| Field | What it does |
+|---|---|
+| `name` | What the status bar calls the language |
+| `extensions` | Lowercase file extensions, without the dot |
+| `keywords`, `types` | Words coloured as keywords and as types |
+| `caps_are_types` | Colour every capitalised identifier as a type |
+| `line_comment` | Comment to the end of the line; also the Ctrl+/ token |
+| `block_comment` | Open and close tokens of a comment that may span lines |
+| `quotes` | Characters that open and close a one-line string (default `"'`) |
+| `multiline_strings` | Delimiters of strings that may span lines, such as `` ` `` or `"""` |
+| `identifier_chars` | Extra identifier characters, such as `$` |
+
+A string or block comment closes on the delimiter that opened it. Escapes with
+`\` are skipped. A plugin's syntax wins over the editor's built-in one for the
+same extension. The newest registration wins if two plugins claim one. In a game
+the registration is harmless: nothing reads it.
+
 ## Rules that are not optional
 
 **Read scripts through the file reader, not `std::fs`.** `set_file_reader` hands

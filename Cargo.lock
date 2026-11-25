@@ -7756,6 +7756,7 @@ dependencies = [
  "renzora_project_api",
  "renzora_scene_api",
  "renzora_scripting",
+ "renzora_scripting_api",
 ]
 
 [[package]]

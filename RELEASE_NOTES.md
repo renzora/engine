@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 07:54
+- feat(code-editor): a scripting plugin can register its language's syntax with `add_code_syntax`, and the code editor colours its files by it
+- fix(code-editor): Python triple-quoted strings that span lines are coloured as strings
+- fix(code-editor): SQL `--` comments are coloured as comments
+
 ## 2026-11-25 02:15
 - fix(plugin): a native plugin with a large dependency tree now builds on Windows instead of failing with "The filename or extension is too long"
 

@@ -50,6 +50,9 @@ pub mod component;
 pub mod context;
 pub mod get_handler;
 pub use backend::{AppScriptBackendExt, FileReader, ScriptBackend, ANY_HOOK};
+/// How the code editor colours a language a plugin brings.
+pub mod syntax;
+pub use syntax::{AppCodeSyntaxExt, CodeSyntax, CodeSyntaxes};
 pub use command::ScriptCommand;
 pub use component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 pub use context::{GamepadSnapshot, ScriptContext, GAMEPAD_BUTTON_NAMES};

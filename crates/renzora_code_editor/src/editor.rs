@@ -29,7 +29,9 @@ use renzora_ember::theme::*;
 use renzora_ember::UiInteraction;
 use renzora_ember::widgets::{bind_code, code_editor, CodeBindingSpec, CodeToken, Highlighter};
 
-use crate::highlight::{highlight_line, Language, LineState, TokenKind};
+use renzora_scripting_api::{CodeSyntax, CodeSyntaxes};
+
+use crate::highlight::{highlight_line, highlight_syntax, Language, LineState, TokenKind};
 use crate::state::CodeEditorState;
 
 /// Marks the mounted panel root, so Ctrl+S only saves while the editor is open
@@ -174,13 +176,13 @@ fn binding_spec() -> CodeBindingSpec {
             }
         }),
         make_highlighter: Box::new(|w: &Rx| -> Highlighter {
-            let lang = w
-                .get_resource::<CodeEditorState>()
-                .and_then(active_file)
-                .map(|f| Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()))
-                .unwrap_or(Language::PlainText);
+            let syntax = active_syntax(w);
             Box::new(move |line: &str, st: u32| {
-                let (spans, out) = highlight_line(line, lang, LineState::from_u32(st));
+                let st = LineState::from_u32(st);
+                let (spans, out) = match &syntax {
+                    Syntax::Plugin(s) => highlight_syntax(line, s, st),
+                    Syntax::Builtin(lang) => highlight_line(line, *lang, st),
+                };
                 let toks: Vec<CodeToken> = spans.into_iter().map(|(len, kind)| CodeToken { len: len as usize, color: kind_color(kind) }).collect();
                 (toks, out.to_u32())
             })
@@ -201,25 +203,45 @@ fn binding_spec() -> CodeBindingSpec {
             w.get_resource::<renzora_editor_framework::EditorSettings>().is_none_or(|s| s.code_auto_close_pairs)
         })),
         // The active file's language decides the Ctrl+/ comment token.
-        line_comment: Some(Box::new(|w: &Rx| {
-            let lang = w
-                .get_resource::<CodeEditorState>()
-                .and_then(active_file)
-                .map(|f| Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()))
-                .unwrap_or(Language::PlainText);
-            line_comment_for(lang).map(str::to_string)
-        })),
+        line_comment: Some(Box::new(|w: &Rx| active_syntax(w).line_comment().map(str::to_string))),
     }
 }
 
-/// The line-comment token for `lang`, or `None` for formats without one (JSON,
-/// HTML — block comments only).
-fn line_comment_for(lang: Language) -> Option<&'static str> {
-    match lang {
-        Language::Lua | Language::Sql => Some("--"),
-        Language::Rust | Language::Wgsl | Language::Bsn => Some("//"),
-        Language::Python | Language::Shell | Language::Toml => Some("#"),
-        Language::Json | Language::Html | Language::PlainText => None,
+/// How the active file is coloured: by a syntax a plugin registered, or by one
+/// of the editor's own formats.
+enum Syntax {
+    Plugin(CodeSyntax),
+    Builtin(Language),
+}
+
+impl Syntax {
+    fn name(&self) -> &'static str {
+        match self {
+            Syntax::Plugin(s) => s.name,
+            Syntax::Builtin(lang) => lang.name(),
+        }
+    }
+
+    fn line_comment(&self) -> Option<&'static str> {
+        match self {
+            Syntax::Plugin(s) => s.line_comment,
+            Syntax::Builtin(lang) => lang.line_comment(),
+        }
+    }
+}
+
+/// The active file's syntax. A plugin's wins over the editor's own for the
+/// same extension, so a language plugin can bring a better description of a
+/// format the editor only approximates.
+fn active_syntax(w: &Rx) -> Syntax {
+    let ext = w
+        .get_resource::<CodeEditorState>()
+        .and_then(active_file)
+        .and_then(|f| f.path.extension().and_then(|e| e.to_str()).map(str::to_lowercase))
+        .unwrap_or_default();
+    match w.get_resource::<CodeSyntaxes>().and_then(|s| s.for_extension(&ext)) {
+        Some(s) => Syntax::Plugin(*s),
+        None => Syntax::Builtin(Language::from_extension(&ext)),
     }
 }
 
@@ -381,19 +403,7 @@ fn code_drop(
 fn status_text(world: &Rx) -> String {
     let Some(state) = world.get_resource::<CodeEditorState>() else { return String::new() };
     let Some(f) = active_file(state) else { return String::new() };
-    let lang = match Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()) {
-        Language::Lua => "Lua",
-        Language::Rust => "Rust",
-        Language::Wgsl => "WGSL",
-        Language::Python => "Python",
-        Language::Shell => "Shell",
-        Language::Sql => "SQL",
-        Language::Json => "JSON",
-        Language::Toml => "TOML",
-        Language::Bsn => "BSN",
-        Language::Html => "HTML",
-        Language::PlainText => "Text",
-    };
+    let lang = active_syntax(world).name();
     let modified = if f.is_modified { format!("  \u{25cf} {}", renzora_lang_api::t("code.unsaved")) } else { String::new() };
     format!("{}    {}{}", f.path.display(), lang, modified)
 }
