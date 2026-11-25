@@ -12,6 +12,7 @@
 //! them, except `settings_file`, which callers always name explicitly.
 
 pub mod image_formats; // which extensions load as an Image (raster + SVG)
+pub mod model_file; // GLB to `.rvg`, for code that cannot link the builder
 pub mod play_mode; // Play / Simulate / Edit state and its run conditions
 pub mod project_config;
 pub mod project_files; // what changed on disk under the open project
@@ -23,6 +24,7 @@ mod app_state; // launcher/loading/editor phase and the open-project requests
 
 pub use app_state::*;
 pub use image_formats::*;
+pub use model_file::{build_model_file, install_model_file_builder, ModelFileBuilder};
 pub use play_mode::*;
 pub use project_config::*;
 pub use project_files::*;

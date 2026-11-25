@@ -24,7 +24,7 @@ pub use renzora_scene_api::{asset_bytes, components, entity_id, prefab, shapes};
 // The project layer, re-exported as modules so every `renzora::core::<mod>::X`
 // path keeps resolving (and flattened below, as before).
 pub use renzora_project_api::{
-    image_formats, play_mode, project_config, project_files, session, settings_file,
+    image_formats, model_file, play_mode, project_config, project_files, session, settings_file,
     settings_path,
 };
 // The two play-mode run conditions that read the editor viewport, kept beside
@@ -52,6 +52,7 @@ pub use components::*;
 pub use editor_events::*;
 pub use entity_id::*;
 pub use image_formats::*;
+pub use model_file::*;
 pub use play_mode::*;
 pub use project_config::*;
 pub use project_files::*;

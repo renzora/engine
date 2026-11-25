@@ -1,5 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 09:25
+- feat(plugin): plugins can build a GLB into an `.rvg` model with `renzora::build_model_file`
+
+## 2026-11-25 09:21
+- fix(asset-browser): the folder tree no longer lists a model's virtual-geometry `.rvg` beside its `.glb` as a second model that places nothing
+
 ## 2026-11-25 08:31
 - ci(release): publishing a nightly or stable release now publishes the first-party plugins whose version moved, instead of each push to renzora/plugins doing it
 

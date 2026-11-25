@@ -52,6 +52,12 @@ pub struct VirtualGeometryEditorPlugin;
 impl Plugin for VirtualGeometryEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] VirtualGeometryEditorPlugin");
+        // The builder this crate links, offered to code that cannot link it
+        // (a plugin writing models of its own), so those are stored as one
+        // `.rvg` the way an import stores them.
+        renzora_project_api::install_model_file_builder(|glb| {
+            renzora_rvg::bake::build_model(glb).map(|file| file.to_bytes())
+        });
         app.register_inspector(standard_geometry_entry());
         converter::build(app);
         migrate::build(app);

@@ -339,6 +339,28 @@ its own crate and a path crosses instead. The failure it prevents is the quiet
 kind: a plugin that writes a glTF into the project and stops has produced a model
 that loads *untextured*, with every file present and the import simply never run.
 
+#### Building a model file yourself
+
+A plugin that generates models of its own (the Blender live link writes one per
+linked object) wants the model file an import stores: an `.rvg`, the model's
+scene and its virtual geometry in one file. The builder compiles meshoptimizer,
+so it cannot ship inside a plugin built from source; the editor installs it into
+the contract instead, and a plugin calls it:
+
+```rust
+// Off the main thread: a dense model takes seconds.
+let (bytes, extension) = match renzora::build_model_file(&glb) {
+    Some(Ok(rvg)) => (rvg, "rvg"),
+    // No builder in this build (a shipped game, the web editor), or geometry
+    // it refused: keep the GLB, which loads as a model the same way.
+    _ => (glb, "glb"),
+};
+```
+
+Write the result where the model belongs and point `MeshInstanceData` at it. A
+plugin that writes a `.glb` and stops gets two files per model instead: the
+editor builds an `.rvg` of virtual geometry beside any `.glb` it finds.
+
 ### Crates from crates.io
 
 Add them to your plugin's `Cargo.toml` like any Rust project:

@@ -124,11 +124,20 @@ fn flatten_dirs(
 ) {
     let mut subs: Vec<(PathBuf, String)> = Vec::new();
     let mut files: Vec<(PathBuf, String)> = Vec::new();
-    for (path, name, is_dir) in dir_kinds(dir) {
-        if is_dir {
-            subs.push((path, name));
-        } else if show_files {
-            files.push((path, name));
+    let entries = dir_kinds(dir);
+    for (path, name, is_dir) in &entries {
+        if *is_dir {
+            subs.push((path.clone(), name.clone()));
+        } else if show_files
+            // The virtual geometry kept beside a `.glb` is not a model of its
+            // own, so it is hidden here as in the grid and the search: listed,
+            // it showed every such model twice, and the second one placed
+            // nothing when dropped.
+            && !crate::state::is_sidecar(name, |sibling| {
+                entries.iter().any(|(_, n, d)| !*d && n == sibling)
+            })
+        {
+            files.push((path.clone(), name.clone()));
         }
     }
     subs.sort_by_key(|a| a.1.to_lowercase());
