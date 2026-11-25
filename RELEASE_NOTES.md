@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 08:31
+- ci(release): publishing a nightly or stable release now publishes the first-party plugins whose version moved, instead of each push to renzora/plugins doing it
+
 ## 2026-11-25 07:54
 - feat(code-editor): a scripting plugin can register its language's syntax with `add_code_syntax`, and the code editor colours its files by it
 - fix(code-editor): Python triple-quoted strings that span lines are coloured as strings

@@ -1671,6 +1671,39 @@ jobs:
       tag: ${{ needs.setup.outputs.tag }}
     secrets: inherit
 
+  # ── First-party plugins ───────────────────────────────────────────────────
+  # renzora/plugins publishes nothing on a push; it publishes when an engine
+  # release exists that can build what it holds, and this is the signal. Its
+  # `Publish` workflow then uploads every plugin whose version moved since it
+  # was last published. Without this a plugin written against engine `main`
+  # would be offered to everyone on the last nightly, who cannot compile it.
+  #
+  # A cross-repository dispatch needs a token of its own, as `website` does:
+  # `PLUGINS_DISPATCH_TOKEN`, a fine-grained token with Contents read and write
+  # on renzora/plugins. Never fatal: the release is already out, and the plugins
+  # can be published by hand from that repository's Actions tab.
+  plugins:
+    needs: [setup, publish]
+    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell renzora/plugins to publish for ${{ needs.setup.outputs.tag }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PLUGINS_DISPATCH_TOKEN }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          CHANNEL: ${{ needs.setup.outputs.publish }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::PLUGINS_DISPATCH_TOKEN is not set on this repository; renzora/plugins was not asked to publish for $TAG"
+            exit 0
+          fi
+          jq -n --arg tag "$TAG" --arg channel "$CHANNEL" \
+            '{event_type: "engine-release", client_payload: {tag: $tag, channel: $channel}}' \
+            | gh api --method POST repos/renzora/plugins/dispatches --input -
+          echo "::notice::dispatched engine-release ($CHANNEL) for $TAG to renzora/plugins"
+
   website:
     needs: [setup, build, publish, publish-web]
     if: |
