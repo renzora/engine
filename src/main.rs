@@ -214,6 +214,25 @@ fn main() {
         && renzora_runtime::editor_image::present();
     let _ = (server_mode, host_mode, vr_mode);
 
+    // A `renzora://` link from the website. The OS answers one by starting a new
+    // process, so if an editor is already open this one hands it the link and
+    // leaves before anything else happens: a click must not open a second
+    // editor, nor sit through the first-run check below. Otherwise this process
+    // becomes the editor, keeps the link for the marketplace, and listens for
+    // the next one. See `renzora_platform_api::app_link`.
+    #[cfg(not(target_arch = "wasm32"))]
+    if is_editor {
+        use renzora_platform_api::app_link;
+        if let Some(url) = app_link::from_args() {
+            if app_link::forward(&url) {
+                return;
+            }
+            app_link::push(&url);
+        }
+        app_link::listen();
+        app_link::register_scheme();
+    }
+
     // Install the panic hook now that we know the session kind — it picks the
     // crash-file location + dialog from `is_editor` (it can't read the World).
     renzora_runtime::renzora_engine::crash::install_panic_hook(is_editor);

@@ -49,7 +49,10 @@ pub(super) fn store_card_click(
 /// Build and show the detail overlay for `asset`. Exclusive-world (queued from
 /// the card click) so it can read `EmberFonts` / `AuthSession`, request the
 /// preview thumbnail, and kick the comments/rating fetches in one shot.
-fn open(world: &mut World, asset: AssetSummary) {
+///
+/// Also reached from a `renzora://` link (`crate::app_links`), which opens the
+/// store behind it first so closing the item leaves you in the Marketplace.
+pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };

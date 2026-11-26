@@ -299,7 +299,15 @@ pub fn restart_process() -> ! {
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::current_exe().ok());
     if let Some(exe) = exe {
-        let args: Vec<String> = std::env::args().skip(1).collect();
+        // Not the `renzora://` link the editor was opened with: it has been
+        // shown, and a restart (after installing that very plugin, usually)
+        // opening it again would be a page nobody asked for. The same test as
+        // `renzora_platform_api::app_link::is_link`, which this layer does not
+        // depend on.
+        let args: Vec<String> = std::env::args()
+            .skip(1)
+            .filter(|a| !a.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("renzora:")))
+            .collect();
         let _ = std::process::Command::new(exe).args(args).spawn();
     }
     exit_now(0)

@@ -44,6 +44,12 @@ pub mod child_process;
 // inspector and the exporter all need the same answer.
 pub mod dlss_runtime;
 
+// `renzora://` links from the website: registering the scheme, handing a link
+// to the editor already running, and the queue the marketplace reads. In the
+// contract because `main` does the first two before any editor crate is loaded.
+// Not flattened: `push`, `take` and `listen` mean nothing without the module.
+pub mod app_link;
+
 // Window resizing helpers (not flattened: the names are generic).
 pub mod resize;
 

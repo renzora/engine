@@ -37,5 +37,11 @@ renzora_companion_proto = { path = "../../renzora_companion_proto" }
 # rather than reconstructed here. Carries no dependencies of its own.
 renzora_native_build = { path = "../../renzora_native_build" }
 
+# `app_link`: registering `renzora://` in the per-user registry, and letting the
+# editor already running take the foreground when a link is forwarded to it.
+# Already in the lockfile through winit and others, so nothing new is fetched.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Registry", "Win32_UI_WindowsAndMessaging"] }
+
 [lints]
 workspace = true

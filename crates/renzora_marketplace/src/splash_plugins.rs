@@ -136,6 +136,9 @@ struct PluginStore {
     /// Something was installed this session, so the page offers the restart that
     /// actually loads it.
     needs_restart: bool,
+    /// A search to type into the field once the page is built: a
+    /// `renzora://` link for a plugin lands here (see [`show_from_link`]).
+    seed_search: Option<String>,
 }
 
 struct Job {
@@ -214,7 +217,9 @@ pub(crate) fn register(app: &mut App) {
             init_fetch,
             poll_list,
             refetch,
-            search_sync,
+            // Before the sync, which would otherwise copy the still-empty field
+            // over the seeded search.
+            (seed_search, search_sync).chain(),
             search_enter,
             request_thumbs,
             install_click,
@@ -933,6 +938,50 @@ fn request_thumbs(store: Res<PluginStore>, mut thumbs: ResMut<HubThumbs>) {
             thumbs.request(url);
         }
     }
+}
+
+/// Show a plugin a `renzora://` link asked for: switch to this page and search
+/// for it by name. This page has no item overlay to open (see the module doc),
+/// so the listing's own card, with its Install button, is the destination.
+///
+/// `Err` is a link whose listing could not be fetched, shown in the page's
+/// notice banner.
+pub(crate) fn show_from_link(world: &mut World, result: Result<String, String>) {
+    if let Some(mut active) = world.get_resource_mut::<renzora_splash::ActiveSection>() {
+        active.0 = "plugins".to_string();
+    }
+    let Some(mut store) = world.get_resource_mut::<PluginStore>() else {
+        return;
+    };
+    match result {
+        Ok(name) => {
+            store.search = name.clone();
+            store.seed_search = Some(name);
+            // `init_fetch` searches for it if the page has not been opened
+            // yet; `refetch` does when it has.
+            store.dirty = store.initialized;
+        }
+        Err(e) => store.notice = Some(Err(e)),
+    }
+}
+
+fn seed_search(
+    mut inputs: Query<&mut EmberTextInput, With<PluginSearch>>,
+    mut store: ResMut<PluginStore>,
+) {
+    if store.seed_search.is_none() {
+        return;
+    }
+    // The field exists only once the page has been built, which may be a
+    // frame after the switch to it.
+    let Some(mut input) = inputs.iter_mut().next() else {
+        return;
+    };
+    let Some(text) = store.seed_search.take() else {
+        return;
+    };
+    input.caret_index = text.chars().count();
+    input.value = text;
 }
 
 fn search_sync(

@@ -62,6 +62,9 @@ use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod auth;
 
+/// `renzora://marketplace/<slug>` links from the website.
+#[cfg(not(target_arch = "wasm32"))]
+mod app_links;
 #[cfg(not(target_arch = "wasm32"))]
 mod account_avatar;
 #[cfg(not(target_arch = "wasm32"))]
@@ -207,6 +210,8 @@ impl Plugin for MarketplacePlugin {
         // the session and the installer — is in this crate; see the module doc.
         splash_plugins::register(app);
         splash_templates::register(app);
+        // Website links that open a listing here, in the launcher or a project.
+        app_links::register(app);
 
         // The panels.
         app.add_plugins(store::StorePanel);

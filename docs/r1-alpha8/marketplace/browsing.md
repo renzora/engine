@@ -13,6 +13,18 @@ The Assets panel's **Import** button has a **Search Marketplace…** row that op
 
 Press **Escape**, click outside it, or click the storefront icon again to close it. It's an overlay rather than a dock panel because browsing is somewhere you go and come back from: the grid wants the whole window, and you don't want it competing for space with the viewport it exists to fill.
 
+### Opening a listing from the website in the editor
+
+On Windows and Linux, with the editor installed, the **Download** and **Download plugin** buttons on a listing page open that listing in the editor instead of downloading a file. Your browser may ask first whether to open Renzora. Installing from the editor picks the right build of a plugin for your engine, which a downloaded file can't do.
+
+- **With a project open**, the listing opens in the Marketplace.
+- **In the launcher**, a plugin opens on the **Plugins** page, ready to install. Any other kind of asset waits until you open a project, because it installs into one.
+- **With the editor already running**, the link goes to that window and brings it to the front. It doesn't start a second editor.
+
+Each editor you start registers itself to open these links, so they go to whichever editor you started last. If the editor isn't installed, or doesn't answer within a second or two, the button downloads as usual. If the page says the listing opened in Renzora but nothing happened, use **Download it here** under the button. On macOS the buttons always download for now.
+
+Links have the form `renzora://marketplace/<slug>`, where the slug is the last part of the listing's address on renzora.com. A link can only show a listing, so nothing is installed until you press **Install** yourself.
+
 ![The in-editor Marketplace: a left column with your account and categories, a search/sort toolbar, and a grid of asset cards each with a download button.](/assets/previews/marketplace.png)
 
 > To install assets you own, sign in to your renzora.com account in the editor. The **left column** shows who you're signed in as and your **credit balance**; signed out, it shows a **Sign In** button that opens the sign-in window. You can still look around the store while signed out — free assets install without an account, but paid downloads and your personal library need you signed in.

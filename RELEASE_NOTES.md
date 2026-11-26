@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 21:30
+- feat(marketplace): download buttons on renzora.com open the listing in the editor when it is installed (Windows and Linux)
+
 ## 2026-11-25 21:24
 - fix(update): updating no longer fails with "could not move ... aside" when the editor was started by double-clicking it
 
