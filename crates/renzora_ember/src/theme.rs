@@ -130,10 +130,28 @@ fn theme_rgb(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
     (r, g, b)
 }
 
+/// A theme colour as it looks drawn over `under`.
+///
+/// The palette holds opaque colours, and a theme may give a translucent one
+/// (`border_light = "#FFFFFF1F"`, a faint white line). Dropping the alpha made
+/// that solid white: a gauge's track, a toggle's off state and every border
+/// drawn from it. Blending over the panel the colour is almost always drawn on
+/// gives what the theme meant; an opaque colour comes back unchanged.
+fn theme_rgb_over(c: &renzora_theme::ThemeColor, under: (u8, u8, u8)) -> (u8, u8, u8) {
+    let [r, g, b, a] = c.0;
+    if a == 255 {
+        return (r, g, b);
+    }
+    let t = f32::from(a) / 255.0;
+    let lerp = |top: u8, bottom: u8| (f32::from(bottom) + (f32::from(top) - f32::from(bottom)) * t).round() as u8;
+    (lerp(r, under.0), lerp(g, under.1), lerp(b, under.2))
+}
+
 /// The palette a theme file maps to. One mapping for the editor's chrome and
 /// for a game's UI (`game_theme`), so a theme looks the same in both.
 pub fn palette_from_theme(t: &renzora_theme::Theme) -> Palette {
-    let tc = theme_rgb;
+    let panel = theme_rgb(&t.surfaces.panel);
+    let tc = |c: &renzora_theme::ThemeColor| theme_rgb_over(c, panel);
     Palette {
         window_bg: tc(&t.surfaces.window),
         panel_bg: tc(&t.surfaces.panel),
@@ -576,4 +594,23 @@ pub fn stylesheet() -> StyleSheet {
 /// Resolve one widget type's style from the active sheet.
 pub fn style(role: Role) -> WidgetStyle {
     stylesheet().get(role)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_theme::ThemeColor;
+
+    /// A translucent theme colour is the faint tint it was written as, not
+    /// solid: `#FFFFFF1F` over a near-black panel is a dark grey line.
+    #[test]
+    fn a_translucent_theme_colour_is_blended_over_the_panel() {
+        let panel = (23, 23, 38);
+        let faint_white = ThemeColor([255, 255, 255, 31]);
+        let (r, g, b) = theme_rgb_over(&faint_white, panel);
+        assert!(r < 60 && g < 60 && b < 70, "got ({r}, {g}, {b})");
+        assert!(r > panel.0, "still lighter than the panel");
+        let opaque = ThemeColor([10, 20, 30, 255]);
+        assert_eq!(theme_rgb_over(&opaque, panel), (10, 20, 30));
+    }
 }
