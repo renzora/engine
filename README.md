@@ -18,22 +18,6 @@ cargo renzora             # build, stage dist/, and launch the editor
 
 That's the whole setup. `cargo renzora` builds the workspace natively, stages a complete engine into `dist/<platform>/`, and launches the editor from it. The first build is slow; every one after that is incremental. On Linux it also needs some dev headers, which it installs for you; see [Building on Linux](#building-on-linux).
 
-### Build Commands
-
-| Command | What it does |
-|---|---|
-| `cargo renzora` | Build, stage `dist/<platform>/`, and launch the editor. |
-| `cargo renzora dist` | Build and stage without launching. |
-| `cargo renzora profile` | Profiling build with Tracy instrumentation compiled in. |
-| `cargo renzora sync` | Regenerate the plugin wiring from the crates' `[[package.metadata.renzora.plugin]]` tables. |
-| `cargo renzora remove <crate>` | Delete a plugin crate and every reference to it. |
-
-Building the editor always builds the runtime too. The runtime doubles as a dedicated server: run it with `--server`.
-
-Iterate with `cargo check --profile dist` and `cargo clippy --profile dist`; run tests with `cargo test --profile dist -p <crate>`. Always pass `--profile dist`. A bare cargo command builds a second full set of artefacts under `target/debug/`, and this workspace is far too large for two of them.
-
-Shipping a game for a platform you're not sitting at (a macOS, Android, or web build from a Windows box) is part of the editor's export system, covered in <a href="https://renzora.com/docs" target="_blank" rel="noopener noreferrer">the docs</a>. Building those needs [Docker](#docker-only-for-cross-compiling).
-
 ## Install
 
 Download the editor for your platform from <a href="https://renzora.com/download" target="_blank" rel="noopener noreferrer">renzora.com/download</a> or the <a href="https://github.com/renzora/engine/releases" target="_blank" rel="noopener noreferrer">releases page</a>. Nothing else to install.
@@ -48,6 +32,22 @@ Download the editor for your platform from <a href="https://renzora.com/download
   ```
 
   Distro packages, NixOS and Steam Deck: [Linux](#linux).
+
+## Build Commands
+
+| Command | What it does |
+|---|---|
+| `cargo renzora` | Build, stage `dist/<platform>/`, and launch the editor. |
+| `cargo renzora dist` | Build and stage without launching. |
+| `cargo renzora profile` | Profiling build with Tracy instrumentation compiled in. |
+| `cargo renzora sync` | Regenerate the plugin wiring from the crates' `[[package.metadata.renzora.plugin]]` tables. |
+| `cargo renzora remove <crate>` | Delete a plugin crate and every reference to it. |
+
+Building the editor always builds the runtime too. The runtime doubles as a dedicated server: run it with `--server`.
+
+Iterate with `cargo check --profile dist` and `cargo clippy --profile dist`; run tests with `cargo test --profile dist -p <crate>`. Always pass `--profile dist`. A bare cargo command builds a second full set of artefacts under `target/debug/`, and this workspace is far too large for two of them.
+
+Shipping a game for a platform you're not sitting at (a macOS, Android, or web build from a Windows box) is part of the editor's export system, covered in <a href="https://renzora.com/docs" target="_blank" rel="noopener noreferrer">the docs</a>. Building those needs [Docker](#docker-only-for-cross-compiling).
 
 ## Linux
 
