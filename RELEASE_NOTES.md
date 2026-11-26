@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 21:33
+- fix(plugins): Windows builds get prebuilt marketplace plugins again
+
 ## 2026-11-25 21:30
 - feat(marketplace): download buttons on renzora.com open the listing in the editor when it is installed (Windows and Linux)
 

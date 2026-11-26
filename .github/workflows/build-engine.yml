@@ -761,8 +761,18 @@ jobs:
           # plugins repository) it falls back to `main`.
           git clone --quiet --filter=blob:none https://github.com/renzora/plugins "$RUNNER_TEMP/plugins-repo"
           stage="$RUNNER_TEMP/plugins-repo/.github/scripts/publish-changed.sh"
+          # The script extracts with `tar -C`, and GNU tar reads `D:\a\_temp`
+          # as host `D` on a remote machine, so on Windows every extract
+          # failed and the check found no plugins at all. Hand it the POSIX
+          # spelling of the same directory; everything after it still takes
+          # the native path.
+          stage_dir="$RUNNER_TEMP/plugins"
+          if command -v cygpath >/dev/null 2>&1; then
+            stage_dir=$(cygpath -u "$stage_dir")
+          fi
           if [ -f "$stage" ] && grep -q -- '--stage' "$stage" \
-            && (cd "$RUNNER_TEMP/plugins-repo" && bash "$stage" HEAD --stage "$RUNNER_TEMP/plugins"); then
+            && (cd "$RUNNER_TEMP/plugins-repo" && bash "$stage" HEAD --stage "$stage_dir") \
+            && [ -n "$(ls -A "$RUNNER_TEMP/plugins" 2>/dev/null)" ]; then
             :
           else
             echo "::warning::could not stage the plugins' release sources; checking plugins main instead"
@@ -1616,8 +1626,11 @@ jobs:
   # Report-only like the plugin check: a plugin that fails to upload is a
   # plugin that installs from source, which is how every plugin installed
   # before this existed.
+  #
+  # After `plugins`, which waits for renzora/plugins to finish publishing: that
+  # run creates the listing a first-published plugin's prebuilts are filed under.
   prebuilts:
-    needs: [setup, desktop, publish]
+    needs: [setup, desktop, publish, plugins]
     if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
     runs-on: ubuntu-latest
     steps:
@@ -1655,14 +1668,28 @@ jobs:
             # A User-Agent of its own: renzora.com sits behind Cloudflare, whose
             # bot protection answers curl's default one with a 403 block page
             # before the request reaches the site.
-            code=$(curl -sS -o response.json -w '%{http_code}' \
-              -A "renzora-engine-ci/$TAG" \
-              -H "Authorization: Bearer $TOKEN" \
-              -F "statement=<$statement" \
-              -F "engine_tag=$TAG" \
-              -F "engine_version=$VERSION" \
-              -F "library=@$lib" \
-              https://renzora.com/api/prebuilt-plugins/upload)
+            #
+            # Gzipped as `library_gz` because the same firewall reads request
+            # bodies: a Linux plugin that reads system information carries
+            # `/proc/...` and `/etc/...` strings its path-traversal rules match,
+            # and the raw upload got a 403 block page. A site not yet deployed
+            # with `library_gz` says "missing library"; the raw form is the
+            # retry for that.
+            gzip -9 -c "$lib" > library.gz
+            upload() {
+              curl -sS -o response.json -w '%{http_code}' \
+                -A "renzora-engine-ci/$TAG" \
+                -H "Authorization: Bearer $TOKEN" \
+                -F "statement=<$statement" \
+                -F "engine_tag=$TAG" \
+                -F "engine_version=$VERSION" \
+                -F "$1" \
+                https://renzora.com/api/prebuilt-plugins/upload
+            }
+            code=$(upload "library_gz=@library.gz")
+            if [ "$code" = "400" ] && grep -q 'missing library' response.json; then
+              code=$(upload "library=@$lib")
+            fi
             if [ "$code" = "200" ]; then
               ok=$((ok + 1)); echo "uploaded $label"
             else
@@ -1716,10 +1743,46 @@ jobs:
             echo "::warning::PLUGINS_DISPATCH_TOKEN is not set on this repository; renzora/plugins was not asked to publish for $TAG"
             exit 0
           fi
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           jq -n --arg tag "$TAG" --arg channel "$CHANNEL" \
             '{event_type: "engine-release", client_payload: {tag: $tag, channel: $channel}}' \
             | gh api --method POST repos/renzora/plugins/dispatches --input -
           echo "::notice::dispatched engine-release ($CHANNEL) for $TAG to renzora/plugins"
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+        id: dispatch
+
+      # Wait for that publish to finish, because `prebuilts` waits on this job.
+      # A plugin published for the first time has no marketplace listing until
+      # the plugins repository's run creates it, and a prebuilt uploaded before
+      # then is refused ("no listing has the marketplace id"), so a new plugin
+      # would otherwise miss its prebuilts on the very nightly that ships it.
+      # The run is found by its event and start time: a dispatch returns no run
+      # id. Reading a public repository's runs needs no special token.
+      - name: Wait for renzora/plugins to finish publishing
+        if: steps.dispatch.outputs.since != ''
+        continue-on-error: true
+        timeout-minutes: 45
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SINCE: ${{ steps.dispatch.outputs.since }}
+        run: |
+          set -uo pipefail
+          run=""
+          for _ in $(seq 1 30); do
+            run=$(gh run list -R renzora/plugins --workflow publish.yml \
+              --event repository_dispatch --limit 10 \
+              --json databaseId,createdAt \
+              --jq "[.[] | select(.createdAt >= \"$SINCE\")] | last | .databaseId // empty")
+            [ -n "$run" ] && break
+            sleep 10
+          done
+          if [ -z "$run" ]; then
+            echo "::warning::no renzora/plugins publish run started after the dispatch; prebuilts upload without waiting"
+            exit 0
+          fi
+          echo "waiting for renzora/plugins run $run"
+          gh run watch "$run" -R renzora/plugins --interval 30 --exit-status \
+            || echo "::warning::renzora/plugins publish run $run did not succeed; new plugins may have no listing for their prebuilts"
 
   website:
     needs: [setup, build, publish, publish-web]

@@ -443,10 +443,20 @@ jobs:
                 cp "$dir/library.bin" "$lib"
                 if target/dist/examples/sign_prebuilt --library "$lib" --id "$id" --version "$version" \
                      --platform "$platform" --stamp "$stamp" > statement.json 2> sign.err; then
-                  code=$(curl -sS -o response.json -w '%{http_code}' -A "$UA" \
-                    -H "Authorization: Bearer $TOKEN" \
-                    -F "statement=<statement.json" -F "engine_tag=$TAG" -F "engine_version=$VERSION" \
-                    -F "library=@$lib" "$api/upload")
+                  # Gzipped, with a raw retry for a site that predates
+                  # `library_gz`: see the same upload in build-engine.yml for
+                  # why (Cloudflare's firewall matches strings in raw bodies).
+                  gzip -9 -c "$lib" > library.gz
+                  upload() {
+                    curl -sS -o response.json -w '%{http_code}' -A "$UA" \
+                      -H "Authorization: Bearer $TOKEN" \
+                      -F "statement=<statement.json" -F "engine_tag=$TAG" -F "engine_version=$VERSION" \
+                      -F "$1" "$api/upload"
+                  }
+                  code=$(upload "library_gz=@library.gz")
+                  if [ "$code" = "400" ] && grep -q 'missing library' response.json; then
+                    code=$(upload "library=@$lib")
+                  fi
                   [ "$code" = "200" ] || unpublished="the upload failed (HTTP $code)"
                 else
                   # The usual cause: an engine build older than prebuilts, whose
