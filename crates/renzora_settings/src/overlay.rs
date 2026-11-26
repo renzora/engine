@@ -45,18 +45,24 @@ pub(crate) fn manage_overlay(world: &mut World) {
         .map(|t| t.active_theme_name.clone());
 
     let lang_rev = renzora_lang_api::revision();
+    let fonts_rev = world
+        .get_resource::<renzora_ember::font::FontRegistry>()
+        .map(|r| r.revision())
+        .unwrap_or(0);
     let st = world.resource::<OverlayState>();
     // Rebuild when the active theme switches so the overlay re-spawns with the
     // new palette (it's a separate root from the chrome).
     let theme_changed = st.built_theme != theme_name;
     // …and when the language changes, so its own picker re-localizes live.
     let lang_changed = st.built_lang_rev != lang_rev;
+    // …and when a font is added to or removed from the project.
+    let fonts_changed = st.built_fonts_rev != fonts_rev;
     let plugin_changed = st.built_sub != st.active_sub;
     let active_sub = st.active_sub.clone();
     let (root, built, dirty) = (
         st.root,
         st.built_tab,
-        st.dirty || theme_changed || lang_changed || plugin_changed,
+        st.dirty || theme_changed || lang_changed || fonts_changed || plugin_changed,
     );
 
     if !open {
@@ -93,6 +99,7 @@ pub(crate) fn manage_overlay(world: &mut World) {
     st.dirty = false;
     st.built_theme = theme_name;
     st.built_lang_rev = lang_rev;
+    st.built_fonts_rev = fonts_rev;
     st.built_sub = active_sub;
 }
 

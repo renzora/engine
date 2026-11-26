@@ -165,7 +165,7 @@ See [Materials](/docs/r1-alpha8/editor/materials).
 
 Any entity with text gets two sections.
 
-**Text Font** picks the font from a dropdown that fills itself from your project's `fonts/` folder plus the built-in faces. Drop a `.ttf` or `.otf` there and it appears. Set the size, and for variable fonts the weight, width, letter spacing and line height.
+**Text Font** picks the font from a dropdown that fills itself from your project's `fonts/` folder plus the built-in faces. Drop a `.ttf` or `.otf` there, or a family's folder of them (`fonts/barlow/Barlow-Bold.ttf`), and it appears. Two fonts with the same file name in different folders are shown with their folder. Set the size, and for variable fonts the weight, width, letter spacing and line height.
 
 **Rich Text** builds styled spans: several runs of text on one line, each with its own text and colour. **Add span** appends one. Spans render in order after the base text.
 

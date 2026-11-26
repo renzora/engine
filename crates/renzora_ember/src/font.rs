@@ -196,24 +196,31 @@ pub enum FontOrigin {
     Embedded,
     /// A generic family resolved by the OS via Parley (System UI, Sans, …).
     Generic,
-    /// A `.ttf` / `.otf` discovered in the project's `fonts/` folder.
+    /// A `.ttf` / `.otf` discovered in the project's `fonts/` folder, at any
+    /// depth.
     Project,
 }
 
 /// One selectable font.
 #[derive(Clone)]
 pub struct FontEntry {
-    /// Display + lookup name (file stem for project fonts).
+    /// Display + lookup name: the file stem for project fonts, with its folder
+    /// added when two project fonts share a stem.
     pub name: String,
     /// How to render it.
     pub source: FontSource,
     pub origin: FontOrigin,
+    /// A project font's project-relative path (`fonts/isometra/Isometra.ttf`).
+    /// This, not [`Self::name`], is what a setting should store: a shipped
+    /// game reads its fonts from the packed archive and has no folder to scan,
+    /// so a bare name finds nothing there, while a path loads anywhere.
+    pub path: Option<String>,
 }
 
 /// The live list of fonts available to every UI font picker. Built-ins are
-/// always present; project `fonts/*.{ttf,otf}` are scanned + loaded by
+/// always present; every `.ttf`/`.otf` under `fonts/` is loaded by
 /// [`scan_project_fonts`] and appended, so dropdowns auto-populate when a font
-/// is dropped into the folder. Runtime-safe, so the editor and a shipped game
+/// is added to the project. Runtime-safe, so the editor and a shipped game
 /// share one registry.
 #[derive(Resource, Default, Clone)]
 pub struct FontRegistry {
@@ -229,40 +236,27 @@ impl FontRegistry {
     /// families. Shared by the editor (disk) and game (VFS) scanners so the
     /// option set is identical. `default_ui` is the embedded UI font source.
     pub fn builtin_entries(default_ui: FontSource) -> Vec<FontEntry> {
+        let entry = |name: &str, source: FontSource, origin: FontOrigin| FontEntry {
+            name: name.into(),
+            source,
+            origin,
+            path: None,
+        };
         vec![
-            FontEntry {
-                name: "Default".into(),
-                source: default_ui,
-                origin: FontOrigin::Embedded,
-            },
-            FontEntry {
-                name: "System UI".into(),
-                source: FontSource::system_ui(),
-                origin: FontOrigin::Generic,
-            },
-            FontEntry {
-                name: "Sans Serif".into(),
-                source: FontSource::sans_serif(),
-                origin: FontOrigin::Generic,
-            },
-            FontEntry {
-                name: "Serif".into(),
-                source: FontSource::serif(),
-                origin: FontOrigin::Generic,
-            },
-            FontEntry {
-                name: "Monospace".into(),
-                source: FontSource::monospace(),
-                origin: FontOrigin::Generic,
-            },
+            entry("Default", default_ui, FontOrigin::Embedded),
+            entry("System UI", FontSource::system_ui(), FontOrigin::Generic),
+            entry("Sans Serif", FontSource::sans_serif(), FontOrigin::Generic),
+            entry("Serif", FontSource::serif(), FontOrigin::Generic),
+            entry("Monospace", FontSource::monospace(), FontOrigin::Generic),
         ]
     }
 
-    /// Resolve a font name to its render source (`None` if unknown).
+    /// Resolve a font, by name or by a project font's path, to its render
+    /// source (`None` if unknown).
     pub fn resolve(&self, name: &str) -> Option<FontSource> {
         self.entries
             .iter()
-            .find(|e| e.name == name)
+            .find(|e| e.name == name || e.path.as_deref() == Some(name))
             .map(|e| e.source.clone())
     }
 
@@ -275,130 +269,157 @@ impl FontRegistry {
             .map(|e| e.name.clone())
             .collect()
     }
+
+    /// The project-folder fonts as `(display name, project-relative path)`,
+    /// for a picker whose choice is saved into the project and must load in a
+    /// shipped game (see [`FontEntry::path`]).
+    pub fn project_fonts(&self) -> Vec<(String, String)> {
+        self.entries
+            .iter()
+            .filter_map(|e| Some((e.name.clone(), e.path.clone()?)))
+            .collect()
+    }
+
+    /// Changes whenever the set of project fonts does, so a picker that is
+    /// already open can tell it has to rebuild to show a font just added.
+    pub fn revision(&self) -> u64 {
+        self.dir_sig
+    }
 }
 
-/// A cheap hash of the `fonts/` folder (`.ttf`/`.otf` filenames + mtimes) so the
-/// scanner can skip work unless something actually changed.
-fn font_dir_signature(dir: &std::path::Path) -> u64 {
+fn is_font_file(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".ttf") || lower.ends_with(".otf")
+}
+
+/// The fonts under `fonts/`, as `(project-relative path, mtime)`, sorted.
+///
+/// In the editor this reads `ProjectIndex`, which was walked once on a thread
+/// and is kept current from the watcher's events, so a font added anywhere
+/// under `fonts/` (they usually come as a family folder,
+/// `fonts/barlow/Barlow-Bold.ttf`) is found without this system touching the
+/// disk. Main-thread folder walks are what the index exists to end; see
+/// `renzora_platform_api::project_index`.
+///
+/// Without an index (a game: the watcher is editor-only) it lists the top
+/// level of `fonts/` once, as it always has, so a font name saved by an
+/// earlier version still resolves. Nothing in a game needs more: settings
+/// store a project font by its path, which loads without being listed.
+fn project_font_files(
+    index: Option<&renzora_platform_api::project_index::ProjectIndex>,
+    dir: Option<&std::path::Path>,
+) -> Vec<(String, u64)> {
+    let mut found: Vec<(String, u64)> = match index {
+        Some(index) => index
+            .files()
+            .filter(|f| f.path.starts_with("fonts/") && is_font_file(&f.path))
+            .map(|f| (f.path.clone(), f.modified))
+            .collect(),
+        None => dir
+            .and_then(|d| std::fs::read_dir(d).ok())
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| {
+                        let name = e.file_name().to_str()?.to_string();
+                        is_font_file(&name).then(|| (format!("fonts/{name}"), 0))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
+    found.sort();
+    found
+}
+
+/// A cheap hash of the font set (paths + mtimes), so the registry is rebuilt
+/// only when it actually changed: rebuilding re-issues every handle.
+fn font_dir_signature(files: &[(String, u64)]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    if let Ok(rd) = std::fs::read_dir(dir) {
-        let mut items: Vec<(String, u64)> = rd
-            .flatten()
-            .filter_map(|e| {
-                let p = e.path();
-                let ext = p
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_ascii_lowercase());
-                if !matches!(ext.as_deref(), Some("ttf") | Some("otf")) {
-                    return None;
-                }
-                let name = p.file_name()?.to_str()?.to_string();
-                let mtime = e
-                    .metadata()
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                Some((name, mtime))
-            })
-            .collect();
-        items.sort();
-        items.hash(&mut h);
-    }
+    files.hash(&mut h);
     h.finish()
 }
 
-/// Keep [`FontRegistry`] in sync with the project's `fonts/` folder: load new
-/// `.ttf`/`.otf` files into `Assets<Font>` and drop removed ones. Polls the
-/// folder, so dropping a font in is picked up live.
+/// Keep [`FontRegistry`] in step with the project's fonts: every `.ttf`/`.otf`
+/// under `fonts/`, at any depth, loaded into `Assets<Font>`, so a font added to
+/// the project shows in every picker without a restart.
 ///
 /// This used to re-`read_dir` the folder every thirty frames, roughly twice a
-/// second, forever. It now runs on the first population and then only when the
-/// project watcher says a file under `<project>/fonts` changed, which is the
-/// same answer without asking the disk for it.
+/// second, forever, and later on every watcher event under `fonts/`. In the
+/// editor it now follows `ProjectIndex`'s revision and reads the index, which
+/// costs a map scan and no disk access (see [`project_font_files`]).
 pub(crate) fn scan_project_fonts(
     mut registry: ResMut<FontRegistry>,
     asset_server: Res<AssetServer>,
     ember: Option<Res<EmberFonts>>,
     project: Option<Res<renzora_project_api::CurrentProject>>,
-    mut changes: MessageReader<renzora_project_api::project_files::ProjectFileChanged>,
+    index: Option<Res<renzora_platform_api::project_index::ProjectIndex>>,
+    mut seen_revision: Local<Option<u64>>,
 ) {
-    let fonts_dir = project.as_ref().map(|p| p.path.join("fonts"));
-    // Read the buffer unconditionally so the cursor keeps moving: skipping it
-    // while the registry is empty would leave stale changes to be re-seen later.
-    let touched = if changes.is_empty() {
-        false
-    } else {
-        match fonts_dir.as_deref() {
-            Some(dir) => changes.read().any(|change| change.path.starts_with(dir)),
-            None => {
-                changes.clear();
-                false
-            }
-        }
-    };
-    // The first population still has to look: no event will mention the fonts
-    // that were already sitting in the folder when the project opened.
-    if !registry.entries.is_empty() && !touched {
-        return;
-    }
     let Some(ember) = ember else {
         return; // fonts not ready yet
     };
+    let dir = project.as_ref().map(|p| p.path.join("fonts"));
+    match index.as_deref() {
+        Some(index) => {
+            // Until the first walk lands the index is empty, not "no fonts":
+            // the built-ins go up now so a picker has something to show.
+            if !index.ready() {
+                if registry.entries.is_empty() {
+                    registry.entries = FontRegistry::builtin_entries(ember.default_ui.clone());
+                }
+                return;
+            }
+            if *seen_revision == Some(index.revision()) {
+                return;
+            }
+            *seen_revision = Some(index.revision());
+        }
+        // A game lists its fonts once; nothing changes them under it.
+        None if !registry.entries.is_empty() && registry.scanned_dir == dir => return,
+        None => {}
+    }
 
-    let dir = fonts_dir;
-    // Still signature-checked. The event says something under `fonts/` moved,
-    // not that the set of loadable fonts changed, and rebuilding the registry
-    // re-issues every handle: a `.txt` saved in there must not churn the list.
-    let sig = dir.as_deref().map(font_dir_signature).unwrap_or(0);
-    if !registry.entries.is_empty()
-        && registry.scanned_dir.as_deref() == dir.as_deref()
-        && registry.dir_sig == sig
-    {
+    // The index moves on every project file change; only a change to the
+    // font set rebuilds the registry.
+    let files = project_font_files(index.as_deref(), dir.as_deref());
+    let sig = font_dir_signature(&files);
+    if !registry.entries.is_empty() && registry.scanned_dir == dir && registry.dir_sig == sig {
         return; // nothing changed
     }
 
-    // Rebuild the list: built-ins first, then project fonts. We discover the
-    // file names on disk (for the picker list) but LOAD each through the asset
-    // server by its project-relative path — so the handle is path-backed. That
-    // matters downstream: the path is what the scene `.bsn` records for a
-    // `TextFont`, what the exporter's reference trace packs, and what a shipped
-    // game loads from the rpak (no game-side font scanner needed).
+    // Rebuild the list: built-ins first, then project fonts, each LOADED
+    // through the asset server by its project-relative path so the handle is
+    // path-backed. That matters downstream: the path is what the scene `.bsn`
+    // records for a `TextFont`, what the exporter's reference trace packs, and
+    // what a shipped game loads from the rpak.
     let mut entries = FontRegistry::builtin_entries(ember.default_ui.clone());
-    if let Some(dir) = &dir {
-        if let Ok(rd) = std::fs::read_dir(dir) {
-            let mut files: Vec<std::path::PathBuf> = rd
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    matches!(
-                        p.extension()
-                            .and_then(|s| s.to_str())
-                            .map(|s| s.to_ascii_lowercase())
-                            .as_deref(),
-                        Some("ttf") | Some("otf")
-                    )
-                })
-                .collect();
-            files.sort();
-            for path in files {
-                let (Some(stem), Some(file)) = (
-                    path.file_stem().and_then(|s| s.to_str()),
-                    path.file_name().and_then(|s| s.to_str()),
-                ) else {
-                    continue;
-                };
-                // Project-relative asset path (asset_server dedupes by path).
-                let handle = asset_server.load::<Font>(format!("fonts/{file}"));
-                entries.push(FontEntry {
-                    name: stem.to_string(),
-                    source: FontSource::Handle(handle),
-                    origin: FontOrigin::Project,
-                });
-            }
+    {
+        // (stem, project-relative path, folder under fonts/)
+        let found: Vec<(String, String, String)> = files
+            .iter()
+            .filter_map(|(rel, _)| {
+                let file = rel.rsplit('/').next()?;
+                let stem = file.rsplit_once('.').map(|(s, _)| s).unwrap_or(file).to_string();
+                let inner = rel.strip_prefix("fonts/")?;
+                let folder = inner.rsplit_once('/').map(|(f, _)| f.to_string()).unwrap_or_default();
+                Some((stem, rel.clone(), folder))
+            })
+            .collect();
+        for (stem, rel, folder) in &found {
+            // Two families can both ship a `Regular.ttf`; the folder tells them
+            // apart in a picker. A unique stem stays as it was, so a name saved
+            // by an earlier version still resolves.
+            let shared = found.iter().filter(|(s, ..)| s == stem).count() > 1;
+            let name = if shared && !folder.is_empty() { format!("{stem} ({folder})") } else { stem.clone() };
+            // Project-relative asset path (asset_server dedupes by path).
+            let handle = asset_server.load::<Font>(rel.clone());
+            entries.push(FontEntry {
+                name,
+                source: FontSource::Handle(handle),
+                origin: FontOrigin::Project,
+                path: Some(rel.clone()),
+            });
         }
     }
 
@@ -473,4 +494,40 @@ pub fn icon_item(commands: &mut Commands, name: &str, color: (u8, u8, u8), size:
             Name::new(format!("icon:{name}")),
         ))
         .id()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_platform_api::project_index::{IndexedFile, ProjectIndex};
+
+    fn file(path: &str) -> IndexedFile {
+        IndexedFile { path: path.into(), size: 1, modified: 7 }
+    }
+
+    /// Fonts in family folders count, at any depth, and nothing else does:
+    /// not a font outside `fonts/`, not a licence beside one.
+    #[test]
+    fn project_fonts_come_from_the_index_at_any_depth() {
+        let root = std::path::PathBuf::from("/p");
+        let mut index = ProjectIndex::default();
+        index.begin(root.clone());
+        index.complete(
+            &root,
+            vec![
+                file("fonts/Top.ttf"),
+                file("fonts/isometra/Isometra-Regular.TTF"),
+                file("fonts/barlow/static/Barlow-Bold.otf"),
+                file("fonts/barlow/OFL.txt"),
+                file("ui/Stray.ttf"),
+            ],
+        );
+        let found = project_font_files(Some(&index), None);
+        let paths: Vec<&str> = found.iter().map(|(p, _)| p.as_str()).collect();
+        assert_eq!(
+            paths,
+            ["fonts/Top.ttf", "fonts/barlow/static/Barlow-Bold.otf", "fonts/isometra/Isometra-Regular.TTF"]
+        );
+        assert!(found.iter().all(|(_, m)| *m == 7), "the index's mtime is what the signature hashes");
+    }
 }

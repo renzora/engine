@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 23:55
+- fix(ui): fonts in folders under `fonts/` appear in every font picker, and a font added to the project shows up in an open Settings page
+- fix(settings): the Game UI Font setting saves a project font's path, so exported games load it
+
 ## 2026-11-25 23:43
 - fix(editor): switching scene tabs no longer overwrites changes made to `project.toml` outside the editor
 - fix(settings): the Game UI Theme picker lists themes added to the project while the editor is open

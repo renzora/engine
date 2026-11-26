@@ -165,6 +165,13 @@ pub(crate) fn tab_project(
     let font_refs: Vec<&str> = font_opts.iter().map(|s| s.as_str()).collect();
     let fo1 = font_opts.clone();
     let fo2 = font_opts.clone();
+    // A project font is saved by its path, not the name shown: a shipped game
+    // reads its fonts from the packed archive and has no folder to list, so a
+    // bare name found nothing there. A name saved before this still selects.
+    use renzora_ember::font::FontRegistry;
+    let font_path = |registry: Option<&FontRegistry>, name: &str| {
+        registry.and_then(|r| r.project_fonts().into_iter().find(|(n, _)| n == name).map(|(_, p)| p))
+    };
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -174,12 +181,22 @@ pub(crate) fn tab_project(
             .get_resource::<CurrentProject>()
             .and_then(|c| c.config.ui_font.clone())
         {
-            Some(name) => fo1.iter().position(|n| *n == name).unwrap_or(0),
+            Some(saved) => {
+                let registry = w.get_resource::<FontRegistry>();
+                fo1.iter()
+                    .position(|n| *n == saved || font_path(registry, n).as_deref() == Some(saved.as_str()))
+                    .unwrap_or(0)
+            }
             None => 0,
         },
         move |w, &i| {
             // Index 0 = "Default" → None (embedded font).
-            let val = if i == 0 { None } else { fo2.get(i).cloned() };
+            let val = if i == 0 {
+                None
+            } else {
+                let registry = w.get_resource::<FontRegistry>();
+                fo2.get(i).map(|name| font_path(registry, name).unwrap_or_else(|| name.clone()))
+            };
             if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
                 cp.config.ui_font = val;
             }

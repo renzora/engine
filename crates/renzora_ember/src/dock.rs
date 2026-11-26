@@ -62,10 +62,11 @@ impl Plugin for DockPlugin {
         // Registered here as well as by `renzora_project_watch`, and
         // `add_message` is idempotent so the second call is free.
         //
-        // `scan_project_fonts` below reads it, and this crate links into the
-        // runtime as well as the editor. The watcher is Editor-scope, so without
-        // this a build that took the dock but not the watcher would read a
-        // message nobody registered and panic on its first frame.
+        // This crate links into the runtime as well as the editor, and the
+        // watcher is Editor-scope, so a build that took the dock but not the
+        // watcher would otherwise hand any reader of it a message nobody
+        // registered, which panics on its first frame. (`scan_project_fonts`,
+        // the reader this was added for, now follows `ProjectIndex` instead.)
         app.add_message::<renzora_project_api::project_files::ProjectFileChanged>()
             .init_resource::<Dock>()
             .init_resource::<DockDirty>()

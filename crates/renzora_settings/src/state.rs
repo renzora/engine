@@ -40,6 +40,10 @@ pub(crate) struct OverlayState {
     /// `renzora_lang_api::revision()` at last build — same idea as `built_theme`, so
     /// switching language from the overlay's own picker re-localizes it live.
     pub(crate) built_lang_rev: u64,
+    /// `FontRegistry::revision()` at last build: the font pickers list the
+    /// project's fonts as they were then, so a font added to the project while
+    /// Settings is open rebuilds it to appear.
+    pub(crate) built_fonts_rev: u64,
     /// Sub-selection within the active tab — a section focus key for a split tab
     /// (e.g. `"grid"` under Viewport) or a plugin section id under `Plugins`. The
     /// tab disambiguates which, so one field serves both. `None` = whole tab.
