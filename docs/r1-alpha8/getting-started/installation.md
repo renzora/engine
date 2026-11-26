@@ -10,7 +10,7 @@ Download Renzora, run it, and you are in the editor in a few minutes.
 |---|---|
 | Windows | Windows 10, 64-bit |
 | macOS | macOS 12 Monterey |
-| Linux | Ubuntu 22.04 or Fedora 38 |
+| Linux | Any x86_64 or ARM64 distro with glibc 2.28 or newer: Ubuntu 20.04, Linux Mint 20, Debian 10, Fedora 29, RHEL / Rocky / AlmaLinux 8, Pop!\_OS 20.04, or current Arch, openSUSE Tumbleweed and NixOS. Wayland or X11. |
 | Graphics | A GPU with Vulkan, Metal or DX12 |
 | Memory | 4 GB, 8 GB recommended |
 
@@ -22,7 +22,7 @@ Grab a build for your platform from [renzora.com/download](/download). Nothing e
 
 **macOS.** Extract the `.zip` and move the app to your Applications folder. The app is signed but not notarized, so the first launch is blocked. Open **System Settings > Privacy & Security**, find the message naming Renzora Engine, and click **Open Anyway**. You only do this once.
 
-**Linux.** Extract the `.zip` and run the `.AppImage` inside it.
+**Linux.** Extract the `.zip`, make the `.AppImage` inside it executable (`chmod +x`), and run it. On most desktops that is all. [Installing on Linux](/docs/r1-alpha8/getting-started/linux) has the packages for each distro, the setup for NixOS, Steam Deck and immutable distros, and what to do if it does not start.
 
 The AppImage carries a `renzora-engine.desktop` entry and its icon, and the editor window claims `renzora-engine` as its Wayland `app_id` (X11 `WM_CLASS`), which is the string a desktop shell matches a running window to its launcher by. So installing the entry gets you the right icon in the dock, and pinning it associates with the running editor rather than sitting beside it. A game you export claims no such identity, because that one belongs to the editor.
 

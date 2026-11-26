@@ -237,6 +237,13 @@ fn main() {
     // crash-file location + dialog from `is_editor` (it can't read the World).
     renzora_runtime::renzora_engine::crash::install_panic_hook(is_editor);
 
+    // An unsupported Linux machine is told so here, in words, before the
+    // first-run window or winit try to open a window and panic without naming
+    // the library that was missing. A dedicated server opens no window and
+    // needs no GPU, so it is not checked. See `linux_support`.
+    #[cfg(target_os = "linux")]
+    renzora_runtime::linux_support::check_or_exit(is_editor, !server_mode);
+
     // ── First-run setup, before Bevy ─────────────────────────────────────────
     // A downloaded release arrives with the SDK still compressed and every
     // native plugin still source-only, so the first launch after an install or

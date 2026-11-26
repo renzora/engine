@@ -41,13 +41,16 @@ dist/linux-x64/
 └── Renzora Engine-x86_64.AppImage
 ```
 
-The binary links its libraries by name, so the `.so` files must travel **beside** it (or on `LD_LIBRARY_PATH`). The generated `AppRun` does exactly that:
+The binary links its libraries by name, so the `.so` files must travel **beside** it (or on `LD_LIBRARY_PATH`). The generated `AppRun` does exactly that, then checks the system before starting the binary (see [Which systems a game runs on](#which-systems-a-game-runs-on)):
 
 ```bash
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
-exec "$HERE/renzora" "$@"
+APP_NAME="My Game"
+BIN="mygame"
+# ... the Linux support check (crates/renzora_export/src/apprun_preflight.sh) ...
+exec "$HERE/$BIN" "$@"
 ```
 
 > `chmod +x` is applied by the build, but if you copy the binary around manually, re-run `chmod +x renzora`.
@@ -107,9 +110,22 @@ A Linux machine running your game needs:
 | **X11 or Wayland** | `winit` auto-selects whichever is available; `libxkbcommon` / `libwayland` provide the client libs. |
 | **ALSA / PulseAudio** | Needed by the audio backend; without them (or in a build made with `renzora_runtime`'s `audio` feature off) the game runs silently. |
 
+## Which systems a game runs on
+
+A Linux program needs at least the glibc of the machine that compiled it, so where your game was built decides which distros can start it.
+
+| How you export | Built on | Runs on |
+|---|---|---|
+| **Binary + .rpak** or **Single executable** | The editor's prebuilt runtime, compiled on AlmaLinux 8 | glibc 2.28 and newer: Ubuntu 20.04+, Mint 20+, Debian 10+, Fedora 29+, RHEL 8+, Steam Deck, and current rolling distros |
+| **Lean single binary** | Your machine (or the Docker toolchain, when exporting from another OS) | That machine's glibc and newer |
+
+After a lean Linux build the export log says which glibc the game needs, and warns when that is newer than 2.28, naming the file that raised it. To reach older systems with a lean build, export from an older distro, for example AlmaLinux 8 or Ubuntu 20.04 in [Distrobox](https://distrobox.it).
+
+Every exported AppImage checks the player's system before the game starts, against the glibc its own files actually need. A player on a system that is too old, a musl distro, NixOS without `nix-ld`, or one missing a library gets a dialog saying what is wrong instead of a game that silently does not start. The game binary repeats the checks it can do itself (display server, Vulkan, windowing libraries) when it is started without the AppImage. Point players at [Installing on Linux](/docs/r1-alpha8/getting-started/linux) for per-distro fixes. `RENZORA_SKIP_PREFLIGHT=1` turns the check off.
+
 ## Architecture
 
-The official pipeline targets **`x86_64` only**. There is no `aarch64` Linux lane in `build-all.sh` and no ARM Linux toolchain in the Docker image, so 64-bit ARM Linux (Raspberry Pi, ARM servers) is **not a supported export target** today. The `linux` platform token always maps to `dist/linux-x64/`.
+Linux builds for **x86_64** (`dist/linux-x64/`) and **ARM64** (`dist/linux-arm64/`). `renzora build linux` produces both from one container, compiling the other architecture with the image's cross-gcc; `linux-x64` or `linux-arm64` picks just one.
 
 ## Troubleshooting
 
@@ -126,3 +142,5 @@ The official pipeline targets **`x86_64` only**. There is no `aarch64` Linux lan
 
 - [Exporting overview](/docs/r1-alpha8/exporting/overview) — the shared build model across platforms
 - [Installation](/docs/r1-alpha8/getting-started/installation) — building the engine from source and the cargo aliases
+- [Installing on Linux](/docs/r1-alpha8/getting-started/linux): the per-distro setup to send your players to
+- [Installing Docker](/docs/r1-alpha8/setup/docker): for exporting to Linux from another OS

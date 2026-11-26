@@ -24,6 +24,10 @@ mod capabilities;
 mod docker;
 #[cfg(not(target_arch = "wasm32"))]
 mod download;
+/// The newest glibc a built Linux file needs, for the lean export's warning and
+/// the AppImage launcher's check.
+#[cfg(not(target_arch = "wasm32"))]
+mod glibc;
 #[cfg(not(target_arch = "wasm32"))]
 mod icon;
 #[cfg(not(target_arch = "wasm32"))]

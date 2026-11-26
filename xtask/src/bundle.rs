@@ -185,17 +185,26 @@ fn move_plugins(out: &Path, into: &Path, suffix: &str) -> std::io::Result<()> {
 mod linux {
     use super::*;
 
-    const APPRUN: &str = r#"#!/bin/sh
+    // The preflight goes between choosing the binary and starting it, so an
+    // unsupported machine gets a sentence instead of the loader's one-line
+    // refusal. It is the same file an exported game's AppRun splices in.
+    const APPRUN: &str = concat!(
+        r#"#!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
+APP_NAME="Renzora Engine"
 # This AppImage IS the editor, so launch the editor binary. `renzora` beside it
-# is the runtime the editor spawns for Play — falling back to it keeps an
+# is the runtime the editor spawns for Play. Falling back to it keeps an
 # editor-less (runtime-only) build launchable rather than silently dead.
+BIN=renzora
 if [ -x "$HERE/renzora-editor" ]; then
-    exec "$HERE/renzora-editor" "$@"
+    BIN=renzora-editor
 fi
-exec "$HERE/renzora" "$@"
-"#;
+"#,
+        include_str!("../../crates/renzora_export/src/apprun_preflight.sh"),
+        r#"exec "$HERE/$BIN" "$@"
+"#
+    );
 
     const DESKTOP: &str = "[Desktop Entry]\n\
         Type=Application\n\

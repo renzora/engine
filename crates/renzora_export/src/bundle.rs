@@ -118,10 +118,40 @@ fn icon_bytes(spec: &BundleSpec) -> Result<Vec<u8>, String> {
 /// to itself rather than to the working directory, because a user launches an
 /// AppImage from wherever they happen to be — and the runtime looks for its
 /// `plugins/` folder beside the executable.
-const APPRUN: &str = "#!/bin/sh\n\
+///
+/// The preflight runs before the binary does, so a player on an unsupported
+/// distro is told why in a dialog instead of the loader refusing the game
+/// silently. See `apprun_preflight.sh`.
+const APPRUN: &str = concat!(
+    "#!/bin/sh\n\
     HERE=\"$(dirname \"$(readlink -f \"$0\")\")\"\n\
     export LD_LIBRARY_PATH=\"$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}\"\n\
-    exec \"$HERE/{BIN}\" \"$@\"\n";
+    APP_NAME=\"{NAME}\"\n\
+    BIN=\"{BIN}\"\n",
+    include_str!("apprun_preflight.sh"),
+    "exec \"$HERE/$BIN\" \"$@\"\n"
+);
+
+/// The game's name as it appears inside a double-quoted shell string: the four
+/// characters that would end the string or expand inside it are dropped.
+fn shell_quoted_name(name: &str) -> String {
+    name.chars().filter(|c| !matches!(c, '"' | '$' | '`' | '\\')).collect()
+}
+
+/// Point the preflight's glibc check at what this game's files actually need.
+///
+/// The script ships with the editor release's floor, which is right for a game
+/// packed from the prebuilt runtime and wrong for a lean one compiled on a newer
+/// machine: that game would pass a 2.28 check on a 2.31 system and then be
+/// refused by the loader with the raw error the preflight exists to replace.
+/// `None` (no versioned glibc symbol found) keeps the script's own value.
+fn with_glibc_floor(apprun: &str, needed: Option<(u32, u32)>) -> String {
+    let default = format!("RENZORA_GLIBC_MIN=\"{}\"", crate::glibc::display(crate::glibc::RELEASE_FLOOR));
+    match needed {
+        Some(v) => apprun.replace(&default, &format!("RENZORA_GLIBC_MIN=\"{}\"", crate::glibc::display(v))),
+        None => apprun.to_string(),
+    }
+}
 
 fn linux(spec: &BundleSpec, progress: &mut dyn FnMut(String)) -> Result<PathBuf, String> {
     let appdir = build_appdir(spec)?;
@@ -143,7 +173,15 @@ fn build_appdir(spec: &BundleSpec) -> Result<PathBuf, String> {
     move_payload(spec.output_dir, &appdir, &appdir)?;
 
     let apprun = appdir.join("AppRun");
-    write(&apprun, APPRUN.replace("{BIN}", spec.binary_name))?;
+    write(
+        &apprun,
+        with_glibc_floor(
+            &APPRUN
+                .replace("{BIN}", spec.binary_name)
+                .replace("{NAME}", &shell_quoted_name(spec.app_name)),
+            crate::glibc::newest_under(&appdir).map(|(v, _)| v),
+        ),
+    )?;
     make_executable(&apprun)?;
 
     let slug = slug(spec.app_name);
@@ -529,8 +567,34 @@ mod tests {
         assert!(appdir.join("plugins").join("rain.so").is_file());
         assert!(appdir.join("my-game.desktop").is_file());
         let apprun = std::fs::read_to_string(appdir.join("AppRun")).unwrap();
-        assert!(apprun.contains("exec \"$HERE/mygame\""), "{apprun}");
+        assert!(apprun.contains("BIN=\"mygame\""), "{apprun}");
+        assert!(apprun.contains("APP_NAME=\"My Game\""), "{apprun}");
+        assert!(apprun.contains("exec \"$HERE/$BIN\""), "{apprun}");
+        // The preflight sits before the exec, or it could never report a
+        // binary the loader refuses.
+        let preflight = apprun.find("RENZORA_GLIBC_MIN=").expect("preflight spliced in");
+        assert!(preflight < apprun.find("exec \"$HERE/$BIN\"").unwrap(), "{apprun}");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The script's default floor and `glibc::RELEASE_FLOOR` are one number in
+    /// two files. If they drift, `with_glibc_floor` silently stops replacing
+    /// anything and a lean game's check goes back to the release floor.
+    #[test]
+    fn the_preflight_default_is_the_release_floor() {
+        let line = format!(
+            "RENZORA_GLIBC_MIN=\"{}\"",
+            crate::glibc::display(crate::glibc::RELEASE_FLOOR)
+        );
+        assert!(APPRUN.contains(&line), "apprun_preflight.sh does not set {line}");
+    }
+
+    #[test]
+    fn a_lean_game_checks_for_the_glibc_it_was_built_against() {
+        let raised = with_glibc_floor(APPRUN, Some((2, 39)));
+        assert!(raised.contains("RENZORA_GLIBC_MIN=\"2.39\""));
+        assert!(!raised.contains("RENZORA_GLIBC_MIN=\"2.28\""));
+        assert_eq!(with_glibc_floor(APPRUN, None), APPRUN);
     }
 
     /// Windows ships a folder and the web ships a directory a server points at.

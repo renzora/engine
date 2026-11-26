@@ -85,6 +85,10 @@ mod settings_actions;
 pub mod renderer_backend;
 #[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
 use renderer_backend::requested_backends;
+/// Explain an unsupported Linux machine (no display, no Vulkan, missing
+/// windowing libraries) in a sentence and a dialog, before winit or wgpu panic.
+#[cfg(target_os = "linux")]
+pub mod linux_support;
 #[cfg(all(feature = "virtual_geometry", feature = "terrain"))]
 mod terrain_vg;
 /// `RENZORA_SHUFFLE_SEED`: shuffle system order to expose ordering bugs.

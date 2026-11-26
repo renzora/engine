@@ -610,6 +610,23 @@ pub fn build_lean(
             bin.display()
         ));
     }
+    // A lean binary is linked against the glibc of whatever compiled it, which
+    // is this machine or the Docker toolchain, never the editor's AlmaLinux 8
+    // release build. Read what it actually asks for and say so when that cuts
+    // off systems the editor itself runs on. A warning, not an error: a game
+    // meant for one machine, or a studio that only targets new distros, is a
+    // fine reason to ship it anyway.
+    if matches!(platform, Platform::LinuxX64 | Platform::LinuxArm64) {
+        if let Some(needed) = std::fs::read(&bin).ok().and_then(|b| crate::glibc::newest_in(&b)) {
+            match crate::glibc::warning(needed, &bin) {
+                Some(warning) => progress(warning),
+                None => progress(format!(
+                    "Runs on Linux with glibc {} or newer, which includes every system the editor runs on",
+                    crate::glibc::display(needed)
+                )),
+            }
+        }
+    }
     Ok(bin)
 }
 

@@ -634,18 +634,27 @@ wrap_linux_appimage() {
         rmdir "$EDITOR_DIR/plugins" 2>/dev/null || true
     fi
 
-    cat > "$APPDIR/AppRun" << 'APPRUN'
+    # Same shape as xtask/src/bundle.rs: choose the binary, run the Linux support
+    # preflight (one file, shared with exported games), then start it.
+    local PREFLIGHT
+    PREFLIGHT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/crates/renzora_export/src/apprun_preflight.sh"
+    {
+        cat << 'APPRUN'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
+APP_NAME="Renzora Engine"
 # This AppImage IS the editor, so launch the editor binary. `renzora` beside it
-# is the runtime the editor spawns for Play — falling back to it keeps an
+# is the runtime the editor spawns for Play. Falling back to it keeps an
 # editor-less (runtime-only) build launchable rather than silently dead.
+BIN=renzora
 if [ -x "$HERE/renzora-editor" ]; then
-    exec "$HERE/renzora-editor" "$@"
+    BIN=renzora-editor
 fi
-exec "$HERE/renzora" "$@"
 APPRUN
+        cat "$PREFLIGHT"
+        printf '%s\n' 'exec "$HERE/$BIN" "$@"'
+    } > "$APPDIR/AppRun"
     chmod +x "$APPDIR/AppRun"
 
     cat > "$APPDIR/renzora-engine.desktop" << 'DESKTOP'

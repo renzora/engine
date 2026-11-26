@@ -1,5 +1,15 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 18:30
+- feat(release): every release page opens by asking anyone who can't run the editor or an exported game to report it on GitHub or Discord
+
+## 2026-11-26 18:28
+- feat(export): a lean Linux export warns when it needs a newer glibc than the editor's own builds, and its AppImage checks for the glibc it really needs
+
+## 2026-11-26 17:50
+- fix(release): the Linux builds run on any distro with glibc 2.28 or newer (Ubuntu 20.04, Mint 20, Debian 10, RHEL 8) instead of requiring glibc 2.43
+- feat(linux): an unsupported Linux system is told what is missing in a dialog instead of the editor or game failing to start silently
+
 ## 2026-11-26 04:21
 - fix(material): a value changed in a `.material` file outside the material editor now takes effect instead of the old shader being kept
 

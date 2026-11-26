@@ -23,7 +23,9 @@ Renzora is a single Bevy 0.20 Cargo workspace with exactly **one binary**: `renz
 - **Rust** — via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the version, so rustup installs and selects the right one on first build.
 - Your platform's usual native build dependencies: a C/C++ toolchain, and on Linux the X11/Wayland/ALSA/udev dev headers. The full list mirrors `docker/base/Dockerfile`.
 
-**Docker** is needed only for [cross-compiling](#cross-compiling-for-other-platforms) and for running the test suite on Windows.
+**Docker** is needed only for [cross-compiling](#cross-compiling-for-other-platforms) and for running the test suite on Windows. [Installing Docker](docker.md) covers Windows, macOS and each Linux distro.
+
+On Linux, `cargo renzora` checks for the dev headers it needs and installs any that are missing with your distro's package manager (apt, dnf, pacman or zypper; `sudo` asks for your password). Set `RENZORA_NO_AUTO_INSTALL=1` to get the command printed instead. On NixOS it prints a `nix-shell` line instead, because NixOS has no imperative install. The [README](https://github.com/renzora/engine#getting-started) lists the packages for each distro.
 
 > The pinned Rust version lives in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.100.0-bookworm`, container). They must move together. The Bevy `main` in `bevy/` needs at least Rust 1.100.0.
 

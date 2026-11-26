@@ -272,15 +272,24 @@ jobs:
           # `return` would end the run rather than skip a lane.
           dinc=""
           slice() {
-            local dir="$1" runner="$2"
+            local dir="$1" runner="$2" container="${3:-}"
             case "$platform" in
               all | "${dir%%-*}" | "$dir")
-                dinc="${dinc:+$dinc,}{\"dist_dir\":\"$dir\",\"runner\":\"$runner\"}"
+                dinc="${dinc:+$dinc,}{\"dist_dir\":\"$dir\",\"runner\":\"$runner\",\"container\":\"$container\"}"
                 ;;
             esac
           }
-          slice linux-x64     ubuntu-latest
-          slice linux-arm64   ubuntu-24.04-arm
+          # The Linux lanes build inside an AlmaLinux 8 container, not on the
+          # runner. A binary needs at least the glibc it was linked against, so
+          # the build environment IS the oldest Linux the release runs on; the
+          # runner's own release only decides how fast the job is. Building on
+          # `ubuntu-latest` made the x64 release require GLIBC_2.43 the day that
+          # label moved to 26.04, and it would not start on 24.04, Mint 22 or
+          # Debian 12. EL8's glibc 2.28 reaches back to Ubuntu 20.04, Debian 10,
+          # Mint 20 and RHEL 8. Why EL8 and how its compilers are set up:
+          # .github/scripts/el8-toolchain.sh.
+          slice linux-x64     ubuntu-24.04     almalinux:8
+          slice linux-arm64   ubuntu-24.04-arm almalinux:8
           slice windows-x64   windows-latest
           slice windows-arm64 windows-11-arm
           slice macos-x64     macos-26-intel
@@ -405,6 +414,9 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.desktop) }}
     runs-on: ${{ matrix.runner }}
+    # Empty for every lane but Linux, which means "no container". See `slice`
+    # in `setup` for why Linux builds in one.
+    container: ${{ matrix.container }}
     # A cold full-workspace bevy build on these runners is measured in hours,
     # well past the 360-minute job default it would otherwise silently inherit.
     timeout-minutes: 350
@@ -444,9 +456,22 @@ jobs:
       # root Cargo.toml.
       RENZORA_PROFILE: dist
     steps:
+      # The Linux lanes run in a bare `almalinux:8` container (see `slice` in
+      # `setup`). git first, on its own: without it checkout falls back to a
+      # tarball with no submodules, and the rest of the toolchain is a script in
+      # the checkout.
+      - name: git for checkout
+        if: matrix.container != ''
+        run: dnf install -y git
+
       - uses: actions/checkout@v4
         with:
           submodules: true
+
+      - name: Linux container toolchain
+        if: matrix.container != ''
+        shell: bash
+        run: bash .github/scripts/el8-toolchain.sh
 
       # The container image installs these for the Linux lanes; a hosted Ubuntu
       # runner has none of them. The list mirrors docker/base/Dockerfile — alsa
@@ -471,8 +496,11 @@ jobs:
       #
       # `cargo renzora` installs this same set on a contributor's machine
       # (xtask's `preflight_host_deps`); keep the three lists in step.
+      # Runner-hosted Linux only. Today every Linux lane builds in the EL8
+      # container, whose script installs the same set with dnf; this stays for a
+      # lane run on the runner itself.
       - name: Linux build dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.container == ''
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -572,19 +600,26 @@ jobs:
           git clone -q --depth 1 --branch v310.9.1 --filter=blob:none --sparse \
             https://github.com/NVIDIA/DLSS.git "$dlss"
           git -C "$dlss" sparse-checkout set include "$libs"
+          # Khronos's headers on both platforms. Linux used libvulkan-dev's, but
+          # the lane now builds on AlmaLinux 8 for its older glibc, and that
+          # release's headers are older than the DLSS SDK is written against. Headers only: what the user's machine loads at run time is
+          # its own libvulkan, so this changes nothing about where it runs.
+          vk="$RUNNER_TEMP/Vulkan-Headers"
+          git clone -q --depth 1 --branch v1.4.335 \
+            https://github.com/KhronosGroup/Vulkan-Headers.git "$vk"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            vk="$RUNNER_TEMP/Vulkan-Headers"
-            git clone -q --depth 1 --branch v1.4.335 \
-              https://github.com/KhronosGroup/Vulkan-Headers.git "$vk"
             echo "DLSS_SDK=$(cygpath -w "$dlss")" >> "$GITHUB_ENV"
             echo "VULKAN_SDK=$(cygpath -w "$vk")" >> "$GITHUB_ENV"
             # bindgen loads libclang.dll; the runner image has LLVM installed
             # but does not put its bin directory where clang-sys looks first.
             echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
           else
-            sudo apt-get install -y --no-install-recommends libclang-dev
+            # The EL8 container already has libclang (and LIBCLANG_PATH).
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get install -y --no-install-recommends libclang-dev
+            fi
             echo "DLSS_SDK=$dlss" >> "$GITHUB_ENV"
-            echo "VULKAN_SDK=/usr" >> "$GITHUB_ENV"
+            echo "VULKAN_SDK=$vk" >> "$GITHUB_ENV"
           fi
           echo "DLSS_LANE=1" >> "$GITHUB_ENV"
           # Compile DLSS in, ship without NVIDIA's 107 MB of libraries: the
@@ -603,6 +638,42 @@ jobs:
             grep '\[xtask\] DLSS' "$RUNNER_TEMP/build.log" || true
             exit 1
           fi
+
+      # The oldest glibc the Linux release supports is whatever the runner had,
+      # and nothing in the build notices when that moves: the link succeeds, the
+      # binary runs on the runner, and it fails on a user's older distro before
+      # `main` with `version 'GLIBC_2.xx' not found`. This reads the versioned
+      # symbols every staged ELF actually imports and fails the lane if any is
+      # newer than the floor. libstdc++ is checked the same way: a C++ object
+      # linked against a newer libstdc++ than EL8's (GCC 8, GLIBCXX_3.4.25)
+      # fails identically, and it is the one the toolset setup exists to stop.
+      # Both maxima are the build container's (AlmaLinux 8); change them only
+      # together with the container in `setup`.
+      - name: Audit the glibc floor
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GLIBC_MAX: "2.28"
+          GLIBCXX_MAX: "3.4.25"
+        run: |
+          worst=""
+          check() {
+            local f="$1" prefix="$2" max="$3" v
+            v=$(objdump -T "$f" 2>/dev/null | grep -o "${prefix}_[0-9][0-9.]*" | sed "s/${prefix}_//" | sort -uV | tail -n1)
+            [ -n "$v" ] || return 0
+            if [ "$(printf '%s\n%s\n' "$v" "$max" | sort -V | tail -n1)" != "$max" ]; then
+              echo "::error file=$f::needs ${prefix}_$v, newer than the supported ${prefix}_$max"
+              worst=1
+            fi
+          }
+          while IFS= read -r -d '' f; do
+            file -b "$f" | grep -q '^ELF' || continue
+            # `GLIBC_[0-9]` cannot match inside `GLIBCXX_`, so the two never mix.
+            check "$f" GLIBC "$GLIBC_MAX"
+            check "$f" GLIBCXX "$GLIBCXX_MAX"
+          done < <(find "dist/${{ matrix.dist_dir }}" -type f -print0)
+          [ -z "$worst" ] || exit 1
+          echo "every staged ELF runs on glibc $GLIBC_MAX and libstdc++ $GLIBCXX_MAX"
 
       # Windows does not ship the Visual C++ runtime. It ships the *Universal*
       # CRT, which is why `api-ms-win-crt-*` resolves everywhere and this looked
@@ -1449,6 +1520,14 @@ jobs:
           fi
 
           {
+            # First on every release page, nightly and stable alike, so it is
+            # the one thing everyone reads. A machine the editor or an exported
+            # game will not start on is the report we most need and least
+            # often get: whoever hits it has no editor to report from, and
+            # without a prompt they assume the problem is theirs. Above the
+            # length cut further down, so a trimmed page still carries it.
+            echo "> **Can't run the editor or an exported game?** If it won't start, crashes on launch, or says your system is not supported, please tell us: [open an issue](https://github.com/${GITHUB_REPOSITORY}/issues/new?template=bug_report.md) or report it in [our Discord](https://discord.gg/9UHUGUyDJv). Include your OS and version (on Linux, your distro and the output of \`ldd --version\`), your GPU, and any message it showed."
+            echo
             if [ "${{ needs.setup.outputs.publish }}" = "nightly" ]; then
               echo "Automated nightly build of \`$version\` from [\`${GITHUB_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
               echo

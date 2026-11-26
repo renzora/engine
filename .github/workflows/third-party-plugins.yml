@@ -125,8 +125,8 @@ jobs:
           # One job per plugin per platform, for the reason at the top. GitHub
           # caps a matrix at 256 jobs, 42 plugins on 6 platforms.
           platforms='[
-            {"platform":"linux-x64","runner":"ubuntu-latest"},
-            {"platform":"linux-arm64","runner":"ubuntu-24.04-arm"},
+            {"platform":"linux-x64","runner":"ubuntu-24.04","container":"almalinux:8"},
+            {"platform":"linux-arm64","runner":"ubuntu-24.04-arm","container":"almalinux:8"},
             {"platform":"windows-x64","runner":"windows-latest"},
             {"platform":"windows-arm64","runner":"windows-11-arm"},
             {"platform":"macos-x64","runner":"macos-26-intel"},
@@ -159,17 +159,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: linux-x64, runner: ubuntu-latest, asset: linux-x64.zip }
-          - { platform: linux-arm64, runner: ubuntu-24.04-arm, asset: linux-arm64.zip }
+          # Linux in the same AlmaLinux 8 container the engine's Linux lanes
+          # build in (build-engine.yml, `slice`): the tools built here run in
+          # the `build` job's container, and a plugin linked against a newer
+          # glibc than the editor's floor would not load where the editor runs.
+          - { platform: linux-x64, runner: ubuntu-24.04, container: "almalinux:8", asset: linux-x64.zip }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm, container: "almalinux:8", asset: linux-arm64.zip }
           - { platform: windows-x64, runner: windows-latest, asset: windows-x64.zip }
           - { platform: windows-arm64, runner: windows-11-arm, asset: windows-arm64.zip }
           - { platform: macos-x64, runner: macos-26-intel, asset: macos-x64.dmg }
           - { platform: macos-arm64, runner: macos-latest, asset: macos-arm64.dmg }
     runs-on: ${{ matrix.runner }}
+    # Empty, so no container, everywhere but Linux.
+    container: ${{ matrix.container }}
     permissions:
       contents: read
     steps:
+      # git first, so checkout is a real clone; then the engine's own Linux
+      # toolchain script, plus gh for the release download below.
+      - name: git for checkout
+        if: matrix.container != ''
+        run: dnf install -y git
+
       - uses: actions/checkout@v4
+
+      - name: Linux container toolchain
+        if: matrix.container != ''
+        shell: bash
+        run: bash .github/scripts/el8-toolchain.sh --gh
 
       - name: Install rustup
         if: runner.os == 'Windows'
@@ -248,7 +265,7 @@ jobs:
       # `.cargo/config.toml` links x86_64 Linux with clang + mold, and the
       # hosted runner ships clang but not mold.
       - name: Install mold
-        if: matrix.platform == 'linux-x64'
+        if: matrix.platform == 'linux-x64' && matrix.container == ''
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mold
 
       - name: Build the tools
@@ -260,6 +277,9 @@ jobs:
             --example unpack_sdk --example check_plugins
           exe=""; [ "$RUNNER_OS" = "Windows" ] && exe=".exe"
           cp "target/dist/examples/unpack_sdk$exe" "target/dist/examples/check_plugins$exe" out/
+          # The `build` job never checks out this repository (it runs untrusted
+          # code), so the Linux toolchain script travels with the tools.
+          cp .github/scripts/el8-toolchain.sh out/
           # The stamp, for the publish job, which never unpacks a 1.9 GB SDK.
           # The images go in `work/`, the root the unpacker links them from.
           mkdir -p work && cp out/images/* work/
@@ -294,6 +314,9 @@ jobs:
       max-parallel: 20
       matrix: ${{ fromJSON(needs.list.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
+    # Linux compiles in the AlmaLinux 8 container, so a prebuilt plugin needs no
+    # newer glibc than the editor it loads into. Empty elsewhere.
+    container: ${{ matrix.container }}
     permissions: {}
     timeout-minutes: 60
     steps:
@@ -305,6 +328,14 @@ jobs:
         with:
           name: tp-sources
           path: sources
+
+      # The engine's Linux toolchain, from the `sdk` job's artifact rather than
+      # a checkout (this job has none). The same GCC toolset and `cc` the engine
+      # was built with, which is what keeps a plugin's floor at the engine's.
+      - name: Linux container toolchain
+        if: matrix.container != ''
+        shell: bash
+        run: bash tools/el8-toolchain.sh
 
       - name: Install rustup
         if: runner.os == 'Windows'
