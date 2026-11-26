@@ -314,6 +314,9 @@ impl Plugin for RuntimePlugin {
             // The editor seeds it onto every scene camera, so a game reads it
             // back from every scene; unregistered, each load warned.
             .register_type::<renzora_scene_api::CameraEffectsSeeded>()
+            // The editor's saved view, which every scene camera the editor
+            // saved carries; a game reads past it.
+            .register_type::<renzora_scene_api::SceneCameraOrbit>()
             .register_type::<renzora_scene_api::SceneInstance>()
             .register_type::<renzora_scene_api::WorldPartition>()
             .register_type::<renzora_scene_api::PartitionCell>()

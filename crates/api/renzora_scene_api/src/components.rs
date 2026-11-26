@@ -902,6 +902,55 @@ pub struct SceneCamera;
 #[type_path = "renzora::core::components"]
 pub struct DefaultCamera;
 
+/// The editor viewport's orbit (what it looks at, from where), saved on the
+/// scene camera so a scene reopens on the view it was saved with.
+///
+/// Its own component because the live orbit, `renzora_camera::OrbitCameraState`,
+/// is a resource, and since Bevy 0.19 a resource is a component on an entity of
+/// its own: inserting it onto the camera was refused with a warning on every
+/// save ("Tried inserting the resource ... while one already exists"), and no
+/// scene kept its view. Here, not in the editor's camera crate, so a game
+/// loading the same scene knows the type and reads past it quietly.
+#[derive(Component, Clone, Debug, PartialEq, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
+pub struct SceneCameraOrbit {
+    /// The point the camera orbits around.
+    pub focus: Vec3,
+    /// Distance from the focus point.
+    pub distance: f32,
+    /// Horizontal angle, radians.
+    pub yaw: f32,
+    /// Vertical angle, radians.
+    pub pitch: f32,
+    /// Orthographic rather than perspective.
+    #[serde(default)]
+    #[reflect(default)]
+    pub orthographic: bool,
+}
+
+impl Default for SceneCameraOrbit {
+    fn default() -> Self {
+        Self { focus: Vec3::ZERO, distance: 4.5, yaw: 0.3, pitch: 0.4, orthographic: false }
+    }
+}
+
+/// One-shot marker: this scene camera has had its default image-quality effects
+/// (the "camera bucket": bloom, ...) seeded by the editor's level presets.
+/// Serialized so a *reloaded* scene isn't re-seeded (its saved effects load
+/// instead) while a fresh camera, or a pre-migration scene that kept these on
+/// the environment, gets seeded once. After seeding they're normal removable
+/// components.
+///
+/// Here, not in `renzora_level_presets` where it is used: that crate is the
+/// editor's, and every camera the editor touched saved this marker into the
+/// scene, so a game loading the scene met a type it had never registered and
+/// warned about it on every load. The type path is the one it had there, which
+/// is what saved scenes carry.
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
+#[type_path = "renzora_level_presets"]
+pub struct CameraEffectsSeeded;
+
 /// Keeps this entity on a named node somewhere else in the scene.
 ///
 /// Made for the camera of an imported fly-through. An FBX camera arrives as an

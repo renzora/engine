@@ -426,28 +426,30 @@ fn set_open_scene_path(world: &mut World, path: Option<&std::path::Path>) {
 // Orbit camera <-> scene component helpers
 // ============================================================================
 
-/// Stamp the current `OrbitCameraState` resource onto the `SceneCamera` entity
-/// so it gets serialized into the scene RON.
+/// Stamp the current orbit onto the `SceneCamera` entity, as
+/// [`SceneCameraOrbit`](renzora_scene_api::SceneCameraOrbit), so the scene
+/// saves the view. Not the `OrbitCameraState` resource itself: a resource is
+/// refused on any entity but its own.
 fn stamp_orbit_on_scene_camera(world: &mut World) {
-    let Some(orbit) = world.get_resource::<OrbitCameraState>().cloned() else {
+    let Some(saved) = world.get_resource::<OrbitCameraState>().map(OrbitCameraState::to_saved) else {
         return;
     };
     let mut query = world.query_filtered::<Entity, With<SceneCamera>>();
     let entities: Vec<Entity> = query.iter(world).collect();
     for entity in entities {
-        world.entity_mut(entity).insert(orbit.clone());
+        world.entity_mut(entity).insert(saved.clone());
     }
 }
 
-/// Extract `OrbitCameraState` from the `SceneCamera` entity after loading,
-/// apply it to the resource, and remove the component.
+/// Take the saved orbit off the `SceneCamera` entity after loading and make it
+/// the live one.
 pub(crate) fn extract_orbit_from_scene_camera(world: &mut World) {
-    let mut query = world.query_filtered::<(Entity, &OrbitCameraState), With<SceneCamera>>();
-    let result: Option<(Entity, OrbitCameraState)> =
-        query.iter(world).next().map(|(e, o)| (e, o.clone()));
+    let mut query = world
+        .query_filtered::<(Entity, &renzora_scene_api::SceneCameraOrbit), With<SceneCamera>>();
+    let result = query.iter(world).next().map(|(e, o)| (e, OrbitCameraState::from_saved(o)));
     if let Some((entity, orbit)) = result {
         world.insert_resource(orbit);
-        world.entity_mut(entity).remove::<OrbitCameraState>();
+        world.entity_mut(entity).remove::<renzora_scene_api::SceneCameraOrbit>();
     }
 }
 

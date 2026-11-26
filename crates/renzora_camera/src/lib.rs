@@ -29,11 +29,12 @@ use renzora_editor_framework::EditorSelection;
 
 /// Orbit camera state for the editor viewport.
 ///
-/// Stored as a component on the `SceneCamera` entity so it persists in scene RON files.
-/// Editor-only: the runtime/server won't register this type (stripped at export).
-// Bevy 0.19: Resource: Component, so deriving both conflicts.
+/// A resource only. A scene saves it as [`renzora_scene_api::SceneCameraOrbit`]
+/// on the scene camera (see [`OrbitCameraState::to_saved`]): reflected as a
+/// component, as it once was, anything copying entities by reflection inserted
+/// it onto a second entity, which Bevy refuses for a resource.
 #[derive(Clone, Resource, Reflect, serde::Serialize, serde::Deserialize)]
-#[reflect(Component)]
+#[reflect(Resource)]
 pub struct OrbitCameraState {
     /// The point the camera orbits around.
     pub focus: Vec3,
@@ -75,6 +76,28 @@ const FRAME_MARGIN: f32 = 1.2;
 const MIN_FRAME_DISTANCE: f32 = 0.35;
 
 impl OrbitCameraState {
+    /// This orbit as a scene saves it.
+    pub fn to_saved(&self) -> renzora_scene_api::SceneCameraOrbit {
+        renzora_scene_api::SceneCameraOrbit {
+            focus: self.focus,
+            distance: self.distance,
+            yaw: self.yaw,
+            pitch: self.pitch,
+            orthographic: self.projection_mode == ProjectionMode::Orthographic,
+        }
+    }
+
+    /// The orbit a scene saved.
+    pub fn from_saved(saved: &renzora_scene_api::SceneCameraOrbit) -> Self {
+        Self {
+            focus: saved.focus,
+            distance: saved.distance,
+            yaw: saved.yaw,
+            pitch: saved.pitch,
+            projection_mode: if saved.orthographic { ProjectionMode::Orthographic } else { ProjectionMode::Perspective },
+        }
+    }
+
     /// Calculate camera position from orbit parameters.
     pub fn calculate_position(&self) -> Vec3 {
         self.focus
@@ -1898,6 +1921,23 @@ mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
     use std::f32::consts::FRAC_PI_4;
+
+    /// The view a scene saves comes back as it went in.
+    #[test]
+    fn a_saved_orbit_round_trips() {
+        let orbit = OrbitCameraState {
+            focus: Vec3::new(1.0, 2.0, 3.0),
+            distance: 12.0,
+            yaw: 0.7,
+            pitch: -0.2,
+            projection_mode: ProjectionMode::Orthographic,
+        };
+        let back = OrbitCameraState::from_saved(&orbit.to_saved());
+        assert_eq!(back.focus, orbit.focus);
+        assert_eq!(back.distance, orbit.distance);
+        assert_eq!((back.yaw, back.pitch), (orbit.yaw, orbit.pitch));
+        assert_eq!(back.projection_mode, ProjectionMode::Orthographic);
+    }
 
     fn close(a: f32, b: f32) -> bool {
         (a - b).abs() < 1e-4

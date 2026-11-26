@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 03:57
+- fix(editor): saving a scene keeps the viewport's view again, and no longer logs a warning about the orbit camera
+
 ## 2026-11-26 03:50
 - fix(material): an object whose material is changed by a script or while the game runs picks up the new material
 
