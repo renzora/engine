@@ -129,6 +129,9 @@ A master `.material` file is a JSON-serialized `MaterialGraph`:
 | `meta.requires_transmission` | bool | Enables Bevy's transmission pipeline on the base material |
 | `meta.texture_bindings` | array | `{ name, binding, asset_path, kind }` per sampled texture |
 | `meta.parameters` | array | `{ name, kind, default }` per `param/*` node — what a `.material_instance` may override |
+| `meta.graph_hash` | u64 | A fingerprint of the graph the shader was compiled from |
+
+The shader is used only while the graph still matches `meta.graph_hash`, so a value changed in the file by hand or by a tool (an MCP `edit_file`, a script) takes effect on the next load: the graph is compiled live until the material is saved again. A file written before the fingerprint existed is compiled live in the same way.
 
 The field is absent on a graph that has never been saved and on one whose last compile failed; both fall back to compiling the graph at load time so the material still renders while you work on it. Materials written before `compiled` existed keep their `.wgsl` + `.wgsl.meta` pair and load through `wgsl_path`, until the next save folds the shader in and deletes those files.
 

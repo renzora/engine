@@ -66,6 +66,11 @@ pub struct CompiledMaterialMeta {
     /// before this field existed.
     #[serde(default)]
     pub codegen_version: u32,
+    /// [`graph_fingerprint`] of the graph `wgsl` was compiled from. Zero for
+    /// artifacts written before this field existed, which never matches, so
+    /// those compile live until the material is next saved.
+    #[serde(default)]
+    pub graph_hash: u64,
 }
 
 impl CompiledArtifact {
@@ -75,15 +80,72 @@ impl CompiledArtifact {
     }
 
     /// Whether this artifact still describes `graph`: written by the current
-    /// codegen, and for the graph's alpha mode and sidedness. Those two are
-    /// also the settings most often changed outside the editor (by hand, or by
-    /// a tool writing the file), and the shader depends on them: a Dithered
-    /// material's dither step is in the WGSL. An artifact that disagrees is
-    /// ignored and the graph compiled live, as for an outdated codegen.
+    /// codegen, from this same graph, for its alpha mode and sidedness.
+    ///
+    /// The graph check is what catches a `.material` changed outside the
+    /// editor: by hand, or by a tool editing a value in the file. The shader
+    /// bakes every constant in, so without it the edit was silently ignored and
+    /// the material kept rendering what it was last saved as. An artifact that
+    /// disagrees is ignored and the graph compiled live, as for an outdated
+    /// codegen.
     pub fn is_usable_for(&self, graph: &MaterialGraph) -> bool {
         self.is_current()
             && self.meta.alpha_mode == graph.alpha_mode
             && self.meta.double_sided == graph.double_sided
+            && self.meta.graph_hash != 0
+            && self.meta.graph_hash == graph_fingerprint(graph)
+    }
+}
+
+/// A hash of everything in `graph` the shader is compiled from: the graph as
+/// it serializes, minus the compiled artifact itself and the legacy shader
+/// link. Keys are sorted first, since a map in the graph serializes in
+/// whatever order it happens to iterate, and the hash is FNV-1a, which is the
+/// same in every process (the standard hasher makes no such promise).
+pub fn graph_fingerprint(graph: &MaterialGraph) -> u64 {
+    let Ok(mut value) = serde_json::to_value(graph) else { return 0 };
+    if let Some(map) = value.as_object_mut() {
+        map.remove("compiled");
+        map.remove("wgsl_path");
+    }
+    let mut text = String::new();
+    canonical(&value, &mut text);
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash.max(1)
+}
+
+/// `value` as JSON text with every object's keys in sorted order.
+fn canonical(value: &serde_json::Value, out: &mut String) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push('{');
+            for (i, key) in keys.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::Value::String(key.clone()).to_string());
+                out.push(':');
+                canonical(&map[key], out);
+            }
+            out.push('}');
+        }
+        serde_json::Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                canonical(item, out);
+            }
+            out.push(']');
+        }
+        other => out.push_str(&other.to_string()),
     }
 }
 
@@ -152,6 +214,9 @@ pub fn save_compiled(
         });
     }
 
+    graph.compiled = None;
+    graph.wgsl_path = None;
+    let graph_hash = graph_fingerprint(graph);
     graph.compiled = Some(CompiledArtifact {
         wgsl: result.fragment_shader,
         meta: CompiledMaterialMeta {
@@ -163,9 +228,9 @@ pub fn save_compiled(
             parameters: result.parameters,
             node_line_map: result.node_lines,
             codegen_version: codegen::CODEGEN_VERSION,
+            graph_hash,
         },
     });
-    graph.wgsl_path = None;
     remove_legacy_artifacts(material_fs_path);
     Ok(SaveReport {
         errors: Vec::new(),
@@ -291,6 +356,33 @@ mod tests {
         assert!(!artifact.is_usable_for(&graph));
         graph.alpha_mode = AlphaMode::Blend;
         graph.double_sided = true;
+        assert!(!artifact.is_usable_for(&graph));
+    }
+
+    /// A value edited in the file after the save (by hand, or by a tool) makes
+    /// the embedded shader stale: it must not be used, while an untouched file
+    /// read back from disk keeps using it.
+    #[test]
+    fn an_artifact_for_an_edited_graph_is_not_used() {
+        let mut graph = MaterialGraph::new("Pad", MaterialDomain::Surface);
+        let (json, _) =
+            save_compiled_and_serialize(&mut graph, Path::new("materials/pad.material")).expect("save");
+        let reloaded: MaterialGraph = serde_json::from_str(&json).expect("parse");
+        let artifact = reloaded.compiled.clone().expect("artifact embedded");
+        assert!(artifact.is_usable_for(&reloaded), "an untouched file keeps its shader");
+
+        let mut edited = reloaded.clone();
+        edited.name = "Pad, edited".into();
+        assert!(!artifact.is_usable_for(&edited), "an edited graph compiles live");
+    }
+
+    /// An artifact from before the fingerprint existed is never trusted.
+    #[test]
+    fn an_artifact_without_a_fingerprint_is_not_used() {
+        let mut graph = MaterialGraph::new("Old", MaterialDomain::Surface);
+        save_compiled(&mut graph, Path::new("materials/old.material")).expect("save");
+        let mut artifact = graph.compiled.clone().expect("artifact embedded");
+        artifact.meta.graph_hash = 0;
         assert!(!artifact.is_usable_for(&graph));
     }
 }

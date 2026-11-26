@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 04:21
+- fix(material): a value changed in a `.material` file outside the material editor now takes effect instead of the old shader being kept
+
 ## 2026-11-26 03:57
 - fix(editor): saving a scene keeps the viewport's view again, and no longer logs a warning about the orbit camera
 
