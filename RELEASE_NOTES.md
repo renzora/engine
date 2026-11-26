@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 03:28
+- perf(render): a game that spawns and removes meshes or sprites no longer re-applies every camera effect and re-bakes the sky each time
+
 ## 2026-11-26 03:11
 - feat(inspector): a Mesh section swaps any shape or model for another shape or another model in place
 - fix(scene): a shape whose mesh is rebuilt keeps drawing with its material instead of disappearing

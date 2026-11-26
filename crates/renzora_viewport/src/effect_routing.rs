@@ -31,6 +31,9 @@ use crate::camera_preview::{CameraPreviewMarker, CameraPreviewState};
 ///   the routing rebuild spawned a row, which bumped the source count, which
 ///   rebuilt the routing, which logged again…
 /// - `Without<HideInHierarchy>` — non-UI editor chrome (gizmos, preview rigs).
+/// - [`renzora_engine::NotDrawnContent`] — meshes and sprites, which a running
+///   game spawns and despawns constantly (and Live Link mirrors here); the same
+///   exclusion the game's own routing makes, so the two agree.
 type GlobalSourceQuery<'w, 's> = Query<
     'w,
     's,
@@ -40,6 +43,7 @@ type GlobalSourceQuery<'w, 's> = Query<
         With<Name>,
         Without<HideInHierarchy>,
         Without<Node>,
+        renzora_engine::NotDrawnContent,
     ),
 >;
 

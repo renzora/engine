@@ -951,6 +951,23 @@ type NotUiNode = Without<bevy::ui::Node>;
 #[cfg(not(feature = "ui"))]
 type NotUiNode = ();
 
+/// Drawn content (a mesh or a sprite) is never an effect source either. Effect
+/// settings live on scene objects such as the World Environment and cameras;
+/// what a game spawns and despawns by the hundred is drawn content: note gems,
+/// bullets, debris. Counted as sources, each one coming or going rebuilt the
+/// routing, which re-applied every camera effect and re-baked the sky: a
+/// rhythm game's highway re-baked it nearly every frame.
+///
+/// Per pipeline, because a lean export strips the other's types.
+#[cfg(all(feature = "render_3d", feature = "render_2d"))]
+pub type NotDrawnContent = (Without<Mesh3d>, Without<Mesh2d>, Without<Sprite>);
+#[cfg(all(feature = "render_3d", not(feature = "render_2d")))]
+pub type NotDrawnContent = Without<Mesh3d>;
+#[cfg(all(not(feature = "render_3d"), feature = "render_2d"))]
+pub type NotDrawnContent = (Without<Mesh2d>, Without<Sprite>);
+#[cfg(not(any(feature = "render_3d", feature = "render_2d")))]
+pub type NotDrawnContent = ();
+
 /// The entities a game routes effects from: the same filter the editor's
 /// routing uses (`renzora_viewport::effect_routing`), so a game and the editor
 /// agree on what a source is.
@@ -966,6 +983,7 @@ type RuntimeEffectSources = (
     With<Name>,
     Without<renzora_scene_api::HideInHierarchy>,
     NotUiNode,
+    NotDrawnContent,
 );
 
 /// In a game session, route effects from the default scene camera (and every
