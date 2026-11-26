@@ -48,8 +48,51 @@ pub fn blockout_material(base_color: Color, grid: Option<&GridTexture>) -> Stand
     }
 }
 
-/// Push a changed [`MeshColor`] into the material the entity is already
-/// wearing.
+/// One blockout material per colour, shared by every primitive of that colour.
+///
+/// Bevy batches draws by material handle, so a material each defeats batching:
+/// a level of a few hundred shapes in a handful of colours paid for a few
+/// hundred materials, a few milliseconds a frame. Rehydration (every primitive
+/// that came out of a scene file or a partition cell) takes its material from
+/// here, and [`apply_mesh_color`] swaps a recoloured shape onto the material
+/// for its new colour rather than editing one others share.
+#[derive(Resource, Default)]
+pub struct BlockoutMaterials(std::collections::HashMap<[u16; 4], Handle<StandardMaterial>>);
+
+impl BlockoutMaterials {
+    /// Whether `handle` is one of the shared materials, which must be swapped
+    /// rather than edited.
+    pub fn is_shared(&self, handle: &Handle<StandardMaterial>) -> bool {
+        self.0.values().any(|h| h.id() == handle.id())
+    }
+
+    /// The shared material for `color`, made the first time it is asked for.
+    /// Colours are keyed at 16 bits a channel, so two that only differ in
+    /// float noise share one.
+    pub fn get(
+        &mut self,
+        color: Color,
+        materials: &mut Assets<StandardMaterial>,
+        grid: Option<&GridTexture>,
+    ) -> Handle<StandardMaterial> {
+        let c = color.to_linear();
+        let q = |v: f32| (v.clamp(0.0, 64.0) * 1024.0).round() as u16;
+        let key = [q(c.red), q(c.green), q(c.blue), q(c.alpha)];
+        self.0
+            .entry(key)
+            .or_insert_with(|| {
+                let mut material = blockout_material(color, grid);
+                if color.alpha() < 1.0 {
+                    material.alpha_mode = AlphaMode::Blend;
+                }
+                materials.add(material)
+            })
+            .clone()
+    }
+}
+
+/// Put a changed [`MeshColor`] on the entity: the shared material for the new
+/// colour (see [`BlockoutMaterials`]).
 ///
 /// Until this existed, `MeshColor` was write-once: every path that *creates* a
 /// primitive read it (spawn, undo of a delete, scene load, the drag ghost) and
@@ -68,19 +111,33 @@ pub fn blockout_material(base_color: Color, grid: Option<&GridTexture>) -> Stand
 /// leaves the mode at `Opaque`, so a colour picked with alpha below 1 would
 /// otherwise look exactly like the opaque one and read as the alpha slider
 /// being broken.
+///
+/// A shared material is swapped, not edited: editing it would recolour every
+/// other shape of the old colour. A material of the entity's own (a shape
+/// spawned with one built for it) is edited in place, as it always was, so
+/// whatever else was set on it survives.
 #[cfg(feature = "render_3d")]
 pub fn apply_mesh_color(
-    changed: Query<
-        (&MeshColor, &MeshMaterial3d<StandardMaterial>),
+    mut changed: Query<
+        (&MeshColor, &mut MeshMaterial3d<StandardMaterial>),
         (
             Changed<MeshColor>,
             Without<renzora_material_api::MaterialRef>,
         ),
     >,
     materials: Option<ResMut<Assets<StandardMaterial>>>,
+    mut shared: ResMut<BlockoutMaterials>,
+    grid: Option<Res<GridTexture>>,
 ) {
     let Some(mut materials) = materials else { return };
-    for (color, handle) in &changed {
+    for (color, mut handle) in &mut changed {
+        if shared.is_shared(&handle.0) {
+            let want = shared.get(color.0, &mut materials, grid.as_deref());
+            if handle.0 != want {
+                handle.0 = want;
+            }
+            continue;
+        }
         let Some(mut material) = materials.get_mut(&handle.0) else {
             continue;
         };

@@ -697,7 +697,11 @@ impl Plugin for RuntimePlugin {
             // `rehydrate_meshes` in the game-boot block above, for exactly the
             // reason this block exists: that block is `!is_editor`, and the one
             // place a colour is edited by hand is the editor's inspector.
-            app.add_systems(Update, blockout::apply_mesh_color);
+            // Both systems take their materials from one shared set, one per
+            // colour, so primitives of a colour batch. Initialised here, the
+            // block both sessions reach.
+            app.init_resource::<blockout::BlockoutMaterials>()
+                .add_systems(Update, (blockout::apply_mesh_color, scene_io::rebuild_changed_primitives));
 
             // Distance LODs ride the mesh-instance rehydrate wave:
             // probe → spawn variants → tag meshes with VisibilityRange. The
