@@ -6,21 +6,6 @@ A 3D and 2D game engine and visual editor built on <a href="https://bevyengine.o
 
 > **Warning:** Early alpha. Expect bugs, incomplete features, and breaking changes between versions.
 
-## Install
-
-Download the editor for your platform from <a href="https://renzora.com/download" target="_blank" rel="noopener noreferrer">renzora.com/download</a> or the <a href="https://github.com/renzora/engine/releases" target="_blank" rel="noopener noreferrer">releases page</a>. Nothing else to install.
-
-- **Windows:** extract the `.zip` and run `renzora.exe`.
-- **macOS:** extract the `.zip`, move the app to Applications, and approve it once under **System Settings > Privacy & Security > Open Anyway**.
-- **Linux:** extract the `.zip`, then:
-
-  ```bash
-  chmod +x Renzora*.AppImage
-  ./Renzora*.AppImage
-  ```
-
-  Distro packages, NixOS and Steam Deck: [Linux](#linux).
-
 ## Getting Started
 
 To build the engine from source. **Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>.
@@ -48,6 +33,21 @@ Building the editor always builds the runtime too. The runtime doubles as a dedi
 Iterate with `cargo check --profile dist` and `cargo clippy --profile dist`; run tests with `cargo test --profile dist -p <crate>`. Always pass `--profile dist`. A bare cargo command builds a second full set of artefacts under `target/debug/`, and this workspace is far too large for two of them.
 
 Shipping a game for a platform you're not sitting at (a macOS, Android, or web build from a Windows box) is part of the editor's export system, covered in <a href="https://renzora.com/docs" target="_blank" rel="noopener noreferrer">the docs</a>. Building those needs [Docker](#docker-only-for-cross-compiling).
+
+## Install
+
+Download the editor for your platform from <a href="https://renzora.com/download" target="_blank" rel="noopener noreferrer">renzora.com/download</a> or the <a href="https://github.com/renzora/engine/releases" target="_blank" rel="noopener noreferrer">releases page</a>. Nothing else to install.
+
+- **Windows:** extract the `.zip` and run `renzora.exe`.
+- **macOS:** extract the `.zip`, move the app to Applications, and approve it once under **System Settings > Privacy & Security > Open Anyway**.
+- **Linux:** extract the `.zip`, then:
+
+  ```bash
+  chmod +x Renzora*.AppImage
+  ./Renzora*.AppImage
+  ```
+
+  Distro packages, NixOS and Steam Deck: [Linux](#linux).
 
 ## Linux
 
@@ -191,14 +191,6 @@ Full documentation (getting started, scripting, UI, plugins, exporting, and more
 | `.ogg` / `.mp3` / `.wav` / `.flac` | Audio (native only) |
 | `.rpak` | Compressed asset archives |
 
-## License
-
-Dual-licensed under MIT or Apache 2.0.
-
-- <a href="LICENSE-MIT" target="_blank" rel="noopener noreferrer">MIT License</a>
-- <a href="LICENSE-APACHE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>
-- <a href="https://github.com/renzora/engine/blob/main/docs/r1-alpha8/contributing/ai-policy.md" target="_blank" rel="noopener noreferrer">AI Policy</a>
-
 ## Features
 
 | Area | Features |
@@ -250,3 +242,11 @@ This list changes as work lands. See `RELEASE_NOTES.md` for what each nightly ac
 | Ambient lights folding into environment-map lights | Bevy 0.21 port |
 | Assets becoming entities | Bevy 0.21 port |
 | Upstream `.bsn` file format and entity inspector | Bevy 0.21 port |
+
+## License
+
+Dual-licensed under MIT or Apache 2.0.
+
+- <a href="LICENSE-MIT" target="_blank" rel="noopener noreferrer">MIT License</a>
+- <a href="LICENSE-APACHE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>
+- <a href="https://github.com/renzora/engine/blob/main/docs/r1-alpha8/contributing/ai-policy.md" target="_blank" rel="noopener noreferrer">AI Policy</a>
