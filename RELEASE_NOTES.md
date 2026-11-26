@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 03:50
+- fix(material): an object whose material is changed by a script or while the game runs picks up the new material
+
 ## 2026-11-26 03:28
 - perf(render): a game that spawns and removes meshes or sprites no longer re-applies every camera effect and re-bakes the sky each time
 

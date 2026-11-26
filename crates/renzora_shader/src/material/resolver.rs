@@ -256,7 +256,10 @@ impl Plugin for MaterialResolverPlugin {
             .register_type::<super::material_ref::ParamValue>()
             .init_resource::<renzora_diagnostics_api::diagnostics::MaterialCacheCounts>()
             .init_resource::<super::alpha_override::AlphaVariantCache>()
-            .add_systems(Update, (resolve_material_refs, publish_cache_counts).chain())
+            .add_systems(
+                Update,
+                (re_resolve_changed_material_refs, resolve_material_refs, publish_cache_counts).chain(),
+            )
             .add_systems(Last, prune_material_cache)
             // Overlays (terrain paint layers) wear a shared material at their
             // own alpha mode; deriving the variant has to see the handle the
@@ -309,6 +312,27 @@ impl Plugin for MaterialResolverPlugin {
                     .after(resolve_material_refs)
                     .run_if(in_editor_session),
             );
+    }
+}
+
+/// Resolve again any entity whose [`MaterialRef`] now names a different file
+/// than the one it was resolved from.
+///
+/// The resolver works only on entities without `MaterialResolved`, so a ref
+/// changed in place kept drawing its old material unless whoever changed it
+/// also took the marker off. The editor's own panels do; Live Link, a script
+/// or anything else writing the component does not, and a material changed in
+/// the editor while the game ran never reached the game. The marker records
+/// its source path, so a real change is told apart from a write of the same
+/// value.
+fn re_resolve_changed_material_refs(
+    mut commands: Commands,
+    changed: Query<(Entity, &MaterialRef, &MaterialResolved), Changed<MaterialRef>>,
+) {
+    for (entity, material, resolved) in &changed {
+        if material.0 != resolved.source_path {
+            commands.entity(entity).remove::<MaterialResolved>();
+        }
     }
 }
 
