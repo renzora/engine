@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 23:43
+- fix(editor): switching scene tabs no longer overwrites changes made to `project.toml` outside the editor
+- fix(settings): the Game UI Theme picker lists themes added to the project while the editor is open
+
 ## 2026-11-25 22:24
 - feat(audio): a game can play through an output device other than the system default
 - fix(audio): audio devices are listed by their full names, so two devices called "Speakers" can be told apart

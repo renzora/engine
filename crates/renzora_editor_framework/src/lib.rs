@@ -950,9 +950,15 @@ fn wire_theme_project_path(
     }
 }
 
-/// Write the open document tabs into `project.toml` (`editor_open_tabs`)
-/// whenever the tab set changes, so a project reload can restore them.
-/// Unsaved tabs (no path yet) have nothing to reopen and are skipped.
+/// Record the open document tabs (`editor_open_tabs`, kept in the per-user
+/// settings file) whenever the tab set changes, so a project reload can
+/// restore them. Unsaved tabs (no path yet) have nothing to reopen and are
+/// skipped.
+///
+/// Saves the editor state alone, never `project.toml`: the tab list is not in
+/// that file, and rewriting it from the in-memory config on every tab change
+/// threw away whatever had been written to it since the project opened (by
+/// hand, or by an assistant's file tools).
 ///
 /// Change detection fires on *any* `DocumentTabState` mutation (activation,
 /// modified-flag churn, MRU touches), so the derived list is compared against
@@ -982,9 +988,7 @@ fn persist_open_tabs(
         return;
     }
     project.config.editor_open_tabs = open;
-    if let Err(e) = project.save_config() {
-        warn!("[tabs] failed to persist open tabs to project.toml: {e}");
-    }
+    project.save_editor_state();
 }
 
 /// Open (or focus an existing) document tab for the given asset path, then

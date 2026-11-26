@@ -199,10 +199,14 @@ fn teardown_for_project_switch(world: &mut World) {
     }
 }
 
-/// Record the scene tab `id` points at as `editor_last_scene` in
-/// project.toml, so a project reload activates the scene the user was
-/// actually looking at — not just the last one opened or saved. Writes only
+/// Record the scene tab `id` points at as `editor_last_scene` (in the
+/// per-user settings file), so a project reload activates the scene the user
+/// was actually looking at, not just the last one opened or saved. Writes only
 /// when the value changed; no-op for pathless (unsaved) tabs.
+///
+/// Every `editor_last_scene` write in this crate saves the editor state alone,
+/// never `project.toml`, which does not hold it: rewriting that file from the
+/// in-memory config on a tab switch discarded edits made to it on disk.
 fn remember_last_scene(world: &mut World, id: u64) {
     let rel = world
         .get_resource::<DocumentTabState>()
@@ -215,7 +219,7 @@ fn remember_last_scene(world: &mut World, id: u64) {
     if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
         if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
             project.config.editor_last_scene = Some(rel);
-            let _ = project.save_config();
+            project.save_editor_state();
         }
     }
 }
@@ -567,7 +571,7 @@ fn save_scene_system(world: &mut World) {
         if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
             if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
                 project.config.editor_last_scene = Some(rel.clone());
-                let _ = project.save_config();
+                project.save_editor_state();
             }
         }
     }
@@ -626,9 +630,7 @@ fn save_as_scene_system(world: &mut World) {
             let rel = project.make_relative(&file_path);
             if let Some(ref r) = rel {
                 project.config.editor_last_scene = Some(r.clone());
-                if let Err(e) = project.save_config() {
-                    warn!("Failed to save project.toml: {}", e);
-                }
+                project.save_editor_state();
             }
             rel
         };
@@ -1616,9 +1618,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
 
     if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
         if forget_missing_files(&mut project) {
-            if let Err(e) = project.save_config() {
-                warn!("[scene] could not save project.toml after dropping missing files: {e}");
-            }
+            project.save_editor_state();
         }
     }
 

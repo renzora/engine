@@ -28,6 +28,8 @@ Each category is a page holding one or more collapsible sections. Changes apply 
 
 Everything under **Project** is stored in the project's `project.toml` and travels with the project. Everything else is yours, and follows you between projects.
 
+The editor writes `project.toml` only when one of these settings changes (or a scene it names is renamed). Opening, closing and switching scene tabs is remembered in your own settings instead, so a change you make to `project.toml` by hand while the editor is open is kept. Change the same setting in both places at once and the editor's write wins. A theme added to `themes/`, or a font added anywhere under `fonts/`, appears in the Game UI Theme and Game UI Font lists without reopening the project, even with Settings open. Game UI Font saves a project font by its path (`fonts/isometra/Isometra-Regular.ttf`), which is what lets an exported game load it.
+
 ## Project
 
 <!-- screenshot: settings_project.png - the Project settings page -->

@@ -96,6 +96,41 @@ pub(crate) fn manage_overlay(world: &mut World) {
     st.built_sub = active_sub;
 }
 
+/// Whether the project's theme files, per `ProjectIndex`, differ from the
+/// names `ThemeManager` last scanned. A flat `themes/<Name>.toml` or a folder
+/// `themes/<Name>/theme.toml`, the two layouts `scan_themes` reads. False when
+/// the index is not ready: no answer is not a reason to touch the disk.
+fn themes_out_of_date(world: &World) -> bool {
+    let builtin = |n: &str| n == "Dark" || n == "Light";
+    let Some(index) = world
+        .get_resource::<renzora_platform_api::project_index::ProjectIndex>()
+        .filter(|i| i.ready())
+    else {
+        return false;
+    };
+    let Some(manager) = world.get_resource::<ThemeManager>() else {
+        return false;
+    };
+    let mut on_disk: Vec<&str> = index
+        .files()
+        .filter_map(|f| {
+            let rest = f.path.strip_prefix("themes/")?;
+            match rest.split_once('/') {
+                Some((name, "theme.toml")) => Some(name),
+                Some(_) => None,
+                None => rest.strip_suffix(".toml"),
+            }
+        })
+        .filter(|n| !builtin(n))
+        .collect();
+    on_disk.sort_unstable();
+    on_disk.dedup();
+    let mut listed: Vec<&str> =
+        manager.available_themes.iter().map(String::as_str).filter(|n| !builtin(n)).collect();
+    listed.sort_unstable();
+    on_disk != listed
+}
+
 fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) -> Option<Entity> {
     let fonts = world.get_resource::<EmberFonts>().cloned()?;
     let settings = world.get_resource::<EditorSettings>()?.clone();
@@ -106,6 +141,19 @@ fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) 
         .get_resource::<renzora_ember::font::FontRegistry>()
         .map(|r| r.project_names())
         .unwrap_or_default();
+    // The theme list is scanned when the project opens, so a theme file written
+    // since (by hand, or by an assistant's file tools) was missing from the Game
+    // UI Theme picker until the project was reopened, though the game, which
+    // scans on its own boot, already used it. `ProjectIndex` already knows the
+    // project's files, so it is compared here and the folder is read again
+    // only when a theme was actually added or removed; past change detection,
+    // because nothing about the active theme changed and the systems that
+    // watch it must not reapply it.
+    if themes_out_of_date(world) {
+        if let Some(mut tm) = world.get_resource_mut::<ThemeManager>() {
+            tm.bypass_change_detection().scan_themes();
+        }
+    }
     let themes = world
         .get_resource::<ThemeManager>()
         .map(|tm| tm.available_themes.clone())

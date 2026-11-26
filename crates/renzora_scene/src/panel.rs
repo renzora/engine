@@ -27,7 +27,8 @@ pub(crate) fn open_scene(world: &mut World, path: &std::path::Path) {
             if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
                 if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
                     project.config.editor_last_scene = Some(rel.clone());
-                    let _ = project.save_config();
+                    // Editor state only: `project.toml` does not hold it.
+                    project.save_editor_state();
                 }
             }
             let ids = world
@@ -103,7 +104,7 @@ pub(crate) fn open_scene(world: &mut World, path: &std::path::Path) {
     if let (Some(rel), Some(mut project)) = (relative, world.get_resource_mut::<CurrentProject>()) {
         if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
             project.config.editor_last_scene = Some(rel);
-            let _ = project.save_config();
+            project.save_editor_state();
         }
     }
 }
