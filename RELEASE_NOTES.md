@@ -1,5 +1,12 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 02:32
+- fix(play): the editor and a running game no longer send each other the world partition cells they stream in, since each streams around its own camera
+- fix(scene): a scene or partition cell streaming in places parents before their children, so the game no longer logs a hierarchy warning per object
+- fix(plugin): a plugin whose source changes while the editor is running is no longer marked as failed; it builds on the next start
+- fix(play): the Console says when a running game is on a different scene from the one open in the editor
+- fix(ui): `<text font="...">` in a UI template uses that font, and game UI text shows the Game UI Font in the editor's viewport too
+
 ## 2026-11-26 02:04
 - feat(ui): `<text>` in a UI template takes `text_align`
 - fix(ui): text in a UI template uses the project's Game UI Font instead of the built-in one

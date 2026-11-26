@@ -292,7 +292,8 @@ pub fn drive_scene_streams(world: &mut World) {
                 match result {
                     Ok(Some(parsed)) => {
                         report_parse(world, &stream, &parsed);
-                        let scene = parsed.scene;
+                        let mut scene = parsed.scene;
+                        parents_first(&mut scene);
                         let mut entity_map = EntityHashMap::default();
                         scene.allocate_entities(world, &mut entity_map);
                         // Instance content is marked before any component
@@ -408,6 +409,46 @@ fn spawn_within_budget(
     } else {
         SpawnOutcome::InProgress
     }
+}
+
+/// Order a scene's entities so every parent comes before its children.
+///
+/// A stream writes entities in order, a budget's worth a frame, and a file
+/// keeps no particular order: a world partition cell lists a building before
+/// the group it sits in. A child written on one frame and its parent on the
+/// next spends a frame under an entity with no transform or visibility, and
+/// Bevy warns about each one (B0004): walking into a city logged thousands.
+/// Depth order is stable within a depth, so siblings keep the file's order.
+pub(crate) fn parents_first(scene: &mut DynamicScene) {
+    use std::collections::HashMap;
+    let child_of = ChildOf::type_path();
+    let parent_of: HashMap<Entity, Entity> = scene
+        .entities
+        .iter()
+        .filter_map(|e| {
+            let c = e.components.iter().find(|c| {
+                c.get_represented_type_info().is_some_and(|t| t.type_path() == child_of)
+            })?;
+            let parent = <ChildOf as FromReflect>::from_reflect(c.as_ref())?.parent();
+            Some((e.entity, parent))
+        })
+        .collect();
+    if parent_of.is_empty() {
+        return;
+    }
+    let depth = |mut e: Entity| {
+        let mut d = 0usize;
+        while let Some(&p) = parent_of.get(&e) {
+            e = p;
+            d += 1;
+            if d > 256 {
+                break;
+            }
+        }
+        d
+    };
+    let depths: HashMap<Entity, usize> = scene.entities.iter().map(|e| (e.entity, depth(e.entity))).collect();
+    scene.entities.sort_by_key(|e| depths.get(&e.entity).copied().unwrap_or(0));
 }
 
 fn report_parse(world: &mut World, stream: &SceneStream, parsed: &ParsedScene) {
@@ -646,5 +687,36 @@ fn fail_stream(world: &mut World, stream: &SceneStream, error: String) {
             path: stream.path_str.clone(),
             error,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A child listed before its parent is moved after it.
+    #[test]
+    fn parents_are_streamed_before_their_children() {
+        let mut world = World::new();
+        let registry = AppTypeRegistry::default();
+        {
+            let mut r = registry.write();
+            r.register::<Transform>();
+            r.register::<Name>();
+            r.register::<ChildOf>();
+        }
+        world.insert_resource(registry);
+        let group = world.spawn((Name::new("group"), Transform::default())).id();
+        let building = world.spawn((Name::new("building"), Transform::default(), ChildOf(group))).id();
+        let window = world.spawn((Name::new("window"), Transform::default(), ChildOf(building))).id();
+        let mut scene = renzora_bsn::DynamicSceneBuilder::from_world(&world)
+            .extract_entity(window)
+            .extract_entity(building)
+            .extract_entity(group)
+            .build();
+
+        parents_first(&mut scene);
+        let order: Vec<Entity> = scene.entities.iter().map(|e| e.entity).collect();
+        assert_eq!(order, [group, building, window]);
     }
 }

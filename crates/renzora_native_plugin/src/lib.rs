@@ -747,6 +747,16 @@ fn layout(dir: &Path, sdk: Option<&Sdk>, expected: Option<&str>) -> Layout {
     }
 }
 
+/// Whether rustc's output says the link failed only because the library file
+/// could not be written, which on Windows means it is loaded.
+fn output_locked(out: &str) -> bool {
+    let out = out.to_ascii_lowercase();
+    out.contains("failed to write output")
+        && (out.contains("permission denied")
+            || out.contains("access is denied")
+            || out.contains("being used by another process"))
+}
+
 fn load_one(
     dir: &Path,
     sdk: Option<&Sdk>,
@@ -827,8 +837,24 @@ fn load_one(
             // cannot loop: `prebuild::needed()` answers false without one. A
             // record would stand until the source changed, so the plugin would
             // never build even after Rust was installed.
-            if let (Some(want), false) = (expected, matches!(e, BuildError::Toolchain { .. })) {
+            //
+            // And a link that could not write its output because the previous
+            // library is loaded: rebuilding a running editor's own plugin after
+            // its source changed ends exactly this way on Windows. It says
+            // nothing about the source, and a record would keep the plugin
+            // unloaded after the restart that would have built it.
+            let locked = matches!(&e, BuildError::Compile(out) if output_locked(out));
+            if let (Some(want), false, false) =
+                (expected, matches!(e, BuildError::Toolchain { .. }), locked)
+            {
                 let _ = std::fs::write(&fail_path, want);
+            }
+            if locked {
+                return format!(
+                    "changed on disk, but its library is in use by this editor; \
+                     it builds when the editor next starts ({})",
+                    lib_path.display()
+                );
             }
             match e {
                 // rustc's own diagnostics, written for the plugin author. Passing
@@ -1243,6 +1269,16 @@ fn default_lib_ext() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A link that only failed to overwrite a loaded library is told apart
+    /// from a compile error, so it is not recorded as the plugin's fault.
+    #[test]
+    fn a_locked_output_is_not_a_compile_failure() {
+        assert!(output_locked(
+            "rust-lld: error: failed to write output 'C:\\p\\build\\mcp.dll': permission denied"
+        ));
+        assert!(!output_locked("error[E0425]: cannot find value `x` in this scope"));
+    }
 
     /// A plugin directory with a source file, in a unique temp path.
     fn plugin(tag: &str) -> PathBuf {

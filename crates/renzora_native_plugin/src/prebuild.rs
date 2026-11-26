@@ -621,8 +621,13 @@ fn build_one(
             // does not merely waste a compile — it asks the same question after
             // the restart, gets the same answer, and reopens this window forever.
             // See `layout` in the crate root.
+            // Not recorded when the link only failed to overwrite a library that
+            // is loaded: that says nothing about the source, and a record would
+            // keep the plugin unloaded after the restart that builds it.
             Err(e) => {
-                let _ = std::fs::write(&l.fail_path, &expected);
+                if !crate::output_locked(&e) {
+                    let _ = std::fs::write(&l.fail_path, &expected);
+                }
                 report(Progress::Failed(format!("{name} failed to build: {e}")));
             }
         }
@@ -680,9 +685,14 @@ pub fn build_installed(
         }
         Err(e) => {
             // Recorded so the next launch does not retry it in the setup window
-            // and restart into the same failure. See `layout`.
-            let _ = std::fs::write(&l.fail_path, &stamp);
-            Err(e.to_string())
+            // and restart into the same failure. See `layout`. Except a link
+            // that only could not overwrite the loaded library (an update to a
+            // plugin the running editor has open): the next launch builds it.
+            let e = e.to_string();
+            if !crate::output_locked(&e) {
+                let _ = std::fs::write(&l.fail_path, &stamp);
+            }
+            Err(e)
         }
     }
 }
