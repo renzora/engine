@@ -165,6 +165,38 @@ pub fn clear_log_history() {
     }
 }
 
+/// The crate names of the Rust scripts loaded in this process, which is also
+/// the log target their `info!`/`warn!`/`error!` lines carry (a script's crate
+/// is named after its file: `scripts/city_build.rs` logs as `city_build`).
+///
+/// The Console shows `console_*` lines only, never the engine's own `tracing`
+/// output, which would bury it. A script's log line is different: it is the
+/// author talking to themselves, and the scripting docs write `info!` in every
+/// example. A script running in the editor (a preview script, or one run in
+/// edit mode) printed to the terminal and never showed up anywhere the author
+/// was looking. The log capture forwards lines whose target is one of these.
+static SCRIPT_LOG_TARGETS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+/// Note that a script with this crate name is loaded, so its log lines reach
+/// the Console. Called by the script loader; idempotent.
+pub fn register_script_log_target(crate_name: &str) {
+    let targets = SCRIPT_LOG_TARGETS.get_or_init(Default::default);
+    if let Ok(mut t) = targets.lock() {
+        if !t.iter().any(|n| n == crate_name) {
+            t.push(crate_name.to_string());
+        }
+    }
+}
+
+/// The script a log target belongs to, if it belongs to one: the target's
+/// first path segment (`city_build` or `city_build::helpers`) is a loaded
+/// script's crate name.
+pub fn script_for_log_target(target: &str) -> Option<String> {
+    let first = target.split("::").next()?;
+    let targets = SCRIPT_LOG_TARGETS.get()?.lock().ok()?;
+    targets.iter().find(|n| n.as_str() == first).cloned()
+}
+
 /// Log a message to the global console (can be called from anywhere).
 pub fn console_log(level: LogLevel, category: &str, message: impl Into<String>) {
     if let Some(buffer) = get_global_log_buffer() {
@@ -227,4 +259,18 @@ macro_rules! clog_error {
     ($cat:expr, $($arg:tt)*) => {
         $crate::console_error($cat, format!($($arg)*))
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_loaded_script_owns_its_log_target_and_its_modules() {
+        register_script_log_target("city_build");
+        assert_eq!(script_for_log_target("city_build").as_deref(), Some("city_build"));
+        assert_eq!(script_for_log_target("city_build::helpers").as_deref(), Some("city_build"));
+        assert_eq!(script_for_log_target("city_builder"), None);
+        assert_eq!(script_for_log_target("renzora_physics"), None);
+    }
 }

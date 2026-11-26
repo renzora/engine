@@ -37,7 +37,7 @@ When a cell unloads, its meshes, materials and textures are released, so memory 
 
 ## Distant LODs: nothing disappears
 
-Streaming alone empties the world beyond the unload radius, and from any height that means districts vanishing behind the camera. **Build distant LODs**, in the World Partition entity's Inspector section, gives every cell a stand-in: its whole contents merged into one simple mesh, coloured from each building's own textures, saved beside the cell as `x_z.hlod.glb`.
+Streaming alone empties the world beyond the unload radius, and from any height that means districts vanishing behind the camera. **Build distant LODs**, in the World Partition entity's Inspector section, gives every cell a stand-in: its whole contents merged into one simple mesh, coloured from each building's own textures, saved beside the cell as `x_z.hlod.glb`. Imported models and shapes from the Shape Library both count, so a level blocked out from shapes gets stand-ins too. A shape is coloured by its material when it has one (the material's base colour, or its texture), otherwise by its own colour.
 
 A stand-in is shown whenever its cell's full detail is not on screen, and hidden the moment the full cell appears (which itself waits until the cell is fully loaded), so the swap leaves no gap. Stand-ins are small and always loaded: the skyline is complete from any distance and any direction, in the editor and in the game.
 

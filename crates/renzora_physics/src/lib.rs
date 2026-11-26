@@ -339,6 +339,13 @@ fn auto_init_physics(
     markers_2d: Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora_scene_api::Node2d>)>>,
     parents: Query<&ChildOf>,
 ) {
+    // One console line per frame's batch, not one per body: a city streamed in
+    // a cell at a time is thousands of static colliders, and a line each
+    // buried the console under 9,000 of them. The first few are named, which
+    // is what anyone checking that a body set up is looking for.
+    const NAMED: usize = 3;
+    let (mut count_3d, mut count_2d) = (0usize, 0usize);
+    let mut named: Vec<String> = Vec::new();
     for (entity, body, shape, name, generated) in &new_bodies {
         let is_2d = entity_is_2d(entity, &markers_2d, &parents);
         let dim = if is_2d { PhysicsDim::D2 } else { PhysicsDim::D3 };
@@ -356,7 +363,7 @@ fn auto_init_physics(
             continue;
         }
         let label = name.map(|n| n.as_str()).unwrap_or("unnamed");
-        info!(
+        debug!(
             "[Physics] Initialized {} physics on '{}' {:?} (body={}, shape={})",
             if is_2d { "2D" } else { "3D" },
             label,
@@ -364,17 +371,36 @@ fn auto_init_physics(
             body.is_some(),
             shape.is_some()
         );
-        renzora_log_api::console_info(
-            "Physics",
-            format!(
-                "Initialized {} physics on '{}' (body={}, shape={})",
-                if is_2d { "2D" } else { "3D" },
-                label,
-                body.is_some(),
-                shape.is_some()
-            ),
-        );
+        if is_2d {
+            count_2d += 1;
+        } else {
+            count_3d += 1;
+        }
+        if named.len() < NAMED {
+            named.push(format!("'{label}'"));
+        }
     }
+    let total = count_3d + count_2d;
+    if total == 0 {
+        return;
+    }
+    let dims = match (count_3d, count_2d) {
+        (_, 0) => "3D".to_string(),
+        (0, _) => "2D".to_string(),
+        (a, b) => format!("{a} 3D and {b} 2D"),
+    };
+    let list = if total > named.len() {
+        format!("{} and {} more", named.join(", "), total - named.len())
+    } else {
+        named.join(", ")
+    };
+    let line = if total == 1 {
+        format!("Initialized {dims} physics on {list}")
+    } else {
+        format!("Initialized {dims} physics on {total} objects: {list}")
+    };
+    info!("[Physics] {line}");
+    renzora_log_api::console_info("Physics", line);
 }
 
 /// Take physics away from an entity whose data was removed while it lives.

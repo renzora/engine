@@ -27,7 +27,8 @@ use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
 use renzora_log_api::*;
-use renzora_scene_api::{MeshInstanceData, PartitionCell, SceneInstance};
+use renzora_scene_api::{MeshColor, MeshInstanceData, MeshPrimitive, PartitionCell, SceneInstance};
+use renzora_material_api::MaterialRef;
 use renzora_project_api::CurrentProject;
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_engine::world_partition as wp;
@@ -55,6 +56,43 @@ const SHAPE_ERRORS_M: [f32; 2] = [3.0, 8.0];
 /// Colour for a mesh with no texture or colour of its own: light concrete,
 /// which is what untextured city blocks are.
 const DEFAULT_COLOUR: [f32; 3] = [0.62, 0.62, 0.6];
+
+/// Something in a cell that draws, as the cell file describes it.
+enum Piece {
+    /// An imported model, by its path.
+    Model(String),
+    /// A library shape (`MeshPrimitive`): the shape id, its `MeshColor` in
+    /// linear RGB, and the material file it wears, if any.
+    Shape { id: String, colour: Option<[f32; 3]>, material: Option<String> },
+}
+
+/// Every library shape's geometry, positions and triangle indices, built once
+/// on the main thread from the shape registry's factories (they take the
+/// world's mesh store, which the worker threads cannot reach).
+type ShapeGeometry = HashMap<String, (Vec<[f32; 3]>, Vec<u32>)>;
+
+fn shape_geometry(world: &World) -> ShapeGeometry {
+    let Some(registry) = world.get_resource::<renzora_scene_api::ShapeRegistry>() else {
+        return HashMap::new();
+    };
+    let mut meshes = Assets::<Mesh>::default();
+    let mut out = HashMap::new();
+    for entry in registry.iter() {
+        let handle = (entry.create_mesh)(&mut meshes);
+        let Some(mesh) = meshes.get(&handle) else { continue };
+        let Some(bevy::mesh::VertexAttributeValues::Float32x3(positions)) =
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+        else {
+            continue;
+        };
+        let indices: Vec<u32> = match mesh.indices() {
+            Some(i) => i.iter().map(|i| i as u32).collect(),
+            None => (0..positions.len() as u32).collect(),
+        };
+        out.insert(entry.id.to_string(), (positions.clone(), indices));
+    }
+    out
+}
 
 /// One cell to build.
 struct Job {
@@ -114,6 +152,7 @@ pub(crate) fn start_hlod_bake(world: &mut World) {
         return;
     }
     let registry = world.resource::<AppTypeRegistry>().clone();
+    let shapes = Arc::new(shape_geometry(world));
     let progress = Arc::new(Mutex::new(Progress {
         total: jobs.len() as u32,
         ..Default::default()
@@ -132,7 +171,7 @@ pub(crate) fn start_hlod_bake(world: &mut World) {
             for _ in 0..threads {
                 scope.spawn(|| loop {
                     let Some(job) = queue.lock().unwrap().pop() else { break };
-                    let result = build_cell(&job, &project, &registry, &colours);
+                    let result = build_cell(&job, &project, &registry, &shapes, &colours);
                     let mut p = progress.lock().unwrap();
                     p.done += 1;
                     match result {
@@ -232,13 +271,14 @@ fn build_cell(
     job: &Job,
     project: &Path,
     registry: &AppTypeRegistry,
+    shapes: &ShapeGeometry,
     colours: &Mutex<HashMap<PathBuf, [f32; 3]>>,
 ) -> Result<bool, String> {
     let Ok(text) = std::fs::read_to_string(&job.source_abs) else {
         return Ok(false);
     };
-    let models = cell_models(&text, registry)?;
-    if models.is_empty() {
+    let pieces = cell_models(&text, registry)?;
+    if pieces.is_empty() {
         let _ = std::fs::remove_file(&job.out_abs);
         return Ok(false);
     }
@@ -246,9 +286,27 @@ fn build_cell(
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut vertex_colours: Vec<[f32; 3]> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
-    for (model_path, to_cell) in &models {
-        let abs = project.join(model_path);
-        append_model(&abs, *to_cell, colours, &mut positions, &mut vertex_colours, &mut indices);
+    for (piece, to_cell) in &pieces {
+        match piece {
+            Piece::Model(model_path) => {
+                let abs = project.join(model_path);
+                append_model(&abs, *to_cell, colours, &mut positions, &mut vertex_colours, &mut indices);
+            }
+            Piece::Shape { id, colour, material } => {
+                let Some((shape_positions, shape_indices)) = shapes.get(id) else { continue };
+                let colour = material
+                    .as_ref()
+                    .and_then(|m| material_colour(&project.join(m), colours))
+                    .or(*colour)
+                    .unwrap_or(DEFAULT_COLOUR);
+                let base = positions.len() as u32;
+                for p in shape_positions {
+                    positions.push(to_cell.transform_point3(Vec3::from(*p)).to_array());
+                    vertex_colours.push(colour);
+                }
+                indices.extend(shape_indices.iter().map(|i| base + i));
+            }
+        }
     }
     if indices.len() < 3 {
         let _ = std::fs::remove_file(&job.out_abs);
@@ -299,10 +357,13 @@ fn build_cell(
     Ok(true)
 }
 
-/// Every model in a cell file, with the matrix taking its model space into
-/// the cell's. Entities without a parent in the file are the cell's direct
-/// children, so their transform is relative to the cell.
-fn cell_models(text: &str, registry: &AppTypeRegistry) -> Result<Vec<(String, Mat4)>, String> {
+/// Every model and library shape in a cell file, with the matrix taking its
+/// own space into the cell's. Entities without a parent in the file are the
+/// cell's direct children, so their transform is relative to the cell.
+///
+/// Shapes count: a level blocked out in the editor is nothing but shapes, and
+/// a partition of one used to get no stand-ins at all ("0 of 241 cells").
+fn cell_models(text: &str, registry: &AppTypeRegistry) -> Result<Vec<(Piece, Mat4)>, String> {
     let (scene, _skipped) = {
         let reg = registry.read();
         BsnSerializer
@@ -311,9 +372,12 @@ fn cell_models(text: &str, registry: &AppTypeRegistry) -> Result<Vec<(String, Ma
     };
     let mut locals: HashMap<Entity, Mat4> = HashMap::new();
     let mut parents: HashMap<Entity, Entity> = HashMap::new();
-    let mut models: Vec<(Entity, String)> = Vec::new();
+    let mut models: Vec<(Entity, Piece)> = Vec::new();
     for entity in &scene.entities {
         let mut local = Mat4::IDENTITY;
+        let mut shape: Option<String> = None;
+        let mut colour: Option<[f32; 3]> = None;
+        let mut material: Option<String> = None;
         for component in &entity.components {
             let Some(info) = component.get_represented_type_info() else { continue };
             let path = info.type_path();
@@ -329,9 +393,21 @@ fn cell_models(text: &str, registry: &AppTypeRegistry) -> Result<Vec<(String, Ma
                 if let Some(Some(model)) =
                     <MeshInstanceData as FromReflect>::from_reflect(component.as_ref()).map(|m| m.model_path)
                 {
-                    models.push((entity.entity, model));
+                    models.push((entity.entity, Piece::Model(model)));
                 }
+            } else if path == MeshPrimitive::type_path() {
+                shape = <MeshPrimitive as FromReflect>::from_reflect(component.as_ref()).map(|p| p.0);
+            } else if path == MeshColor::type_path() {
+                colour = <MeshColor as FromReflect>::from_reflect(component.as_ref()).map(|c| {
+                    let c = c.0.to_linear();
+                    [c.red, c.green, c.blue]
+                });
+            } else if path == MaterialRef::type_path() {
+                material = <MaterialRef as FromReflect>::from_reflect(component.as_ref()).map(|m| m.0);
             }
+        }
+        if let Some(id) = shape {
+            models.push((entity.entity, Piece::Shape { id, colour, material }));
         }
         locals.insert(entity.entity, local);
     }
@@ -440,6 +516,51 @@ fn mesh_colour(
         (None, Some(f)) => f,
         (None, None) => DEFAULT_COLOUR,
     }
+}
+
+/// The colour a shape's `.material` shows from afar, linear RGB: the surface
+/// output's base colour when it is set there, otherwise the first colour any
+/// node of the graph holds (a graph that computes its colour usually takes it
+/// as an input), otherwise the average of the first texture it samples.
+/// `None` when the graph has none of these, and the shape's own colour is
+/// used.
+fn material_colour(path: &Path, cache: &Mutex<HashMap<PathBuf, [f32; 3]>>) -> Option<[f32; 3]> {
+    if let Some(c) = cache.lock().unwrap().get(path) {
+        return Some(*c);
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let nodes = json.get("nodes")?.as_array()?;
+    let colour_of = |v: &serde_json::Value| -> Option<[f32; 3]> {
+        let c = v.get("Color")?.as_array()?;
+        let c: Vec<f32> = c.iter().filter_map(|x| x.as_f64().map(|x| x as f32)).collect();
+        (c.len() >= 3).then(|| [c[0], c[1], c[2]])
+    };
+    let output = nodes
+        .iter()
+        .find(|n| n.get("node_type").and_then(|t| t.as_str()).is_some_and(|t| t.starts_with("output/")))
+        .and_then(|n| n.get("input_values")?.get("base_color"))
+        .and_then(colour_of);
+    let any = || {
+        nodes.iter().find_map(|n| n.get("input_values")?.as_object()?.values().find_map(colour_of))
+    };
+    let texture = || {
+        let rel = nodes.iter().find_map(|n| {
+            let values = n.get("input_values")?.as_object()?;
+            values.values().find_map(|v| v.get("TexturePath")?.as_str().map(str::to_string))
+        })?;
+        let mut dir = path.parent();
+        while let Some(d) = dir {
+            if d.join(&rel).exists() {
+                return texture_average(&d.join(&rel));
+            }
+            dir = d.parent();
+        }
+        None
+    };
+    let colour = output.or_else(any).or_else(texture)?;
+    cache.lock().unwrap().insert(path.to_path_buf(), colour);
+    Some(colour)
 }
 
 /// The first texture a `.material` graph samples, as an absolute path. The
@@ -676,6 +797,48 @@ mod tests {
         let (min, max) = wp::model_file_bounds(&path).expect("bounds");
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!((min, max), (Vec3::ZERO, Vec3::new(10.0, 5.0, 0.0)));
+    }
+
+    /// A cell holding only library shapes has something to draw: the shapes,
+    /// placed by their transform and coloured by `MeshColor`.
+    #[test]
+    fn shapes_in_a_cell_file_are_found() {
+        let registry = AppTypeRegistry::default();
+        {
+            let mut r = registry.write();
+            r.register::<Transform>();
+            r.register::<Name>();
+            r.register::<MeshPrimitive>();
+            r.register::<MeshColor>();
+            r.register::<MaterialRef>();
+        }
+        let mut world = World::new();
+        world.insert_resource(registry.clone());
+        let e = world
+            .spawn((
+                Name::new("crate"),
+                Transform::from_xyz(4.0, 0.0, 0.0),
+                MeshPrimitive("cube".into()),
+                MeshColor(Color::linear_rgb(1.0, 0.0, 0.0)),
+            ))
+            .id();
+        let text = {
+            let reg = registry.read();
+            let scene = renzora_bsn::DynamicSceneBuilder::from_world(&world).extract_entity(e).build();
+            BsnSerializer.serialize(&scene, &reg).expect("serialize")
+        };
+        let pieces = cell_models(&text, &registry).expect("read");
+        assert_eq!(pieces.len(), 1);
+        let (piece, m) = &pieces[0];
+        match piece {
+            Piece::Shape { id, colour, material } => {
+                assert_eq!(id, "cube");
+                assert_eq!(*colour, Some([1.0, 0.0, 0.0]));
+                assert!(material.is_none());
+            }
+            Piece::Model(_) => panic!("a shape read as a model"),
+        }
+        assert_eq!(m.transform_point3(Vec3::ZERO), Vec3::new(4.0, 0.0, 0.0));
     }
 
     #[test]

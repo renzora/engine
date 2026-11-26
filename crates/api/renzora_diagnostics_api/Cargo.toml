@@ -13,6 +13,8 @@ description = "What the engine reports about itself: the profiler's recorder, co
 renzora_scene_api = { path = "../renzora_scene_api" }
 bevy = { workspace = true }
 renzora = { path = "../../shared/renzora", default-features = false }
+# The Console, which `runtime_warnings` forwards a script's own log lines to.
+renzora_log_api = { path = "../renzora_log_api" }
 # The companion's vocabulary: the profiler's span events and the probe reports,
 # re-exported from `profiling` and `probes`. Its own crate so the standalone
 # companion can link it without Bevy.

@@ -682,6 +682,13 @@ pub fn load_library(path: &Path) -> Result<(ScriptFn, Option<ScriptHookFn>, Libr
     let hook: Option<ScriptHookFn> = unsafe { lib.get::<ScriptHookFn>(SCRIPT_HOOK_SYMBOL) }
         .ok()
         .map(|s| *s);
+    // Its `info!` lines go to the Console from now on. The library is named
+    // `<stem>-<key>.<ext>` and its crate after the stem, hyphens made
+    // underscores, which is the target its log lines carry.
+    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        let name = stem.rsplit_once('-').map_or(stem, |(name, _)| name);
+        renzora_log_api::register_script_log_target(&name.replace('-', "_"));
+    }
     Ok((f, hook, lib))
 }
 

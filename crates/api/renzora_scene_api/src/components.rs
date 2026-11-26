@@ -633,8 +633,10 @@ impl Default for SceneInstance {
 /// *edit* mode when `stream_in_editor` is on, measured from the viewport
 /// camera. That is the point of a partition: an editor holding every cell of
 /// a city resident runs out of video memory long before a game would.
+// `Default` reflected so anything that adds a component by type name (the
+// inspector's Add Component search, an agent's add_component) can make one.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
 #[type_path = "renzora::core::components"]
 pub struct WorldPartition {
     /// Width of one square cell on the ground plane, in world units.

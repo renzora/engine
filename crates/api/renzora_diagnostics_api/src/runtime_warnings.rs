@@ -96,6 +96,25 @@ impl<S: Subscriber> Layer<S> for WarningCaptureLayer {
         use bevy::log::tracing::Level;
 
         let metadata = event.metadata();
+
+        // A Rust script's own log line goes to the Console, under the script's
+        // name: see `renzora_log_api::register_script_log_target` for why only
+        // scripts' lines, never the engine's. Checked first so a script's
+        // INFO line is not dropped by the warnings-only filter below.
+        if let Some(script) = renzora_log_api::script_for_log_target(metadata.target()) {
+            let console_level = match *metadata.level() {
+                Level::ERROR => Some(renzora_log_api::LogLevel::Error),
+                Level::WARN => Some(renzora_log_api::LogLevel::Warning),
+                Level::INFO => Some(renzora_log_api::LogLevel::Info),
+                _ => None,
+            };
+            if let Some(console_level) = console_level {
+                let mut message = String::new();
+                event.record(&mut MessageVisitor(&mut message));
+                renzora_log_api::console_log(console_level, &script, message);
+            }
+        }
+
         let level = match *metadata.level() {
             Level::WARN => WarningLevel::Warn,
             Level::ERROR => WarningLevel::Error,

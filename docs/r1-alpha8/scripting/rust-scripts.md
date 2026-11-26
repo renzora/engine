@@ -59,7 +59,9 @@ Opening a project builds its scripts the same way, in the background. A script t
 
 Compile errors, panics and a missing SDK all appear in the **Console**, with the line numbers pointing at your file.
 
-A script that fails to compile is not retried until you edit it again, so one error does not turn into a scrolling wall.
+A script that fails to compile is not retried until you edit it again, so one error does not turn into a scrolling wall. A build that failed only because a file was in use (pressing Play while the editor was still compiling the same script, for example) is tried again a few times over the next two seconds before it is reported.
+
+What a script logs with `info!`, `warn!` or `error!` appears in the **Console** too, under the script's file name (`city_build` for `scripts/city_build.rs`). That holds for a script running in the editor (a preview script, or one run in edit mode) as well as in the game. `debug!` and `trace!` lines stay out of the Console.
 
 A script that **panics** while running is not a crash. The editor catches it, and the Console names the script, the panic message and the line in your file:
 

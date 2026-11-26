@@ -1,5 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 01:47
+- fix(world-partition): Build distant LODs includes shapes from the Shape Library, not only imported models
+- fix(world-partition): a World Partition can be added from Add Component
+- fix(physics): the Console reports newly set-up physics objects in one line a frame instead of one per object
+- fix(scripting): `info!`, `warn!` and `error!` from a Rust script show in the Console, including scripts running in the editor
+
 ## 2026-11-26 01:31
 - perf(scene): shapes of the same colour share one material after a load, so they draw together
 

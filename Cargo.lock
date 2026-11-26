@@ -7865,6 +7865,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_companion_proto",
+ "renzora_log_api",
  "renzora_scene_api",
 ]
 
