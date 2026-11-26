@@ -91,6 +91,16 @@ Lengths are written like CSS: `12px`, `50%`, `auto`, or the viewport units
 Note the two-value form: it is horizontal first, which is the opposite way round
 from CSS. The four-value form follows CSS exactly.
 
+### Text
+
+`<text>` takes `font_size`, `font_color` and `text_align` (`left`, `center`, `right` or `justify`). Alignment places the words inside the text's own box, so the box has to be wider than the words for it to show: give the `<text>` a `width`, or let it stretch across its parent.
+
+```html
+<text width="100%" text_align="center" font_size="24">GAME OVER</text>
+```
+
+Text in a template is drawn in the project's **Game UI Font** (Project Settings), in the editor's viewport as well as in the game. To give one piece of text a font of its own, name the file: `<text font="fonts/signs/Neon.ttf">OPEN</text>`.
+
 ## Making the UI show live values
 
 The best part: your UI can show numbers that change as the game runs. Wrap a value in **double braces** and it re-reads every frame:

@@ -1,5 +1,16 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 02:04
+- feat(ui): `<text>` in a UI template takes `text_align`
+- fix(ui): text in a UI template uses the project's Game UI Font instead of the built-in one
+- fix(ui): a dropdown with a long option stays inside its slot and clips the label
+- fix(scripting): saving a Rust script while it is still compiling builds the new save once the running build ends
+
+## 2026-11-26 01:58
+- fix(ui): a world-space canvas no longer also draws as a full-screen overlay, and keeps its position when its scene loads
+- fix(scene): a game no longer warns about an unregistered camera marker when it loads a scene saved in the editor
+- fix(scripting): a Rust script build that fails because a file is in use is tried again, so pressing Play right after a save no longer starts the game without the script
+
 ## 2026-11-26 01:47
 - fix(world-partition): Build distant LODs includes shapes from the Shape Library, not only imported models
 - fix(world-partition): a World Partition can be added from Add Component

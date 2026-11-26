@@ -24,6 +24,10 @@
 //! it succeeds. A script that fails to compile therefore stays quiet until it is
 //! edited again, instead of rebuilding and re-reporting the same error every
 //! poll — which is what turns a compile error into a scrolling wall.
+//!
+//! The one exception is a build that failed on a file another process had
+//! open (see `is_locked_file_error`): that says nothing about the source, so it
+//! is tried again a few times before it is reported.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -81,6 +85,39 @@ pub struct ScriptWatcher {
     /// machine without Rust is asked once instead of failing every script.
     /// See [`crate::toolchain`].
     held: Vec<(PathBuf, SystemTime)>,
+    /// Builds that failed on a locked file rather than on the source, to try
+    /// again: when to, and how many tries so far. See [`is_locked_file_error`].
+    retries: HashMap<PathBuf, (std::time::Instant, u32)>,
+    /// Scripts saved again while their previous build was still running, to
+    /// build once it lands. A save in that window used to be skipped and never
+    /// looked at again (no further file event comes), so the script kept
+    /// running the build from before the save.
+    saved_while_building: std::collections::HashSet<PathBuf>,
+}
+
+/// How many times a build that hit a locked file is tried again, and how long
+/// apart. Two seconds covers another process's whole compile of the same
+/// script, which is what holds the lock.
+const LOCK_RETRIES: u32 = 8;
+const LOCK_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Whether a build failed because a file was in use, not because of the source.
+///
+/// The editor and the game Play starts are two processes building the same
+/// script into the same `.renzora/scripts/<name>/` folder. Pressing Play just
+/// after a save started both at once, and the game's build failed on the
+/// editor's open files with "Access is denied (os error 5)". That failure was
+/// treated like a compile error, never retried, and the game ran without the
+/// script. The other process finishes in a second or two, so a retry finds
+/// the file free, or finds the library it built already there.
+fn is_locked_file_error(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    e.contains("os error 5)")
+        || e.contains("os error 32)")
+        || e.contains("access is denied")
+        || e.contains("being used by another process")
+        || e.contains("resource busy")
+        || e.contains("text file busy")
 }
 
 impl ScriptWatcher {
@@ -194,6 +231,26 @@ pub fn watch(
         sources.push((change.path.clone(), mtime));
     }
 
+    // Builds that hit a locked file and are due another try. Their recorded
+    // time is forgotten so the check below lets them through.
+    let now = std::time::Instant::now();
+    let due: Vec<PathBuf> = watcher
+        .retries
+        .iter()
+        .filter(|(src, (at, _))| {
+            *at <= now
+                && !watcher.building.contains_key(*src)
+                && !watcher.remote.values().any(|p| p == *src)
+        })
+        .map(|(src, _)| src.clone())
+        .collect();
+    for src in due {
+        watcher.seen.remove(&src);
+        if let Ok(mtime) = std::fs::metadata(&src).and_then(|m| m.modified()) {
+            sources.push((src, mtime));
+        }
+    }
+
     // In the editor, nothing builds until the compiler is known to be there or
     // the user has declined it; see `crate::toolchain`. A game process has
     // nobody to ask, so it builds straight away as it always has.
@@ -221,8 +278,11 @@ pub fn watch(
 
     for (src, mtime) in sources {
         // Already building: let it finish rather than starting a second rustc
-        // for the same file.
+        // for the same file, and build this save once it has.
         if watcher.building.contains_key(&src) || watcher.remote.values().any(|p| *p == src) {
+            if watcher.seen.get(&src) != Some(&mtime) {
+                watcher.saved_while_building.insert(src);
+            }
             continue;
         }
         if watcher.seen.get(&src) == Some(&mtime) {
@@ -312,7 +372,39 @@ pub fn finish(world: &mut World) {
             .and_then(|n| n.to_str())
             .unwrap_or("?")
             .to_string();
-        match result.and_then(|lib_path| load_library(&lib_path)) {
+        let result = result.and_then(|lib_path| load_library(&lib_path));
+
+        // Saved again while this build ran: queue that save, which `watch`
+        // builds next frame (its time differs from the one recorded here).
+        {
+            let mut watcher = world.resource_mut::<ScriptWatcher>();
+            if watcher.saved_while_building.remove(&src) {
+                if let Ok(mtime) = std::fs::metadata(&src).and_then(|m| m.modified()) {
+                    watcher.held.push((src.clone(), mtime));
+                }
+            }
+        }
+
+        // A locked file: try again shortly, quietly, a few times. Only when
+        // the tries run out is it reported like any other failure.
+        if let Err(e) = &result {
+            let mut watcher = world.resource_mut::<ScriptWatcher>();
+            if is_locked_file_error(e) {
+                let tries = watcher.retries.get(&src).map_or(0, |(_, n)| *n) + 1;
+                if tries <= LOCK_RETRIES {
+                    watcher
+                        .retries
+                        .insert(src.clone(), (std::time::Instant::now() + LOCK_RETRY_DELAY, tries));
+                    info!("[rust-script] {name}: a file was in use, trying again ({tries}/{LOCK_RETRIES})");
+                    continue;
+                }
+            }
+            watcher.retries.remove(&src);
+        } else {
+            world.resource_mut::<ScriptWatcher>().retries.remove(&src);
+        }
+
+        match result {
             Ok((f, hook, lib)) => {
                 let mut loaded = world.resource_mut::<LoadedScripts>();
                 // The project-open build comes through here too, so say which:
@@ -399,4 +491,18 @@ fn rustc_line(output: &str, src: &Path) -> Option<usize> {
             .parse()
             .ok()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_locked_file_error;
+
+    #[test]
+    fn a_locked_file_is_told_apart_from_a_compile_error() {
+        assert!(is_locked_file_error("Access is denied. (os error 5)"));
+        assert!(is_locked_file_error(
+            "The process cannot access the file because it is being used by another process. (os error 32)"
+        ));
+        assert!(!is_locked_file_error("error[E0425]: cannot find value `x` in this scope"));
+    }
 }

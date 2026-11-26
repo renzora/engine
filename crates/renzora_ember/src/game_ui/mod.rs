@@ -486,11 +486,22 @@ fn heal_nested_ui_canvases(
 /// Inserting rather than warning, because there is exactly one correct answer:
 /// the geometry healer below overwrites the rect on the same frame anyway, so
 /// what goes in here only has to exist.
+///
+/// Never a world canvas. Having no `Node` is what a world canvas is meant to
+/// be (it is a 3D object; `world_panel` strips the `Node` on purpose), and
+/// giving it one back made bevy_ui lay it out as a full-screen root: signs on
+/// a street drew as overlays across the game window. It also undid itself
+/// worse on load, where the `Node` arrived before the world sync ran, which
+/// read it as a screen canvas just switched to world and reset the sign's
+/// Transform to the origin.
 fn heal_canvas_missing_node(
     mut commands: Commands,
     canvases: Query<(Entity, &UiCanvas), Without<Node>>,
 ) {
     for (entity, canvas) in &canvases {
+        if canvas.is_world() {
+            continue;
+        }
         commands
             .entity(entity)
             .try_insert(components::canvas_root_node(canvas));
@@ -808,6 +819,22 @@ mod invariant_tests {
         let mut schedule = Schedule::default();
         schedule.add_systems(sync_ui_zindex);
         schedule.run(world);
+    }
+
+    /// A screen canvas loaded without its `Node` gets one; a world canvas never
+    /// does, since a `Node` turns it into a full-screen overlay.
+    #[test]
+    fn only_screen_canvases_are_given_a_missing_node() {
+        let mut world = World::new();
+        let screen = world.spawn(UiCanvas::default()).id();
+        let sign = world
+            .spawn(UiCanvas { render_space: "world".into(), ..Default::default() })
+            .id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(heal_canvas_missing_node);
+        schedule.run(&mut world);
+        assert!(world.get::<Node>(screen).is_some(), "a screen canvas stayed without a Node");
+        assert!(world.get::<Node>(sign).is_none(), "a world canvas was made a screen root");
     }
 
     /// Scene-authored widgets keep the layers-list convention: the first child

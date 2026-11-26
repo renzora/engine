@@ -318,5 +318,6 @@ pub fn plugin(app: &mut App) {
                 finalize_pending_templates,
             )
                 .chain(),
-        );
+        )
+        .add_systems(Update, crate::markup::loader::apply_ui_font_to_markup_text);
 }

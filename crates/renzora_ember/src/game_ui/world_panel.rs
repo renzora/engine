@@ -345,7 +345,7 @@ fn sync_world_ui_canvases(
             &UiCanvas,
             &HtmlTemplatePath,
             Option<&WorldUiPanelLive>,
-            Option<&Node>,
+            Option<&ComputedNode>,
         ),
         Or<(Changed<UiCanvas>, Changed<HtmlTemplatePath>)>,
     >,
@@ -353,7 +353,7 @@ fn sync_world_ui_canvases(
     text_geom: Query<(), With<super::world_ui_mesh::WorldUiTextGeom>>,
     has_node: Query<(), With<Node>>,
 ) {
-    for (entity, canvas, template, live, had_node) in canvases.iter() {
+    for (entity, canvas, template, live, laid_out) in canvases.iter() {
         // A screen-space canvas is handled by the normal UI pipeline. If it *was*
         // a world canvas (has live pieces), tear them down and hand it back: drop
         // the quad + generated entities and restore a screen root `Node`.
@@ -409,9 +409,16 @@ fn sync_world_ui_canvases(
         // On the screen→world flip the canvas still carries the `Transform` that UI
         // layout left on it (≈ screen-centre pixels) — that would fling the quad
         // far off. Reset to the origin so it lands in front of the user, ready to
-        // be grabbed. Only on the transition (had a `Node`), so re-syncs from a
-        // template edit don't clobber where the user placed it.
-        if had_node.is_some() {
+        // be grabbed. Only on that transition, so re-syncs from a template edit
+        // don't clobber where the user placed it.
+        //
+        // The transition is told by a `ComputedNode` that UI layout has sized,
+        // not by a `Node` alone: a scene saved while a world canvas wrongly
+        // carried a `Node` (the screen healer used to give it one) brings that
+        // `Node` back on load, and every sign in a street was reset to the
+        // origin of its cell. A reflection load never brings a `ComputedNode`,
+        // and only layout gives one a size.
+        if laid_out.is_some_and(|c| c.size() != Vec2::ZERO) {
             commands.entity(entity).insert(Transform::default());
         }
 

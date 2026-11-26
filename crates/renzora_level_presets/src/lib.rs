@@ -92,14 +92,8 @@ impl Plugin for LevelPresetsPlugin {
     }
 }
 
-/// One-shot marker: this scene camera has had its default image-quality effects
-/// (the "camera bucket": bloom, …) seeded. Serialized so a *reloaded* scene
-/// isn't re-seeded — its saved effects load instead — while a fresh camera, or a
-/// pre-migration scene that kept these on the environment, gets seeded once.
-/// After seeding they're normal removable components.
-#[derive(Component, Clone, Copy, Default, Reflect, serde::Serialize, serde::Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
-pub struct CameraEffectsSeeded;
+// Defined in the scene contract so a game can read it; see the type's doc.
+pub use renzora_scene_api::CameraEffectsSeeded;
 
 /// Seed each scene camera's default image-quality effects **once** (they live on
 /// the camera now, not the World Environment). The [`CameraEffectsSeeded`] marker

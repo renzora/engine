@@ -52,6 +52,7 @@ mod type_path_tests {
             MeshInstanceData, MeshLod, StandardGeometry,
         );
         at!("renzora::core::shapes": MeshColor);
+        at!("renzora_level_presets": CameraEffectsSeeded);
         at!("renzora::core::viewport_types": RenderResolution);
     }
 }

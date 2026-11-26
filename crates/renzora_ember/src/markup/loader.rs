@@ -828,12 +828,48 @@ fn apply_xnode_to(
                 if has_binding(&content) {
                     ec.insert(crate::markup::binding::TextBinding::new(content.clone(), ctx.host));
                 }
+                // `font="fonts/x.ttf"` names the text's own font, which it
+                // keeps; otherwise it follows the UI font (see `MarkupText`).
+                // The attribute was parsed and then dropped, so a sign written
+                // in one typeface came out in another.
+                let own_font = defs
+                    .get("font")
+                    .map(|p| p.trim())
+                    .filter(|p| !p.is_empty())
+                    .map(|p| bevy::text::FontSource::Handle(ctx.server.load(p.to_string())));
                 ec.insert(Text::new(content));
-                if let Some(s) = font_size {
-                    ec.insert(TextFont::from_font_size(s));
+                match own_font {
+                    Some(font) => {
+                        let mut tf = TextFont { font, ..default() };
+                        if let Some(s) = font_size {
+                            tf.font_size = TextFont::from_font_size(s).font_size;
+                        }
+                        ec.insert(tf);
+                    }
+                    None => {
+                        ec.insert(MarkupText);
+                        if let Some(s) = font_size {
+                            ec.insert(TextFont::from_font_size(s));
+                        }
+                    }
                 }
                 if let Some(c) = font_color {
                     ec.insert(TextColor(c));
+                }
+                // `text_align="center"` lines the text up inside its own box. It
+                // was read nowhere, so a centred label came out left-aligned
+                // with no warning; the box still has to be wider than the text
+                // (a `width`, or `align_self="stretch"`) for it to show.
+                if let Some(align) = defs.get("text_align").or_else(|| defs.get("text-align")) {
+                    match parse_text_align(align) {
+                        Some(justify) => {
+                            ec.insert(bevy::text::TextLayout::justify(justify));
+                        }
+                        None => warn!(
+                            "renzora_ember: text_align=\"{align}\" is not an alignment; \
+                             expected left, center, right or justify"
+                        ),
+                    }
                 }
             }
         }
@@ -902,13 +938,183 @@ fn apply_xnode_to(
     // `<input>` renders its edited value as text on the entity itself; the
     // input system (`input_field::sync_inputs`) keeps it updated.
     if is_input_node(node) {
-        ec.insert(Text::new(String::new()));
+        ec.insert((Text::new(String::new()), MarkupText));
         if let Some(s) = font_size {
             ec.insert(TextFont::from_font_size(s));
         }
         if let Some(c) = font_color {
             ec.insert(TextColor(c));
         }
+    }
+}
+
+/// Text a template built, which takes the UI font: the editor's in the editor,
+/// the project's Game UI Font in a game.
+///
+/// Markup never names a font itself, and the text it built used to keep
+/// Bevy's built-in one. So the Game UI Font setting changed every widget a
+/// script spawned and none of the `<text>` in a template: a HUD came out in
+/// two typefaces. [`apply_ui_font_to_markup_text`] keeps these on the current
+/// UI font, including when it changes while they are on screen.
+#[derive(Component)]
+pub struct MarkupText;
+
+/// Give markup text its font, when it is built and whenever the font changes.
+///
+/// Text on a game canvas (anything under a `UiCanvas`, or under a world
+/// canvas's generated root) takes the project's Game UI Font, in the editor
+/// as well as in the game, so a HUD looks the same in the viewport as it will
+/// when played. Everything else (the editor's own panels) takes the UI font.
+pub(crate) fn apply_ui_font_to_markup_text(
+    fonts: Option<Res<crate::font::EmberFonts>>,
+    project: Option<Res<renzora_project_api::CurrentProject>>,
+    registry: Option<Res<crate::font::FontRegistry>>,
+    server: Option<Res<AssetServer>>,
+    parents: Query<&ChildOf>,
+    canvases: Query<(), Or<(With<crate::game_ui::UiCanvas>, With<crate::game_ui::world_panel::WorldUiRoot>)>>,
+    mut texts: ParamSet<(
+        Query<(Entity, &mut TextFont), Added<MarkupText>>,
+        Query<(Entity, &mut TextFont), With<MarkupText>>,
+    )>,
+    mut game_font: Local<(Option<String>, u64, Option<bevy::text::FontSource>)>,
+) {
+    let Some(fonts) = fonts else { return };
+
+    // The Game UI Font, resolved again only when the setting or the project's
+    // fonts change.
+    let wanted = project.as_ref().and_then(|p| p.config.ui_font.clone());
+    let revision = registry.as_ref().map_or(0, |r| r.revision());
+    let game_changed = wanted != game_font.0 || revision != game_font.1;
+    if game_changed {
+        let source = wanted.as_deref().and_then(|name| {
+            registry.as_ref().and_then(|r| r.resolve(name)).or_else(|| {
+                let server = server.as_ref()?;
+                Some(bevy::text::FontSource::Handle(server.load(name.to_string())))
+            })
+        });
+        *game_font = (wanted, revision, source);
+    }
+
+    let on_game_canvas = |mut e: Entity| {
+        for _ in 0..256 {
+            if canvases.get(e).is_ok() {
+                return true;
+            }
+            match parents.get(e) {
+                Ok(p) => e = p.parent(),
+                Err(_) => return false,
+            }
+        }
+        false
+    };
+    let pick = |e: Entity| match (&game_font.2, on_game_canvas(e)) {
+        (Some(game), true) => game.clone(),
+        _ => fonts.ui.clone(),
+    };
+    let set = |e: Entity, tf: &mut Mut<TextFont>| {
+        let want = pick(e);
+        if tf.font != want {
+            tf.font = want;
+        }
+    };
+    if fonts.is_changed() || game_changed {
+        for (e, mut tf) in &mut texts.p1() {
+            set(e, &mut tf);
+        }
+    } else {
+        for (e, mut tf) in &mut texts.p0() {
+            set(e, &mut tf);
+        }
+    }
+}
+
+#[cfg(test)]
+mod markup_text_tests {
+    use super::*;
+
+    fn fonts(ui: &str) -> crate::font::EmberFonts {
+        crate::font::EmberFonts {
+            ui: bevy::text::FontSource::Family(ui.into()),
+            phosphor: Handle::default(),
+            mono: bevy::text::FontSource::default(),
+            default_ui: bevy::text::FontSource::default(),
+            default_mono: bevy::text::FontSource::default(),
+        }
+    }
+
+    /// Template text takes the UI font when built, and again when it changes;
+    /// text nobody built from a template keeps its own.
+    #[test]
+    fn markup_text_follows_the_ui_font() {
+        let mut world = World::new();
+        world.insert_resource(fonts("Isometra"));
+        let built = world.spawn((Text::new("score"), TextFont::default(), MarkupText)).id();
+        let other = world.spawn((Text::new("fps"), TextFont::default())).id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(apply_ui_font_to_markup_text);
+        schedule.run(&mut world);
+        assert_eq!(world.get::<TextFont>(built).unwrap().font, fonts("Isometra").ui);
+        assert_eq!(world.get::<TextFont>(other).unwrap().font, bevy::text::FontSource::default());
+
+        world.insert_resource(fonts("Inter"));
+        schedule.run(&mut world);
+        assert_eq!(world.get::<TextFont>(built).unwrap().font, fonts("Inter").ui);
+    }
+
+    /// Text on a game canvas takes the project's Game UI Font even where the
+    /// UI font is the editor's; text elsewhere keeps the UI font.
+    #[test]
+    fn game_canvas_text_takes_the_game_font() {
+        let mut world = World::new();
+        world.insert_resource(fonts("Inter"));
+        let mut project = renzora_project_api::CurrentProject {
+            path: std::path::PathBuf::from("/proj"),
+            config: Default::default(),
+        };
+        project.config.ui_font = Some("Isometra".into());
+        world.insert_resource(project);
+        let mut registry = crate::font::FontRegistry::default();
+        registry.entries.push(crate::font::FontEntry {
+            name: "Isometra".into(),
+            source: bevy::text::FontSource::Family("Isometra".into()),
+            origin: crate::font::FontOrigin::Project,
+            path: Some("fonts/isometra/Isometra-Regular.ttf".into()),
+        });
+        world.insert_resource(registry);
+
+        let canvas = world.spawn(crate::game_ui::UiCanvas::default()).id();
+        let hud = world
+            .spawn((Text::new("score"), TextFont::default(), MarkupText, ChildOf(canvas)))
+            .id();
+        let panel = world.spawn((Text::new("Inspector"), TextFont::default(), MarkupText)).id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(apply_ui_font_to_markup_text);
+        schedule.run(&mut world);
+        assert_eq!(
+            world.get::<TextFont>(hud).unwrap().font,
+            bevy::text::FontSource::Family("Isometra".into())
+        );
+        assert_eq!(world.get::<TextFont>(panel).unwrap().font, fonts("Inter").ui);
+    }
+
+    #[test]
+    fn text_align_values() {
+        use bevy::text::Justify;
+        assert_eq!(parse_text_align("center"), Some(Justify::Center));
+        assert_eq!(parse_text_align(" Right "), Some(Justify::Right));
+        assert_eq!(parse_text_align("middleish"), None);
+    }
+}
+
+/// Parse a `text_align="..."` value.
+fn parse_text_align(v: &str) -> Option<bevy::text::Justify> {
+    use bevy::text::Justify;
+    match v.trim().to_ascii_lowercase().as_str() {
+        "left" | "start" => Some(Justify::Left),
+        "center" | "centre" | "middle" => Some(Justify::Center),
+        "right" | "end" => Some(Justify::Right),
+        "justify" | "justified" => Some(Justify::Justified),
+        _ => None,
     }
 }
 

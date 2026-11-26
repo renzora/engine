@@ -171,6 +171,12 @@ fn build_dropdown(
                 // of the selected label (or squashes) breaks the line-up. The
                 // label clips instead — it already has `no_wrap` + `overflow`.
                 width: compact.map_or(Val::Auto, Val::Px),
+                // Never wider than what holds it. An auto-width box sizes to
+                // the whole selected label, so a long option pushed the box
+                // out past its slot (a game's settings row, a narrow
+                // inspector) and the label's own clipping never came into
+                // play. Capped, the label shrinks and clips inside the box.
+                max_width: Val::Percent(100.0),
                 height: compact.map_or(Val::Auto, |_| Val::Px(COMPACT_HEIGHT)),
                 flex_shrink: compact.map_or(1.0, |_| 0.0),
                 flex_direction: FlexDirection::Row,

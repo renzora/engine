@@ -311,6 +311,9 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora_scene_api::MeshLod>()
             .register_type::<renzora_scene_api::StandardGeometry>()
             .register_type::<SceneCamera>()
+            // The editor seeds it onto every scene camera, so a game reads it
+            // back from every scene; unregistered, each load warned.
+            .register_type::<renzora_scene_api::CameraEffectsSeeded>()
             .register_type::<renzora_scene_api::SceneInstance>()
             .register_type::<renzora_scene_api::WorldPartition>()
             .register_type::<renzora_scene_api::PartitionCell>()
