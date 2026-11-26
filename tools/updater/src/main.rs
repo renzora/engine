@@ -70,6 +70,14 @@ struct Args {
 }
 
 fn main() {
+    // Leave the install folder before doing anything else. A process's working
+    // directory is an open handle on that directory, and Windows refuses to
+    // rename a directory while one is held inside it. This process inherits the
+    // editor's working directory, and an editor started by double-clicking it in
+    // Explorer has its own install folder as that directory, so without this the
+    // updater blocks its own "move aside" and fails with os error 32 every time.
+    let _ = std::env::set_current_dir(std::env::temp_dir());
+
     let args = match parse_args() {
         Ok(a) => a,
         Err(e) => {
@@ -457,7 +465,7 @@ fn rename_with_retry(from: &Path, to: &Path) -> Result<(), String> {
         }
     }
     Err(format!(
-        "could not move {} aside after {}s ({last}) — something still has it open",
+        "could not move {} aside after {}s ({last}); something still has it open",
         from.display(),
         RENAME_RETRIES * RENAME_RETRY_DELAY.as_millis() as u32 / 1000
     ))

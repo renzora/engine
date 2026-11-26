@@ -675,7 +675,12 @@ pub fn launch_sidecar(staged_source: &Path, layout: &InstallLayout) -> Result<()
         .unwrap_or_else(|| std::env::temp_dir().join("renzora-last-update.log"));
 
     let mut cmd = std::process::Command::new(&sidecar);
-    cmd.arg("--staged")
+    // Not the editor's working directory: when the editor was started from
+    // Explorer that is the install folder, and a working directory inside it is
+    // a handle that stops Windows renaming it. The sidecar also moves itself out
+    // on startup; this covers the moment between spawn and that call.
+    cmd.current_dir(std::env::temp_dir())
+        .arg("--staged")
         .arg(staged_source)
         .arg("--target")
         .arg(&layout.target)

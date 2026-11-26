@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 21:24
+- fix(update): updating no longer fails with "could not move ... aside" when the editor was started by double-clicking it
+
 ## 2026-11-25 16:56
 - fix(plugins): a release's prebuilt plugin binaries hold the code of the version they are labelled with, not unreleased changes
 
