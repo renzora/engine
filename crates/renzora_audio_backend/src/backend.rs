@@ -50,6 +50,17 @@ pub struct RenzoraAudio {
     /// it anywhere but first, puts every meter on the wrong strip. Tracking what
     /// was actually sent is the only thing that stays true.
     device_buses: Vec<String>,
+    /// The output device asked for by name, `None` for the system default.
+    /// Kept across a reopen, so a device lost and found again (a headset
+    /// unplugged and plugged back in) comes back on the device the player
+    /// chose rather than the default.
+    output_device: Option<String>,
+    /// The last whole board the host sent, levels included.
+    ///
+    /// Switching output device opens a fresh mixer, and the host only sends a
+    /// board when its own copy changes, so without this every bus would come up
+    /// at unity on the new device and stay there until somebody moved a fader.
+    board: Vec<BusState>,
 }
 
 /// The mixer's emitter for a boundary one. Anything this build does not
@@ -106,56 +117,53 @@ fn alloc_master() -> Vec<String> {
     alloc::vec![String::from("Master")]
 }
 
+/// The system default output's name, for the log and a settings menu.
+fn default_name() -> String {
+    capture::default_output_device().unwrap_or_else(|| String::from("default"))
+}
+
+/// What `init` and a device switch report. Everything is claimed because this
+/// backend does everything: the capability answer earns its keep on the
+/// *other* backend, where a browser cannot capture through cpal, and claiming
+/// honestly here is what makes claiming honestly there meaningful.
+fn info_for(sample_rate: u32, device: String) -> BackendInfo {
+    BackendInfo {
+        sample_rate,
+        caps: Caps::CAPTURE
+            .union(Caps::SPATIAL)
+            .union(Caps::FEEDS)
+            .union(Caps::DEVICE_LIST),
+        device,
+    }
+}
+
 impl Backend for RenzoraAudio {
     fn name(&self) -> &str {
         "renzora_audio"
     }
 
     fn init(&mut self) -> Result<BackendInfo, String> {
-        let device = AudioDevice::open().map_err(|e| e.0)?;
+        // The chosen device first. One that has gone away (unplugged since it
+        // was picked) falls back to the default rather than leaving the game
+        // silent; the name reported back says which one opened, so the log and
+        // a settings menu show the truth.
+        let (device, name) = match self.output_device.as_deref() {
+            Some(wanted) => match AudioDevice::open(Some(wanted)) {
+                Ok(device) => (device, wanted.to_string()),
+                Err(_) => (AudioDevice::open(None).map_err(|e| e.0)?, default_name()),
+            },
+            None => (AudioDevice::open(None).map_err(|e| e.0)?, default_name()),
+        };
         let sample_rate = device.sample_rate();
         // A fresh mixer starts with Master and nothing else.
         self.device_buses = alloc_master();
-        let name = capture::default_output_device().unwrap_or_else(|| String::from("default"));
         self.device = Some(device);
-        // A board described before the device opened, or carried across a
-        // shutdown/init cycle, has to reach the fresh mixer — the host has no
-        // reason to send it again just because we reopened.
-        if !self.buses.is_empty() {
-            let board: Vec<BusState> = self
-                .buses
-                .iter()
-                .map(|key| BusState {
-                    key: key.clone(),
-                    // Levels are unknown here: only the keys survive, because
-                    // that is all this backend keeps. The host pushes the real
-                    // board on its next `SetBuses`, and unity until then is the
-                    // right guess — silence would be a bug nobody could see.
-                    gain: 1.0,
-                    pan: 0.0,
-                    muted: false,
-                    soloed: false,
-                    output: None,
-                    reverb_send: 0.0,
-                    delay_send: 0.0,
-                })
-                .collect();
-            if let Some(device) = self.device.as_mut() {
-                send_board(device, &board, &mut self.device_buses);
-            }
+        // A board described before the device opened has to reach the fresh
+        // mixer: the host has no reason to send it again just because we opened.
+        if let Some(device) = self.device.as_mut() {
+            send_board(device, &self.board, &mut self.device_buses);
         }
-        // Everything is claimed because this backend does everything — the
-        // capability answer earns its keep on the *other* backend, where a
-        // browser cannot capture through cpal. Claiming honestly here is what
-        // makes claiming honestly there meaningful.
-        Ok(BackendInfo {
-            sample_rate,
-            caps: Caps::CAPTURE
-                .union(Caps::SPATIAL)
-                .union(Caps::FEEDS)
-                .union(Caps::DEVICE_LIST),
-            device: name,
-        })
+        Ok(info_for(sample_rate, name))
     }
 
     fn shutdown(&mut self) {
@@ -167,7 +175,9 @@ impl Backend for RenzoraAudio {
         self.captures.clear();
         self.clips.clear();
         self.buses.clear();
+        self.board.clear();
         self.device_buses.clear();
+        // `output_device` is kept: it is the player's choice, not device state.
     }
 
     fn set_buses(&mut self, buses: &[BusState]) {
@@ -194,6 +204,31 @@ impl Backend for RenzoraAudio {
             send_board(device, buses, &mut self.device_buses);
         }
         self.buses = buses.iter().map(|b| b.key.clone()).collect();
+        self.board = buses.to_vec();
+    }
+
+    fn set_output_device(&mut self, device: Option<&str>) -> Result<BackendInfo, String> {
+        // Not open yet: remembered for `init`, which opens it.
+        if self.device.is_none() {
+            self.output_device = device.map(String::from);
+            return Ok(info_for(0, device.map(String::from).unwrap_or_else(default_name)));
+        }
+        // Opened before anything is torn down, so a name that does not exist
+        // leaves the current device playing.
+        let fresh = AudioDevice::open(device).map_err(|e| e.0)?;
+        let sample_rate = fresh.sample_rate();
+        self.output_device = device.map(String::from);
+        // The old device goes first, stopping its stream and every voice on it.
+        // Clips stay: they are decoded buffers, not tied to a device.
+        self.device = Some(fresh);
+        self.device_buses = alloc_master();
+        if let Some(fresh) = self.device.as_mut() {
+            send_board(fresh, &self.board, &mut self.device_buses);
+        }
+        Ok(info_for(
+            sample_rate,
+            device.map(String::from).unwrap_or_else(default_name),
+        ))
     }
 
     fn load_clip(&mut self, clip: u64, extension: &str, bytes: &[u8]) -> Result<ClipInfo, String> {

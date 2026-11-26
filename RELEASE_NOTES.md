@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-25 22:24
+- feat(audio): a game can play through an output device other than the system default
+- fix(audio): audio devices are listed by their full names, so two devices called "Speakers" can be told apart
+
 ## 2026-11-25 21:33
 - fix(plugins): Windows builds get prebuilt marketplace plugins again
 

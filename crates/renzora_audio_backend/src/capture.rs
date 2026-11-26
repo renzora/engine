@@ -37,8 +37,23 @@ const CAPTURE_CAPACITY: usize = 48_000;
 /// mixer's device menu — and deliberately *not* the id, because a project must
 /// not persist a machine-specific device handle (see the engine's `AudioConfig`,
 /// which stores no devices at all for the same reason).
-fn readable_name(device: &cpal::Device) -> Option<String> {
-    device.description().ok().map(|d| d.name().into())
+///
+/// The *full* name, not `DeviceDescription::name` alone. On Windows that is the
+/// endpoint's bare description, "Speakers" or "Headphones", which every audio
+/// interface on the machine shares: one machine listed "Speakers" three times
+/// and never named the RØDECaster it was plugged into, so nobody could tell
+/// which to pick, and choosing by name opened whichever came first. WASAPI puts
+/// the full Windows name, "Speakers (RØDECaster Pro II Main)", in the first
+/// extended line when it differs; other hosts name the interface in `driver`.
+pub(crate) fn readable_name(device: &cpal::Device) -> Option<String> {
+    let d = device.description().ok()?;
+    if let Some(full) = d.extended().first().filter(|f| !f.trim().is_empty()) {
+        return Some(full.clone());
+    }
+    Some(match d.driver().filter(|drv| !drv.is_empty() && *drv != d.name()) {
+        Some(driver) => format!("{} ({driver})", d.name()),
+        None => d.name().to_string(),
+    })
 }
 
 /// A live input stream, and the samples it has produced.

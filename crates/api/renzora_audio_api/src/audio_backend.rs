@@ -278,6 +278,20 @@ pub trait Backend: Send + 'static {
     fn list_devices(&mut self) -> DeviceList {
         DeviceList::default()
     }
+
+    /// Play through the output device named `device` (one of
+    /// [`DeviceList::outputs`]), or the system default for `None`, and keep to
+    /// it across a reopen. Answers what [`Self::init`] does, for the device now
+    /// playing: its name, and its sample rate, which need not be the old one's.
+    ///
+    /// Without this a game could only ever reach the system default, which is
+    /// the wrong device for anyone who listens on headphones or an interface the
+    /// operating system does not treat as its default. Only called when
+    /// [`Caps::DEVICE_LIST`] was claimed.
+    fn set_output_device(&mut self, device: Option<&str>) -> Result<BackendInfo, String> {
+        let _ = device;
+        Err("this backend cannot choose an output device".to_string())
+    }
 }
 
 /// The registered mixer, if one has been installed.

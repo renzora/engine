@@ -54,6 +54,11 @@ pub struct AudioLink {
     /// Set once a call panics. Stops the engine calling into a backend that has
     /// already proven it will take the frame down.
     poisoned: bool,
+    /// The output device a caller asked for: `Some(None)` is the system
+    /// default asked for explicitly, `None` is nothing asked. Kept here rather
+    /// than only in the backend so a request made before the device opened is
+    /// not lost, and is applied again to a backend adopted after a device loss.
+    wanted_output: Option<Option<String>>,
 }
 
 /// A handle to a sound the backend has decoded.
@@ -121,6 +126,19 @@ impl AudioLink {
         self.backend = Some(backend);
         self.info = Some(info);
         self.poisoned = false;
+        // A device asked for while this one was opening. The default opened
+        // first because opening is the backend's job and it knows no better;
+        // switching now, on the frame it arrives, is the earliest it can be.
+        // A backend that remembers the choice itself (reopening after a device
+        // loss) has already opened it, and opening it twice drops a frame of
+        // sound for nothing.
+        let wanted = self.wanted_output_device().map(str::to_string);
+        let opened = self.info.as_ref().map(|i| i.device.clone());
+        if wanted.is_some() && wanted != opened {
+            if let Err(e) = self.apply_wanted_output() {
+                warn!("[audio] {e}; playing through the default device");
+            }
+        }
     }
 
     /// Forget the backend.
@@ -334,6 +352,50 @@ impl AudioLink {
         self.with("list_devices", |b| b.list_devices())
             .unwrap_or_default()
     }
+
+    /// Play through the output device named `device` (a name from
+    /// [`Self::list_devices`]'s `outputs`), or the system default for `None`.
+    ///
+    /// Session state, not a project setting: a device name means one machine's
+    /// hardware, so a game that lets the player choose keeps the choice in its own
+    /// save and asks again on start. Asked before the device has opened (a
+    /// script's first frame can come before the background open finishes), it is
+    /// remembered and applied the moment the device opens, so the caller does not
+    /// have to know which came first.
+    ///
+    /// Sounds already playing stop: they were mixing on the old device. Clips stay
+    /// loaded.
+    pub fn set_output_device(&mut self, device: Option<&str>) -> Result<(), String> {
+        self.wanted_output = Some(device.map(str::to_string));
+        if self.info.is_none() {
+            return Ok(());
+        }
+        self.apply_wanted_output()
+    }
+
+    /// The output device asked for with [`Self::set_output_device`], or `None`
+    /// for the system default (and when nothing was asked).
+    pub fn wanted_output_device(&self) -> Option<&str> {
+        self.wanted_output.as_ref().and_then(|d| d.as_deref())
+    }
+
+    /// Hand a pending [`Self::set_output_device`] to the backend.
+    fn apply_wanted_output(&mut self) -> Result<(), String> {
+        let Some(wanted) = self.wanted_output.clone() else {
+            return Ok(());
+        };
+        if !self.supports(Caps::DEVICE_LIST) {
+            return Err("this audio backend cannot choose an output device".to_string());
+        }
+        match self.with("set_output_device", |b| b.set_output_device(wanted.as_deref())) {
+            Some(Ok(info)) => {
+                self.info = Some(info);
+                Ok(())
+            }
+            Some(Err(e)) => Err(e),
+            None => Err("there is no working audio backend".to_string()),
+        }
+    }
 }
 
 fn alloc_pair(voice: VoiceId, paused: bool) -> Vec<(u64, bool)> {
@@ -422,6 +484,80 @@ mod tests {
             listed: Arc::clone(&listed),
         })));
         (link, listed)
+    }
+
+    /// A backend that can switch output device, recording what it was asked.
+    struct Switcher {
+        asked: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    impl Backend for Switcher {
+        fn name(&self) -> &str {
+            "switcher"
+        }
+        fn init(&mut self) -> Result<BackendInfo, String> {
+            Ok(BackendInfo {
+                sample_rate: 48_000,
+                caps: Caps::DEVICE_LIST,
+                device: String::from("Speakers"),
+            })
+        }
+        fn load_clip(&mut self, _clip: u64, _ext: &str, _bytes: &[u8]) -> Result<ClipInfo, String> {
+            Err(String::new())
+        }
+        fn play(&mut self, _request: &PlayRequest) -> Result<(), String> {
+            Ok(())
+        }
+        fn update(&mut self, _request: &UpdateRequest) -> UpdateReply {
+            UpdateReply::default()
+        }
+        fn set_output_device(&mut self, device: Option<&str>) -> Result<BackendInfo, String> {
+            self.asked.lock().unwrap().push(device.map(String::from));
+            match device {
+                Some("Missing") => Err(String::from("no output device called `Missing`")),
+                _ => Ok(BackendInfo {
+                    sample_rate: 44_100,
+                    caps: Caps::DEVICE_LIST,
+                    device: device.unwrap_or("Speakers").to_string(),
+                }),
+            }
+        }
+    }
+
+    /// A game's first frame can ask for its saved device before the background
+    /// open has finished. The request must not be lost: it is applied the
+    /// moment the device opens, and the link then reports the new device.
+    #[test]
+    fn an_output_device_asked_for_before_the_device_opens_is_applied_when_it_does() {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let mut link = AudioLink::default();
+        assert!(link.set_output_device(Some("Headphones")).is_ok());
+        assert!(asked.lock().unwrap().is_empty(), "nothing to ask yet");
+
+        let mut backend = Switcher { asked: Arc::clone(&asked) };
+        let info = backend.init().unwrap();
+        link.adopt_opened(Mutex::new(Box::new(backend)), info);
+
+        assert_eq!(*asked.lock().unwrap(), vec![Some(String::from("Headphones"))]);
+        let info = link.info().unwrap();
+        assert_eq!(info.device, "Headphones");
+        assert_eq!(info.sample_rate, 44_100, "the new device's rate, not the old one's");
+        assert_eq!(link.wanted_output_device(), Some("Headphones"));
+    }
+
+    /// A device that is not there is reported, and the link keeps describing
+    /// the device that is actually still playing.
+    #[test]
+    fn a_missing_output_device_is_an_error_and_the_old_one_keeps_playing() {
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let mut backend = Switcher { asked: Arc::clone(&asked) };
+        let info = backend.init().unwrap();
+        let mut link = AudioLink::default();
+        link.adopt_opened(Mutex::new(Box::new(backend)), info);
+
+        let err = link.set_output_device(Some("Missing")).unwrap_err();
+        assert!(err.contains("Missing"), "{err}");
+        assert_eq!(link.info().unwrap().device, "Speakers");
     }
 
     /// The property that makes the plugin removable: with nothing loaded,

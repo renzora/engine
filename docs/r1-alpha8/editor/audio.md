@@ -130,6 +130,28 @@ fn update(ctx: &mut ScriptCtx) {
 
 In an exported game these changes last until the game quits. They never write `project.toml`. To remember a player's volume between runs, store it in your own save data and set it again on start.
 
+## Choosing the output device
+
+A game plays through the system's default output device unless it asks for another. A player who listens on headphones or an audio interface that is not the system default hears nothing until it does, so a settings menu with a device list is worth having.
+
+In a Rust script, list the devices and pick one through the `AudioLink` resource:
+
+```rust
+use renzora::audio::AudioLink;
+
+let mut link = ctx.world().resource_mut::<AudioLink>();
+let outputs = link.list_devices().outputs;      // names, for a dropdown
+if let Err(e) = link.set_output_device(Some(&outputs[0])) {
+    warn!("could not switch: {e}");
+}
+link.set_output_device(None).ok();               // back to the system default
+```
+
+- The choice is not saved with the project, because a device name means hardware on one machine. Keep the player's pick in your own [save data](../scripting/saving.md) and set it again when the game starts.
+- Asking before the device has opened is fine. A game's first frame can come before the sound device is ready, so the choice is kept and applied the moment it opens.
+- Switching stops the sounds playing at that moment. Loaded clips stay loaded, and bus volumes carry over.
+- A name that is not there is an error, and the current device keeps playing. If the chosen device is unplugged and the game is restarted, it opens on the default instead, and `link.info()` says which device is playing.
+
 ## The mixer
 
 Every sound flows through a bus, a channel you can adjust on its own, so you can turn music down without touching sound effects.
@@ -195,7 +217,7 @@ Right-click any strip. A strip is under a hundred pixels wide, so everything tha
 | Rename | The same inline edit as double-clicking the name |
 | Colour | A swatch grid. The current colour is ringed in white. |
 | Input device | Capture a live microphone into this bus |
-| Output device | Which device the bus plays out of |
+| Output device | Not used yet: every bus plays out of the game's one output device (see [Choosing the output device](#choosing-the-output-device)) |
 | Delete bus | Removes a custom bus |
 
 Devices are listed fresh each time you open the menu, so a microphone plugged in after starting the editor shows up straight away.

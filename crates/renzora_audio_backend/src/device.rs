@@ -178,12 +178,24 @@ pub struct AudioDevice {
 }
 
 impl AudioDevice {
-    /// Open the default output device and start mixing.
-    pub fn open() -> Result<Self, DeviceError> {
+    /// Open an output device and start mixing: the one named `name` (as
+    /// [`crate::output_devices`] lists it), or the system default for `None`.
+    ///
+    /// A named device that is not there is an error, not a quiet fall back to
+    /// the default: the caller decides whether playing somewhere else is right,
+    /// and says so, rather than the sound turning up on speakers nobody asked for.
+    pub fn open(name: Option<&str>) -> Result<Self, DeviceError> {
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
-            .ok_or_else(|| DeviceError(String::from("no default output device")))?;
+        let device = match name {
+            None => host
+                .default_output_device()
+                .ok_or_else(|| DeviceError(String::from("no default output device")))?,
+            Some(wanted) => host
+                .output_devices()
+                .map_err(|e| DeviceError(format!("could not list output devices: {e}")))?
+                .find(|d| crate::capture::readable_name(d).as_deref() == Some(wanted))
+                .ok_or_else(|| DeviceError(format!("no output device called `{wanted}`")))?,
+        };
         let supported = device
             .default_output_config()
             .map_err(|e| DeviceError(format!("no usable output config: {e}")))?;

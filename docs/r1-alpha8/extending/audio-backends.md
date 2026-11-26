@@ -114,6 +114,14 @@ Five required methods. Capture, feeds, device enumeration, bus updates and clip
 unloading all have defaults, so a backend that only plays clips implements the
 above and reports the capabilities it actually has.
 
+A backend that claims `DEVICE_LIST` should also implement `set_output_device`,
+which a game calls to play through a device the player picked. It returns the
+same `BackendInfo` as `init`, for the device now playing, since a different
+device can run at a different sample rate. Keep the choice across a later
+`init`, so a device that drops out and comes back reopens on the one chosen,
+and leave the current device playing when the name is not found. The default
+answers that the backend cannot choose.
+
 `Backend` is `Send` but not `Sync`: a mixer usually holds a lock-free producer
 that is not shareable across threads, and nothing needs it to be. The engine
 reaches it through `&mut`, so there is no lock on the path.
