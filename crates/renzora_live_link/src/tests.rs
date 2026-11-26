@@ -154,6 +154,34 @@ fn ui_is_never_sent() {
     assert_eq!(spawned, ["bullet"], "sent: {sent:?}");
 }
 
+/// A world partition cell streaming in on one side is not sent to the other:
+/// each side streams around its own camera.
+#[test]
+fn partition_cells_are_never_sent() {
+    let (mut game, _) = scene();
+    let mut tracker = Tracker::baseline(&mut game);
+
+    let cell = game
+        .spawn((Name::new("cell_0_0"), Transform::default(), renzora_scene_api::PartitionCell::default()))
+        .id();
+    game.spawn((Name::new("bld_1"), Transform::default(), ChildOf(cell)));
+    game.spawn((Name::new("bullet"), Transform::default()));
+
+    let mut sent = Vec::new();
+    for _ in 0..12 {
+        next_frame(&mut game);
+        sent.extend(tracker.scan(&mut game));
+    }
+    let spawned: Vec<&str> = sent
+        .iter()
+        .filter_map(|m| match m {
+            LinkMessage::Spawn { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(spawned, ["bullet"], "sent: {sent:?}");
+}
+
 #[test]
 fn a_global_scene_entity_is_not_sent() {
     let (mut game, _) = scene();

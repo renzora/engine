@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 01:26
+- fix(play): the editor follows a running game only while both are on the same scene, so Play with another tab open no longer replaces the game's scene
+
 ## 2026-11-26 00:04
 - fix(ui): translucent colours in a theme file draw as the faint tint they are, not as solid colour
 

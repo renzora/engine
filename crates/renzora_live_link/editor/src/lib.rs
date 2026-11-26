@@ -134,6 +134,32 @@ struct Client {
     since_scan: f32,
     /// Releases to send later, for inputs given a hold time.
     releases: Vec<(f32, GameInput)>,
+    /// The scene the game says it has loaded ([`LinkMessage::Scene`]).
+    game_scene: Option<String>,
+    /// Whether entities are mirrored: only while the game's scene is the tab
+    /// open here. See [`LinkMessage::Mirror`].
+    mirror: bool,
+}
+
+/// A scene path as the Console names it: the file name, `main.bsn`.
+#[cfg(not(target_arch = "wasm32"))]
+fn scene_label(path: &str) -> String {
+    path.rsplit(['/', '\\']).next().unwrap_or(path).to_string()
+}
+
+/// Whether the game's scene is the one the editor has open. With no project
+/// (a bare world, as in the tests) there is nothing to compare, and the two
+/// are taken to match, as they always were before scenes were compared.
+#[cfg(not(target_arch = "wasm32"))]
+fn scene_matches(world: &World, game_scene: Option<&str>) -> bool {
+    let Some(project) = world.get_resource::<renzora_project_api::CurrentProject>() else {
+        return true;
+    };
+    let Some(open) = project.config.editor_last_scene.as_deref().filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    let open = project.path.join(open).to_string_lossy().into_owned();
+    game_scene.is_some_and(|game| renzora_live_link::same_scene(game, &open))
 }
 
 /// What it takes to put the scene back when the game stops. See the module
@@ -340,11 +366,48 @@ fn receive(world: &mut World) {
         .unwrap_or_default();
     let mut closed = false;
     let mut messages = Vec::new();
+    let mut scene_reported = false;
     for item in incoming {
         match item {
+            Incoming::Message(LinkMessage::Scene { path }) => {
+                client.game_scene = Some(path);
+                scene_reported = true;
+            }
             Incoming::Message(m) => messages.push(m),
             Incoming::Closed => closed = true,
         }
+    }
+
+    // Mirror only while the game shows the scene open here: the game boots
+    // its own boot scene and loads others as it plays, and the editor's tab
+    // can be anything. Switched on, each end starts again from its own world.
+    let want = scene_matches(world, client.game_scene.as_deref());
+    let changed = want != client.mirror;
+    if changed {
+        client.mirror = want;
+        if want {
+            client.tracker = Tracker::baseline(world);
+        }
+        if !write_all(&mut client.writer, &[LinkMessage::Mirror { on: want }]) {
+            closed = true;
+        }
+    }
+    // Said on a switch, and also when the game reports a scene that does not
+    // match: mirroring starts off, so a game that boots on another scene never
+    // switches anything, and without this the editor said nothing at all.
+    if changed || (scene_reported && !want) {
+        let scene = client.game_scene.as_deref().map(scene_label).unwrap_or_default();
+        console_info(
+            "LiveLink",
+            if want {
+                format!("The game is on {scene}, the scene open here: edits reach it, and it shows here")
+            } else {
+                format!("The game is on {scene}, not the scene open here: edits wait until you open it or the game returns")
+            },
+        );
+    }
+    if !client.mirror {
+        messages.retain(|m| !m.is_entity_edit());
     }
 
     // The user's edits go first. An edit made since the last scan has not been
@@ -354,7 +417,7 @@ fn receive(world: &mut World) {
     // edit to something the game keeps moving, which is the player, which is
     // the first thing anyone edits. So: gather and send the user's edits now,
     // and drop the game's reports about exactly those components.
-    if !messages.is_empty() {
+    if !messages.is_empty() && client.mirror {
         let edits = client.tracker.scan(world);
         if !edits.is_empty() {
             let mut edited: HashSet<(u64, Option<String>)> = HashSet::new();
@@ -444,7 +507,10 @@ fn send(world: &mut World) {
     });
 
     client.since_scan += dt;
-    if client.since_scan >= SCAN_INTERVAL {
+    // Checked again here, not left to `receive`: a tab switched this frame has
+    // already despawned the old scene, and scanned now it would go to the game
+    // as despawns before `receive` turned mirroring off next frame.
+    if client.since_scan >= SCAN_INTERVAL && client.mirror && scene_matches(world, client.game_scene.as_deref()) {
         client.since_scan = 0.0;
         for edit in client.tracker.scan(world) {
             record_user_edit(&mut client.session, &edit);
@@ -515,12 +581,16 @@ fn start_session(world: &mut World, stream: TcpStream) {
         unknown: HashSet::new(),
         since_scan: 0.0,
         releases: Vec::new(),
+        game_scene: None,
+        // Matched already with no project to compare (tests); otherwise not
+        // until the game says which scene it is on.
+        mirror: world.get_resource::<renzora_project_api::CurrentProject>().is_none(),
     });
     world.insert_resource(LivePlaySession::default());
     world.resource_mut::<GameLink>().connected = true;
     console_info(
         "LiveLink",
-        "Game connected: edits here reach the game, and the game shows here while it runs",
+        "Game connected",
     );
 }
 
@@ -716,6 +786,50 @@ mod tests {
     fn value_of<T: Reflect + bevy::reflect::TypePath>(v: &T, world: &World) -> String {
         let registry = world.resource::<AppTypeRegistry>().read();
         ron::ser::to_string(&bevy::reflect::serde::TypedReflectSerializer::new(v, &registry)).unwrap()
+    }
+
+    /// A game on another scene than the open tab is not mirrored: its entity
+    /// edits are dropped, and mirroring starts once it reports the open one.
+    /// Play boots the game's boot scene whatever tab is open, and mirroring
+    /// the two anyway replaced a game's menu with the editor's city.
+    #[test]
+    fn a_game_on_another_scene_is_not_mirrored_until_it_matches() {
+        let (mut world, _, mut game) = editor_with_game();
+        let mut project = renzora_project_api::CurrentProject {
+            path: std::path::PathBuf::from("/proj"),
+            config: Default::default(),
+        };
+        project.config.editor_last_scene = Some("scenes/city.bsn".into());
+        world.insert_resource(project);
+        world.resource_mut::<LinkServer>().client.as_mut().unwrap().mirror = false;
+
+        game_sends(
+            &mut game,
+            &[
+                LinkMessage::Scene { path: "C:\\proj\\scenes/main.bsn".into() },
+                LinkMessage::Spawn { id: 50, parent: None, name: "menu".into() },
+            ],
+        );
+        frames_until(&mut world, |w| {
+            w.resource::<LinkServer>().client.as_ref().is_some_and(|c| c.game_scene.is_some())
+        });
+        assert!(named(&mut world, "menu").is_none(), "a scene that is not open here was mirrored");
+
+        game_sends(
+            &mut game,
+            &[
+                LinkMessage::Scene { path: "/proj/scenes/city.bsn".into() },
+                LinkMessage::Spawn { id: 51, parent: None, name: "street".into() },
+            ],
+        );
+        frames_until(&mut world, |w| named(w, "street").is_some());
+        assert!(world.resource::<LinkServer>().client.as_ref().unwrap().mirror);
+    }
+
+    #[test]
+    fn same_scene_ignores_separators_and_case() {
+        assert!(renzora_live_link::same_scene("C:\\Proj\\scenes/main.bsn", "c:/proj/scenes/main.bsn"));
+        assert!(!renzora_live_link::same_scene("/proj/scenes/main.bsn", "/proj/scenes/city.bsn"));
     }
 
     /// What the game spawns at the top level is shown under one group, and the

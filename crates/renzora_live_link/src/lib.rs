@@ -74,6 +74,34 @@ pub enum LinkMessage {
     ScreenshotRequest { req: u64 },
     /// Game to editor: the capture, as base64 PNG, or why there is none.
     Screenshot { req: u64, png: Result<String, String> },
+    /// Game to editor: the scene the game has loaded, as a file path. Sent
+    /// first thing and again whenever the game loads another.
+    Scene { path: String },
+    /// Editor to game: whether the two mirror each other's entities. On only
+    /// while the game's scene is the one open in the editor. Play boots the
+    /// game's own boot scene and the game loads others as it runs, while the
+    /// editor shows whatever tab is open; mirroring two different scenes sent
+    /// one's entities into the other, and a game booted on its menu with the
+    /// city open in the editor had its menu replaced by the city. Turning it
+    /// on re-baselines both ends, each taking its own world as what the other
+    /// has.
+    Mirror { on: bool },
+}
+
+impl LinkMessage {
+    /// A change to an entity: what mirroring carries, and what is dropped
+    /// while it is off.
+    pub fn is_entity_edit(&self) -> bool {
+        matches!(self, Self::Spawn { .. } | Self::Despawn { .. } | Self::Set { .. } | Self::Remove { .. })
+    }
+}
+
+/// Whether two scene file paths name the same file: separators and case
+/// aside, which differ between how the editor and a game write them.
+pub fn same_scene(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_ascii_lowercase();
+    let (a, b) = (norm(a), norm(b));
+    !a.is_empty() && (a == b || a.ends_with(&format!("/{b}")) || b.ends_with(&format!("/{a}")))
 }
 
 #[derive(Default)]

@@ -22,7 +22,7 @@ use bevy::ecs::change_detection::Tick;
 use bevy::prelude::*;
 use bevy::reflect::serde::TypedReflectSerializer;
 use bevy::reflect::{PartialReflect, ReflectRef};
-use renzora_scene_api::{Persistent, SceneEntityId};
+use renzora_scene_api::{PartitionCell, Persistent, SceneEntityId};
 use renzora_engine::scene_io::{assign_scene_entity_ids, extract_authored, saveable_entities};
 
 use crate::LinkMessage;
@@ -102,7 +102,7 @@ impl Tracker {
             let fresh: Vec<Entity> = saveable_entities(world)
                 .into_iter()
                 .filter(|&e| world.get::<SceneEntityId>(e).is_none_or(|id| id.0 == 0))
-                .filter(|&e| !in_ui_tree(world, e))
+                .filter(|&e| !untracked(world, e))
                 .collect();
             if !fresh.is_empty() {
                 assign_scene_entity_ids(world, &fresh);
@@ -190,7 +190,7 @@ impl Tracker {
 /// game as a despawn. That took a loading screen out within the first frames
 /// of every Play, before its script had run once.
 ///
-/// And nothing in a UI tree; see [`in_ui_tree`].
+/// And nothing in a UI tree or a world partition cell; see [`untracked`].
 fn ids(world: &mut World) -> Vec<(Entity, u64)> {
     let mut q = world.query_filtered::<(Entity, &SceneEntityId), Without<Persistent>>();
     let found: Vec<(Entity, u64)> = q
@@ -198,22 +198,30 @@ fn ids(world: &mut World) -> Vec<(Entity, u64)> {
         .filter(|(_, id)| id.0 != 0)
         .map(|(e, id)| (e, id.0))
         .collect();
-    found.into_iter().filter(|&(e, _)| !in_ui_tree(world, e)).collect()
+    found.into_iter().filter(|&(e, _)| !untracked(world, e)).collect()
 }
 
-/// Whether `entity` is a UI node or anywhere inside one (text spans carry no
-/// `Node` of their own).
+/// Whether `entity` is left out of the link: anything in a UI tree, and
+/// anything in a world partition cell, the cell itself included.
 ///
-/// The link leaves UI alone in both directions: the game owns its UI. Mirrored
-/// into the editor, the game's widgets landed in the world the editor's own UI
-/// runs in, which laid them out, restyled them and resolved their fonts its own
-/// way, and every difference went back to the game as an edit: its widgets
-/// flickered between two layouts and its icons lost their font. Nothing about
-/// a running game's UI is worth steering from the Inspector; it is edited in
-/// its template or script.
-fn in_ui_tree(world: &World, mut entity: Entity) -> bool {
+/// UI, because the game owns its UI: a UI node or anything inside one (text
+/// spans carry no `Node` of their own). Mirrored into the editor, the game's
+/// widgets landed in the world the editor's own UI runs in, which laid them
+/// out, restyled them and resolved their fonts its own way, and every
+/// difference went back to the game as an edit: its widgets flickered between
+/// two layouts and its icons lost their font. Nothing about a running game's
+/// UI is worth steering from the Inspector; it is edited in its template or
+/// script.
+///
+/// Cells stream in and out around a camera, and the editor's viewport and the
+/// game's player are rarely in the same place, so each side holds a different
+/// set of cells at any moment. Tracked, every cell one side streamed in would
+/// go to the other as a spawn, and every cell it streamed out as a despawn,
+/// with a city's worth of buildings behind each. What a cell holds is its
+/// file, edited with the cell loaded in the editor, not through the link.
+fn untracked(world: &World, mut entity: Entity) -> bool {
     loop {
-        if world.get::<Node>(entity).is_some() {
+        if world.get::<Node>(entity).is_some() || world.get::<PartitionCell>(entity).is_some() {
             return true;
         }
         match world.get::<ChildOf>(entity) {

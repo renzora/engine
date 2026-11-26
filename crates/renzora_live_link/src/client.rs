@@ -50,6 +50,11 @@ struct Link {
     /// observer, frames later), waiting to be written.
     outbox: Arc<Mutex<Vec<LinkMessage>>>,
     pad: VirtualPad,
+    /// Whether entities are mirrored with the editor: off until the editor
+    /// says the game's scene is the one it has open ([`LinkMessage::Mirror`]).
+    mirror: bool,
+    /// The scene last reported to the editor ([`LinkMessage::Scene`]).
+    reported_scene: Option<String>,
 }
 
 /// A gamepad the editor plays through, for input sent over the link. It is a
@@ -119,6 +124,8 @@ pub(crate) fn install(app: &mut App) {
         since_scan: 0.0,
         outbox: Arc::new(Mutex::new(Vec::new())),
         pad: VirtualPad::default(),
+        mirror: false,
+        reported_scene: None,
     })
     // After input processing, so an injected key press survives to `Update`
     // rather than being cleared as last frame's.
@@ -155,6 +162,8 @@ fn receive(world: &mut World) {
                 let mut link = world.resource_mut::<Link>();
                 link.writer = Some(writer);
                 link.tracker = Some(tracker);
+                link.mirror = false;
+                link.reported_scene = None;
                 info!("[live-link] connected to the editor; the two stay in step while the game runs");
             }
             Incoming::Message(message) => messages.push(message),
@@ -165,6 +174,24 @@ fn receive(world: &mut World) {
                 info!("[live-link] the editor closed the link");
             }
         }
+    }
+
+    // Mirroring switched by the editor. On: start again from this world,
+    // taken as what the editor has. Off: the entity edits that came with it
+    // are for a scene this game is not showing.
+    let mut mirror = world.resource::<Link>().mirror;
+    for message in &messages {
+        if let LinkMessage::Mirror { on } = message {
+            if *on && !mirror {
+                let tracker = Tracker::baseline(world);
+                world.resource_mut::<Link>().tracker = Some(tracker);
+            }
+            mirror = *on;
+        }
+    }
+    world.resource_mut::<Link>().mirror = mirror;
+    if !mirror {
+        messages.retain(|m| !m.is_entity_edit());
     }
 
     let (mut tracker, mut unknown) = {
@@ -204,10 +231,24 @@ fn report(world: &mut World) {
         }
         (link.tracker.take(), due)
     };
-    let mut messages = match (&mut tracker, due) {
+    // The scene, whenever it is a different one: the editor mirrors only
+    // while it matches the tab it has open.
+    let scene = world
+        .get_resource::<renzora_engine::scene_io::SceneLoadState>()
+        .and_then(|s| s.current_path.clone());
+    let mut messages = Vec::new();
+    {
+        let mut link = world.resource_mut::<Link>();
+        if scene.is_some() && scene != link.reported_scene {
+            link.reported_scene = scene.clone();
+            messages.push(LinkMessage::Scene { path: scene.unwrap_or_default() });
+        }
+    }
+    let mirror = world.resource::<Link>().mirror;
+    messages.extend(match (&mut tracker, due && mirror) {
         (Some(t), true) => t.scan(world),
         _ => Vec::new(),
-    };
+    });
     let mut link = world.resource_mut::<Link>();
     link.tracker = tracker;
     if let Ok(mut outbox) = link.outbox.lock() {
