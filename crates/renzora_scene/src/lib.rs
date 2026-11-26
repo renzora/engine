@@ -33,6 +33,7 @@ mod conflict_prompt;
 mod hot_reload;
 mod missing_assets;
 mod world_partition;
+mod mesh_source;
 use diagnostics::SceneDiagnostics;
 
 // Runtime warning capture now lives in the shared `renzora` dylib so the
@@ -2602,6 +2603,7 @@ impl Plugin for ScenePlugin {
         });
         app.register_inspector(scene_instance_entry());
         world_partition::register(app);
+        mesh_source::register(app);
         let pending_pipelines = PendingPipelines::default();
         if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
             render_app

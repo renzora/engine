@@ -28,6 +28,8 @@ renzora_splash = { path = "../renzora_splash" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_viewport = { path = "../renzora_viewport" }
 renzora_shader = { path = "../renzora_shader" }
+# The Mesh section's Model slot (`asset_drop_field`).
+renzora_inspector = { path = "../renzora_inspector" }
 # Downscale + PNG encode for the save-time viewport thumbnail. PNG only —
 # nothing here ever reads an image, it only writes one.
 image = { version = "0.25", default-features = false, features = ["png"] }

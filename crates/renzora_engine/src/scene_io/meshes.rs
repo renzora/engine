@@ -37,8 +37,9 @@ pub fn rehydrate_meshes(
     >,
     registry: Res<ShapeRegistry>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
-    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
+    materials: Option<ResMut<Assets<StandardMaterial>>>,
     grid: Option<Res<renzora_render_api::GridTexture>>,
+    mut shared: ResMut<crate::blockout::BlockoutMaterials>,
 ) {
     let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
         return;
@@ -52,7 +53,18 @@ pub fn rehydrate_meshes(
         if material_ref.is_some() {
             // Resolver will own the material. Inserting one here would race
             // against `resolve_material_refs` and clobber its result.
-            commands.entity(entity).try_insert(Mesh3d(mesh));
+            //
+            // But the resolver is asked again: `MaterialResolved` comes off.
+            // A mesh rebuilt here on an entity that already had its material
+            // (its shape changed, or its mesh was removed) drew nothing at
+            // all, because the renderer had dropped the entity's material
+            // with the old mesh and nothing sent the unchanged material again.
+            // Re-resolving hits the cache and re-inserts the same material,
+            // which the renderer then picks up.
+            commands
+                .entity(entity)
+                .try_insert(Mesh3d(mesh))
+                .remove::<renzora_material_api::MaterialResolved>();
             continue;
         }
 
@@ -62,15 +74,147 @@ pub fn rehydrate_meshes(
         // `MeshColor` is serialized, so this system *is* the material after a
         // reload: anything it gets wrong shows up as shapes changing appearance
         // when you save and open the scene again.
-        let material = materials.add(crate::blockout::blockout_material(
-            base_color,
-            grid.as_deref(),
-        ));
+        // Shared with every primitive of this colour, so they batch.
+        let material = shared.get(base_color, &mut materials, grid.as_deref());
 
         commands
             .entity(entity)
             .try_insert((Mesh3d(mesh), MeshMaterial3d(material)));
     }
+}
+
+/// Rebuild a shape whose [`MeshPrimitive`] was changed after it was built: a
+/// cylinder set to `torus` in the Inspector, or by a tool or script.
+///
+/// The mesh is built once, from the id, when the entity has none, so changing
+/// the id alone did nothing until the scene was reloaded. Dropping the mesh
+/// hands it back to [`rehydrate_meshes`], which builds the new shape next
+/// frame exactly as a load would. A newly added id is left alone: that is the
+/// ordinary build, not a change.
+#[cfg(feature = "render_3d")]
+pub fn rebuild_changed_primitives(
+    mut commands: Commands,
+    changed: Query<(Entity, Ref<MeshPrimitive>), (Changed<MeshPrimitive>, With<Mesh3d>)>,
+) {
+    for (entity, primitive) in &changed {
+        if primitive.is_added() {
+            continue;
+        }
+        commands.entity(entity).remove::<Mesh3d>();
+    }
+}
+
+/// What an entity's mesh comes from: a library shape, or an imported model.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MeshSource {
+    /// A [`MeshPrimitive`] id from the shape registry, such as `torus`.
+    Shape(String),
+    /// A project-relative model file: `.glb`, `.gltf` or `.rvg`.
+    Model(String),
+}
+
+/// What `entity`'s mesh comes from now, if it has one of either kind.
+#[cfg(all(feature = "render_3d", feature = "gltf"))]
+pub fn mesh_source(world: &World, entity: Entity) -> Option<MeshSource> {
+    if let Some(p) = world.get::<MeshPrimitive>(entity) {
+        return Some(MeshSource::Shape(p.0.clone()));
+    }
+    world
+        .get::<MeshInstanceData>(entity)
+        .and_then(|m| m.model_path.clone())
+        .map(MeshSource::Model)
+}
+
+/// Give `entity` a different mesh, a shape or a model, keeping everything
+/// else about it: name, transform, scripts, physics, its place in the
+/// hierarchy.
+///
+/// Built the way a loaded scene is: the old source's pieces come off, the new
+/// one's description goes on, and the ordinary rehydration builds it (a
+/// shape's mesh next frame, a model once its file has loaded). So what a swap
+/// produces is exactly what reopening the scene produces.
+///
+/// Leaving a model clears everything under the entity. That is all the
+/// model's own content: a save leaves out every descendant of a model, so
+/// nothing of the user's can live there across a save. Becoming a model is
+/// refused for an entity with children of its own, for the same reason in
+/// reverse: they would be dropped from the scene at the next save, silently.
+#[cfg(all(feature = "render_3d", feature = "gltf"))]
+pub fn set_mesh_source(world: &mut World, entity: Entity, source: MeshSource) -> Result<(), String> {
+    if world.get_entity(entity).is_err() {
+        return Err("that entity no longer exists".into());
+    }
+    if mesh_source(world, entity).as_ref() == Some(&source) {
+        return Ok(());
+    }
+    let was_model = world.get::<MeshInstanceData>(entity).is_some();
+    let has_children = world.get::<Children>(entity).is_some_and(|c| !c.is_empty());
+    if matches!(source, MeshSource::Model(_)) && !was_model && has_children {
+        return Err(
+            "it has children of its own, and a model's children are not saved with the scene; \
+             move them out first"
+                .into(),
+        );
+    }
+
+    // The old model's content, all of it (see above).
+    if was_model {
+        let kids: Vec<Entity> = world.get::<Children>(entity).map(|c| c.to_vec()).unwrap_or_default();
+        for kid in kids {
+            if let Ok(e) = world.get_entity_mut(kid) {
+                e.despawn();
+            }
+        }
+    }
+
+    match source {
+        MeshSource::Shape(id) => {
+            let mut e = world.entity_mut(entity);
+            e.remove::<(
+                MeshInstanceData,
+                PendingMeshInstanceRehydrate,
+                MeshInstanceLoadFailed,
+                crate::material_binding::ImportedRoot,
+            )>();
+            // A shape that had a colour keeps it; one coming from a model
+            // starts white, as a new shape does.
+            if e.get::<MeshColor>().is_none() {
+                e.insert(MeshColor(Color::WHITE));
+            }
+            match e.get_mut::<MeshPrimitive>() {
+                // Changing the id: `rebuild_changed_primitives` drops the old
+                // mesh and rehydration builds the new one.
+                Some(mut p) => p.0 = id,
+                None => {
+                    e.remove::<Mesh3d>();
+                    e.insert(MeshPrimitive(id));
+                }
+            }
+        }
+        MeshSource::Model(path) => {
+            let handle: Handle<Gltf> = world.resource::<AssetServer>().load(path.clone());
+            let mut e = world.entity_mut(entity);
+            // A shape's own mesh and material: the model's meshes bring
+            // theirs, each bound to its own `.material`.
+            // `ImportedRoot` comes off too: its absence is how the spawn
+            // observer recognises a model that has just loaded and binds its
+            // materials, so a model swapped for another kept it and the new
+            // one was never bound.
+            e.remove::<(
+                MeshPrimitive,
+                MeshColor,
+                Mesh3d,
+                MeshMaterial3d<StandardMaterial>,
+                renzora_material_api::MaterialRef,
+                renzora_material_api::MaterialResolved,
+                MeshInstanceLoadFailed,
+                crate::material_binding::ImportedRoot,
+                crate::material_binding::PendingMaterialBinding,
+            )>();
+            e.insert((MeshInstanceData { model_path: Some(path) }, PendingMeshInstanceRehydrate(handle)));
+        }
+    }
+    Ok(())
 }
 
 /// Apply persisted mesh edits after scene load: entities carrying an
@@ -237,5 +381,40 @@ pub fn finish_mesh_instance_rehydrate(
             );
             commands.entity(entity).insert(MeshInstanceLoadFailed);
         }
+    }
+}
+
+#[cfg(all(test, feature = "render_3d", feature = "gltf"))]
+mod tests {
+    use super::*;
+
+    /// A model turned into a shape loses the model's content and becomes the
+    /// shape, white since it had no colour of its own.
+    #[test]
+    fn a_model_becomes_a_shape() {
+        let mut world = World::new();
+        let model = world
+            .spawn((Name::new("chair"), MeshInstanceData { model_path: Some("models/chair.glb".into()) }))
+            .id();
+        let part = world.spawn((Name::new("leg"), ChildOf(model))).id();
+
+        set_mesh_source(&mut world, model, MeshSource::Shape("torus".into())).expect("swap");
+        assert!(world.get_entity(part).is_err(), "the model's content stayed");
+        assert!(world.get::<MeshInstanceData>(model).is_none());
+        assert_eq!(world.get::<MeshPrimitive>(model).map(|p| p.0.as_str()), Some("torus"));
+        assert_eq!(world.get::<MeshColor>(model).map(|c| c.0), Some(Color::WHITE));
+        assert_eq!(mesh_source(&world, model), Some(MeshSource::Shape("torus".into())));
+    }
+
+    /// A shape with children of its own is not made a model: a model's
+    /// children are left out of a save, so they would be lost.
+    #[test]
+    fn a_shape_with_children_is_not_made_a_model() {
+        let mut world = World::new();
+        let shape = world.spawn((Name::new("crate"), MeshPrimitive("cube".into()))).id();
+        world.spawn((Name::new("lid"), ChildOf(shape)));
+        let result = set_mesh_source(&mut world, shape, MeshSource::Model("models/chair.glb".into()));
+        assert!(result.is_err());
+        assert_eq!(world.get::<MeshPrimitive>(shape).map(|p| p.0.as_str()), Some("cube"));
     }
 }

@@ -397,6 +397,8 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     // its toggle + fields live in the Sprite Image card.
     registry.register(sprite_image_entry());
     registry.register(mesh_lod_entry());
+    // The Mesh section (swap a shape or a model) is `renzora_scene`'s, since
+    // the swap needs the engine's rehydration.
 }
 
 /// Read the `i`-th LOD boundary, falling back to the same geometric extension

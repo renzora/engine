@@ -55,12 +55,14 @@ pub use save::{
 pub use snapshot::{snapshot_entity_subtrees, spawn_entities_from_snapshot};
 
 #[cfg(feature = "render_3d")]
-pub use meshes::{apply_edited_meshes, rehydrate_meshes};
+pub use meshes::{apply_edited_meshes, rebuild_changed_primitives, rehydrate_meshes};
 
 #[cfg(all(feature = "render_3d", feature = "gltf"))]
 pub use meshes::{
-    finish_mesh_instance_rehydrate, rehydrate_mesh_instances, PendingMeshInstanceRehydrate,
+    finish_mesh_instance_rehydrate, mesh_source, rehydrate_mesh_instances, set_mesh_source,
+    PendingMeshInstanceRehydrate,
 };
+pub use meshes::MeshSource;
 
 #[cfg(feature = "render_2d")]
 pub use sprites::{

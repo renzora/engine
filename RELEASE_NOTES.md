@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 03:11
+- feat(inspector): a Mesh section swaps any shape or model for another shape or another model in place
+- fix(scene): a shape whose mesh is rebuilt keeps drawing with its material instead of disappearing
+
 ## 2026-11-26 02:32
 - fix(play): the editor and a running game no longer send each other the world partition cells they stream in, since each streams around its own camera
 - fix(scene): a scene or partition cell streaming in places parents before their children, so the game no longer logs a hierarchy warning per object
