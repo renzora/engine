@@ -27,6 +27,21 @@ name: Build Engine
 #                       a single slice (`windows-x64`), the latter for testing
 #                       one lane without spending hours on the other.
 #
+# ── Dev builds, then promotion ───────────────────────────────────────────────
+#   publish: dev          builds and packages exactly as a nightly would, under
+#                         the nightly tag it would get, and keeps the release
+#                         assets as a `dev-release-assets` artifact on the run
+#                         instead of publishing them. Nothing public changes:
+#                         no release, no marketplace, no website.
+#   publish: promote-dev  builds nothing. It takes a dev run's packaged assets
+#                         (`dev_run`) and publishes them as that nightly, with
+#                         every follow-up a nightly gets. What ships is the
+#                         exact bytes that were tested, not a rebuild of the
+#                         same commit that merely ought to match.
+# A dev build is stamped with its nightly tag at compile time, because that is
+# what the editor reports and what the updater compares; promoting it later
+# would otherwise publish binaries that call themselves something else.
+#
 # Publishing also refreshes the playable web build at renzora.com/engine: the
 # `website` job at the bottom dispatches to renzora/website, which pulls
 # `web-wasm32.zip` onto the droplet. The wasm is never committed anywhere; see
@@ -99,14 +114,20 @@ on:
           - macos-x64
           - macos-arm64
       publish:
-        description: "Publish the result as a release (web: rebuild only the web editor into the newest release and refresh renzora.com/engine; ignores platform)"
+        description: "Publish the result (dev: build and package like a nightly, publish nothing; promote-dev: publish a dev run as the nightly, needs dev_run; web: rebuild only the web editor into the newest release and refresh renzora.com/engine; ignores platform)"
         type: choice
         default: none
         options:
           - none
+          - dev
+          - promote-dev
           - nightly
           - release
           - web
+      dev_run:
+        description: "promote-dev only: the run ID of the dev build to publish (the number at the end of its run URL)"
+        type: string
+        default: ""
 
 env:
   REGISTRY: ghcr.io/renzora
@@ -118,6 +139,10 @@ jobs:
   # ── Decide what to build, what to call it, and whether to publish ───────────
   setup:
     runs-on: ubuntu-latest
+    # `actions: read` to fetch a dev run's artifact for `promote-dev`.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       desktop: ${{ steps.plan.outputs.desktop }}
@@ -126,11 +151,45 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       version: ${{ steps.plan.outputs.version }}
       skip: ${{ steps.plan.outputs.skip }}
+      # The commit the published build was compiled from. This run's own commit,
+      # except on `promote-dev`, where it is the dev run's: the release must
+      # point at what the binaries were built from, whatever `main` is now.
+      sha: ${{ steps.plan.outputs.sha }}
+      # `promote-dev` only: the dev run whose artifacts are published. Empty on
+      # every other run, which is how later jobs tell the two apart.
+      source_run: ${{ steps.plan.outputs.source_run }}
+      # Whether the published build contains the web editor, which is what
+      # decides if renzora.com/engine is told about it.
+      has_web: ${{ steps.plan.outputs.has_web }}
     steps:
       - uses: actions/checkout@v4
         with:
           # Enough history for the "did anything land today?" check below.
           fetch-depth: 100
+
+      # What the dev run recorded about itself: its tag, version, commit and
+      # whether it built the web editor. Fails here, in seconds, when the run ID
+      # is wrong or its artifacts have expired, rather than after a publish job
+      # has started.
+      - name: Check the dev run ID
+        if: inputs.publish == 'promote-dev'
+        env:
+          DEV_RUN: ${{ inputs.dev_run }}
+        run: |
+          case "$DEV_RUN" in
+            ''|*[!0-9]*)
+              echo "::error::promote-dev needs dev_run: the numeric run ID of a 'publish: dev' run (the number at the end of its URL)"
+              exit 1 ;;
+          esac
+
+      - name: Read the dev build to promote
+        if: inputs.publish == 'promote-dev'
+        uses: actions/download-artifact@v4
+        with:
+          name: dev-build
+          path: dev-build
+          run-id: ${{ inputs.dev_run }}
+          github-token: ${{ github.token }}
 
       - id: plan
         env:
@@ -155,6 +214,35 @@ jobs:
             push)     publish=release ;;
             *)        publish="${{ inputs.publish || 'none' }}" ;;
           esac
+          sha="$GITHUB_SHA"
+          source_run=""
+
+          # ── Promoting a dev build ────────────────────────────────────────
+          # Becomes an ordinary nightly publish with nothing to build: the
+          # platform set is emptied so no lane runs, and the tag, version and
+          # commit are the dev run's, because those are what its binaries were
+          # compiled with. Everything nightly-specific downstream (prerelease,
+          # same-day replacement, pruning, plugin and website dispatches) then
+          # applies unchanged.
+          if [ "$publish" = "promote-dev" ]; then
+            # shellcheck disable=SC1091
+            . dev-build/dev-build.env
+            for v in DEV_TAG DEV_VERSION DEV_SHA DEV_HAS_WEB; do
+              if [ -z "${!v:-}" ]; then
+                echo "::error::run ${{ inputs.dev_run }} carries no $v; is it a 'publish: dev' run of this workflow?"
+                exit 1
+              fi
+            done
+            publish=nightly
+            platform=none
+            version="$DEV_VERSION"
+            sha="$DEV_SHA"
+            source_run="${{ inputs.dev_run }}"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "::notice::promoting dev run $source_run ($DEV_TAG, ${DEV_SHA:0:7}) to a nightly"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "source_run=$source_run" >> "$GITHUB_OUTPUT"
 
           # ── The tag ──────────────────────────────────────────────────────
           # A release is tagged with the version itself; a nightly appends the
@@ -169,6 +257,15 @@ jobs:
               fi
               ;;
             nightly)
+              if [ -n "$source_run" ]; then
+                tag="$DEV_TAG"
+              else
+                tag="$version-nightly-$(date -u +%d%b%y | tr '[:upper:]' '[:lower:]')"
+              fi
+              ;;
+            dev)
+              # The tag a nightly built now would get, so the binaries already
+              # carry the name they are published under if this is promoted.
               tag="$version-nightly-$(date -u +%d%b%y | tr '[:upper:]' '[:lower:]')"
               ;;
             web)
@@ -250,6 +347,15 @@ jobs:
           # publish gate has to tell apart from a real failure.
           [ -n "$inc" ] && echo "containers=true" >> "$GITHUB_OUTPUT" \
                         || echo "containers=false" >> "$GITHUB_OUTPUT"
+          # The web editor ships in this build when the wasm lane runs, or, on a
+          # promotion, when the dev run's did.
+          if [ -n "$source_run" ]; then
+            echo "has_web=$DEV_HAS_WEB" >> "$GITHUB_OUTPUT"
+          elif [ -n "$inc" ]; then
+            echo "has_web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_web=false" >> "$GITHUB_OUTPUT"
+          fi
 
           # `dist_dir` is the directory xtask stages into, and the name
           # `package-release.sh` matches on. `runner` pins an image rather than
@@ -639,6 +745,23 @@ jobs:
             exit 1
           fi
 
+      # Start what was just built and fail the lane if it does not stay up: the
+      # headless server on every platform, and on Linux the editor itself on a
+      # virtual display with software Vulkan. See .github/scripts/smoke-test.sh
+      # for what each run proves. Before signing, packing and the template cut,
+      # so a build that cannot start stops here, ahead of every step that only
+      # repackages it.
+      - name: Smoke test (start the engine)
+        shell: bash
+        run: |
+          if [ "${{ matrix.container }}" != "" ]; then
+            # A display server and Mesa's software Vulkan (lavapipe) for the
+            # editor run. Not in el8-toolchain.sh: no other job needs them.
+            dnf install -y --setopt=install_weak_deps=False \
+              xorg-x11-server-Xvfb mesa-vulkan-drivers mesa-dri-drivers vulkan-loader
+          fi
+          bash .github/scripts/smoke-test.sh "${{ matrix.dist_dir }}"
+
       # The oldest glibc the Linux release supports is whatever the runner had,
       # and nothing in the build notices when that moves: the link succeeds, the
       # binary runs on the runner, and it fails on a user's older distro before
@@ -866,9 +989,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: prebuilts-${{ matrix.dist_dir }}
+          # As long as the dev run's release assets, so a promotion still finds
+          # the prebuilts that belong to the build it publishes.
+          retention-days: ${{ needs.setup.outputs.publish == 'dev' && 30 || 7 }}
           path: ${{ runner.temp }}/prebuilts
           if-no-files-found: ignore
-          retention-days: 7
 
       # Packed here because this is now the only kind of lane that has an SDK to
       # pack: the container lanes stage no editor and therefore no SDK, since an
@@ -1427,18 +1552,36 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # `promote-dev` downloads the dev run's packaged assets.
+      actions: read
     steps:
+      # At the commit the build was compiled from: on a promotion, the dev run's
+      # rather than whatever `main` is now, so the release notes, the commit
+      # link and the tag all describe the binaries actually being published.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
 
       # Only the build outputs. `package-release.sh` takes the first directory
       # it finds for each platform, and `prebuilts-<platform>` sorts ahead of
       # `renzora-<platform>`, so downloading everything shipped the prebuilt
       # plugins as each platform's editor zip (r1-alpha8-nightly-21nov26).
       - name: Download the build artifacts
+        if: needs.setup.outputs.source_run == ''
         uses: actions/download-artifact@v4
         with:
           pattern: renzora-*
           path: artifacts
+
+      # A promotion publishes what the dev run already packaged, byte for byte.
+      - name: Download the dev run's release assets
+        if: needs.setup.outputs.source_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: dev-release-assets
+          path: release-assets
+          run-id: ${{ needs.setup.outputs.source_run }}
+          github-token: ${{ github.token }}
 
       # Executables ship exactly as they were built. There used to be a UPX pass
       # here that packed every non-macOS slice — it saved ~83% on the runtime,
@@ -1458,9 +1601,61 @@ jobs:
       # A bigger download is the price, and it is the right one: an engine users
       # have to talk their antivirus out of is worse than a slow one.
       - name: Package release assets
+        if: needs.setup.outputs.source_run == ''
         run: |
           bash scripts/package-release.sh artifacts release-assets \
             "${{ needs.setup.outputs.tag }}" "${{ github.sha }}"
+
+      # ── A dev build stops here ─────────────────────────────────────────────
+      # The packaged assets become an artifact on this run, to download and
+      # test, plus the facts `promote-dev` needs to publish them later. Kept 30
+      # days rather than the raw trees' 7, because promotion can follow days of
+      # testing; the raw trees are not needed for it and are far larger.
+      - name: Keep the release assets
+        if: needs.setup.outputs.publish == 'dev'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 30
+          # Zips and disk images, already compressed.
+          compression-level: 0
+
+      - name: Record the dev build
+        if: needs.setup.outputs.publish == 'dev'
+        run: |
+          {
+            echo "DEV_TAG=${{ needs.setup.outputs.tag }}"
+            echo "DEV_VERSION=${{ needs.setup.outputs.version }}"
+            echo "DEV_SHA=${{ github.sha }}"
+            echo "DEV_HAS_WEB=${{ needs.setup.outputs.has_web }}"
+          } > dev-build.env
+          cat dev-build.env
+
+      - name: Keep the dev build record
+        if: needs.setup.outputs.publish == 'dev'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-build
+          path: dev-build.env
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: How to test and promote
+        if: needs.setup.outputs.publish == 'dev'
+        run: |
+          {
+            echo "### Dev build \`${{ needs.setup.outputs.tag }}\` (not published)"
+            echo
+            echo "Download **dev-release-assets** from the artifacts at the bottom of this page: the same zips and disk images a nightly would publish."
+            echo
+            echo "To publish exactly these files as the nightly, run **Build Engine** with \`publish: promote-dev\` and \`dev_run: ${{ github.run_id }}\`. Available for 30 days."
+            echo
+            echo '```'
+            cat release-assets/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # A nightly re-run on the same day would collide with its own tag, and a
       # nightly is disposable by definition — replace it rather than inventing a
@@ -1477,8 +1672,12 @@ jobs:
           fi
 
       - name: Create release
+        if: needs.setup.outputs.publish != 'dev'
         env:
           GH_TOKEN: ${{ github.token }}
+          # The commit the binaries were built from, which on a promotion is the
+          # dev run's and not this run's.
+          BUILD_SHA: ${{ needs.setup.outputs.sha }}
         run: |
           set -euo pipefail
           tag="${{ needs.setup.outputs.tag }}"
@@ -1529,7 +1728,7 @@ jobs:
             echo "> **Can't run the editor or an exported game?** If it won't start, crashes on launch, or says your system is not supported, please tell us: [open an issue](https://github.com/${GITHUB_REPOSITORY}/issues/new?template=bug_report.md) or report it in [our Discord](https://discord.gg/9UHUGUyDJv). Include your OS and version (on Linux, your distro and the output of \`ldd --version\`), your GPU, and any message it showed."
             echo
             if [ "${{ needs.setup.outputs.publish }}" = "nightly" ]; then
-              echo "Automated nightly build of \`$version\` from [\`${GITHUB_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
+              echo "Automated nightly build of \`$version\` from [\`${BUILD_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${BUILD_SHA})."
               echo
               echo "> Nightlies are unreviewed builds of \`main\`. They are the right thing to run if you are developing *against* the engine and want the latest fixes; they are not the right thing to ship a game on."
               if [ -n "$(printf '%s' "$unreleased" | tr -d '[:space:]')" ]; then
@@ -1576,7 +1775,7 @@ jobs:
             {
               echo
               echo
-              echo "_These notes were cut short to fit on this page. The full list is in [RELEASE_NOTES.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/RELEASE_NOTES.md)._"
+              echo "_These notes were cut short to fit on this page. The full list is in [RELEASE_NOTES.md](https://github.com/${GITHUB_REPOSITORY}/blob/${BUILD_SHA}/RELEASE_NOTES.md)._"
             } >> notes.trimmed.md
             mv notes.trimmed.md notes.md
           fi
@@ -1587,7 +1786,7 @@ jobs:
           gh release create "$tag" \
             --title "$title" \
             --notes-file notes.md \
-            --target "$GITHUB_SHA" \
+            --target "$BUILD_SHA" \
             $prerelease \
             release-assets/*
 
@@ -1612,6 +1811,7 @@ jobs:
           done < stale.txt
 
       - name: Summary
+        if: needs.setup.outputs.publish != 'dev'
         run: |
           echo "### Published \`${{ needs.setup.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -1710,15 +1910,22 @@ jobs:
   # run creates the listing a first-published plugin's prebuilts are filed under.
   prebuilts:
     needs: [setup, desktop, publish, plugins]
-    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
+    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none' && needs.setup.outputs.publish != 'dev'
     runs-on: ubuntu-latest
+    permissions:
+      # `promote-dev` reads the prebuilts from the dev run.
+      actions: read
     steps:
+      # From this run, or on a promotion from the dev run that compiled them:
+      # they are stamped for that build, which is the one being published.
       - name: Download the prebuilt plugins
         uses: actions/download-artifact@v4
         with:
           pattern: prebuilts-*
           path: prebuilts
           merge-multiple: true
+          run-id: ${{ needs.setup.outputs.source_run || github.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Upload them to the marketplace
         continue-on-error: true
@@ -1786,7 +1993,7 @@ jobs:
   # code is built without access to any secret.
   third-party:
     needs: [setup, publish]
-    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
+    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none' && needs.setup.outputs.publish != 'dev'
     permissions:
       contents: read
     uses: ./.github/workflows/third-party-plugins.yml
@@ -1807,7 +2014,7 @@ jobs:
   # can be published by hand from that repository's Actions tab.
   plugins:
     needs: [setup, publish]
-    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none'
+    if: always() && needs.publish.result == 'success' && needs.setup.outputs.publish != 'none' && needs.setup.outputs.publish != 'dev'
     runs-on: ubuntu-latest
     steps:
       - name: Tell renzora/plugins to publish for ${{ needs.setup.outputs.tag }}
@@ -1865,11 +2072,14 @@ jobs:
 
   website:
     needs: [setup, build, publish, publish-web]
+    # `has_web` rather than "the wasm lane ran here": a promotion builds
+    # nothing, but publishes a web editor when its dev run built one.
     if: |
       always()
+      && needs.setup.outputs.publish != 'dev'
       && (needs.publish.result == 'success' || needs.publish-web.result == 'success')
-      && needs.build.result == 'success'
-      && needs.setup.outputs.containers == 'true'
+      && needs.setup.outputs.has_web == 'true'
+      && (needs.build.result == 'success' || needs.setup.outputs.source_run != '')
     runs-on: ubuntu-latest
     steps:
       - name: Tell renzora/website about ${{ needs.setup.outputs.tag }}

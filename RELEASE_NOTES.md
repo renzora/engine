@@ -1,5 +1,10 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-26 18:50
+- fix(server): the dedicated server (`--server`) no longer crashes at startup in the gaussian splatting plugin
+- feat(release): a dev build packages a nightly without publishing it, and can be promoted to the nightly later
+- feat(release): every release build is started on its own platform and fails if it does not run
+
 ## 2026-11-26 18:30
 - feat(release): every release page opens by asking anyone who can't run the editor or an exported game to report it on GitHub or Discord
 

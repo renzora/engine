@@ -30,7 +30,7 @@ A published binary also carries two values CI stamps in at compile time, read wi
 |---|---|---|
 | `schedule`, 02:00 UTC daily | `r1-alpha8-nightly-16aug26` | prerelease |
 | `push` of an `r1-alpha*` tag | the tag itself | full release |
-| `workflow_dispatch` | your choice of `none` / `nightly` / `release` / `web` | — |
+| `workflow_dispatch` | your choice of `none` / `dev` / `promote-dev` / `nightly` / `release` / `web` | see [Running it manually](#running-it-manually) |
 
 The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per version because the version comes first.
 
@@ -40,8 +40,8 @@ The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per ve
 
 | Platform | Where | Notes |
 |---|---|---|
-| linux x64 | native `ubuntu-latest` runner | AppImage |
-| linux arm64 | native `ubuntu-24.04-arm` runner | AppImage |
+| linux x64 | `almalinux:8` container on an `ubuntu-24.04` runner | AppImage, glibc 2.28+ |
+| linux arm64 | `almalinux:8` container on an `ubuntu-24.04-arm` runner | AppImage, glibc 2.28+ |
 | macos x64 | native `macos-26-intel` runner | signed, notarized `.dmg` |
 | macos arm64 | native `macos-latest` runner | signed, notarized `.dmg` |
 | windows x64 | native `windows-latest` runner | flat tree |
@@ -53,6 +53,21 @@ The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per ve
 **Windows ARM64 is the one target the Docker toolchain cannot produce.** The only MSVC pieces Microsoft allows to be redistributed (so xwin can bake them into a public image) are the CRT and SDK, which leaves clang as the C compiler — and clang can't stand in for MSVC on ARM64, because it emits MSVC NEON intrinsics as undefined externals no redistributable library provides. So that slice builds natively with the real MSVC toolchain on a GitHub-hosted arm64 runner.
 
 That job has **no build cache** and takes hours, which makes it the long pole on every publishing run.
+
+**Linux builds in a container for its glibc, not for cross-compiling.** A Linux binary needs at least the glibc of the machine that linked it, so the build environment decides the oldest distro the release runs on. AlmaLinux 8 has glibc 2.28 (Ubuntu 20.04, Debian 10, RHEL 8) and is maintained until 2029; its GCC 13 toolset links the newer libstdc++ pieces statically so the output still runs on stock EL8. `.github/scripts/el8-toolchain.sh` sets it up, and the **Audit the glibc floor** step fails the lane if any staged file needs a newer `GLIBC` or `GLIBCXX`. The lane used to build on `ubuntu-latest`, and the day that label moved to Ubuntu 26.04 the release started requiring glibc 2.43.
+
+### Every lane starts what it built
+
+Right after `cargo renzora dist`, each desktop lane runs `.github/scripts/smoke-test.sh`, and the lane fails if the engine does not stay up:
+
+| Run | Where | What it proves |
+|---|---|---|
+| `renzora --server`, 30 s | every desktop platform | the loader accepts the binary, every DLL / `.so` / `.dylib` resolves, the shared Bevy and contract images link, the full engine plugin set builds, and the main loop runs |
+| the editor through `AppRun`, 60 s | Linux | the window opens, the renderer starts (Mesa's software Vulkan on a virtual X display), the editor image loads, and the AppImage's Linux support check passes |
+
+A run passes when the process is still alive at the end and has logged no panic; exiting early with any code fails it, because neither mode ever exits on its own. Windows and macOS runners have no GPU a renderer can use, so there the server run is the whole test. It runs before signing, packing and the template cut, so a build that cannot start fails before the steps that only repackage it.
+
+The check found its first bug on its first run: the dedicated server panicked at startup because the gaussian splatting plugin assumed a renderer, which `--server` never has.
 
 **Nothing is published unless every platform built.** `publish` waits for every desktop lane and the wasm build, and if any of them failed it does not run: no release is created and the previous nightly with the same tag is left alone. A lost runner or a broken lane therefore costs a retry, not a half-empty release to find and delete. Use **Re-run failed jobs** on the run: it rebuilds only the lanes that failed, keeps the artifacts the others uploaded, and then publishes. A narrowed run that never started a lane is fine; only a *failed* lane stops the publish.
 
@@ -320,6 +335,17 @@ To pin the site to a specific engine build, or to pull one by hand: **website �
 ## Running it manually
 
 **Actions → Build Engine → Run workflow.** Pick a platform (or `all`) and a publish mode. `publish: none` builds and uploads GitHub *artifacts* (7-day retention) without creating a release — the right choice for checking that a platform still builds.
+
+### Dev builds: test first, publish later
+
+`publish: dev` builds and packages exactly what a nightly would, and publishes nothing: no release, no marketplace upload, no plugin or website dispatch. The packaged downloads (the same `<platform>.zip`, `.dmg` and export templates a nightly carries) are kept on the run as the **dev-release-assets** artifact for 30 days. The run's summary lists their checksums and its own run ID.
+
+When the build has been tested, run **Build Engine** again with `publish: promote-dev` and `dev_run` set to that run ID (the number at the end of the dev run's URL). That run builds nothing. It publishes the dev run's files, byte for byte, as a nightly, then does everything a nightly does: replaces a nightly with the same tag, prunes old ones, uploads that build's prebuilt plugins, and tells renzora/plugins and the website.
+
+- **A dev build is stamped with the nightly tag it would get** (`r1-alpha8-nightly-26nov26`), because the tag is compiled into the binary and the updater compares against it. Promoting it publishes under that tag, whatever day you promote it.
+- **The release points at the dev build's commit**, not at `main` when you promote: the notes, the commit link and the tag all describe the binaries being published.
+- **`platform` narrows a dev build like any other run.** A dev build of one platform promotes to a nightly with only that platform, so build `all` when the result is meant to be published.
+- A promotion fails within seconds if the run ID is wrong, is not a `publish: dev` run, or its artifacts have expired.
 
 A run that builds no wasm (any narrowed `platform` other than `all` or `wasm`) skips the website dispatch, since there would be no new bundle to publish.
 

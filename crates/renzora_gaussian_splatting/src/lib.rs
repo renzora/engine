@@ -69,6 +69,16 @@ impl Plugin for GaussianSplatPlugin {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut App) {
+        // A dedicated server (`--server`) boots with no renderer at all, and the
+        // vendored renderer's storage plugin reaches for the render sub-app
+        // unconditionally: it panicked with "No sub-app with label 'RenderApp'
+        // exists" and took the server down before its first tick. With nothing
+        // to draw on, install nothing; `GaussianSplat` components then ride
+        // along as inert data, exactly as they do when this plugin is absent.
+        if app.get_sub_app(bevy::render::RenderApp).is_none() {
+            info!("[runtime] GaussianSplatPlugin: no renderer in this app (headless), splats are not drawn");
+            return;
+        }
         info!("[runtime] GaussianSplatPlugin (bevy_gaussian_splatting)");
         app.add_plugins(bevy_gaussian_splatting::GaussianSplattingPlugin);
 
