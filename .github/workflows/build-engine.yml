@@ -759,6 +759,9 @@ jobs:
             # editor run. Not in el8-toolchain.sh: no other job needs them.
             dnf install -y --setopt=install_weak_deps=False \
               xorg-x11-server-Xvfb mesa-vulkan-drivers mesa-dri-drivers vulkan-loader
+            # Diagnostics only (what Vulkan sees), so a missing package is not a
+            # reason to fail the lane.
+            dnf install -y vulkan-tools || echo "::warning::vulkan-tools unavailable; no vulkaninfo in the smoke test"
           fi
           bash .github/scripts/smoke-test.sh "${{ matrix.dist_dir }}"
 

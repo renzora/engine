@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 00:49
+- fix(linux): ARM64 Linux builds find their libraries when started outside the AppImage
+
 ## 2026-11-27 00:11
 - fix(macos): the macOS editor and exported games start again instead of failing with "Library not loaded: librenzora_dylib.dylib"
 - fix(server): the dedicated server no longer crashes at startup in builds with DLSS

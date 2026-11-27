@@ -301,3 +301,19 @@ rustflags = [
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",
 ]
+
+# ARM64 Linux needs the same `$ORIGIN` rpath. It had no section at all, so its
+# binaries found their libraries only through AppRun's LD_LIBRARY_PATH: started
+# any other way (from the extracted AppDir, by a launcher, by a script) they died
+# before `main` with "librenzora_dylib.so: cannot open shared object file". The
+# release smoke test caught it the first time it ran the binary directly.
+#
+# No linker or `-fuse-ld` here: the release lane names its linker through
+# CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER, and the Docker cross-build
+# supplies its own wrapper, so the only thing this section adds is the rpath.
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    "-C", "link-arg=-Wl,-rpath,$ORIGIN",
+    "--remap-path-prefix=/usr/local/cargo=/cargo",
+    "--remap-path-prefix=/app/src=/renzora",
+]

@@ -44,8 +44,11 @@ if [ ! -f "$bin" ]; then
 fi
 
 # Run "$@" for $1 seconds with output in $2. Returns 0 if it was still running at
-# the end and logged no panic; otherwise prints the log and returns 1.
+# the end and logged no panic; otherwise prints the log, leaves the reason in
+# `$why`, and returns 1. The caller reports it, because whether a given failure
+# is the build's fault or the runner's is the caller's call (see the editor run).
 # A polling loop rather than `timeout`, which macOS does not ship.
+why=""
 run_for() {
     local seconds="$1" log="$2" label="$3"
     shift 3
@@ -69,11 +72,11 @@ run_for() {
     tail -n 80 "$log"
     echo "::endgroup::"
     if [ -n "$code" ]; then
-        echo "::error::$label exited after ${waited}s with code $code instead of running; its output is above"
+        why="$label exited after ${waited}s with code $code instead of running; its output is above"
         return 1
     fi
     if grep -q "panicked at" "$log"; then
-        echo "::error::$label panicked; its output is above"
+        why="$label panicked; its output is above"
         return 1
     fi
     echo "$label ran for ${seconds}s"
@@ -83,8 +86,11 @@ run_for() {
 # ── Server: every platform ───────────────────────────────────────────────────
 # An unusual port, so a runner image that happens to run something on the
 # default one cannot fail the lane.
-run_for 30 "$logs/server.log" "renzora --server ($dist_dir)" \
-    "$bin" --server --port 47123 || failed=1
+if ! run_for 30 "$logs/server.log" "renzora --server ($dist_dir)" \
+    "$bin" --server --port 47123; then
+    echo "::error::$why"
+    failed=1
+fi
 
 # ── Editor: Linux ────────────────────────────────────────────────────────────
 if [[ "$dist_dir" == linux-* ]]; then
@@ -95,14 +101,34 @@ if [[ "$dist_dir" == linux-* ]]; then
         Xvfb :99 -screen 0 1600x900x24 -nolisten tcp > "$logs/xvfb.log" 2>&1 &
         xvfb=$!
         sleep 2
+        # What Vulkan itself can see on this runner, so a "no GPU" below can be
+        # told apart from an engine bug without another round trip.
+        if command -v vulkaninfo >/dev/null 2>&1; then
+            echo "::group::vulkaninfo ($icd)"
+            env DISPLAY=:99 VK_ICD_FILENAMES="$icd" vulkaninfo --summary 2>&1 | sed -n '1,60p'
+            echo "::endgroup::"
+        fi
         # Software Vulkan only, so a runner that ever gains a GPU driver does
         # not change what this measures. Wayland is unset so winit takes the X
         # display that exists. Through `env` rather than as a prefix on
         # `run_for`, because a prefix on a shell function is not reliably
         # passed on to what the function starts.
-        run_for 60 "$logs/editor.log" "editor via AppRun ($dist_dir)" \
+        if ! run_for 60 "$logs/editor.log" "editor via AppRun ($dist_dir)" \
             env -u WAYLAND_DISPLAY DISPLAY=:99 VK_ICD_FILENAMES="$icd" \
-            "$root/AppRun" || failed=1
+            "$root/AppRun"; then
+            # The runner has no GPU, and when its software Vulkan offers no
+            # adapter the renderer refuses before the editor loads. That says
+            # the runner cannot draw, not that the build is broken, so it is a
+            # warning; the server run above has already proved the binary loads
+            # and the engine builds. Anything else (a loader error, the AppRun
+            # check refusing, any other panic) still fails the lane.
+            if grep -q "Unable to find a GPU" "$logs/editor.log"; then
+                echo "::warning::the editor could not get a GPU adapter from this runner's software Vulkan, so it was not tested past the renderer (see vulkaninfo above)"
+            else
+                echo "::error::$why"
+                failed=1
+            fi
+        fi
         kill "$xvfb" 2>/dev/null
     fi
 fi
