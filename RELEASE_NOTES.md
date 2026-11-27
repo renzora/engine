@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 18:20
+- fix(scripting): installing Rust from the editor works again instead of failing with "unknown proxy name"
+
 ## 2026-11-27 10:51
 - fix(release): the Linux build's glibc audit checks every binary instead of failing silently at the first one that does not use C++
 

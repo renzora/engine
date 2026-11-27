@@ -167,12 +167,21 @@ fn install(version: &str, rustup_installed: bool) -> Result<(), String> {
         if !response.is_ok() {
             return Err(format!("could not download the Rust installer: HTTP {}", response.status));
         }
-        let name = if cfg!(windows) { "renzora-rustup-init.exe" } else { "renzora-rustup-init" };
-        let init = std::env::temp_dir().join(name);
+        // The file must be named `rustup-init` exactly. rustup is one binary
+        // that decides what to be from its own file name: `rustup-init*` runs
+        // the installer, and any other name is taken as a proxy for a tool
+        // (`cargo`, `rustc`), so a prefixed name failed with "unknown proxy
+        // name". A directory of our own keeps the plain name from colliding
+        // with anything else in the temp folder.
+        let dir = std::env::temp_dir().join(format!("renzora-rustup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("could not save the Rust installer: {e}"))?;
+        let name = if cfg!(windows) { "rustup-init.exe" } else { "rustup-init" };
+        let init = dir.join(name);
         std::fs::write(&init, &response.body)
             .map_err(|e| format!("could not save the Rust installer: {e}"))?;
         let result = renzora_plugin_build::toolchain::run_rustup_init(&init, version);
-        let _ = std::fs::remove_file(&init);
+        let _ = std::fs::remove_dir_all(&dir);
         result?;
     }
     match renzora_plugin_build::toolchain::resolve(version) {
