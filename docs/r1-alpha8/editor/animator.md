@@ -22,6 +22,8 @@ An animator with a state machine leaves the base to it, so the **Default Clip** 
 
 While editing, the machine still follows its parameters (the **Parameters** panel shows the state change and the timeline shows the new state's clip), but it only drives the character in play mode.
 
+Parameters are set from a script, or straight from a UI button with no script: `on_press="anim:hero.cheer"` fires a trigger, `anim:door.open=true` sets a bool and `anim:hero.speed=2.5` a float. See [Game UI](/docs/r1-alpha8/scripting/game-ui).
+
 ## Blend trees
 
 A blend tree mixes clips by parameters you set from a script (`set_anim_param("speed", v)`).

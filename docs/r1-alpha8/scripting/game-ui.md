@@ -154,7 +154,25 @@ function on_ui(name, args, entity)
 end
 ```
 
-`on_press` runs on click; `on_enter` and `on_exit` run when the mouse moves over or away. UI event handling like this is **Lua-only**.
+`on_press` runs on click; `on_enter` and `on_exit` run when the mouse moves over or away. A Rust script gets the same names through its hooks function, as `ScriptHook::Ui { name, .. }` (see [Rust scripts](/docs/r1-alpha8/scripting/rust-scripts)).
+
+### Driving an animation without a script
+
+A button can drive an animator's state machine directly. Instead of a callback name, give the event an `anim:` action naming the entity that has the **Animator** and one of its parameters:
+
+```html
+<button on_press="anim:hero.cheer">Play</button>
+<button on_enter="anim:door.open=true" on_exit="anim:door.open=false">Options</button>
+<button on_press="anim:hero.speed=2.5">Run</button>
+```
+
+| Action | What it does |
+|---|---|
+| `anim:hero.cheer` | Fires the `cheer` trigger on `hero` |
+| `anim:door.open=true` | Sets the bool parameter `open` (or `=false`) |
+| `anim:hero.speed=2.5` | Sets the float parameter `speed` |
+
+These are the same as calling `set_anim_trigger`, `set_anim_bool` and `set_anim_param` from a script on that entity, so the state machine's transitions respond to them the same way. An event can carry several names separated by commas, and they mix freely: `on_press="anim:hero.cheer, press_play"` fires the trigger and also calls your script's `on_ui` with `press_play`. A name that matches no entity logs a warning in the console.
 
 A `<button>` stops the click there, so pressing it never also clicks whatever is behind it. Other UI boxes let clicks through: a plain `<node>` panel does not stop a click from reaching a 3D object behind it in the scene.
 
@@ -667,7 +685,7 @@ function on_ui(name, args, entity)
 end
 ```
 
-> UI scripting (`action()`, `set_on`/`get_on`, and `on_ui`) runs through the script VM — write your UI logic in `.lua`.
+> `action()` and `set_on`/`get_on` are Lua functions. A Rust script receives button events as `ScriptHook::Ui` and reaches the UI's components directly through `ctx`.
 
 ## See also
 

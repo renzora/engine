@@ -1,5 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 22:00
+- fix(ui): a script's `on_ui` gets `press_play`, not ` press_play`, from a button event that lists several names
+
+## 2026-11-27 21:40
+- feat(ui): a UI button can fire an animator trigger or set a parameter without a script, with `on_press="anim:hero.cheer"`
+
 ## 2026-11-27 20:53
 - change(editor): the hierarchy's eye hides an object only while editing, unless the new project setting Hidden Objects Stay Hidden in Game is on
 - fix(editor): a hidden UI canvas stays hidden after undo, saving or reopening the scene
