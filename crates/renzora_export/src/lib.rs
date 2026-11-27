@@ -36,6 +36,8 @@ mod dialog;
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod presets;
+
+mod sign_macos;
 /// Running an export in the companion process.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod remote;

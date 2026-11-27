@@ -283,11 +283,12 @@ impl Default for ExportOverlayState {
             available_plugins: Vec::new(),
             selected_plugins: std::collections::HashSet::new(),
             plugin_options: std::collections::HashMap::new(),
-            // Off by default: a bundle is a deliberate choice about how the game
-            // is delivered, and an export that silently rearranged its output
-            // into a directory the user did not ask for would be worse than one
-            // that made them tick a box.
-            bundle_app: false,
+            // On for macOS, off elsewhere: a bare Mach-O on macOS opens a
+            // terminal, has no icon, and (unsigned) is killed at exec, so a game
+            // ships as a `.app` or it does not run. On the other desktops a bundle
+            // is a deliberate choice, and silently rearranging the output into a
+            // directory the user did not ask for is worse than a ticked box.
+            bundle_app: Platform::current().map(|p| p.is_macos()).unwrap_or(false),
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: std::collections::HashMap::new(),
             detected_capabilities: std::collections::HashMap::new(),
@@ -1954,7 +1955,18 @@ pub(crate) fn export_worker(
                                 || name_str.starts_with("libstd-")
                                 || name_str.starts_with("openxr_loader");
                             if shared {
-                                let _ = std::fs::copy(entry.path(), output_dir.join(&name));
+                                // Surfaced, not swallowed: a shared image that
+                                // fails to copy ships a game that cannot start
+                                // (`Library not loaded: @rpath/...`), and a silent
+                                // `let _ =` here is how that reaches a user with no
+                                // trace of the cause.
+                                if let Err(e) =
+                                    std::fs::copy(entry.path(), output_dir.join(&name))
+                                {
+                                    let _ = tx.send(ExportMsg::Progress(format!(
+                                        "WARN: could not copy shared library {name_str}: {e}"
+                                    )));
+                                }
                             }
                         }
                     }
@@ -2161,6 +2173,7 @@ pub(crate) fn export_worker(
             // The one deliberate exception is the server below, which is a
             // separate deliverable: a headless binary a player never launches
             // belongs beside the bundle, not inside it.
+            let mut bundled_app: Option<std::path::PathBuf> = None;
             if bundle_app {
                 let tx_progress = tx.clone();
                 match crate::bundle::wrap(
@@ -2184,6 +2197,7 @@ pub(crate) fn export_worker(
                             "Bundled as {}",
                             path.file_name().unwrap_or_default().to_string_lossy()
                         )));
+                        bundled_app = Some(path);
                     }
                     // A platform with no bundle format. The dialog hides the
                     // toggle there, so this is only reachable from a preset made
@@ -2201,41 +2215,52 @@ pub(crate) fn export_worker(
                 }
             }
 
-            // Server export
-            if include_server {
-                let server_result = export_server_standalone(
+            // Server export (a headless binary beside the game bundle).
+            let server_note = if include_server {
+                match export_server_standalone(
                     &tx,
                     &project,
                     binary_stem,
                     platform,
                     compression_level,
                     &output_dir,
-                );
-                match server_result {
-                    Ok(server_files) => {
-                        let _ = tx.send(ExportMsg::Done(format!(
-                            "Exported {} files + server ({} files) to {}",
-                            file_count,
-                            server_files,
-                            output_dir.display()
-                        )));
-                    }
-                    Err(e) => {
-                        let _ = tx.send(ExportMsg::Done(format!(
-                            "Exported {} files (server failed: {}) to {}",
-                            file_count,
-                            e,
-                            output_dir.display()
-                        )));
-                    }
+                ) {
+                    Ok(server_files) => format!(" + server ({server_files} files)"),
+                    Err(e) => format!(" (server failed: {e})"),
                 }
             } else {
-                let _ = tx.send(ExportMsg::Done(format!(
-                    "Exported {} files to {}",
-                    file_count,
-                    output_dir.display()
-                )));
+                String::new()
+            };
+
+            // Code-sign LAST, once every file the game ships is in place: the
+            // bundle, its dylibs, plugins/, and the server beside it. On Apple
+            // Silicon an unsigned Mach-O is SIGKILLed at exec, so without this the
+            // game dies the instant it is launched ("the application can't be
+            // opened"). The default is a free ad-hoc seal; a Developer ID and a
+            // notary key, when set in the environment, upgrade it to a notarized
+            // bundle. Best-effort: a signing failure still leaves a developer a
+            // runnable local build, so it warns rather than failing the export.
+            if platform.is_macos() {
+                let cfg = crate::sign_macos::resolve_from_env();
+                let tx_s = tx.clone();
+                let mut sp = |m: String| {
+                    let _ = tx_s.send(ExportMsg::Progress(m));
+                };
+                if let Err(e) =
+                    crate::sign_macos::seal(&output_dir, bundled_app.as_deref(), &cfg, &mut sp)
+                {
+                    let _ = tx.send(ExportMsg::Progress(format!(
+                        "WARN: could not code-sign the macOS export ({e})"
+                    )));
+                }
             }
+
+            let _ = tx.send(ExportMsg::Done(format!(
+                "Exported {} files{} to {}",
+                file_count,
+                server_note,
+                output_dir.display()
+            )));
         }
         Err(e) => {
             let e = e.to_string();

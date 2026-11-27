@@ -1,5 +1,11 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 07:19
+- feat(export): macOS game exports are now code-signed so they launch, ad-hoc by default and notarized when a Developer ID is set in the environment
+- change(export): a macOS game exports as a `.app` bundle by default
+- fix(export): a lean game export compiles when the UI capability is stripped out
+- fix(export): an export reports a shared library it could not copy instead of silently shipping a game that cannot start
+
 ## 2026-11-27 05:14
 - change(macos): the macOS engine now downloads as a zip of the signed app instead of a disk image, and the updater installs from it
 

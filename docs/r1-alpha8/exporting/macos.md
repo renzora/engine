@@ -87,23 +87,38 @@ lipo -create -output renzora-universal \
 
 ## Distributing to other Macs
 
-The macOS lane produces a **plain directory** of a binary plus dynamic libraries — it does not generate an `.app` bundle, an `Info.plist`, a code signature, or a `.dmg`. (Only the Linux editor lane wraps its output, into an AppImage.) Bundling, signing, notarizing, and disk-image packaging are macOS-side steps you perform yourself, on a Mac, if you distribute beyond your own machine.
+### Exporting from the editor (on a Mac)
 
-Because the cross-compiled binaries are **unsigned**, Gatekeeper blocks them on other Macs until you either sign/notarize them or clear the quarantine attribute:
+The editor's **Export** dialog produces a ready-to-run game. On macOS it wraps the output in a `.app` by default (the "Bundle as .app" toggle, on for macOS because a bare binary there has no icon and, unsigned, is killed at launch) and **code-signs it** as the final step. This is not optional: on Apple Silicon the kernel refuses to run an unsigned binary at all, so an unsigned export shows "the application can't be opened" the instant you double-click it.
+
+Which tier you get depends only on what you have configured:
+
+- **No Apple account (the default): ad-hoc signed.** The `.app` runs on your machine and on any Mac it reaches without the download quarantine (a USB stick, AirDrop, itch's app, Steam). A copy a player *downloads* is quarantined and meets Gatekeeper, which they clear once with right-click -> Open (or System Settings -> Privacy & Security -> "Open Anyway"). This is as far as a free account goes, and it is enough for testing and for launchers that do not quarantine.
+- **Developer ID + notarization: opens with a clean double-click anywhere.** Set these in the environment before launching the editor, and the export signs with your identity, submits to Apple's notary service, and staples the ticket:
+
+  ```bash
+  export RENZORA_CODESIGN_IDENTITY="Developer ID Application: You (TEAMID)"
+  export RENZORA_NOTARY_KEY="/path/to/AuthKey_XXXXXXXXXX.p8"
+  export RENZORA_NOTARY_KEY_ID="XXXXXXXXXX"
+  export RENZORA_NOTARY_ISSUER="your-issuer-uuid"
+  ```
+
+  With only `RENZORA_CODESIGN_IDENTITY` set, the export is signed with your Developer ID but not notarized, so a download still warns. Notarization staples its ticket to the `.app`, so keep "Bundle as .app" on. Signing happens only when you export **from a Mac**: `codesign`, `notarytool` and `stapler` do not exist on other hosts, and a macOS game cross-exported from Linux or Windows is left unsigned with a note saying so.
+
+### `renzora build` (Docker cross-compile)
+
+The Docker lane is a different path, and it produces a **plain, unsigned directory** of a binary plus dynamic libraries: no `.app`, no `Info.plist`, no signature. Bundling and signing are macOS-side steps you run on a Mac, the same `codesign` -> `notarytool submit` -> `stapler staple` the editor's export automates. For a quick local run of an unsigned cross-built binary, clear the quarantine:
 
 ```bash
-# Quick local workaround for an unsigned build
 xattr -cr /path/to/renzora
 ```
-
-If you have an Apple Developer account, the standard distribution flow on a Mac is `codesign` → `notarytool submit` → `stapler staple`. These are Apple tools, not part of the Renzora build; see Apple's developer documentation for the current commands.
 
 ## Troubleshooting
 
 | Issue | Cause / fix |
 |---|---|
 | `WARN: osxcross not found, skipping macOS builds` | The container has no osxcross. Use the official `ghcr.io/renzora/macos` image, which bundles it. |
-| `"<app> is damaged and can't be opened"` | Unsigned cross-built binary flagged by Gatekeeper. Run `xattr -cr <binary>`, or sign and notarize on a Mac. |
+| `"<app> is damaged and can't be opened"` / `"the application can't be opened"` / `zsh: killed` | An unsigned binary. An export from the editor on a Mac is signed automatically; this is a cross-built (`renzora build`) or hand-assembled binary. Run `xattr -cr <binary>`, or sign and notarize on a Mac. |
 | `dyld: Library not loaded: ...dylib` | A required dylib is missing. Ship the whole platform directory — keep `librenzora.dylib`, `libbevy_dylib-*.dylib`, `libstd-*.dylib`, and `plugins/` next to the binary. |
 | Editor launches instead of the game | `librenzora_editor.dylib` is still present. Delete it, or run with `--no-editor`. |
 | Won't launch on older macOS | The build floor is macOS 11.0 Big Sur. |

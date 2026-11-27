@@ -137,6 +137,12 @@ impl Platform {
         )
     }
 
+    /// True for the macOS platforms, which ship as a `.app` and must be
+    /// code-signed: an unsigned arm64 Mach-O is SIGKILLed at `exec`.
+    pub fn is_macos(&self) -> bool {
+        matches!(self, Platform::MacOSX64 | Platform::MacOSArm64)
+    }
+
     /// Name of this platform's export template on a GitHub release.
     ///
     /// Derived from [`Self::dist_dir_name`] rather than tabulated separately —

@@ -150,7 +150,10 @@ impl ExportPreset {
             mesh_generate_lods: false,
             mesh_lod_levels: default_lod_levels(),
             selected_plugins: HashSet::new(),
-            bundle_app: false,
+            // On by default for macOS: a bare Mach-O there opens a terminal, has
+            // no icon, and (unsigned) is killed at exec, so a game is a `.app` or
+            // it does not run. Other platforms ship a folder unless asked.
+            bundle_app: platform.is_macos(),
             plugin_link_mode: PluginLinkMode::default(),
             capabilities: HashMap::new(),
             plugin_options: HashMap::new(),
