@@ -28,7 +28,7 @@ dnf install -y dnf-plugins-core
 dnf config-manager --set-enabled powertools
 dnf install -y --setopt=install_weak_deps=False \
     sudo git curl xz file binutils findutils which tar gzip jq zip unzip zstd python3 \
-    make pkgconf-pkg-config \
+    make pkgconf-pkg-config libatomic \
     "gcc-toolset-${GCC_TOOLSET}-gcc" "gcc-toolset-${GCC_TOOLSET}-gcc-c++" "gcc-toolset-${GCC_TOOLSET}-binutils" \
     clang clang-devel \
     libX11-devel libXi-devel libXcursor-devel libXrandr-devel libXinerama-devel \
@@ -51,16 +51,26 @@ for pair in cc:gcc c++:g++ gcc:gcc g++:g++; do
     ln -sf "$toolset/${pair#*:}" "/usr/local/bin/${pair%%:*}"
 done
 
-# EL8's own mold is not packaged; the upstream release is a static binary, so
-# the container's glibc does not limit it. Ships `ld.mold` for `-fuse-ld=mold`.
+# EL8 does not package mold, so this is the upstream release, built to run on
+# old glibc. Ships `ld.mold` for `-fuse-ld=mold`. Not fully static: the x86_64
+# build loads `libatomic.so.1`, which is why that package is in the list above
+# (without it every link failed with "cannot open shared object file").
 curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-$(uname -m)-linux.tar.gz" \
     | tar -xz -C /usr/local --strip-components=1
 
+# Both homes named outright. A container job runs as root with HOME set to
+# /github/home, and rustup notices the mismatch with root's own home (/root):
+# "$HOME differs from euid-obtained home directory". Naming the directories
+# leaves no question of which one it installs into, and they are the ones PATH
+# points at below.
+export RUSTUP_HOME="$HOME/.rustup" CARGO_HOME="$HOME/.cargo"
 curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal
 
 if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+    echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
     {
+        echo "RUSTUP_HOME=$RUSTUP_HOME"
+        echo "CARGO_HOME=$CARGO_HOME"
         echo "CC=gcc"
         echo "CXX=g++"
         # The repo's .cargo/config.toml links x86_64 with `clang`, which on EL8
@@ -74,6 +84,9 @@ if [ -n "${GITHUB_ENV:-}" ]; then
     } >> "$GITHUB_ENV"
 fi
 
-gcc --version | head -n1
+# `sed -n 1p`, not `head -n1`: head exits after one line, the tool writing the
+# rest gets SIGPIPE, and under `pipefail` that failed the whole step with exit
+# code 141 after everything had installed.
+gcc --version | sed -n 1p
 mold --version
-ldd --version | head -n1
+ldd --version | sed -n 1p

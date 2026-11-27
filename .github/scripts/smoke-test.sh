@@ -88,7 +88,7 @@ run_for 30 "$logs/server.log" "renzora --server ($dist_dir)" \
 
 # ── Editor: Linux ────────────────────────────────────────────────────────────
 if [[ "$dist_dir" == linux-* ]]; then
-    icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n1)
+    icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | sed -n 1p)
     if ! command -v Xvfb >/dev/null 2>&1 || [ -z "$icd" ]; then
         echo "::warning::no Xvfb or Mesa software Vulkan (lavapipe) on this runner; the editor was not started, only the server"
     else
