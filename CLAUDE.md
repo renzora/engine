@@ -427,17 +427,17 @@ zones need a dedicated profiling build that re-adds `trace_tracy`.
 
   Several lines may share a heading when they land together; a change made at a
   different time gets its own. Read the clock, do not guess the time.
-- **The publish job lifts every timestamped section into the nightly's release
-  page**, under *Since the last nightly*, headings included, so the page says
-  when each line landed.
-- It stops at the first `##` heading that does not begin with a digit. That is
-  every heading that is not a timestamp: the tag heading a published nightly
-  leaves behind, and the prose headings of a curated release document. Nothing
-  keys on a fixed section name, which is what lets the headings carry a date.
-- **After a nightly publishes, add its tag as a heading above the sections it
-  shipped**; new work then accumulates above that line. It is the only manual
-  step, it is never urgent, and nothing breaks if it is late: the worst case is
-  the next nightly repeating a line.
+- **A nightly's page lists only the lines that are new since the previous
+  nightly**, under *Since the last nightly*, with their timestamp headings so it
+  says when each landed. `scripts/nightly-notes.sh` works that out by diffing
+  the file against the copy at the previous nightly's tag, so there is no manual
+  step after a publish. Preview a page with `scripts/nightly-notes.sh
+  RELEASE_NOTES.md <(git show <last-nightly-tag>:RELEASE_NOTES.md)`.
+- It reads the current file only down to the first `##` heading that does not
+  begin with a digit: a hand-added tag heading, or the prose headings of a
+  curated release document. Nothing keys on a fixed section name, which is what
+  lets the headings carry a date. Adding a tag heading after a nightly is no
+  longer needed; old ones are harmless.
 - No timestamped section at all is fine: the nightly falls back to the asset
   boilerplate on its own, which is what it published before these notes existed.
 - **A major release overwrites the file.** Cutting `r1-alphaN` replaces

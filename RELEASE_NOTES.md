@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 09:31
+- change(release): a nightly's release page lists only what changed since the previous nightly
+
 ## 2026-11-27 09:10
 - fix(export): a lean single-binary game no longer crashes in the shadow pass right after its scene loads
 

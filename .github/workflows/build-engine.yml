@@ -1597,33 +1597,36 @@ jobs:
             title="Renzora Engine $tag (nightly)"
           fi
 
-          # What this nightly carries: every timestamped section at the top of
-          # RELEASE_NOTES.md, which is where each feature and fix writes its line
-          # as it lands (CLAUDE.md §4). A section heading is the date and time the
-          # change was made, so the headings come through as well as the lines and
-          # the release page says when each one landed.
+          # What this nightly carries: the RELEASE_NOTES.md lines that are new
+          # since the previous nightly, under the timestamp headings they were
+          # written with (CLAUDE.md §4). `scripts/nightly-notes.sh` diffs the file
+          # against the copy at the previous nightly's tag, so no one has to add a
+          # `## <tag>` heading after each publish for the next page to stop where
+          # this one did. That manual step was skipped from 29 Oct onward and
+          # every page republished hundreds of sections; see the script's notes.
           #
-          # The stop rule is "a `##` heading that does not begin with a digit",
-          # which is every heading that is not a timestamp: the tag heading a
-          # published nightly leaves behind, and the prose headings of a curated
-          # release document. Keying on the shape of the heading rather than on
-          # "whatever the top section is" is what keeps that second case right:
-          # between a release and the next version's first commit the file is a
-          # release document, not a list of unshipped changes.
-          #
-          # Each timestamp is demoted a level on the way out, so it nests under
-          # "Since the last nightly" instead of sitting beside the release page's
-          # own `###` sections.
+          # The previous nightly is the newest `-nightly-` prerelease. A same-day
+          # re-run has already deleted its own tag in the step above, so this is
+          # the one before it, and the replacement carries everything since then.
+          # Without one (or if its copy cannot be fetched) the script prints every
+          # timestamped section, which is what the page did before.
           #
           # Absent or empty, a nightly falls back to the asset boilerplate alone,
           # which is what it published before these notes existed.
           unreleased=""
           if [ -f RELEASE_NOTES.md ]; then
-            unreleased=$(awk '
-              /^##[[:space:]]+[0-9]/ { seen=1; print "##" $0; next }
-              /^##[[:space:]]/ { if (seen) exit; next }
-              seen { print }
-            ' RELEASE_NOTES.md)
+            prev_notes=""
+            prev_tag=$(gh release list --limit 50 --json tagName,isPrerelease \
+              --jq "[.[] | select(.isPrerelease and (.tagName | contains(\"-nightly-\")) and .tagName != \"$tag\")][0].tagName // empty") \
+              || prev_tag=""
+            if [ -n "$prev_tag" ] && gh api -H "Accept: application/vnd.github.raw" \
+                "repos/${GITHUB_REPOSITORY}/contents/RELEASE_NOTES.md?ref=${prev_tag}" > prev-notes.md; then
+              prev_notes=prev-notes.md
+              echo "Notes since $prev_tag"
+            else
+              echo "::notice::no previous nightly notes to compare against; listing every timestamped section"
+            fi
+            unreleased=$(bash scripts/nightly-notes.sh RELEASE_NOTES.md ${prev_notes:+"$prev_notes"})
           fi
 
           {
