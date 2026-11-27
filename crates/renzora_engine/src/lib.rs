@@ -948,11 +948,14 @@ fn setup_vfs_script_reader(
     info!("[runtime] VFS file reader set on scripting engine");
 }
 
-/// UI nodes are never effect sources; in a build without bevy_ui there are none.
+/// Excludes `bevy_ui` nodes from a query, and collapses to no filter in a build
+/// without bevy_ui (where the `Node` type does not exist at all). Shared by the
+/// effect-source scan here and the scene-content guard in `named_entities`, so
+/// the one `#[cfg]` that decides whether `bevy::ui::Node` is nameable lives once.
 #[cfg(feature = "ui")]
-type NotUiNode = Without<bevy::ui::Node>;
+pub(crate) type NotUiNode = Without<bevy::ui::Node>;
 #[cfg(not(feature = "ui"))]
-type NotUiNode = ();
+pub(crate) type NotUiNode = ();
 
 /// Drawn content (a mesh or a sprite) is never an effect source either. Effect
 /// settings live on scene objects such as the World Environment and cameras;

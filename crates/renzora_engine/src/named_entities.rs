@@ -53,15 +53,16 @@ use renzora_project_api::PlayModeState;
 /// an observer, a system, a window, an asset handle holder. Bevy 0.19 represents
 /// several of those as entities, and despawning them would take the app with it.
 ///
-/// `Without<Node>` excludes bevy_ui, which is the editor's own widgets and game
-/// UI alike — neither belongs in the scene tree, and ember does not name its
-/// nodes.
+/// `NotUiNode` excludes bevy_ui, which is the editor's own widgets and game UI
+/// alike: neither belongs in the scene tree, and ember does not name its nodes.
+/// It is the shared `crate::NotUiNode`, so a lean game with bevy_ui stripped (no
+/// `bevy::ui::Node` type to name) drops the filter instead of failing to build.
 type SceneContent = (
     Without<Name>,
     With<Transform>,
     Without<HideInHierarchy>,
     Without<Persistent>,
-    Without<bevy::ui::Node>,
+    crate::NotUiNode,
     Without<bevy::input::gamepad::Gamepad>,
 );
 
