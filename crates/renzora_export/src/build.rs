@@ -1141,8 +1141,10 @@ fn trim_bevy_features(table: Option<&mut toml_edit::Item>, disabled: &[String]) 
 pub struct LeanProfile {
     /// `panic = "abort"` — trades fault isolation for ~24% off the binary.
     pub panic_abort: bool,
-    /// `opt-level = "z"` instead of the profile's `"s"`. Same as `s` but with
-    /// loop vectorization off too.
+    /// `opt-level = "z"` instead of the profile's `2`: size-first, with loop
+    /// vectorization off. Not `"s"`, which is skipped entirely because a lean
+    /// game built at `"s"` crashed in Bevy's shadow pass (see the profile's notes
+    /// in the root `Cargo.toml`).
     pub opt_level_z: bool,
     /// `codegen-units = 1` instead of the release default of 16 — one LLVM
     /// module per crate, so thin LTO has fewer duplicated inline copies to
@@ -1163,10 +1165,10 @@ pub struct LeanProfile {
 /// Every key is written on every export, never left to whatever the last one
 /// set: the copy persists between exports, so a stale `panic = "abort"` or
 /// `codegen-units = 1` would silently apply to a later export that had switched
-/// the toggle back off. `opt-level` is *set* to `"s"` rather than removed for
-/// the same reason in reverse — removing it would inherit `dist`'s `opt-level =
-/// 2`, which is a speed profile, whereas absent `codegen-units` correctly means
-/// the release default of 16.
+/// the toggle back off. `opt-level` is always written too, `2` or `"z"`: a copy
+/// made before the profile moved off `"s"` still says `"s"`, and that is the
+/// level that crashed, so leaving the key alone could rebuild it. Absent
+/// `codegen-units` correctly means the release default of 16.
 fn patch_lean_profile(
     copy_root: &Path,
     opts: LeanProfile,
@@ -1193,7 +1195,7 @@ fn patch_lean_profile(
     }
     profile.insert(
         "opt-level",
-        toml_edit::value(if opts.opt_level_z { "z" } else { "s" }),
+        if opts.opt_level_z { toml_edit::value("z") } else { toml_edit::value(2i64) },
     );
     if opts.codegen_units_one {
         profile.insert("codegen-units", toml_edit::value(1i64));
@@ -3104,7 +3106,7 @@ mod tests {
 [profile.dist-lean]
 inherits = \"dist\"
 lto = \"thin\"
-opt-level = \"s\"
+opt-level = 2
 strip = \"symbols\"
 ";
 
@@ -3130,7 +3132,7 @@ strip = \"symbols\"
     #[test]
     fn all_off_leaves_the_profile_at_its_checked_in_settings() {
         let out = patch(LeanProfile::default());
-        assert!(out.contains("opt-level = \"s\""), "{out}");
+        assert!(out.contains("opt-level = 2"), "{out}");
         assert!(!out.contains("panic"), "{out}");
         assert!(!out.contains("codegen-units"), "{out}");
         // The knobs must not disturb what the profile already says.
@@ -3172,9 +3174,26 @@ strip = \"symbols\"
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!out.contains("panic"), "{out}");
         assert!(!out.contains("codegen-units"), "{out}");
-        // `opt-level` is set rather than removed: removing it would inherit
-        // `dist`'s speed-tuned `opt-level = 2`.
-        assert!(out.contains("opt-level = \"s\""), "{out}");
+        assert!(out.contains("opt-level = 2"), "{out}");
+    }
+
+    /// An export copy made before the profile moved off `"s"` still says `"s"`,
+    /// the level that crashed lean games in the shadow pass. A default export
+    /// must rewrite it rather than build at it.
+    #[test]
+    fn a_copy_left_at_opt_level_s_is_moved_to_2() {
+        let dir = std::env::temp_dir()
+            .join(format!("renzora_lean_profile_from_s_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), MANIFEST.replace("opt-level = 2", "opt-level = \"s\""))
+            .unwrap();
+
+        patch_lean_profile(&dir, LeanProfile::default(), &mut |_| {}).unwrap();
+
+        let out = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(out.contains("opt-level = 2"), "{out}");
+        assert!(!out.contains("\"s\""), "{out}");
     }
 }
 

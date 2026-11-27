@@ -168,12 +168,14 @@ What it strips/changes versus the copy modes:
 - **Static Bevy + static `std`** — `bevy_dylib` and the dynamic `std` are gone;
   everything is linked into the one executable (`--no-default-features --features
   runtime`, which drops the `dynamic_linking` feature).
-- **Thin LTO + size optimisation (`opt-level = "s"`) + symbol strip** (the
-  `dist-lean` cargo profile) — dead code is eliminated and the binary is built
-  for size. Thin rather than fat because fat LTO merges the whole program into
-  one link unit, which on a graph this size made the linker fail. Three of the
-  profile's settings are yours to move per export — see
-  [Build-profile knobs](#build-profile-knobs).
+- **Thin LTO + `opt-level = 2` + symbol strip** (the `dist-lean` cargo
+  profile): dead code is eliminated across crates and symbols are stripped.
+  Thin rather than fat because fat LTO merges the whole program into one link
+  unit, which on a graph this size made the linker fail. It used to build at
+  `opt-level = "s"`, but a game built at that level crashed in the renderer's
+  shadow pass right after its scene loaded, while `2` (what every editor build
+  uses) and `"z"` ran it cleanly. Three of the profile's settings are yours to
+  move per export: see [Build-profile knobs](#build-profile-knobs).
 - **Engine features you don't use are never compiled** — see
   [Engine features](#engine-features-the-features-tab) below.
 - On Windows it also static-links the MSVC runtime (no `VCRUNTIME140.dll`
@@ -641,14 +643,15 @@ so leaving them ticked reproduces exactly the profile that ships in the repo.
 | Toggle | On (default) | Off |
 |---|---|---|
 | **Panic unwinding** | `panic = "unwind"` | `panic = "abort"` — see below |
-| **Loop vectorization** | `opt-level = "s"` | `opt-level = "z"` |
+| **Loop vectorization** | `opt-level = 2` | `opt-level = "z"` |
 | **Parallel code generation** | `codegen-units = 16` | `codegen-units = 1` |
 
-**`opt-level = "z"`** is the same size-first optimisation as `"s"` with loop
-vectorization switched off as well. It is *not* reliably smaller: a scalar loop
-that runs more iterations can cost more in unrolled code than the vector version
-saved, and hot per-vertex or per-pixel CPU work loses its SIMD widening either
-way. Export once each way and compare the two files before shipping `z`.
+**`opt-level = "z"`** optimises for size first and switches loop vectorization
+off. On a test game it took the binary from 120.2 MB to 89.7 MB, but the
+trade is speed: hot per-vertex or per-pixel CPU work loses its SIMD widening, and
+a size-first inliner keeps more calls out of line. Export once each way and
+compare both size and frame time before shipping `z`. The in-between size level,
+`"s"`, is not offered: it is the one that crashed.
 
 **`codegen-units = 1`** gives LLVM one module per crate instead of 16, so thin
 LTO sees whole crates at once and has fewer duplicated inline copies left to

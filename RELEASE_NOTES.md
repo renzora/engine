@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 09:10
+- fix(export): a lean single-binary game no longer crashes in the shadow pass right after its scene loads
+
 ## 2026-11-27 08:43
 - fix(export): Single executable and lean macOS exports are code-signed too, with the game data beside the executable inside the `.app`
 - fix(export): the dedicated-server launcher finds the game binary inside a macOS `.app`

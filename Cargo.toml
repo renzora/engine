@@ -745,7 +745,17 @@ lto = "thin"
 # Not inherited from `dist`: an export is built once, in a throwaway copy of
 # the tree, so incremental's cache would be disk spent on nothing.
 incremental = false
-opt-level = "s"
+# 2, not "s", and on a measurement. At "s" a lean macOS (arm64) game aborted
+# half a second after its scene loaded, "pointer being freed was not allocated",
+# in the drop of the `TrackedRenderPass` at the end of
+# `bevy_pbr::render::light::view_shadow_pass`. It reproduced with thin LTO and
+# without it, and went away at 2 and at "z"; the same game ran under `dist`. So
+# the trigger is that one level's codegen, over either `unsafe` UB below us or a
+# miscompile, and which is still open. 2 is the level every `dist` editor build
+# runs, so it is the best-exercised choice. Measured on that game: 120.2 MB at 2,
+# 113.6 MB at "s", 89.7 MB at "z" (the per-export size option, see
+# `renzora_export::build::LeanProfile`).
+opt-level = 2
 strip = "symbols"
 
 [lints]
