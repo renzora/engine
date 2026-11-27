@@ -785,7 +785,18 @@ jobs:
           worst=""
           check() {
             local f="$1" prefix="$2" max="$3" v
-            v=$(objdump -T "$f" 2>/dev/null | grep -o "${prefix}_[0-9][0-9.]*" | sed "s/${prefix}_//" | sort -uV | tail -n1)
+            # The runner's shell is `bash -e -o pipefail`, so every stage that
+            # can legitimately "fail" has to say so, or the first such file
+            # kills the step having printed nothing (which is what this step
+            # did: a binary that never links libstdc++ has no GLIBCXX_ at all,
+            # grep reports that as exit 1, and the lane died in 0.2s). grep's 1
+            # is "no match", the expected clean case; its 2 is a real error.
+            # objdump exits non-zero on an ELF with no dynamic section, which
+            # imports nothing; 127 would mean it is missing, and an audit that
+            # cannot read the files must not pass, so that one still fails.
+            v=$( { objdump -T "$f" 2>/dev/null || [ $? != 127 ]; } \
+                 | { grep -o "${prefix}_[0-9][0-9.]*" || [ $? = 1 ]; } \
+                 | sed "s/${prefix}_//" | sort -uV | tail -n1)
             [ -n "$v" ] || return 0
             if [ "$(printf '%s\n%s\n' "$v" "$max" | sort -V | tail -n1)" != "$max" ]; then
               echo "::error file=$f::needs ${prefix}_$v, newer than the supported ${prefix}_$max"

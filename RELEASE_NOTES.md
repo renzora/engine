@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 10:51
+- fix(release): the Linux build's glibc audit checks every binary instead of failing silently at the first one that does not use C++
+
 ## 2026-11-27 09:48
 - fix(linux): the Linux editor and games start again instead of failing with "undefined symbol: NVSDK_NGX_D3D11_CreateFeature"
 
