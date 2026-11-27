@@ -240,6 +240,25 @@ struct CameraDragState {
 /// overridden.
 const RELEASE_HOLD_FRAMES: u8 = 3;
 
+/// The cursor grab mode a look-drag requests, chosen per platform because
+/// winit's two modes are complementary, not interchangeable: `Confined` is
+/// implemented on Windows and X11 and returns `NotSupported` on macOS, while
+/// `Locked` is implemented on macOS and Wayland and returns `NotSupported` on
+/// Windows and X11. Requesting the mode a platform does not support fails
+/// silently, leaving the pointer ungrabbed: on Windows that showed the
+/// crosshair during an orbit (why this code reached for `Confined`), and on
+/// macOS it left the manual anchor-warp below dragging the visible pointer back
+/// to the press point every frame.
+///
+/// `Locked` also holds the pointer in place at the OS level, so under it the
+/// warp is skipped entirely (see the drag loop): warping on top of a real lock
+/// is redundant, and on macOS `CGWarpMouseCursorPosition` suppresses motion
+/// deltas for ~0.25s afterward, which would stutter the orbit.
+#[cfg(target_os = "macos")]
+const DRAG_GRAB_MODE: CursorGrabMode = CursorGrabMode::Locked;
+#[cfg(not(target_os = "macos"))]
+const DRAG_GRAB_MODE: CursorGrabMode = CursorGrabMode::Confined;
+
 /// Smoothed WASD velocity for the editor camera. Each frame the controller
 /// computes a target velocity from held keys and lerps the current velocity
 /// toward it, so motion eases in when keys are pressed and eases out for a
@@ -1250,11 +1269,38 @@ fn camera_controller(
         drag.dragging = false;
         drag.release_hold = RELEASE_HOLD_FRAMES;
     }
-    // Hold the pointer at the anchor through the drag and briefly after it.
+    // Hold the pointer at the anchor through the drag and briefly after it. The
+    // warp runs in two cases, and is skipped in exactly one:
+    //
+    //   * `Confined` (Windows/X11), while dragging: the pointer still roams
+    //     inside the window, so recenter it every frame to keep a long drag off
+    //     the window edge.
+    //   * Either mode, in the release tail (`!drag.dragging`): warp once the
+    //     grab has been dropped back to `None`. This is what unfreezes the
+    //     pointer under `Locked` on macOS — releasing the OS lock does not on
+    //     its own re-associate the hardware mouse with the on-screen cursor, so
+    //     without a warp to kick it the pointer stays stuck where the drag
+    //     ended. The anchor is the press point, which is where `Locked` already
+    //     froze the (hidden) cursor, so this restores motion with no visible
+    //     jump. `RELEASE_HOLD_FRAMES` of it covers the frame the grab is still
+    //     being released on.
+    //
+    // The skipped case is `Locked` *while dragging*: warping on top of a live OS
+    // lock is redundant and, on macOS, suppresses motion deltas for ~0.25s after
+    // each warp — see `DRAG_GRAB_MODE`.
     if drag.dragging || drag.release_hold > 0 {
-        if let (Some(at), Ok((mut window, _))) = (drag.anchor, window_query.single_mut()) {
-            if window.cursor_position() != Some(at) {
-                window.set_cursor_position(Some(at));
+        let active_confined = drag.dragging && DRAG_GRAB_MODE == CursorGrabMode::Confined;
+        let release_tail = !drag.dragging;
+        if active_confined || release_tail {
+            if let (Some(at), Ok((mut window, _))) = (drag.anchor, window_query.single_mut()) {
+                // The release tail warps unconditionally: a just-released macOS
+                // `Locked` leaves the cursor frozen *at* the anchor, so a
+                // position-equality guard would skip the one warp that
+                // re-associates it. The active `Confined` recenter keeps the
+                // guard, since there it is a per-frame no-op once centered.
+                if release_tail || window.cursor_position() != Some(at) {
+                    window.set_cursor_position(Some(at));
+                }
             }
         }
         if !drag.dragging {
@@ -1265,20 +1311,20 @@ fn camera_controller(
         }
     }
 
-    // Enforce the hidden/confined cursor every frame *while* dragging, not just
+    // Enforce the hidden/grabbed cursor every frame *while* dragging, not just
     // on the press edge — so a transient reset from another system can't re-show
-    // it mid-drag. `Confined`, NOT `Locked`: winit doesn't support `Locked` on
-    // Windows, and requesting the unsupported mode leaves the cursor visible
-    // (the crosshair stayed on screen during a right-drag orbit). `Confined` is
-    // the Windows-supported mode the markup cursor code already uses; combined
-    // with `visible = false` it hides the pointer for the look-drag.
+    // it mid-drag. The grab mode is `DRAG_GRAB_MODE`, chosen per platform
+    // because winit implements `Confined` and `Locked` on disjoint sets of
+    // platforms; requesting the wrong one fails silently and leaves the pointer
+    // ungrabbed. Combined with `visible = false` it hides the pointer for the
+    // look-drag.
     if let Ok((_, mut cursor)) = window_query.single_mut() {
         if drag.dragging {
             if cursor.visible {
                 cursor.visible = false;
             }
-            if cursor.grab_mode != CursorGrabMode::Confined {
-                cursor.grab_mode = CursorGrabMode::Confined;
+            if cursor.grab_mode != DRAG_GRAB_MODE {
+                cursor.grab_mode = DRAG_GRAB_MODE;
             }
         } else if !cursor.visible {
             cursor.visible = true;
