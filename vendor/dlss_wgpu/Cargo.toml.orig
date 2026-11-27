@@ -1,0 +1,24 @@
+[package]
+name = "dlss_wgpu"
+version = "6.0.0"
+edition = "2024"
+categories = ["graphics", "rendering"]
+description = "Adds support for using DLSS with wgpu"
+repository = "https://github.com/bevyengine/dlss_wgpu"
+documentation = "https://docs.rs/dlss_wgpu"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+wgpu = { version = "30", default-features = false, features = ["vulkan"] }
+ash = "0.38"
+uuid = "1"
+bitflags = "2"
+thiserror = "2"
+
+[build-dependencies]
+bindgen = "0.73"
+cc = "1"
+
+[features]
+debug_overlay = []
+mock = []

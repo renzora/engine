@@ -3489,8 +3489,6 @@ dependencies = [
 [[package]]
 name = "dlss_wgpu"
 version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6d49749f048ae6512153417e1ca603417620f6024132a4bb6d7a52f138a8bea"
 dependencies = [
  "ash",
  "bindgen",

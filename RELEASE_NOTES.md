@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 09:48
+- fix(linux): the Linux editor and games start again instead of failing with "undefined symbol: NVSDK_NGX_D3D11_CreateFeature"
+
 ## 2026-11-27 09:31
 - change(release): a nightly's release page lists only what changed since the previous nightly
 

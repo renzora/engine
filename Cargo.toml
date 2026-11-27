@@ -57,6 +57,7 @@ exclude = [
     "vendor/bevy_transform_interpolation",
     "vendor/glam_matrix_extras",
     "vendor/glamx",
+    "vendor/dlss_wgpu",
     "vendor/vleue_navigator",
 ]
 # Avian comes from crates.io (`avian3d`/`avian2d` 0.7, which target Bevy 0.19),
@@ -765,5 +766,11 @@ workspace = true
 # is built on glam 0.33 while Bevy is on 0.34, and avian assumes parry's vectors
 # are Bevy's. See the note at the top of `vendor/glamx/Cargo.toml`; remove both
 # once a glamx release moves to Bevy's glam.
+#
+# dlss_wgpu (Bevy's DLSS, behind the `dlss` feature) without Direct3D helpers
+# off Windows: 6.0.0 left four undefined NGX D3D symbols in the Linux
+# `libbevy_dylib.so`, which stopped every Linux download built with DLSS from
+# starting. See the note at the top of `vendor/dlss_wgpu/Cargo.toml`.
 [patch.crates-io]
 glamx = { path = "vendor/glamx" }
+dlss_wgpu = { path = "vendor/dlss_wgpu" }
