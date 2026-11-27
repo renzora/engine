@@ -1131,8 +1131,7 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     init_io_task_pool_with_large_stack();
     insert_dlss_project_id(app);
 
-    app.add_plugins(
-        DefaultPlugins
+    let plugins = DefaultPlugins
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
                     backends: None,
@@ -1159,8 +1158,29 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
                     .to_string(),
                 ..default()
             })
-            .disable::<bevy::winit::WinitPlugin>(),
-    );
+            .disable::<bevy::winit::WinitPlugin>();
+
+    // A DLSS build's `AntiAliasPlugin` carries Bevy's `DlssPlugin`, whose
+    // `finish` reads the render sub-app unconditionally. A dedicated server has
+    // none, so every DLSS build's `--server` panicked at startup with "No
+    // sub-app with label 'RenderApp' exists". The group is swapped for its other
+    // four plugins, and the two DLSS component types are registered by hand so a
+    // scene whose camera carries `Dlss` still deserializes on the server.
+    #[cfg(feature = "dlss")]
+    let plugins = plugins.disable::<bevy::anti_alias::AntiAliasPlugin>();
+    app.add_plugins(plugins);
+    #[cfg(feature = "dlss")]
+    {
+        use bevy::anti_alias::{contrast_adaptive_sharpening, dlss, fxaa, smaa, taa};
+        app.add_plugins((
+            fxaa::FxaaPlugin,
+            smaa::SmaaPlugin,
+            taa::TemporalAntiAliasPlugin,
+            contrast_adaptive_sharpening::CasPlugin,
+        ))
+        .register_type::<dlss::Dlss<dlss::DlssSuperResolutionFeature>>()
+        .register_type::<dlss::Dlss<dlss::DlssRayReconstructionFeature>>();
+    }
 
     let wait = Duration::from_secs_f64(1.0 / tick_rate.max(1) as f64);
     app.add_plugins(ScheduleRunnerPlugin::run_loop(wait));

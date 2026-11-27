@@ -492,9 +492,9 @@ compress_sdk() {
     # -T0 uses every core. Compression is the slowest part of packaging, and it
     # only ever runs here — the decoder is single-threaded and does not care.
     # The engine's own images, when they ship beside the executable, stay out
-    # and the unpacker links them back in. Only those that do: macOS's `.app`
-    # has no `librenzora_dylib.dylib` (see the build workflow's packing step),
-    # and the Linux binaries live in the AppDir. Without jq they simply ship
+    # and the unpacker links them back in. Only those that do: an image the
+    # bundle lacks must stay in the archive (see the build workflow's packing
+    # step), and the Linux binaries live in the AppDir. Without jq they simply ship
     # twice, which still unpacks correctly.
     local excludes=() p bin="$dir"
     [ -d "$dir/Renzora Engine.app/Contents/MacOS" ] && bin="$dir/Renzora Engine.app/Contents/MacOS"

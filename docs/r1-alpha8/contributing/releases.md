@@ -67,7 +67,7 @@ Right after `cargo renzora dist`, each desktop lane runs `.github/scripts/smoke-
 
 A run passes when the process is still alive at the end and has logged no panic; exiting early with any code fails it, because neither mode ever exits on its own. Windows and macOS runners have no GPU a renderer can use, so there the server run is the whole test. It runs before signing, packing and the template cut, so a build that cannot start fails before the steps that only repackage it.
 
-The check found its first bug on its first run: the dedicated server panicked at startup because the gaussian splatting plugin assumed a renderer, which `--server` never has.
+Its first runs found three bugs that had already shipped: the dedicated server panicked at startup in the gaussian splatting plugin, and again in Bevy's DLSS plugin on DLSS builds, because both assumed a renderer that `--server` never has; and the macOS app could not start at all, because the stager's import scan had silently dropped `librenzora_dylib.dylib` from the bundle.
 
 **Nothing is published unless every platform built.** `publish` waits for every desktop lane and the wasm build, and if any of them failed it does not run: no release is created and the previous nightly with the same tag is left alone. A lost runner or a broken lane therefore costs a retry, not a half-empty release to find and delete. Use **Re-run failed jobs** on the run: it rebuilds only the lanes that failed, keeps the artifacts the others uploaded, and then publishes. A narrowed run that never started a lane is fine; only a *failed* lane stops the publish.
 

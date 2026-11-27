@@ -719,9 +719,14 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
             wanted.extend(imported_libs(&path, plat));
         }
     }
+    // The profile directory first, then `deps/`: cargo does not lift every
+    // dylib out of `deps/` on every platform, and on macOS `renzora_dylib` was
+    // found only there (the SDK stager names it `deps/librenzora_dylib.dylib`).
     for name in &wanted {
-        let from = src.join(name);
-        if from.is_file() {
+        if let Some(from) = [src.join(name), src.join("deps").join(name)]
+            .into_iter()
+            .find(|p| p.is_file())
+        {
             link_or_copy(&from, &out.join(name))?;
         }
     }
@@ -753,9 +758,10 @@ fn stage_shared_libs(src: &Path, out: &Path, plat: &Platform) -> std::io::Result
     // `main`, naming only a hashed filename.
     if let Some(missing) = wanted.iter().find(|n| !out.join(n).is_file()) {
         return Err(std::io::Error::other(format!(
-            "{missing} is imported by the engine binaries but was found in neither \
-             {} nor {}",
+            "{missing} is imported by the engine binaries but was found in none of \
+             {}, {} and {}",
             src.display(),
+            src.join("deps").display(),
             libdir.display()
         )));
     }
@@ -788,10 +794,19 @@ fn imported_libs(exe: &Path, plat: &Platform) -> Vec<String> {
         while let Some(at) = find_bytes(&bytes[i..], pat) {
             let start = i + at;
             // A filename is short; cap the scan so a stray match cannot run away.
+            //
+            // Cut at the terminating NUL BEFORE decoding. This used to decode
+            // the whole 96-byte window and split afterwards, so whatever binary
+            // data followed the name had to be valid UTF-8 too. In a Mach-O
+            // the next load command starts right after the padding, and when it
+            // held a byte like 0xE8 the decode failed and the import was dropped
+            // without a word: macOS staged no `librenzora_dylib.dylib`, and the
+            // published app died in dyld with "Library not loaded".
             let end = (start + 96).min(bytes.len());
-            if let Some(name) = std::str::from_utf8(&bytes[start..end])
+            let window = &bytes[start..end];
+            let window = &window[..window.iter().position(|&b| b == 0).unwrap_or(window.len())];
+            if let Some(name) = std::str::from_utf8(window)
                 .ok()
-                .and_then(|s| s.split('\0').next())
                 .filter(|s| s.ends_with(&suffix))
                 // `std` must not match `std_detect` or similar: after the stem
                 // there is either the extension or `-<hash>`.

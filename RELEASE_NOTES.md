@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 00:11
+- fix(macos): the macOS editor and exported games start again instead of failing with "Library not loaded: librenzora_dylib.dylib"
+- fix(server): the dedicated server no longer crashes at startup in builds with DLSS
+
 ## 2026-11-26 18:50
 - fix(server): the dedicated server (`--server`) no longer crashes at startup in the gaussian splatting plugin
 - feat(release): a dev build packages a nightly without publishing it, and can be promoted to the nightly later

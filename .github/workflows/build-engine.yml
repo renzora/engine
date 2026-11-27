@@ -1081,10 +1081,14 @@ jobs:
           # (`renzora_plugin_build::unpack::restore_shared_images`).
           #
           # Only when they actually ship there. The stager copies the images an
-          # executable imports, and macOS's linker drops `renzora_dylib` from
-          # that list, so the `.app` has no `librenzora_dylib.dylib`; leaving it
-          # out of the archive anyway broke every Mac's first unpack. So each
-          # one is checked against the directory the executable runs from: the
+          # executable imports. On macOS it used to miss `renzora_dylib`: its
+          # import scan dropped the name, so the `.app` shipped without
+          # `librenzora_dylib.dylib` and could not start at all (dyld: "Library
+          # not loaded"). That was misread here as the linker leaving the
+          # import out, and is fixed in xtask's `imported_libs`. Leaving an
+          # image out of the archive that the bundle lacks broke every Mac's
+          # first unpack, so each one is still checked against the directory
+          # the executable runs from: the
           # `.app`'s `Contents/MacOS`, the Linux AppDir (the AppImage's
           # contents), or the platform directory itself on Windows.
           bin="$out"
