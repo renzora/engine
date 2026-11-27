@@ -19,7 +19,7 @@ The fixed row at the top of the panel describes the object itself rather than an
 | Icon tile | The glyph this object shows in the Hierarchy, on a wash of its label colour (the accent colour when it has none). Click it to change either. |
 | Name | The object's unique identifier, and the name scripts use to find it, in a text field that is always there. Click into it and type; **Enter** or clicking away saves, **Escape** puts the old name back. Spaces and punctuation become `_`, and duplicates are resolved for you. |
 | Kind and source | The line under the name: what the object is (Mesh, Camera, Light, Model, Empty) and, for a model or any part of one, the model file it came from. |
-| Eye | Show or hide the object. On the name field's line, beside it. |
+| Eye | Hide the object while you edit, the same as the Hierarchy's eye. It stays visible in the game unless the project's **Hidden Objects Stay Hidden in Game** is on. On the name field's line, beside it. |
 | Lock | Pin the Inspector to this object while you click around elsewhere. It turns red while the Inspector is pinned, since your selection is then being ignored. |
 
 Clicking the icon tile opens one popover for both settings:

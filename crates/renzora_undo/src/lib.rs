@@ -10,7 +10,7 @@
 use std::any::Any;
 
 use bevy::prelude::*;
-use renzora_scene_api::{MeshColor, MeshPrimitive, ShapeRegistry};
+use renzora_scene_api::{EditorHidden, MeshColor, MeshPrimitive, ShapeRegistry};
 use renzora_editor_framework::{EditorLocked, EditorSelection, FieldValue, InspectorRegistry, SpawnRegistry};
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -549,9 +549,28 @@ fn set_locked(world: &mut World, entity: Entity, locked: bool) {
     }
 }
 
+/// The hierarchy's eye. Hiding adds `EditorHidden`; it never writes
+/// `Visibility`, which is the game's (see `renzora_runtime::editor_hidden`).
+///
+/// Showing also clears a `Visibility::Hidden`, because the eye reads an entity
+/// as hidden when either is set: scenes saved before the marker existed carry
+/// the old eye's `Hidden`, and clicking a closed eye has to open it.
 pub struct VisibilityToggleCmd {
     pub entity: Entity,
     pub was_visible: bool,
+    /// The marker and `Visibility` before the first execute, so undo puts back
+    /// exactly that rather than a guess at it.
+    before: Option<(bool, Option<Visibility>)>,
+}
+
+impl VisibilityToggleCmd {
+    pub fn new(entity: Entity, was_visible: bool) -> Self {
+        Self {
+            entity,
+            was_visible,
+            before: None,
+        }
+    }
 }
 
 impl UndoCommand for VisibilityToggleCmd {
@@ -559,20 +578,42 @@ impl UndoCommand for VisibilityToggleCmd {
         "Toggle visibility"
     }
     fn execute(&mut self, world: &mut World) {
-        set_visibility(world, self.entity, !self.was_visible);
+        let Ok(mut e) = world.get_entity_mut(self.entity) else {
+            return;
+        };
+        if self.before.is_none() {
+            self.before = Some((e.contains::<EditorHidden>(), e.get::<Visibility>().copied()));
+        }
+        if self.was_visible {
+            e.insert(EditorHidden);
+        } else {
+            e.remove::<EditorHidden>();
+            if let Some(mut v) = e.get_mut::<Visibility>() {
+                if *v == Visibility::Hidden {
+                    *v = Visibility::Inherited;
+                }
+            }
+        }
     }
     fn undo(&mut self, world: &mut World) {
-        set_visibility(world, self.entity, self.was_visible);
-    }
-}
-
-fn set_visibility(world: &mut World, entity: Entity, visible: bool) {
-    if let Some(mut v) = world.get_mut::<Visibility>(entity) {
-        *v = if visible {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
+        let Some((had_marker, visibility)) = self.before else {
+            return;
         };
+        let Ok(mut e) = world.get_entity_mut(self.entity) else {
+            return;
+        };
+        if had_marker {
+            e.insert(EditorHidden);
+        } else {
+            e.remove::<EditorHidden>();
+        }
+        if let Some(prev) = visibility {
+            if let Some(mut v) = e.get_mut::<Visibility>() {
+                if *v != prev {
+                    *v = prev;
+                }
+            }
+        }
     }
 }
 
@@ -1072,6 +1113,38 @@ mod tests {
 
     fn events(w: &World) -> Vec<String> {
         w.resource::<Log>().events.clone()
+    }
+
+    /// The eye hides with its own marker and leaves the `Visibility` the game
+    /// draws by alone; undo takes the marker off again.
+    #[test]
+    fn the_eye_hides_with_its_marker_not_visibility() {
+        let mut w = World::new();
+        let e = w.spawn(Visibility::Inherited).id();
+        let mut cmd = VisibilityToggleCmd::new(e, true);
+        cmd.execute(&mut w);
+        assert!(w.get::<EditorHidden>(e).is_some());
+        assert_eq!(w.get::<Visibility>(e), Some(&Visibility::Inherited));
+        cmd.undo(&mut w);
+        assert!(w.get::<EditorHidden>(e).is_none());
+        // Redo is a second execute and must land in the same place.
+        cmd.execute(&mut w);
+        assert!(w.get::<EditorHidden>(e).is_some());
+    }
+
+    /// A scene saved before the marker carries the old eye's `Hidden`. Opening
+    /// the eye clears it, and undo puts exactly that back.
+    #[test]
+    fn opening_the_eye_on_an_old_hidden_entity_shows_it_and_undo_restores() {
+        let mut w = World::new();
+        let e = w.spawn(Visibility::Hidden).id();
+        let mut cmd = VisibilityToggleCmd::new(e, false);
+        cmd.execute(&mut w);
+        assert_eq!(w.get::<Visibility>(e), Some(&Visibility::Inherited));
+        assert!(w.get::<EditorHidden>(e).is_none());
+        cmd.undo(&mut w);
+        assert_eq!(w.get::<Visibility>(e), Some(&Visibility::Hidden));
+        assert!(w.get::<EditorHidden>(e).is_none());
     }
 
     #[test]

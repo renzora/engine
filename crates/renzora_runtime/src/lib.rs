@@ -93,6 +93,9 @@ pub mod linux_support;
 mod terrain_vg;
 /// `RENZORA_SHUFFLE_SEED`: shuffle system order to expose ordering bugs.
 pub mod schedule_shuffle;
+/// The hierarchy's eye: hidden while editing, and in the game when the
+/// project's `editor_hidden_in_game` asks.
+mod editor_hidden;
 /// `[rendering_2d] image_filter`, applied live to sprite textures.
 #[cfg(feature = "render_2d")]
 mod sprite_filter;
@@ -1550,6 +1553,10 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     // the editor viewport shows the game, so it should follow the setting too.
     #[cfg(feature = "render_2d")]
     sprite_filter::register(app);
+
+    // The hierarchy's eye, in both sessions: the editor always hides what it
+    // marks, and a game does when `editor_hidden_in_game` is on.
+    editor_hidden::register(app);
 
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image

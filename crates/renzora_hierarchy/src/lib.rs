@@ -183,9 +183,11 @@ fn detect_selection_keybindings(
         Has<renzora_ember::game_ui::UiCanvas>,
         Has<renzora_ember::game_ui::UiWidget>,
     )>,
-    mut vis_q: Query<&mut bevy::prelude::Visibility>,
+    mut vis_q: Query<(&mut bevy::prelude::Visibility, Has<renzora_scene_api::EditorHidden>)>,
+    mut commands: Commands,
     mut rename_req: ResMut<RenameRequest>,
 ) {
+    use renzora_scene_api::EditorHidden;
     use renzora_shell_api::keybindings::EditorAction;
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
@@ -219,14 +221,27 @@ fn detect_selection_keybindings(
         }
     }
 
-    // HideSelected: toggle Visibility::Hidden on every selected entity.
+    // Show an entity the way the eye does: drop its marker, and a plain
+    // `Visibility::Hidden` from a scene saved before the marker existed.
+    // Takes the `Mut` itself: borrowing it mutably would flag `Visibility`
+    // changed even when nothing is written.
+    let show = |commands: &mut Commands, e: Entity, mut v: Mut<Visibility>| {
+        commands.entity(e).remove::<EditorHidden>();
+        if *v == Visibility::Hidden {
+            *v = Visibility::Inherited;
+        }
+    };
+
+    // HideSelected: the eye on every selected entity. Hiding is the eye's
+    // `EditorHidden`, never `Visibility`, which is the game's.
     if keybindings.just_pressed(EditorAction::HideSelected, &keyboard) {
         for e in selection.get_all() {
-            if let Ok(mut v) = vis_q.get_mut(e) {
-                *v = match *v {
-                    Visibility::Hidden => Visibility::Visible,
-                    _ => Visibility::Hidden,
-                };
+            if let Ok((v, marked)) = vis_q.get_mut(e) {
+                if marked || *v == Visibility::Hidden {
+                    show(&mut commands, e, v);
+                } else {
+                    commands.entity(e).insert(EditorHidden);
+                }
             }
         }
     }
@@ -241,12 +256,12 @@ fn detect_selection_keybindings(
                 if name.is_none() || hide.is_some() || is_chrome {
                     continue;
                 }
-                if let Ok(mut v) = vis_q.get_mut(e) {
-                    *v = if sel.contains(&e) {
-                        Visibility::Visible
-                    } else {
-                        Visibility::Hidden
-                    };
+                if let Ok((v, marked)) = vis_q.get_mut(e) {
+                    if sel.contains(&e) {
+                        show(&mut commands, e, v);
+                    } else if !marked {
+                        commands.entity(e).insert(EditorHidden);
+                    }
                 }
             }
         }

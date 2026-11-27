@@ -46,7 +46,7 @@ mod type_path_tests {
         at!("renzora::core::components":
             EntityGroup, Node2d, SpriteImagePath, SpriteCustomSize, YSort, SpriteSheet,
             SpriteAtlasRegion, ReflectionProbeSource, Persistent, SceneEntityId, EntityIcon,
-            EntityLabelColor, HierarchyOrder, PickAsUnit, SceneInstance, WorldPartition,
+            EntityLabelColor, EditorHidden, HierarchyOrder, PickAsUnit, SceneInstance, WorldPartition,
             PartitionCell, GaussianSplat, SceneCamera, DefaultCamera, FollowNode,
             CameraRenderResolution, CameraPreset, CameraPresets, MeshPrimitive, EditedMesh,
             MeshInstanceData, MeshLod, StandardGeometry,

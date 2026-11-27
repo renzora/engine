@@ -475,6 +475,25 @@ impl SceneEntityId {
 #[derive(Component)]
 pub struct EditorLocked;
 
+/// Hidden with the hierarchy's eye: hidden while editing, and in the game
+/// only when the project asks for that
+/// (`ProjectConfig::editor_hidden_in_game`).
+///
+/// The eye used to write `Visibility::Hidden` itself, which made one component
+/// mean two things: "out of my way while I edit" and "not drawn in the game".
+/// Everything else that owns `Visibility` then overwrote the author's choice:
+/// a UI canvas's visibility mode turned a hidden canvas visible again on every
+/// load and every undo (issue #75). A separate marker leaves `Visibility` to
+/// the inspector and to scripts, and the runtime applies this one on top
+/// (`renzora_runtime::editor_hidden`).
+///
+/// Saved with the scene, not kept in editor state, because the game has to
+/// see it to follow the project setting.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[reflect(Component, Default)]
+#[type_path = "renzora::core::components"]
+pub struct EditorHidden;
+
 /// Author-chosen icon for an entity, overriding the one derived from its
 /// components.
 ///

@@ -536,10 +536,7 @@ pub(crate) fn hierarchy_vis_toggle(
             execute(
                 world,
                 UndoContext::Scene,
-                Box::new(VisibilityToggleCmd {
-                    entity,
-                    was_visible,
-                }),
+                Box::new(VisibilityToggleCmd::new(entity, was_visible)),
             );
         });
     }

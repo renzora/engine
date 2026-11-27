@@ -34,7 +34,7 @@ The editor writes `project.toml` only when one of these settings changes (or a s
 
 <!-- screenshot: settings_project.png - the Project settings page -->
 
-**Project** names your game, sets its version, and picks the boot scene, which is the scene that loads when the game starts. **Global Scenes** lists scenes that load before the boot scene and stay loaded across scene changes, which is where a persistent HUD or audio manager goes.
+**Project** names your game, sets its version, and picks the boot scene, which is the scene that loads when the game starts. **Hidden Objects Stay Hidden in Game** decides what the Hierarchy's eye means for the game: off (the default), an object you hide with the eye is hidden only while you edit; on, it is hidden in the game too. It is saved in `project.toml` as `editor_hidden_in_game` and read by the game when it starts. **Global Scenes** lists scenes that load before the boot scene and stay loaded across scene changes, which is where a persistent HUD or audio manager goes.
 
 **Physics** picks the physics engine for the 3D world and the 2D world separately. **Default** is the engine's own avian; a physics engine installed as a plugin appears beside it in whichever world it simulates. The editor moves the open scene onto the new engine straight away, and the game uses it from its next start. The Console says which engine runs each world once a project loads. See [Physics Backends](/docs/r1-alpha8/extending/physics-backends).
 

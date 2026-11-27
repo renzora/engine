@@ -269,6 +269,26 @@ pub(crate) fn tab_project(
     );
     settings_row(commands, fonts, body, 4, &tr("settings.row.game_ui_theme"), dd);
 
+    // Whether the hierarchy's eye hides things in the game too
+    // (`editor_hidden_in_game`). Play's game reads project.toml when it starts,
+    // so a running game picks a change up from its next start.
+    let t = ctl_toggle(
+        commands,
+        false,
+        |w| {
+            w.get_resource::<CurrentProject>()
+                .is_some_and(|c| c.config.editor_hidden_in_game)
+        },
+        |w, &on| {
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.editor_hidden_in_game = on;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 5, &tr("settings.row.editor_hidden_in_game"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.editor_hidden_in_game"));
+
     // Global scenes — the `autoload` list. Each scene toggled on here loads
     // before the boot scene and every entity it spawns is tagged `Persistent`,
     // so subsequent scene loads skip it. That's how a project keeps one UI

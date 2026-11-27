@@ -1541,6 +1541,14 @@ pub struct ProjectConfig {
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
     pub console_logging: bool,
+    /// Whether an entity hidden with the hierarchy's eye
+    /// (`renzora_scene_api::EditorHidden`) is hidden in the game too. Off by
+    /// default: the eye is for getting things out of the way while editing, and
+    /// hiding something in the game is what `Visibility` is for. Read by the
+    /// runtime (`renzora_runtime::editor_hidden`), so a game can change it while
+    /// it runs.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub editor_hidden_in_game: bool,
     /// Set by an export with "Allow profiling" on: the editor's pairing key.
     /// The game then announces itself on the network and accepts the editor's
     /// companion. `None` in every normal build, which never opens a port.
@@ -1594,6 +1602,7 @@ impl Default for ProjectConfig {
             rendering: RenderingConfig::default(),
             physics: PhysicsProjectConfig::default(),
             console_logging: false,
+            editor_hidden_in_game: false,
             profiling_key: None,
             ui_font: None,
             ui_theme: None,
@@ -1816,6 +1825,7 @@ mod tests {
             rendering: RenderingConfig::default(),
             physics: PhysicsProjectConfig::default(),
             console_logging: false,
+            editor_hidden_in_game: true,
             profiling_key: None,
             network: None,
             audio: AudioConfig {

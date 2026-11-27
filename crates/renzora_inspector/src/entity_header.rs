@@ -187,22 +187,15 @@ fn parse_hex(s: &str) -> Option<[u8; 3]> {
     Some([byte(0)?, byte(2)?, byte(4)?])
 }
 
-fn visibility_get(world: &World, entity: Entity) -> Option<FieldValue> {
-    world
-        .get::<Visibility>(entity)
-        .map(|v| FieldValue::Bool(matches!(*v, Visibility::Inherited | Visibility::Visible)))
-}
-
-fn visibility_set(world: &mut World, entity: Entity, val: FieldValue) {
-    let FieldValue::Bool(v) = val else { return };
-    let next = if v {
-        Visibility::Inherited
-    } else {
-        Visibility::Hidden
-    };
-    if let Some(mut vis) = world.get_mut::<Visibility>(entity) {
-        *vis = next;
-    }
+/// Whether the eye reads open: no eye marker, and not a plain
+/// `Visibility::Hidden` (which a scene saved before the marker carries). The
+/// hierarchy row reads it the same way (`renzora_hierarchy::state`).
+fn eye_open(world: &World, entity: Entity) -> bool {
+    world.get::<renzora_scene_api::EditorHidden>(entity).is_none()
+        && world
+            .get::<Visibility>(entity)
+            .map(|v| *v != Visibility::Hidden)
+            .unwrap_or(true)
 }
 
 fn icon_get(world: &World, entity: Entity) -> Option<FieldValue> {
@@ -530,9 +523,11 @@ fn visibility_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity
         Node { padding: UiRect::all(Val::Px(3.0)), ..default() },
     ));
     let visible_now = move |w: &Rx| {
-        w.get::<Visibility>(entity)
-            .map(|v| *v != Visibility::Hidden)
-            .unwrap_or(true)
+        w.get::<renzora_scene_api::EditorHidden>(entity).is_none()
+            && w
+                .get::<Visibility>(entity)
+                .map(|v| *v != Visibility::Hidden)
+                .unwrap_or(true)
     };
     bind_text(commands, eye, move |w| {
         let name = if visible_now(w) { "eye" } else { "eye-slash" };
@@ -588,7 +583,9 @@ fn lock_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> E
 
 // ── Interaction ──────────────────────────────────────────────────────────────
 
-/// Click the eye → flip visibility, undoably.
+/// Click the eye → the hierarchy's eye toggle, undoably. The same command as
+/// the hierarchy row's eye, so the two can never mean different things: it
+/// hides with `EditorHidden` and leaves `Visibility` to the game.
 pub(crate) fn entity_visibility_click(
     q: Query<(&UiInteraction, &EntityVisibilityBtn), Changed<UiInteraction>>,
     mut commands: Commands,
@@ -599,14 +596,11 @@ pub(crate) fn entity_visibility_click(
         }
         let entity = btn.entity;
         commands.queue(move |world: &mut World| {
-            let visible = matches!(visibility_get(world, entity), Some(FieldValue::Bool(true)));
-            record_field_change(
+            let visible = eye_open(world, entity);
+            renzora_undo::execute(
                 world,
-                entity,
-                "Visible",
-                get(visibility_get),
-                set(visibility_set),
-                FieldValue::Bool(!visible),
+                renzora_undo::UndoContext::Scene,
+                Box::new(renzora_undo::VisibilityToggleCmd::new(entity, visible)),
             );
         });
     }

@@ -346,10 +346,15 @@ pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -
                 .and_then(|reg| reg.entity_type_name(world, entity));
             let parent = world.get::<ChildOf>(entity).map(|c| c.parent());
             let label_color = world.get::<EntityLabelColor>(entity).map(|c| c.0);
-            let is_visible = world
-                .get::<Visibility>(entity)
-                .map(|v| *v != Visibility::Hidden)
-                .unwrap_or(true);
+            // The eye is closed for the eye's own marker, and for a plain
+            // `Visibility::Hidden` too: scenes saved before the marker carry the
+            // old eye's `Hidden`, and an open eye on an invisible entity would
+            // give no way to see why it is not drawn.
+            let is_visible = world.get::<renzora_scene_api::EditorHidden>(entity).is_none()
+                && world
+                    .get::<Visibility>(entity)
+                    .map(|v| *v != Visibility::Hidden)
+                    .unwrap_or(true);
             let is_locked = world.get::<EditorLocked>(entity).is_some();
             let is_default_camera = world.get::<renzora_scene_api::DefaultCamera>(entity).is_some();
 

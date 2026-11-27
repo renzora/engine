@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 20:53
+- change(editor): the hierarchy's eye hides an object only while editing, unless the new project setting Hidden Objects Stay Hidden in Game is on
+- fix(editor): a hidden UI canvas stays hidden after undo, saving or reopening the scene
+
 ## 2026-11-27 18:20
 - fix(scripting): installing Rust from the editor works again instead of failing with "unknown proxy name"
 

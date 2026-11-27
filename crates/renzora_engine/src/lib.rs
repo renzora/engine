@@ -343,6 +343,9 @@ impl Plugin for RuntimePlugin {
             // The editor's "select as one object" choice. Saved with the scene,
             // so registered by the host for the same reason as the two above.
             .register_type::<renzora_scene_api::PickAsUnit>()
+            // The hierarchy's eye. Saved with the scene and read by the game,
+            // which hides it or not by the project setting.
+            .register_type::<renzora_scene_api::EditorHidden>()
             .register_type::<renzora_scene_api::Persistent>()
             .register_type::<renzora_scene_api::Node2d>()
             .register_type::<renzora_scene_api::YSort>()
