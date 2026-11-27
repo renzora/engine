@@ -197,9 +197,10 @@ impl UpdateState {
     /// Would installing write to somewhere nothing can be written?
     ///
     /// A veto, unlike [`Self::is_source_checkout`]: no amount of confirming
-    /// makes a mounted disk image writable. The macOS case is someone running
-    /// the editor straight off the `.dmg` without dragging it to
-    /// `/Applications` first.
+    /// makes a read-only path writable. The macOS case is someone running the
+    /// editor straight out of the unzipped folder, where Gatekeeper's App
+    /// Translocation runs it from a read-only location until it is moved to
+    /// `/Applications`.
     ///
     /// Asked of the *effective* layout, so pointing the install path somewhere
     /// writable lifts it — which is exactly the fix, and means the UI does not

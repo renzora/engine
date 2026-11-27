@@ -47,15 +47,18 @@ pub struct InstallLayout {
     pub is_source_checkout: bool,
     /// True when the install sits on a medium nothing can write to.
     ///
-    /// The case this exists for is a macOS user who opened the `.dmg` and
-    /// launched the editor straight off the mounted image without dragging it
-    /// into `/Applications` — which people do, and which works fine until they
-    /// ask for an update. The swap happens *after* the editor quits, so without
-    /// this the failure arrives with no editor left to report it.
+    /// The macOS case is Gatekeeper's App Translocation: a quarantined `.app`
+    /// launched straight out of the unzipped folder, before being moved to
+    /// `/Applications`, runs from a randomized read-only path — which people do,
+    /// and which works fine until they ask for an update. The swap happens
+    /// *after* the editor quits, so without this the failure arrives with no
+    /// editor left to report it. (A read-only network mount or locked volume
+    /// trips it the same way.)
     ///
     /// Distinct from a permissions problem, which the sidecar solves by asking
-    /// for an administrator password. No password makes a disk image writable,
-    /// so this one has to be refused up front with different advice.
+    /// for an administrator password. No password makes a read-only path
+    /// writable, so this one has to be refused up front with different advice:
+    /// move the app somewhere writable first.
     pub read_only_medium: bool,
 }
 
@@ -162,11 +165,12 @@ pub fn detect_layout() -> Result<InstallLayout, String> {
 /// group membership and reconstructing it.
 ///
 /// The distinction that matters is which error comes back. `ReadOnlyFilesystem`
-/// is a mounted disk image or a locked volume — nothing fixes that but moving
-/// the app. `PermissionDenied` is `/Applications` seen by a standard user, which
-/// the sidecar handles by asking for an administrator password, so it must NOT
-/// be treated as read-only or that prompt would never be reached. Verified
-/// against a real mounted `.dmg`, which reports the former.
+/// is a read-only location — a macOS App Translocation path, a read-only network
+/// mount, a locked volume — nothing fixes that but moving the app.
+/// `PermissionDenied` is `/Applications` seen by a standard user, which the
+/// sidecar handles by asking for an administrator password, so it must NOT be
+/// treated as read-only or that prompt would never be reached. A translocated
+/// `.app` run straight from an unzip reports the former.
 ///
 /// Any other error is treated as writable: a false negative costs a clear
 /// failure message later, where a false positive refuses an update that would
@@ -272,14 +276,9 @@ fn download_and_stage(
     let _ = fs::remove_dir_all(root);
     fs::create_dir_all(root).map_err(|e| format!("Cannot create {}: {e}", root.display()))?;
 
-    // Named for what it is on this platform. The DMG path shells out to
-    // `hdiutil`, which reports the extension it was handed in its errors, and
-    // "engine.zip is not a valid disk image" is a confusing thing to read.
-    let download_path = root.join(if cfg!(target_os = "macos") {
-        "engine.dmg"
-    } else {
-        "engine.zip"
-    });
+    // A zip on every platform now, macOS included — the `.app` travels inside a
+    // `ditto` zip rather than a disk image.
+    let download_path = root.join("engine.zip");
     let mut file = fs::File::create(&download_path)
         .map_err(|e| format!("Cannot write {}: {e}", download_path.display()))?;
 
@@ -342,92 +341,37 @@ fn unwrap_download(archive: &Path, staged: &Path) -> Result<(), String> {
     zip.extract(staged).map_err(|e| format!("Could not extract the update: {e}"))
 }
 
-/// Mount the disk image, copy the bundle out, unmount.
+/// Extract the zip into `staged`, preserving the `.app` bundle.
 ///
-/// # `ditto`, not a recursive copy
+/// # `ditto`, not the `zip` crate
 ///
-/// A code signature lives partly in extended attributes, and `fs::copy` — like
-/// `cp` without `-p` — does not carry them. A bundle copied that way can fail
-/// `codesign --verify` with nothing visibly wrong, which then fails at launch
-/// as "damaged". `ditto` is the one copy on macOS that preserves them, and it
-/// is why this shells out rather than reusing `copy_dir`.
+/// A `.app`'s code signature and stapled notarization ticket live partly in
+/// extended attributes and resource forks. The generic `zip` crate the other
+/// platforms use drops both on extraction, so the bundle then fails
+/// `codesign --verify` with nothing visibly wrong and refuses to launch as
+/// "damaged". The release runner produces this archive with
+/// `ditto -c -k --keepParent`, and `ditto -x -k` is the one extractor that
+/// reads it back faithfully — which is why macOS shells out here instead of
+/// sharing the cross-platform path.
 ///
-/// # Unmounting
-///
-/// The detach is deliberately belt-and-braces. A volume left mounted after a
-/// failed update is not fatal, but it is confusing — a stale "Renzora Engine"
-/// in the Finder sidebar, and the next update tripping over the mount point it
-/// wanted — so the force fallback runs even when the copy failed.
+/// `--keepParent` on the producing side means the archive holds
+/// `Renzora Engine.app/...` at its root, so extraction lands the bundle at
+/// `staged/Renzora Engine.app`, exactly where `resolve_staged_source` expects
+/// it — the same place the old disk-image path copied it to.
 #[cfg(target_os = "macos")]
-fn unwrap_download(image: &Path, staged: &Path) -> Result<(), String> {
+fn unwrap_download(archive: &Path, staged: &Path) -> Result<(), String> {
     use std::process::Command;
 
     fs::create_dir_all(staged).map_err(|e| format!("Cannot create {}: {e}", staged.display()))?;
-    // Beside the staging directory rather than under it: whatever is copied out
-    // lands in `staged`, and a mount point inside it would be one more entry
-    // for `resolve_staged_source` to reason about.
-    let mnt = staged.with_file_name("mnt");
-    let _ = fs::remove_dir_all(&mnt);
-    fs::create_dir_all(&mnt).map_err(|e| format!("Cannot create {}: {e}", mnt.display()))?;
-
-    // `-nobrowse` keeps the volume out of the Finder sidebar: an update running
-    // in the background must not make a disk appear on someone's desktop.
-    // `-readonly` because nothing here writes to it, and saying so lets the
-    // kernel skip the shadow file.
-    let out = Command::new("hdiutil")
-        .args(["attach"])
-        .arg(image)
-        .args(["-nobrowse", "-readonly", "-noverify", "-mountpoint"])
-        .arg(&mnt)
-        .output()
-        .map_err(|e| format!("Cannot run hdiutil: {e}"))?;
-    if !out.status.success() {
-        let _ = fs::remove_dir_all(&mnt);
-        return Err(format!(
-            "Could not open the downloaded disk image: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-
-    let result = copy_bundle_out(&mnt, staged);
-
-    let detached = Command::new("hdiutil").arg("detach").arg(&mnt).output();
-    if !matches!(&detached, Ok(o) if o.status.success()) {
-        let _ = Command::new("hdiutil").arg("detach").arg(&mnt).arg("-force").output();
-    }
-    let _ = fs::remove_dir_all(&mnt);
-
-    result
-}
-
-/// `ditto` the one `.app` on the mounted image into `staged`.
-#[cfg(target_os = "macos")]
-fn copy_bundle_out(mnt: &Path, staged: &Path) -> Result<(), String> {
-    use std::process::Command;
-
-    let app = fs::read_dir(mnt)
-        .map_err(|e| format!("Cannot read the mounted disk image: {e}"))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        // `is_dir()` alone would also match the `/Applications` symlink the
-        // image carries as a drag target, which resolves to a real directory.
-        .find(|p| {
-            p.extension().and_then(|e| e.to_str()) == Some("app")
-                && p.symlink_metadata().is_ok_and(|m| m.is_dir())
-        })
-        .ok_or("The downloaded disk image contains no application bundle.")?;
-
-    let name = app
-        .file_name()
-        .ok_or("The bundle on the disk image has no name.")?;
     let out = Command::new("ditto")
-        .arg(&app)
-        .arg(staged.join(name))
+        .args(["-x", "-k"])
+        .arg(archive)
+        .arg(staged)
         .output()
         .map_err(|e| format!("Cannot run ditto: {e}"))?;
     if !out.status.success() {
         return Err(format!(
-            "Could not copy the update off the disk image: {}",
+            "Could not extract the update: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
@@ -730,8 +674,9 @@ mod tests {
     }
 
     /// The real thing, using the one read-only filesystem every supported macOS
-    /// is guaranteed to have: the sealed system volume. A mounted `.dmg` reports
-    /// identically — that is the case this exists for, and it needs no fixture.
+    /// is guaranteed to have: the sealed system volume. An App Translocation path
+    /// reports identically — that is the case this exists for, and it needs no
+    /// fixture.
     #[test]
     #[cfg(target_os = "macos")]
     fn the_sealed_system_volume_reads_as_read_only() {

@@ -180,14 +180,11 @@ pub fn spawn_check(channel: UpdateChannel) -> mpsc::Receiver<Result<UpdateCheckR
 
 /// What the engine asset is called for a given platform key.
 ///
-/// `<platform>.zip` everywhere except macOS, which ships `<platform>.dmg`.
-///
-/// A `.app` has to reach the user inside something it can be dragged out of,
-/// and a disk image is what macOS uses for that — the alternative, a zip, drops
-/// the user's editor in `~/Downloads` and leaves them to move it. The updater
-/// pays nothing for the difference: `install::download_and_stage` mounts the
-/// image and copies the bundle out where it would otherwise unzip, and
-/// everything downstream of that is identical.
+/// `<platform>.zip` on every platform, macOS included. macOS ships its signed,
+/// notarized, stapled `.app` inside a `ditto` zip rather than a disk image: the
+/// stapled ticket travels in the bundle, so Gatekeeper clears it on first launch
+/// with no network, and the updater extracts it with `ditto -x -k` exactly where
+/// it unzips on the other platforms (see `install::unwrap_download`).
 ///
 /// Not a guess about what a release *might* contain — a release whose asset
 /// does not match this name is dropped from the list entirely, so getting this
@@ -195,11 +192,7 @@ pub fn spawn_check(channel: UpdateChannel) -> mpsc::Receiver<Result<UpdateCheckR
 /// error. Kept in step with `package_desktop` in `scripts/package-release.sh`,
 /// which decides the name at the other end.
 fn engine_asset_name(platform: &str) -> String {
-    if cfg!(target_os = "macos") {
-        format!("{platform}.dmg")
-    } else {
-        format!("{platform}.zip")
-    }
+    format!("{platform}.zip")
 }
 
 fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {

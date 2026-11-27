@@ -6,10 +6,10 @@ name: Build Engine
 #
 # ── What it produces ─────────────────────────────────────────────────────────
 # Per desktop platform, two assets (see `scripts/package-release.sh`):
-#   <platform>.zip                  the ENGINE (editor + runtime together), and
-#                                   <platform>.dmg instead of it on macOS, where
-#                                   a signed `.app` has to travel in a container
-#                                   it can be dragged out of
+#   <platform>.zip                  the ENGINE (editor + runtime together); on
+#                                   macOS this is a `ditto` zip of the signed,
+#                                   notarized, stapled `.app`, which carries its
+#                                   own ticket so Gatekeeper clears it offline
 #   renzora-runtime-<platform>.zip  the EXPORT TEMPLATE the editor downloads to
 #                                   build a game for a platform it isn't running
 #                                   on (`renzora_export::download`)
@@ -1277,174 +1277,75 @@ jobs:
               || echo "::warning::spctl rejected $app despite a valid stapled ticket — known macOS 26 behaviour, see the comment in this step"
           fi
 
-      # ── The DMG, which is what a person actually downloads ──────────────────
-      # A `.dmg` is not an installer — it is a mountable folder. It carries the
-      # `.app` and a symlink to `/Applications`, and the *user* does the drag.
-      # That matters twice over: it gets the editor out of `~/Downloads`, and it
-      # is a read-only volume, so an editor launched straight from the mount
-      # (which people do) must not need to write inside its own bundle. That is
-      # only true because the SDK unpacks to Application Support.
+      # ── The zip, which is what a person actually downloads ──────────────────
+      # macOS ships the signed, notarized, stapled `.app` inside a `ditto` zip,
+      # not a disk image. The stapled ticket lives inside the bundle, so it
+      # travels with the zip and clears Gatekeeper on first launch even with no
+      # network: it is the same ticket the Linux-run `package-release.sh` relies
+      # on hours later. There is nothing left to sign or notarize here, a zip is
+      # not code and carries no ticket of its own, unlike the DMG this replaced.
       #
-      # The updater consumes this same asset — mounting it and copying the app
-      # out — so this is not a human-only convenience and cannot be skipped for
-      # a build that ships.
-      #
-      # ── Why after stapling, not before ──────────────────────────────────────
-      # The `.app` inside is stapled by the step above, and the DMG is stapled
-      # again here. Both need it: the DMG's ticket clears Gatekeeper for the
-      # download itself, and the app's own ticket travels with it once it has
-      # been dragged to `/Applications` and the disk image is long gone. Staple
-      # only the DMG and the installed copy has to phone Apple on first launch,
-      # which fails on a machine that happens to be offline.
-      - name: Build the macOS disk image
+      # `ditto -c -k --keepParent`, not `zip`: a bundle's code signature and
+      # stapled ticket live partly in extended attributes and resource forks
+      # that the generic zip format drops, which would make the download fail
+      # Gatekeeper. `--keepParent` puts `Renzora Engine.app/...` at the archive
+      # root, and the updater unpacks it with `ditto -x -k` (see
+      # `renzora_update::install::unwrap_download`).
+      - name: Zip the macOS app
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
           out="dist/${{ matrix.dist_dir }}"
           app="$out/Renzora Engine.app"
-          dmg="$out/${{ matrix.dist_dir }}.dmg"
+          zip="$out/${{ matrix.dist_dir }}.zip"
           [ -d "$app" ] || { echo "::error::no .app staged at $app"; exit 1; }
+          rm -f "$zip"
+          ditto -c -k --keepParent "$app" "$zip"
+          ls -lh "$zip"
 
-          # Staged in its own directory: `hdiutil` images a whole folder, and
-          # pointing it at `$out` would pull the runtime template and anything
-          # else the lane left there into the disk image.
-          stage="$RUNNER_TEMP/dmg"
-          rm -rf "$stage" && mkdir -p "$stage"
-          # `ditto`, not `cp -R`: cp drops extended attributes, and the code
-          # signature is stored in them for some of what a bundle carries.
-          # A `cp`-copied `.app` can fail `codesign --verify` for no visible
-          # reason, which is a miserable thing to debug from a CI log.
-          ditto "$app" "$stage/Renzora Engine.app"
-          ln -s /Applications "$stage/Applications"
-
-          # UDZO is the compressed read-only format every distributed DMG uses.
-          # `-ov` because a re-run of the lane must overwrite rather than fail.
-          #
-          # Retried: on hosted macOS runners `hdiutil create` intermittently
-          # fails with "Resource busy" while a background scanner still holds
-          # the freshly copied bundle. It cost a whole macos-x64 lane (an hour
-          # of build) on a step that succeeds when simply run again.
-          ok=
-          for attempt in 1 2 3 4 5; do
-            rm -f "$dmg"
-            if hdiutil create \
-                -volname "Renzora Engine" \
-                -srcfolder "$stage" \
-                -fs HFS+ \
-                -format UDZO \
-                -ov \
-                "$dmg"; then
-              ok=1
-              break
-            fi
-            echo "hdiutil create failed (attempt $attempt of 5); retrying"
-            sleep $((attempt * 10))
-          done
-          [ -n "$ok" ] || { echo "::error::hdiutil create failed 5 times"; exit 1; }
-          rm -rf "$stage"
-          ls -lh "$dmg"
-
-      # Signed and notarized in its own right. Gatekeeper assesses the disk
-      # image the user downloaded, not just the app inside it — an unsigned DMG
-      # carrying a perfectly notarized app still throws a warning on open.
-      #
-      # Skipped without an identity, exactly like the app's own signing step, so
-      # a fork still produces a usable (if unsigned) disk image.
-      - name: Sign and notarize the macOS disk image
-        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          dmg="dist/${{ matrix.dist_dir }}/${{ matrix.dist_dir }}.dmg"
-
-          # The signing keychain from the earlier step is gone with its shell,
-          # so this rebuilds one. Same shape, same reasons — see the comments on
-          # "Sign and notarize the macOS bundle" for why each line is here.
-          kc="$RUNNER_TEMP/renzora-dmg.keychain-db"
-          kcpass=$(uuidgen)
-          security create-keychain -p "$kcpass" "$kc"
-          security set-keychain-settings -lut 21600 "$kc"
-          security unlock-keychain -p "$kcpass" "$kc"
-          printf '%s' "$APPLE_DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/id2.p12"
-          security import "$RUNNER_TEMP/id2.p12" -k "$kc" \
-            -P "$APPLE_DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
-          rm -f "$RUNNER_TEMP/id2.p12"
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
-            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$kc"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$kcpass" "$kc" > /dev/null
-          security list-keychains -d user -s "$kc" \
-            $(security list-keychains -d user | tr -d '"')
-
-          # No `--options runtime` and no entitlements: the hardened runtime is a
-          # property of executable code, and a disk image is not code. The app
-          # inside already carries both.
-          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
-
-          # notarytool takes the `.dmg` directly — no zip wrapper, unlike a
-          # `.app` — because a disk image is already a single file.
-          printf '%s' "$APPLE_NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary2.p8"
-          xcrun notarytool submit "$dmg" \
-            --key "$RUNNER_TEMP/notary2.p8" \
-            --key-id "$APPLE_NOTARY_KEY_ID" \
-            --issuer "$APPLE_NOTARY_ISSUER_ID" \
-            --wait --timeout 60m
-          rm -f "$RUNNER_TEMP/notary2.p8"
-          xcrun stapler staple "$dmg"
-
-      # The disk image is what users download, so it gets the same treatment the
-      # `.app` does: prove it rather than assume it. `spctl` is assessed as
-      # `open` — the action a user performs on a DMG — rather than `exec`.
-      - name: Verify the macOS disk image
+      # Prove the zipped bundle is the stapled one rather than assume it: a
+      # download that is intact but unsigned installs cleanly and then refuses
+      # to launch. Unpack with `ditto -x -k` into a scratch dir and assess the
+      # `.app`, which is the thing a user ends up running.
+      - name: Verify the zipped macOS app
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
-          dmg="dist/${{ matrix.dist_dir }}/${{ matrix.dist_dir }}.dmg"
-          [ -f "$dmg" ] || { echo "::error::no .dmg built at $dmg"; exit 1; }
+          zip="dist/${{ matrix.dist_dir }}/${{ matrix.dist_dir }}.zip"
+          [ -f "$zip" ] || { echo "::error::no .zip built at $zip"; exit 1; }
 
-          # Mount it and check the app inside really is the stapled one, which
-          # is the thing a user ends up running. `-nobrowse` keeps it out of
-          # Finder; the trap makes sure a failure here does not leave a mounted
-          # volume behind and wedge the runner.
-          mnt="$RUNNER_TEMP/verify-mnt"
-          mkdir -p "$mnt"
-          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
-          trap 'hdiutil detach "$mnt" -force >/dev/null 2>&1 || true' EXIT
-          codesign --verify --deep --strict --verbose=2 "$mnt/Renzora Engine.app"
+          check="$RUNNER_TEMP/verify-zip"
+          rm -rf "$check" && mkdir -p "$check"
+          ditto -x -k "$zip" "$check"
+          app="$check/Renzora Engine.app"
+          [ -d "$app" ] || { echo "::error::$zip does not contain Renzora Engine.app"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app"
           if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            # `stapler validate` is the direct question — is the ticket
-            # attached — and it is the gate for the same reason it is one in
-            # "Verify the macOS bundle signature": `spctl` reports a rejection
-            # on macOS 26 that no other tool agrees with.
-            xcrun stapler validate "$dmg"
-            xcrun stapler validate "$mnt/Renzora Engine.app"
-            spctl --assess --type exec --verbose=4 "$mnt/Renzora Engine.app" \
-              || echo "::warning::spctl rejected the app inside $dmg despite a valid stapled ticket — known macOS 26 behaviour"
-            echo "$dmg is signed, stapled, and carries a stapled app"
+            # `stapler validate` is the direct question, is the ticket attached,
+            # and it is the gate for the same reason it is one in "Verify the
+            # macOS bundle signature": `spctl` reports a rejection on macOS 26
+            # that no other tool agrees with.
+            xcrun stapler validate "$app"
+            spctl --assess --type exec --verbose=4 "$app" \
+              || echo "::warning::spctl rejected the app inside $zip despite a valid stapled ticket (known macOS 26 behaviour)"
+            echo "$zip carries a signed, stapled app"
           else
-            # Say which of the two things was actually checked. Claiming
-            # "signed and stapled" on a fork's unsigned image is how a broken
-            # release gets waved through on a green log.
-            echo "$dmg carries an app with a valid seal (no identity configured, so not notarized)"
+            echo "$zip carries an app with a valid seal (no identity configured, so not notarized)"
           fi
-          hdiutil detach "$mnt"
-          trap - EXIT
+          rm -rf "$check"
 
-      # ── The disk image IS the application, so the bundle beside it is a
+      # ── The zip IS the application, so the bundle beside it is a
       # second copy of every byte ───────────────────────────────────────────
-      # A `.dmg` is a mountable folder holding `Renzora Engine.app` and a
-      # symlink to `/Applications`. Uploading `dist/` whole therefore shipped
-      # the application twice: the macos-arm64 artifact was 1.16 GB against the
-      # 585 MB image cut from it, and the publish job downloaded both halves to
-      # use one.
+      # The zip holds `Renzora Engine.app`. Uploading `dist/` whole therefore
+      # shipped the application twice, and the publish job downloaded both
+      # halves to use one.
       #
       # The `.app` cannot simply be deleted, because the publish job reaches
-      # into it for two things, and neither can be done from a disk image on the
-      # Linux runner that publishes (no `hdiutil`, and re-sealing a signed
-      # bundle needs `codesign`):
+      # into it for two things, and neither can be done from the zip on the
+      # Linux runner that publishes (unzipping and re-sealing a signed bundle on
+      # Linux would strip the macOS signature that `ditto` preserved):
       #
       #   1. the export template, cut from `Contents/MacOS/`
       #   2. a check that `sdk.tar.zst` really is inside the bundle rather than
@@ -1480,7 +1381,7 @@ jobs:
           bash scripts/package-release.sh --template-only "${{ matrix.dist_dir }}" "$out"
 
           rm -rf "$app"
-          echo "dropped the bundle; the disk image carries it"
+          echo "dropped the bundle; the zip carries it"
           du -sh "$out"
 
       # ── And the same duplication on Linux, one bundle format over ─────────
@@ -1626,7 +1527,7 @@ jobs:
           path: release-assets/
           if-no-files-found: error
           retention-days: 30
-          # Zips and disk images, already compressed.
+          # Zips, already compressed.
           compression-level: 0
 
       - name: Record the dev build
@@ -1757,11 +1658,11 @@ jobs:
             echo "### Engine"
             echo "\`<platform>.zip\` — the editor and the game runtime together. Unzip and run \`renzora-editor\` (Linux: the \`.AppImage\`)."
             echo
-            echo "**macOS:** \`macos-arm64.dmg\` / \`macos-x64.dmg\` — open it and drag **Renzora Engine** into **Applications**. Signed and notarized by Apple, so it opens with a normal double-click."
+            echo "**macOS:** \`macos-arm64.zip\` / \`macos-x64.zip\` — unzip it and drag **Renzora Engine** into **Applications**. Signed and notarized by Apple, so it opens with a normal double-click."
             echo
             echo "It also carries \`sdk.tar.zst\` — the Rust SDK. The first time you launch after installing or updating, the editor shows a short setup window while it unpacks that (a few seconds) and compiles any native plugins, then restarts straight into the editor. Afterwards startup is normal."
             echo
-            echo "On Windows and Linux the SDK unpacks beside the editor and the archive is deleted once it has been used. On macOS it unpacks to \`~/Library/Application Support/renzora/sdk\` and the archive stays inside the app: writing into a signed \`.app\` — or deleting anything from one — invalidates its signature, and that is what lets the same download keep working when it is moved, shared, or run straight from the disk image."
+            echo "On Windows and Linux the SDK unpacks beside the editor and the archive is deleted once it has been used. On macOS it unpacks to \`~/Library/Application Support/renzora/sdk\` and the archive stays inside the app: writing into a signed \`.app\` — or deleting anything from one — invalidates its signature, and that is what lets the same download keep working when it is moved, shared, or run straight from the folder you unzipped."
             echo
             echo "The SDK is what lets Rust scripts and native plugins be compiled on your machine rather than shipped prebuilt, so they keep working when the engine updates instead of going stale. Compiling also needs the Rust toolchain, which the editor offers to install at that point."
             echo

@@ -42,8 +42,8 @@ The nightly date is `%d%b%y` lowercased — `16aug26`. Tags sort readably per ve
 |---|---|---|
 | linux x64 | `almalinux:8` container on an `ubuntu-24.04` runner | AppImage, glibc 2.28+ |
 | linux arm64 | `almalinux:8` container on an `ubuntu-24.04-arm` runner | AppImage, glibc 2.28+ |
-| macos x64 | native `macos-26-intel` runner | signed, notarized `.dmg` |
-| macos arm64 | native `macos-latest` runner | signed, notarized `.dmg` |
+| macos x64 | native `macos-26-intel` runner | signed, notarized `.app` in a zip |
+| macos arm64 | native `macos-latest` runner | signed, notarized `.app` in a zip |
 | windows x64 | native `windows-latest` runner | flat tree |
 | windows arm64 | native `windows-11-arm` runner | see below |
 | wasm32 | `ghcr.io/renzora/wasm` container | runtime + editor bundles |
@@ -77,8 +77,7 @@ Two assets per desktop platform, from `scripts/package-release.sh`:
 
 | Asset | What it is |
 |---|---|
-| `<platform>.zip` | the **engine**: `renzora` with the editor image (`renzora_editor.*`) beside it, plus `plugins/` and `sdk.tar.zst`. Windows is that tree flat; Linux ships the `.AppImage`. |
-| `<platform>.dmg` | **macOS only, in place of the zip.** A mountable folder holding `Renzora Engine.app` and a symlink to `/Applications`, signed, notarized and stapled. The SDK rides *inside* the bundle, because `install::root()` on macOS is `Contents/MacOS/` with no `$APPIMAGE`-style escape hatch. The updater mounts this and copies the app out. |
+| `<platform>.zip` | the **engine**: `renzora` with the editor image (`renzora_editor.*`) beside it, plus `plugins/` and `sdk.tar.zst`. Windows is that tree flat; Linux ships the `.AppImage`. macOS is a `ditto` zip of the signed, notarized, stapled `Renzora Engine.app`, with the SDK *inside* the bundle (`install::root()` on macOS is `Contents/MacOS/`, with no `$APPIMAGE`-style escape hatch); it is zipped with `ditto -c -k --keepParent` to preserve the signature, and the updater reads it back with `ditto -x -k`. |
 | `renzora-runtime-<platform>.zip` | the **export template** — the game runtime and its `plugins/`, no editor. |
 
 Plus `manifest.json` (every asset with size and SHA-256, keyed by platform) and `SHA256SUMS`.
@@ -87,9 +86,9 @@ The engine asset keeps the bare `<platform>.zip` name the earlier releases used,
 
 ### The build lane cuts its own export template on macOS and Linux
 
-Both of those platforms stage their output twice. A `.dmg` **is** the `Renzora Engine.app` inside it, and an `.AppImage` **is** the `Renzora Engine.AppDir` it was squashed from, so a lane that uploaded `dist/` whole shipped every byte to the publish job two ways round: the macos-arm64 artifact was 1.16 GB against the 585 MB disk image cut from it.
+Both of those platforms stage their output twice. The macOS engine zip **is** a `ditto` of the `Renzora Engine.app`, and an `.AppImage` **is** the `Renzora Engine.AppDir` it was squashed from, so a lane that uploaded `dist/` whole shipped those bytes to the publish job twice.
 
-The bundle cannot just be deleted before the upload, because `package-release.sh` reads two things out of it, and the publish job runs on Linux where neither a signed `.dmg` nor a squashfs can be opened:
+The bundle cannot just be deleted before the upload, because `package-release.sh` reads two things out of it, and the publish job runs on Linux where neither a signed macOS `.app` (re-sealing it needs `codesign`) nor a squashfs can be handled:
 
 1. the **export template**, cut from `Contents/MacOS/` or from the AppDir
 2. on macOS, a check that `sdk.tar.zst` really is **inside** the bundle rather than beside it, which is the difference between a shipped editor that can compile a plugin and one that reports the SDK as `Absent`
@@ -338,7 +337,7 @@ To pin the site to a specific engine build, or to pull one by hand: **website �
 
 ### Dev builds: test first, publish later
 
-`publish: dev` builds and packages exactly what a nightly would, and publishes nothing: no release, no marketplace upload, no plugin or website dispatch. The packaged downloads (the same `<platform>.zip`, `.dmg` and export templates a nightly carries) are kept on the run as the **dev-release-assets** artifact for 30 days. The run's summary lists their checksums and its own run ID.
+`publish: dev` builds and packages exactly what a nightly would, and publishes nothing: no release, no marketplace upload, no plugin or website dispatch. The packaged downloads (the same `<platform>.zip` and export templates a nightly carries) are kept on the run as the **dev-release-assets** artifact for 30 days. The run's summary lists their checksums and its own run ID.
 
 When the build has been tested, run **Build Engine** again with `publish: promote-dev` and `dev_run` set to that run ID (the number at the end of the dev run's URL). That run builds nothing. It publishes the dev run's files, byte for byte, as a nightly, then does everything a nightly does: replaces a nightly with the same tag, prunes old ones, uploads that build's prebuilt plugins, and tells renzora/plugins and the website.
 

@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 05:14
+- change(macos): the macOS engine now downloads as a zip of the signed app instead of a disk image, and the updater installs from it
+
 ## 2026-11-27 04:24
 - fix(camera): orbiting and panning the viewport camera on macOS no longer snaps the cursor back mid-drag or leaves it frozen after you let go
 

@@ -167,8 +167,8 @@ jobs:
           - { platform: linux-arm64, runner: ubuntu-24.04-arm, container: "almalinux:8", asset: linux-arm64.zip }
           - { platform: windows-x64, runner: windows-latest, asset: windows-x64.zip }
           - { platform: windows-arm64, runner: windows-11-arm, asset: windows-arm64.zip }
-          - { platform: macos-x64, runner: macos-26-intel, asset: macos-x64.dmg }
-          - { platform: macos-arm64, runner: macos-latest, asset: macos-arm64.dmg }
+          - { platform: macos-x64, runner: macos-26-intel, asset: macos-x64.zip }
+          - { platform: macos-arm64, runner: macos-latest, asset: macos-arm64.zip }
     runs-on: ${{ matrix.runner }}
     # Empty, so no container, everywhere but Linux.
     container: ${{ matrix.container }}
@@ -213,18 +213,23 @@ jobs:
           # beside the executable or from its `--root`. This job runs neither
           # inside the engine nor beside it, so it hands them over in `work/`.
           mkdir -p out/images
-          case "${{ matrix.asset }}" in
-            *.dmg)
-              hdiutil attach -nobrowse -readonly -mountpoint /tmp/engine "release/${{ matrix.asset }}"
-              macos="/tmp/engine/Renzora Engine.app/Contents/MacOS"
+          case "$RUNNER_OS" in
+            macOS)
+              # macOS ships a `ditto` zip of the signed `.app`; the SDK and the
+              # shared images live inside it at `Contents/MacOS`. `ditto -x -k`
+              # unpacks it faithfully (see
+              # `renzora_update::install::unwrap_download`).
+              ditto -x -k "release/${{ matrix.asset }}" release/app
+              macos="release/app/Renzora Engine.app/Contents/MacOS"
               cp "$macos/sdk.tar.zst" out/
-              # Whichever the `.app` ships: macOS has no `librenzora_dylib`,
-              # whose copy then stays inside `sdk.tar.zst` instead.
+              # Whichever the `.app` ships: if `librenzora_dylib` is folded into
+              # `sdk.tar.zst` rather than sitting beside the exe, the `[ -f ]`
+              # simply skips it here.
               for f in libbevy_dylib.dylib librenzora_dylib.dylib; do
                 if [ -f "$macos/$f" ]; then cp "$macos/$f" out/images/; fi
               done
-              hdiutil detach /tmp/engine ;;
-            *.zip)
+              ;;
+            *)
               py=$(command -v python3 || command -v python)
               "$py" - "release/${{ matrix.asset }}" out <<'PY'
           import os, sys, zipfile, shutil

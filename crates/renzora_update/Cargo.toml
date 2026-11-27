@@ -28,6 +28,11 @@ renzora_splash = { path = "../renzora_splash" }
 rfd = "0.15"
 serde_json = "1"
 sha2 = "0.10"
+
+# Only the non-macOS extraction path uses it: macOS unpacks its `.app` with
+# `ditto` to keep the code signature intact (see `install::unwrap_download`), so
+# shipping `zip` into the Mac build would be a dead dependency.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
 zip = "9.0.5"
 
 [lints]

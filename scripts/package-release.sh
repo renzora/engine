@@ -7,13 +7,13 @@
 #        scripts/package-release.sh --template-only <platform> <dist-dir>
 #
 # The second form is for a BUILD lane, and it exists because two platforms stage
-# their output twice. A `.dmg` *is* the `Renzora Engine.app` inside it, and an
-# `.AppImage` *is* the `Renzora Engine.AppDir` it was squashed from, so a lane
-# that uploaded its `dist/` whole shipped every macOS and Linux byte to the
-# publish job twice: the macos-arm64 artifact was 1.16 GB against a 585 MB disk
-# image. The bundle cannot simply be deleted before the upload, because this
-# script reads the export template OUT of it, and neither a `.dmg` nor a
-# squashfs can be opened on the Linux runner that publishes.
+# their output twice. On macOS the engine zip is a `ditto` of the signed
+# `Renzora Engine.app`; on Linux the `.AppImage` *is* the `Renzora Engine.AppDir`
+# it was squashed from. A lane that uploaded its `dist/` whole therefore shipped
+# those bytes to the publish job twice. The bundle cannot simply be deleted
+# before the upload, because this script reads the export template OUT of it
+# first, and the Linux runner that publishes can re-create neither a signed
+# macOS `.app` nor a squashfs.
 #
 # So the lane cuts the template itself, with this, and then deletes the
 # duplicate. Same function, same file: the alternative was a second copy of
@@ -183,13 +183,14 @@ runtime_root() {
 }
 
 # ── Helper: the single-file form of a platform's bundle, if there is one ─────
-# `<dir>/<something>.dmg` on macOS, `<dir>/<something>.AppImage` on Linux. Empty
-# output on Windows, which has no bundle at all. A `for` loop over the glob
-# rather than `ls`: an unmatched glob is left literal, and `[ -f ]` is what
-# rejects it, whereas `ls` would print an error and take `set -e` with it.
+# `<dir>/<something>.AppImage` on Linux. Empty output on macOS, which now ships
+# a `ditto` zip of the `.app` (carried across in `package_desktop`), and on
+# Windows, which has no bundle at all. A `for` loop over the glob rather than
+# `ls`: an unmatched glob is left literal, and `[ -f ]` is what rejects it,
+# whereas `ls` would print an error and take `set -e` with it.
 bundle_image() {
     local dir="$1" f
-    for f in "$dir"/*.dmg "$dir"/*.AppImage; do
+    for f in "$dir"/*.AppImage; do
         [ -f "$f" ] && { echo "$f"; return 0; }
     done
     return 0
@@ -205,10 +206,13 @@ bundle_tree() {
 }
 
 # ── Helper: did the build lane delete the bundle after imaging it? ───────────
-# True when there is a `.dmg`/`.AppImage` and no `.app`/`.AppDir` beside it. The
-# image carries the same bytes, so keeping both doubled a ~585 MB artifact; the
-# lane drops the directory form and this is how packaging knows the binaries it
-# would otherwise read are no longer reachable.
+# True when there is an `.AppImage` and no `.AppDir` beside it: the image carries
+# the same bytes, so keeping both doubled the artifact, and the lane drops the
+# directory form once it has read the export template out of it. This is how
+# packaging knows the binaries it would otherwise read are no longer reachable.
+# Linux-only now — macOS has no single-file image here (it ships a zip), so the
+# macOS stripped state is enforced in the build lane instead (see the `Cut the
+# export template and drop the duplicate bundle` step).
 stripped_bundle() {
     local dir="$1"
     [ -n "$(bundle_image "$dir")" ] && [ -z "$(bundle_tree "$dir")" ]
@@ -246,7 +250,7 @@ package_runtime_template() {
         # template, which is exactly the class of quiet omission that cost
         # r1-alpha7's Linux editors their SDK.
         if stripped_bundle "$dir"; then
-            echo "ERROR: $dir has a .dmg or .AppImage, no bundle beside it, and no" >&2
+            echo "ERROR: $dir has an .AppImage, no AppDir beside it, and no" >&2
             echo "       renzora-runtime-$platform.zip. The build lane deleted the bundle" >&2
             echo "       without cutting the export template first (--template-only)." >&2
             return 1
@@ -328,40 +332,30 @@ package_desktop() {
     # Listing what to include is what made that silent. A whole-directory zip
     # cannot omit a file nobody remembered to name, so anything added to the
     # staged tree later ships without editing this line.
-    # ── macOS ships the disk image, and only the disk image ─────────────────
-    # `.dmg` is not an installer, it is a container — the `.app` plus a symlink
-    # to `/Applications`, so a person drags it where it belongs instead of
-    # running the editor out of `~/Downloads`. It is also what the updater
-    # consumes: `renzora_update` mounts it and copies the app out, exactly as it
-    # used to unzip one.
+    # ── macOS ships a zip of the signed .app, built on the macOS runner ──────
+    # The `.app`'s code signature and stapled notarization ticket live in
+    # extended attributes and resource forks. Only `ditto` preserves them; a
+    # `zip` of the staged tree on this Linux runner would strip them and the
+    # download would fail Gatekeeper. So the macOS lane builds `<platform>.zip`
+    # with `ditto -c -k --keepParent` (see `Zip the macOS app` in
+    # `.github/workflows/build-engine.yml`), and this script only carries it
+    # across. The updater reads it back with `ditto -x -k`.
     #
-    # Built, signed, notarized and stapled on the macOS runner (see `Build the
-    # macOS disk image` in `.github/workflows/build-engine.yml`) because none of
-    # those four things can happen on the Linux runner this script runs on.
-    # Here it is only carried across into the release assets.
-    #
-    # No `macos-*.zip` beside it. Shipping both would double a ~600 MB asset to
-    # serve nobody: the only consumer of the zip was the updater, and it reads
-    # the DMG now. r1-alpha7 shipped no macOS build at all and every nightly
-    # since failed Gatekeeper, so there is no installed base still asking for
-    # the old asset name — this is the one moment the swap is free.
-    #
-    # Keyed on the `.dmg`, not on the `.app`: the lane deletes the bundle once
-    # the image carries it, so by the time this runs there is usually no `.app`
-    # left to match on. A `.app` with no `.dmg` beside it is still an error, and
-    # a louder one than it looks, since the image cannot be built or signed on
-    # this runner.
-    local dmg=""
-    for f in "$dir"/*.dmg; do [ -f "$f" ] && dmg="$f"; done
-    if [ -n "$dmg" ] || ls "$dir"/*.app >/dev/null 2>&1; then
-        if [ -z "$dmg" ]; then
-            echo "ERROR: $dir holds a .app but no .dmg." >&2
-            echo "       The macOS lane must build one — it cannot be created or signed here." >&2
+    # Keyed on the pre-built zip, not on the `.app`: the lane deletes the bundle
+    # once the zip carries it, so by the time this runs there is usually no
+    # `.app` left to match on. A `.app` with no zip beside it is still an error,
+    # and a loud one, since the signature-preserving zip cannot be made here.
+    local macos_zip=""
+    [ -f "$dir/$platform.zip" ] && macos_zip="$dir/$platform.zip"
+    if [ -n "$macos_zip" ] || ls "$dir"/*.app >/dev/null 2>&1; then
+        if [ -z "$macos_zip" ]; then
+            echo "ERROR: $dir holds a .app but no $platform.zip." >&2
+            echo "       The macOS lane must build it with ditto — it cannot be made here." >&2
             return 1
         fi
-        local asset="$OUT_DIR/$platform.dmg"
+        local asset="$OUT_DIR/$platform.zip"
         rm -f "$asset"
-        cp -p "$dmg" "$asset"
+        cp -p "$macos_zip" "$asset"
         echo "   $(basename "$asset") $(du -h "$asset" | cut -f1)"
         record "$asset" "$platform" engine
         return 0
@@ -429,31 +423,17 @@ compress_sdk() {
     # `.github/workflows/build-engine.yml`) and the only job left here is to
     # notice when that did not happen, loudly. A silent fallback is exactly what
     # produced the 127 MB Linux asset described above.
-    # A macOS tree whose `.app` was deleted after the disk image was built. The
-    # SDK is inside that image, and the lane checked it was there before
-    # deleting anything, which is the better place for the check anyway since it
-    # is also the place that packs it. All that is left here is to catch a stray
-    # copy at the top of the tree, which on macOS is somewhere the editor never
-    # looks.
+    # macOS whose `.app` was already dropped by the build lane: the lane packed
+    # the SDK inside the bundle and verified it there before zipping and deleting
+    # the `.app` (see the `Cut the export template and drop the duplicate bundle`
+    # step), and the engine zip is a `ditto` of the bundle alone, so anything
+    # left loose in `$dir` never ships. Nothing to check here, and no `.app` left
+    # to find, so this function is a no-op for a macOS publish.
     #
-    # Linux is deliberately NOT part of this. Its SDK ships BESIDE the AppImage
-    # and must: a squashfs is read-only, so `install::root()` follows `$APPIMAGE`
-    # to the directory the user unzipped. A stripped Linux tree therefore falls
-    # through to the ordinary top-level handling below, which is already right.
-    local dmg; dmg=$(bundle_image "$dir")
-    case "$dmg" in
-        *.dmg)
-            if [ -z "$(bundle_tree "$dir")" ]; then
-                if [ -e "$dir/sdk" ] || [ -e "$dir/sdk.tar.zst" ]; then
-                    echo "ERROR: $dir has an SDK beside the disk image." >&2
-                    echo "       The editor only ever looks inside the .app, so this copy is" >&2
-                    echo "       invisible to it; remove it in the build lane." >&2
-                    return 1
-                fi
-                return 0
-            fi
-            ;;
-    esac
+    # Linux is deliberately NOT a stripped-image case: its SDK ships BESIDE the
+    # AppImage and must, because a squashfs is read-only and `install::root()`
+    # follows `$APPIMAGE` to the directory the user unzipped. A stripped Linux
+    # tree falls through to the ordinary top-level handling below, already right.
 
     local app; app=$(find "$dir" -maxdepth 1 -name '*.app' -type d | head -1)
     if [ -n "$app" ]; then
