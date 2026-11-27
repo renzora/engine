@@ -1856,39 +1856,58 @@ pub(crate) fn export_worker(
         #[cfg(not(unix))]
         fn mark_executable(_path: &std::path::Path) {}
 
+        // Write the executable plus its rpak: on the executable's tail, or as a
+        // sibling `<binary>.rpak` that the runtime's adjacent lookup finds.
+        fn ship(
+            packer: RpakPacker,
+            src: &std::path::Path,
+            binary_dest: &std::path::Path,
+            rpak_beside: Option<&std::path::Path>,
+            compression_level: i32,
+        ) -> std::io::Result<()> {
+            match rpak_beside {
+                Some(rpak) => packer
+                    .write_to_file(rpak, compression_level)
+                    .and_then(|_| std::fs::copy(src, binary_dest).map(|_| ())),
+                None => packer.append_to_binary(src, binary_dest, compression_level),
+            }
+            .inspect(|_| mark_executable(binary_dest))
+        }
+
+        let binary_dest = output_dir.join(&binary_name);
+        let rpak_beside = output_dir.join(format!("{}.rpak", binary_stem));
+        // Inside a macOS `.app` the rpak never goes on the executable's tail.
+        // `codesign` refuses a Mach-O with data appended ("main executable failed
+        // strict validation"), so a bundle built that way could never be sealed
+        // and would ship carrying the template's editor-bound signature, which the
+        // kernel kills. The bundle is already the single unit these modes promise,
+        // so the rpak goes beside the executable inside it. See `sign_macos`.
+        let embed = !(platform.is_macos() && bundle_app);
+        if !embed && packaging_mode != PackagingMode::SeparateFiles {
+            let _ = tx.send(ExportMsg::Progress(
+                "Inside a .app the game data sits beside the executable rather than in it, so the bundle can be code-signed".into(),
+            ));
+        }
+        let tail_or_beside = |embed: bool| (!embed).then_some(rpak_beside.as_path());
+
         match packaging_mode {
             PackagingMode::SeparateFiles => {
-                let rpak_path = output_dir.join(format!("{}.rpak", binary_stem));
-                let binary_dest = output_dir.join(&binary_name);
                 let src = compress_exe(&template_path, &tx);
-
-                packer
-                    .write_to_file(&rpak_path, compression_level)
-                    .and_then(|_| std::fs::copy(&src, &binary_dest).map(|_| ()))
-                    .inspect(|_| mark_executable(&binary_dest))
-                    .map(|_| ())
+                ship(packer, &src, &binary_dest, Some(&rpak_beside), compression_level)
             }
             PackagingMode::SingleBinary => {
-                let binary_dest = output_dir.join(&binary_name);
                 let src = compress_exe(&template_path, &tx);
-                packer
-                    .append_to_binary(&src, &binary_dest, compression_level)
-                    .inspect(|_| mark_executable(&binary_dest))
-                    .map(|_| ())
+                ship(packer, &src, &binary_dest, tail_or_beside(embed), compression_level)
             }
             PackagingMode::LeanSingleBinary => {
                 // Recompile a lean static binary from the engine source, then
-                // embed the rpak in it. No dev runtime/dylibs are copied.
-                let binary_dest = output_dir.join(&binary_name);
+                // attach the rpak. No dev runtime/dylibs are copied.
                 match compile_lean() {
                     Ok(built) => {
                         linked_ids = built.linked;
                         dropped_ids = built.dropped;
                         let src = compress_exe(&built.artefact, &tx);
-                        packer
-                            .append_to_binary(&src, &binary_dest, compression_level)
-                            .inspect(|_| mark_executable(&binary_dest))
-                            .map(|_| ())
+                        ship(packer, &src, &binary_dest, tail_or_beside(embed), compression_level)
                     }
                     Err(e) => Err(std::io::Error::other(e)),
                 }
@@ -2215,12 +2234,22 @@ pub(crate) fn export_worker(
                 }
             }
 
-            // Server export (a headless binary beside the game bundle).
+            // Server export: `server.rpak` plus a launcher that runs the game
+            // binary with `--server`. It reuses the game binary, so the launcher
+            // must find it where the wrap left it: inside the `.app` on macOS.
             let server_note = if include_server {
+                let game_exe = match bundled_app.as_deref() {
+                    Some(app) if platform.is_macos() => format!(
+                        "{}/Contents/MacOS/{}",
+                        app.file_name().unwrap_or_default().to_string_lossy(),
+                        binary_name
+                    ),
+                    _ => binary_name.to_string(),
+                };
                 match export_server_standalone(
                     &tx,
                     &project,
-                    binary_stem,
+                    &game_exe,
                     platform,
                     compression_level,
                     &output_dir,
@@ -2232,14 +2261,14 @@ pub(crate) fn export_worker(
                 String::new()
             };
 
-            // Code-sign LAST, once every file the game ships is in place: the
-            // bundle, its dylibs, plugins/, and the server beside it. On Apple
-            // Silicon an unsigned Mach-O is SIGKILLed at exec, so without this the
-            // game dies the instant it is launched ("the application can't be
-            // opened"). The default is a free ad-hoc seal; a Developer ID and a
-            // notary key, when set in the environment, upgrade it to a notarized
-            // bundle. Best-effort: a signing failure still leaves a developer a
-            // runnable local build, so it warns rather than failing the export.
+            // Code-sign LAST, once every file the game ships is in place, since a
+            // seal covers only what exists when it is made. A copy-mode export
+            // carries the template's editor-bound signature, which the kernel
+            // kills outside the editor's bundle, so this is what lets it launch.
+            // Ad-hoc by default; a Developer ID and a notary key, when set in the
+            // environment, upgrade it to a notarized bundle. A failure is reported
+            // and the export still completes, so the developer can see what was
+            // produced. See `sign_macos` for the layout and its limits.
             if platform.is_macos() {
                 let cfg = crate::sign_macos::resolve_from_env();
                 let tx_s = tx.clone();
@@ -2279,7 +2308,9 @@ pub(crate) fn export_worker(
 fn export_server_standalone(
     tx: &mpsc::Sender<ExportMsg>,
     project: &CurrentProject,
-    binary_stem: &str,
+    // The game executable's path relative to `output_dir`: its bare file name,
+    // or a path into the bundle when the export was wrapped.
+    game_exe: &str,
     platform: Platform,
     compression_level: i32,
     output_dir: &std::path::Path,
@@ -2302,8 +2333,7 @@ fn export_server_standalone(
         .write_to_file(&rpak_path, compression_level)
         .map_err(|e| format!("Failed to write server.rpak: {}", e))?;
 
-    let game_binary = platform.binary_name(binary_stem);
-    write_server_launcher(output_dir, &game_binary, platform)
+    write_server_launcher(output_dir, game_exe, platform)
         .map_err(|e| format!("Failed to write server launcher: {}", e))?;
 
     Ok(server_file_count)

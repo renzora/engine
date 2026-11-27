@@ -39,6 +39,10 @@ cfg_if::cfg_if! {
 }
 
 pub use format::{Compression, PakEntry, FORMAT_VERSION};
+/// The appended-to-binary footer, for callers that must handle a binary with an
+/// rpak on its tail without reading the archive itself. `renzora_export`'s macOS
+/// signer detaches the payload because `codesign` refuses trailing data.
+pub use format::{detect_appended_footer, FOOTER_LEN};
 pub use read::RpakArchive;
 
 /// Magic bytes that appear at the start of every rpak header **and** at the

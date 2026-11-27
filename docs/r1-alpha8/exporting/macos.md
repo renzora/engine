@@ -89,7 +89,11 @@ lipo -create -output renzora-universal \
 
 ### Exporting from the editor (on a Mac)
 
-The editor's **Export** dialog produces a ready-to-run game. On macOS it wraps the output in a `.app` by default (the "Bundle as .app" toggle, on for macOS because a bare binary there has no icon and, unsigned, is killed at launch) and **code-signs it** as the final step. This is not optional: on Apple Silicon the kernel refuses to run an unsigned binary at all, so an unsigned export shows "the application can't be opened" the instant you double-click it.
+The editor's **Export** dialog produces a ready-to-run game. A new macOS export preset wraps the output in a `.app` (the **Wrap as a .app bundle** switch; presets you saved before this default keep their old setting), and every macOS export is **code-signed** as its final step. The signing is what lets the game launch at all: a copy-mode export ships the runtime template, whose signature belongs to the editor's own bundle and which Apple Silicon refuses to run anywhere else, so an unsigned export shows "the application can't be opened" the instant you double-click it.
+
+Inside a `.app`, all three packaging modes put the game data (`<game>.rpak`) beside the executable in `Contents/MacOS/`, including **Single executable** and **Lean single binary**. The bundle is already one file to the player, and `codesign` refuses an executable with data appended to it, so a bundle built that way could not be signed. Outside a `.app`, the single-file modes still append the data; the export signs the executable around it, which launches fine on a Mac but cannot be notarized, so distribute the `.app`.
+
+**Zip the `.app` with Finder (right-click -> Compress) or `ditto -c -k --keepParent`**, not a plain `zip`, `tar` or git. The seal on the data files in `Contents/MacOS/` is stored in extended attributes, and tools that drop them leave a bundle macOS reports as damaged.
 
 Which tier you get depends only on what you have configured:
 
@@ -103,7 +107,9 @@ Which tier you get depends only on what you have configured:
   export RENZORA_NOTARY_ISSUER="your-issuer-uuid"
   ```
 
-  With only `RENZORA_CODESIGN_IDENTITY` set, the export is signed with your Developer ID but not notarized, so a download still warns. Notarization staples its ticket to the `.app`, so keep "Bundle as .app" on. Signing happens only when you export **from a Mac**: `codesign`, `notarytool` and `stapler` do not exist on other hosts, and a macOS game cross-exported from Linux or Windows is left unsigned with a note saying so.
+  With only `RENZORA_CODESIGN_IDENTITY` set, the export is signed with your Developer ID but not notarized, so a download still warns. Notarization staples its ticket to the `.app`, so keep **Wrap as a .app bundle** on. The identity lives in your login keychain, and the export unlocks it once per signing call; choose **Always Allow** on the keychain prompt (or allow `codesign` in the key's Access Control) and it stops asking. Signing happens only when you export **from a Mac**: `codesign`, `notarytool` and `stapler` do not exist on other hosts, and a macOS game cross-exported from Linux or Windows is left unsigned with a note saying so.
+
+**Include server** writes `server.rpak` and `server.sh` beside the `.app`; the script runs the game binary inside the bundle in server mode.
 
 ### `renzora build` (Docker cross-compile)
 

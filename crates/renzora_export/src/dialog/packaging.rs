@@ -162,9 +162,11 @@ fn build_modding_group(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// Application-bundle group: wrap the export in an `.AppImage` or a `.app`.
 ///
-/// Shown only where the platform has such a format. Off by default:
-/// rearranging the output into a directory the user did not ask for is a worse
-/// surprise than an unticked switch.
+/// Shown only where the platform has such a format. A new macOS preset starts
+/// with it on, because a bare Mach-O there opens a terminal, has no icon, and
+/// cannot be notarized; elsewhere it starts off, since rearranging the output
+/// into a directory the user did not ask for is a worse surprise than an
+/// unticked switch. Presets saved before the macOS default keep their setting.
 fn build_bundle_group(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
     let mac = matches!(p, Platform::MacOSX64 | Platform::MacOSArm64);
     let title = if mac { "export.section.app_bundle" } else { "export.section.appimage" };

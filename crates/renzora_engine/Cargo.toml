@@ -17,10 +17,12 @@ edition = "2021"
 # re-exports the crate (see lib.rs); `animation` gates the scene-save deny of
 # `AnimatorReadState` (see scene_io.rs). See `renzora_export::capabilities`.
 default = ["audio", "networking", "animation", "terrain", "physics", "render_3d", "shader_graph", "gltf", "render_2d", "crash_dialog", "scripting", "ui"]
-# bevy_ui. This crate's only use is denying the two UI camera-target components
-# on scene save (`scene_io.rs`, via `DenyUiCameraTargets`); without bevy_ui those
-# components don't exist, so there is nothing to deny. Off is what lets a game
-# with no UI drop bevy_ui, bevy_text and the parley/swash text-shaping stack.
+# bevy_ui. This crate uses it for the scene-save denies of the UI camera-target
+# and computed-layout components (`scene_io/deny.rs`, via `DenyUiCameraTargets`)
+# and for the `NotUiNode` query filter (`lib.rs`, used again by
+# `named_entities.rs`); without bevy_ui none of those types exist, so each gate
+# collapses to a no-op. Off is what lets a game with no UI drop bevy_ui,
+# bevy_text and the parley/swash text-shaping stack.
 ui = []
 # Scripting. This crate needs it for exactly two systems — the VFS script-file
 # reader and the asset-progress mirror — both of which become empty systems when

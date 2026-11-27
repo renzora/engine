@@ -1,8 +1,12 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 08:43
+- fix(export): Single executable and lean macOS exports are code-signed too, with the game data beside the executable inside the `.app`
+- fix(export): the dedicated-server launcher finds the game binary inside a macOS `.app`
+
 ## 2026-11-27 07:19
 - feat(export): macOS game exports are now code-signed so they launch, ad-hoc by default and notarized when a Developer ID is set in the environment
-- change(export): a macOS game exports as a `.app` bundle by default
+- change(export): new macOS export presets wrap the game in a `.app` bundle
 - fix(export): a lean game export compiles when the UI capability is stripped out
 - fix(export): an export reports a shared library it could not copy instead of silently shipping a game that cannot start
 

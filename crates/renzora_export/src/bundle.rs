@@ -9,11 +9,13 @@
 //!
 //! An export is the opposite situation: the platform being wrapped is the one
 //! the user picked, which is usually not this one. Both formats are directory
-//! layouts plus text files — an `AppRun` script, a `.desktop` entry, an
-//! `Info.plist` — so producing either from either host needs no platform tooling
-//! and no `#[cfg]`. What the host cannot do is *sign* a `.app` or run
-//! `appimagetool`, and both of those are optional: the unsigned bundle and the
-//! bare `AppDir` are already usable.
+//! layouts plus text files (an `AppRun` script, a `.desktop` entry, an
+//! `Info.plist`), so producing either from either host needs no platform tooling
+//! and no `#[cfg]`. What only some hosts can do is sign a `.app` (macOS) or run
+//! `appimagetool`. The bare `AppDir` is usable without the latter. A `.app` is
+//! not usable unsigned on Apple Silicon, so the export signs it afterwards when
+//! it runs on a Mac (`crate::sign_macos`); cross-exported from elsewhere, it
+//! ships unsigned with a note saying so.
 //!
 //! # What it is for
 //!
