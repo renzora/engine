@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-27 01:57
+- feat(devenv): scripts and a guide for testing the Windows, Linux and macOS builds from one Windows PC with Hyper-V, Windows Sandbox and Docker
+
 ## 2026-11-27 00:49
 - fix(linux): ARM64 Linux builds find their libraries when started outside the AppImage
 
