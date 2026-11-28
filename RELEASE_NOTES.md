@@ -4,6 +4,7 @@
 - fix(viewport): dropping an image near the origin of a 2D scene places a sprite instead of silently retargeting the hidden Sprite Material preview
 - fix(viewport): clicks and box selection in the 2D view no longer pick the editor's hidden preview sprites
 - fix(tilemap): repainting a tile that shows another image puts the tileset back on it
+- fix(animation): sprite and property animations no longer fill the Console with per-frame log lines during Play
 
 ## 2026-11-28 08:50
 - feat(scripting): Rust scripts and plugins can spawn and drive particle effects through `renzora::particles`

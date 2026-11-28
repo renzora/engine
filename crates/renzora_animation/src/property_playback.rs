@@ -104,7 +104,7 @@ pub fn apply_property_tracks(
         }
         let Some(value) = sample_property_track(track, time) else {
             if verbose {
-                info!("[prop-anim] track {} ({}.{}) has no keys", i, track.component, track.field);
+                debug!("[prop-anim] track {} ({}.{}) has no keys", i, track.component, track.field);
             }
             continue;
         };
@@ -114,8 +114,11 @@ pub fn apply_property_tracks(
             }
             continue;
         };
+        // `debug!`, like every routine line here: at `info!` two per animator
+        // every half second filled a playing game's Console within a minute
+        // and pushed the game's own messages out of it.
         if verbose {
-            info!(
+            debug!(
                 "[prop-anim] track {} {}.{} @ t={:.2} -> {:?} (target {:?})",
                 i, track.component, track.field, time, value, target
             );
@@ -271,13 +274,13 @@ pub fn apply_runtime_property_animation(world: &mut World) {
             }
             if state.is_paused {
                 if verbose {
-                    info!("[prop-anim] {:?} skipped: paused", entity);
+                    debug!("[prop-anim] {:?} skipped: paused", entity);
                 }
                 continue;
             }
             if state.prop_stopped {
                 if verbose {
-                    info!("[prop-anim] {:?} skipped: stopped", entity);
+                    debug!("[prop-anim] {:?} skipped: stopped", entity);
                 }
                 continue;
             }
@@ -288,25 +291,25 @@ pub fn apply_runtime_property_animation(world: &mut World) {
                 .or_else(|| animator.clips.first().map(|s| s.name.clone()));
             let Some(clip_name) = clip_name else {
                 if verbose {
-                    info!("[prop-anim] {:?} skipped: no clip selected/default", entity);
+                    debug!("[prop-anim] {:?} skipped: no clip selected/default", entity);
                 }
                 continue;
             };
             let Some(handle) = state.prop_clip_handles.get(&clip_name) else {
                 if verbose {
-                    info!("[prop-anim] {:?} skipped: no PropertyClip handle for '{}'", entity, clip_name);
+                    debug!("[prop-anim] {:?} skipped: no PropertyClip handle for '{}'", entity, clip_name);
                 }
                 continue;
             };
             let Some(clip) = clips.get(handle) else {
                 if verbose {
-                    info!("[prop-anim] {:?} skipped: PropertyClip '{}' not loaded yet", entity, clip_name);
+                    debug!("[prop-anim] {:?} skipped: PropertyClip '{}' not loaded yet", entity, clip_name);
                 }
                 continue;
             };
             if clip.tracks.is_empty() {
                 if verbose {
-                    info!("[prop-anim] {:?} clip '{}' has no property tracks", entity, clip_name);
+                    debug!("[prop-anim] {:?} clip '{}' has no property tracks", entity, clip_name);
                 }
                 continue;
             }
@@ -352,7 +355,7 @@ pub fn apply_runtime_property_animation(world: &mut World) {
     }
 
     if verbose && !work.is_empty() {
-        info!("[prop-anim] runtime applying {} animator(s)", work.len());
+        debug!("[prop-anim] runtime applying {} animator(s)", work.len());
     }
     for (entity, tracks, t) in work {
         apply_property_tracks(world, entity, &tracks, t, verbose);
