@@ -39,7 +39,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::asset::VfxAsset;
-use crate::component::{ParticlePlayback, ParticleSystem, PlayState};
+use crate::component::{ParticleAsset, ParticlePlayback, ParticleSystem, PlayState};
 use crate::convert::format::{EffectSource, EffectVariable};
 use crate::convert::{self, Conversion, PARTICLE_EXTENSION};
 
@@ -132,13 +132,11 @@ pub struct Migration {
 /// shipped game may read its assets from an archive where there is no
 /// directory to look in, and the `.particle` plays the same either way.
 pub fn migrate_effect(effect: &HanabiEffect) -> Migration {
-    let playback = ParticlePlayback {
-        // The old `playing` switched the spawner off and let live particles
-        // die out. Stopped (not emitting) is the nearest state; the difference
-        // is only the particles already in the air on the first frame.
-        state: if effect.playing { PlayState::Playing } else { PlayState::Stopped },
-        ..Default::default()
-    };
+    let mut playback = ParticlePlayback::default();
+    // The old `playing` switched the spawner off and let live particles die
+    // out. Stopped (not emitting) is the nearest state; the difference is only
+    // the particles already in the air on the first frame.
+    playback.state = if effect.playing { PlayState::Playing } else { PlayState::Stopped };
     match &effect.source {
         EffectSource::Asset { path } => Migration {
             system: ParticleSystem::from_path(path.clone()),
@@ -174,7 +172,7 @@ pub fn migrate_on_insert(
     let mut entity_commands = commands.entity(entity);
     entity_commands.remove::<HanabiEffect>();
     if let Some(conversion) = migration.inline.take() {
-        migration.system.asset = assets.add(conversion.asset.clone());
+        entity_commands.insert(ParticleAsset(assets.add(conversion.asset.clone())));
         entity_commands.insert(InlineLegacyEffect { conversion });
     }
     entity_commands.insert((migration.system, migration.playback, PendingLegacyLight));
@@ -189,13 +187,13 @@ pub fn drop_superseded_light(
     mut commands: Commands,
     assets: Res<Assets<VfxAsset>>,
     server: Res<AssetServer>,
-    pending: Query<(Entity, &ParticleSystem, Has<bevy::light::PointLight>), With<PendingLegacyLight>>,
+    pending: Query<(Entity, &ParticleSystem, &ParticleAsset, Has<bevy::light::PointLight>), With<PendingLegacyLight>>,
 ) {
     use crate::asset::LightMode;
-    for (entity, system, has_light) in &pending {
+    for (entity, system, handle, has_light) in &pending {
         let done = if !has_light {
             true
-        } else if let Some(asset) = assets.get(&system.asset) {
+        } else if let Some(asset) = assets.get(&handle.0) {
             if asset.emitters.iter().any(|e| e.light.mode != LightMode::Off) {
                 commands.entity(entity).remove::<bevy::light::PointLight>();
                 info!("[particles] removed the old effect's point light; the converted effect lights the scene itself");
@@ -204,7 +202,7 @@ pub fn drop_superseded_light(
         } else {
             // Never resolving (a bad path, a broken file): keep the light and
             // stop waiting.
-            server.load_state(&system.asset).is_failed() || (system.path.trim().is_empty() && !assets.contains(&system.asset))
+            server.load_state(&handle.0).is_failed() || (system.path.trim().is_empty() && !assets.contains(&handle.0))
         };
         if done {
             commands.entity(entity).remove::<PendingLegacyLight>();

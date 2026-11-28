@@ -14,7 +14,7 @@ use renzora_physics_api::scene_query::{SceneHit, SceneQueries, SceneQuery, Scene
 use renzora_scripting_api::{ScriptAction, ScriptActionValue};
 use renzora_particles::asset::{Connection, Emitter, PinValue, VfxGraph, VfxNode};
 use renzora_particles::nodes::OUTPUT_NODE;
-use renzora_particles::{ParticleParams, ParticleRuntime, ParticleStats, ParticleSystem, ParticlesPlugin, VfxAsset};
+use renzora_particles::{ParticleParams, ParticleRuntime, ParticleStats, ParticlesPlugin, VfxAsset};
 
 fn app() -> App {
     let mut app = renzora_test_harness::headless_app_with(|app| {
@@ -32,7 +32,7 @@ fn frames(app: &mut App, n: usize) {
 
 fn spawn(app: &mut App, asset: VfxAsset) -> Entity {
     let handle = app.world_mut().resource_mut::<Assets<VfxAsset>>().add(asset);
-    app.world_mut().spawn((ParticleSystem::from_handle(handle), Name::new("fx"))).id()
+    app.world_mut().spawn((renzora_particles::from_handle(handle), Name::new("fx"))).id()
 }
 
 fn effect(values: &[(&str, PinValue)], nodes: Vec<VfxNode>, connections: Vec<Connection>) -> VfxAsset {
@@ -123,7 +123,7 @@ fn the_on_forms_find_the_effect_by_name_and_values_survive_a_rebuild() {
     assert!((newest_up(&app) - 5.0).abs() < 1e-3, "born with the script's velocity");
 
     // A hot reload builds a fresh simulation; the value is put back.
-    let handle = app.world().get::<ParticleSystem>(e).unwrap().asset.clone();
+    let handle = app.world().get::<renzora_particles::ParticleAsset>(e).unwrap().0.clone();
     {
         let mut assets = app.world_mut().resource_mut::<Assets<VfxAsset>>();
         let mut asset = assets.get_mut(&handle).expect("asset");

@@ -5,6 +5,30 @@ with the `vfx_*` functions: play it, stop it, burst it, and turn the knobs its
 author exposed as **Parameter** nodes. They are declared by the particle
 system itself, so every scripting language has them.
 
+## Spawning an effect from Rust
+
+A Rust script or plugin can also place an effect itself, by spawning the
+components from `renzora::particles`. This is how a game makes a hit spark, an
+explosion or a trail that was not in the scene beforehand.
+
+```rust
+use renzora::particles::{ParticlePlayback, ParticleSystem};
+
+ctx.world().spawn((
+    Name::new("hit_sparks"),
+    Transform::from_translation(position),
+    ParticleSystem::from_path("particles/hit_sparks.vfx"),
+    // Plays once, then despawns the entity.
+    ParticlePlayback::one_shot(),
+));
+```
+
+`ParticlePlayback` also has `play`, `pause`, `stop`, `restart`, `burst(count)`
+and `seek(seconds)`, and `ParticleParams` sets Parameter nodes by name, so
+everything the `vfx_*` functions below do is available on the components
+directly. Parent the entity under a moving one (`ChildOf`) and the effect
+follows it.
+
 ## Which effect
 
 A call acts on the script's own entity when it has a Particle System, and

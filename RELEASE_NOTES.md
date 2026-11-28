@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 08:50
+- feat(scripting): Rust scripts and plugins can spawn and drive particle effects through `renzora::particles`
+
 ## 2026-11-28 08:08
 - feat(plugin): a plugin can create a new project with `renzora::create_project`, the same one the launcher's New Project makes
 

@@ -15,7 +15,9 @@ use bevy::prelude::*;
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_particles::convert::format::HanabiEffectDefinition;
 use renzora_particles::legacy::{HanabiEffect, InlineLegacyEffect};
-use renzora_particles::{ParticlePlayback, ParticleRuntime, ParticleSystem, ParticlesPlugin, PlayState, VfxAsset};
+use renzora_particles::{
+    ParticleAsset, ParticlePlayback, ParticleRuntime, ParticleSystem, ParticlesPlugin, PlayState, VfxAsset,
+};
 
 fn app() -> App {
     renzora_test_harness::headless_app_with(|app| {
@@ -72,7 +74,8 @@ fn an_inline_old_effect_plays_from_memory_and_is_marked_for_the_editor() {
     let world = app.world();
     let system = world.get::<ParticleSystem>(e).expect("migrated");
     assert!(system.path.is_empty(), "an inline effect has no file yet");
-    let asset = world.resource::<Assets<VfxAsset>>().get(&system.asset).expect("the conversion is loaded");
+    let handle = &world.get::<ParticleAsset>(e).expect("a runtime handle").0;
+    let asset = world.resource::<Assets<VfxAsset>>().get(handle).expect("the conversion is loaded");
     assert_eq!(asset.name, "Inline Sparks");
     assert!(world.get::<InlineLegacyEffect>(e).is_some(), "the editor is told to write it out");
     assert_eq!(world.get::<ParticlePlayback>(e).map(|p| p.state), Some(PlayState::Playing));
@@ -164,7 +167,7 @@ fn a_particle_file_loads_and_plays_as_an_effect() {
     }
     let world = app.world();
     assert!(world.get::<ParticleRuntime>(e).is_some(), "the .particle never loaded as an effect");
-    let handle = &world.get::<ParticleSystem>(e).unwrap().asset;
+    let handle = &world.get::<ParticleAsset>(e).unwrap().0;
     let asset = world.resource::<Assets<VfxAsset>>().get(handle).expect("loaded");
     assert_eq!(asset.name, "Old Fire");
     assert_eq!(asset.emitters.len(), 1);
@@ -178,12 +181,12 @@ fn an_unreadable_particle_file_fails_to_load_without_a_default_effect() {
     let server = app.world().resource::<AssetServer>().clone();
     for _ in 0..400 {
         app.update();
-        let handle = app.world().get::<ParticleSystem>(e).unwrap().asset.clone();
+        let handle = app.world().get::<ParticleAsset>(e).unwrap().0.clone();
         if server.load_state(&handle).is_failed() {
             break;
         }
     }
-    let handle = app.world().get::<ParticleSystem>(e).unwrap().asset.clone();
+    let handle = app.world().get::<ParticleAsset>(e).unwrap().0.clone();
     assert!(server.load_state(&handle).is_failed(), "a broken file is a load error");
     assert!(app.world().get::<ParticleRuntime>(e).is_none());
 }

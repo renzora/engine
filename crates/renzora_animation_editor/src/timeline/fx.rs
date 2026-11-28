@@ -186,7 +186,11 @@ pub(super) fn sync_fx(world: &mut World) {
     let has_clip = world.resource::<TimelineClip>().clip.is_some();
     let found = target
         .filter(|_| has_clip)
-        .and_then(|e| world.get::<ParticleSystem>(e).map(|s| (e, s.path.clone(), s.asset.clone())));
+        .and_then(|e| {
+            let path = world.get::<ParticleSystem>(e)?.path.clone();
+            let handle = world.get::<renzora_particles::ParticleAsset>(e).map(|a| a.0.clone()).unwrap_or_default();
+            Some((e, path, handle))
+        });
     let Some((entity, path, handle)) = found else {
         if world.resource::<TimelineClip>().fx.is_some() {
             world.resource_mut::<TimelineClip>().fx = None;

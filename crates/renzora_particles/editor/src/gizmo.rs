@@ -13,7 +13,6 @@ use bevy::prelude::*;
 use renzora_editor_framework::{EditorCamera, EditorSelection};
 use renzora_gizmo::OverlayGizmoGroup;
 use renzora_particles::asset::{PinValue, VfxAsset, VfxNode};
-use renzora_particles::ParticleSystem;
 
 /// Warm, like a flame, so the icon reads as "effect" next to the yellow lights.
 const ICON: Color = Color::srgb(1.0, 0.62, 0.3);
@@ -31,7 +30,7 @@ pub(crate) fn draw_particle_gizmos(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
     // The effect editor's preview entity is not scene content and is drawn
     // on its own layer; a sparkle for it would float at the origin.
-    systems: Query<(Entity, &GlobalTransform, &ParticleSystem), Without<crate::preview::PreviewEffect>>,
+    systems: Query<(Entity, &GlobalTransform, &renzora_particles::ParticleAsset), Without<crate::preview::PreviewEffect>>,
     assets: Res<Assets<VfxAsset>>,
 ) {
     let Ok(cam) = camera.single() else { return };
@@ -45,7 +44,7 @@ pub(crate) fn draw_particle_gizmos(
         if !is_selected {
             continue;
         }
-        let Some(asset) = assets.get(&system.asset) else { continue };
+        let Some(asset) = assets.get(&system.0) else { continue };
         for emitter in asset.emitters.iter().filter(|e| e.enabled) {
             for node in &emitter.graph.nodes {
                 draw_shape(&mut gizmos, node, gt);

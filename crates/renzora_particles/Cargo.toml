@@ -29,6 +29,9 @@ material_graph = ["dep:renzora_shader", "render_3d"]
 
 [dependencies]
 renzora_scene_api = { path = "../api/renzora_scene_api" }
+# The authored components (`ParticleSystem`, `ParticlePlayback`, ...), which
+# moved to the contract so scripts and plugins can spawn effects.
+renzora_particles_api = { path = "../api/renzora_particles_api" }
 renzora_project_api = { path = "../api/renzora_project_api" }
 renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }

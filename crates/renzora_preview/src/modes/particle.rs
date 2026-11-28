@@ -10,7 +10,7 @@
 
 use bevy::prelude::*;
 use renzora_particles::convert::format::HanabiEffectDefinition;
-use renzora_particles::{ParticleSystem, VfxAsset};
+use renzora_particles::VfxAsset;
 
 use super::PreviewMode;
 use crate::bridge::{PreviewCommand, PreviewCommandQueue};
@@ -70,7 +70,7 @@ fn handle_particle_commands(
                             Transform::IDENTITY,
                             Visibility::Visible,
                             PreviewParticle,
-                            ParticleSystem::from_handle(assets.add(asset)),
+                            renzora_particles::from_handle(assets.add(asset)),
                         ));
 
                         state.loaded = true;

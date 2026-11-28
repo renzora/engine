@@ -37,7 +37,7 @@ fn frames(app: &mut App, n: usize) {
 fn spawn_preset(app: &mut App, index: usize) -> Entity {
     let asset = parse_vfx(PRESETS[index].source).expect("preset parses");
     let handle = app.world_mut().resource_mut::<Assets<VfxAsset>>().add(asset);
-    app.world_mut().spawn(ParticleSystem::from_handle(handle)).id()
+    app.world_mut().spawn(renzora_particles::from_handle(handle)).id()
 }
 
 fn alive(app: &App, e: Entity) -> u32 {
@@ -190,7 +190,7 @@ fn spawn_burst(app: &mut App, render: &str) -> Entity {
     );
     let asset = parse_vfx(&source).expect("effect parses");
     let handle = app.world_mut().resource_mut::<Assets<VfxAsset>>().add(asset);
-    app.world_mut().spawn(ParticleSystem::from_handle(handle)).id()
+    app.world_mut().spawn(renzora_particles::from_handle(handle)).id()
 }
 
 /// A mesh emitter's renderer gets its built-in template and writes one copy
@@ -424,7 +424,7 @@ fn editing_the_asset_in_place_rebuilds_its_instances() {
     let mut app = app();
     let e = spawn_preset(&mut app, 0);
     frames(&mut app, 10);
-    let handle = app.world().get::<ParticleSystem>(e).unwrap().asset.clone();
+    let handle = app.world().get::<renzora_particles::ParticleAsset>(e).unwrap().0.clone();
     let emitters_before = app.world().get::<ParticleRuntime>(e).unwrap().renderers.len();
     {
         let mut assets = app.world_mut().resource_mut::<Assets<VfxAsset>>();

@@ -90,6 +90,7 @@ The layers, and what plugins still call each one:
 | `renzora_save_api` | Save games | `renzora::save` |
 | `renzora_bus_api` | Named events and services between plugins | `renzora::bus` |
 | `renzora_physics_api` | The physics contract, vehicles, scene queries | `renzora::physics`, `renzora::vehicle`, `renzora::scene_query` |
+| `renzora_particles_api` | The particle components: which effect, how it plays, its parameter values | `renzora::particles` |
 | `renzora_world_api` | World environment, wind, sun, splines | `renzora::WorldEnvironment`, `renzora::Sun`, ... |
 | `renzora_render_api` | The GPU capability flags, `SolariLit` and the ray tracer's stand-in contracts (`gi`), auto exposure, post effects, the post-process framework (`postprocess` feature), the grid (`grid` feature), the blockout grid texture | `renzora::SolariLit`, `renzora::PostEffects`, `renzora::postprocess`, ... |
 | `renzora_solari_api` | Solari's settings (`SolariGi` and its enums), DLSS modes and support, the ray tracing diagnostics. Depends on Bevy only; its own crate because it changes far more often than the rest of rendering and only six crates read it | `renzora::SolariGi`, `renzora::DlssMode`, `renzora::gi::...` |

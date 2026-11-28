@@ -35,7 +35,7 @@ use bevy::prelude::*;
 use renzora_world_api::wind::WindState;
 
 use crate::asset::{Dimension, ParticleLight, RenderSettings, VfxAsset};
-use crate::component::{OneShot, ParticlePlayback, ParticleStats, ParticleSystem, PlayState};
+use crate::component::{OneShot, ParticleAsset, ParticlePlayback, ParticleStats, ParticleSystem, PlayState};
 use crate::light::{LightRig, LightSample};
 use crate::render::{sim_to_mesh, spawn_renderer, write_mesh, write_mesh_sorted, ParticleRenderer, RendererAssets};
 use crate::sim::{EffectSim, FrameInput, ParticleBuffer};
@@ -105,21 +105,21 @@ impl ParticleRuntime {
 /// id itself, and flagging the component would re-run this every frame.
 pub fn resolve_handles(
     asset_server: Res<AssetServer>,
-    mut systems: Query<&mut ParticleSystem, Changed<ParticleSystem>>,
+    mut systems: Query<(&ParticleSystem, &mut ParticleAsset), Changed<ParticleSystem>>,
 ) {
-    for mut system in &mut systems {
+    for (system, mut asset) in &mut systems {
         let path = system.path.trim();
         if path.is_empty() {
             // A handle with a path came from an earlier `path` the user has now
             // cleared; one without came from code and is left alone.
-            if asset_server.get_path(system.asset.id()).is_some() {
-                system.bypass_change_detection().asset = Handle::default();
+            if asset_server.get_path(asset.0.id()).is_some() {
+                asset.bypass_change_detection().0 = Handle::default();
             }
             continue;
         }
         let handle: Handle<VfxAsset> = asset_server.load(path.to_string());
-        if handle.id() != system.asset.id() {
-            system.bypass_change_detection().asset = handle;
+        if handle.id() != asset.0.id() {
+            asset.bypass_change_detection().0 = handle;
         }
     }
 }
@@ -133,6 +133,7 @@ pub fn sync_instances(
     systems: Query<(
         Entity,
         &ParticleSystem,
+        &ParticleAsset,
         &GlobalTransform,
         Option<&ParticleRuntime>,
         Option<&RenderLayers>,
@@ -162,8 +163,8 @@ pub fn sync_instances(
         teardown(&mut commands, entity, None);
     }
 
-    for (entity, system, global, runtime, layers) in &systems {
-        let id = system.asset.id();
+    for (entity, system, handle, global, runtime, layers) in &systems {
+        let id = handle.0.id();
         let Some(asset) = assets.get(id) else {
             // Not loaded yet, failed, or no effect chosen. A runtime for some
             // other effect is stale either way.
@@ -312,21 +313,21 @@ pub fn step_effects(
         // Transient requests are cleared without flagging the component as
         // changed: they are not edits, and the editor treats a changed
         // component as an unsaved scene.
-        if playback.restart_requested {
-            playback.bypass_change_detection().restart_requested = false;
-            runtime.sim.reset();
-            runtime.dirty = true;
-        }
-        if let Some(t) = playback.seek_to {
-            playback.bypass_change_detection().seek_to = None;
-            runtime.sim.simulate_to(t, &frame);
-            runtime.dirty = true;
-        }
-        if playback.pending_bursts > 0 {
-            let n = playback.pending_bursts;
-            playback.bypass_change_detection().pending_bursts = 0;
-            runtime.sim.burst(n, &frame);
-            runtime.dirty = true;
+        if playback.has_requests() {
+            let requests = playback.bypass_change_detection();
+            if requests.take_restart() {
+                runtime.sim.reset();
+                runtime.dirty = true;
+            }
+            if let Some(t) = requests.take_seek() {
+                runtime.sim.simulate_to(t, &frame);
+                runtime.dirty = true;
+            }
+            let n = requests.take_bursts();
+            if n > 0 {
+                runtime.sim.burst(n, &frame);
+                runtime.dirty = true;
+            }
         }
 
         // An editor holding the effect's clock (`editor_clock`) plays it at

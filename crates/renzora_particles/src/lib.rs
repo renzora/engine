@@ -74,7 +74,10 @@ pub use asset::{
     PinValue, RenderMethod, RenderSettings, Ribbon, RibbonKind, RibbonShape,
     Shading, SimulationSpace, SubEmitter, SubEmitterTrigger, VfxAsset, VfxAssetLoader, VfxGraph, VfxNode,
 };
-pub use component::{OneShot, ParticleParams, ParticlePlayback, ParticleStats, ParticleSystem, PlayState, DEFAULT_EFFECT};
+pub use component::{
+    from_handle, OneShot, ParticleAsset, ParticleParams, ParticlePlayback, ParticleStats, ParticleSystem, PlayState,
+    DEFAULT_EFFECT,
+};
 pub use systems::ParticleRuntime;
 
 use bevy::camera::visibility::VisibilitySystems;
@@ -101,6 +104,14 @@ impl Plugin for ParticlesPlugin {
             .register_type::<ParticlePlayback>()
             .register_type::<PlayState>()
             .register_type::<OneShot>();
+        // The contract type cannot name these, so they are attached here: the
+        // loaded handle every effect needs, and the pick proxy that makes an
+        // effect clickable in the viewport (nothing about one can be hit by the
+        // mesh raycast, so without it an effect was visible but unselectable).
+        app.register_required_components::<ParticleSystem, ParticleAsset>();
+        app.register_required_components_with::<ParticleSystem, renzora_scene_api::PickProxy>(|| {
+            renzora_scene_api::PickProxy { radius: 0.3 }
+        });
         presets::embed(app);
         // Old Hanabi effects: the `.particle` loader and the scene component's
         // migration. Before the server early-out for the same reason as the

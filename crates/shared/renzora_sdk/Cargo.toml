@@ -32,6 +32,7 @@ renzora_save_api = { path = "../../api/renzora_save_api" }
 renzora_bus_api = { path = "../../api/renzora_bus_api" }
 renzora_animation_api = { path = "../../api/renzora_animation_api" }
 renzora_physics_api = { path = "../../api/renzora_physics_api" }
+renzora_particles_api = { path = "../../api/renzora_particles_api" }
 renzora_world_api = { path = "../../api/renzora_world_api" }
 renzora_render_api = { path = "../../api/renzora_render_api" }
 renzora_solari_api = { path = "../../api/renzora_solari_api" }

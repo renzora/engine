@@ -1,0 +1,16 @@
+[package]
+name = "renzora_particles_api"
+version = "0.1.0"
+edition = "2021"
+description = "The particle components a scene holds and a script drives: which effect, how it plays, the values set on its parameters. Plugins and scripts see it as `renzora::particles`"
+
+# A contract layer. It holds only the authored data; the effect asset, its
+# compiler and the simulation stay in `renzora_particles`, which builds its
+# runtime state from these components the way a physics backend builds bodies
+# from `PhysicsBodyData`.
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

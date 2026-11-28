@@ -47,6 +47,10 @@ pub use renzora_bus_api as bus;
 // `renzora::physics`, `renzora::vehicle`, `renzora::scene_query`.
 pub use renzora_physics_api::{physics, scene_query, vehicle};
 
+// `renzora::particles`: the components that place and drive a particle
+// effect, so a script can spawn a hit spark or an explosion itself.
+pub use renzora_particles_api as particles;
+
 // `renzora::WorldEnvironment`, `renzora::Sun`, `renzora::WindState`,
 // `renzora::SplinePath` and their modules, flat, the way they were.
 pub use renzora_world_api::*;
