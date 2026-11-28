@@ -430,6 +430,15 @@ pub fn save_prefab_source(
         if world.get::<Name>(e).is_none() {
             continue;
         }
+        // Editor and runtime plumbing (a particle effect's renderer children,
+        // gizmo helpers) is rebuilt from the saved components on load, the
+        // same rule the scene saver applies. Before this a prefab of a sprite
+        // carrying an effect saved its `vfx emitter` child too, with a parent
+        // id from the session that made it, and every instance then had a
+        // stray copy beside the one the runtime built.
+        if world.get::<renzora_scene_api::HideInHierarchy>(e).is_some() {
+            continue;
+        }
         descendants.push(e);
         // Stop descending into gltf-owned subtrees.
         if world.get::<renzora_scene_api::MeshInstanceData>(e).is_some() {
