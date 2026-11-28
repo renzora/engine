@@ -477,6 +477,12 @@ spawns one (`spawn_entity`, `spawn_model`, `spawn_primitive`,
 `spawn_scene_instance`). A project whose scenes hold only UI and cameras exports
 with all of them off.
 
+**UI built in a Rust script counts.** A scene names UI by its type, but a HUD
+spawned from a `.rs` script reaches the same types through the Bevy prelude, so
+the scan also looks for what such code writes: a `Node { .. }` literal,
+`Text::new(`, `ImageNode`, `TextFont`, `UiRect::`. Any of them keeps the
+**Interface** toggle on.
+
 Three things it deliberately won't decide, because "no evidence" isn't the same
 as "not used":
 

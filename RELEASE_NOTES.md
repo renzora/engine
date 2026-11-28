@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 11:43
+- fix(export): a game whose UI is built in a Rust script keeps the UI layer in a lean export
+
 ## 2026-11-28 11:26
 - fix(2d): a y-sorted physics body that moves is no longer dragged back toward where it was last drawn
 

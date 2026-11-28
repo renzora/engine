@@ -1235,7 +1235,16 @@ fn detection_types(id: &str) -> &'static [&'static str] {
         "gamepad" => &["Gamepad", "gamepad_"],
 
         // ── Interface ────────────────────────────────────────────────────────
-        "ui" => &["bevy_ui::", "renzora_ember::", "UiCanvas"],
+        // A scene names UI by its type path; a Rust script that builds a HUD
+        // in code reaches the same types through the Bevy prelude, so it is
+        // matched by what such code writes: a node literal, a text or image
+        // node, a font. Without these a game whose whole UI came from its
+        // script exported with `bevy_ui` and `bevy_text` stripped and failed
+        // to compile.
+        "ui" => &[
+            "bevy_ui::", "renzora_ember::", "UiCanvas", "bevy::ui::", "bevy::text::",
+            "Node {", "Node::default()", "ImageNode", "Text::new(", "TextFont", "UiRect::",
+        ],
         "game_ui" => &["renzora_ember::game_ui", "UiCanvas", "HtmlTemplatePath"],
 
         // ── Heavy UI widgets ─────────────────────────────────────────────────
@@ -2438,6 +2447,32 @@ mod tests {
             ],
         );
         assert!(r.state()["picking"]);
+    }
+
+    /// A HUD built entirely in a Rust script keeps the UI layer: the scene
+    /// names no UI type, and the script reaches the UI through the prelude.
+    #[test]
+    fn a_hud_built_in_a_rust_script_keeps_the_ui() {
+        let p = TempProject::new(
+            "script_hud",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n renzora::core::components::Node2d: (),\n}\n"),
+                (
+                    "scripts/hud.rs",
+                    "fn hud(world: &mut World) {\n    world.spawn((Node { width: Val::Px(4.0), ..default() }, Text::new(\"hi\")));\n}\n",
+                ),
+            ],
+        );
+        assert!(p.state()["ui"]);
+
+        let q = TempProject::new(
+            "script_no_hud",
+            &[
+                ("scenes/level.bsn", "entity 1 {\n renzora::core::components::Node2d: (),\n}\n"),
+                ("scripts/move.rs", "fn go(world: &mut World) { let _ = world; }\n"),
+            ],
+        );
+        assert!(!q.state()["ui"], "a script with no UI code is not evidence");
     }
 
     /// The tonemapping lookup textures follow the curve the scene actually asks
