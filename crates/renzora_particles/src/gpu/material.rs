@@ -24,7 +24,11 @@ use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
 
 use crate::asset::BlendMode;
-use crate::render::material::{add_def, ParticleMaterialParams, ATTRIBUTE_PARTICLE_LOCAL, MESH_PARTICLES_DEF, SHADER_2D, SHADER_3D};
+use crate::render::material::{add_def, ParticleMaterialParams, ATTRIBUTE_PARTICLE_LOCAL, MESH_PARTICLES_DEF};
+#[cfg(feature = "render_2d")]
+use crate::render::material::SHADER_2D;
+#[cfg(feature = "render_3d")]
+use crate::render::material::SHADER_3D;
 
 /// The shader def that switches the particle shaders to the storage fetch.
 pub const GPU_PARTICLES_DEF: &str = "GPU_PARTICLES";

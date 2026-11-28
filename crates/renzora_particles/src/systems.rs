@@ -67,6 +67,9 @@ pub struct EmitterLights {
     pub settings: ParticleLight,
     /// The emitter's seed, so its flicker differs from its neighbour's.
     pub seed: u64,
+    /// Read only by the 3D light update; a 2D-only export keeps the field so
+    /// the struct has one shape, and has no use for it.
+    #[cfg_attr(not(feature = "render_3d"), allow(dead_code))]
     targets: Vec<LightSample>,
 }
 

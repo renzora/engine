@@ -152,11 +152,21 @@ impl MeshTemplate {
             }
             _ => None,
         };
+        // Generating tangents needs Bevy's mikktspace, which a lean export
+        // strips along with the 3D pipeline. A 2D game still compiles this
+        // module, and without it a tangent is derived from the normal instead.
+        #[cfg(feature = "render_3d")]
+        let generated = || {
+            let m = with_normals.unwrap_or_else(|| mesh.clone());
+            m.with_generated_tangents().ok().and_then(|m| float4(&m))
+        };
+        #[cfg(not(feature = "render_3d"))]
+        let generated = || {
+            let _ = &with_normals;
+            None
+        };
         let tangents = float4(mesh)
-            .or_else(|| {
-                let m = with_normals.unwrap_or_else(|| mesh.clone());
-                m.with_generated_tangents().ok().and_then(|m| float4(&m))
-            })
+            .or_else(generated)
             .unwrap_or_else(|| normals.iter().map(|n| any_tangent(*n)).collect());
         let radius = positions.iter().map(|p| p.length()).fold(0.0, f32::max);
         Ok(Self { positions, normals, uvs, tangents, indices, radius })
