@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 08:08
+- feat(plugin): a plugin can create a new project with `renzora::create_project`, the same one the launcher's New Project makes
+
 ## 2026-11-28 06:53
 - fix(camera): right-drag look, pan and orbit work in the viewport with a mouse that reports absolute positions, such as in a virtual machine
 - fix(companion): on Wayland the companion no longer opens a blank window at launch

@@ -61,7 +61,10 @@ pub mod project_index; // every file in the open project, walked once and kept c
 pub mod streaming; // world-streaming gate + camera-position helpers
 
 pub mod companion; // the queue editor crates hand companion jobs to (moved from renzora::core)
+pub mod new_project; // a new project on disk, for the launcher and the MCP plugin alike
 pub use auth::*;
+#[cfg(not(target_arch = "wasm32"))]
+pub use new_project::create_project;
 pub use companion::*;
 pub use load_work::*;
 pub use plugin_inventory::*;
