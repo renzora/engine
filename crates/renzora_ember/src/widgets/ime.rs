@@ -26,8 +26,30 @@
 //! wasm is not covered: winit's IME switch and candidate area are no-ops in a
 //! browser, so Hangul there needs a DOM text-input bridge.
 
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
+
+/// Take back the `just_pressed` of every key the IME consumed this frame.
+///
+/// `ButtonInput<KeyCode>` follows the physical key, so the Enter that confirms
+/// a Japanese clause or the Space that ends a Hangul syllable reads as
+/// `just_pressed` like any other, and every handler that acts on Enter or
+/// Escape through it (an inline rename, the search list, a viewport shortcut)
+/// would fire mid-composition. The IME's own keys arrive as [`Key::Process`],
+/// so clearing them here, once, right after Bevy's input pass, fixes all of
+/// them rather than each handler separately. The key still reads as held.
+pub(crate) fn release_ime_consumed_keys(
+    mut events: MessageReader<KeyboardInput>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+) {
+    for ev in events.read() {
+        if ev.state == ButtonState::Pressed && matches!(ev.logical_key, Key::Process) {
+            keys.clear_just_pressed(ev.key_code);
+        }
+    }
+}
 
 use super::code_editor::CodeEditor;
 use super::text_input::{display_for, insert_committed, EmberTextInput, SingleLineInput};
@@ -140,6 +162,7 @@ pub(crate) fn ime_focus_sync(
     mut markup: Option<ResMut<UiFocus>>,
     mut code: Query<&mut CodeEditor>,
     mut windows: Query<&mut Window>,
+    mut last: Local<Option<bool>>,
 ) {
     let focused = inputs.iter().find(|(_, i, _)| i.focused).map(|(e, _, _)| e);
     let mut bounce = false;
@@ -180,8 +203,14 @@ pub(crate) fn ime_focus_sync(
         }
     }
     let want = (focused.is_some() || markup_focused || code_focused) && !bounce;
+    // Written only when ember's own answer changes (or a window is new), never
+    // every frame: a game script or plugin with a text box of its own may turn
+    // the IME on while no ember input is focused, and an every-frame write
+    // would switch it straight back off.
+    let changed = *last != Some(want);
+    *last = Some(want);
     for mut w in &mut windows {
-        if w.ime_enabled != want {
+        if (changed || w.is_added()) && w.ime_enabled != want {
             w.ime_enabled = want;
         }
     }
@@ -303,6 +332,26 @@ mod tests {
             repeat: false,
             window: Entity::PLACEHOLDER,
         }
+    }
+
+    /// An Enter the IME consumed is no longer `just_pressed`, so a rename or
+    /// search that acts on Enter does not fire mid-composition; a plain Enter
+    /// still is.
+    #[test]
+    fn a_key_the_ime_consumed_is_not_just_pressed() {
+        let mut world = World::new();
+        world.init_resource::<Messages<KeyboardInput>>();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::Enter);
+        keys.press(KeyCode::Space);
+        world.insert_resource(keys);
+        world.write_message(press(Key::Process, KeyCode::Enter));
+        world.write_message(press(Key::Space, KeyCode::Space));
+        world.run_system_once(release_ime_consumed_keys).unwrap();
+        let keys = world.resource::<ButtonInput<KeyCode>>();
+        assert!(!keys.just_pressed(KeyCode::Enter));
+        assert!(keys.pressed(KeyCode::Enter));
+        assert!(keys.just_pressed(KeyCode::Space));
     }
 
     /// A focused input holding `value`, with the caret at char `caret`.

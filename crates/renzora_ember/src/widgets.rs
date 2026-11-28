@@ -349,6 +349,14 @@ impl Plugin for WidgetsPlugin {
             bevy::app::PreUpdate,
             form::form_enter_submit.after(bevy::ui::UiSystems::Focus),
         );
+        // Straight after Bevy fills `ButtonInput`, ahead of everything that
+        // reads it, so no handler ever sees a key the IME consumed as pressed.
+        app.add_systems(
+            bevy::app::PreUpdate,
+            ime::release_ime_consumed_keys
+                .after(bevy::input::InputSystems)
+                .before(bevy::ui::UiSystems::Focus),
+        );
         // An open inline folder rename owns Enter and Escape, and consumes them
         // (`clear_just_pressed`) so neither reaches the form above or the
         // overlay's Escape-to-close during Update. That only works from ahead of

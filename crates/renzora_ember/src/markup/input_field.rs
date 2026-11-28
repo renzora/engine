@@ -95,15 +95,27 @@ fn resolve_bind(
     }
 }
 
-/// Click an input → focus it (and unfocus others).
+/// Click an input → focus it (and unfocus others). A press anywhere else ends
+/// the focus, as it does for any OS text field.
+///
+/// Before that, an input stayed focused until Enter or Escape: clicking an
+/// ember field or the code editor left it typing too, so every key and every
+/// IME commit went into both.
 fn focus_on_click(
     interactions: Query<(Entity, &UiInteraction), (Changed<UiInteraction>, With<TextInput>)>,
+    mouse: Option<Res<ButtonInput<MouseButton>>>,
     mut focus: ResMut<UiFocus>,
 ) {
+    let mut hit = None;
     for (entity, interaction) in &interactions {
         if *interaction == UiInteraction::Pressed {
-            focus.focused = Some(entity);
+            hit = Some(entity);
         }
+    }
+    if hit.is_some() {
+        focus.focused = hit;
+    } else if focus.focused.is_some() && mouse.is_some_and(|m| m.get_just_pressed().next().is_some()) {
+        focus.focused = None;
     }
 }
 
@@ -181,7 +193,11 @@ fn type_ime(ime: &Ime, focus: &mut UiFocus, input: Option<&mut TextInput>) {
             // The caret is always at the end of an `<input>`, so the IME's
             // cursor inside the preedit has nowhere to go: the preedit is
             // simply drawn before the caret.
-            if input.is_some() {
+            // An empty preedit is how winit ends a composition, sent ahead of
+            // every commit, the IME's flush after a focus move included. It
+            // starts nothing, so it must not disarm the guard waiting for
+            // that flush, or the syllable lands in the new input as well.
+            if input.is_some() && !value.is_empty() {
                 focus.preedit = value.clone();
                 focus.preedit_owner = focus.focused;
                 focus.discard_commit = false;
@@ -456,6 +472,37 @@ mod tests {
         // Past `Disabled` the guard is down, so the next commit is typed.
         send(&mut world, [commit("글")]);
         assert_eq!(value(&world, other), "글");
+    }
+
+    /// The same, with the flush as winit delivers it: an empty preedit ahead
+    /// of the commit, which must not disarm the guard.
+    #[test]
+    fn the_flush_after_a_focus_move_is_dropped_behind_an_empty_preedit() {
+        let (mut world, e) = typing_world("가");
+        send(&mut world, [preedit("한")]);
+        let other = world
+            .spawn((
+                TextInput::new(String::new(), String::new(), false, Entity::PLACEHOLDER),
+                Text::default(),
+            ))
+            .id();
+        world.resource_mut::<UiFocus>().focused = Some(other);
+        world.run_system_once(commit_on_leave).unwrap();
+        send(&mut world, [preedit(""), commit("한")]);
+        assert_eq!(value(&world, e), "가한");
+        assert_eq!(value(&world, other), "");
+    }
+
+    /// A press that lands on no `<input>` ends the focus, so typing meant for
+    /// another field does not reach this one as well.
+    #[test]
+    fn a_press_elsewhere_unfocuses_the_input() {
+        let (mut world, _) = typing_world("가");
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        mouse.press(MouseButton::Left);
+        world.insert_resource(mouse);
+        world.run_system_once(focus_on_click).unwrap();
+        assert_eq!(world.resource::<UiFocus>().focused, None);
     }
 
     /// The editor's text inputs and the game UI's share one window switch:

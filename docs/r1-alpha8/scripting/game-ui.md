@@ -448,7 +448,9 @@ Every text field, these three and `<input>`, takes Korean, Japanese and Chinese
 input through the player's OS input method. The syllable being composed is shown
 in the field but only reaches the bound variable once the input method commits
 it, so a script never sees half-built text. Clicking another field mid-syllable
-keeps the syllable in the field it was typed in. Not on the web export, where
+keeps the syllable in the field it was typed in. Clicking anywhere outside an
+`<input>` ends its focus, so typing meant for another field never reaches it.
+Not on the web export, where
 the browser's input method is not connected yet.
 
 ### Interactive widgets with their own state

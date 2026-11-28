@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 06:35
+- fix(ui): clicking outside a game UI `<input>` unfocuses it, so typing meant for another field no longer reaches it too
+
 ## 2026-11-28 14:30
 - feat(editor): the code editor accepts Korean and other IME input
 - fix(editor): the code editor's caret and selection line up after Korean and other wide characters
