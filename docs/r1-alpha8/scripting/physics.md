@@ -204,6 +204,8 @@ end
 
 Read held keys there, not `is_key_just_pressed`: input is sampled once per frame, so an edge can land in two steps or none. See [Every frame, or every fixed step](/docs/r1-alpha8/scripting/overview#every-frame-or-every-fixed-step).
 
+Moving 2D bodies are drawn interpolated between physics steps, so a sprite driven by velocity moves smoothly at any frame rate instead of stepping at the physics rate. Static bodies are not interpolated, since they never move.
+
 > **2D bodies:** the force and velocity functions route to the entity's own world automatically. On a 2D body they apply the X/Y of a linear vector and the Z of a spin, so the same script works on a sprite. `move_controller` is 3D-only for now; drive 2D characters with `set_velocity` (lock rotation on the body so collisions don't spin it).
 
 ### Kinematic character movement

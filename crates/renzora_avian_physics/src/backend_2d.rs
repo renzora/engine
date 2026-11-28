@@ -297,6 +297,20 @@ fn sync_bodies(
     for (entity, body) in &bodies {
         let mut e = commands.entity(entity);
         e.try_insert(body_parts(body));
+        // A moving body is drawn eased between physics steps. Physics steps at
+        // a fixed 64 Hz and the screen refreshes at whatever the display does,
+        // so without this a character driven by velocity visibly stepped: at
+        // 144 Hz it moved on two frames out of every five, and a top-down game
+        // felt clunky however its input was tuned. The interpolation plugin is
+        // already in the app (added by the 3D backend, see `Avian2dPlugin`);
+        // this only opts the entity in. Static bodies never move, so they are
+        // left out, and a teleport through `Transform` still snaps: the plugin
+        // resets its easing on an outside change.
+        if body.body_type == PhysicsBodyType::StaticBody {
+            e.try_remove::<TranslationInterpolation>();
+        } else {
+            e.try_insert(TranslationInterpolation);
+        }
         if body.ccd {
             e.try_insert(SweptCcd::default());
         } else {
