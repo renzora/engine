@@ -4,6 +4,7 @@
 - fix(export): a game whose UI is built in a Rust script keeps the UI layer in a lean export
 - fix(export): a lean export without blend shapes no longer fails to compile the animation crate
 - fix(export): a 2D-only lean export no longer fails to compile the particle system
+- fix(export): a lean export without game UI markup no longer fails to compile the UI's IME support
 
 ## 2026-11-28 11:26
 - fix(2d): a y-sorted physics body that moves is no longer dragged back toward where it was last drawn

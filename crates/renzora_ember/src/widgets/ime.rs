@@ -53,6 +53,9 @@ pub(crate) fn release_ime_consumed_keys(
 
 use super::code_editor::CodeEditor;
 use super::text_input::{display_for, insert_committed, EmberTextInput, SingleLineInput};
+// Game UI markup exists only with `game_ui`; an export without it has no
+// markup inputs, so its focus simply never takes part.
+#[cfg(feature = "game_ui")]
 use crate::markup::input_field::UiFocus;
 use crate::theme::rgb;
 
@@ -159,7 +162,7 @@ pub(crate) fn composed_caret(comp: &ImeComposition, start: usize) -> usize {
 pub(crate) fn ime_focus_sync(
     mut inputs: Query<(Entity, &mut EmberTextInput, Has<SingleLineInput>)>,
     mut comp: ResMut<ImeComposition>,
-    mut markup: Option<ResMut<UiFocus>>,
+    #[cfg(feature = "game_ui")] mut markup: Option<ResMut<UiFocus>>,
     mut code: Query<&mut CodeEditor>,
     mut windows: Query<&mut Window>,
     mut last: Local<Option<bool>>,
@@ -179,7 +182,11 @@ pub(crate) fn ime_focus_sync(
             comp.clear_text();
         }
     }
+    #[cfg(feature = "game_ui")]
     let markup_focused = markup.as_ref().is_some_and(|f| f.focused.is_some());
+    #[cfg(not(feature = "game_ui"))]
+    let markup_focused = false;
+    #[cfg(feature = "game_ui")]
     if let Some(f) = markup.as_mut().filter(|f| f.ime_bounce) {
         f.ime_bounce = false;
         bounce = true;
@@ -195,6 +202,7 @@ pub(crate) fn ime_focus_sync(
     }
     if bounce {
         comp.discard_commit = true;
+        #[cfg(feature = "game_ui")]
         if let Some(f) = markup.as_mut() {
             f.discard_commit = true;
         }
