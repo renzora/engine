@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 09:59
+- feat(editor): text fields accept Korean and other IME input, with the syllable being composed shown at the caret
+
 ## 2026-11-27 22:00
 - fix(ui): a script's `on_ui` gets `press_play`, not ` press_play`, from a button event that lists several names
 

@@ -23,6 +23,8 @@ mod popup;
 // Arrow keys, Enter and Escape for menus and dropdowns.
 mod menu_nav;
 mod text_input;
+// Korean, Japanese and Chinese composition for the text inputs.
+mod ime;
 mod toggle;
 mod toggle_switch;
 
@@ -166,6 +168,7 @@ pub use segmented::*;
 pub use slider::*;
 pub use stepper::*;
 pub use text_input::*;
+pub use ime::*;
 pub use popup::*;
 pub use toggle::*;
 pub use toggle_switch::*;
@@ -509,6 +512,23 @@ impl Plugin for WidgetsPlugin {
             ),
         );
         app.init_resource::<text_input::InputContextMenu>();
+        app.init_resource::<ime::ImeComposition>();
+        app.add_systems(
+            Update,
+            (
+                // After focus, so a click that moves focus mid-composition
+                // abandons it before the next IME message is applied.
+                ime::ime_focus_sync
+                    .after(text_input::text_input_focus)
+                    .before(text_input::text_input_type),
+                ime::ime_position_sync,
+                // After both redraws of the value, which know nothing of the
+                // preedit and would otherwise wipe it off the screen.
+                ime::ime_display
+                    .after(text_input::text_input_type)
+                    .after(text_input::text_input_sync),
+            ),
+        );
         app.add_systems(
             Update,
             (
