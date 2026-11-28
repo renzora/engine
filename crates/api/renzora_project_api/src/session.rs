@@ -90,6 +90,23 @@ pub enum GameInput {
     GamepadButton { button: String, value: f32 },
     /// A gamepad axis by its `GamepadAxis` name (`"LeftStickX"`), -1 to 1.
     GamepadAxis { axis: String, value: f32 },
+    /// Move the mouse pointer to a point in the game's screenshot pixels, so
+    /// a point read off a game screenshot can be aimed at as it is. Arrives as
+    /// a cursor move, which picking reads, so it hovers the game's UI.
+    Pointer { x: f32, y: f32 },
+    /// A mouse button by its `MouseButton` name (`"Left"`), down or up, at
+    /// wherever [`GameInput::Pointer`] last put the pointer.
+    MouseButton { button: String, pressed: bool },
+    /// Characters typed as key presses that carry their text, which is what a
+    /// focused text field reads. `Key` only presses a `KeyCode`, so it can
+    /// drive gameplay but never type.
+    Text { text: String },
+    /// An input method's composition so far (`Ime::Preedit`), with its caret
+    /// as byte offsets, or `None` to hide it. `consumed` first sends the
+    /// `Key::Process` press an OS reports for a key the IME swallowed.
+    ImePreedit { value: String, cursor: Option<(usize, usize)>, consumed: bool },
+    /// The text an input method hands over (`Ime::Commit`).
+    ImeCommit { value: String, consumed: bool },
 }
 
 /// The editor's line to the game Play is running, for tools that want more

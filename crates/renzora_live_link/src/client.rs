@@ -15,8 +15,12 @@ use bevy::input::gamepad::{
     GamepadAxis, GamepadButton, GamepadConnection, GamepadConnectionEvent, RawGamepadAxisChangedEvent,
     RawGamepadButtonChangedEvent, RawGamepadEvent,
 };
-use bevy::input::InputSystems;
+use bevy::input::keyboard::{Key, KeyboardInput, NativeKeyCode};
+use bevy::input::mouse::MouseButtonInput;
+use bevy::input::{ButtonState, InputSystems};
+use bevy::math::DVec2;
 use bevy::prelude::*;
+use bevy::window::{Ime, RawCursorMoved, WindowEvent};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 
 use crate::apply::{apply, Quiet};
@@ -270,6 +274,11 @@ fn report(world: &mut World) {
 
 fn handle_input(world: &mut World, input: GameInput) {
     match input {
+        GameInput::Pointer { .. }
+        | GameInput::MouseButton { .. }
+        | GameInput::Text { .. }
+        | GameInput::ImePreedit { .. }
+        | GameInput::ImeCommit { .. } => window_input(world, input),
         GameInput::Key { code, pressed } => {
             let Ok(key) = serde_json::from_value::<KeyCode>(serde_json::Value::String(code.clone())) else {
                 warn!("[live-link] unknown key {code}");
@@ -284,6 +293,103 @@ fn handle_input(world: &mut World, input: GameInput) {
             }
         }
         pad_input => world.resource_mut::<Link>().pad.pending.push(pad_input),
+    }
+}
+
+/// Pointer, text and IME input, written as the `WindowEvent`s winit's backend
+/// writes. Not the split messages (`CursorMoved`, `KeyboardInput`, `Ime`):
+/// picking and the text fields read `WindowEvent` itself, and Bevy splits it
+/// into the rest on its own, so writing both would deliver everything twice.
+///
+/// A pointer move also moves the window's cursor, as Bevy's split of it does
+/// for a real one, so the OS cursor follows it while it is over the game.
+fn window_input(world: &mut World, input: GameInput) {
+    let Some((window, scale)) = world
+        .query_filtered::<(Entity, &Window), With<bevy::window::PrimaryWindow>>()
+        .iter(world)
+        .next()
+        .map(|(e, w)| (e, screenshot_scale(w.physical_width())))
+    else {
+        return;
+    };
+    let key = |code: KeyCode, logical: Key, down: bool, text: Option<String>| {
+        WindowEvent::from(KeyboardInput {
+            key_code: code,
+            logical_key: logical,
+            state: if down { ButtonState::Pressed } else { ButtonState::Released },
+            text: text.map(Into::into),
+            repeat: false,
+            window,
+        })
+    };
+    // The IME took the key that made this change; the OS still reports it,
+    // as `Key::Process`. `Unidentified` keeps it from firing a shortcut.
+    let process = |down: bool| key(KeyCode::Unidentified(NativeKeyCode::Unidentified), Key::Process, down, None);
+    let mut events = Vec::new();
+    match input {
+        GameInput::Pointer { x, y } => {
+            events.push(WindowEvent::from(RawCursorMoved {
+                window,
+                physical_position: DVec2::new(x as f64, y as f64) * scale,
+            }));
+        }
+        GameInput::MouseButton { button, pressed } => {
+            let Ok(button) = serde_json::from_value::<MouseButton>(serde_json::Value::String(button.clone())) else {
+                warn!("[live-link] unknown mouse button {button}");
+                return;
+            };
+            events.push(WindowEvent::from(MouseButtonInput {
+                button,
+                state: if pressed { ButtonState::Pressed } else { ButtonState::Released },
+                window,
+            }));
+        }
+        GameInput::Text { text } => {
+            for ch in text.chars() {
+                let (code, logical) = match ch {
+                    ' ' => (KeyCode::Space, Key::Space),
+                    '\n' => (KeyCode::Enter, Key::Enter),
+                    '\t' => (KeyCode::Tab, Key::Tab),
+                    _ => (KeyCode::Unidentified(NativeKeyCode::Unidentified), Key::Character(ch.to_string().into())),
+                };
+                let typed = matches!(logical, Key::Character(_) | Key::Space).then(|| ch.to_string());
+                events.push(key(code, logical.clone(), true, typed));
+                events.push(key(code, logical, false, None));
+            }
+        }
+        GameInput::ImePreedit { value, cursor, consumed } => {
+            if consumed {
+                events.push(process(true));
+            }
+            events.push(WindowEvent::from(Ime::Preedit { window, value, cursor }));
+            if consumed {
+                events.push(process(false));
+            }
+        }
+        GameInput::ImeCommit { value, consumed } => {
+            if consumed {
+                events.push(process(true));
+            }
+            events.push(WindowEvent::from(Ime::Commit { window, value }));
+            if consumed {
+                events.push(process(false));
+            }
+        }
+        GameInput::Key { .. } | GameInput::GamepadButton { .. } | GameInput::GamepadAxis { .. } => return,
+    }
+    for event in events {
+        world.write_message(event);
+    }
+}
+
+/// Window pixels per screenshot pixel. A screenshot wider than
+/// [`SCREENSHOT_WIDTH`] is scaled down before it is sent, so a point read off
+/// it is scaled back up here.
+fn screenshot_scale(window_width: u32) -> f64 {
+    if window_width > SCREENSHOT_WIDTH {
+        window_width as f64 / SCREENSHOT_WIDTH as f64
+    } else {
+        1.0
     }
 }
 
@@ -335,7 +441,8 @@ fn flush_pad(world: &mut World) {
                     Err(_) => warn!("[live-link] unknown gamepad axis {axis}"),
                 }
             }
-            GameInput::Key { .. } => {}
+            // Only pad input is ever held here.
+            _ => {}
         }
     }
 }

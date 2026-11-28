@@ -53,7 +53,7 @@ A few limits:
 An AI agent connected through the **MCP Server** plugin (from the Marketplace) can play the running game as well as edit it. Because the editor follows the game, its usual tools already see the game's live state. Two more reach the game itself:
 
 - **game_screenshot** returns a picture of the game's own window.
-- **game_input** presses keys and gamepad controls in the game, each held for as long as asked. Gamepad input arrives on a virtual gamepad the game sees as a real one, so a game that reads gamepads needs nothing special.
+- **game_input** presses keys and gamepad controls in the game, each held for as long as asked. Gamepad input arrives on a virtual gamepad the game sees as a real one, so a game that reads gamepads needs nothing special. It can also move and click the mouse at a point taken from a game screenshot, type text into the game's focused text field, and send input-method composition (the syllable being built, then the committed text) to test Korean, Japanese or Chinese typing. These arrive as the window events the operating system would deliver, so the game's UI handles them exactly as it handles a person's input.
 
 ## Editing doesn't play anything
 

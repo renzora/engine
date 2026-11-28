@@ -487,8 +487,8 @@ fn send(world: &mut World) {
     {
         let mut link = world.resource_mut::<GameLink>();
         for (input, hold) in std::mem::take(&mut link.inputs) {
-            if let Some(hold) = hold {
-                client.releases.push((hold, released(&input)));
+            if let (Some(hold), Some(release)) = (hold, released(&input)) {
+                client.releases.push((hold, release));
             }
             messages.push(LinkMessage::Input(input));
         }
@@ -537,16 +537,22 @@ fn write_all(writer: &mut TcpStream, messages: &[LinkMessage]) -> bool {
     true
 }
 
-/// The input that undoes `input` after its hold time.
+/// The input that undoes `input` after its hold time, if there is one: a
+/// pointer move, typed text or an IME event is done the moment it is sent.
 #[cfg(not(target_arch = "wasm32"))]
-fn released(input: &GameInput) -> GameInput {
-    match input {
+fn released(input: &GameInput) -> Option<GameInput> {
+    Some(match input {
         GameInput::Key { code, .. } => GameInput::Key { code: code.clone(), pressed: false },
         GameInput::GamepadButton { button, .. } => {
             GameInput::GamepadButton { button: button.clone(), value: 0.0 }
         }
         GameInput::GamepadAxis { axis, .. } => GameInput::GamepadAxis { axis: axis.clone(), value: 0.0 },
-    }
+        GameInput::MouseButton { button, .. } => GameInput::MouseButton { button: button.clone(), pressed: false },
+        GameInput::Pointer { .. }
+        | GameInput::Text { .. }
+        | GameInput::ImePreedit { .. }
+        | GameInput::ImeCommit { .. } => return None,
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
