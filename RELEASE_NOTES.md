@@ -3,6 +3,7 @@
 ## 2026-11-28 10:10
 - fix(rendering): a camera moved onto another render image re-measures it, so the editor no longer crashes on a depth and colour size mismatch
 - feat(rendering): post-process effect shaders work on 2D cameras and in the 2D editor view
+- fix(editor): duplicating a prefab instance copies its contents
 
 ## 2026-11-28 09:33
 - fix(viewport): dropping an image near the origin of a 2D scene places a sprite instead of silently retargeting the hidden Sprite Material preview

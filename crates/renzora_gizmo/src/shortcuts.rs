@@ -159,17 +159,47 @@ pub(crate) fn handle_selection_shortcuts(
     }
 }
 
-/// Deep-clone each selected entity (all components, via Bevy's
-/// `EntityWorldMut::clone_and_spawn`) and replace the selection with the
-/// new copies. The suffix " (Copy)" is appended to the `Name` so
-/// duplicates are distinguishable in the hierarchy.
+/// Deep-clone each selected entity and everything under it, and replace the
+/// selection with the new copies. The suffix " (Copy)" is appended to the
+/// `Name` so duplicates are distinguishable in the hierarchy.
+///
+/// The children come too (`linked_cloning`). A plain `clone_and_spawn` copied
+/// the root alone, so duplicating a prefab instance gave an empty instance:
+/// its contents are children, and the editor only expands an instance when
+/// one is added, never when it is cloned.
+///
+/// Left out of the copy:
+/// - a physics backend's own components. Avian's `RigidBodyColliders` is a
+///   linked relationship that lists a body as its own collider, so following it
+///   cloned the entity into itself without end; the copy carries the engine's
+///   physics data and the backend builds its parts afresh.
+/// - `HideInHierarchy` descendants: runtime parts such as a particle effect's
+///   renderer children, which the copy's own components rebuild. Cloned, they
+///   became visible, named rows drawing a second, frozen copy of the effect.
 fn duplicate_entities(world: &mut World, sources: &[Entity]) {
+    let skip: Vec<bevy::ecs::component::ComponentId> = match world
+        .get_resource::<renzora_physics_api::physics::PhysicsBackends>()
+    {
+        Some(backends) => {
+            let registry = world.resource::<AppTypeRegistry>().read();
+            registry
+                .iter()
+                .filter(|r| backends.is_runtime_type(r.type_info().type_path()))
+                .filter_map(|r| world.components().get_id(r.type_id()))
+                .collect()
+        }
+        None => Vec::new(),
+    };
     let mut new_ids: Vec<Entity> = Vec::with_capacity(sources.len());
     for src in sources {
         let Ok(mut src_mut) = world.get_entity_mut(*src) else {
             continue;
         };
-        let new = src_mut.clone_and_spawn();
+        let skip = skip.clone();
+        let new = src_mut.clone_and_spawn_with_opt_out(move |builder| {
+            builder.linked_cloning(true).deny_by_ids(skip);
+        });
+        prune_hidden_descendants(world, new);
         // Append " (Copy)" to the cloned entity's Name.
         if let Some(original) = world.get::<Name>(new).map(|n| n.as_str().to_string()) {
             if let Ok(mut ent) = world.get_entity_mut(new) {
@@ -182,6 +212,28 @@ fn duplicate_entities(world: &mut World, sources: &[Entity]) {
         sel.clear();
         for e in &new_ids {
             sel.toggle(*e);
+        }
+    }
+}
+
+/// Despawn every `HideInHierarchy` entity under `root` (see
+/// [`duplicate_entities`]).
+fn prune_hidden_descendants(world: &mut World, root: Entity) {
+    let mut stack = vec![root];
+    let mut doomed = Vec::new();
+    while let Some(e) = stack.pop() {
+        let Some(children) = world.get::<Children>(e) else { continue };
+        for child in children.iter() {
+            if world.get::<renzora_scene_api::HideInHierarchy>(child).is_some() {
+                doomed.push(child);
+            } else {
+                stack.push(child);
+            }
+        }
+    }
+    for e in doomed {
+        if let Ok(ent) = world.get_entity_mut(e) {
+            ent.despawn();
         }
     }
 }

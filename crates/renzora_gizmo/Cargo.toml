@@ -18,6 +18,8 @@ renzora_platform_api = { path = "../api/renzora_platform_api" }
 renzora_scripting_api = { path = "../api/renzora_scripting_api" }
 renzora_animation_api = { path = "../api/renzora_animation_api" }
 renzora_physics = { path = "../renzora_physics" }
+# `PhysicsBackends`, so a duplicate leaves out the backend's own components.
+renzora_physics_api = { path = "../api/renzora_physics_api" }
 renzora_terrain = { path = "../renzora_terrain" }
 renzora_lighting = { path = "../renzora_lighting" }
 # The viewport's right-click pick list is an ember menu.
