@@ -235,9 +235,13 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         display_name: "Sprite",
         icon: "image-square",
         category: "nodes_2d",
-        // Default spawn is a 100×100 light-blue square. Bevy's Sprite renders
+        // Default spawn is a 100×100 white square. Bevy's Sprite renders
         // a flat-colored quad when no image is set — gives the user something
         // visible to drag around in the 2D view before they assign a texture.
+        // White, not a placeholder tint: the colour is a tint on whatever image
+        // is assigned later, so a light-blue one turned every character made
+        // from this preset blue, and only until the scene was reloaded, since
+        // `Sprite::color` is not saved.
         // SpriteImagePath ships empty so the inspector shows a drop slot the
         // user can drag a texture onto; the rehydration system reads that
         // path back into Sprite.image.
@@ -247,7 +251,7 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                     Name::new("Sprite"),
                     Transform::default(),
                     Sprite {
-                        color: Color::srgba(0.5, 0.7, 1.0, 1.0),
+                        color: Color::WHITE,
                         custom_size: Some(Vec2::new(100.0, 100.0)),
                         ..default()
                     },
@@ -554,6 +558,43 @@ fn mesh_lod_entry() -> InspectorEntry {
     }
 }
 
+/// A sprite's drawn size: its `custom_size`, or else the size Bevy draws it at
+/// with none, which is the cropped rect or the whole loaded image.
+fn sprite_size(world: &World, entity: Entity) -> Option<Vec2> {
+    let sprite = world.get::<Sprite>(entity)?;
+    if let Some(size) = sprite.custom_size {
+        return Some(size);
+    }
+    if let Some(rect) = sprite.rect {
+        return Some(rect.size());
+    }
+    let images = world.get_resource::<Assets<Image>>()?;
+    images.get(&sprite.image).map(|img| img.size_f32())
+}
+
+/// Write a sprite's size to `Sprite::custom_size` and to `SpriteCustomSize`,
+/// the saved copy of it (Bevy's `Sprite` is not saved with the scene).
+fn set_sprite_size(world: &mut World, entity: Entity, size: Vec2) {
+    if let Some(mut sprite) = world.get_mut::<Sprite>(entity) {
+        sprite.custom_size = Some(size);
+    }
+    world
+        .entity_mut(entity)
+        .insert(renzora_scene_api::SpriteCustomSize(size));
+}
+
+/// The pixel size of one cell of the sprite's sheet grid, or of the whole
+/// image without one. `None` until the image has loaded.
+fn frame_size(world: &World, entity: Entity) -> Option<Vec2> {
+    let sprite = world.get::<Sprite>(entity)?;
+    let images = world.get_resource::<Assets<Image>>()?;
+    let size = images.get(&sprite.image)?.size_f32();
+    let (h, v) = world
+        .get::<renzora_scene_api::SpriteSheet>(entity)
+        .map_or((1, 1), |s| (s.hframes.max(1), s.vframes.max(1)));
+    Some(Vec2::new(size.x / h as f32, size.y / v as f32))
+}
+
 fn sprite_image_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "sprite_image",
@@ -758,6 +799,60 @@ fn sprite_image_entry() -> InspectorEntry {
                                 frame: f,
                             });
                         }
+                    }
+                },
+            },
+            // The drawn size in world units. It used to be reachable only by
+            // dragging the viewport handles, which cannot hit an exact pixel
+            // size: a 16x28 character frame came out 100x100 from the Sprite
+            // preset, stretched, with no way to type the right numbers.
+            // Written to `Sprite::custom_size` and to its saved mirror together.
+            FieldDef {
+                name: "Width",
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 0.0,
+                    max: 100_000.0,
+                },
+                get_fn: |world, entity| sprite_size(world, entity).map(|s| FieldValue::Float(s.x)),
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(w) = val {
+                        let h = sprite_size(world, entity).map_or(w, |s| s.y);
+                        set_sprite_size(world, entity, Vec2::new(w.max(0.0), h));
+                    }
+                },
+            },
+            FieldDef {
+                name: "Height",
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: 0.0,
+                    max: 100_000.0,
+                },
+                get_fn: |world, entity| sprite_size(world, entity).map(|s| FieldValue::Float(s.y)),
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(h) = val {
+                        let w = sprite_size(world, entity).map_or(h, |s| s.x);
+                        set_sprite_size(world, entity, Vec2::new(w, h.max(0.0)));
+                    }
+                },
+            },
+            // One click to pixel-exact: the size of one sheet cell, or of the
+            // whole image when there is no grid. Hidden until the image has
+            // loaded, since before then there is no size to fit to.
+            FieldDef {
+                name: "Fit to Frame",
+                field_type: FieldType::Button { icon: "frame-corners" },
+                get_fn: |world, entity| {
+                    if frame_size(world, entity).is_some() {
+                        None
+                    } else {
+                        Some(FieldValue::Bool(false))
+                    }
+                },
+                set_fn: |world, entity, _| {
+                    if let Some(size) = frame_size(world, entity) {
+                        set_sprite_size(world, entity, size);
                     }
                 },
             },

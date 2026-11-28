@@ -36,6 +36,8 @@ Position and size are saved with the scene.
 
 ## Sprite components
 
+**Width** and **Height** on the Sprite Image component set the drawn size exactly, in world units. **Fit to Frame** sets them to the size of one sheet cell (or of the whole image when there is no grid), which is the pixel-exact size for pixel art.
+
 **Flip X** and **Flip Y** on the Sprite Image component mirror the sprite. This is a render-side flip, so unlike a negative scale it leaves child entities, colliders and gizmos untouched.
 
 **Sprite Sheet** crops the texture into a grid. **H Frames** and **V Frames**, in the Sprite Image card's **Sheet** group, slice the image into columns and rows, and **Frame** picks which cell shows, row-major. The Frame field is animatable, so you can key it to play a flipbook. See [Sprite Animation](/docs/r1-alpha8/editor/sprite-animation).

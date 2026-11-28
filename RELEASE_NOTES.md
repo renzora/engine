@@ -2,6 +2,8 @@
 
 ## 2026-11-28 08:50
 - feat(scripting): Rust scripts and plugins can spawn and drive particle effects through `renzora::particles`
+- feat(editor): the Sprite Image card has Width and Height fields and a Fit to Frame button
+- fix(editor): the Sprite preset no longer tints the image assigned to it light blue
 
 ## 2026-11-28 08:08
 - feat(plugin): a plugin can create a new project with `renzora::create_project`, the same one the launcher's New Project makes
