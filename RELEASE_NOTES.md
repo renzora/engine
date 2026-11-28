@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 14:30
+- feat(editor): the code editor accepts Korean and other IME input
+- fix(editor): the code editor's caret and selection line up after Korean and other wide characters
+
 ## 2026-11-28 14:06
 - feat(ui): a game UI's `<input>` accepts Korean and other IME input
 

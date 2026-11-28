@@ -29,6 +29,7 @@
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 
+use super::code_editor::CodeEditor;
 use super::text_input::{display_for, insert_committed, EmberTextInput, SingleLineInput};
 use crate::markup::input_field::UiFocus;
 use crate::theme::rgb;
@@ -127,13 +128,17 @@ pub(crate) fn composed_caret(comp: &ImeComposition, start: usize) -> usize {
 /// lever winit offers to end that composition; the duplicate commit the IME
 /// may flush in response is discarded.
 ///
-/// The markup `<input>` of a game UI keeps its own focus and composition
-/// ([`UiFocus`]), but the window switch is one switch: it is decided here for
-/// both, or each side would turn the IME off every frame the other wants it.
+/// The markup `<input>` of a game UI ([`UiFocus`]) and the code editor keep
+/// their own focus and composition, but the window switch is one switch: it is
+/// decided here for all three, or each would turn the IME off every frame
+/// another wants it. Likewise the duplicate flush: it reaches whichever input
+/// took focus, of any of the three kinds, so ending a composition arms every
+/// kind's discard, and each disarms on the IME's own end of the composition.
 pub(crate) fn ime_focus_sync(
     mut inputs: Query<(Entity, &mut EmberTextInput, Has<SingleLineInput>)>,
     mut comp: ResMut<ImeComposition>,
     mut markup: Option<ResMut<UiFocus>>,
+    mut code: Query<&mut CodeEditor>,
     mut windows: Query<&mut Window>,
 ) {
     let focused = inputs.iter().find(|(_, i, _)| i.focused).map(|(e, _, _)| e);
@@ -145,7 +150,6 @@ pub(crate) fn ime_focus_sync(
                 if let Ok((_, mut inp, single)) = inputs.get_mut(owner) {
                     insert_committed(&mut inp, single, &comp.text);
                 }
-                comp.discard_commit = true;
                 bounce = true;
             }
             comp.owner = None;
@@ -157,7 +161,25 @@ pub(crate) fn ime_focus_sync(
         f.ime_bounce = false;
         bounce = true;
     }
-    let want = (focused.is_some() || markup_focused) && !bounce;
+    let mut code_focused = false;
+    for mut ed in &mut code {
+        code_focused |= ed.wants_ime();
+        // Checked through a shared borrow first: a `&mut` call on every editor
+        // every frame would mark them all changed.
+        if ed.has_stranded_preedit() {
+            bounce |= ed.finish_composition();
+        }
+    }
+    if bounce {
+        comp.discard_commit = true;
+        if let Some(f) = markup.as_mut() {
+            f.discard_commit = true;
+        }
+        for mut ed in &mut code {
+            ed.discard_next_commit();
+        }
+    }
+    let want = (focused.is_some() || markup_focused || code_focused) && !bounce;
     for mut w in &mut windows {
         if w.ime_enabled != want {
             w.ime_enabled = want;

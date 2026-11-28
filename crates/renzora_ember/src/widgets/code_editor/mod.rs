@@ -4,7 +4,10 @@
 //! comment toggle, word-wise motion, clipboard, **code folding**, and **word
 //! wrap**.
 //!
-//! Monospace makes caret/scroll math trivial: column → pixel is `col * char_w`.
+//! Monospace makes caret/scroll math trivial: column → pixel is `col * char_w`,
+//! except for the wide scripts (Hangul, CJK), which a fallback font draws at a
+//! measured `wide_w` (see [`layout::is_wide`]). IME composition is drawn at the
+//! caret but kept out of the buffer until the IME commits it.
 //! Every metric (line height, gutter width, caret height, char advance) is
 //! *derived from the live font size* ([`CodeEditor::font_size`]), so the editor
 //! honors the zoom level (Ctrl +/-) and the Settings code-font size instead of a
@@ -94,6 +97,8 @@ pub(crate) struct Metrics {
     pub line_h: f32,
     pub caret_h: f32,
     pub char_w: f32,
+    /// Advance of a wide character (see [`layout::is_wide`]).
+    pub wide_w: f32,
     pub gutter_w: f32,
     pub pad: f32,
 }
@@ -146,6 +151,7 @@ impl Plugin for CodeEditorPlugin {
                 systems::code_theme_watch,
                 systems::code_render,
                 systems::code_caret,
+                systems::code_ime_position,
                 // After the wheel and after `code_measure`, so the thumb is
                 // placed from this frame's scroll index and row count.
                 systems::code_scrollbar_sync,
@@ -190,6 +196,19 @@ pub(crate) struct CodeEditor {
     advance_ratio: f32,
     /// Derived: `font_size * advance_ratio`.
     char_w: f32,
+    /// Measured advance of a wide character (Hangul, CJK) as a fraction of
+    /// `font_size`; [`DEFAULT_WIDE_ADVANCE`] until the wide probe reports.
+    wide_ratio: f32,
+    /// Derived: `font_size * wide_ratio`.
+    wide_w: f32,
+    /// The IME preedit (a Hangul syllable being composed), drawn at the caret
+    /// but not part of `text` until the IME commits it, so it never reaches the
+    /// undo history or the bound document half-built.
+    preedit: String,
+    /// Drop IME commits until the IME reports the composition over: focus left
+    /// an input mid-composition, its syllable was committed there, and the IME
+    /// may still flush the same syllable. See `widgets::ime::ime_focus_sync`.
+    ime_discard: bool,
     /// Derived line height.
     line_h: f32,
     /// Derived gutter width (grows with the digit count; includes the fold col).
@@ -255,11 +274,16 @@ impl CodeEditor {
     /// can flag a re-render).
     fn recompute_metrics(&mut self) -> bool {
         let char_w = self.font_size * self.advance_ratio;
+        let wide_w = self.font_size * self.wide_ratio;
         let line_h = (self.font_size * LINE_H_RATIO).round().max(self.font_size + 2.0);
         let digits = self.text.len().max(1).to_string().len().max(2);
         let gutter_w = (digits as f32 * char_w + GUTTER_PAD + FOLD_COL_W).round();
-        let changed = char_w != self.char_w || line_h != self.line_h || gutter_w != self.gutter_w;
+        let changed = char_w != self.char_w
+            || wide_w != self.wide_w
+            || line_h != self.line_h
+            || gutter_w != self.gutter_w;
         self.char_w = char_w;
+        self.wide_w = wide_w;
         self.line_h = line_h;
         self.gutter_w = gutter_w;
         changed
@@ -272,9 +296,49 @@ impl CodeEditor {
             line_h: self.line_h,
             caret_h: self.font_size * CARET_H_RATIO,
             char_w: self.char_w,
+            wide_w: self.wide_w,
             gutter_w: self.gutter_w,
             pad: PAD,
         }
+    }
+
+    /// Drawn width of the characters `[from, to)` of buffer line `line`.
+    fn span_w(&self, line: usize, from: usize, to: usize) -> f32 {
+        self.text
+            .get(line)
+            .map_or(0.0, |l| layout::span_w(l, from, to, self.char_w, self.wide_w))
+    }
+
+    /// Drawn width of the IME preedit.
+    fn preedit_w(&self) -> f32 {
+        layout::span_w(&self.preedit, 0, usize::MAX, self.char_w, self.wide_w)
+    }
+
+    /// Whether this editor holds focus, so the window should allow the IME.
+    pub(crate) fn wants_ime(&self) -> bool {
+        self.focused
+    }
+
+    /// Whether focus left this editor mid-composition.
+    pub(crate) fn has_stranded_preedit(&self) -> bool {
+        !self.focused && !self.preedit.is_empty()
+    }
+
+    /// Focus left mid-composition: commit the preedit into the buffer, as an
+    /// OS text field does. Returns whether there was one, in which case the
+    /// IME is still composing it on its side and has to be ended.
+    pub(crate) fn finish_composition(&mut self) -> bool {
+        if !self.has_stranded_preedit() {
+            return false;
+        }
+        let preedit = std::mem::take(&mut self.preedit);
+        edit::commit_ime(self, &preedit);
+        true
+    }
+
+    /// Drop the IME's flush of a composition another input already committed.
+    pub(crate) fn discard_next_commit(&mut self) {
+        self.ime_discard = true;
     }
 
     /// The current visual-row list (fold bodies removed, long lines wrapped).
@@ -357,6 +421,8 @@ pub(crate) struct CodeFoldToggle {
 #[derive(Component)]
 pub(crate) struct CodeProbe {
     pub editor: Entity,
+    /// Measures the wide-character advance instead of the mono one.
+    pub wide: bool,
 }
 
 fn mono(font: &bevy::text::FontSource, size: f32) -> TextFont {
@@ -448,8 +514,27 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
             TextLayout::no_wrap(),
             Visibility::Hidden,
             PASS_THROUGH,
-            CodeProbe { editor: root },
+            CodeProbe { editor: root, wide: false },
             Name::new("code-probe"),
+        ))
+        .id();
+    // The same for the wide scripts, which the fallback font draws at an
+    // advance of its own (see `layout::is_wide`).
+    let wide_probe = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                ..default()
+            },
+            Text::new(PROBE_WIDE_TEXT),
+            mono(&bevy::text::FontSource::monospace(), DEFAULT_FONT_SIZE),
+            TextLayout::no_wrap(),
+            Visibility::Hidden,
+            PASS_THROUGH,
+            CodeProbe { editor: root, wide: true },
+            Name::new("code-probe-wide"),
         ))
         .id();
     // Vertical scrollbar. Drawn rather than delegated to ember's `scroll_view`:
@@ -495,7 +580,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
         ))
         .id();
     commands.entity(track).add_child(thumb);
-    commands.entity(viewport).add_children(&[body, caret, probe, track]);
+    commands.entity(viewport).add_children(&[body, caret, probe, wide_probe, track]);
     commands.entity(root).add_child(viewport);
     let mut ed = CodeEditor {
         text: lines,
@@ -508,6 +593,10 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
         font_size: DEFAULT_FONT_SIZE,
         advance_ratio: DEFAULT_ADVANCE,
         char_w: DEFAULT_FONT_SIZE * DEFAULT_ADVANCE,
+        wide_ratio: DEFAULT_WIDE_ADVANCE,
+        wide_w: DEFAULT_FONT_SIZE * DEFAULT_WIDE_ADVANCE,
+        preedit: String::new(),
+        ime_discard: false,
         line_h: (DEFAULT_FONT_SIZE * LINE_H_RATIO).round(),
         gutter_w: 0.0,
         view_w: 0.0,
@@ -538,6 +627,11 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
 /// every glyph the same width, so the digit choice is arbitrary.
 const PROBE_TEXT: &str = "0000000000";
 const PROBE_LEN: f32 = 10.0;
+/// Wide-character probe, the same length as [`PROBE_TEXT`].
+const PROBE_WIDE_TEXT: &str = "가가가가가가가가가가";
+/// Fallback wide advance (em) before the wide probe reports: CJK fonts draw
+/// Hangul close to a full em.
+const DEFAULT_WIDE_ADVANCE: f32 = 1.0;
 
 /// Build a bare [`CodeEditor`] for unit tests (no ECS entities). The editing
 /// logic in [`edit`]/[`layout`]/[`folding`] is pure, so tests drive it directly
@@ -560,6 +654,10 @@ pub(crate) fn code_editor_for_test(text: &str) -> CodeEditor {
         font_size: DEFAULT_FONT_SIZE,
         advance_ratio: DEFAULT_ADVANCE,
         char_w: DEFAULT_FONT_SIZE * DEFAULT_ADVANCE,
+        wide_ratio: DEFAULT_WIDE_ADVANCE,
+        wide_w: DEFAULT_FONT_SIZE * DEFAULT_WIDE_ADVANCE,
+        preedit: String::new(),
+        ime_discard: false,
         line_h: (DEFAULT_FONT_SIZE * LINE_H_RATIO).round(),
         gutter_w: 0.0,
         view_w: 400.0,
