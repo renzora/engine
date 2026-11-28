@@ -673,7 +673,10 @@ pub const CAPABILITIES: &[Capability] = &[
         label: "Morph targets (blend shapes)",
         help: "Per-vertex blend-shape deformation and its animation sampling. Used by                face rigs and shape keys; nothing else needs it.",
         bevy_features: &["morph", "morph_animation"],
-        runtime_features: &[],
+        // `renzora_animation` plays morph tracks through Bevy's `WeightsCurve`,
+        // which exists only with `morph_animation`; stripping the Bevy feature
+        // alone left that code naming a type that was gone.
+        runtime_features: &["morph_targets"],
         default_on: true,
         group: Some("render_3d"),
     },

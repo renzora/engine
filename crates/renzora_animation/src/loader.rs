@@ -2,7 +2,9 @@
 
 use std::fmt;
 
-use bevy::animation::animation_curves::{BlendableCurve, WeightsCurve};
+use bevy::animation::animation_curves::BlendableCurve;
+#[cfg(feature = "morph")]
+use bevy::animation::animation_curves::WeightsCurve;
 use bevy::asset::{io::Reader, AssetLoader, LoadContext};
 use bevy::curve::iterable::IterableCurve;
 use bevy::curve::UnevenSampleAutoCurve;
@@ -156,6 +158,9 @@ pub fn to_animation_clip(anim_clip: &AnimClip) -> AnimationClip {
         }
     }
 
+    // Without `morph` the game has no blend shapes to drive, so the tracks
+    // are left out of the clip rather than played into nothing.
+    #[cfg(feature = "morph")]
     for (target, curve) in morph_curves(anim_clip) {
         clip.add_curve_to_target(target, WeightsCurve(curve));
     }

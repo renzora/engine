@@ -2,6 +2,7 @@
 
 ## 2026-11-28 11:43
 - fix(export): a game whose UI is built in a Rust script keeps the UI layer in a lean export
+- fix(export): a lean export without blend shapes no longer fails to compile the animation crate
 
 ## 2026-11-28 11:26
 - fix(2d): a y-sorted physics body that moves is no longer dragged back toward where it was last drawn

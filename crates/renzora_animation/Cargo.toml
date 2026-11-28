@@ -11,6 +11,10 @@ default = []
 # Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
 # it, so the whole engine agrees on one answer.
 scripting = ["dep:renzora_scripting"]
+# Morph-target tracks play through Bevy's `WeightsCurve`, which exists only
+# with Bevy's `morph_animation`. Off in a lean export that strips blend shapes;
+# `renzora_runtime` owns the switch, like `scripting` above.
+morph = []
 
 [dependencies]
 renzora_scene_api = { path = "../api/renzora_scene_api" }
