@@ -231,7 +231,7 @@ impl Default for YSort {
 /// offers `SpriteSheet.frame` as an animatable field on any sprite that has
 /// the component.
 #[derive(Component, Reflect, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
 #[type_path = "renzora::core::components"]
 pub struct SpriteSheet {
     /// Number of columns the texture is sliced into (min 1).

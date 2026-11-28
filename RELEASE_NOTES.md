@@ -2,6 +2,7 @@
 
 ## 2026-11-28 11:09
 - fix(physics): moving 2D bodies are drawn smoothly between physics steps instead of stuttering at the physics rate
+- fix(editor): `SpriteSheet` and `PhysicsBodyData` can be added from Add Component and over MCP
 
 ## 2026-11-28 10:10
 - fix(rendering): a camera moved onto another render image re-measures it, so the editor no longer crashes on a depth and colour size mismatch

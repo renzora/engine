@@ -55,7 +55,7 @@ pub enum PhysicsBodyType {
 /// This component stores physics properties in a format that can be saved to
 /// scenes. At runtime the selected backend mirrors it into its own bodies.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
-#[reflect(Component, Serialize, Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
 #[type_path = "renzora_physics::data"]
 pub struct PhysicsBodyData {
     pub body_type: PhysicsBodyType,
