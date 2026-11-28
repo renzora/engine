@@ -19,6 +19,10 @@
 //! OS text field, the field being left keeps what was being composed in it,
 //! and none of it lands in the field that took focus.
 //!
+//! The game UI's markup `<input>` (`markup::input_field`) applies the same
+//! rules to its own focus. It shares only the window switch with this module,
+//! and the candidate-window placement in [`place_ime`].
+//!
 //! wasm is not covered: winit's IME switch and candidate area are no-ops in a
 //! browser, so Hangul there needs a DOM text-input bridge.
 
@@ -26,6 +30,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform};
 
 use super::text_input::{display_for, insert_committed, EmberTextInput, SingleLineInput};
+use crate::markup::input_field::UiFocus;
 use crate::theme::rgb;
 
 /// The IME composition in progress, if any.
@@ -121,9 +126,14 @@ pub(crate) fn composed_caret(comp: &ImeComposition, start: usize) -> usize {
 /// the next field as well. Withdrawing permission for one frame is the only
 /// lever winit offers to end that composition; the duplicate commit the IME
 /// may flush in response is discarded.
+///
+/// The markup `<input>` of a game UI keeps its own focus and composition
+/// ([`UiFocus`]), but the window switch is one switch: it is decided here for
+/// both, or each side would turn the IME off every frame the other wants it.
 pub(crate) fn ime_focus_sync(
     mut inputs: Query<(Entity, &mut EmberTextInput, Has<SingleLineInput>)>,
     mut comp: ResMut<ImeComposition>,
+    mut markup: Option<ResMut<UiFocus>>,
     mut windows: Query<&mut Window>,
 ) {
     let focused = inputs.iter().find(|(_, i, _)| i.focused).map(|(e, _, _)| e);
@@ -142,7 +152,12 @@ pub(crate) fn ime_focus_sync(
             comp.clear_text();
         }
     }
-    let want = focused.is_some() && !bounce;
+    let markup_focused = markup.as_ref().is_some_and(|f| f.focused.is_some());
+    if let Some(f) = markup.as_mut().filter(|f| f.ime_bounce) {
+        f.ime_bounce = false;
+        bounce = true;
+    }
+    let want = (focused.is_some() || markup_focused) && !bounce;
     for mut w in &mut windows {
         if w.ime_enabled != want {
             w.ime_enabled = want;
@@ -175,12 +190,18 @@ pub(crate) fn ime_position_sync(
     };
     let size = cn.size();
     let centre = xf.affine().translation;
-    let bottom_left = centre + Vec2::new(-size.x * 0.5, size.y * 0.5);
-    for mut w in &mut windows {
+    place_ime(&mut windows, centre + Vec2::new(-size.x * 0.5, size.y * 0.5));
+}
+
+/// Put the IME's candidate window at `physical`, a point in physical px from
+/// the window's client-area origin, on the OS-focused window. Shared with the
+/// markup `<input>`, which places it at the end of its own text.
+pub(crate) fn place_ime(windows: &mut Query<&mut Window>, physical: Vec2) {
+    for mut w in windows {
         if !w.focused {
             continue;
         }
-        let pos = bottom_left / w.scale_factor().max(f32::EPSILON);
+        let pos = physical / w.scale_factor().max(f32::EPSILON);
         if w.ime_position.distance_squared(pos) > 0.25 {
             w.ime_position = pos;
         }

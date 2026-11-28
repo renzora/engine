@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 14:06
+- feat(ui): a game UI's `<input>` accepts Korean and other IME input
+
 ## 2026-11-28 09:59
 - feat(editor): text fields accept Korean and other IME input, with the syllable being composed shown at the caret
 
