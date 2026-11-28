@@ -256,6 +256,14 @@ pub fn apply_sprite_atlas_region(
 /// band edge instead of letting them cross into another layer. Compare-first
 /// write so parked entities don't trip `Changed<Transform>` (and a re-save of
 /// an unchanged scene) every frame.
+///
+/// When the Transform was already changed this frame by something else, the
+/// Z goes in without a change mark of its own. A moving physics body is
+/// eased between steps by transform interpolation, which takes any *later*
+/// change to the Transform as a teleport: it dropped the easing and synced
+/// the body back to where it was last drawn, a step behind, so a y-sorted
+/// character felt dragged backwards whenever it moved. The change is already
+/// marked, so the new Z still propagates the same frame.
 #[cfg(feature = "render_2d")]
 pub fn apply_y_sort(
     mut q: Query<(&renzora_scene_api::YSort, &mut Transform, &GlobalTransform)>,
@@ -267,7 +275,11 @@ pub fn apply_y_sort(
         let sort = ((global.translation().y + ysort.offset) * Y_SORT_SCALE).clamp(-0.5, 0.5);
         let z = ysort.z_base - sort;
         if transform.translation.z != z {
-            transform.translation.z = z;
+            if transform.is_changed() {
+                transform.bypass_change_detection().translation.z = z;
+            } else {
+                transform.translation.z = z;
+            }
         }
     }
 }

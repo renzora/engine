@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 11:26
+- fix(2d): a y-sorted physics body that moves is no longer dragged back toward where it was last drawn
+
 ## 2026-11-28 11:09
 - fix(physics): moving 2D bodies are drawn smoothly between physics steps instead of stuttering at the physics rate
 - fix(editor): `SpriteSheet` and `PhysicsBodyData` can be added from Add Component and over MCP
