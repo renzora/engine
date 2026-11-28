@@ -19,6 +19,8 @@
 //! so Tab has to be one of the things that does: leaving the field commits it,
 //! and landing on one starts editing it with the value selected.
 
+use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 
 use crate::style::WidgetState;
@@ -43,15 +45,20 @@ pub struct EmberForm {
 /// `Changed<UiInteraction>` click handler observes it regardless of system
 /// order. Next frame the button's state is derived from the pointer again, as
 /// usual.
+///
+/// An Enter the IME consumed to finish a composition does not submit: see
+/// [`ime_free_press`].
 pub(crate) fn form_enter_submit(
     keys: Res<ButtonInput<KeyCode>>,
+    mut key_events: MessageReader<KeyboardInput>,
     inputs: Query<(Entity, &EmberTextInput), With<SingleLineInput>>,
     parents: Query<&ChildOf>,
     nodes: Query<&Node>,
     forms: Query<&EmberForm>,
     mut interactions: Query<&mut UiInteraction>,
 ) {
-    if !keys.just_pressed(KeyCode::Enter) && !keys.just_pressed(KeyCode::NumpadEnter) {
+    let free = ime_free_press(&mut key_events, &[KeyCode::Enter, KeyCode::NumpadEnter]);
+    if !free || (!keys.just_pressed(KeyCode::Enter) && !keys.just_pressed(KeyCode::NumpadEnter)) {
         return;
     }
     let Some((focused, _)) = inputs.iter().find(|(_, i)| i.focused) else {
@@ -73,6 +80,30 @@ pub(crate) fn form_enter_submit(
         let Ok(c) = parents.get(e) else { return };
         e = c.parent();
     }
+}
+
+/// Whether this frame holds a press of one of `codes` that the IME left alone.
+///
+/// `ButtonInput<KeyCode>` follows the physical key, so it reports the Enter
+/// that finishes a Hangul syllable as `just_pressed` like any other, and a
+/// form would submit half-typed text. The logical key tells them apart: the
+/// IME's own keys arrive as [`Key::Process`]. The press is still required
+/// from `ButtonInput` as well, because a field that owns a key consumes it
+/// there (`clear_just_pressed`), and that has to keep working.
+///
+/// Reads every message even after a match, so the reader never carries a
+/// stale press into the next frame.
+fn ime_free_press(events: &mut MessageReader<KeyboardInput>, codes: &[KeyCode]) -> bool {
+    let mut free = false;
+    for ev in events.read() {
+        if ev.state == ButtonState::Pressed
+            && codes.contains(&ev.key_code)
+            && !matches!(ev.logical_key, Key::Process)
+        {
+            free = true;
+        }
+    }
+    free
 }
 
 /// Depth-first, tree-order list of Tab stops under `root`, skipping

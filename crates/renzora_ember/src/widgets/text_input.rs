@@ -1,13 +1,14 @@
 //! Text input — a single-line editable field (click to focus, type to edit).
 
-use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::keyboard::Key;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::text::TextLayoutInfo;
 use bevy::ui::ComputedNode;
 use crate::UiCursor;
-use bevy::window::SystemCursorIcon;
+use bevy::window::{Ime, SystemCursorIcon, WindowEvent};
 
+use super::ime::{byte_to_char, compose, composed_caret, ImeComposition};
 use crate::reactive::Rx;
 use crate::font::ui_font;
 use crate::interaction::{BLOCK, PASS_THROUGH};
@@ -119,7 +120,7 @@ pub(crate) struct SelectionHighlight(Entity);
 
 /// The text + color to display for an input's current value (masked for password
 /// fields; the muted placeholder when empty).
-fn display_for(value: &str, placeholder: &str, password: bool) -> (String, (u8, u8, u8)) {
+pub(crate) fn display_for(value: &str, placeholder: &str, password: bool) -> (String, (u8, u8, u8)) {
     if value.is_empty() {
         (placeholder.to_string(), text_muted())
     } else if password {
@@ -570,12 +571,15 @@ pub(crate) fn text_input_drag_select(
 /// Show/size the selection highlight bar over the selected span (focused
 /// single-line fields only); hidden otherwise.
 pub(crate) fn text_input_selection_pos(
+    comp: Res<ImeComposition>,
     inputs: Query<&EmberTextInput, With<SingleLineInput>>,
     mut bars: Query<(&SelectionHighlight, &mut Node)>,
 ) {
     for (bar, mut n) in &mut bars {
         let Ok(inp) = inputs.get(bar.0) else { continue };
-        match (inp.focused, inp.selection_range()) {
+        // A composition draws over the selection it will replace.
+        let shown = inp.focused && !comp.is_composing(bar.0);
+        match (shown, inp.selection_range()) {
             (true, Some((a, b))) => {
                 let (xa, xb) = (inp.caret_x(a), inp.caret_x(b));
                 let left = Val::Px(inp.text_left() + xa);
@@ -595,21 +599,56 @@ pub(crate) fn text_input_selection_pos(
     }
 }
 
+/// The inputs [`text_input_type`] edits, shared with [`type_ime`] so a commit
+/// lands through the same query the keys go through. The entity is there for
+/// the IME: a composition is owned by one input and has to find it again.
+type TypingInputs<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static mut EmberTextInput,
+        Option<&'static SingleLineInput>,
+    ),
+>;
+
+/// Apply typed keys and IME input to the focused text input.
+///
+/// Reads [`WindowEvent`] rather than `KeyboardInput` and `Ime` separately:
+/// they are two queues, and reading them one after the other cannot recover
+/// the order the OS sent them in. Hangul depends on that order, because a
+/// syllable's commit and the key that finished it (Space, Backspace, an arrow)
+/// arrive interleaved, and applying the key first moves the caret before the
+/// syllable lands.
 pub(crate) fn text_input_type(
-    mut events: MessageReader<KeyboardInput>,
+    mut events: MessageReader<WindowEvent>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut inputs: Query<(&mut EmberTextInput, Option<&SingleLineInput>)>,
+    mut comp: ResMut<ImeComposition>,
+    mut inputs: TypingInputs,
     mut texts: Query<(&mut Text, &mut TextColor)>,
 ) {
     let ctrl = keys.pressed(KeyCode::ControlLeft)
         || keys.pressed(KeyCode::ControlRight)
         || keys.pressed(KeyCode::SuperLeft)
         || keys.pressed(KeyCode::SuperRight);
-    for ev in events.read() {
-        if ev.state != ButtonState::Pressed {
+    for event in events.read() {
+        let ev = match event {
+            WindowEvent::KeyboardInput(ev) => ev,
+            WindowEvent::Ime(ime) => {
+                type_ime(ime, &mut comp, &mut inputs, &mut texts);
+                continue;
+            }
+            _ => continue,
+        };
+        // `Key::Process` is a key the IME consumed (Windows reports
+        // `VK_PROCESSKEY`): the Backspace that removes a jamo, the Space or
+        // Enter that finishes a syllable. Its effect arrives as `Ime` messages,
+        // so acting on it as well would delete a committed character or type a
+        // second space.
+        if ev.state != ButtonState::Pressed || matches!(ev.logical_key, Key::Process) {
             continue;
         }
-        for (mut inp, single) in &mut inputs {
+        for (_, mut inp, single) in &mut inputs {
             if !inp.focused {
                 continue;
             }
@@ -787,6 +826,86 @@ pub(crate) fn text_input_type(
     }
 }
 
+/// Apply one IME message: track the preedit, or insert a commit at the caret.
+fn type_ime(
+    ime: &Ime,
+    comp: &mut ImeComposition,
+    inputs: &mut TypingInputs,
+    texts: &mut Query<(&mut Text, &mut TextColor)>,
+) {
+    let focused = inputs.iter().find(|(_, i, _)| i.focused).map(|(e, _, _)| e);
+    match ime {
+        Ime::Preedit { value, cursor, .. } => {
+            let Some(e) = focused.filter(|_| !value.is_empty()) else {
+                comp.clear_text();
+                return;
+            };
+            comp.owner = Some(e);
+            comp.text = value.clone();
+            // Only a highlighted span places the caret. A collapsed one is
+            // `GCS_CURSORPOS`, which the Microsoft Korean IME reports as 0 for
+            // the syllable it is building: honouring it drew the caret one
+            // cell behind every syllable. The end of the preedit is where the
+            // next jamo goes in every IME, so a collapsed cursor falls back to it.
+            comp.cursor = cursor
+                .filter(|(start, end)| start != end)
+                .map(|(_, end)| byte_to_char(value, end));
+            comp.discard_commit = false;
+        }
+        Ime::Commit { value, .. } => {
+            comp.clear_text();
+            if std::mem::take(&mut comp.discard_commit) || value.is_empty() {
+                return;
+            }
+            let Some(e) = focused else { return };
+            let Ok((_, mut inp, single)) = inputs.get_mut(e) else {
+                return;
+            };
+            insert_committed(&mut inp, single.is_some(), value);
+            let (text_e, val, ph, pw) = (
+                inp.text_entity,
+                inp.value.clone(),
+                inp.placeholder.clone(),
+                inp.password,
+            );
+            if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
+                let (disp, col) = display_for(&val, &ph, pw);
+                *t = Text::new(disp);
+                c.0 = rgb(col);
+            }
+        }
+        // winit sends any flushed commit before `Disabled`, and starts a new
+        // composition with `Enabled`, so past either one there is no
+        // duplicate left to discard.
+        Ime::Disabled { .. } => {
+            comp.clear_text();
+            comp.discard_commit = false;
+        }
+        Ime::Enabled { .. } => comp.discard_commit = false,
+    }
+}
+
+/// Insert IME-committed text the way a typed character goes in: over the
+/// selection, at the caret (single line) or at the end (textarea).
+pub(crate) fn insert_committed(inp: &mut EmberTextInput, single_line: bool, s: &str) {
+    if single_line {
+        let s = s.replace(['\r', '\n'], " ");
+        let len = inp.value.chars().count();
+        let mut idx = inp.caret_index.min(len);
+        let range = inp.selection_range();
+        wipe_selection(inp, range, &mut idx);
+        let b = byte_offset(&inp.value, idx);
+        inp.value.insert_str(b, &s);
+        inp.caret_index = idx + s.chars().count();
+    } else {
+        if inp.select_all {
+            inp.value.clear();
+            inp.select_all = false;
+        }
+        inp.value.push_str(s);
+    }
+}
+
 /// Reflect programmatic `value` changes into the displayed text.
 ///
 /// Panels clear/rewrite `EmberTextInput.value` directly on submit (send a
@@ -871,12 +990,23 @@ pub(crate) fn text_input_bound_sync(
 /// clicks hit every position — an averaged advance drifts on proportional
 /// fonts. Also keeps the average `advance` as the pre-measure fallback. Skips
 /// empty fields (the layout holds the placeholder, not the value).
+///
+/// While an IME composition is showing, the layout holds the value with the
+/// preedit spliced in, so that is what gets measured; measuring the value alone
+/// would never match the layout and the caret would fall back to the average
+/// advance for the whole composition.
 pub(crate) fn text_input_measure(
-    mut inputs: Query<&mut EmberTextInput, With<SingleLineInput>>,
+    comp: Res<ImeComposition>,
+    mut inputs: Query<(Entity, &mut EmberTextInput), With<SingleLineInput>>,
     layouts: Query<(&TextLayoutInfo, &bevy::text::ComputedTextBlock)>,
 ) {
-    for mut inp in &mut inputs {
-        let n = inp.value.chars().count();
+    for (e, mut inp) in &mut inputs {
+        let shown = if comp.is_composing(e) {
+            compose(&inp, true, &comp.text).0
+        } else {
+            inp.value.clone()
+        };
+        let n = shown.chars().count();
         if n == 0 {
             if !inp.offsets.is_empty() {
                 inp.offsets.clear();
@@ -893,7 +1023,7 @@ pub(crate) fn text_input_measure(
         }
         // What the layout actually shaped (bullets for password fields — same
         // char count as the value, so slots map 1:1).
-        let (disp, _) = display_for(&inp.value, &inp.placeholder, inp.password);
+        let (disp, _) = display_for(&shown, &inp.placeholder, inp.password);
         let mut offsets: Vec<f32> = Vec::with_capacity(n + 1);
         offsets.push(0.0);
         let mut x = 0.0f32;
@@ -931,12 +1061,19 @@ pub(crate) fn text_input_measure(
 /// Position the absolute caret at `PAD_X +` the measured boundary x of
 /// `caret_index` (see [`EmberTextInput::caret_x`]).
 pub(crate) fn text_input_caret_pos(
-    inputs: Query<&EmberTextInput, With<SingleLineInput>>,
+    comp: Res<ImeComposition>,
+    inputs: Query<(Entity, &EmberTextInput), With<SingleLineInput>>,
     mut nodes: Query<&mut Node>,
 ) {
-    for inp in &inputs {
+    for (e, inp) in &inputs {
+        // While composing, the caret follows the IME's caret inside the preedit.
+        let idx = if comp.is_composing(e) {
+            composed_caret(&comp, compose(inp, true, &comp.text).1)
+        } else {
+            inp.caret_index
+        };
         if let Ok(mut n) = nodes.get_mut(inp.caret) {
-            let left = Val::Px(inp.text_left() + inp.caret_x(inp.caret_index));
+            let left = Val::Px(inp.text_left() + inp.caret_x(idx));
             if n.left != left {
                 n.left = left;
             }
@@ -947,14 +1084,17 @@ pub(crate) fn text_input_caret_pos(
 /// Tint the value's background while it's fully selected (`select_all`), so the
 /// user sees the whole field highlighted — mirrors an OS text field's select-all.
 pub(crate) fn text_input_highlight(
-    inputs: Query<&EmberTextInput>,
+    comp: Res<ImeComposition>,
+    inputs: Query<(Entity, &EmberTextInput)>,
     mut backgrounds: Query<&mut BackgroundColor>,
 ) {
-    for inp in &inputs {
+    for (e, inp) in &inputs {
         let Ok(mut bg) = backgrounds.get_mut(inp.text_entity) else {
             continue;
         };
-        let target = if inp.select_all && inp.focused && !inp.value.is_empty() {
+        // The composition has already replaced the selected value on screen.
+        let selected = inp.select_all && !comp.is_composing(e);
+        let target = if selected && inp.focused && !inp.value.is_empty() {
             rgb(accent()).with_alpha(0.45)
         } else {
             Color::NONE

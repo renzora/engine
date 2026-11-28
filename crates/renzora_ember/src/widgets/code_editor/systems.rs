@@ -5,13 +5,15 @@
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::keyboard::Key;
 use bevy::input::mouse::MouseWheel;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::text::{FontSize, TextLayoutInfo};
-use bevy::ui::ComputedNode;
+use bevy::ui::{ComputedNode, UiGlobalTransform};
+use bevy::window::{Ime, WindowEvent};
 use crate::UiCursor;
+use crate::widgets::place_ime;
 
 use crate::font::{icon_text, EmberFonts};
 use crate::interaction::PASS_THROUGH;
@@ -61,7 +63,14 @@ pub(crate) fn code_probe(
             continue;
         }
         let ratio = (info.size.x / PROBE_LEN) / em_physical;
-        if (0.50..=0.72).contains(&ratio) && (ratio - ed.advance_ratio).abs() > 0.001 {
+        if probe.wide {
+            // Looser: CJK fallback fonts vary, but one drawing Hangul outside
+            // this range is a missing font (tofu boxes), not a real advance.
+            if (0.70..=1.40).contains(&ratio) && (ratio - ed.wide_ratio).abs() > 0.001 {
+                ed.wide_ratio = ratio;
+                ed.dirty = true;
+            }
+        } else if (0.50..=0.72).contains(&ratio) && (ratio - ed.advance_ratio).abs() > 0.001 {
             ed.advance_ratio = ratio;
             ed.dirty = true;
         }
@@ -219,7 +228,15 @@ pub(crate) fn code_pointer(
         }
         let rows = ed.rows();
         let row_index = (ed.scroll + (local.y / ed.line_h) as usize).min(rows.len().saturating_sub(1));
-        let x_col = (((local.x - ed.gutter_w - PAD) / ed.char_w).round().max(0.0)) as usize;
+        let row = rows[row_index];
+        let x_col = layout::col_at_x(
+            &ed.text[row.line],
+            row.start_col,
+            row.end_col,
+            local.x - ed.gutter_w - PAD,
+            ed.char_w,
+            ed.wide_w,
+        );
         let (line, raw_col) = layout::buffer_pos(&rows, row_index, x_col);
         let col = raw_col.min(char_len(&ed.text, line));
 
@@ -256,17 +273,39 @@ pub(crate) fn code_pointer(
     }
 }
 
+/// One thing typed this frame, in the order the OS delivered it.
+enum Typed {
+    Key(Key),
+    Ime(Ime),
+}
+
 /// Keyboard: discrete chord commands (undo, clipboard, comment, line move…) plus
-/// ordinary typing and caret motion.
+/// ordinary typing, caret motion and IME composition.
+///
+/// Reads `WindowEvent` rather than `KeyboardInput`, because an IME commit and
+/// the key that finished it (Space, Enter, an arrow) arrive interleaved and only
+/// the shared stream keeps their order: a syllable committed by an arrow has
+/// to land before the caret moves.
 pub(crate) fn code_input(
-    mut events: MessageReader<KeyboardInput>,
+    mut events: MessageReader<WindowEvent>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut editors: Query<&mut CodeEditor>,
 ) {
-    let text_keys: Vec<Key> = events
+    let text_keys: Vec<Typed> = events
         .read()
-        .filter(|e| e.state == ButtonState::Pressed)
-        .map(|e| e.logical_key.clone())
+        .filter_map(|e| match e {
+            // `Key::Process` is a key the IME consumed: the Backspace that
+            // removes a jamo, the Space or Enter that finishes a syllable. Its
+            // effect arrives as `Ime` messages, so applying it too would delete
+            // a committed character or add a second space or newline.
+            WindowEvent::KeyboardInput(k)
+                if k.state == ButtonState::Pressed && !matches!(k.logical_key, Key::Process) =>
+            {
+                Some(Typed::Key(k.logical_key.clone()))
+            }
+            WindowEvent::Ime(ime) => Some(Typed::Ime(ime.clone())),
+            _ => None,
+        })
         .collect();
 
     let alt = keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight);
@@ -284,6 +323,16 @@ pub(crate) fn code_input(
 
     for mut editor in &mut editors {
         if !editor.focused {
+            // An unfocused editor still has to see the IME end a composition,
+            // or a flush it was told to drop would stay armed against a later,
+            // wanted commit.
+            for t in &text_keys {
+                if let Typed::Ime(Ime::Enabled { .. } | Ime::Disabled { .. }) = t {
+                    if editor.ime_discard {
+                        editor.ime_discard = false;
+                    }
+                }
+            }
             continue;
         }
         let ed = &mut *editor;
@@ -335,7 +384,14 @@ pub(crate) fn code_input(
         }
 
         // --- ordinary typing / caret motion ---
-        for key in &text_keys {
+        for typed in &text_keys {
+            let key = match typed {
+                Typed::Key(key) => key,
+                Typed::Ime(ime) => {
+                    type_ime(ed, ime);
+                    continue;
+                }
+            };
             // Arrows while Alt is held are line move/duplicate, handled above.
             if alt && matches!(key, Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight) {
                 continue;
@@ -343,6 +399,75 @@ pub(crate) fn code_input(
             edit::edit(ed, key, shift, cmd);
         }
     }
+}
+
+/// Apply one IME message to the focused editor.
+fn type_ime(ed: &mut CodeEditor, ime: &Ime) {
+    match ime {
+        Ime::Preedit { value, .. } => {
+            // The caret is drawn at the end of the preedit whatever cursor the
+            // IME reports: the Microsoft Korean IME reports 0, which would put
+            // it one cell behind every syllable being built.
+            if ed.preedit != *value {
+                ed.preedit = value.clone();
+                ed.dirty = true;
+            }
+            if !value.is_empty() {
+                ed.ime_discard = false;
+            }
+        }
+        Ime::Commit { value, .. } => {
+            if !ed.preedit.is_empty() {
+                ed.preedit.clear();
+                ed.dirty = true;
+            }
+            if std::mem::take(&mut ed.ime_discard) {
+                return;
+            }
+            edit::commit_ime(ed, value);
+        }
+        // winit sends any flushed commit before `Disabled`, and starts a new
+        // composition with `Enabled`, so past either one there is no duplicate
+        // left to discard.
+        Ime::Disabled { .. } => {
+            if !ed.preedit.is_empty() {
+                ed.preedit.clear();
+                ed.dirty = true;
+            }
+            ed.ime_discard = false;
+        }
+        Ime::Enabled { .. } => ed.ime_discard = false,
+    }
+}
+
+/// Put the IME's candidate window under the focused editor's caret.
+///
+/// Derived from the code body's laid-out position rather than the caret node,
+/// because the caret blinks by switching `Display::None`, and a hidden node
+/// has no layout to read half the time.
+pub(crate) fn code_ime_position(
+    editors: Query<&CodeEditor>,
+    nodes: Query<(&ComputedNode, &UiGlobalTransform)>,
+    mut windows: Query<&mut Window>,
+) {
+    let Some(ed) = editors.iter().find(|e| e.focused) else {
+        return;
+    };
+    let Ok((cn, xf)) = nodes.get(ed.body) else {
+        return;
+    };
+    let m = ed.metrics();
+    let rows = ed.rows();
+    let cr = layout::row_of(&rows, ed.cursor_line, ed.cursor_col);
+    if cr < ed.scroll || cr >= ed.scroll + ed.visible {
+        return;
+    }
+    let left = m.gutter_w + m.pad + ed.span_w(ed.cursor_line, rows[cr].start_col, ed.cursor_col);
+    let bottom = (cr - ed.scroll + 1) as f32 * m.line_h;
+    // Logical px inside the body, to physical px from the window's origin.
+    let scale = 1.0 / cn.inverse_scale_factor().max(f32::EPSILON);
+    let top_left = xf.affine().translation - cn.size() * 0.5;
+    place_ime(&mut windows, top_left + Vec2::new(left, bottom) * scale);
 }
 
 pub(crate) fn code_scroll(
@@ -485,7 +610,16 @@ pub(crate) fn code_render(
 
         let mut plans: Vec<RowRender> = Vec::with_capacity(end - start);
         for row in &rows[start..end] {
-            let slice = slice_spans(spans_of(row.line), row.start_col, row.end_col);
+            let mut slice = slice_spans(spans_of(row.line), row.start_col, row.end_col);
+            // The IME preedit, drawn where it will land: on the caret's row,
+            // pushing the rest of the line right as the committed text will.
+            let composing = ed.focused
+                && !ed.preedit.is_empty()
+                && row.line == ed.cursor_line
+                && layout::row_of(&rows, ed.cursor_line, ed.cursor_col) == start + plans.len();
+            if composing {
+                slice = splice_span(slice, ed.cursor_col - row.start_col, &ed.preedit, colors.normal);
+            }
 
             // Indent guides for this line's leading whitespace (x offsets into
             // the row, which starts at the body's left edge).
@@ -510,13 +644,13 @@ pub(crate) fn code_render(
                     let line_b = if row.line == el { ec } else { full };
                     let a = line_a.max(row.start_col);
                     let b = line_b.min(row.end_col);
-                    let mut w = (b.saturating_sub(a)) as f32 * m.char_w;
+                    let mut w = if b > a { ed.span_w(row.line, a, b) } else { 0.0 };
                     // Show the selected newline as a sliver of trailing highlight.
                     if row.line < el && row.end_col >= full {
                         w += m.char_w * 0.5;
                     }
                     if w > 0.0 {
-                        sel_rect = Some((m.gutter_w + m.pad + (a - row.start_col) as f32 * m.char_w, w));
+                        sel_rect = Some((m.gutter_w + m.pad + ed.span_w(row.line, row.start_col, a), w));
                     }
                 }
             }
@@ -526,7 +660,7 @@ pub(crate) fn code_render(
             if let Some((a, b)) = bracket {
                 for (bl, bc) in [a, b] {
                     if bl == row.line && bc >= row.start_col && bc < row.end_col {
-                        brackets.push(m.gutter_w + m.pad + (bc - row.start_col) as f32 * m.char_w);
+                        brackets.push(m.gutter_w + m.pad + ed.span_w(row.line, row.start_col, bc));
                     }
                 }
             }
@@ -609,8 +743,40 @@ fn slice_spans(spans: &[(String, Color)], a: usize, b: usize) -> Vec<(String, Co
     out
 }
 
+/// Insert `text` in colour `color` at char offset `at` of a row's spans.
+fn splice_span(spans: Vec<(String, Color)>, at: usize, text: &str, color: Color) -> Vec<(String, Color)> {
+    let mut out = Vec::with_capacity(spans.len() + 2);
+    let mut off = 0usize;
+    let mut placed = false;
+    for (s, c) in spans {
+        let len = s.chars().count();
+        if !placed && at <= off + len {
+            let k = at - off;
+            let head: String = s.chars().take(k).collect();
+            let tail: String = s.chars().skip(k).collect();
+            if !head.is_empty() {
+                out.push((head, c));
+            }
+            out.push((text.to_string(), color));
+            if !tail.is_empty() {
+                out.push((tail, c));
+            }
+            placed = true;
+        } else {
+            out.push((s, c));
+        }
+        off += len;
+    }
+    if !placed {
+        out.push((text.to_string(), color));
+    }
+    out
+}
+
 /// Build the whitespace-marker string for a row slice: spaces → `·`, tabs → `→`,
-/// everything else → blank. Monospace makes this align exactly under the text.
+/// everything else → blank. Monospace makes this align exactly under the text;
+/// a wide character is blanked with an ideographic space, which the same
+/// fallback font draws at the wide advance, so markers after it stay aligned.
 fn whitespace_overlay(line: &str, a: usize, b: usize) -> String {
     line.chars()
         .skip(a)
@@ -618,6 +784,7 @@ fn whitespace_overlay(line: &str, a: usize, b: usize) -> String {
         .map(|c| match c {
             ' ' => '\u{00B7}',   // middle dot
             '\t' => '\u{2192}',  // rightwards arrow
+            c if layout::is_wide(c) => '\u{3000}',
             _ => ' ',
         })
         .collect()
@@ -675,7 +842,7 @@ fn hash_color(c: Color, h: &mut DefaultHasher) {
 /// zoom or theme changes, without repeating those fields per row.
 fn render_epoch(m: Metrics, c: &RowColors, view_w: f32, show_ws: bool) -> u64 {
     let mut h = DefaultHasher::new();
-    for f in [m.font_size, m.gutter_size, m.line_h, m.caret_h, m.char_w, m.gutter_w, m.pad, view_w] {
+    for f in [m.font_size, m.gutter_size, m.line_h, m.caret_h, m.char_w, m.wide_w, m.gutter_w, m.pad, view_w] {
         hash_f32(f, &mut h);
     }
     for col in [c.normal, c.line_number, c.fold, c.guide, c.current, c.selection, c.bracket] {
@@ -902,10 +1069,11 @@ pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes
         // on it (and its ancestors) 60 times a second for a caret that hasn't
         // moved. Only the blink phase should normally cost anything.
         let want = if ed.focused && on && on_screen && m.char_w > 0.0 {
-            let x_col = ed.cursor_col.saturating_sub(rows[cr].start_col);
+            // After the preedit, where the next jamo goes.
+            let x = ed.span_w(ed.cursor_line, rows[cr].start_col, ed.cursor_col) + ed.preedit_w();
             Some((
                 Val::Px(m.caret_h),
-                Val::Px(m.gutter_w + m.pad + x_col as f32 * m.char_w),
+                Val::Px(m.gutter_w + m.pad + x),
                 Val::Px((cr - ed.scroll) as f32 * m.line_h + (m.line_h - m.caret_h) / 2.0),
             ))
         } else {
@@ -969,9 +1137,17 @@ mod tests {
         }
     }
 
+    /// Send a key the way winit does: on the ordered `WindowEvent` stream the
+    /// editor types from, and as `KeyboardInput` for `ButtonInput`'s chords.
+    fn send(app: &mut App, ev: KeyboardInput) {
+        app.world_mut().write_message(WindowEvent::KeyboardInput(ev.clone()));
+        app.world_mut().write_message(ev);
+    }
+
     fn harness(text: &str) -> (App, Entity) {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, InputPlugin));
+        app.add_message::<WindowEvent>();
         app.insert_resource(fonts());
         app.add_systems(Update, (code_metrics, code_input, code_render, code_caret).chain());
         let owned = text.to_string();
@@ -996,7 +1172,7 @@ mod tests {
         }
         for _ in 0..200 {
             for _ in 0..presses_per_frame {
-                app.world_mut().write_message(press(logical.clone(), code));
+                send(app, press(logical.clone(), code));
             }
             app.update();
         }
@@ -1045,7 +1221,7 @@ mod tests {
         let before = drawn(&mut app, editor);
         assert_eq!(before.len(), 4, "one row per line of SRC");
 
-        app.world_mut().write_message(press(Key::Delete, KeyCode::Delete));
+        send(&mut app, press(Key::Delete, KeyCode::Delete));
         app.update();
         let after = drawn(&mut app, editor);
 
@@ -1167,5 +1343,86 @@ mod tests {
             edit::toggle_fold(&mut ed, 1);
         }
         hold(&mut app, editor, Key::Delete, KeyCode::Delete, 2);
+    }
+
+    /// A focused editor with its caret at the end of line 0 (`"가"`).
+    fn ime_harness() -> (App, Entity) {
+        let (mut app, editor) = harness("가");
+        app.init_resource::<crate::widgets::ImeComposition>();
+        let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+        ed.focused = true;
+        ed.cursor_col = 1;
+        ed.anchor_col = 1;
+        (app, editor)
+    }
+
+    fn ime(app: &mut App, ev: Ime) {
+        app.world_mut().write_message(WindowEvent::Ime(ev));
+        app.update();
+    }
+
+    fn preedit(value: &str) -> Ime {
+        Ime::Preedit { window: Entity::PLACEHOLDER, value: value.into(), cursor: Some((0, 0)) }
+    }
+
+    fn commit(value: &str) -> Ime {
+        Ime::Commit { window: Entity::PLACEHOLDER, value: value.into() }
+    }
+
+    fn line0(app: &App, editor: Entity) -> String {
+        app.world().get::<CodeEditor>(editor).unwrap().text[0].clone()
+    }
+
+    /// The syllable being built is drawn on the caret's row but kept out of
+    /// the buffer, and so out of undo and the bound document, until committed.
+    #[test]
+    fn a_preedit_is_drawn_but_not_typed() {
+        let (mut app, editor) = ime_harness();
+        ime(&mut app, preedit("ㄴ"));
+        assert_eq!(line0(&app, editor), "가");
+        let ed = app.world().get::<CodeEditor>(editor).unwrap();
+        assert!(!ed.content_dirty);
+        assert_eq!(splice_span(vec![("가".into(), Color::WHITE)], 1, "ㄴ", Color::WHITE).len(), 2);
+        ime(&mut app, preedit(""));
+        ime(&mut app, commit("나"));
+        let ed = app.world().get::<CodeEditor>(editor).unwrap();
+        assert_eq!(ed.text[0], "가나");
+        assert_eq!(ed.cursor_col, 2);
+        assert!(ed.preedit.is_empty());
+    }
+
+    #[test]
+    fn a_commit_undoes_in_one_step() {
+        let (mut app, editor) = ime_harness();
+        ime(&mut app, commit("나"));
+        edit::undo(&mut app.world_mut().get_mut::<CodeEditor>(editor).unwrap());
+        assert_eq!(line0(&app, editor), "가");
+    }
+
+    #[test]
+    fn a_key_the_ime_consumed_edits_nothing() {
+        let (mut app, editor) = ime_harness();
+        // The Backspace that removes a jamo from a syllable still in the IME.
+        send(&mut app, press(Key::Process, KeyCode::Backspace));
+        app.update();
+        assert_eq!(line0(&app, editor), "가");
+    }
+
+    /// Clicking away mid-syllable keeps the syllable in the editor, as an OS
+    /// text field does, and the IME's own flush of it lands nowhere.
+    #[test]
+    fn leaving_mid_composition_commits_it_there() {
+        let (mut app, editor) = ime_harness();
+        ime(&mut app, preedit("한"));
+        app.world_mut().get_mut::<CodeEditor>(editor).unwrap().focused = false;
+        app.world_mut().run_system_once(crate::widgets::ime_focus_sync).unwrap();
+        assert_eq!(line0(&app, editor), "가한");
+        // The flush arrives once focus is back: still dropped.
+        app.world_mut().get_mut::<CodeEditor>(editor).unwrap().focused = true;
+        ime(&mut app, commit("한"));
+        assert_eq!(line0(&app, editor), "가한");
+        ime(&mut app, Ime::Disabled { window: Entity::PLACEHOLDER });
+        ime(&mut app, commit("글"));
+        assert_eq!(line0(&app, editor), "가한글");
     }
 }

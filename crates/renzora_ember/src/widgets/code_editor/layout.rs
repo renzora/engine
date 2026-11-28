@@ -18,7 +18,9 @@
 //! `ensure_visible`) is expressed purely in terms of this row list, so folding
 //! and wrapping compose for free. Because monospace makes column→pixel exact
 //! (`col * char_w`), a visual row only needs its column span, not per-glyph
-//! metrics.
+//! metrics. The one exception is the wide scripts (Hangul, CJK), drawn from a
+//! fallback font at their own advance: [`span_w`] and [`col_at_x`] price those
+//! at `wide_w`. Word wrap still splits by character count.
 //!
 //! All functions here are pure and unit-tested — the ECS glue in [`super::systems`]
 //! stays thin on purpose, since the editor can't be GPU-driven in tests.
@@ -46,6 +48,55 @@ pub(crate) struct VisualRow {
 /// Character count of buffer `line` (0 if out of range).
 pub(crate) fn char_len(lines: &[String], line: usize) -> usize {
     lines.get(line).map(|l| l.chars().count()).unwrap_or(0)
+}
+
+/// Whether `c` is drawn wider than one monospace cell: Hangul (syllables and
+/// jamo), CJK ideographs, kana and the fullwidth forms. A mono font carries
+/// none of these, so they come from a fallback font at that font's own advance,
+/// which `code_probe` measures as `wide_w`; drawing them at `char_w` put every
+/// caret and selection after a Korean word in the wrong place.
+pub(crate) fn is_wide(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x1100..=0x115F
+            | 0x2E80..=0x303E
+            | 0x3041..=0x33FF
+            | 0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xA960..=0xA97F
+            | 0xAC00..=0xD7A3
+            | 0xD7B0..=0xD7FF
+            | 0xF900..=0xFAFF
+            | 0xFE30..=0xFE4F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x20000..=0x3FFFD
+    )
+}
+
+/// Drawn width (logical px) of the characters `[from, to)` of `line`.
+pub(crate) fn span_w(line: &str, from: usize, to: usize, char_w: f32, wide_w: f32) -> f32 {
+    line.chars()
+        .skip(from)
+        .take(to.saturating_sub(from))
+        .map(|c| if is_wide(c) { wide_w } else { char_w })
+        .sum()
+}
+
+/// The column offset inside `[from, to)` of `line` nearest to `x` px from that
+/// span's left edge: the inverse of [`span_w`], for click hit-testing.
+pub(crate) fn col_at_x(line: &str, from: usize, to: usize, x: f32, char_w: f32, wide_w: f32) -> usize {
+    let mut left = 0.0;
+    let mut n = 0;
+    for c in line.chars().skip(from).take(to.saturating_sub(from)) {
+        let w = if is_wide(c) { wide_w } else { char_w };
+        if x < left + w * 0.5 {
+            return n;
+        }
+        left += w;
+        n += 1;
+    }
+    n
 }
 
 /// Is `line` hidden inside an active fold? A fold `start..=end` hides its body
@@ -240,6 +291,23 @@ mod tests {
         assert_eq!(next_visible(&folds, &l, 0), Some(3));
         assert_eq!(prev_visible(&folds, 3), Some(0));
         assert_eq!(clamp_visible(&folds, 2), 0);
+    }
+
+    #[test]
+    fn a_wide_char_takes_its_own_advance() {
+        // "a한b": one narrow, one Hangul, one narrow.
+        assert_eq!(span_w("a한b", 0, 3, 7.0, 13.0), 27.0);
+        assert_eq!(span_w("a한b", 1, 2, 7.0, 13.0), 13.0);
+        assert!(is_wide('ㅁ') && is_wide('漢') && !is_wide('a'));
+    }
+
+    #[test]
+    fn a_click_lands_on_the_nearest_boundary_past_a_wide_char() {
+        // Cells: a [0,7) 한 [7,20) b [20,27).
+        assert_eq!(col_at_x("a한b", 0, 3, 3.0, 7.0, 13.0), 0);
+        assert_eq!(col_at_x("a한b", 0, 3, 12.0, 7.0, 13.0), 1);
+        assert_eq!(col_at_x("a한b", 0, 3, 15.0, 7.0, 13.0), 2);
+        assert_eq!(col_at_x("a한b", 0, 3, 99.0, 7.0, 13.0), 3);
     }
 
     #[test]

@@ -791,6 +791,21 @@ pub(crate) fn cut(ed: &mut CodeEditor) -> String {
     text
 }
 
+/// Insert text the IME committed (a finished Hangul syllable, a converted
+/// clause), replacing any selection. Recorded as typing, so a run of committed
+/// syllables undoes as one word, like a run of typed letters. Auto-close pairs
+/// are not applied: the IME already produced exactly the text it means.
+pub(crate) fn commit_ime(ed: &mut CodeEditor, s: &str) {
+    let s = s.replace('\r', "");
+    if s.is_empty() {
+        return;
+    }
+    ed.push_history(EditKind::Type);
+    delete_selection(ed);
+    insert_text(ed, &s);
+    after_edit(ed);
+}
+
 pub(crate) fn paste(ed: &mut CodeEditor, s: &str) {
     if s.is_empty() {
         return;
