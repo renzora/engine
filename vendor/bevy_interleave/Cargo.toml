@@ -7,6 +7,8 @@
 #   - 0.20 port: `SyncComponent` takes the target app (`<RenderApp>`), in the
 #     interface's `PlanarHandle` bound and in the impl the planar macro emits.
 #   - examples, tests and profiles dropped (not vendored).
+#   - the `web-sys` dependency dropped: nothing in the crate uses it, and
+#     cargo warned about it on every build.
 # Excluded from CI test/clippy like the other vendored ecosystem crates.
 [package]
 edition = "2024"
@@ -28,17 +30,6 @@ bevy_interleave_macros = { path = "../bevy_interleave_macros" }
 bytemuck = "1.24"
 serde = "1.0"
 wgpu = "30"
-
-[dependencies.web-sys]
-version = "0.3"
-features = [
-    "Document",
-    "Element",
-    "HtmlElement",
-    "Location",
-    "Node",
-    "Window",
-]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"

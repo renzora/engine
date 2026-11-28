@@ -74,6 +74,24 @@ unsafe extern "C" fn wassert(_message: *const u16, _file: *const u16, _line: cor
     std::process::abort()
 }
 
+/// The DLL C runtime's import slot for `_invalid_parameter_noinfo_noreturn`,
+/// which the same ASTC object calls through it (the MSVC STL's bounds checks).
+///
+/// Unlike [`WASSERT_IMPORT`] this one always linked: the static CRT defines
+/// the function, so lld resolved the import to it locally, but it said so on
+/// every companion build (`LNK4217: locally defined symbol imported`). An
+/// explicit slot is what the linker was synthesizing anyway, and it points at
+/// the real function, so the behaviour is unchanged and the warning is gone.
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
+#[export_name = "__imp__invalid_parameter_noinfo_noreturn"]
+pub static INVALID_PARAMETER_IMPORT: unsafe extern "C" fn() -> ! = invalid_parameter_noinfo_noreturn;
+
+#[cfg(all(windows, target_env = "msvc", not(target_arch = "wasm32")))]
+unsafe extern "C" {
+    #[link_name = "_invalid_parameter_noinfo_noreturn"]
+    fn invalid_parameter_noinfo_noreturn() -> !;
+}
+
 /// Semantic role of a texture. Drives the sRGB-vs-linear choice and which
 /// GPU block format the data is compressed to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

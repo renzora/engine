@@ -1416,7 +1416,6 @@ dependencies = [
  "console_error_panic_hook",
  "serde",
  "wasm-bindgen",
- "web-sys",
  "wgpu",
 ]
 
@@ -7602,7 +7601,6 @@ name = "renzora_audio_api"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_crash_api",
  "renzora_project_api",
 ]
@@ -7861,7 +7859,6 @@ name = "renzora_diagnostics_api"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_companion_proto",
  "renzora_log_api",
  "renzora_scene_api",
@@ -8288,6 +8285,7 @@ dependencies = [
  "renzora_lang_api",
  "renzora_lighting",
  "renzora_physics",
+ "renzora_physics_api",
  "renzora_platform_api",
  "renzora_project_api",
  "renzora_scene_api",
@@ -8687,7 +8685,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "libloading 0.8.9",
- "renzora",
  "renzora_crash_api",
  "renzora_log_api",
  "renzora_native_build",
@@ -8840,6 +8837,7 @@ dependencies = [
  "renzora_bsn",
  "renzora_log_api",
  "renzora_material_api",
+ "renzora_particles_api",
  "renzora_physics_api",
  "renzora_project_api",
  "renzora_scene_api",
@@ -8849,6 +8847,14 @@ dependencies = [
  "renzora_test_harness",
  "renzora_world_api",
  "ron 0.8.1",
+ "serde",
+]
+
+[[package]]
+name = "renzora_particles_api"
+version = "0.1.0"
+dependencies = [
+ "bevy",
  "serde",
 ]
 
@@ -8951,6 +8957,7 @@ dependencies = [
  "renzora_scene_api",
  "serde",
  "serde_json",
+ "toml 0.8.23",
  "windows-sys 0.61.2",
 ]
 
@@ -9061,7 +9068,6 @@ name = "renzora_render_api"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "renzora",
  "renzora_scene_api",
  "serde",
 ]
@@ -9317,6 +9323,7 @@ dependencies = [
  "renzora_material_api",
  "renzora_net_api",
  "renzora_network_api",
+ "renzora_particles_api",
  "renzora_physics_api",
  "renzora_platform_api",
  "renzora_render_api",

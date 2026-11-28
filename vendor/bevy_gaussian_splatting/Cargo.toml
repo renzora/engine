@@ -110,7 +110,7 @@ buffer_texture = []
 
 query_raycast = []
 query_select = []
-query_sparse = ["dep:kd-tree", "query_select"]
+query_sparse = ["dep:kd-tree", "dep:typenum", "query_select"]
 
 sort_bitonic = []
 sort_radix = []
@@ -141,27 +141,21 @@ rayon = { version = "1.8", optional = true }
 serde = "1.0"
 serde_json = "1.0"
 static_assertions = "1.1"
-typenum = "1.18"
+# Only `query::sparse` (feature `query_sparse`) uses it.
+typenum = { version = "1.18", optional = true }
 wgpu = "30"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.3", default-features = false, features = ["wasm_js"] }
 wasm-bindgen = "0.2"
+# Read only inside `#[cfg(target_arch = "wasm32")]` (`utils::log`), so a wasm
+# dependency; upstream lists it for every target, which cargo warns about as
+# unused on desktop. `console` is the feature that `log` actually calls into.
+web-sys = { version = "0.3", features = ["console", "Document", "Element", "HtmlElement", "Location", "Node", "Window"] }
 
 [dependencies.bevy]
 workspace = true
-
-[dependencies.web-sys]
-version = "0.3"
-features = [
-  'Document',
-  'Element',
-  'HtmlElement',
-  'Location',
-  'Node',
-  'Window',
-]
 
 [lib]
 path = "src/lib.rs"

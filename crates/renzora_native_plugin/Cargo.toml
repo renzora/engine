@@ -27,9 +27,6 @@ renzora_crash_api = { path = "../api/renzora_crash_api" }
 renzora_project_api = { path = "../api/renzora_project_api" }
 renzora_log_api = { path = "../api/renzora_log_api" }
 bevy = { workspace = true }
-# The contract crate. Reached through the shared `renzora_dylib` at run time
-# like everything else — this is a plain dependency edge, not a second copy.
-renzora = { path = "../shared/renzora", default-features = false }
 # Downloading prebuilt plugins.
 renzora_net_api = { path = "../api/renzora_net_api" }
 renzora_platform_api = { path = "../api/renzora_platform_api" }
