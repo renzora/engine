@@ -984,7 +984,9 @@ fn paint_tiles(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
     layers: Query<(&TilemapLayer, &TilesetHandle, &GlobalTransform)>,
-    tiles: TileQuery,
+    // Tupled with the tile query (the 16-param cap): each tile's current image
+    // path, so a repaint can put the tileset back on a tile showing another.
+    (tiles, image_paths): (TileQuery, Query<&SpriteImagePath>),
     mut sheets: Query<&mut SpriteSheet>,
     mut rect_drag: ResMut<PaintRectDrag>,
     mut commands: Commands,
@@ -1070,6 +1072,7 @@ fn paint_tiles(
         image: &Handle<Image>,
         path: &str,
         tiles: &TileQuery,
+        image_paths: &Query<&SpriteImagePath>,
         sheets: &mut Query<&mut SpriteSheet>,
         commands: &mut Commands,
     ) {
@@ -1084,8 +1087,8 @@ fn paint_tiles(
                     && t.x == tc.x
                     && t.y == tc.y
             })
-            .map(|(e, _, _, _, _)| e);
-        if let Some(existing) = existing {
+            .map(|(e, _, _, _, _)| (e, image_paths.get(e).ok().map(|p| p.0.clone())));
+        if let Some((existing, current_path)) = existing {
             // Re-painting a cell just swaps the frame — cheaper than a
             // despawn/respawn and keeps any user tweaks on the entity.
             if let Ok(mut sheet) = sheets.get_mut(existing) {
@@ -1095,6 +1098,15 @@ fn paint_tiles(
                         vframes: rows,
                         frame: idx,
                     };
+                }
+                // A tile showing some other image (one retargeted in the
+                // Inspector, or by an image drop before drops skipped tiles)
+                // gets the tileset back. Painting over it is what a person
+                // tries to fix it with, and before this it changed nothing.
+                // Inserted, not mutated, so the lifecycle observer rebinds
+                // `Sprite.image`.
+                if current_path.as_deref() != Some(path) {
+                    commands.entity(existing).try_insert(SpriteImagePath(path.to_string()));
                 }
                 return;
             }
@@ -1384,7 +1396,7 @@ fn paint_tiles(
                         let idx = (brush.row + dy) * bcols + (brush.col + dx);
                         stamp_cell(
                             IVec2::new(x, y), idx, cols, rows, ts, paint_root, &tileset.image,
-                            &layer.tileset_path, &tiles, &mut sheets, &mut commands,
+                            &layer.tileset_path, &tiles, &image_paths, &mut sheets, &mut commands,
                         );
                     }
                 }
@@ -1471,7 +1483,7 @@ fn paint_tiles(
                 let tc = IVec2::new(c.x + dx, c.y - dy);
                 stamp_cell(
                     tc, idx, cols, rows, ts, paint_root, &tileset.image,
-                    &layer.tileset_path, &tiles, &mut sheets, &mut commands,
+                    &layer.tileset_path, &tiles, &image_paths, &mut sheets, &mut commands,
                 );
             }
         }
