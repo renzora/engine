@@ -83,6 +83,14 @@ impl Plugin for PostProcessPlugin {
 /// field changes its settings every frame. A chain that comes out the same as
 /// the camera's current one is not written back, so a still scene does not
 /// mark the camera changed and re-extract it.
+///
+/// The editor's 2D viewport cameras are added here rather than to
+/// [`EffectRouting`]: that table feeds every effect's router, and most of those
+/// (SSAO, SSR, fog) put 3D components on whatever they are routed to. Only the
+/// shader-file chain runs in the 2D pipeline, so only it follows the scene's
+/// default camera onto the 2D view, and a 2D scene previews its post effects
+/// in the editor the way a 3D one does.
+#[allow(clippy::too_many_arguments)]
 fn build_chains(
     mut commands: Commands,
     routing: Res<EffectRouting>,
@@ -90,11 +98,23 @@ fn build_chains(
     existing: Query<(Entity, &PostEffectChain)>,
     library: Res<EffectLibrary>,
     time: Res<Time>,
+    editor_2d_cameras: Query<Entity, With<renzora_scene_api::ViewportCamera2d>>,
+    scene_cameras: Query<(Entity, Has<renzora_scene_api::DefaultCamera>), With<renzora_scene_api::SceneCamera>>,
 ) {
     let now = time.elapsed_secs() % effect_file::TIME_WRAP;
     let mut built: Vec<Entity> = Vec::new();
 
-    for (camera, source_list) in routing.iter() {
+    let scene_camera = scene_cameras
+        .iter()
+        .find(|(_, default)| *default)
+        .or_else(|| scene_cameras.iter().next())
+        .map(|(e, _)| e);
+    let routes_2d: Vec<(Entity, Vec<Entity>)> = match scene_camera {
+        Some(src) => editor_2d_cameras.iter().map(|cam| (cam, vec![src])).collect(),
+        None => Vec::new(),
+    };
+
+    for (camera, source_list) in routing.iter().chain(routes_2d.iter()) {
         // The first source carrying a list wins, as for every routed effect.
         let Some(list) = source_list.iter().find_map(|&s| sources.get(s).ok()) else {
             continue;

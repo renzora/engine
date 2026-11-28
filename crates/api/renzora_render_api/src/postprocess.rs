@@ -309,5 +309,34 @@ impl Plugin for PostProcessCorePlugin {
                 dispatch_overlay.in_set(RenderPhase::Overlay),
             ),
         );
+
+        // The 2D pipeline gets the two phases that work on a finished picture:
+        // the shader-file effects (`LdrPost`) and overlays. 2D games had no
+        // post-processing at all because only `Core3d` ran a dispatcher. `Gi`
+        // and `HdrPost` stay 3D: the passes there read depth and prepass
+        // textures a 2D camera never makes. Anchored to the 2D tonemapping
+        // node, which Bevy places in `Core2dSystems::PostProcess` exactly as
+        // the 3D one.
+        use bevy::core_pipeline::{Core2d, Core2dSystems};
+        render_app
+            .configure_sets(
+                Core2d,
+                RenderPhase::LdrPost
+                    .in_set(Core2dSystems::PostProcess)
+                    .after(tonemapping),
+            )
+            .configure_sets(
+                Core2d,
+                RenderPhase::Overlay
+                    .in_set(Core2dSystems::PostProcess)
+                    .after(RenderPhase::LdrPost),
+            )
+            .add_systems(
+                Core2d,
+                (
+                    dispatch_ldr_post.in_set(RenderPhase::LdrPost),
+                    dispatch_overlay.in_set(RenderPhase::Overlay),
+                ),
+            );
     }
 }

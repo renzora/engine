@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "Rendering contract: Solari/GI settings and GPU capability flags, the post-process framework and render phases, shader-file post effects, auto-exposure, the ground grid and the blockout grid; plugins see them at `renzora::...`"
 
-# A contract subject layer above `renzora`, which it uses only for
-# `RenderPhase`. The rendering crates (and the plugins built on them) depend on
-# it for one `TypeId` per type and one render-pass list. An edit here rebuilds
-# the rendering crates, not the whole engine.
+# A contract subject layer. The rendering crates (and the plugins built on
+# them) depend on it for one `TypeId` per type and one render-pass list. An
+# edit here rebuilds the rendering crates, not the whole engine.
 [dependencies]
-renzora_scene_api = { path = "../renzora_scene_api" }
+# Only for `RenderPhase`, which `postprocess` re-exports, so it comes with that
+# feature.
+renzora_scene_api = { path = "../renzora_scene_api", optional = true }
 bevy = { workspace = true }
-renzora = { path = "../../shared/renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 
 [features]
@@ -19,7 +19,7 @@ serde = { version = "1", features = ["derive"] }
 # `PostProcessEffect`, the unified render node and the shared registry. Enabled
 # by the crates that register a pass. Off by default so mobile, wasm and server
 # builds keep the render-graph surface out.
-postprocess = []
+postprocess = ["dep:renzora_scene_api"]
 # Within `gi`, the two types built on `bevy::pbr::StandardMaterial`
 # (`TracedStandIn`, `SolariShadedTransparent`), which a 2D lean export cannot
 # compile. ON in every desktop and editor build (forwarded by `renzora_runtime`
