@@ -44,7 +44,7 @@ pub(crate) fn commit_material_drop(
     // 2D view arms a drop for; anything else on the mesh a ray hits.
     let picked = match MaterialTarget::of_file(&path) {
         Some(MaterialTarget::Sprite) => crate::sprite_drop::cursor_to_world_2d(world, screen_pos, vp_rect)
-            .and_then(|p| crate::sprite_drop::sprite_at(world, p)),
+            .and_then(|p| crate::sprite_drop::sprite_at(world, p, false)),
         _ => pick_mesh_under_pointer(world, screen_pos, vp_rect),
     };
     let Some(entity) = picked else {

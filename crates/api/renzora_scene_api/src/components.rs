@@ -248,6 +248,18 @@ impl Default for SpriteSheet {
     }
 }
 
+/// Marks a sprite the tilemap painter owns: a painted tile or a stamped
+/// multi-tile object.
+///
+/// Runtime-only and never saved: the tilemap's own saved components require
+/// it, so it is back on every tile the moment a scene loads. It exists so
+/// crates that cannot see the tilemap still know a tile from a hand-placed
+/// sprite. The viewport's image drop is the case that needed it: dropping a
+/// sprite sheet onto a painted level hit the floor tile under the pointer and
+/// swapped that one tile's image, instead of placing a new sprite there.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct PaintedTile;
+
 /// A rectangular sub-region of an atlas image, in atlas cells — the persistent
 /// crop for a multi-tile "object" drawn as a **single** sprite (e.g. a tree
 /// stamped from a 3×3 tilemap-palette block is one entity, not nine tiles).

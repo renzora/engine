@@ -12,7 +12,7 @@ use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
 
-use renzora_scene_api::{EditorCamera2d, SpriteImagePath};
+use renzora_scene_api::{EditorCamera2d, HideInHierarchy, PaintedTile, SpriteImagePath};
 use renzora_project_api::CurrentProject;
 
 use crate::ViewportState;
@@ -49,11 +49,25 @@ pub(crate) fn cursor_to_world_2d(world: &mut World, screen_pos: Vec2, vp_rect: R
 
 /// The sprite under a 2D world point: an AABB test on each sprite's size,
 /// topmost Z winning.
-pub(crate) fn sprite_at(world: &mut World, point: Vec2) -> Option<Entity> {
-    let mut state: SystemState<Query<(Entity, &Sprite, &GlobalTransform)>> = SystemState::new(world);
+///
+/// `skip_tiles` leaves painted tilemap tiles out. On a painted level there is
+/// a floor tile under every point, so a caller that only wants a hand-placed
+/// sprite would otherwise always hit the floor.
+///
+/// Editor chrome (`HideInHierarchy`) is never a target. The Sprite Material
+/// preview keeps a 640x640 sample sprite at the origin on a layer the viewport
+/// does not draw, and every drop within 320 units of the origin hit it: the
+/// drop "did nothing" because it had quietly retargeted that hidden sprite.
+pub(crate) fn sprite_at(world: &mut World, point: Vec2, skip_tiles: bool) -> Option<Entity> {
+    let mut state: SystemState<
+        Query<(Entity, &Sprite, &GlobalTransform, Has<PaintedTile>), Without<HideInHierarchy>>,
+    > = SystemState::new(world);
     let sprites = state.get(world).ok()?;
     let mut best: Option<(Entity, f32)> = None;
-    for (entity, sprite, gt) in &sprites {
+    for (entity, sprite, gt, is_tile) in &sprites {
+        if skip_tiles && is_tile {
+            continue;
+        }
         let Some(size) = sprite.custom_size else {
             continue;
         };
@@ -90,7 +104,9 @@ pub(crate) fn commit_sprite_drop(
     let Some(world_pos_2d) = cursor_to_world_2d(world, screen_pos, vp_rect) else {
         return;
     };
-    let hit_entity = sprite_at(world, world_pos_2d);
+    // Tiles never take the image: dropping onto a painted floor places a new
+    // sprite on it, which is what dropping a character into a level means.
+    let hit_entity = sprite_at(world, world_pos_2d, true);
 
     if let Some(entity) = hit_entity {
         // Retarget the existing sprite's image — keeps the user's

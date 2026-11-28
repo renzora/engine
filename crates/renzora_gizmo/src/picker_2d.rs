@@ -37,7 +37,12 @@ use renzora_platform_api::resize::{resize_in_flight, ResizeBusy};
 use renzora_viewport_api::{
     ViewportBoxSelect2d, ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
 };
-use renzora_scene_api::{Node2d, PickBounds2d};
+// `HideInHierarchy` keeps the picker to scene content: the editor's own
+// offscreen sprites (the Sprite Material preview's 640x640 sample sits at the
+// origin on a layer the viewport does not draw) were clickable, so a click in
+// an empty-looking spot selected editor chrome that could then be moved or
+// deleted.
+use renzora_scene_api::{HideInHierarchy, Node2d, PickBounds2d};
 use renzora_project_api::PlayModeState;
 use renzora_editor_framework::EditorSelection;
 
@@ -615,8 +620,11 @@ pub fn pick_2d_system(
     mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
-    sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
-    nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
+    sprites: Query<(Entity, &Sprite, &GlobalTransform), Without<HideInHierarchy>>,
+    nodes_2d: Query<
+        (Entity, &GlobalTransform, Option<&PickBounds2d>),
+        (With<Node2d>, Without<Sprite>, Without<HideInHierarchy>),
+    >,
     transforms: Query<&Transform>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     resizing: Option<Res<ResizeBusy>>,
@@ -1001,8 +1009,11 @@ pub fn box_select_2d_system(
     mut band: ResMut<ViewportBoxSelect2d>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora_scene_api::EditorCamera2d>>,
-    sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
-    nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
+    sprites: Query<(Entity, &Sprite, &GlobalTransform), Without<HideInHierarchy>>,
+    nodes_2d: Query<
+        (Entity, &GlobalTransform, Option<&PickBounds2d>),
+        (With<Node2d>, Without<Sprite>, Without<HideInHierarchy>),
+    >,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
     // Collider edit mode owns the left button (see `pick_2d_system`).

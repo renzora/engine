@@ -1,8 +1,13 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 09:33
+- fix(viewport): dropping an image near the origin of a 2D scene places a sprite instead of silently retargeting the hidden Sprite Material preview
+- fix(viewport): clicks and box selection in the 2D view no longer pick the editor's hidden preview sprites
+
 ## 2026-11-28 08:50
 - feat(scripting): Rust scripts and plugins can spawn and drive particle effects through `renzora::particles`
 - feat(editor): the Sprite Image card has Width and Height fields and a Fit to Frame button
+- fix(viewport): dropping an image onto a painted tilemap places a new sprite instead of replacing a floor tile's image
 - fix(editor): the Sprite preset no longer tints the image assigned to it light blue
 
 ## 2026-11-28 08:08

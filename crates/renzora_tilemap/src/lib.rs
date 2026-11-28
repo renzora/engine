@@ -243,6 +243,7 @@ fn apply_paint_layer_visuals(
 /// scene serializer round-trips simple fields more reliably than math types.
 #[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(Component, Default, Serialize, Deserialize)]
+#[require(renzora_scene_api::PaintedTile)]
 pub struct TilemapTile {
     pub x: i32,
     pub y: i32,
@@ -270,6 +271,7 @@ pub struct TilesetHandle {
 /// so the texture is regenerated on load and in the exported game.
 #[derive(Component, Reflect, Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
+#[require(renzora_scene_api::PaintedTile)]
 pub struct TileObject {
     /// Asset-relative path of the source tileset atlas.
     pub tileset_path: String,
