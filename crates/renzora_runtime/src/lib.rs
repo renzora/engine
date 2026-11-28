@@ -1221,7 +1221,11 @@ pub fn add_companion_rendering(app: &mut App) {
                 ..default()
             })
             .set(WindowPlugin {
-                primary_window: Some(Window {
+                // Wayland has no hidden window: winit ignores `visible: false`
+                // there, so the companion's window opened blank beside the
+                // editor at every launch. On Wayland it is created when the
+                // editor asks to show it instead (`renzora_companion`'s link).
+                primary_window: (!companion_window_deferred()).then(|| Window {
                     title: "Renzora Companion".into(),
                     visible: false,
                     #[cfg(not(target_arch = "wasm32"))]
@@ -1243,6 +1247,16 @@ pub fn add_companion_rendering(app: &mut App) {
         focused_mode: UpdateMode::reactive(Duration::from_millis(100)),
         unfocused_mode: UpdateMode::reactive_low_power(Duration::from_millis(250)),
     });
+}
+
+/// Whether the companion's window must wait to be created until it is shown,
+/// because the platform cannot hold a window hidden. True on Wayland, which
+/// winit picks whenever `WAYLAND_DISPLAY` is set; X11, Windows and macOS all
+/// honour `visible: false`. `renzora_companion` makes the same check, since it
+/// is what creates the window later and removes it on close.
+pub fn companion_window_deferred() -> bool {
+    cfg!(all(unix, not(target_os = "macos"), not(target_os = "android")))
+        && std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
 }
 
 /// Attach a console window so subsequent stdout/stderr (Bevy log output) is

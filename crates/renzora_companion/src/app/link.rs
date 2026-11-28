@@ -142,6 +142,7 @@ fn pump(
     mut editor: ResMut<EditorState>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut exit: MessageWriter<AppExit>,
+    mut commands: Commands,
 ) {
     let mut received = Vec::new();
     let mut closed = false;
@@ -177,6 +178,18 @@ fn pump(
                     window.visible = true;
                     window.focused = true;
                 }
+                // Where the platform cannot hide a window (Wayland), there is
+                // none until now: create it, as the one the UI camera draws to.
+                if windows.is_empty() {
+                    commands.spawn((
+                        Window {
+                            title: "Renzora Companion".into(),
+                            resolution: bevy::window::WindowResolution::new(1280, 800),
+                            ..default()
+                        },
+                        PrimaryWindow,
+                    ));
+                }
             }
             // Lines only the companion sends.
             Message::Hello { .. } | Message::Progress { .. } | Message::Done { .. } => {}
@@ -210,11 +223,28 @@ fn pump(
 }
 
 /// The window's close button hides it; the companion lives as long as the
-/// editor does.
-fn hide_on_close(mut requests: MessageReader<WindowCloseRequested>, mut windows: Query<&mut Window>) {
+/// editor does. On Wayland, which cannot hide a window, it is removed instead,
+/// and the next Show creates it again; the UI it draws lives on without it.
+fn hide_on_close(
+    mut requests: MessageReader<WindowCloseRequested>,
+    mut windows: Query<&mut Window>,
+    mut commands: Commands,
+) {
+    let cannot_hide = window_cannot_hide();
     for request in requests.read() {
-        if let Ok(mut window) = windows.get_mut(request.window) {
+        if cannot_hide {
+            commands.entity(request.window).try_despawn();
+        } else if let Ok(mut window) = windows.get_mut(request.window) {
             window.visible = false;
         }
     }
+}
+
+/// Mirrors `renzora_runtime::companion_window_deferred`, which decided at boot
+/// whether this process got a window up front; this crate does not link the
+/// runtime. Wayland, picked by winit whenever `WAYLAND_DISPLAY` is set, ignores
+/// `visible: false`.
+fn window_cannot_hide() -> bool {
+    cfg!(all(unix, not(target_os = "macos"), not(target_os = "android")))
+        && std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
 }

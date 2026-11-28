@@ -233,6 +233,16 @@ struct CameraDragState {
     anchor: Option<Vec2>,
     /// Frames left to keep holding the pointer after the drag ended.
     release_hold: u8,
+    /// Whether this drag has seen any raw `MouseMotion`. A pointer that
+    /// reports absolute positions (a virtual machine's mouse, a pen tablet,
+    /// most remote desktops) gets no relative motion from the compositor, so
+    /// on Wayland not one `MouseMotion` arrives and the camera did nothing at
+    /// all. Until raw motion shows up, the drag reads the cursor position
+    /// instead, and does not warp the pointer, since the deltas then come from
+    /// the pointer moving (and Wayland refuses the warp anyway).
+    raw_seen: bool,
+    /// The cursor position the cursor-position fallback last measured from.
+    last_cursor: Option<Vec2>,
 }
 
 /// Frames the pointer is still held at its anchor after a drag ends, long
@@ -1141,6 +1151,14 @@ fn camera_controller(
         return;
     };
 
+    // Read once, up front: whether any raw motion arrived this frame decides
+    // below both whether the pointer is warped and where the drag's delta
+    // comes from (see `CameraDragState::raw_seen`).
+    let raw_motion: Option<Vec2> = mouse_motion
+        .read()
+        .map(|ev| ev.delta)
+        .reduce(|a, b| a + b);
+
     let right_pressed = mouse_button.pressed(MouseButton::Right);
     let middle_pressed = mouse_button.pressed(MouseButton::Middle);
     let left_pressed = mouse_button.pressed(MouseButton::Left);
@@ -1262,8 +1280,27 @@ fn camera_controller(
     if (right_just_pressed || middle_just_pressed) && viewport_hovered {
         drag.dragging = true;
         drag.anchor = window_query.single().ok().and_then(|(w, _)| w.cursor_position());
+        drag.last_cursor = drag.anchor;
+        drag.raw_seen = false;
         drag.release_hold = 0;
-        mouse_motion.clear();
+    } else if drag.dragging && raw_motion.is_some() {
+        drag.raw_seen = true;
+    }
+    // The drag's motion this frame: raw deltas when the platform delivers
+    // them, otherwise how far the cursor moved. Measured before any warp
+    // below, which in fallback mode never runs, so the last position stays
+    // the real one.
+    let mut motion = Vec2::ZERO;
+    if drag.dragging {
+        if drag.raw_seen {
+            motion = raw_motion.unwrap_or(Vec2::ZERO);
+        } else if let Some(now) = window_query.single().ok().and_then(|(w, _)| w.cursor_position())
+        {
+            if let Some(last) = drag.last_cursor {
+                motion = now - last;
+            }
+            drag.last_cursor = Some(now);
+        }
     }
     if (right_just_released || middle_just_released) && drag.dragging {
         drag.dragging = false;
@@ -1288,10 +1325,16 @@ fn camera_controller(
     // The skipped case is `Locked` *while dragging*: warping on top of a live OS
     // lock is redundant and, on macOS, suppresses motion deltas for ~0.25s after
     // each warp — see `DRAG_GRAB_MODE`.
+    //
+    // Neither runs for a drag that never saw raw motion: its deltas are the
+    // pointer's own movement, which a warp back to the anchor would erase.
+    // `Locked` keeps the release warp regardless, since a press released
+    // without moving delivers no raw motion and still needs the unfreeze.
     if drag.dragging || drag.release_hold > 0 {
+        let warps = drag.raw_seen || DRAG_GRAB_MODE == CursorGrabMode::Locked;
         let active_confined = drag.dragging && DRAG_GRAB_MODE == CursorGrabMode::Confined;
         let release_tail = !drag.dragging;
-        if active_confined || release_tail {
+        if warps && (active_confined || release_tail) {
             if let (Some(at), Ok((mut window, _))) = (drag.anchor, window_query.single_mut()) {
                 // The release tail warps unconditionally: a just-released macOS
                 // `Locked` leaves the cursor frozen *at* the anchor, so a
@@ -1339,7 +1382,6 @@ fn camera_controller(
 
     // --- Scroll wheel: dolly zoom (only when hovering viewport) ---
     if !viewport_hovered && !drag.dragging {
-        mouse_motion.clear();
         scroll_events.clear();
         return;
     }
@@ -1387,12 +1429,10 @@ fn camera_controller(
     if scroll_changed && !drag.dragging {
         let t = orbit.calculate_transform();
         *transform = t;
-        mouse_motion.clear();
         return;
     }
 
     if !drag.dragging {
-        mouse_motion.clear();
         return;
     }
 
@@ -1404,9 +1444,7 @@ fn camera_controller(
         if shift_held {
             // Shift+Right drag = pan the camera (slide focus in view plane).
             // Suppressed when pivot is locked so orbit stays centered.
-            if pivot_lock.0 {
-                mouse_motion.clear();
-            } else {
+            if !pivot_lock.0 {
                 let pan_speed = 0.003 * orbit.distance.max(0.5);
                 let view_dir = Vec3::new(
                     orbit.pitch.cos() * orbit.yaw.sin(),
@@ -1414,19 +1452,15 @@ fn camera_controller(
                     orbit.pitch.cos() * orbit.yaw.cos(),
                 );
                 let up_dir = right_dir.cross(view_dir).normalize();
-                for ev in mouse_motion.read() {
-                    orbit.focus -= right_dir * ev.delta.x * pan_speed;
-                    orbit.focus += up_dir * ev.delta.y * pan_speed;
-                }
+                orbit.focus -= right_dir * motion.x * pan_speed;
+                orbit.focus += up_dir * motion.y * pan_speed;
             }
         } else {
             // Mouse look (pivot-preserved).
             let cam_pos = orbit.calculate_position();
-            for ev in mouse_motion.read() {
-                orbit.yaw -= ev.delta.x * look_speed;
-                orbit.pitch += ev.delta.y * look_speed * invert_y;
-                orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
-            }
+            orbit.yaw -= motion.x * look_speed;
+            orbit.pitch += motion.y * look_speed * invert_y;
+            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
             // Keep camera in same position, recalculate focus.
             let new_dir = Vec3::new(
                 orbit.pitch.cos() * orbit.yaw.sin(),
@@ -1438,13 +1472,9 @@ fn camera_controller(
     }
     // === Middle-click or Alt+Left: orbit ===
     else if middle_pressed || (left_pressed && alt_held) {
-        for ev in mouse_motion.read() {
-            orbit.yaw -= ev.delta.x * orbit_speed;
-            orbit.pitch += ev.delta.y * orbit_speed * invert_y;
-            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
-        }
-    } else {
-        mouse_motion.clear();
+        orbit.yaw -= motion.x * orbit_speed;
+        orbit.pitch += motion.y * orbit_speed * invert_y;
+        orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
     }
 
     // Apply orbit to transform

@@ -1,5 +1,9 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 06:53
+- fix(camera): right-drag look, pan and orbit work in the viewport with a mouse that reports absolute positions, such as in a virtual machine
+- fix(companion): on Wayland the companion no longer opens a blank window at launch
+
 ## 2026-11-28 06:35
 - fix(ui): clicking outside a game UI `<input>` unfocuses it, so typing meant for another field no longer reaches it too
 
