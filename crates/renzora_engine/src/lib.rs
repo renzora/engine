@@ -11,6 +11,7 @@ pub mod autoload;
 pub mod blockout;
 pub mod camera;
 pub mod camera_script;
+mod camera_target_size;
 pub mod crash;
 pub mod debug_log;
 #[cfg(feature = "render_3d")]
@@ -841,6 +842,8 @@ impl Plugin for RuntimePlugin {
         #[cfg(feature = "render_3d")]
         app.insert_resource(shapes::builtin_shapes());
         app.init_resource::<renzora_scene_api::EffectRouting>();
+        // Before Bevy measures camera targets; see the module for the crash.
+        camera_target_size::plugin(app);
         app.init_resource::<renzora_project_api::PendingSceneLoad>();
         app.init_resource::<scene_stream::SceneStreams>();
         // The stream driver runs right after the request drain so a swap's

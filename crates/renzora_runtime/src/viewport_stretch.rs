@@ -156,6 +156,7 @@ fn sync_stretch(
     mut images: ResMut<Assets<Image>>,
     blit_pass: Query<Entity, BlitPassFilter>,
     cameras: GameCameraTargets,
+    mut projections: Query<(&RenderTarget, &mut Projection), (With<Camera>, Without<BlitCamera>)>,
 ) {
     let Some(project) = project else {
         warn!("[viewport_stretch] No project, stretch disabled");
@@ -184,6 +185,16 @@ fn sync_stretch(
                 return;
             }
             stretch.size = size;
+            // The cameras drawing into it must learn the new size this frame.
+            // Bevy's `camera_system` hears of an image change from its asset
+            // event, which is sent after it runs, so for one frame the depth
+            // buffer kept the old size against the new colour target: a wgpu
+            // validation error, fatal under the render-error policy.
+            for (target, mut projection) in &mut projections {
+                if matches!(target, RenderTarget::Image(t) if t.handle == stretch.image) {
+                    projection.set_changed();
+                }
+            }
             info!("[viewport_stretch] viewport resized to {}x{}", size.x, size.y);
         }
         StretchAction::Remove => {

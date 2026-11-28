@@ -1,5 +1,8 @@
 # Renzora Engine `r1-alpha8`
 
+## 2026-11-28 10:10
+- fix(rendering): a camera moved onto another render image re-measures it, so the editor no longer crashes on a depth and colour size mismatch
+
 ## 2026-11-28 09:33
 - fix(viewport): dropping an image near the origin of a 2D scene places a sprite instead of silently retargeting the hidden Sprite Material preview
 - fix(viewport): clicks and box selection in the 2D view no longer pick the editor's hidden preview sprites

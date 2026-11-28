@@ -531,8 +531,10 @@ fn resolve_viewport_slots(
     resize_busy: Option<Res<renzora_platform_api::resize::ResizeBusy>>,
     play_mode: Option<Res<renzora_project_api::PlayModeState>>,
     mut hidden_frames: Local<[u32; renzora_viewport_api::VIEWPORT_COUNT]>,
+    mut cameras: Query<(&bevy::camera::RenderTarget, &mut Projection), With<Camera>>,
 ) {
     use renzora_viewport_api::VIEWPORT_COUNT;
+    let mut resized: Vec<AssetId<Image>> = Vec::new();
 
     // A splitter or window edge is being dragged. Every size a drag passes
     // through used to resize the target, and DLSS starts over at every new
@@ -657,6 +659,29 @@ fn resolve_viewport_slots(
                     depth_or_array_layers: 1,
                 });
                 slot.current_size = requested;
+                if let Some(handle) = slot.image.as_ref() {
+                    resized.push(handle.id());
+                }
+            }
+        }
+    }
+
+    // Tell every camera drawing into a resized image this frame, not next.
+    // Bevy's `camera_system` learns of an image resize from its asset event,
+    // and it runs before those events are sent, so on its own the camera kept
+    // the old target size for one frame while the render world had already
+    // re-made the image at the new one. The depth buffer, sized from the
+    // camera, then disagreed with the colour target, sized from the image:
+    // a wgpu validation error, which the render-error policy treats as fatal,
+    // so dragging a window edge or a splitter could crash the editor. Marking
+    // the projection changed makes `camera_system` recompute the target size
+    // from the image, which already has its new size.
+    if !resized.is_empty() {
+        for (target, mut projection) in &mut cameras {
+            if let bevy::camera::RenderTarget::Image(t) = target {
+                if resized.contains(&t.handle.id()) {
+                    projection.set_changed();
+                }
             }
         }
     }
