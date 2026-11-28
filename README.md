@@ -8,7 +8,7 @@ A 3D and 2D game engine and visual editor built on <a href="https://bevyengine.o
 
 ## Getting Started
 
-To build the engine from source. **Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>.
+To build the engine from source. **Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>, and on Linux a C compiler, which Rust needs to link anything and does not bring with it (`sudo apt install build-essential` on Ubuntu; [other distros](#building-on-linux)). The build wants about 16 GB of RAM and 100 GB of free disk.
 
 ```bash
 git clone https://github.com/renzora/engine.git
@@ -82,7 +82,16 @@ If a system cannot run Renzora, the editor says what is missing in a dialog inst
 
 ### Building on Linux
 
-Building from source also needs the graphics and audio dev headers, `clang` and `mold`. `cargo renzora` installs any that are missing on Debian, Fedora, Arch and openSUSE families, or install them yourself:
+First, a C compiler. Rust links through it, and `cargo renzora` cannot install it for you because it needs one to build itself; without it the first run stops at ``linker `cc` not found``.
+
+| Distro | Command |
+|---|---|
+| Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install build-essential` |
+| Fedora, RHEL, Rocky, Alma | `sudo dnf install gcc` |
+| Arch, Manjaro, EndeavourOS | `sudo pacman -S --needed base-devel` |
+| openSUSE | `sudo zypper install gcc` |
+
+The build also needs the graphics and audio dev headers, `clang` and `mold`. Once a C compiler is there, `cargo renzora` installs any that are missing on Debian, Fedora, Arch and openSUSE families (it asks for your password), or install them yourself:
 
 **Ubuntu, Debian, Mint, Pop!_OS**
 
